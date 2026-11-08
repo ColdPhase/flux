@@ -188,20 +188,18 @@ class AgentsTabStates(unittest.TestCase):
         pid = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "restricted"}, status=201)["id"]
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         ids = {"workspace": ws["id"], "project": pid}
-        scopes = ["flux.context.read", "flux.proposal.write"]
         agents = {"codex": ("Codex", ada, "codex", "Desk laptop"), "claude": ("Claude Code", ada, "claude_code", "Desk laptop"),
                   "lab": ("Lab helper", ada, "other", "Lab tablet"), "notes": ("Notes", ada, "other", "Notes laptop"),
                   "jonas_claude": ("Claude Code", jonas, "claude_code", "Workshop PC")}
         for key, (name, owner, client, connection) in agents.items():
             agent = self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": name, "owner": "self"}, status=201)["id"]
             ids[key] = agent
-            made = self.api(owner, "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [pid], "scopes": scopes,
-                                                                         "name": connection, "clientDesignation": client}, status=201)
+            made = self.api(owner, "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": connection, "clientDesignation": client}, status=201)
             ids[f"conn_{key}"] = made["id"]
         type(self).ids = ids
         self.new_task("Fix the reconnect loop in the lamp firmware", "task1", owner={"kind": "agent", "id": ids["codex"]}, status="in_progress")
         self.new_task("Mount the probe at two depths", "task2", owner={"kind": "agent", "id": ids["jonas_claude"]}, status="blocked",
-                      blocker="Waiting for the probe drawing")
+                      blocker="Waiting for the probe drawing", by="jonas")
         self.new_task("Calibrate the soil probes", "task3", owner={"kind": "agent", "id": ids["claude"]}, status="in_progress")
         self.new_task("Print a label for each of the six beds", "task4")
         self.new_task("Log the greenhouse humidity", "task5", owner={"kind": "agent", "id": ids["lab"]}, status="in_progress")
@@ -217,8 +215,9 @@ class AgentsTabStates(unittest.TestCase):
                  for body in ("Starting on the reconnect loop.", "Reading the modem log now.", "Thanks, keep going.")]
         type(self).ids = {**self.ids, "a1": twins[0]["id"], "a2": twins[1]["id"], "a3": twins[2]["id"]}
 
-    def new_task(self, title: str, key: str, *, owner: dict | None = None, status: str = "open", blocker: str | None = None) -> None:
-        ada = self.page("ada")
+    def new_task(self, title: str, key: str, *, owner: dict | None = None, status: str = "open", blocker: str | None = None, by: str = "ada") -> None:
+        # A task goes to one of the giver's own agents (#856): Jonas gives his own agent its task.
+        ada = self.page(by)
         body: dict = {"title": title, "status": "in_progress" if status == "blocked" else status}
         if owner and status != "blocked":
             body["owner"] = owner
@@ -364,7 +363,7 @@ class AgentsTabStates(unittest.TestCase):
 
     def test_06_rows_read_cleanly(self) -> None:
         page = self.page("ada")
-        travel = {"id": str(uuid.uuid4()), "name": "Travel laptop", "clientDesignation": "claude_code", "scopes": ["flux.context.read", "flux.proposal.write"], "mayDo": "act",
+        travel = {"id": str(uuid.uuid4()), "name": "Travel laptop", "clientDesignation": "claude_code", "mayDo": "act",
                   "state": "offline", "session": None, "lastActivity": None, "currentWork": None, "requests": [],
                   "agent": {"id": self.ids["claude"], "name": "Claude Code"}, "owner": {"id": ADA["id"], "name": ADA["name"]}, "own": True}
         self.stub_connections(page, {self.ids["conn_notes"]: {**open_session(), "lastActivity": recorded_result(30)}}, extra=[travel])
@@ -504,7 +503,7 @@ class AgentsTabStates(unittest.TestCase):
         expect(panel.get_by_role("region", name="Now")).to_contain_text("Waiting for your answer")
         expect(panel.get_by_role("region", name="Now")).to_contain_text("Asks: “Merge PR 42 now, or wait?”")
         # Jonas's agent holds #2 again, blocked: the task is set back the way a person sets it.
-        ada = self.page("ada")
+        ada = self.page("jonas")
         current = self.task("task2")
         self.api(ada, "PATCH", f"/api/v1/work/{self.ids['task2']}", {"owner": {"kind": "agent", "id": self.ids["jonas_claude"]}, "status": "blocked",
                  "blocker": "Waiting for the probe drawing"}, status=200, headers={"if-match": f'"{current["version"]}"'})

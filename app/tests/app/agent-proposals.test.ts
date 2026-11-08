@@ -7,6 +7,7 @@ import type { AgentProposal, Material, Project, Workspace } from '@flux/contract
 import { eventPorts } from '../../apps/server/src/events.js';
 import { db, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
+import { createConnection } from './support/mcp-actions.js';
 
 const store = agentProposalUseCases(agentProposalRepository(db, {
   async authorizeWrite(principal, projectId, tx) {
@@ -43,20 +44,15 @@ describe('sourced personal agent proposals', () => {
       { body: { name: 'Hubert research client', owner: 'self' } }), 201) as { id: string }).id;
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
-    const command = { agentId, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] };
-    const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
-      { body: command }), 201) as { id: string; ownerUserId: string; selectedProjectIds: string[] };
+    const connection = await createConnection(pool, owner.browser, { agentId });
     connectionId = connection.id;
     assert.equal(connection.ownerUserId, owner.id);
-    assert.deepEqual(connection.selectedProjectIds, [project.id]);
-    expectStatus(await peer.browser.request('POST', '/api/v1/agent-connections', { body: command }), 404);
+    // Another person's session lists none of it (it is the owner's alone).
     assert.equal((expectStatus(await peer.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown[]).length, 0);
   });
 
   test('source, audience, idempotency and current grant protect a proposal', async () => {
-    const context = { connectionId, ownerUserId: owner.id, agentId, selectedProjectIds: [project.id],
-      scopes: ['flux.context.read', 'flux.proposal.write'] as const,
-      computeSource: 'user_operated_claude_code' as const };
+    const context = { connectionId, ownerUserId: owner.id, agentId, computeSource: 'user_operated_claude_code' as const };
     const command = { projectId: project.id, source: { materialId: material.materialId, version: 1 },
       clientCommandId: randomUUID(), fact: 'Sensor A failed in dim scenes',
       interpretation: 'Exposure may be too short', suggestedAction: 'Compare sensor B' };
@@ -68,8 +64,6 @@ describe('sourced personal agent proposals', () => {
     assert.equal((await store.create(context, command)).id, first.id);
     await assert.rejects(store.create(context, { ...command, suggestedAction: 'Publish automatically' }),
       { code: 'IDEMPOTENCY_CONFLICT' });
-    await assert.rejects(store.create({ ...context, selectedProjectIds: [] }, command), { code: 'PROJECT_NOT_FOUND' });
-    await assert.rejects(store.create({ ...context, scopes: ['flux.context.read'] }, command), { code: 'MCP_SCOPE_REQUIRED' });
     await assert.rejects(store.create({ ...context, ownerUserId: peer.id }, command), { code: 'CONNECTION_NOT_FOUND' });
     const second = await store.create(context, { ...command, clientCommandId: randomUUID(), suggestedAction: 'Review exposure logs' });
     expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,

@@ -39,7 +39,7 @@ export interface CoWorkUnitTransitionFacts {
   unit: CoWorkTransitionUnit | null;
   /** Requests addressed to the unit that are queued, deferred or claimed and unexpired. */
   openRequests: number;
-  /** Transfer only: the assignee when it is a live connection of this workspace with this project selected and the execute scope. */
+  /** Transfer only: the assignee when it is a live connection of this workspace that takes work (not Only read) and whose owner can use this space: a non-guest member who sees it, with AI on there. */
   assignee: { id: string; ownerUserId: string } | null;
   /** Every unit of the unit's run, with its assignee's owner (null when that connection no longer exists). */
   runUnits: readonly { id: string; role: CoWorkRole; assignmentConnectionId: string; ownerUserId: string | null }[];

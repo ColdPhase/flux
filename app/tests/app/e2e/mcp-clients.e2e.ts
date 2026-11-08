@@ -8,8 +8,8 @@ import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { startClientModelMock, type MockPlan } from '../support/client-model-mock.js';
 import { expect } from '../support/mcp.js';
-import { withoutGrant } from '../support/mcp-actions.js';
-import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
+import { toolArgs } from '../support/mcp-actions.js';
+import { claudeBin, cleanClientHome, clientEvents, connectClient, connectionOfClient, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
 
 /**
  * AC-4 of #152 with the REAL pinned `codex` and `claude` clients (docker/Dockerfile `mcp-clients`, run by
@@ -25,13 +25,13 @@ import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOa
 // The CLIs leave keep-alive sockets and helper processes behind; end the file once its results are reported.
 after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 
-interface Spec extends ClientSpec { agent: 'codex' | 'claude' | 'ownerClaude' | 'peerCodex'; projects: ('study' | 'field')[] }
+interface Spec extends ClientSpec { agent: 'codex' | 'claude' | 'ownerClaude' | 'peerCodex' }
 const specs: Spec[] = [
-  { key: 'codex-laptop', client: 'codex', label: 'Codex on laptop', designation: 'codex', agent: 'codex', projects: ['study'], port: 19811 },
-  { key: 'codex-desktop', client: 'codex', label: 'Codex on desktop', designation: 'codex', agent: 'codex', projects: ['study', 'field'], port: 19812 },
-  { key: 'claude-laptop', client: 'claude', label: 'Peer Claude Code', designation: 'claude_code', agent: 'claude', projects: ['study', 'field'], port: 19813 },
-  { key: 'claude-owner', client: 'claude', label: 'Owner Claude Code', designation: 'claude_code', agent: 'ownerClaude', projects: ['study'], port: 19814 },
-  { key: 'codex-peer', client: 'codex', label: 'Peer Codex', designation: 'codex', agent: 'peerCodex', projects: ['study', 'field'], port: 19815 },
+  { key: 'codex-laptop', client: 'codex', label: 'Codex on laptop', designation: 'codex', agent: 'codex', port: 19811 },
+  { key: 'codex-desktop', client: 'codex', label: 'Codex on desktop', designation: 'codex', agent: 'codex', port: 19812 },
+  { key: 'claude-laptop', client: 'claude', label: 'Peer Claude Code', designation: 'claude_code', agent: 'claude', port: 19813 },
+  { key: 'claude-owner', client: 'claude', label: 'Owner Claude Code', designation: 'claude_code', agent: 'ownerClaude', port: 19814 },
+  { key: 'codex-peer', client: 'codex', label: 'Peer Codex', designation: 'codex', agent: 'peerCodex', port: 19815 },
 ];
 // Names every personal connection must offer: the shared domain tools of the same owner-visible project data.
 const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_materials', 'flux_read_material', 'flux_create_proposal',
@@ -58,22 +58,16 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     const emails = { codex: email, claude: peerEmail, ownerClaude: email, peerCodex: peerEmail };
     const peerId = String((expect(await peer.request('GET', '/api/v1/me'), 200).user as { id: string }).id);
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Client contract' } }), 201);
-    // Both humans may explicitly grant actions to their own clients. Peer project management is a fixture choice,
-    // never a grant inferred from the client label or from another owner's standing authority.
+    // Peer project management is a fixture choice, never rights inferred from the client label or from another owner.
     expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/members`, { body: { email: peerEmail, role: 'admin' } }), 201);
     const makeProject = async (name: string) => String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name, visibility: 'restricted' } }), 201).id);
     const projects = { study: await makeProject('Sensor study'), field: await makeProject('Field notes') };
     for (const projectId of Object.values(projects)) expect(await owner.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: peerId }, role: 'contributor' } }), 201);
     const names = { study: 'Sensor study', field: 'Field notes' };
+    // Nothing is created beforehand: each person's Allow on the consent page makes the client's agent and connection (#859). Every client
+    // has exactly its owner's rights, so both people see both projects here (the peer holds a grant on each).
     const agents: Record<string, string> = {};
-    for (const [key, name] of [['codex', 'Owner Codex'], ['claude', 'Peer Claude'], ['ownerClaude', 'Owner Claude'], ['peerCodex', 'Peer Codex']] as const) {
-      agents[key] = String(expect(await people[key].request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name, owner: 'self' } }), 201).id);
-    }
     const connections: Record<string, string> = {};
-    for (const spec of specs) {
-      connections[spec.key] = String(expect(await people[spec.agent].request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
-        agentId: agents[spec.agent], selectedProjectIds: spec.projects.map((project) => projects[project]), scopes } }), 201).id);
-    }
     const clientIds: Record<string, string> = {};
     for (const spec of specs) clientIds[spec.key] = await seedOauthClient(pool, spec);
 
@@ -83,6 +77,8 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       homes[spec.key] = cleanClientHome(spec);
       await t.test(`${spec.label}: ${spec.client} adds Flux and completes OAuth as the person`, async () => {
         await connectClient(browser, emails[spec.agent], homes[spec.key]!, clientIds[spec.key]!);
+        const made = await connectionOfClient(pool, clientIds[spec.key]!);
+        connections[spec.key] = made.id; agents[spec.key] = made.agentId;
       });
     }
 
@@ -137,12 +133,12 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     const listAll = codexScript('text(JSON.stringify(await tools.mcp__flux__flux_list_contexts({})));');
     const seen: Record<string, Session> = {};
 
-    await t.test('every connection lists the same shared domain tools and only its own projects', async () => {
+    await t.test('every connection lists the same shared domain tools and the projects its owner can see', async () => {
       for (const spec of specs) {
         const claudeSteps = (outputs: string[][]) => outputs.length === 0 ? ['flux_list_contexts', '{}'] : [];
         const result = seen[spec.key] = await session(spec, spec.client === 'codex' ? () => listAll : claudeSteps);
         for (const tool of sharedTools) assert.ok(result.names.includes(tool), `${spec.label} offers ${tool}: ${result.names.join(', ')}`);
-        assert.deepEqual(contextNames(result.calls.find((call) => call.tool === 'flux_list_contexts')), spec.projects.map((project) => names[project]).sort(), `${spec.label} sees exactly its selected projects`);
+        assert.deepEqual(contextNames(result.calls.find((call) => call.tool === 'flux_list_contexts')), Object.values(names).sort(), `${spec.label} sees what its owner sees`);
       }
       assert.deepEqual(seen['codex-laptop']!.names, seen['codex-desktop']!.names, 'the same client offers the same tools on two connections');
       assert.deepEqual([...seen['claude-laptop']!.names].sort(), [...seen['codex-desktop']!.names].sort(), 'both clients offer the same shared tool set');
@@ -164,7 +160,7 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.equal(typeof task.workId, 'string', JSON.stringify(task));
       const stored = expect(await owner.request('GET', `/api/v1/work/${task.workId}`), 200);
       assert.equal(stored.title, title);
-      assert.deepEqual([(stored.createdBy as { kind: string }).kind, (stored.createdBy as { id: string }).id], ['agent', agents.codex], 'the task is attributed to the connection\'s agent');
+      assert.deepEqual([(stored.createdBy as { kind: string }).kind, (stored.createdBy as { id: string }).id], ['agent', agents[specs[0]!.key]], 'the task is attributed to the connection\'s agent');
       for (const spec of specs.slice(1)) {
         const read = await session(spec, spec.client === 'codex'
           ? () => codexScript(`text(JSON.stringify(await tools.mcp__flux__flux_list_work({ projectId: ${JSON.stringify(projects.study)} })));`)
@@ -177,8 +173,8 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     // This verifies native domain composition, including the addressed review below, not integrated Start/Resume,
     // interruption of an active native turn, an idle adapter or model obedience to the trusted playbook.
     async function native(spec: Spec, name: string, given: Record<string, unknown>) {
-      // There are no standing grants (#859): the fields a tool no longer takes are dropped here.
-      const args = withoutGrant(name, given);
+      // A tool takes only the fields it names: the envelope's others are dropped here.
+      const args = toolArgs(name, given);
       const result = await session(spec, spec.client === 'codex'
         ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
         : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
@@ -188,30 +184,28 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     }
     for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
       const human = people[spec.agent]; const connectionId = connections[spec.key]!;
-      const standing = async (...named: [operation: string, objectId?: string]) => { void named; return randomUUID(); }; // no standing grants (#859)
       const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
       assert.ok(!(boot.gaps as string[]).includes('coordination_unavailable'), 'request admission, inbox and resolution are available');
       const runtimeSessionId = (boot.runtime as { id: string }).id;
-      const base = (grantId: string, sessionId = runtimeSessionId) => ({ projectId: projects.study, runtimeSessionId: sessionId,
-        grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute' });
-      const task = await native(spec, 'flux_create_task', { ...base(await standing('work.create')),
+      const base = (sessionId = runtimeSessionId) => ({ projectId: projects.study, runtimeSessionId: sessionId,
+        clientCommandId: randomUUID(), peerRequestClass: 'execute' });
+      const task = await native(spec, 'flux_create_task', { ...base(),
         task: { title: `${spec.label}: compare the sensor observations` } });
       const stored = expect(await human.request('GET', `/api/v1/work/${task.workId}`), 200);
-      assert.equal((stored.createdBy as { id: string }).id, agents[spec.agent]);
-      const unit = await native(spec, 'flux_create_unit', { ...base(await standing('cowork.unit.create', String(task.workId))),
+      assert.equal((stored.createdBy as { id: string }).id, agents[spec.key]);
+      const unit = await native(spec, 'flux_create_unit', { ...base(),
         taskId: task.workId, expectedTaskVersion: stored.version, unitKey: 'compare-observations', assignmentConnectionId: connectionId, parent: null });
-      const unitId = String(unit.unitId); const claimGrant = await standing('cowork.claim', unitId);
-      const claimed = await native(spec, 'flux_claim_unit', { ...base(claimGrant), unitId, expectedVersion: unit.version });
+      const unitId = String(unit.unitId);
+      const claimed = await native(spec, 'flux_claim_unit', { ...base(), unitId, expectedVersion: unit.version });
       const fence = (value: Record<string, unknown>) => ({ unitId, expectedVersion: value.version, generation: value.generation,
         leaseId: (value.lease as { id: string }).id });
       const activity = async () => (expect(await human.request('GET', `/api/v1/projects/${projects.study}/agents`), 200).connections as { id: string; lastActivity: unknown }[])
         .find(row => row.id === connectionId)!.lastActivity;
       const beforeRenewal = await activity();
-      const renewed = await native(spec, 'flux_renew_unit', { ...base(await standing('cowork.renew', unitId)), ...fence(claimed) });
+      const renewed = await native(spec, 'flux_renew_unit', { ...base(), ...fence(claimed) });
       assert.deepEqual(await activity(), beforeRenewal, 'actual lease renewal does not manufacture activity');
       const checkpoint = { summary: 'The first sensor observation was recorded.', nextAction: 'Compare the second observation.', blocker: null };
-      const releaseGrant = await standing('cowork.release', unitId);
-      const release = { ...base(releaseGrant), ...fence(renewed), checkpoint, sources: [] };
+      const release = { ...base(), ...fence(renewed), checkpoint, sources: [] };
       const parked = await native(spec, 'flux_release_unit', release);
       assert.equal(parked.state, 'paused');
       assert.deepEqual(await native(spec, 'flux_release_unit', release), parked, 'a lost-response retry from a fresh native process replays the same persisted checkpoint');
@@ -219,13 +213,13 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const reconnected = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
       const nextSession = (reconnected.runtime as { id: string }).id;
       assert.notEqual(nextSession, runtimeSessionId);
-      const resumed = await native(spec, 'flux_claim_unit', { ...base(claimGrant, nextSession), unitId, expectedVersion: parked.version });
+      const resumed = await native(spec, 'flux_claim_unit', { ...base( nextSession), unitId, expectedVersion: parked.version });
       assert.equal(resumed.checkpointId, parked.checkpointId);
       assert.equal((resumed.checkpoint as { summary: string }).summary, checkpoint.summary, 'the new native process receives actual checkpoint content');
       assert.equal((resumed.lease as { runtimeSessionId: string }).runtimeSessionId, nextSession);
-      const recorded = await native(spec, 'flux_record_result', { ...base(await standing('result.record'), nextSession), sources: [],
+      const recorded = await native(spec, 'flux_record_result', { ...base( nextSession), sources: [],
         result: { title: `${spec.label}: observation comparison`, finding: 'positive', evidence: 'Two bounded fixture observations compared.', workIds: [task.workId] } });
-      const completed = await native(spec, 'flux_complete_unit', { ...base(await standing('cowork.unit.complete', unitId), nextSession), ...fence(resumed),
+      const completed = await native(spec, 'flux_complete_unit', { ...base( nextSession), ...fence(resumed),
         outcome: { type: 'result', id: recorded.resultId } });
       assert.equal(completed.state, 'completed');
       const persisted = (await pool.query('SELECT state, outcome_ref FROM cowork_units WHERE id=$1', [unitId])).rows[0];
@@ -238,41 +232,34 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const actor = async (spec: Spec) => {
         const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
         const runtimeSessionId = (boot.runtime as { id: string }).id;
-        const standing = async (...named: [operation: string, role: Role, objectId?: string, maximumUses?: number]) => { void named; return randomUUID(); }; // no standing grants (#859)
-        const base = (grantId: string, peerRequestClass: Role) => ({ projectId: projects.study, runtimeSessionId,
-          grantId, peerRequestClass, clientCommandId: randomUUID() });
-        return { standing, base, call: (name: string, args: Record<string, unknown>) => native(spec, name, args) };
+        const base = (peerRequestClass: Role) => ({ projectId: projects.study, runtimeSessionId,
+          peerRequestClass, clientCommandId: randomUUID() });
+        return { base, call: (name: string, args: Record<string, unknown>) => native(spec, name, args) };
       };
       const author = await actor(sender), reviewer = await actor(recipient);
       const makeTask = async (client: typeof author, title: string, outcome: string) => client.call('flux_create_task', {
-        ...client.base(await client.standing('work.create', 'execute'), 'execute'), task: { title, outcome } });
+        ...client.base( 'execute'), task: { title, outcome } });
       const task = await makeTask(author, 'Compare sensor observations', 'Compare the readings.');
       const busyTask = await makeTask(reviewer, 'Check the second sensor reading', 'Record the bounded observation before review.');
       const root = async (client: typeof author, spec: Spec, value: Record<string, unknown>) => client.call('flux_create_unit', {
-        ...client.base(await client.standing('cowork.unit.create', 'execute', String(value.workId)), 'execute'),
+        ...client.base( 'execute'),
         taskId: value.workId, expectedTaskVersion: value.version, unitKey: 'take', assignmentConnectionId: connections[spec.key], parent: null });
       const unit = await root(author, sender, task), busy = await root(reviewer, recipient, busyTask);
       const unitId = String(unit.unitId), busyId = String(busy.unitId);
-      let held = await author.call('flux_claim_unit', { ...author.base(await author.standing('cowork.claim', 'execute', unitId), 'execute'),
+      let held = await author.call('flux_claim_unit', { ...author.base( 'execute'),
         unitId, expectedVersion: unit.version });
-      const busyHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base(await reviewer.standing('cowork.claim', 'execute', busyId), 'execute'),
+      const busyHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base( 'execute'),
         unitId: busyId, expectedVersion: busy.version });
       const fence = (id: string, value: Record<string, unknown>) => ({ unitId: id, expectedVersion: value.version,
         generation: value.generation, leaseId: (value.lease as { id: string }).id });
       const review = await author.call('flux_create_unit', {
-        ...author.base(await author.standing('cowork.unit.create', 'review', String(task.workId)), 'review'),
+        ...author.base( 'review'),
         taskId: task.workId, expectedTaskVersion: task.version, unitKey: 'review', assignmentConnectionId: connections[recipient.key],
         parent: { unitId, generation: held.generation, leaseId: (held.lease as { id: string }).id } });
       const reviewId = String(review.unitId);
-      const askGrant = await author.standing('cowork.request', 'execute', unitId, 3);
-      const respondGrant = await reviewer.standing('cowork.request.respond', 'review', reviewId, 3);
-      const requestClaimGrant = await reviewer.standing('cowork.request.claim', 'review', reviewId, 2);
-      const reviewClaimGrant = await reviewer.standing('cowork.claim', 'review', reviewId, 1);
-      const resultGrant = await reviewer.standing('result.record', 'execute', undefined, 3);
-      const renewGrant = await author.standing('cowork.renew', 'execute', unitId, 2);
       const target = (version: unknown) => ({ type: 'work', id: task.workId, version });
       const send = (intentKey: string, version: unknown, recipientVersion: unknown) => ({
-        ...author.base(askGrant, 'execute'), unitId, generation: held.generation, leaseId: (held.lease as { id: string }).id,
+        ...author.base('execute'), unitId, generation: held.generation, leaseId: (held.lease as { id: string }).id,
         recipientUnitId: reviewId, expectedRecipientUnitVersion: recipientVersion, recipientConnectionId: connections[recipient.key],
         intentKey, parentRequestId: null, kind: 'review', target: target(version), sourceRefs: [target(version)],
         criteriaRefs: [target(version)], peerUnblocking: true });
@@ -291,7 +278,7 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.deepEqual((await inbox(recipient)).map(row => [row.id, row.state, row.status]), [[sent.requestId, 'queued', 'queued']]);
       assert.deepEqual(await inbox(unaddressed), [], 'another connection of the sender owner receives no recipient inbox');
       assert.deepEqual(await inbox(sender), [], 'a sender does not receive its outgoing request');
-      const deferInput = { ...reviewer.base(respondGrant, 'review'), unitId: reviewId, requestId: sent.requestId,
+      const deferInput = { ...reviewer.base('review'), unitId: reviewId, requestId: sent.requestId,
         expectedRequestVersion: sent.version, reason: 'busy', nextBoundary: 'after_step' };
       const deferred = await reviewer.call('flux_defer_request', deferInput);
       assert.equal(deferred.state, 'deferred');
@@ -302,24 +289,24 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.deepEqual([card.state, card.status, card.reason, card.nextBoundary], ['deferred', 'deferred', 'busy', 'after_step']);
 
       // Finish a bounded observation on B, then park B with that fact before taking A's review.
-      const progress = await reviewer.call('flux_record_result', { ...reviewer.base(resultGrant, 'execute'), sources: [],
+      const progress = await reviewer.call('flux_record_result', { ...reviewer.base('execute'), sources: [],
         result: { title: 'Second sensor observation', finding: 'positive', evidence: 'The second reading is 21 units.', workIds: [busyTask.workId] } });
-      const parked = await reviewer.call('flux_release_unit', { ...reviewer.base(await reviewer.standing('cowork.release', 'execute', busyId), 'execute'),
+      const parked = await reviewer.call('flux_release_unit', { ...reviewer.base( 'execute'),
         ...fence(busyId, busyHeld), sources: [], checkpoint: { summary: `Recorded observation ${progress.resultId}.`,
           nextAction: 'Compare the reading after the addressed review.', blocker: null } });
       assert.equal(parked.state, 'paused');
-      const reviewHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base(reviewClaimGrant, 'review'), unitId: reviewId, expectedVersion: review.version });
+      const reviewHeld = await reviewer.call('flux_claim_unit', { ...reviewer.base('review'), unitId: reviewId, expectedVersion: review.version });
       const reviewFence = { unitId: reviewId, generation: reviewHeld.generation, leaseId: (reviewHeld.lease as { id: string }).id };
       const finishReview = async (request: Record<string, unknown>, verdict: 'changes_requested' | 'passed', evidenceText: string) => {
-        const claimed = await reviewer.call('flux_claim_request', { ...reviewer.base(requestClaimGrant, 'review'), ...reviewFence,
+        const claimed = await reviewer.call('flux_claim_request', { ...reviewer.base('review'), ...reviewFence,
           requestId: request.requestId, expectedRequestVersion: request.version });
         assert.equal(claimed.state, 'claimed');
         assert.equal((await read()).requests.find(row => row.id === request.requestId)!.status, 'working');
-        const evidence = await reviewer.call('flux_record_result', { ...reviewer.base(resultGrant, 'execute'), sources: [],
+        const evidence = await reviewer.call('flux_record_result', { ...reviewer.base('execute'), sources: [],
           result: { title: `Observation review: ${verdict}`, finding: verdict === 'passed' ? 'positive' : 'negative',
             evidence: evidenceText, workIds: [task.workId] } });
         const responseRef = { type: 'result', id: evidence.resultId };
-        const resolve = { ...reviewer.base(respondGrant, 'review'), ...reviewFence, requestId: request.requestId,
+        const resolve = { ...reviewer.base('review'), ...reviewFence, requestId: request.requestId,
           expectedRequestVersion: claimed.version, evidence: responseRef, verdict };
         const resolved = await reviewer.call('flux_resolve_request', resolve);
         assert.deepEqual([resolved.state, resolved.responseRef], ['resolved', responseRef]);
@@ -333,8 +320,8 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
         ['changes_requested', true, target(task.version), firstEvidence]);
       assert.deepEqual([firstVerdict.reviewer.name, firstVerdict.author.name], ['Peer Claude', 'Owner Codex']);
 
-      held = await author.call('flux_renew_unit', { ...author.base(renewGrant, 'execute'), ...fence(unitId, held) });
-      const changed = await author.call('flux_update_task', { ...author.base(await author.standing('work.update', 'execute', String(task.workId)), 'execute'),
+      held = await author.call('flux_renew_unit', { ...author.base('execute'), ...fence(unitId, held) });
+      const changed = await author.call('flux_update_task', { ...author.base( 'execute'),
         workId: task.workId, expectedVersion: task.version, changes: { outcome: 'Compare the readings in sensor units; the second reading is 21 units.' } });
       assert.notEqual(changed.version, task.version);
       assert.equal((await read()).verdicts[0]!.current, false, 'the exact old-version verdict remains in history and becomes stale');
@@ -362,8 +349,8 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       for (const spec of specs.filter(item => item.key !== 'claude-laptop')) {
         const still = await session(spec, spec.client === 'codex' ? () => listAll
           : outputs => outputs.length === 0 ? ['flux_list_contexts', '{}'] : []);
-        assert.deepEqual(contextNames(still.calls.find(call => call.tool === 'flux_list_contexts')), spec.projects.map(project => names[project]).sort(),
-          `${spec.label} retains only its own authorized projects`);
+        assert.deepEqual(contextNames(still.calls.find(call => call.tool === 'flux_list_contexts')), Object.values(names).sort(),
+          `${spec.label} keeps what its owner sees`);
       }
     });
   } finally {

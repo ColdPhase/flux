@@ -119,7 +119,6 @@ async function fixture() {
   const agent = expectStatus(await author.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Trial planning agent', owner: 'self' } }), 201) as { id: string };
   const connection = await agentConnection(pool, author.browser, agent.id, [place.id]);
-  const authority = await connection.grant('work.create', 'execute', 5);
   expectStatus(await manager.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${author.id}`,
     { body: { role: 'member' } }), 200);
   assert.equal((expectStatus(await author.browser.request('GET', `/api/v1/workspaces/${ws.id}`), 200) as { role: string }).role, 'member');
@@ -127,7 +126,7 @@ async function fixture() {
   const read = async (id: string) => expectStatus(await author.browser.request('GET', `/api/v1/work/${id}`), 200) as WorkItem;
   const create = async (title = 'Measure gestures at five lux') => {
     const result = toolValue(await connection.tool('flux_create_task', { projectId: place.id,
-      runtimeSessionId: connection.runtimeSessionId, grantId: authority.id, clientCommandId: randomUUID(),
+      runtimeSessionId: connection.runtimeSessionId, clientCommandId: randomUUID(),
       peerRequestClass: 'execute', sources: [], task: { title, outcome: 'A reproducible low-light measurement',
         criteria: ['Twenty gestures per light level', 'Attach the raw counts before drawing a conclusion'] } }));
     const item = await read(String(result.workId)); assert.equal(item.creationUndo?.eligible, true); return item;

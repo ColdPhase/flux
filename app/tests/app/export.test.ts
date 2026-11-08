@@ -20,7 +20,9 @@ import {
   type WorkResult,
   type Workspace,
 } from '@flux/contracts';
+import { pool as connectionPool } from './support/db.js';
 import { Browser, type ClientResponse } from './support/http.js';
+import { createConnection } from './support/mcp-actions.js';
 import { addMember, draft, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
 // Project export (issue #123): only a manager exports; the document and bundle hold the
@@ -147,10 +149,9 @@ describe('project export', () => {
       headers: { 'if-match': `"${doc.version}"` },
     }), 200, 'doc v2');
 
-    // An agent with an MCP connection selection (#52): its connection never leaves the instance.
+    // An agent with an MCP connection (#52): its connection never leaves the instance.
     agentId = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'export-agent', owner: 'self' }), 201, 'agent').id;
-    connectionId = json<{ id: string }>(await post(owner, '/api/v1/agent-connections',
-      { agentId, selectedProjectIds: [lamp.id], scopes: ['flux.context.read'] }), 201, 'agent connection').id;
+    connectionId = (await createConnection(connectionPool, owner.browser, { agentId })).id;
 
     // Notification data of another person (#116): an extra delivery address and preferences.
     const address = await post(partner, '/api/v1/notification-address', { email: token('extra-address') + '@example.test' });

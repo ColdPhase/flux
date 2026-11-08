@@ -44,9 +44,8 @@ async function unchangedState(docId: string) {
 
 async function taskUseScene() {
   const f = await actionScene(pool);
-  const createGrant = await f.grant('work.create', 'execute');
   const created = toolValue(await f.tool('flux_create_task', {
-    projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: createGrant.id,
+    projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
     clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Live snapshot target' },
   }));
   const item = await f.read(String(created.workId)) as unknown as WorkItem;
@@ -163,11 +162,10 @@ test('a clean legacy CAS change atomically retires its live generation and retai
 test('the real OAuth/MCP standing-grant doc adapter obeys the same dirty fence before no-op or debit', async () => {
   const f = await actionScene(pool);
   const doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'People working', body: 'Saved.' } }), 201) as unknown as Doc;
-  await installHead(doc, 'Saved. People typing together.', 1); const standing = await f.grant('doc.update', 'plan');
+  await installHead(doc, 'Saved. People typing together.', 1);
   const before = await unchangedState(doc.id);
   for (const changes of [{ body: 'Agent replacement.' }, { title: doc.title }, { state: 'published' }]) {
-    const result = await f.tool('flux_update_doc', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-      grantId: standing.id, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], docId: doc.id, expectedVersion: 1, changes });
+    const result = await f.tool('flux_update_doc', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], docId: doc.id, expectedVersion: 1, changes });
     assert.equal(toolFailure(result).code, 'DOC_LIVE_WORKING_COPY_CHANGED');
   }
  assert.deepEqual(await unchangedState(doc.id), before);

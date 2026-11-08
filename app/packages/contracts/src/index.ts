@@ -21,12 +21,23 @@ export const FIXTURE_OAUTH_CLIENT_PATH = '/api/v1/integration/oauth-clients';
 export interface FixtureOauthClientCommand {
   name: string;
   redirectUris: string[];
-  /** Defaults to every MCP scope and `offline_access`. */
-  scopes?: string[];
 }
 
 export interface FixtureOauthClientRegistered {
   clientId: string;
+}
+
+/**
+ * Test deployments only (the same switches as the OAuth client route): a signed-in person's connection of one of their own agents, as a
+ * first sign-in would have made it, so a browser test can start from a connected client without the OAuth round trip. Not a product
+ * route: the product makes a connection only on a client's consent page (#859).
+ */
+export const FIXTURE_AGENT_CONNECTION_PATH = '/api/v1/integration/agent-connections';
+
+export interface FixtureAgentConnectionCommand {
+  agentId: string;
+  name?: string;
+  clientDesignation?: 'claude_code' | 'codex' | 'other';
 }
 
 /** Better Auth endpoints are mounted below this prefix (sign-up/email, sign-in/email, sign-out, request-password-reset, reset-password). */
@@ -45,7 +56,6 @@ export const AUTH_UPDATE_USER_PATH = `${AUTH_BASE_PATH}/update-user`;
 export const AUTH_CHANGE_PASSWORD_PATH = `${AUTH_BASE_PATH}/change-password`;
 /** Also takes `currentPassword`; refused under single sign-on. */
 export const AUTH_CHANGE_EMAIL_PATH = `${AUTH_BASE_PATH}/change-email`;
-export const AUTH_OAUTH2_CONTINUE_PATH = `${AUTH_BASE_PATH}/oauth2/continue`;
 export const AUTH_OAUTH2_CONSENT_PATH = `${AUTH_BASE_PATH}/oauth2/consent`;
 /** An unverified account's pending address claim (#313) and provider linking (#315). */
 export const IDENTITY_CLAIM_PATH = '/api/v1/identity/claim';
@@ -121,10 +131,9 @@ export * from './agent-stops.js';
 export * from './agent-tasks.js';
 export * from './agent-questions.js';
 export * from './agent-runtime.js';
-export * from './agent-mcp-policy.js';
+export * from './agent-tools.js';
 
 export * from './assistant.js';
 export * from './assistant-jobs.js';
 export * from './assistant-model.js';
-export * from './agent-connection-setup.js';
 export * from './assistant-reactions.js';

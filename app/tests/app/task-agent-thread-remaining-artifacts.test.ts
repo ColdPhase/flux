@@ -18,9 +18,9 @@ import { fillThread,nativeThreadPost,threadBudget,threadCommand,turnLimit,type T
 import { backendPid,barrier,waitUntilBlockedBy } from './support/locks.js';
 import { internalNativeWork } from './support/internal-native-work.js';
 
-async function setup(){const f=await actionScene(pool),grant=await f.grant('conversation.reply','execute',100);
+async function setup(){const f=await actionScene(pool);
   const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as{id:string}).id;
-  return{...f,grantId:grant.id,ownerId,principal:{kind:'human' as const,id:ownerId},
+  return{...f,ownerId,principal:{kind:'human' as const,id:ownerId},
     task:async(title:string)=>expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title}}),201) as unknown as WorkItem};}
 const map=async(f:ThreadNativeScene,scope:'project'|'private'='project')=>expect(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/sketches`,
   {body:{title:'Canonical source map',scope,...(scope==='project'?{projectId:f.projectId}:{})}}),201) as unknown as Sketch;
@@ -44,24 +44,23 @@ async function bounded<T>(p:Promise<T>){let timer:ReturnType<typeof setTimeout>|
 test('real shared project thought content resets direct tasks; geometry/title/no-op/old association/private placement do not',async()=>{
   const f=await setup(),s=await map(f),a=await f.task('First source reader'),b=await f.task('Second source reader'),unlinked=await f.task('Unlinked reader');
   let t=await thought(f,s,'Original measured content');await link(f,a.id,t);await link(f,b.id,t);
-  for(const item of[a,b,unlinked])await fillThread(f,item.id,f.grantId);
+  for(const item of[a,b,unlinked])await fillThread(f,item.id);
   t=expect(await edit(f,s,t,{x:40,width:240,shape:'circle'}),200) as unknown as Thought;
   t=expect(await edit(f,s,t,{text:t.text}),200) as unknown as Thought;
   assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
   expect(await f.owner.request('PATCH',`/api/v1/sketches/${s.id}`,{body:{title:'A map title only'},headers:{'if-match':'"1"'}}),200);
   t=expect(await edit(f,s,t,{text:'A genuinely new measured result'}),200) as unknown as Thought;
   assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),0);assert.equal(await threadBudget(unlinked.id),5);
-  await fillThread(f,a.id,f.grantId);await link(f,unlinked.id,t);assert.equal(await threadBudget(unlinked.id),5);
+  await fillThread(f,a.id);await link(f,unlinked.id,t);assert.equal(await threadBudget(unlinked.id),5);
   const privateMap=await map(f,'private'),privateThought=await thought(f,privateMap,'Private note');
   expect(await edit(f,privateMap,privateThought,{text:'Private progress'}),200);assert.equal(await threadBudget(a.id),5);
   assert.equal(await count('thought',a.id),1);assert.equal(await count('thought',b.id),1);
 });
 
 test('a real native map content command resets once; receipt replay and identical native text cannot replenish',async()=>{
-  const f=await setup(),s=await map(f),item=await f.task('Native source mutation'),t=await thought(f,s,'Baseline');await link(f,item.id,t);await fillThread(f,item.id,f.grantId);
-  const grant=await f.grant('map.thought.update','execute',10,s.id),command={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:grant.id,
-    clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],mapId:s.id,thoughtId:t.id,expectedVersion:t.version,changes:{text:'Real native content progress'}};
-  const changed=toolValue(await f.tool('flux_update_thought',command));assert.equal(await threadBudget(item.id),0);await fillThread(f,item.id,f.grantId);
+  const f=await setup(),s=await map(f),item=await f.task('Native source mutation'),t=await thought(f,s,'Baseline');await link(f,item.id,t);await fillThread(f,item.id);
+  const command={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],mapId:s.id,thoughtId:t.id,expectedVersion:t.version,changes:{text:'Real native content progress'}};
+  const changed=toolValue(await f.tool('flux_update_thought',command));assert.equal(await threadBudget(item.id),0);await fillThread(f,item.id);
   toolValue(await f.tool('flux_update_thought',command));assert.equal(await threadBudget(item.id),5);
   toolValue(await f.tool('flux_update_thought',{...command,clientCommandId:randomUUID(),expectedVersion:changed.version,changes:{text:'Real native content progress'}}));
   assert.equal(await threadBudget(item.id),5);assert.equal(await count('thought',item.id),1);
@@ -69,9 +68,9 @@ test('a real native map content command resets once; receipt replay and identica
 
 test('original verified file publication resets its bound task once; staging/replay/consumed bytes do not, human-message rule remains separate',async()=>{
   const f=await setup(),a=await f.task('Original bytes'),b=await f.task('Separate byte consumer'),bytes=Buffer.from('Genuine measured artifact bytes');
-  for(const item of[a,b])await fillThread(f,item.id,f.grantId);
+  for(const item of[a,b])await fillThread(f,item.id);
   const first=await upload(f,bytes);assert.equal(await threadBudget(a.id),5);const commandId=randomUUID();expect(await publish(f,a.id,first.id,commandId),201);
-  assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),5);await fillThread(f,a.id,f.grantId);
+  assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),5);await fillThread(f,a.id);
   expect(await publish(f,a.id,first.id,commandId),201);assert.equal(await threadBudget(a.id),5);
   const same=await upload(f,bytes,'renamed.txt');expect(await publish(f,a.id,same.id),201);assert.equal(await threadBudget(a.id),5);assert.equal(await count('file',a.id),1);
   const other=await upload(f,bytes);expect(await publish(f,b.id,other.id),201);assert.equal(await threadBudget(b.id),0);
@@ -82,32 +81,32 @@ test('original verified file publication resets its bound task once; staging/rep
 
 test('project thought reset and native post serialize in both forced orders; rollback/restart retain source and budget',{timeout:60_000},async()=>{
   for(const winner of['post','thought'] as const){const f=await setup(),s=await map(f),item=await f.task('Ordered thought'),t=await thought(f,s,'Baseline');await link(f,item.id,t);
-    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id,f.grantId));
+    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id));
     const held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
-    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id,f.grantId),tx);
+    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id),tx);
       else await sketchUseCases(tx).updateThought(f.principal,s.id,t.id,{text:'Ordered new content',expectedVersion:t.version});held.resolve(await backendPid(tx));await bounded(release.promise);});void first.catch(()=>undefined);
-    try{const pid=await bounded(held.promise);other=winner==='post'?edit(f,s,t,{text:'Ordered new content'}):nativeThreadPost(f,threadCommand(f,item.id,f.grantId));void other.catch(()=>undefined);
+    try{const pid=await bounded(held.promise);other=winner==='post'?edit(f,s,t,{text:'Ordered new content'}):nativeThreadPost(f,threadCommand(f,item.id));void other.catch(()=>undefined);
       await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);const result=await bounded(other);if(winner==='post')assert.equal((result as{status:number}).status,200);
       assert.equal(await threadBudget(item.id),winner==='post'?0:1);
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}}
-  const f=await setup(),s=await map(f),item=await f.task('Rolled back source'),t=await thought(f,s,'Kept body');await link(f,item.id,t);await fillThread(f,item.id,f.grantId);
+  const f=await setup(),s=await map(f),item=await f.task('Rolled back source'),t=await thought(f,s,'Kept body');await link(f,item.id,t);await fillThread(f,item.id);
   const sentinel=new Error('After thought reset');await assert.rejects(db.transaction(async tx=>{await sketchUseCases(tx).updateThought(f.principal,s.id,t.id,{text:'Must roll back',expectedVersion:t.version});throw sentinel;}),sentinel);
   assert.equal(await threadBudget(item.id),5);assert.equal(await count('thought',item.id),0);
-  const fresh=createDatabase(connectionString);try{await assert.rejects(nativeThreadPost(f,threadCommand(f,item.id,f.grantId),fresh.db),turnLimit);}finally{await fresh.pool.end();}
+  const fresh=createDatabase(connectionString);try{await assert.rejects(nativeThreadPost(f,threadCommand(f,item.id),fresh.db),turnLimit);}finally{await fresh.pool.end();}
 });
 
 test('real file reset versus native post has both forced orders, and rollback leaves no publication/reset',{timeout:60_000},async()=>{
   const storage=await diskFileStorage(process.env.FLUX_TEST_FILES_DIR??'/data/files');
   for(const winner of['post','file'] as const){const f=await setup(),item=await f.task('Ordered file'),file=await upload(f,Buffer.from('Real ordered bytes'));
-    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id,f.grantId));const command={body:'Published file',attachmentIds:[file.id],clientMessageId:randomUUID()};
+    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id));const command={body:'Published file',attachmentIds:[file.id],clientMessageId:randomUUID()};
     const held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
-    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id,f.grantId),tx);
+    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id),tx);
       else await taskDiscussionUseCases(tx,storage).contribute(f.principal,item.id,command);held.resolve(await backendPid(tx));await bounded(release.promise);});void first.catch(()=>undefined);
-    try{const pid=await bounded(held.promise);other=winner==='post'?f.owner.request('POST',`/api/v1/work/${item.id}/discussion`,{body:command}):nativeThreadPost(f,threadCommand(f,item.id,f.grantId));void other.catch(()=>undefined);
+    try{const pid=await bounded(held.promise);other=winner==='post'?f.owner.request('POST',`/api/v1/work/${item.id}/discussion`,{body:command}):nativeThreadPost(f,threadCommand(f,item.id));void other.catch(()=>undefined);
       await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);const result=await bounded(other);if(winner==='post')assert.equal((result as{status:number}).status,201);
       assert.equal(await threadBudget(item.id),winner==='post'?0:1);
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}}
-  const f=await setup(),item=await f.task('File rollback'),file=await upload(f,Buffer.from('Must remain staged'));await fillThread(f,item.id,f.grantId);
+  const f=await setup(),item=await f.task('File rollback'),file=await upload(f,Buffer.from('Must remain staged'));await fillThread(f,item.id);
   const sentinel=new Error('After actual file publication');await assert.rejects(db.transaction(async tx=>{await taskDiscussionUseCases(tx,storage).contribute(f.principal,item.id,
     {body:'Must roll back',attachmentIds:[file.id],clientMessageId:randomUUID()});throw sentinel;}),sentinel);
   assert.equal(await threadBudget(item.id),5);assert.equal(await count('file',item.id),0);
@@ -144,14 +143,14 @@ async function github(f:Awaited<ReturnType<typeof setup>>){
 }
 
 test('actual verified PR link/full-head changes reset each direct task once; title/check/duplicate/old head/current authority do not',async()=>{
-  const f=await setup(),a=await f.task('First PR task'),b=await f.task('Second PR task');for(const item of[a,b])await fillThread(f,item.id,f.grantId);
+  const f=await setup(),a=await f.task('First PR task'),b=await f.task('Second PR task');for(const item of[a,b])await fillThread(f,item.id);
   const g=await github(f);try{
     await g.commands.link(f.principal,a.id,{bindingId:g.binding.id,number:42,role:'related'});await g.commands.link(f.principal,b.id,{bindingId:g.binding.id,number:42,role:'related'});
-    assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),0);for(const item of[a,b])await fillThread(f,item.id,f.grantId);
+    assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),0);for(const item of[a,b])await fillThread(f,item.id);
     g.provider.title='A title/status projection only';const same=await g.delivery();assert.equal(await g.commands.process(same,g.binding.id),'completed');
     assert.equal(await threadBudget(a.id),5);assert.equal(await threadBudget(b.id),5);
     g.provider.head='b'.repeat(40);const changed=await g.delivery();assert.equal(await g.commands.process(changed,g.binding.id),'completed');
-    assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),0);await fillThread(f,a.id,f.grantId);
+    assert.equal(await threadBudget(a.id),0);assert.equal(await threadBudget(b.id),0);await fillThread(f,a.id);
     assert.equal(await g.commands.process(changed,g.binding.id),'already_completed');assert.equal(await threadBudget(a.id),5);
     g.provider.head='a'.repeat(40);assert.equal(await g.commands.process(await g.delivery(),g.binding.id),'completed');assert.equal(await threadBudget(a.id),5);
     assert.equal(await count('github_pr',a.id),2);g.provider.head='c'.repeat(40);const revoked=await g.delivery();g.provider.allowed=false;
@@ -162,15 +161,15 @@ test('actual verified PR link/full-head changes reset each direct task once; tit
 test('verified PR head reset and native post serialize in both forced orders; full rollback leaves no link/reset',{timeout:60_000},async()=>{
   for(const winner of['post','pr'] as const){const f=await setup(),item=await f.task('Ordered PR'),g=await github(f);try{
     await g.commands.link(f.principal,item.id,{bindingId:g.binding.id,number:42,role:'related'});
-    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id,f.grantId));g.provider.head='b'.repeat(40);const delivery=await g.delivery();
+    for(let i=0;i<4;i++)await nativeThreadPost(f,threadCommand(f,item.id));g.provider.head='b'.repeat(40);const delivery=await g.delivery();
     const held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
-    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id,f.grantId),tx);
+    const first=db.transaction(async tx=>{if(winner==='post')await nativeThreadPost(f,threadCommand(f,item.id),tx);
       else await createGithubUseCases(tx,g.provider).process(delivery,g.binding.id);held.resolve(await backendPid(tx));await bounded(release.promise);});void first.catch(()=>undefined);
-    try{const pid=await bounded(held.promise);other=winner==='post'?g.commands.process(delivery,g.binding.id):nativeThreadPost(f,threadCommand(f,item.id,f.grantId));void other.catch(()=>undefined);
+    try{const pid=await bounded(held.promise);other=winner==='post'?g.commands.process(delivery,g.binding.id):nativeThreadPost(f,threadCommand(f,item.id));void other.catch(()=>undefined);
       await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);await bounded(other);assert.equal(await threadBudget(item.id),winner==='post'?0:1);
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}
   }finally{await g.app.close();}}
-  const f=await setup(),item=await f.task('PR rollback'),g=await github(f);try{await fillThread(f,item.id,f.grantId);
+  const f=await setup(),item=await f.task('PR rollback'),g=await github(f);try{await fillThread(f,item.id);
     const sentinel=new Error('After real verified PR link');await assert.rejects(db.transaction(async tx=>{
       await createGithubUseCases(tx,g.provider).link(f.principal,item.id,{bindingId:g.binding.id,number:44,role:'related'});throw sentinel;
     }),sentinel);assert.equal(await threadBudget(item.id),5);assert.equal(await count('github_pr',item.id),0);
@@ -182,8 +181,8 @@ test('closed internal thought-source native adapter and supported file/PR creati
   const storage=await diskFileStorage(process.env.FLUX_TEST_FILES_DIR??'/data/files');
   for(const kind of['thought','file','github_pr'] as const)for(const winner of['artifact','undo'] as const){
     const f=await setup(),s=await map(f),t=await thought(f,s,'Initial task source'),file=await upload(f,Buffer.from('Unused task work product'));
-    const created=await f.grant('work.create','execute',10),input={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,
-      grantId:created.id,clientCommandId:randomUUID(),peerRequestClass:'execute' as const,sources:[]};
+    const input={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,
+      clientCommandId:randomUUID(),peerRequestClass:'execute' as const,sources:[]};
     const saved=kind==='thought'?await internalNativeWork(f,input,{title:'Unused canonical target',sources:[{type:'thought',id:t.id}]})
       :toolValue(await f.tool('flux_create_task',{...input,task:{title:'Unused canonical target'}}));
     const item=await f.read(String(saved.workId)) as unknown as WorkItem,g=kind==='github_pr'?await github(f):null;
@@ -212,8 +211,8 @@ test('closed internal thought-source native adapter and supported file/PR creati
 });
 
 test('closed native thought-source fixture preserves public refusal and actual private/foreign/revoked authority checks',async()=>{
-  const f=await setup(),s=await map(f),t=await thought(f,s,'Real project source'),grant=await f.grant('work.create','execute',10);
-  const input={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:grant.id,clientCommandId:randomUUID(),peerRequestClass:'execute' as const,sources:[]};
+  const f=await setup(),s=await map(f),t=await thought(f,s,'Real project source');
+  const input={projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),peerRequestClass:'execute' as const,sources:[]};
   const before=await f.tasks(),refused=await f.tool('flux_create_task',{...input,task:{title:'Public thought input stays unavailable',sources:[{type:'thought',id:t.id}]}});
   assert.equal((refused?.result as{isError?:boolean}).isError,true); assert.equal(await f.tasks(),before);
   const privateMap=await map(f,'private'),privateThought=await thought(f,privateMap,'Private source');
@@ -236,8 +235,8 @@ test('editing a thought an unused AI-created task links to resets its budget but
   t=expect(await edit(f,s,t,{text:'A genuinely new measured result'}),200) as unknown as Thought;
   assert.equal(await count('thought',item.id),1,'the content edit still resets the agent-thread turn budget');
   assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}},'a linked thought edit is not use of the task');
-  const grant=await f.grant('map.thought.update','execute',10,s.id);
-  toolValue(await f.tool('flux_update_thought',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:grant.id,clientCommandId:randomUUID(),peerRequestClass:'execute',
+
+  toolValue(await f.tool('flux_update_thought',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),peerRequestClass:'execute',
     sources:[],mapId:s.id,thoughtId:t.id,expectedVersion:t.version,changes:{text:'Native content progress'}}));
   assert.equal(await count('thought',item.id),2);assert.deepEqual(await state(),{used:null,undo:{eligible:true,reason:'eligible'}});
   expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/results`,

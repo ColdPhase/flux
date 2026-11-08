@@ -17,7 +17,6 @@ import { oauthBrowserFailure, oauthCallbackPattern, oauthCallbackTarget, oauthHt
  */
 export const origin = process.env.FLUX_PUBLIC_ORIGIN!;
 export const mcpUrl = `${origin}/mcp`;
-export const scopes = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 export const claudeBin = '/opt/flux-tools/claude/bin/claude';
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const root = mkdtempSync(join(tmpdir(), 'mcp-clients-'));
@@ -76,9 +75,17 @@ export async function seedOauthClient(pool: Pool, spec: ClientSpec) {
   const clientId = `flux-clientcontract-${spec.key}-${randomUUID()}`;
   await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
     VALUES ($1, $2, $3, $4, 'none', $5, $6, $7, true, now(), now())`, [randomUUID(), clientId, `${spec.label} (pinned ${spec.client} contract)`,
-    [`http://127.0.0.1:${spec.port}/callback`, `http://localhost:${spec.port}/callback`], ['authorization_code', 'refresh_token'], ['code'], [...scopes, 'offline_access']]);
+    [`http://127.0.0.1:${spec.port}/callback`, `http://localhost:${spec.port}/callback`], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1,$2,$3,now())', [randomUUID(), clientId, mcpUrl]);
   return clientId;
+}
+
+/** The connection and the agent the person's Allow made for this client (#859; there is nothing to create beforehand). */
+export async function connectionOfClient(pool: Pool, clientId: string) {
+  const row = (await pool.query(`SELECT c.id, c.agent_id FROM agent_connections c JOIN agent_oauth_bindings b ON b.connection_id = c.id
+    WHERE b.client_id = $1 AND c.revoked_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [clientId])).rows[0] as { id: string; agent_id: string } | undefined;
+  assert.ok(row, 'allowing the client on its consent page made its connection');
+  return { id: row.id, agentId: row.agent_id };
 }
 
 export function cleanClientHome(spec: ClientSpec, options: { oauthFileStore?: boolean } = {}): ClientHome {
@@ -93,7 +100,7 @@ export function cleanClientHome(spec: ClientSpec, options: { oauthFileStore?: bo
     : { spec, cwd, env: { ...base, CLAUDE_CONFIG_DIR: join(home, 'claude'), ANTHROPIC_API_KEY: 'sk-ant-not-a-vendor-key' } };
 }
 
-/** The real person signs in and consents in Chromium for exactly the connection the client is for. */
+/** The real person signs in in Chromium and allows the client on its one consent page (#859). */
 export async function authorizeInBrowser(browser: Chromium, email: string, spec: ClientSpec, url: string, observe?: (observation: OAuthBrowserObservation) => void, observeCallback?: (observation: OAuthCallbackObservation) => void, privateCallback?: URL) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let callbackWindow = false;
@@ -121,17 +128,14 @@ export async function authorizeInBrowser(browser: Chromium, email: string, spec:
     await page.getByLabel('Email', { exact: true }).fill(email);
     await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-    await page.waitForURL(`${origin}/connect-agent?**`);
-    await page.locator('.connection__saved').filter({ hasText: spec.label }).getByRole('radio').check();
-    observe?.({ stage: 'connection_selected' });
-    await page.getByRole('button', { name: 'Continue to consent' }).click(); await page.waitForURL(`${origin}/consent?**`);
+    await page.waitForURL(`${origin}/consent?**`);
     observe?.({ stage: 'consent_ready' });
-    await page.locator('.connection__summary').filter({ hasText: spec.label }).waitFor({ state: 'visible' });
+    await page.getByRole('heading', { level: 1, name: /^Connect .+ to Flux$/ }).waitFor({ state: 'visible' });
     const callback = page.waitForURL(privateCallback
       ? candidate => candidate.origin === privateCallback.origin && candidate.pathname === privateCallback.pathname
       : oauthCallbackPattern(spec.port), { waitUntil: 'commit' }).then(() => { observe?.({ stage: 'callback_navigation' }); }).catch(() => { observe?.({ stage: 'callback_wait_failed' }); });
     callbackWindow = true;
-    await page.getByRole('button', { name: 'Allow access' }).click();
+    await page.getByRole('button', { name: 'Allow', exact: true }).click();
     observe?.({ stage: 'consent_submitted' });
     await callback;
   } catch (error) {

@@ -1,12 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { AgentExecutionCommand, AgentJsonValue, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentOrientationRows, coworkUnitRows, lockAgentMcpPolicy, type CoWorkTaskLockInput, type Transaction } from '@flux/db';
+import { agentOrientationRows, coworkUnitRows, type CoWorkTaskLockInput, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, coWorkCheckpointProgress, coWorkClaimPostcondition, coWorkClaimUseCases, ConflictError, DomainError,
-  InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress, requireAgentMcpEntry,
+  InvalidInputError, normalizeAgentExecution, normalizeCoWorkCheckpointDraft, NotFoundError, parseCoWorkCheckpointProgress,
   type ClaimInput, type ClaimOperation, type ClaimOutcome, type CoWorkCheckpointDraft, type CoWorkContext,
   type CoWorkUnit, type CoWorkClaimUnitOfWork, type LockedClaimScope } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
-import { requireMcpSourceKinds, type FluxMcpClaims } from '../agent-connection/context.js';
+import type { FluxMcpClaims } from '../agent-connection/context.js';
 
 type LockedUnit = NonNullable<Awaited<ReturnType<ReturnType<typeof coworkUnitRows>['lock']>>>;
 type Checkpoint = NonNullable<Awaited<ReturnType<LockedUnit['checkpoint']>>>;
@@ -72,7 +72,6 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
   raw: AgentExecutionCommand, policy: CoWorkClaimPolicy): Promise<ClaimOutcome> {
   const command = normalizeAgentExecution(raw);
   const { operation, input, draft } = inputOf(command);
-  if (draft?.orientation) requireMcpSourceKinds(claims, draft.orientation.known.map((source) => source.kind));
   policy = Object.freeze({ ...policy });
   if (!Number.isSafeInteger(policy.maximumConnectionUnits) || policy.maximumConnectionUnits < 1
     || !Number.isSafeInteger(policy.leaseSeconds) || policy.leaseSeconds < 1 || policy.leaseSeconds > 300
@@ -83,16 +82,6 @@ export async function coWorkClaimInTransaction(tx: Transaction, claims: FluxMcpC
     const checkpoint = await locked!.checkpoint(id);
     if (!checkpoint)
       throw new DomainError(404, 'COWORK_CHECKPOINT_NOT_FOUND', 'Checkpoint not found');
-    const orientation = parseCoWorkCheckpointProgress(checkpoint.progress)?.orientation;
-    if (orientation && claims.dispatch) {
-      requireMcpSourceKinds(claims, orientation.known.map((source) => source.kind));
-      // The execution preparation already holds this policy row. Recheck added coverage dependencies before
-      // exposing checkpoint text or committing a claim; a refused read rolls back the whole command.
-      const policy = await lockAgentMcpPolicy(tx, context.connectionId);
-      if (!policy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
-      requireAgentMcpEntry(policy, claims.dispatch.dependencies.capturedVersion, claims.dispatch.current(),
-        claims.dispatch.dependencies.capabilities);
-    }
     await policy.requireCheckpointSources(tx, context, checkpoint, command);
     return checkpoint;
   };

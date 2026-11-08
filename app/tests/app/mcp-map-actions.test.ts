@@ -12,11 +12,8 @@ interface Detail { title: string; version: number; scope: string; createdBy: { k
 
 test('standing map grants create and change a shared project map as the agent, one effect and one event per command', async () => {
   const f = await actionScene(pool);
-  const grants = Object.fromEntries(await Promise.all((['map.create', 'map.rename', 'map.thought.create', 'map.thought.update',
-    'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete'] as const)
-    .map(async (operation) => [operation, (await f.grant(operation, 'plan', 10)).id] as const)));
-  const base = (operation: keyof typeof grants, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
-    runtimeSessionId: f.runtimeSessionId, grantId: grants[operation]!, clientCommandId, peerRequestClass: 'plan', sources: [] });
+  const base = (_operation: string, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
+    runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'plan', sources: [] });
   const detail = async (mapId: string) => expect(await f.owner.request('GET', `/api/v1/sketches/${mapId}`), 200) as unknown as Detail;
   const events = async (mapId: string) => (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [mapId])).rows[0].n as number;
 
@@ -70,17 +67,15 @@ test('standing map grants create and change a shared project map as the agent, o
 
 test('map actions never reach private maps, maps of other projects or another map than a targeted grant names', async () => {
   const f = await actionScene(pool);
-  const anyMap = (await f.grant('map.thought.create', 'plan', 10)).id;
   const project = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,
     { body: { title: 'Shared map', scope: 'project', projectId: f.projectId } }), 201);
   const personal = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,
     { body: { title: 'Owner private map', scope: 'private' } }), 201);
-  const add = (grantId: string, mapId: unknown) => f.tool('flux_add_thought', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], mapId, thought: { text: 'Agent note', x: 0, y: 0 } });
-  assert.equal(toolFailure(await add(anyMap, personal.id)).code, 'OBJECT_NOT_FOUND', 'a private map is not a project object');
-  assert.equal(toolFailure(await add(anyMap, randomUUID())).code, 'OBJECT_NOT_FOUND');
-  const onlyProject = (await f.grant('map.thought.create', 'plan', 10, String(project.id))).id;
-  assert.ok(toolValue(await add(onlyProject, project.id)).thoughtId);
+  const add = (mapId: unknown) => f.tool('flux_add_thought', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
+    clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], mapId, thought: { text: 'Agent note', x: 0, y: 0 } });
+  assert.equal(toolFailure(await add(personal.id)).code, 'OBJECT_NOT_FOUND', 'a private map is not a project object');
+  assert.equal(toolFailure(await add(randomUUID())).code, 'OBJECT_NOT_FOUND');
+  assert.ok(toolValue(await add(project.id)).thoughtId);
   const privateThoughts = (await pool.query('SELECT count(*)::int AS n FROM sketch_thoughts WHERE sketch_id=$1', [personal.id])).rows[0].n as number;
   assert.equal(privateThoughts, 0);
 });

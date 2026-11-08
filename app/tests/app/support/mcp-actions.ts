@@ -3,15 +3,10 @@ import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import { assistantChangeActionPath, type AgentOperation, type ExternalClientDesignation } from '@flux/contracts';
 import { publicOrigin, register, uniqueEmail, type Browser } from './http.js';
-import { beginOauth, expect, mcp, oauthToken, toolValue } from './mcp.js';
+import { expect, mcp, oauthToken, toolValue } from './mcp.js';
 
-// One owner, one restricted project with a contributor agent, an action-scoped OAuth connection and its
-// bootstrap runtime: the shared starting point of the native MCP action tests (#152).
-//
-// Standing grants are gone (#859): a client acts with its owner's rights. `grant` returns a stub id, and the tool helpers drop
-// the fields a tool no longer takes, so a test names only what the tool reads.
-
-const actionScopes = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
+// One owner, one restricted project with a contributor agent, a signed-in OAuth connection and its
+// bootstrap runtime: the shared starting point of the native MCP action tests (#152, #859).
 
 /** A failed tool result carries only the domain code and message. */
 export function toolFailure(message: Record<string, unknown> | null) {
@@ -58,44 +53,90 @@ export function waits(message: Record<string, unknown> | null): boolean {
   return /Waiting for .+'s OK/.test(JSON.stringify(message?.result ?? null));
 }
 
-/** The tools that still name the runtime session of bootstrap (their receipts are bound to it), and those that name a unit's role. */
-const NAMES_RUNTIME = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request|post_agent_thread|ask_question|link_pull_request|undo_task_creation)$/;
+/** The tools that name the runtime session of bootstrap (their receipts are bound to it), and those that name a unit's role. */
+const NAMES_RUNTIME = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request|post_agent_thread|ask_question|link_pull_request)$/;
 const NAMES_ROLE = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request)$/;
-export function withoutGrant(name: string, args: Record<string, unknown>): Record<string, unknown> {
-  const { grantId: _grant, runtimeSessionId, peerRequestClass, ...rest } = args;
-  void _grant;
+/**
+ * A test names the same envelope for every tool (project, runtime session, command ID, class); this keeps the fields the tool takes.
+ * The native change tools (tasks, pages, maps, conversations) take neither a runtime session nor a class.
+ */
+export function toolArgs(name: string, args: Record<string, unknown>): Record<string, unknown> {
+  const { runtimeSessionId, peerRequestClass, ...rest } = args;
   return { ...rest, ...(NAMES_RUNTIME.test(name) && runtimeSessionId !== undefined ? { runtimeSessionId } : {}),
     ...(NAMES_ROLE.test(name) && peerRequestClass !== undefined ? { peerRequestClass } : {}) };
 }
 
-/**
- * One named connection of `owner` for an existing agent, authorized through the real OAuth consent of a fresh
- * client, with its own standing-grant helper, MCP tool caller and bootstrap runtime.
- */
-export async function agentConnection(pool: Pool, owner: Browser, agentId: string, projectIds: string[], scopes: string[] = actionScopes, clientDesignation: ExternalClientDesignation = 'other') {
-  const projectId = projectIds[0]!;
-  const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: { agentId,
-    selectedProjectIds: projectIds, scopes, clientDesignation } }), 201);
-  const connectionId = String(connection.id);
+const REDIRECT_URI = 'http://127.0.0.1:19737/callback';
+
+/** The id of the person a browser is signed in as. */
+export async function userIdOf(browser: Browser): Promise<string> {
+  return String((expect(await browser.request('GET', '/api/v1/me'), 200) as { user: { id: string } }).user.id);
+}
+
+/** An enabled OAuth client for the MCP resource, as the provider holds a Client ID Metadata Document client (fixture). */
+export async function registerOauthClient(pool: Pool, name = 'Flux HTTP test client', redirectUri = REDIRECT_URI) {
   const clientId = `flux-test-${randomUUID()}`;
-  const redirectUri = 'http://127.0.0.1:19737/callback';
   await pool.query(`INSERT INTO oauth_client
     (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
      response_types, scopes, require_pkce, created_at, updated_at)
-    VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], [...actionScopes, 'offline_access']]);
+    VALUES ($1, $2, $3, $4, 'none', $5, $6, $7, true, now(), now())`,
+  [randomUUID(), clientId, name, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const tokens = await oauthToken(owner, connectionId, clientId, redirectUri,
-    await beginOauth(owner, clientId, redirectUri, { prompt: 'consent', scope: [...scopes, 'offline_access'].join(' ') }));
-  // No standing grants (#859): a stub id for tests that still name one; the tool helpers below drop it.
-  const grant = async (...named: [operation?: AgentOperation, peerRequestClass?: string, maximumUses?: number, objectId?: string, project?: string]) => {
-    void named;
-    return { id: randomUUID(), used: 0 };
-  };
+  return { clientId, redirectUri };
+}
+
+/**
+ * A person's earlier sign-in of a client, as the database holds it (fixture): a connection of their existing agent and the binding a
+ * token points to. The client then finds it held when it opens the authorization URL again, so a test can use a named agent.
+ * A first sign-in makes these itself, on the consent page.
+ */
+export async function seedConnection(pool: Pool, ownerUserId: string, agentId: string, clientId: string,
+  options: { name?: string; clientDesignation?: ExternalClientDesignation } = {}): Promise<string> {
+  const [agent] = (await pool.query('SELECT workspace_id FROM agents WHERE id = $1 AND owner_user_id = $2', [agentId, ownerUserId])).rows as { workspace_id: string }[];
+  assert.ok(agent, 'the agent belongs to this person');
+  const connectionId = randomUUID();
+  await pool.query(`INSERT INTO agent_connections (id, workspace_id, owner_user_id, agent_id, name, client_designation)
+    VALUES ($1, $2, $3, $4, $5, $6)`, [connectionId, agent.workspace_id, ownerUserId, agentId, options.name ?? 'Test client', options.clientDesignation ?? 'other']);
+  await pool.query('INSERT INTO agent_oauth_bindings (id, owner_user_id, connection_id, client_id) VALUES ($1, $2, $3, $4)',
+    [randomUUID(), ownerUserId, connectionId, clientId]);
+  return connectionId;
+}
+
+/**
+ * Makes `clientId` the client of an existing connection (fixture), as the person's earlier sign-in of it would have, then signs the
+ * client in: it finds that connection held and the person allows it on the consent page.
+ */
+export async function oauthTokenFor(pool: Pool, owner: Browser, connectionId: string, clientId: string, redirectUri: string) {
+  await pool.query('INSERT INTO agent_oauth_bindings (id, owner_user_id, connection_id, client_id) VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING',
+    [randomUUID(), await userIdOf(owner), connectionId, clientId]);
+  return oauthToken(owner, clientId, redirectUri);
+}
+
+/** A connection of the person's existing agent, as a first sign-in would have made it (fixture), shaped as the API shows one. */
+export async function createConnection(pool: Pool, owner: Browser, options: { agentId: string; name?: string; clientDesignation?: ExternalClientDesignation }) {
+  const ownerUserId = await userIdOf(owner);
+  const clientId = (await registerOauthClient(pool, 'Fixture client')).clientId;
+  const id = await seedConnection(pool, ownerUserId, options.agentId, clientId, options);
+  const [row] = (await pool.query(`SELECT id, workspace_id, owner_user_id, agent_id, name, client_designation, compute_source, may_do, created_at
+    FROM agent_connections WHERE id = $1`, [id])).rows as Record<string, unknown>[];
+  return { id: String(row!.id), workspaceId: String(row!.workspace_id), ownerUserId: String(row!.owner_user_id), agentId: String(row!.agent_id),
+    name: String(row!.name), clientDesignation: row!.client_designation as ExternalClientDesignation, computeSource: row!.compute_source as 'user_operated_external_client',
+    mayDo: row!.may_do as 'read' | 'act' | 'ask', revokedAt: null as string | null, createdAt: (row!.created_at as Date).toISOString(), clientId };
+}
+
+/**
+ * One named connection of `owner` for an existing agent, signed in through the real OAuth consent of a fresh client, with its MCP
+ * tool caller and bootstrap runtime. What it may do is the agent's "What it may do" (`act` unless a test sets it) and its owner's rights.
+ */
+export async function agentConnection(pool: Pool, owner: Browser, agentId: string, projectIds: string[], clientDesignation: ExternalClientDesignation = 'other') {
+  const projectId = projectIds[0]!;
+  const { clientId, redirectUri } = await registerOauthClient(pool);
+  const connectionId = await seedConnection(pool, await userIdOf(owner), agentId, clientId, { clientDesignation });
+  const tokens = await oauthToken(owner, clientId, redirectUri);
   let call = 100;
   /** The raw MCP exchange, for checks of the HTTP status itself (a revoked connection is refused before any tool). */
-  const raw = (name: string, args: Record<string, unknown>) => mcp(tokens.access_token, call++, 'tools/call', { name, arguments: withoutGrant(name, args) });
+  const raw = (name: string, args: Record<string, unknown>) => mcp(tokens.access_token, call++, 'tools/call', { name, arguments: toolArgs(name, args) });
   const tool = async (name: string, args: Record<string, unknown>) => {
     const response = await raw(name, args);
     assert.equal(response.status, 200, `MCP ${name} returned ${response.status}`);
@@ -109,7 +150,7 @@ export async function agentConnection(pool: Pool, owner: Browser, agentId: strin
   };
   const bootstrap = toolValue(await tool('flux_bootstrap', { projectId, clientSessionId: randomUUID() }));
   const runtimeSessionId = (bootstrap.runtime as { id: string }).id;
-  return { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens, accessToken: tokens.access_token };
+  return { connectionId, clientId, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens, accessToken: tokens.access_token };
 }
 
 export async function actionScene(pool: Pool) {
@@ -125,9 +166,9 @@ export async function actionScene(pool: Pool) {
   const source = { materialId: String(plan.materialId), version: Number(plan.version) };
   const prerequisite = expect(await owner.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Measure the baseline' } }), 201);
-  const { connectionId, grant, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens } = await agentConnection(pool, owner, String(agent.id), [projectId]);
+  const { connectionId, tool, raw, toolNames, bootstrap, runtimeSessionId, tokens } = await agentConnection(pool, owner, String(agent.id), [projectId]);
   const read = async (workId: string) => expect(await owner.request('GET', `/api/v1/work/${workId}`), 200);
   const tasks = async () => (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [projectId])).rows[0].n as number;
   return { owner, workspaceId: String(workspace.id), projectId, agentId: String(agent.id), connectionId, source, prerequisiteId: String(prerequisite.id), bootstrap,
-    runtimeSessionId, grant, tool, raw, toolNames, read, tasks, tokens, accessToken: tokens.access_token };
+    runtimeSessionId, tool, raw, toolNames, read, tasks, tokens, accessToken: tokens.access_token };
 }

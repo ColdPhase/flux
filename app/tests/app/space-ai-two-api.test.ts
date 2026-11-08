@@ -7,7 +7,8 @@ import { PERSONAL_RUN_JOB, testFixturePersonalConnections } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, publicOrigin } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
+import { mcp } from './support/mcp.js';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { expectStatus, person, project, workspace, type Person } from './support/people.js';
 import { FakeQueue } from './support/personal-runs.js';
 import { waitFor } from './support/wait.js';
@@ -53,17 +54,15 @@ describe('space AI switch across the api, api2 and worker containers', { skip: !
       { body: { agentId, connection: connectionId, model: 'claude-sonnet-5' } }), 201);
     second = new Browser(api2Url, publicOrigin);
     for (const [name, value] of owner.browser.cookies) second.cookies.set(name, value);
-    const connection = expect(await owner.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId, selectedProjectIds: [place.id], scopes: ['flux.context.read'] } }), 201);
+    const connection = await createConnection(pool, owner.browser, { agentId });
     bound = { query: `flux_connection=${String(connection.id)}&flux_project=${place.id}` };
     const clientId = `flux-test-${randomUUID()}`;
     const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
       response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
+    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-    accessToken = (await oauthToken(owner.browser, String(connection.id), clientId, redirectUri,
-      await beginOauth(owner.browser, clientId, redirectUri, { scope: 'flux.context.read offline_access' }))).access_token;
+    accessToken = (await oauthTokenFor(pool, owner.browser, String(connection.id), clientId, redirectUri)).access_token;
     boss = new PgBoss({ connectionString });
     boss.on('error', () => undefined);
     await boss.start();

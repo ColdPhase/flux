@@ -4,6 +4,7 @@ import * as schema from '../schema.js';
 import { aiEpochIsCurrent } from './space-ai.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
+import { connectionReaches } from './agent-reach.js';
 import { taskUseRows } from './task-use.js';
 
 // The holder's unit completion and transfer (#153). Storage only: the server composition has already run #152
@@ -65,7 +66,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
      */
     async lock(scope: CoWorkUnitTransitionScope, prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       const [assignee] = scope.assigneeConnectionId ? await tx.select({ id: connections.id, ownerUserId: connections.ownerUserId,
-        revokedAt: connections.revokedAt, scopes: connections.scopes }).from(connections)
+        revokedAt: connections.revokedAt, mayDo: connections.mayDo }).from(connections)
         .where(and(eq(connections.workspaceId, scope.workspaceId), eq(connections.id, scope.assigneeConnectionId))).for('share') : [];
       const slotted = [...new Set([scope.holderConnectionId, ...(assignee ? [assignee.id] : [])])].sort();
       await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
@@ -90,9 +91,6 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
         ownerUserId: connections.ownerUserId }).from(units)
         .leftJoin(connections, and(eq(connections.workspaceId, units.workspaceId), eq(connections.id, units.assignmentConnectionId)))
         .where(and(inProject(scope), eq(units.lineageTaskId, locked.lineageTaskId), eq(units.runId, locked.runId))).orderBy(asc(units.id));
-      const [selected] = assignee ? await tx.select({ projectId: schema.agentConnectionProjects.projectId })
-        .from(schema.agentConnectionProjects).where(and(eq(schema.agentConnectionProjects.workspaceId, scope.workspaceId),
-          eq(schema.agentConnectionProjects.connectionId, assignee.id), eq(schema.agentConnectionProjects.projectId, scope.projectId))) : [];
       // Admissions and request claims for this unit hold its assignee's slot through commit, so the count is stable.
       const [open] = await tx.select({ n: sql<number>`count(*)::int` }).from(requests)
         .where(and(eq(requests.workspaceId, scope.workspaceId), eq(requests.projectId, scope.projectId), eq(requests.unitId, locked.id),
@@ -102,7 +100,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
       return {
         unit: unit(locked),
         openRequests: open?.n ?? 0,
-        assignee: assignee && !assignee.revokedAt && assignee.scopes.includes('flux.action.execute') && selected
+        assignee: assignee && !assignee.revokedAt && assignee.mayDo !== 'read' && await connectionReaches(tx, assignee.id, scope.projectId)
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
         runUnits, now, taskFence,
       };

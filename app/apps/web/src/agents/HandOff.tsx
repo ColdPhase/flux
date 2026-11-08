@@ -48,8 +48,8 @@ export function agentState(entry: AgentEntry, loaded: Loaded | null, now: number
   return 'not_signed_in';
 }
 
-/** Where an own agent stands on doing the task: ready, missing the action scope, or not connected. */
-type Readiness = { kind: 'ready' } | { kind: 'scope' } | { kind: 'offline' } | { kind: 'unknown' };
+/** Where an own agent stands on doing the task: ready, set to Only read, or not connected. */
+type Readiness = { kind: 'ready' } | { kind: 'read' } | { kind: 'offline' } | { kind: 'unknown' };
 
 /** What a failed hand-off says to the person; shared with the Agents view's Hand back. */
 export function handOffFailure(cause: unknown): string {
@@ -142,10 +142,10 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
   // Your own agent has exactly your rights (F-036 AG-3): there is nothing to grant before handing it a task, only a connection to reach.
   const own = !!entry && !teammate && entry.ownerId === me.user.id;
   const ownConnections = useMemo(() => (loaded?.connections ?? []).filter((item) => item.own && !item.assistant && item.agent.id === entry?.agentId), [loaded, entry?.agentId]);
-  const acting = useMemo(() => ownConnections.filter((item) => item.scopes.includes('flux.action.execute')), [ownConnections]);
+  const acting = useMemo(() => ownConnections.filter((item) => item.mayDo !== 'read'), [ownConnections]);
   const taskId2 = task?.id ?? null;
   const checkable = step === 2 && own && grant.canTake && !!taskId2 && !entry?.connection?.assistant;
-  const readiness: Readiness = !checkable ? { kind: 'unknown' } : !ownConnections.length ? { kind: 'offline' } : !acting.length ? { kind: 'scope' } : { kind: 'ready' };
+  const readiness: Readiness = !checkable ? { kind: 'unknown' } : !ownConnections.length ? { kind: 'offline' } : !acting.length ? { kind: 'read' } : { kind: 'ready' };
 
   const append = (page: { rows: WorkRowProjection[]; next: string | null }) => {
     setLoaded((current) => current && { ...current, tasks: [...current.tasks, ...page.rows.filter((row) => !current.tasks.some((known) => known.id === row.id))] });
@@ -309,21 +309,21 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
                 <span className="handoff__who"><b>{entry.name}</b><small>{[entry.owner ? `for ${entry.owner}` : null, entry.connection?.name, entry.access ? loadLine(entry, held(entry.agentId), now, agentState(entry, loaded, now)) : 'no access here yet'].filter(Boolean).join(' · ')}</small></span>
               </div>
             ) : <p className="handoff__note" role="status">{status ?? 'That agent is no longer here. Go back and choose another.'}</p>}
-            {entry && own && grant.canTake && readiness.kind === 'scope' ? (
-              <p className="handoff__can" data-needs-scope=""><b>{entry.name} can read {project.name} and suggest, but can’t change tasks.</b>{' '}
-                Its connection was approved without “Run approved project actions”. Sign in to Flux again from your agent app (for Claude Code: <code>claude mcp login flux</code>) and keep that box ticked, then hand #{task?.number} off.</p>
+            {entry && own && grant.canTake && readiness.kind === 'read' ? (
+              <p className="handoff__can" data-needs-scope=""><b>{entry.name} can read {project.name}, but can’t change tasks.</b>{' '}
+                Its “What it may do” is Only read. Change it in Settings › AI, then hand #{task?.number} off.</p>
             ) : entry ? (
               <p className="handoff__can" data-allowed={grant.canTake || undefined}><b>{entry.name} will be able to</b> {grant.can}</p>
             ) : null}
             {entry && !grant.canTake ? (
               <p className="handoff__note" role="status">
                 {entry.access === null ? `${entry.name} has no access to ${project.name}, so it can’t take this task.` : `${entry.name} can only read ${project.name}, so it can’t take this task.`}{' '}
-                {own ? <>An agent has exactly its owner’s rights. Choose {project.name} for its connection: <Link className="ui-link" to="/settings/agents/connect">Connect an agent</Link>.</>
+                {own && entry.access === 'read' ? <>Its “What it may do” is Only read. <Link className="ui-link" to="/settings/agents/connect">Change what it may do</Link>, then hand the task off.</>
                   : 'An agent has exactly its owner’s rights.'}
               </p>
             ) : null}
             {/* An agent that is not connected yet takes the task when it signs in (#763 WF-6). */}
-            {entry && own && grant.canTake && readiness.kind === 'offline' ? <p className="handoff__note" role="status">{`${entry.name} has no connection to Flux yet, so it can’t work on #${task?.number ?? ''}. `}<Link className="ui-link" to="/settings/agents/connect">Connect it</Link>{' with “Run approved project actions”, then hand the task off.'}</p>
+            {entry && own && grant.canTake && readiness.kind === 'offline' ? <p className="handoff__note" role="status">{`${entry.name} has no connection to Flux yet, so it can’t work on #${task?.number ?? ''}. `}<Link className="ui-link" to="/settings/agents/connect">Connect it</Link>{', then hand the task off.'}</p>
               : entry && grant.canTake && agentState(entry, loaded, now) !== 'online' ? <p className="handoff__note" role="status">{`${entry.name} isn’t connected right now; it picks up #${task?.number ?? ''} when it signs in.`}</p> : null}
               </>
             )}

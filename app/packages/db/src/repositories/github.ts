@@ -223,7 +223,6 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
       else if (policy) {
         const [holder] = (await db.execute<{ id: string; owner_user_id: string }>(sql`SELECT c.id, c.owner_user_id FROM cowork_units u
           JOIN agent_connections c ON c.id = u.assignment_connection_id AND c.workspace_id = u.workspace_id AND c.revoked_at IS NULL
-          JOIN agent_connection_projects cp ON cp.connection_id = c.id AND cp.project_id = u.project_id
           JOIN project_work_items w ON w.id = u.work_id AND w.owner_agent_id = c.agent_id
           WHERE u.workspace_id = ${binding.workspaceId}::uuid AND u.project_id = ${binding.projectId}::uuid AND u.work_id = ${link.taskId}::uuid
             AND u.role = 'execute' AND u.state IN ('pending', 'claimed', 'paused') AND u.ai_epoch = ${policy.epoch}::bigint

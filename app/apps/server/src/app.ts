@@ -42,7 +42,6 @@ import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentStopRoutes } from './agent-connection/agent-stops.js';
 import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
-import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
@@ -68,7 +67,7 @@ import { createGithubUseCases, type Provider as GithubUnitProvider } from './git
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
-import { fixtureFlags, registerFixtureRoutes } from './fixture/index.js';
+import { fixtureFlags, registerFixtureConnectionRoute, registerFixtureRoutes } from './fixture/index.js';
 import { registerHealth } from './health/routes.js';
 import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromEnv } from './encryption/adapters.js';
 import { encryptionRoutes } from './encryption/routes.js';
@@ -283,11 +282,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     app.addHook('onClose', async () => clearInterval(recoveryTimer));
     void recover();
   }
-  await app.register(aiRoutes(agentProposalRoutes), { db, sessions: identity, oauthSecret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
+  await app.register(aiRoutes(agentProposalRoutes), { db, sessions: identity });
   await app.register(aiRoutes(projectAgentRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
-  await app.register(aiRoutes(agentMcpPolicyRoutes), { db, sessions: identity });
   await app.register(aiRoutes(proactiveComparisonRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
@@ -319,6 +317,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
+  registerFixtureConnectionRoute(app, { config: config.fixture, db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
   // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts
   // them gets the smaller copy, everyone else the original.

@@ -28,13 +28,16 @@ import { ASSISTANT_UNIT_CREATE_INPUT } from '../agent-connection/tool-registry.j
 
 const missing = () => new NotFoundError('Assistant change', 'ASSISTANT_CHANGE_NOT_FOUND');
 const STALE = 'Changed since you asked';
+/** What a client's unit, transfer or request says when its Approve comes after the claim or session it was made under ended (a 300 s lease). */
+const CLAIM_ENDED = 'The claim this was made under has ended, so it can\'t be made now. Ask again with a live claim';
+const CLAIM_ENDED_CODES = new Set(['COWORK_CLAIM_LOST', 'AGENT_EXECUTION_UNAVAILABLE', 'RUNTIME_UNAVAILABLE']);
 type ToolOutput = { content?: { text?: string }[]; isError?: boolean };
 type SavedTool = (args: Record<string, unknown>, extra: unknown) => Promise<ToolOutput>;
 
 /** The change tools' own callbacks, bound to a server-owned approval context, for re-executing one saved call. */
 function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool> {
   const callbacks = new Map<string, SavedTool>();
-  const registry = { forScope: () => ({ registerTool: (name: string, _config: unknown, callback: SavedTool) => { callbacks.set(name, callback); } }) };
+  const registry = { forAccess: () => ({ registerTool: (name: string, _config: unknown, callback: SavedTool) => { callbacks.set(name, callback); } }) };
   for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions])
     register(registry as unknown as AgentToolRegistry, db, claims);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
@@ -54,8 +57,7 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
   // co-work call also keeps its sign-in, so Approve repeats it as that client; its runtime session and claim must still be live.
   const bearer = !change.runId ? call.bearer : undefined;
   const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!,
-    clientId: bearer?.clientId ?? null, grantReferenceId: bearer?.grantReferenceId ?? null,
-    scopes: (bearer?.scopes ?? ['flux.context.read', 'flux.action.execute']) as FluxMcpClaims['scopes'], approval };
+    clientId: bearer?.clientId ?? null, grantReferenceId: bearer?.grantReferenceId ?? null, approval };
   const tool = savedTools(db, claims).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
@@ -202,7 +204,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const outcome = await reexecuteChange(db, row, owner(principal));
     if (outcome.ok) return { change: await viewOne((await rows().find(row.id))!), message: null };
     if (outcome.code === 'ASSISTANT_PAUSED') throw new DomainError(409, outcome.code, outcome.error);
-    const message = stale(outcome.code) ? STALE : outcome.error;
+    const message = row.operation.startsWith('cowork.') && CLAIM_ENDED_CODES.has(outcome.code) ? CLAIM_ENDED : stale(outcome.code) ? STALE : outcome.error;
     // Stale, invalidated or refused intent is closed: it needs Ask again, never a second Approve.
     await refuse(row, message);
     return { change: await viewOne((await rows().find(row.id))!), message };

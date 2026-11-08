@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { Browser as ApiBrowser } from '../support/http.js';
-import { mcp, oauthToken } from '../support/mcp.js';
+import { mcp } from '../support/mcp.js';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type BrowserContext } from 'playwright';
+import { createConnection, oauthTokenFor } from '../support/mcp-actions.js';
 
 /**
  * Migration to the one provider before cutover (F-024 S5b, #315), in Docker with Keycloak. scripts/check_oidc.sh runs
@@ -204,16 +205,16 @@ if (phase === 'prepare') {
       await company.getByRole('button', { name: 'Invite', exact: true }).waitFor({ timeout: 20_000 });
       assert.equal(await company.locator('[data-people-sso]').count(), 0, 'the page does not say people join by signing in');
       await company.close();
-      const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Cutover control', visibility: 'restricted' });
+      await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Cutover control', visibility: 'restricted' });
       const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Cutover control', owner: 'self' });
-      const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
+      const connection = await createConnection(pool, client, { agentId: agent.id });
       const clientId = `cutover-${randomUUID()}`; const redirectUri = 'http://127.0.0.1:19738/callback';
       await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
         grant_types, response_types, scopes, require_pkce, created_at, updated_at)
         VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-      [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+      [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
       await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${origin}/mcp`]);
-      const tokens = await oauthToken(client, connection.id, clientId, redirectUri);
+      const tokens = await oauthTokenFor(pool, client, connection.id, clientId, redirectUri);
       assert.equal((await mcp(tokens.access_token, 81, 'tools/list')).status, 200, 'prepare permits password-authorized bearer');
       const renewed = await context.request.post(`${origin}/api/auth/oauth2/token`, {
         headers: { origin }, form: { grant_type: 'refresh_token', client_id: clientId, refresh_token: tokens.refresh_token, resource: `${origin}/mcp` } });
@@ -263,18 +264,18 @@ if (phase === 'prepare') {
         return response.json as { id: string };
       };
       const workspace = await create('/api/v1/workspaces', { name: 'Issuer recovery history' });
-      const project = await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept recovery project', visibility: 'restricted' });
+      await create(`/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept recovery project', visibility: 'restricted' });
       const agent = await create(`/api/v1/workspaces/${workspace.id}/agents`, { name: 'Recovery agent', owner: 'self' });
-      const connection = await create('/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] });
+      const connection = await createConnection(pool, client, { agentId: agent.id });
       const recoveryClientId = `issuer-recovery-${randomUUID()}`;
       const redirectUri = 'http://127.0.0.1:19739/callback';
       await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method,
         grant_types, response_types, scopes, require_pkce, created_at, updated_at)
         VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-      [randomUUID(), recoveryClientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+      [randomUUID(), recoveryClientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
       await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
         [randomUUID(), recoveryClientId, `${origin}/mcp`]);
-      const tokens = await oauthToken(client, connection.id, recoveryClientId, redirectUri);
+      const tokens = await oauthTokenFor(pool, client, connection.id, recoveryClientId, redirectUri);
       assert.equal((await mcp(tokens.access_token, 91, 'tools/list')).status, 200, 'the old login has live MCP authority before recovery');
 
       const oldSubject = `legacy-${randomUUID()}`;

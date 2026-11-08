@@ -4,7 +4,7 @@ import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { startClientModelMock } from '../support/client-model-mock.js';
-import { claudeBin, cleanClientHome, clientEvents, mcpUrl, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
+import { claudeBin, cleanClientHome, clientEvents, mcpUrl, origin, run, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientHome, type ClientSpec, type Running } from '../support/mcp-client-harness.js';
 
 // #483 S1-AC-10: the official pinned CLIs and real Keycloak/Flux OAuth. Only the model is scripted;
@@ -29,12 +29,9 @@ async function authorize(browser: Browser, home: ClientHome, url: string) {
   const context = await browser.newContext();
   try {
     const page = await providerSignIn(context, url);
-    await page.waitForURL(`${origin}/connect-agent?**`);
-    assert.ok(new URL(page.url()).searchParams.get('sig'));
-    await page.locator('.connection__saved').filter({ hasText: home.spec.label }).getByRole('radio').check();
-    await page.getByRole('button', { name: 'Continue to consent' }).click();
     await page.waitForURL(`${origin}/consent?**`);
-    await page.locator('.connection__summary').filter({ hasText: home.spec.label }).waitFor();
+    assert.ok(new URL(page.url()).searchParams.get('sig'));
+    await page.getByRole('heading', { level: 1, name: /^Connect .+ to Flux$/ }).waitFor();
     const consent = await context.request.get(`${origin}/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(new URL(page.url()).search.slice(1))}`);
     assert.equal(consent.status(), 200);
     const display = await consent.json() as { redirect: { kind: string; host: string }; clientIdHost: string | null };
@@ -47,7 +44,7 @@ async function authorize(browser: Browser, home: ClientHome, url: string) {
     assert.equal(framed.headers()['x-frame-options'], 'DENY');
     assert.match(framed.headers()['content-security-policy'] ?? '', /frame-ancestors 'none'/);
     const callback = page.waitForURL(new RegExp(`^http://(127\\.0\\.0\\.1|localhost):${home.spec.port}/callback`), { waitUntil: 'commit' });
-    await page.getByRole('button', { name: 'Allow access' }).click();
+    await page.getByRole('button', { name: 'Allow', exact: true }).click();
     await callback;
   } finally { await context.close(); }
 }
@@ -115,7 +112,7 @@ async function nativeRead(home: ClientHome, projectId: string) {
     assert.equal(boot?.project?.id, projectId, result.output);
     assert.match(boot?.trusted?.playbook?.digest ?? '', /^sha256:[0-9a-f]{64}$/);
     const contexts = JSON.parse(calls.get('flux_list_contexts') ?? 'null') as { projects?: { id: string }[] } | null;
-    assert.deepEqual(contexts?.projects?.map((project) => project.id), [projectId], result.output);
+    assert.ok(contexts?.projects?.some((project) => project.id === projectId), result.output);
   } finally { await model.close(); }
 }
 
@@ -138,9 +135,6 @@ test('real official Codex and Claude Code authorize through Keycloak and execute
     for (const [index, { client, cimd }] of clients.entries()) {
       const label = `${client} ${cimd ? 'CIMD' : 'pre-registered'}`;
       const spec: ClientSpec = { key: `oidc-${client}-${index}`, client, label: `Keycloak ${label}`, designation: client === 'codex' ? 'codex' : 'claude_code', port: 19841 + index };
-      const agent = await api('POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: spec.label, owner: 'self' });
-      const connection = await api('POST', '/api/v1/agent-connections', { name: spec.label, clientDesignation: spec.designation,
-        agentId: agent.id, selectedProjectIds: [project.id], scopes });
       const home = cleanClientHome(spec); const clientId = cimd ? undefined : await seedOauthClient(pool, spec);
       await t.test(`${label}: real fresh-browser Keycloak authorization, native bootstrap and authorized context read`, async () => {
         const version = await sh(client === 'codex' ? 'codex' : claudeBin, ['--version'], home.env, home.cwd);
@@ -155,8 +149,11 @@ test('real official Codex and Claude Code authorize through Keycloak and execute
           ON r.authorization_code_id = f.authorization_code_id WHERE r.client_id = $1 AND f.user_id = $2`, [actualClientId, userId]);
         assert.ok(facts.rows.length > 0 && facts.rows.every((row) => row.auth_method === process.env.FLUX_OIDC_PROVIDER_ID));
         await nativeRead(home, String(project.id));
-        const retained = await pool.query('SELECT owner_user_id, agent_id, revoked_at FROM agent_connections WHERE id = $1', [connection.id]);
-        assert.deepEqual(retained.rows[0], { owner_user_id: userId, agent_id: agent.id, revoked_at: null });
+        // The one click on the consent page made this client's agent and connection, the person's own and at "Do it and tell me" (#859).
+        const retained = await pool.query(`SELECT c.owner_user_id, c.client_designation, c.may_do, c.revoked_at, a.owner_user_id AS agent_owner
+          FROM agent_connections c JOIN agent_oauth_bindings b ON b.connection_id = c.id JOIN agents a ON a.id = c.agent_id
+          WHERE b.client_id = $1 AND b.owner_user_id = $2`, [actualClientId, userId]);
+        assert.deepEqual(retained.rows, [{ owner_user_id: userId, client_designation: spec.designation === 'codex' ? 'codex' : 'claude_code', may_do: 'act', revoked_at: null, agent_owner: userId }]);
       });
     }
   } finally { await owner.close(); await browser.close(); await proxy.close(); await pool.end(); }

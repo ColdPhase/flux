@@ -67,7 +67,7 @@ export const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], s
 export type AgentAccess = ProjectAccess | 'read';
 
 const throughConnection = (connection: ProjectAgentConnection, level: ProjectAccess | null): AgentAccess | null =>
-  level && (connection.mayDo === 'read' || connection.scopes.every((scope) => scope === 'flux.context.read')) ? 'read' : level;
+  level && connection.mayDo === 'read' ? 'read' : level;
 
 export function agentEntries(people: readonly ProjectPerson[] | null, connections: readonly ProjectAgentConnection[], workspaceAgents: readonly Agent[] = [], humans: ReadonlyMap<string, string> = new Map()): AgentEntry[] {
   const accessOf = new Map((people ?? []).filter((person) => person.kind === 'agent').map((person) => [person.id, person]));

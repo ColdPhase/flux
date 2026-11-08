@@ -140,7 +140,7 @@ export function projectRepository(db: DbExecutor) {
     /** The workspace's unrevoked agents this principal may see in the project. */
     audienceAgents(principal: AccessPrincipal, projectId: string, workspaceId: string) {
       return db.select({ id: schema.agents.id, name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
-        .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt), visibleAgentIdentity(principal, projectId)));
+        .where(and(eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt), visibleAgentIdentity(principal)));
     },
 
     async member(workspaceId: string, userId: string) {

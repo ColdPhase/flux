@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { agentMcpPolicyPath, type AgentMcpPolicy } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { actionScene, agentConnection } from './support/mcp-actions.js';
 import { expect, mcp, toolValue } from './support/mcp.js';
@@ -9,7 +8,7 @@ import { expect, mcp, toolValue } from './support/mcp.js';
 test('host binding narrows the bearer before discovery, reads, bootstrap and committed receipt replay', async () => {
   const f = await actionScene(pool);
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
-    { body: { name: 'Other selected project', visibility: 'restricted' } }), 201);
+    { body: { name: 'Other project', visibility: 'restricted' } }), 201);
   const connection = await agentConnection(pool, f.owner, f.agentId, [f.projectId, String(other.id)]);
   const query = (connectionId: string, projectId: string) => new URLSearchParams({ flux_connection: connectionId, flux_project: projectId }).toString();
   const call = (q: string, method: string, params: Record<string, unknown> = {}) => mcp(connection.accessToken, 1, method, params, { query: q });
@@ -28,12 +27,7 @@ test('host binding narrows the bearer before discovery, reads, bootstrap and com
   const refusedReplay = await call(another, 'tools/call', { name: 'flux_create_task', arguments: command });
   assert.equal((refusedReplay.message?.result as { isError?: boolean })?.isError, true);
   assert.equal(toolValue((await call(own, 'tools/call', { name: 'flux_create_task', arguments: command })).message).workId, created.workId);
-  const path = agentMcpPolicyPath(connection.connectionId);
-  const policy = (expect(await f.owner.request('GET', path), 200) as { policy: AgentMcpPolicy }).policy;
-  expect(await f.owner.request('PATCH', path, { body: { enabledCapabilityIds: policy.enabledCapabilityIds,
-    enabledEntryIds: policy.enabledEntryIds, selectedProjectIds: [String(other.id)] }, headers: { 'if-match': `"mcp-policy-${policy.version}"` } }), 200);
-  assert.equal((await call(own, 'resources/list')).status, 403, 'changed selection also ends discovery on Resume');
-  // A selection cannot substitute for the agent itself: a revoked agent is refused even resource bytes.
+  // A binding cannot substitute for the agent itself: a revoked agent is refused even resource bytes.
   expect(await f.owner.request('DELETE', `/api/v1/agents/${f.agentId}`), 200);
   assert.equal((await call(another, 'resources/list')).status, 403);
 });

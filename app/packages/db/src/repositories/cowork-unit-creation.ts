@@ -4,6 +4,7 @@ import * as schema from '../schema.js';
 import { currentAiEpoch } from './space-ai.js';
 import type { CoWorkTaskLockInput } from './cowork.js';
 import type { DbExecutor } from './push.js';
+import { connectionReaches } from './agent-reach.js';
 import { taskUseRows } from './task-use.js';
 
 // Authorized unit creation (#153). Storage only: the server composition has already run #152 preparation
@@ -44,7 +45,7 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
      */
     async lock(scope: CoWorkUnitCreationScope, prepareTasks: (units: readonly CoWorkTaskLockInput[]) => Promise<readonly string[]>) {
       const [assignee] = await tx.select({ id: connections.id, ownerUserId: connections.ownerUserId, revokedAt: connections.revokedAt,
-        scopes: connections.scopes, agentId: connections.agentId, computeSource: connections.computeSource }).from(connections)
+        mayDo: connections.mayDo, agentId: connections.agentId, computeSource: connections.computeSource }).from(connections)
         .where(and(eq(connections.workspaceId, scope.workspaceId), eq(connections.id, scope.assigneeConnectionId))).for('share');
       const slotted = [...new Set([scope.creatorConnectionId, ...(assignee ? [assignee.id] : [])])].sort();
       await tx.execute(sql`INSERT INTO cowork_connection_slots(connection_id, workspace_id)
@@ -86,15 +87,13 @@ export function coworkUnitCreationRows(tx: DbExecutor) {
         .where(and(inProject(scope), eq(units.taskId, scope.taskId))).orderBy(asc(units.id));
       const [existing] = await tx.select().from(units).where(and(inProject(scope), eq(units.taskId, scope.taskId),
         eq(units.runId, runId), eq(units.unitKey, scope.unitKey)));
-      const [selected] = assignee ? await tx.select({ projectId: schema.agentConnectionProjects.projectId })
-        .from(schema.agentConnectionProjects).where(and(eq(schema.agentConnectionProjects.workspaceId, scope.workspaceId),
-          eq(schema.agentConnectionProjects.connectionId, assignee.id), eq(schema.agentConnectionProjects.projectId, scope.projectId))) : [];
       // Fresh wall time AFTER every lock wait; this fences the parent's lease.
       const [time] = await tx.select({ now: clock }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, scope.taskId));
       return {
         task: task ?? null,
         parent: lockedParent ? unit(lockedParent) : null,
-        assignee: assignee && !assignee.revokedAt && assignee.scopes.includes('flux.action.execute') && selected
+        // The assignee must be able to use the space: its owner a non-guest member who sees it, AI on there (review of #943).
+        assignee: assignee && !assignee.revokedAt && assignee.mayDo !== 'read' && await connectionReaches(tx, assignee.id, scope.projectId)
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId, agentId: assignee.agentId, computeSource: assignee.computeSource } : null,
         existing: existing ? unit(existing) : null,
         runUnits, openTaskUnits, taskUnits, now: time!.now, taskFence,

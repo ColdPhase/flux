@@ -1,4 +1,3 @@
-import type { AgentScope } from './agent-proposals.js';
 
 /** Exact operations; an adapter advertises only the ones it actually implements. */
 export const AGENT_OPERATIONS = ['work.create', 'work.update', 'work.creation.revert', 'result.record', 'decision.propose',
@@ -36,10 +35,7 @@ export type AgentJsonValue = null | boolean | number | string | AgentJsonValue[]
 
 export const AGENT_CONNECTIONS_PATH = '/api/v1/agent-connections';
 export const agentConnectionPath = (connectionId: string) => `${AGENT_CONNECTIONS_PATH}/${connectionId}`;
-/** POST: the connection an OAuth authorization in progress continues with (#312). */
-export const agentConnectionSelectPath = (connectionId: string) => `${agentConnectionPath(connectionId)}/select-for-oauth`;
 export const AGENT_OAUTH_CONSENT_CONTEXT_PATH = '/api/v1/agent-oauth/consent-context';
-export const AGENT_OAUTH_HELD_CONNECTION_PATH = '/api/v1/agent-oauth/held-connection';
 export interface AuthenticatedAgentRuntime {
   id: string;
   workspaceId: string;
@@ -50,7 +46,6 @@ export interface AuthenticatedAgentRuntime {
   clientId: string;
   grantReferenceId: string;
   bindingGeneration: number;
-  scopes: AgentScope[];
   createdAt: string;
   expiresAt: string;
 }

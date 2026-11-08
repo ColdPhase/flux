@@ -12,15 +12,15 @@ import type { DbExecutor } from './push.js';
 /**
  * Personal assistant identities are private discovery state; shared message attribution is separate (#522).
  * The condition over an agent id: the agent is not a person's assistant, or it is one that person's
- * connection has shared with the project.
+ * connection is connected (a client's agent reaches what its owner reaches).
  */
-export function visibleAgentIdentity(principal: AccessPrincipal, projectId?: string, agentId: SQL = sql`${schema.agents.id}`): SQL {
-  const assistant = schema.assistantSettings, connection = schema.agentConnections, selection = schema.agentConnectionProjects;
+export function visibleAgentIdentity(principal: AccessPrincipal, agentId: SQL = sql`${schema.agents.id}`): SQL {
+  const assistant = schema.assistantSettings, connection = schema.agentConnections;
   return sql`(not exists (select 1 from ${assistant} where ${assistant.agentId} = ${agentId}
     and ${principal.kind === 'human' ? sql`${assistant.ownerUserId} <> ${principal.id}` : sql`true`})
-    or exists (select 1 from ${connection} inner join ${selection} on ${selection.connectionId} = ${connection.id}
+    or exists (select 1 from ${connection}
       where ${connection.agentId} = ${agentId} and ${connection.computeSource} <> 'owner_assistant'
-      and ${connection.revokedAt} is null ${projectId ? sql`and ${selection.projectId} = ${projectId}` : sql``}))`;
+      and ${connection.revokedAt} is null))`;
 }
 
 export function agentRepository(db: DbExecutor) {

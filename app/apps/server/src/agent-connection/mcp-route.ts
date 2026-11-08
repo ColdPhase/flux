@@ -1,9 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
-import type { AgentScope } from '@flux/contracts';
-import { AGENT_MCP_ENTRIES, agentScopeRefusal, assistantRunTools } from '@flux/contracts';
-import { enforce, evaluateProject, isUuid, requireAgentMcpEntry, requireSpaceAi, SpaceAiOffError } from '@flux/core';
-import { agentConnectionWorkspaceId, lockAgentMcpPolicy, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } from '@flux/core';
+import { agentConnectionWorkspaceId, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
@@ -11,7 +9,7 @@ import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
 import { createAgentConnectionStore } from './store.js';
-import { createMcpDispatch, type McpDispatch } from './mcp-dispatch.js';
+import { createMcpDispatch } from './mcp-dispatch.js';
 import { createMcpRelay, fenceResponse } from './mcp-relay.js';
 import { createFluxMcpHandler } from './mcp-protocol.js';
 import { requireLiveRun, runTokenClaims, type RunTokenClaims } from './run-token.js';
@@ -37,7 +35,6 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
-    const scopes = typeof token.scope === 'string' ? token.scope.split(/\s+/).filter(Boolean) : [];
     const runClaims = runTokenClaims(token);
     const params = new URL(request.url).searchParams;
     const connections = params.getAll('flux_connection'), projects = params.getAll('flux_project');
@@ -64,39 +61,32 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     }
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
-    let dispatch: McpDispatch;
+    const dispatch = createMcpDispatch();
     let run: RunTokenClaims | undefined;
-    // Partial consent (#548): only what the token carries and the connection still grants.
-    let granted: string[] = [];
     try {
       const referenceId = token.flux_grant_reference;
       // New references bind the verified, AS-owned client_id to one durable grant.
-      // Explicit historic JWTs have no grant-reference claim and retain their existing format.
       if (referenceId !== undefined && typeof referenceId !== 'string') throw new Error('Invalid grant');
-      dispatch = await db.transaction(async (tx) => {
+      await db.transaction(async (tx) => {
         const store = createAgentConnectionStore(tx);
-        const grant = await (runClaims ? store.grantForRun : store.grantForMcp)(ownerUserId,
+        const grant = await (runClaims ? store.grantForRun : store.grantForOauth)(ownerUserId,
           typeof referenceId === 'string' ? referenceId : connectionId);
         if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
           throw new Error('Invalid grant');
-        const policy = await lockAgentMcpPolicy(tx, connectionId);
-        if (!policy) throw new Error('Policy unavailable');
-        if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
-          throw new Error('Bound project unavailable');
         if (boundProjectId) {
+          // The owner must be able to see the space at all before anything about it, even its AI switch, is said: a space that is not
+          // theirs, or not there, is refused the same way (the client has its owner's rights and no more, #859).
+          enforce(await evaluateProject({ kind: 'human', id: ownerUserId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
           await requireSpaceAi(accessReader(tx), boundProjectId, { lock: true });
           const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
           if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
         }
-        granted = scopes.filter((scope) => grant.connection.scopes.includes(scope as AgentScope));
         if (runClaims) {
-          // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists
-          // exactly the run's tools that the owner's switches still allow (Off means off, AST-4).
+          // A personal run's token (F-027 A2): its run is in flight under this token's id, and the route lists the run's tools. An owner
+          // who sets Only read mid-run gets the plain words at the run's next change (the executor refuses it), not an unknown tool.
           const live = await requireLiveRun(tx, { ownerUserId, connectionId, run: runClaims }, { newCall: true, lock: true });
-          const allowed = new Set(assistantRunTools(policy, grant.connection.scopes.filter((scope) => scopes.includes(scope))));
-          run = { ...runClaims, tools: live.runTools.filter((name) => allowed.has(name)) };
+          run = { ...runClaims, tools: [...live.runTools] };
         }
-        return createMcpDispatch(policy.version);
       });
     } catch (error) {
       if (error instanceof SpaceAiOffError) return aiBlockedResponse(request);
@@ -105,13 +95,13 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       });
     }
     const cursorSecret = (await auth.$context).secret;
-    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, scopes: granted, dispatch,
+    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
       ...(boundProjectId ? { boundProjectId } : {}),
       ...(run ? { run } : {}),
-    }, cursorSecret, github, webReader), { refuseScope: (name) => agentScopeRefusal(name, granted), ...(run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {}) });
-    // Protected bytes are handed to the transport only while the live policy and access still hold.
+    }, cursorSecret, github, webReader), run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {});
+    // Protected bytes are handed to the transport only while the connection and the owner's access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {
       // AG-10, first: no byte, not even a tool list or a refusal, of a space-bound request after its AI is turned off.
@@ -120,31 +110,18 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       // Nothing more reaches a run token once its run ended, was stopped or its token closed.
       if (run) await requireLiveRun(tx, { ownerUserId, connectionId, run }, { newCall: false, lock: true });
       const store = createAgentConnectionStore(tx);
-      const grant = await (run ? store.grantForRun : store.grantForMcp)(ownerUserId, referenceId);
+      const grant = await (run ? store.grantForRun : store.grantForOauth)(ownerUserId, referenceId);
       if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
         throw new Error('Connection unavailable');
-      const policy = await lockAgentMcpPolicy(tx, connectionId);
-      if (!policy) throw new Error('Policy unavailable');
-      if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
-        throw new Error('Bound project unavailable');
       if (boundProjectId) {
         const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
       }
       const d = dispatch.dependencies;
-      if (!d.protectedOutput || !d.admitted.size) return;
-      if (policy.version !== d.capturedVersion) throw new Error('Policy changed');
-      for (const id of d.admitted) {
-        const entry = AGENT_MCP_ENTRIES.find((candidate) => candidate.id === id);
-        if (!entry || !scopes.includes(entry.requiredScope) || !grant.connection.scopes.includes(entry.requiredScope))
-          throw new Error('Scope unavailable');
-        requireAgentMcpEntry(policy, d.capturedVersion, entry, d.sources);
-      }
+      if (!d.protectedOutput) return;
       const actor = await loadActor({ kind: 'agent', id: grant.connection.agentId }, grant.connection.workspaceId, tx, { lock: true });
       if (!actor.active || actor.agent?.ownerUserId !== ownerUserId) throw new Error('Agent unavailable');
       for (const [projectId, action] of [...d.projects].sort(([a], [b]) => a.localeCompare(b))) {
-        if (!policy.selectedProjectIds.includes(projectId) || !grant.connection.selectedProjectIds.includes(projectId))
-          throw new Error('Project unavailable');
         const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Project unavailable');
       }

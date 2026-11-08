@@ -1,4 +1,3 @@
-import type { AgentScope } from './agent-proposals.js';
 import type { AgentOperation, AgentPeerRequestClass, AuthenticatedAgentRuntime } from './agent-execution.js';
 
 export const AGENT_SOURCE_KINDS = ['doc', 'material', 'work', 'decision', 'result', 'conversation', 'map'] as const;
@@ -38,7 +37,8 @@ export interface AgentSourceChanges {
 export interface AgentToolCapability {
   name: string;
   title: string;
-  requiredScope: AgentScope;
+  access: 'read' | 'write';
+  /** False for a change tool while the agent's "What it may do" is Only read. */
   available: boolean;
   operation: AgentOperation | null;
   classes: readonly AgentPeerRequestClass[];

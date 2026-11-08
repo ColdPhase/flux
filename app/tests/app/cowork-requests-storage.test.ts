@@ -25,7 +25,7 @@ async function fixture() {
   await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Fixture client', ownerUserId: owners[0]!, createdBy: owners[0]! });
   const connections = [randomUUID(), randomUUID(), randomUUID()];
   await db.insert(schema.agentConnections).values(connections.map((id, index) => ({ id, workspaceId, agentId,
-    ownerUserId: owners[index === 1 ? 1 : 0]!, scopes: ['flux.context.read' as const] })));
+    ownerUserId: owners[index === 1 ? 1 : 0]! })));
   const sender = { workspaceId, projectId, connectionId: connections[0]! };
   const recipient = { workspaceId, projectId, connectionId: connections[1]! };
   const third = { workspaceId, projectId, connectionId: connections[2]! };

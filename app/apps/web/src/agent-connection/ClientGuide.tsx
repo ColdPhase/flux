@@ -36,14 +36,12 @@ const GUIDE_TABS: TabItem[] = [
  * One client at a time (#763 AG-2): a tab per client, each with its own add and login commands and how work starts. Release
  * verification notes live in docs and the CHANGELOG, never on this page (#763 AG-3).
  */
-export function ClientGuide({ origin, initial = 'claude_code', second = false }: { origin: string; initial?: GuideClient; second?: boolean }) {
+export function ClientGuide({ origin, initial = 'claude_code' }: { origin: string; initial?: GuideClient }) {
   const url = `${origin}/mcp`;
   const [client, setClient] = useState<GuideClient>(initial);
   return <div className="connection__guide">
     <h2>Connect your MCP client</h2>
-    {/* #763 FT-10: with no personal agent yet, this is the second step and says so. */}
-    {second ? <p className="connection__order">Second step: after your personal agent exists, add Flux to your client.</p> : null}
-    <p>Add this Flux address to the client you already use. It opens Flux to ask for your consent, and gets only the access you approve.</p>
+    <p>Add this Flux address to the client you already use. It opens Flux to ask you once; allowing it is the whole setup.</p>
     {isLoopbackOrigin(origin)
       ? <p>This address works only on this computer. A client on another computer needs an HTTPS address for this Flux server, which its operator sets up.</p>
       : null}
@@ -51,12 +49,12 @@ export function ClientGuide({ origin, initial = 'claude_code', second = false }:
     {client === 'claude_code' ? <section className="connection__client" role="tabpanel" id="guide-claude_code" aria-labelledby="guide-tab-claude_code">
       <code>{`claude mcp add --transport http flux ${url}\nclaude mcp login flux`}</code>
       <h3>Start work</h3>
-      <p>In Claude Code, type <code>/mcp__flux__start_work</code> followed by your project’s name, for example <code>/mcp__flux__start_work My project</code> (with one project selected, the name can be left out). Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
+      <p>In Claude Code, type <code>/mcp__flux__start_work</code> followed by your project’s name, for example <code>/mcp__flux__start_work My project</code> (with one project, the name can be left out). Later, <code>/mcp__flux__resume_work</code> picks up where it left off and reads only what changed. Flux supplies the instructions; you write no prompt.</p>
     </section> : client === 'codex' ? <section className="connection__client" role="tabpanel" id="guide-codex" aria-labelledby="guide-tab-codex">
       <code>{`codex mcp add flux --url ${url}\ncodex mcp login flux`}</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>
       <h3>Start work</h3>
-      <p>Once your connection is saved, its Start and Resume commands appear with it below and on the project’s Agents view. Resume continues the same Codex thread.</p>
+      <p>Once connected, its Start and Resume commands appear on the project’s Agents view. Resume continues the same Codex thread.</p>
       <p>If Codex answers “Unsupported protocol version”, update Codex.</p>
     </section> : <section className="connection__client" role="tabpanel" id="guide-other" aria-labelledby="guide-tab-other">
       <p>Add a remote MCP server that uses streamable HTTP with this address. The client must support OAuth sign-in.</p>
@@ -64,6 +62,6 @@ export function ClientGuide({ origin, initial = 'claude_code', second = false }:
       <h3>Start work</h3>
       <p>Start it from your client: ask it to start work on your project in Flux.</p>
     </section>}
-    <p>Use your own client account for compute. Flux receives no provider credentials. A connection can do only what you can, and only as far as its “What it may do” allows. Deleting anything and other people’s things wait for your OK.</p>
+    <p>Use your own client account for compute. Flux receives no provider credentials. It can do only what you can, and only as far as its “What it may do” allows. Deleting anything and other people’s things wait for your OK.</p>
   </div>;
 }

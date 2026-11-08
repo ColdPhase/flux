@@ -9,8 +9,10 @@ import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/ser
 import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
 import { coWorkRequestInTransaction, type CoWorkRequestPolicy } from '../../apps/server/src/co-work/requests.js';
 import { coWorkRequestResponseInTransaction, type CoWorkResponsePolicy } from '../../apps/server/src/co-work/responses.js';
+import { loseSpace } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // Recipient request claim, response and supersession (#153) over real #152 runtimes/grants/ledger and PostgreSQL.
 // Bearer bindings are trusted fixtures, units are inserted directly (no unit creation command exists yet) and the
@@ -37,7 +39,6 @@ const publishResult: Publisher = async (tx, runtime, request, response) => {
 async function world() {
   const hubert = await person('cowork-responses-hubert'), marek = await person('cowork-responses-marek');
   const ws = await workspace(hubert, 'Responses workspace');
-  // Marek authorizes his own connection's standing grants, which needs project management (#152).
   await addMember(hubert, ws.id, marek, 'admin');
   const p = await project(hubert, ws.id, 'Addressed review', 'restricted');
   await grant(hubert, p.id, marek, 'contributor');
@@ -46,14 +47,13 @@ async function world() {
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name, owner: 'self' } }), 201) as Agent;
-    const connection = expectStatus(await who.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.action.execute'] } }), 201) as AgentConnection;
+    const connection = await createConnection(pool, who.browser, { agentId: agent.id }) as AgentConnection;
     const clientId = `cowork-responses-${randomUUID()}`, bindingId = randomUUID();
     await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
       [randomUUID(), clientId, 'Trusted responses fixture', ['https://fixture.invalid/callback']]);
     await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
       [bindingId, who.id, connection.id, clientId]);
-    const claims = { ownerUserId: who.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+    const claims = { ownerUserId: who.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
     const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
     return { who, connection, claims, runtimeId: runtime.id };
   };
@@ -63,57 +63,46 @@ async function world() {
       runId, unitKey: id, role, assignmentConnectionId: connectionId });
     return id;
   };
-  const actionGrant = async (who: Person, connectionId: string, operation: string, objectId: string | null, role: Role) =>
-    who.browser.request('POST', `/api/v1/agent-connections/${connectionId}/action-grants`,
-      { body: { clientCommandId: randomUUID(), projectId: p.id, operation, ...(objectId ? { objectId } : {}),
-        peerRequestClass: role, maximumUses: 20, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
-  return { hubert, marek, ws, p, task, connect, unit, actionGrant, material };
+  return { hubert, marek, ws, p, task, connect, unit, material };
 }
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
 
-function command(w: World, c: Connected, operation: string, objectId: string, role: Role, _grantId: string,
+function command(w: World, c: Connected, operation: string, objectId: string, role: Role,
   payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}): AgentExecutionCommand {
   return { runtimeSessionId: c.runtimeId, clientCommandId: randomUUID(), projectId: w.p.id,
     operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id },
     objectId, sources: [], payload: payload as AgentExecutionCommand['payload'], ...change };
 }
-async function grantOf(w: World, c: Connected, operation: string, unitId: string | null, role: Role) {
-  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, unitId, role), 201) as { id: string };
-}
 /** A live claim on a unit through the real claim composition and the production graph provider. */
 async function claimUnit(w: World, c: Connected, unitId: string, role: Role, expectedVersion = 1) {
-  const g = await grantOf(w, c, 'cowork.claim', unitId, role);
   return db.transaction((tx) => coWorkClaimInTransaction(tx, c.claims,
-    command(w, c, 'cowork.claim', unitId, role, g.id, { expectedVersion }), CLAIMS));
+    command(w, c, 'cowork.claim', unitId, role, { expectedVersion }), CLAIMS));
 }
 async function sender(w: World, c: Connected, unitId: string, role: Role = 'execute') {
   const claim = await claimUnit(w, c, unitId, role);
-  const requestGrant = await grantOf(w, c, 'cowork.request', unitId, role);
-  const cmd = (request: Record<string, unknown>) => command(w, c, 'cowork.request', unitId, role, requestGrant.id,
+  const cmd = (request: Record<string, unknown>) => command(w, c, 'cowork.request', unitId, role,
     { generation: claim.generation, leaseId: claim.lease!.id, request });
   const admit = (input: AgentExecutionCommand) => db.transaction((tx) => coWorkRequestInTransaction(tx, c.claims, input, REQUESTS));
-  return { claim, requestGrant, cmd, admit, send: (request: Record<string, unknown>) => admit(cmd(request)) };
+  return { claim, cmd, admit, send: (request: Record<string, unknown>) => admit(cmd(request)) };
 }
 async function recipient(w: World, c: Connected, unitId: string, role: Role = 'review') {
   const claim = await claimUnit(w, c, unitId, role);
-  const claimGrant = await grantOf(w, c, 'cowork.request.claim', unitId, role);
-  const respondGrant = await grantOf(w, c, 'cowork.request.respond', unitId, role);
   const own = { generation: claim.generation, leaseId: claim.lease!.id };
   const take = (requestId: string, expectedRequestVersion: number, change: Partial<AgentExecutionCommand> = {}, fence = own) =>
-    command(w, c, 'cowork.request.claim', unitId, role, claimGrant.id, { ...fence, requestId, expectedRequestVersion }, change);
+    command(w, c, 'cowork.request.claim', unitId, role, { ...fence, requestId, expectedRequestVersion }, change);
   const respond = (requestId: string, expectedRequestVersion: number, outcome: Record<string, unknown>,
     change: Partial<AgentExecutionCommand> = {}, fence = own) =>
-    command(w, c, 'cowork.request.respond', unitId, role, respondGrant.id, { ...fence, requestId, expectedRequestVersion, ...outcome }, change);
+    command(w, c, 'cowork.request.respond', unitId, role, { ...fence, requestId, expectedRequestVersion, ...outcome }, change);
   const run = (input: AgentExecutionCommand, options: { publish?: Publisher; failAfter?: boolean } = {}) =>
     db.transaction(async (tx) => {
       const outcome = await coWorkRequestResponseInTransaction(tx, c.claims, input, { publishResponse: options.publish ?? publishResult });
       if (options.failAfter) throw new Error('Injected failure after the transition/debit/receipt');
       return outcome;
     });
-  return { claim, claimGrant, respondGrant, fence: own, take, respond, run, unitId };
+  return { claim, fence: own, take, respond, run, unitId };
 }
 function rejects(promise: Promise<unknown>, code: string) {
   return assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code, code);
@@ -200,9 +189,8 @@ test('claim negative controls: unit fence, addressing, version, state, expiry, s
   const { w } = f;
   const asked = await f.s.send(f.ask());
   // No live unit claim: a request-claim grant alone is not a fence.
-  const early = await grantOf(w, f.marekClaude, 'cowork.request.claim', f.reviewUnit, 'review');
   await refusedWithoutEffects(w, f.marekClaude, asked.requestId, () => db.transaction((tx) => coWorkRequestResponseInTransaction(tx, f.marekClaude.claims,
-    command(w, f.marekClaude, 'cowork.request.claim', f.reviewUnit, 'review', early.id, { generation: 1, leaseId: randomUUID(),
+    command(w, f.marekClaude, 'cowork.request.claim', f.reviewUnit, 'review', { generation: 1, leaseId: randomUUID(),
       requestId: asked.requestId, expectedRequestVersion: 1 }), { publishResponse: publishResult })), 'COWORK_CLAIM_LOST');
   const r = await recipient(w, f.marekClaude, f.reviewUnit);
   const refuse = (input: AgentExecutionCommand, code: string, id = asked.requestId) =>
@@ -498,11 +486,12 @@ test('the Agents view shows each connection its held unit and its open request w
   assert.equal(reviewer(await view()).currentWork!.liveClaimExpiresAt, null, 'an expired lease is only held work');
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()+interval '30 seconds' WHERE id=$1", [f.reviewUnit]);
   assert.ok(reviewer(await view()).currentWork!.liveClaimExpiresAt);
-  const ceilingProbe = await f.w.connect(f.w.marek, 'Ceiling removal probe');
-  assert.ok((await view()).connections.some((item) => item.id === ceilingProbe.connection.id), 'the probe starts inside the project ceiling');
-  const ceiling = await pool.query('DELETE FROM agent_connection_projects WHERE connection_id=$1 AND project_id=$2 RETURNING workspace_id',
-    [ceilingProbe.connection.id, f.w.p.id]);
-  assert.equal(ceiling.rowCount, 1);
-  assert.equal((await view()).connections.some((item) => item.id === ceilingProbe.connection.id), false,
-    'the connection leaves the project-scoped Agents response when its project ceiling is removed');
+  // A connection's reach is its owner's (F-036 AG-3): it leaves the project's Agents response when its owner can no longer read the project.
+  const probe = await f.w.connect(f.w.marek, 'Reach probe');
+  assert.ok((await view()).connections.some((item) => item.id === probe.connection.id), 'the probe is in the project while its owner can read it');
+  const restore = await loseSpace(f.w.p.id, (await pool.query('SELECT owner_user_id FROM agent_connections WHERE id=$1', [probe.connection.id])).rows[0].owner_user_id as string);
+  try {
+    assert.equal((await view()).connections.some((item) => item.id === probe.connection.id), false,
+      'the connection leaves the project\'s Agents response when its owner loses the project');
+  } finally { await restore(); }
 });

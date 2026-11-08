@@ -11,7 +11,6 @@ import { addMember, expectStatus, person, project, workspace, type Person } from
 // Codex and Hubert Claude; Marek is an admin (and so a manager) who owns Marek Claude and can be demoted to a plain
 // contributor; Ada is a contributor who owns no agent;
 // Vera is a member too; Olga has no access at all.
-export const ACTION_SCOPES = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 export type Role = 'execute' | 'review' | 'plan';
 export type Reply = Record<string, unknown> | null;
 export interface Claim { generation: number; version: number; unitId: string; lease: { id: string } }
@@ -28,7 +27,7 @@ export function failureCode(reply: Reply): string | null {
 export async function coworkScene() {
   const [hubert, marek, ada, vera, olga] = await Promise.all(['cw-hubert', 'cw-marek', 'cw-ada', 'cw-vera', 'cw-olga'].map(person));
   const ws = await workspace(hubert, 'Co-work cards');
-  // Marek is a workspace admin (so a project manager, which minting standing grants for his agent needs); Ada, Vera and Olga are members.
+  // Marek is a workspace admin (so a project manager, which managing the project needs); Ada, Vera and Olga are members.
   await addMember(hubert, ws.id, marek, 'admin');
   for (const member of [ada, vera, olga]) await addMember(hubert, ws.id, member, 'member');
   const p = await project(hubert, ws.id, 'Shared outcome', 'restricted');
@@ -44,16 +43,13 @@ export async function coworkScene() {
 
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], ACTION_SCOPES);
-    // No standing grants (#859): the stub keeps the call sites that name one; the tool helpers drop its id.
-    const standing = async (...named: [operation: string, objectId: string | null, role: Role, maximumUses?: number]) => { void named; return { id: randomUUID() }; };
+    const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id]);
     /** The command fields of one runtime session of this connection. */
     const sessionOf = (runtimeSessionId: string) => {
-      const base = (_grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId,
+      const base = (role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId,
         clientCommandId, peerRequestClass: role });
       const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
-        const g = await standing('cowork.claim', unitId, role);
-        return { ...toolValue(await connected.tool('flux_claim_unit', { ...base(g.id, role), unitId, expectedVersion })), unitId } as unknown as Claim;
+        return { ...toolValue(await connected.tool('flux_claim_unit', { ...base(role), unitId, expectedVersion })), unitId } as unknown as Claim;
       };
       return { runtimeSessionId, base, claimUnit };
     };
@@ -62,7 +58,7 @@ export async function coworkScene() {
     const extraSession = async () => sessionOf(String((toolValue(await connected.tool('flux_bootstrap',
       { projectId: p.id, clientSessionId: randomUUID() })).runtime as { id: string }).id));
     const call = (name: string, args: Record<string, unknown>) => connected.tool(name, args);
-    return { ...connected, who, name, agentId: String(agent.id), standing, ...main, sessionOf, extraSession, call };
+    return { ...connected, who, name, agentId: String(agent.id), ...main, sessionOf, extraSession, call };
   };
   type Conn = Awaited<ReturnType<typeof connect>>;
 
@@ -78,16 +74,14 @@ export async function coworkScene() {
 
   /** `owner` takes a task (a root execute unit it claims) and returns the unit with its live claim. */
   async function take(owner: Conn, t: WorkItem, key = 'take') {
-    const grantOf = await owner.standing('cowork.unit.create', t.id, 'execute');
-    const created = toolValue(await owner.call('flux_create_unit', { ...owner.base(grantOf.id, 'execute'), taskId: t.id, unitKey: key,
+    const created = toolValue(await owner.call('flux_create_unit', { ...owner.base('execute'), taskId: t.id, unitKey: key,
       expectedTaskVersion: t.version, assignmentConnectionId: owner.connectionId, parent: null }));
     const unitId = String(created.unitId);
     return { unitId, claim: await owner.claimUnit(unitId, 'execute') };
   }
   /** The holder opens a child unit of `role` on the same task for `assignee` (not yet claimed by it). */
   async function openUnit(holder: Conn, held: { unitId: string; claim: Claim }, t: WorkItem, role: Role, assignee: Conn, key: string) {
-    const grantOf = await holder.standing('cowork.unit.create', t.id, role);
-    const answer = await holder.call('flux_create_unit', { ...holder.base(grantOf.id, role), taskId: t.id, unitKey: key,
+    const answer = await holder.call('flux_create_unit', { ...holder.base(role), taskId: t.id, unitKey: key,
       expectedTaskVersion: t.version, assignmentConnectionId: assignee.connectionId,
       parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } });
     // A unit for another person's client waits for the holder's owner (C-18, #859), whose Approve opens it.
@@ -114,22 +108,21 @@ export async function coworkScene() {
       : { result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'ASSISTANT_CHANGE_REFUSED', error: row!.refusal }) }] } };
   }
   /**
-   * The author takes `t`, opens a review unit for `reviewer`, which claims it, and a standing request grant is ready: the
+   * The author takes `t`, opens a review unit for `reviewer`, which claims it: the
    * normal start of a review. `send` is the author's flux_send_request.
    */
   async function startReview(author: Conn, reviewer: Conn, t: WorkItem, key = 'r1') {
     const held = await take(author, t);
     const reviewUnit = await openUnit(author, held, t, 'review', reviewer, key);
     const reviewClaim = await reviewer.claimUnit(reviewUnit, 'review');
-    const ask = await author.standing('cowork.request', held.unitId, 'execute', 50);
     const sendArgs = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      ({ ...author.base(ask.id, 'execute', options.clientCommandId), unitId: held.unitId, generation: held.claim.generation,
+      ({ ...author.base('execute', options.clientCommandId), unitId: held.unitId, generation: held.claim.generation,
         leaseId: held.claim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: reviewer.connectionId,
         intentKey, parentRequestId: null, kind: options.kind ?? 'review', target,
         sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
     const send = async (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
       approvedReply(author, reviewer, await author.call('flux_send_request', sendArgs(intentKey, target, options)));
-    return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
+    return { held, reviewUnit, reviewClaim, send, sendArgs };
   }
 
   return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview, approvedReply };

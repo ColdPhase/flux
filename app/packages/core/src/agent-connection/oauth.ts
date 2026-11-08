@@ -1,31 +1,21 @@
 import type { AgentConnection, AgentOauthConsentContext, AgentOauthRedirect } from '@flux/contracts';
-import { isUuid } from '../access/policy.js';
 
 /** Constructed only after the provider-signed query has been verified at ingress. */
 export interface AgentOauthFlow {
-  fingerprint: string;
   clientId: string;
   /** The signed request's redirect URI, which the provider matched to the client's registration before signing. */
   redirectUri: string;
-  scopes: readonly string[];
-  expiresAt: Date;
 }
 export interface AgentOauthGrant {
   referenceId: string;
   clientId: string | null;
   connection: AgentConnection;
 }
-/** The adapter's part of the consent screen; the use case adds where the authorization goes. */
-export type AgentOauthConsentRecord = Omit<AgentOauthConsentContext, 'clientIdHost' | 'redirect'>;
-/** The adapter owns transactions; the callback never reads a browser-global selection. */
+/** The adapter owns transactions. A sign-in is one decision: the connection a client already holds, or the one this makes. */
 export interface AgentOauthPort {
-  chooseFlow(ownerId: string, sessionId: string, connectionId: string, flow: AgentOauthFlow):
-    Promise<'SELECTED' | 'CONNECTION_NOT_FOUND' | 'ALREADY_SELECTED'>;
-  flowForOauth(ownerId: string, sessionId: string, fingerprint: string): Promise<AgentOauthGrant | null>;
-  consentForOauth(ownerId: string, sessionId: string, flow: AgentOauthFlow): Promise<AgentOauthConsentRecord | null>;
+  /** The name of the connection this person's client already holds, or null when approving makes a new one. */
+  heldConnectionName(ownerId: string, clientId: string): Promise<string | null>;
   grantForOauth(ownerId: string, referenceId: string): Promise<AgentOauthGrant | null>;
-  /** The live connection this owner last bound to this client, so a client that must authorize again is offered it first (#312). */
-  heldConnectionId(ownerId: string, clientId: string): Promise<string | null>;
 }
 
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '[::1]', 'localhost']);
@@ -50,19 +40,13 @@ export function oauthClientIdHost(clientId: string): string | null {
   } catch { return null; }
 }
 
-/** Public choice validation is shared by every transport; selection remains atomic in the adapter. */
+/** What the consent screen shows: who asks, where access goes, and the connection that already exists, if any. */
 export function agentOauthUseCases(port: AgentOauthPort) {
   return {
-    chooseFlow(ownerId: string, sessionId: string, connectionId: string, flow: AgentOauthFlow) {
-      if (!ownerId || !sessionId || !isUuid(connectionId)) return Promise.resolve('CONNECTION_NOT_FOUND' as const);
-      return port.chooseFlow(ownerId, sessionId, connectionId, flow);
+    async consentContext(ownerId: string, flow: AgentOauthFlow, clientName: string): Promise<AgentOauthConsentContext> {
+      return { clientName, clientIdHost: oauthClientIdHost(flow.clientId), redirect: oauthRedirectTarget(flow.redirectUri),
+        connectionName: await port.heldConnectionName(ownerId, flow.clientId) };
     },
-    async consentForOauth(ownerId: string, sessionId: string, flow: AgentOauthFlow): Promise<AgentOauthConsentContext | null> {
-      const record = await port.consentForOauth(ownerId, sessionId, flow);
-      return record && { ...record, clientIdHost: oauthClientIdHost(flow.clientId), redirect: oauthRedirectTarget(flow.redirectUri) };
-    },
-    flowForOauth: (ownerId: string, sessionId: string, fingerprint: string) => port.flowForOauth(ownerId, sessionId, fingerprint),
     grantForOauth: (ownerId: string, referenceId: string) => port.grantForOauth(ownerId, referenceId),
-    heldConnectionId: (ownerId: string, clientId: string) => port.heldConnectionId(ownerId, clientId),
   };
 }

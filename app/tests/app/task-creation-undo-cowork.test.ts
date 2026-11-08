@@ -10,14 +10,12 @@ import { toolValue } from './support/mcp.js';
 // fence, and a task whose creation was undone is no co-work target. Real MCP tools, grants, runtime and SQL.
 test('a co-work unit is a first use that refuses Undo; an undone task cannot be taken as a unit', { timeout: 30_000 }, async () => {
   const f = await actionScene(pool);
-  const create = await f.grant('work.create', 'execute', 5);
   const native = async (title: string) => {
-    const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: create.id,
+    const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
       clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title } }));
     return await f.read(String(created.workId)) as unknown as WorkItem;
   };
-  const take = await f.grant('cowork.unit.create', 'execute', 5);
-  const unit = (item: WorkItem) => f.tool('flux_create_unit', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: take.id,
+  const unit = (item: WorkItem) => f.tool('flux_create_unit', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
     clientCommandId: randomUUID(), peerRequestClass: 'execute', taskId: item.id, unitKey: 'take', expectedTaskVersion: item.version,
     assignmentConnectionId: f.connectionId, parent: null });
   const undo = (item: WorkItem) => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,

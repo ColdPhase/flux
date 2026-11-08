@@ -190,11 +190,10 @@ describe('a task has a due date and a history of who changed it', () => {
     test('records an agent as the agent, and a person as the person, whichever path made the change', async () => {
       const f = await actionScene(pool);
       const ownerId = (await pool.query('SELECT owner_user_id FROM agents WHERE id = $1', [f.agentId])).rows[0].owner_user_id as string;
-      const update = await f.grant('work.update', 'execute');
       const target = await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Run the comparison' } });
       const task = expectStatus(target, 201) as WorkItem;
       const command = (expectedVersion: number, changes: Record<string, unknown>, clientCommandId = randomUUID()) => ({ projectId: f.projectId,
-        runtimeSessionId: f.runtimeSessionId, grantId: update.id, clientCommandId, peerRequestClass: 'execute', sources: [], workId: task.id, expectedVersion, changes });
+        runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'execute', sources: [], workId: task.id, expectedVersion, changes });
       const commandId = randomUUID();
       const changed = toolValue(await f.tool('flux_update_task', command(task.version, { status: 'in_progress', title: 'Run the comparison twice' }, commandId)));
       const readEntries = async () => expectStatus(await f.owner.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
@@ -215,9 +214,8 @@ describe('a task has a due date and a history of who changed it', () => {
       assert.deepEqual([handed.actor.kind, handed.actor.id], ['human', ownerId]);
       assert.deepEqual(handed.owner, { from: null, to: { kind: 'agent', id: f.agentId, name: 'Planning agent', projectOwner: { kind: 'human', id: ownerId } } });
       // A task finished by the result an agent records.
-      const results = await f.grant('result.record', 'execute');
       const finishing = (expectStatus(await f.owner.request('GET', `/api/v1/work/${task.id}`), 200) as WorkItem);
-      toolValue(await f.tool('flux_record_result', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: results.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [f.source],
+      toolValue(await f.tool('flux_record_result', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [f.source],
         result: { title: 'Compared twice', finding: 'positive', evidence: 'Both runs agree', workIds: [task.id], finishes: { workId: task.id, expectedVersion: finishing.version } } }));
       const finished = (await readEntries()).items[0]!;
       assert.deepEqual([finished.kind, finished.actor.kind, finished.actor.id, finished.status?.to], ['status', 'agent', f.agentId, 'done']);
@@ -302,8 +300,7 @@ describe('a task has a due date and a history of who changed it', () => {
 
       // A task whose creation was undone stays readable as history.
       const f = await actionScene(pool);
-      const createGrant = await f.grant('work.create', 'execute');
-      const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: createGrant.id,
+      const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
         clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Unused agent trial' } }));
       const item = await f.read(String(created.workId)) as unknown as WorkItem;
       expectStatus(await f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } }), 200);

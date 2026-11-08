@@ -110,16 +110,14 @@ class FirstTimeUser(unittest.TestCase):
         type(self).ids.update(workspace=ws["id"], project=project["id"], message=conversation["messages"][0]["id"],
                               conversation=conversation["id"], task=task["id"], agent=agent["id"])
 
-    def test_02_a_member_chooses_a_project_they_write_in_for_their_agent_without_asking_anyone(self) -> None:
-        # F-036 AG-3 (#855): the agent has exactly its owner's rights, so nobody asks a manager to let it in.
+    def test_02_a_member_connects_a_client_with_one_click_and_nobody_is_asked(self) -> None:
+        # F-036 AG-3 (#855, #859): the agent has exactly its owner's rights, so there is no project to choose and nobody to ask.
         dev = self.page("dev")
         dev.goto("/settings/agents/connect")
-        dev.get_by_role("button", name="Create another selection").or_(dev.get_by_role("heading", name="New connection")).first.wait_for()
-        if dev.get_by_role("button", name="Create another selection").count():
-            dev.get_by_role("button", name="Create another selection").click()
-        row = dev.locator(".connection__project", has_text="Volunteer sign-up app")
-        expect(row.get_by_role("checkbox")).to_be_enabled()
-        expect(row).to_contain_text("Your agent can do here what you can")
+        expect(dev.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
+        expect(dev.get_by_text("No client is connected yet")).to_be_visible()
+        for chooser in ("checkbox", "radio"):
+            expect(dev.get_by_role("region", name="Your agent app").get_by_role(chooser)).to_have_count(0)
         expect(dev.get_by_role("button", name="Ask a manager to let it in")).to_have_count(0)
         shot(dev, "ftu-connect-owner-rights")
         grants = self.api(self.page("anna"), "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
@@ -127,8 +125,7 @@ class FirstTimeUser(unittest.TestCase):
 
     def test_03_hand_off_to_your_own_agent_needs_no_grant(self) -> None:
         dev = self.page("dev")
-        connection = self.api(dev, "POST", "/api/v1/agent-connections", {"agentId": self.ids["agent"], "name": "Dev laptop", "clientDesignation": "claude_code",
-                              "selectedProjectIds": [self.ids["project"]], "scopes": ["flux.context.read", "flux.proposal.write", "flux.action.execute"]}, status=201)
+        connection = self.api(dev, "POST", "/api/v1/integration/agent-connections", {"agentId": self.ids["agent"], "name": "Dev laptop", "clientDesignation": "claude_code"}, status=201)
         type(self).ids["connection"] = connection["id"]
         dev.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
         dev.get_by_role("button", name="Hand off to an agent").first.click()
@@ -146,7 +143,7 @@ class FirstTimeUser(unittest.TestCase):
         shot(dev, "ftu-handoff-allow")
         button.click()
         expect(dev.get_by_text(re.compile("^Handed #\\d+ to Dev's Claude Code"))).to_be_visible()
-        self.api(dev, "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=404)
+        self.api(dev, "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=404)  # no grant list exists any more
         self.assertEqual(self.api(dev, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["id"], self.ids["agent"])
 
     def test_04_a_phone_proposes_a_decision_from_a_message(self) -> None:

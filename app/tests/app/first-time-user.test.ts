@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import type { AcceptInviteResult, InvitePreview, NeedsYouResponse, ProjectGrant, WorkspaceInvite } from '@flux/contracts';
+import { pool } from './support/db.js';
+import { mcp, oauthToken, toolValue } from './support/mcp.js';
+import { registerOauthClient } from './support/mcp-actions.js';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
 
 // #763 first-time user study (docs/agents/release-acceptance/evidence/first-time-user.md):
@@ -26,9 +29,11 @@ describe('F-036 #855: nobody asks a manager to let an agent in', () => {
     const agentId = await agentOf(dev, space, 'Dev agent');
     for (const response of [await ask(dev, app.id, agentId), await dev.browser.request('GET', `/api/v1/projects/${app.id}/agent-requests`),
       await dev.browser.request('GET', `/api/v1/agents/${agentId}/project-access`)]) assert.equal(response.status, 404);
-    // Choosing the project for its connection needs no manager: the member writes here, so their agent may too.
-    expectStatus(await dev.browser.request('POST', '/api/v1/agent-connections', { body: { agentId, name: 'Dev laptop', selectedProjectIds: [app.id],
-      scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201);
+    // Connecting a client needs no manager either (#859): the member allows it with one click, and it reaches what they reach.
+    const { clientId, redirectUri } = await registerOauthClient(pool);
+    const tokens = await oauthToken(dev.browser, clientId, redirectUri);
+    const listed = await mcp(tokens.access_token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
+    assert.ok((toolValue(listed.message).projects as { id: string }[]).some((item) => item.id === app.id), 'the member\'s client reaches the shared app');
     assert.deepEqual((await grantsOf(anna, app.id)).filter((row) => row.principal.kind !== 'human'), [], 'and no grant was made for it');
     assert.equal((await needsYou(anna)).items.length, 0, 'the manager is asked nothing');
   });

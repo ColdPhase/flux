@@ -33,8 +33,8 @@ const schemaRefused = (message: Message) => !!message?.error || (message?.result
 const units = async (taskId: string) => (await pool.query(`SELECT * FROM cowork_units WHERE work_id = $1 ORDER BY created_at, id`, [taskId])).rows as
   { id: string; state: string; generation: number; version: number; role: string; assignment_connection_id: string; run_id: string; unit_key: string; lease_id: string | null }[];
 const unitCount = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM cowork_units WHERE project_id = $1`, [scene.place.id])).rows[0].n);
-const claim = (r: Recipient, grantId: string, unitId: string, expectedVersion: number) =>
-  r.tool('flux_claim_unit', { projectId: scene.place.id, runtimeSessionId: r.runtimeSessionId, grantId, clientCommandId: randomUUID(), peerRequestClass: 'execute', unitId, expectedVersion });
+const claim = (r: Recipient, unitId: string, expectedVersion: number) =>
+  r.tool('flux_claim_unit', { projectId: scene.place.id, runtimeSessionId: r.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', unitId, expectedVersion });
 
 describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-027 A3/A4, #403/#404)', () => {
   before(async () => {
@@ -90,7 +90,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((row!.receipt!.undo as { plan: { kind: string; unitId: string } }).plan.unitId, unit!.id);
     // Opening the unit is not a claim: the recipient claims it itself, and the unit is then its own.
     assert.deepEqual((await units(task.id)).map((item) => [item.state, item.generation]), [['pending', 0]]);
-    assert.equal(toolValue(await claim(codex, randomUUID(), unit!.id, 1)).state, 'claimed');
+    assert.equal(toolValue(await claim(codex, unit!.id, 1)).state, 'claimed');
     // The message's change line names the hand-off, with where it stands, in the owner's words for the agent.
     await scene.complete(live.runId);
     const listed = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
@@ -180,8 +180,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     const mine = await scene.task(scene.owner, 'Stopped after one');
     const stopper = await recipient(scene.owner, 'Codex two');
     const made = JSON.parse(text((await handoff(running, mine, 'k', { to: stopper.connectionId })).message)) as { unitId: string };
-    const grant = await stopper.grant('cowork.claim', 'execute', 5, made.unitId);
-    assert.equal(toolValue(await claim(stopper, grant.id, made.unitId, 1)).state, 'claimed');
+    assert.equal(toolValue(await claim(stopper, made.unitId, 1)).state, 'claimed');
     expectStatus(await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${running.runId}/stop`), 200);
     const next = await scene.task(scene.owner, 'After the stop');
     assert.equal((await handoff(running, next, 'k2', { to: stopper.connectionId })).status, 403);
@@ -222,7 +221,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((await units(task.id))[0]!.state, 'stopped');
   });
 
-  test('AST-5.4: a saved hand-off does not survive a revoked or narrowed recipient, an unknown stored view, an altered payload or a switch turned off', async () => {
+  test('AST-5.4: a saved hand-off does not survive a revoked recipient, an unknown stored view, an altered payload or a switch turned off', async () => {
     await scene.setMayDo('ask');
     const live = await scene.liveRun();
     const prepare = async (title: string, key: string, to: Recipient) => {
@@ -231,17 +230,15 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
       return { task, row: (await changesOf(live.runId)).find((item) => item.object_id === task.id)! };
     };
     const revoked = await recipient(scene.owner, 'Codex three');
-    const narrowed = await recipient(scene.owner, 'Codex four');
     const unknown = await recipient(scene.owner, 'Codex five');
     const altered = await recipient(scene.owner, 'Codex six');
     const off = await recipient(scene.owner, 'Codex seven');
     const cases = {
-      revoked: await prepare('Revoked recipient', 'a', revoked), narrowed: await prepare('Narrowed recipient', 'b', narrowed),
+      revoked: await prepare('Revoked recipient', 'a', revoked),
       unknown: await prepare('Unknown view', 'c', unknown), altered: await prepare('Altered payload', 'd', altered), off: await prepare('Switch off', 'e', off),
     };
     await scene.complete(live.runId);
     expectStatus(await scene.owner.browser.request('DELETE', `/api/v1/agent-connections/${revoked.connectionId}`), 204);
-    await pool.query(`DELETE FROM agent_connection_projects WHERE connection_id = $1 AND project_id = $2`, [narrowed.connectionId, scene.place.id]);
     await pool.query(`UPDATE assistant_changes SET prepared_command = jsonb_set(prepared_command, '{view}', '"assistant-unit-create/v2"') WHERE id = $1`, [cases.unknown.row.id]);
     await pool.query(`UPDATE assistant_changes SET prepared_command = jsonb_set(prepared_command, '{args,unitKey}', '"other-key"') WHERE id = $1`, [cases.altered.row.id]);
     for (const [name, { row, task }] of Object.entries(cases)) {
@@ -274,7 +271,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual([undone.change.state, undone.message], ['undone', null]);
     const [cancelled] = await units(early.id);
     assert.deepEqual([cancelled!.state, cancelled!.generation, cancelled!.version], ['stopped', 1, 2], 'the row, its audit and run count remain');
-    assert.equal((await codex.tool('flux_claim_unit', { projectId: scene.place.id, runtimeSessionId: codex.runtimeSessionId, grantId: (await codex.grant('cowork.claim', 'execute', 5, created.unitId)).id,
+    assert.equal((await codex.tool('flux_claim_unit', { projectId: scene.place.id, runtimeSessionId: codex.runtimeSessionId,
       clientCommandId: randomUUID(), peerRequestClass: 'execute', unitId: created.unitId, expectedVersion: 2 }) as { result?: { isError?: boolean } }).result?.isError, true, 'a cancelled unit cannot be claimed');
     const replay = JSON.parse(text((await handoff(live, early, 'k', { command: randomUUID() })).message)) as { unitId: string; status: string; state: string };
     assert.deepEqual([replay.unitId, replay.status, replay.state], [created.unitId, 'existing', 'stopped'], 'a replay cannot recreate or resurrect it');
@@ -285,8 +282,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((await units(early.id)).length, 1);
     await scene.complete(live.runId);
     // After start: nothing changes. The recipient's claim, lease and grants are exactly as they were.
-    const grant = await starter.grant('cowork.claim', 'execute', 5, lateMade.unitId);
-    const claimed = toolValue(await claim(starter, grant.id, lateMade.unitId, 1)) as { lease: { id: string }; generation: number };
+    const claimed = toolValue(await claim(starter, lateMade.unitId, 1)) as { lease: { id: string }; generation: number };
     const before = (await units(late.id))[0]!;
     const refused = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(lateRow!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };
     assert.equal(refused.message, 'Your Codex already started. Open the task');
@@ -342,9 +338,8 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((lost.json as { message: string }).message, 'Your Codex already started. Open the task');
     assert.deepEqual((await units(wins.id)).map((item) => [item.state, item.generation, item.version]), [['claimed', 1, 2]]);
     // (2) The Undo commits first while the real claim waits on the unit row: the claim then finds it stopped and is refused.
-    const grant = await b.grant('cowork.claim', 'execute', 5, undoWins.unitId);
     held = await scene.holding(`SELECT id FROM cowork_units WHERE id = $1 FOR UPDATE`, [undoWins.unitId]);
-    const claiming = await held.racing(() => claim(b, grant.id, undoWins.unitId, 1), (query) => query(`UPDATE cowork_units SET state = 'stopped', generation = 1, version = 2 WHERE id = $1`, [undoWins.unitId]));
+    const claiming = await held.racing(() => claim(b, undoWins.unitId, 1), (query) => query(`UPDATE cowork_units SET state = 'stopped', generation = 1, version = 2 WHERE id = $1`, [undoWins.unitId]));
     assert.equal((claiming as { result?: { isError?: boolean } }).result?.isError, true);
     assert.deepEqual((await units(loses.id)).map((item) => [item.state, item.lease_id]), [['stopped', null]], 'no claim, no lease');
     // The Undo itself then reads it as changed (someone stopped it), without touching anything else.
@@ -407,8 +402,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
 
   test('AST-3.2: an ordinary external caller cannot reach the adapter: the root rule, the bootstrap fields and the grant requirement are unchanged', async () => {
     const task = await scene.task(scene.owner, 'Ordinary caller');
-    const grant = await codex.grant('cowork.unit.create', 'execute', 5, task.id);
-    const base = { projectId: scene.place.id, runtimeSessionId: codex.runtimeSessionId, grantId: grant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute',
+    const base = { projectId: scene.place.id, runtimeSessionId: codex.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute',
       taskId: task.id, unitKey: 'ordinary', expectedTaskVersion: task.version, parent: null };
     // A root for another connection of the same owner: the ordinary rule still refuses it (only its own assignee opens a run).
     const other = await recipient(scene.owner, 'Codex twelve');

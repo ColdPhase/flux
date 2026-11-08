@@ -1,4 +1,4 @@
-import type { AgentMayDo, AgentScope, ExternalClientDesignation } from './agent-proposals.js';
+import type { AgentMayDo, ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
 import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
 
@@ -14,8 +14,8 @@ export const projectAgentsPath = (projectId: string) => `/api/v1/projects/${proj
  * - `offline`: authorized before, no open client session now.
  * - `session_open`: a client started a session that has not expired. It says a client connected,
  *   not that it is working; activity is shown only by `lastActivity`.
- * - `unavailable`: Flux would refuse this connection's calls now (its agent lost the access its
- *   scopes need on one of its selected projects). Only its owner can restore it.
+ * - `unavailable`: Flux would refuse this connection's calls now (its agent has lost its owner's access
+ *   to this project). Only its owner can restore it.
  * `offline` and `not_signed_in` differ by whether a token was ever issued or a session ever opened;
  * choosing the connection on the consent page alone is not an authorization.
  */
@@ -34,8 +34,6 @@ export interface ProjectAgentConnection {
   name: string;
   /** Owner-reported client label; never proof of the client or model. */
   clientDesignation: ExternalClientDesignation;
-  /** What the owner let this connection do: the exact scopes its tokens carry (#548). */
-  scopes: AgentScope[];
   /** "What it may do" (F-036 AG-3): Only read means it takes no task. */
   mayDo: AgentMayDo;
   owner: { id: string; name: string };

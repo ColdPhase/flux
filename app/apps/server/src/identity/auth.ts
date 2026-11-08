@@ -10,6 +10,7 @@ import { accessPorts, schema, type Database } from '@flux/db';
 import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
+import { createOneClickSignIn } from '../agent-connection/one-click.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
 import type { Mailer } from './mailer.js';
 import type { OauthRequests } from './oauth-flow.js';
@@ -133,23 +134,29 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
 
 export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
+  const signIn = createOneClickSignIn(db);
   const resource = mcpResourceIdentifier(config.publicOrigin);
-  const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
+  const unavailable = () => new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
+  /**
+   * The grant a client's authorization continues with (#859). Looking at a request never writes: a client that already has a live
+   * connection of this person's gets its reference, and any other gets one no consent can match, so the person is asked. Only the
+   * person's approval on the consent page (`consenting`, from the signed request and the session that reached the page) makes the
+   * connection and its agent, so a refusal, a forged request or another browser's session leaves nothing behind.
+   */
+  const referenceFor = async (userId: string, sessionId: string) => {
     const request = oauthRequests.getStore();
-    if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
-    // A connection whose agent can no longer reach a project is refused, not a 500.
-    const grant = await connections.flowForOauth(userId, sessionId, request.fingerprint).catch((error: unknown) => {
-      if (error instanceof DomainError) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
+    // The authorization resumed by a provider sign-in callback carries no request context: nothing is known about the client yet, so the
+    // reference is one no consent can match and the person is asked on the consent page. It writes nothing.
+    if (!request) return `flux-pending:${randomUUID()}`;
+    // Another browser's session is refused as a plain 400 and leaves nothing behind.
+    if (request.consenting ? request.clearedSessionId !== sessionId : request.clearedSessionId && request.clearedSessionId !== sessionId) throw unavailable();
+    try {
+      const grant = request.consenting && request.flow ? await signIn.connect(userId, request.flow) : await signIn.held(userId, request.clientId);
+      return grant?.referenceId ?? `flux-pending:${randomUUID()}`;
+    } catch (error) {
+      if (error instanceof DomainError) throw unavailable();
       throw error;
-    });
-    const connection = grant?.connection;
-    // A client without prompt=consent is checked here before the consent page (#660): it may ask for more than the connection
-    // holds, and the consent page then lists what is not granted. Consent and the token still never exceed the connection.
-    const narrowing = !request.continuing;
-    if (!connection || narrowing && scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
-      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
-    return grant!;
   };
   // The verification mail (#313): new password accounts while sign-up is `verified`, and a pre-F-024 account the
   // next time it signs in with a password once a provider is configured, so an administrator can find it by address.
@@ -208,7 +215,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       jwt(),
       mcp({
         loginPage: '/login', consentPage: '/consent', resource,
-        scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'],
+        // One scope: the client may stay connected until the person disconnects it. What it may do is not a scope. It acts with its
+        // owner's rights and does what its "What it may do" says, both read again at every call (#859).
+        scopes: ['offline_access'],
         grantTypes: ['authorization_code', 'refresh_token'],
         // Clients arrive only through Client ID Metadata Documents (the cimd plugin below, which does
         // not consult this hook). No browser session may create, read, list, update, rotate or delete
@@ -218,23 +227,22 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         allowDynamicClientRegistration: false,
         postLogin: {
           page: '/connect-agent',
-          shouldRedirect: async ({ user, session }) => {
-            const request = oauthRequests.getStore();
-            if (!request) return true;
-            return !await connections.flowForOauth(user.id, session.id, request.fingerprint);
+          // Nothing is chosen between signing in and the consent page: the person's one decision is on that page (#859).
+          shouldRedirect: () => false,
+          consentReferenceId: async ({ user, session }) => {
+            if (!user || !session) throw new Error('OAuth flow is unavailable');
+            return referenceFor(user.id, session.id);
           },
-          consentReferenceId: async ({ user, session, scopes }) =>
-            (await connectionForGrant(user.id, session.id, scopes)).referenceId,
         },
         customAccessTokenClaims: async (args) => {
-          const { user, referenceId, scopes, resources } = args;
+          const { user, referenceId, resources } = args;
           // The pinned provider patch exposes its validated session and code-family key at issuance.
           const { sessionId, authorizationCodeId } = args as typeof args & { sessionId?: string; authorizationCodeId?: string };
           // The refresh grant and the code exchange both come through here: once the provider's confirmation is
           // older than the confirmation age the client must authorize again, through the provider (F-024 S2, #312).
           if (user && await confirmation.lapsed(user.id)) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: signInAgainMessage(config.oidc?.label ?? '') });
           if (!user || !referenceId || resources?.length !== 1 || resources[0] !== resource) {
-            throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
+            throw unavailable();
           }
           // Refused while the provider no longer honours this person; nothing is revoked (S4, #311).
           if (standing && !await standing.stands(user.id)) {
@@ -242,9 +250,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           }
           const grant = await connections.grantForOauth(user.id, referenceId);
           const connection = grant?.connection;
-          if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
-            throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
-          }
+          if (!connection) throw unavailable();
           if (authorizationCodeId) await recordGrantAuthentication(db, user.id, sessionId, referenceId, authorizationCodeId);
           return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId,
             ...(authorizationCodeId ? { flux_authentication_reference: authorizationCodeId } : {}) };

@@ -170,7 +170,7 @@ run_a=$(project_of "$A")
 # A local OAuth client, inserted as tests/app/oauth-mcp.test.ts does (no external client metadata).
 compose_in "$A" exec -T db psql -X -q -v ON_ERROR_STOP=1 -U flux -d flux -c "
   INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
-  VALUES (gen_random_uuid()::text, '$oauth_client', 'Backup check client', ARRAY['http://127.0.0.1:19737/callback'], 'none', ARRAY['authorization_code'], ARRAY['code'], ARRAY['flux.context.read','flux.action.execute'], true, now(), now());
+  VALUES (gen_random_uuid()::text, '$oauth_client', 'Backup check client', ARRAY['http://127.0.0.1:19737/callback'], 'none', ARRAY['authorization_code'], ARRAY['code'], ARRAY['offline_access'], true, now(), now());
   INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES (gen_random_uuid()::text, '$oauth_client', 'http://127.0.0.1:$port_a/mcp', now());"
 seed_out=$(fixture "$A" seed)
 state=$(printf '%s\n' "$seed_out" | sed -n 's/^FLUX_FIXTURE //p')

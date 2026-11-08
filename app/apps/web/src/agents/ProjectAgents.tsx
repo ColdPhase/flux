@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal, flushSync } from 'react-dom';
 import { Link, useLoaderData, useLocation, useNavigation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import { AGENT_SCOPE_PLAIN } from '@flux/contracts';
-import type { AgentOperation, AgentQuestion, AgentPause, AgentScope, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import { AGENT_MAY_DO_LABELS } from '@flux/contracts';
+import type { AgentOperation, AgentQuestion, AgentPause, AgentStop, ConversationMessage, ProjectAgentConnection, ProjectAgentRequest, ProjectAgents as ProjectAgentsData, TaskDiscussion, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { projectAiBlocked, useShellData } from '../app/data';
@@ -80,11 +80,6 @@ function when(iso: string) {
 /** A session past its end is offline now, even before the next read says so. */
 function shownState(connection: ProjectAgentConnection, now: number): ProjectAgentConnection['state'] {
   return connectionState(connection, now);
-}
-
-/** What the owner let a connection do, in plain words: "Can read projects · Can suggest changes" (#548). */
-function permissionsLine(scopes: readonly AgentScope[]): string {
-  return scopes.length ? scopes.map((scope) => `Can ${AGENT_SCOPE_PLAIN[scope]}`).join(' · ') : 'Has no permissions';
 }
 
 /** What Flux can prove about a connection; a configured or offline one never looks busy. */
@@ -668,7 +663,7 @@ function AgentDetail({ entry, held, meId, projectId, now, asking, canHandOff, ma
           <p className="agents-detail__for">{[entry.owner ? `for ${entry.owner}` : null, entry.via, entry.connection ? 'local MCP' : null].filter(Boolean).join(' · ')}</p>
         </div>
       </header>
-      {entry.connection?.scopes ? <p className="agents-detail__note" aria-label="Permissions" data-testid="agent-permissions">{permissionsLine(entry.connection.scopes)}</p> : null}
+      {entry.connection ? <p className="agents-detail__note" aria-label="What it may do" data-testid="agent-may-do">What it may do: {AGENT_MAY_DO_LABELS[entry.connection.mayDo]}</p> : null}
       {entry.connection?.own ? <CoworkHostActions connectionId={entry.connection.id} projectId={projectId} client={entry.connection.clientDesignation} /> : null}
       <section className="agents-detail__now" aria-label="Now">
         <h3>Now</h3>

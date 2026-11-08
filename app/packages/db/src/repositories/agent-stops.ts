@@ -105,8 +105,7 @@ export function agentStopRows(tx: DbExecutor) {
         }
       }
       // A handed task is not necessarily work in progress. Require a live lease for this exact task, assigned
-      // connection and runtime session before the sidebar calls it Working. The connection must still include
-      // this project in its current ceiling; an expired claim or a different live session is only handed work.
+      // connection and runtime session before the sidebar calls it Working. An expired claim or a different live session is only handed work.
       const working = new Set<string>();
       const sessionIds = [...liveSessions.values()].flatMap((ids) => [...ids]);
       if (rows.length && sessionIds.length) {
@@ -115,8 +114,6 @@ export function agentStopRows(tx: DbExecutor) {
         const claims = await tx.select({ taskId: units.taskId, projectId: units.projectId, agentId: connections.agentId,
           connectionId: units.assignmentConnectionId, leaseSessionId: units.leaseSessionId }).from(units)
           .innerJoin(connections, and(eq(connections.id, units.assignmentConnectionId), isNull(connections.revokedAt)))
-          .innerJoin(schema.agentConnectionProjects, and(eq(schema.agentConnectionProjects.connectionId, connections.id),
-            eq(schema.agentConnectionProjects.projectId, units.projectId)))
           .where(and(inArray(units.taskId, taskIds), inArray(units.assignmentConnectionId, connectionIds),
             inArray(units.leaseSessionId, sessionIds), eq(units.state, 'claimed'), gt(units.leaseExpiresAt, sql`clock_timestamp()`)));
         for (const claim of claims) {

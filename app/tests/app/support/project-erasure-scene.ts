@@ -75,12 +75,12 @@ export async function upload(f: ThreadNativeScene, text: string) {
 
 /** One project with every installed artifact kind, a real thread (native turns and a human boundary) and resets. */
 export async function fullProject() {
-  const f = await actionScene(pool), grant = await f.grant('conversation.reply', 'execute', 100);
+  const f = await actionScene(pool);
   const created = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Erased with its project' } }), 201) as unknown as WorkItem;
   // A due date makes the task's activity (#488, migration 0112) part of the scene: its rows erase with the task.
   const task = expect(await f.owner.request('PATCH', `/api/v1/work/${created.id}`,
     { body: { dueOn: '2026-12-01', clientCommandId: randomUUID() }, headers: { 'if-match': `"${created.version}"` } }), 200) as unknown as WorkItem;
-  await fillThread(f, task.id, grant.id);
+  await fillThread(f, task.id);
   expect(await f.owner.request('POST', `/api/v1/work/${task.id}/agent-thread`,
     { body: { body: 'A person answers in the thread.', clientMessageId: randomUUID() } }), 201);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,

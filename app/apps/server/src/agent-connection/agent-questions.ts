@@ -77,7 +77,7 @@ const execution = coordinationInput();
 export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = coordinationExecutor(db, claims);
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
-  tools.forScope('flux.action.execute', { operation: 'conversation.reply', classes: AGENT_OPERATION_CLASSES['conversation.reply'] }).registerTool('flux_ask_question', {
+  tools.forAccess('write', { operation: 'conversation.reply', classes: AGENT_OPERATION_CLASSES['conversation.reply'] }).registerTool('flux_ask_question', {
     title: 'Ask a person a question with ready answers',
     description: 'Ask one person in an existing project conversation (including a task\'s discussion thread) a question and offer two to four '
       + 'ready answers; they answer with one tap or in their own words, and their answer is the next message of the thread. Needs the '

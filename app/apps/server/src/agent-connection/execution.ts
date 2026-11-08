@@ -36,13 +36,13 @@ function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
 /** One trusted port bound to this exact caller-owned TX. It never commits, flushes events or opens a receipt TX. */
 export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClaims,
   domain: AgentExecutionDomainChecks = {}, privateTarget?: 'task-agent-thread/v1'): AgentExecutionPort<Transaction> {
-  claims = Object.freeze({ ...claims, scopes: Object.freeze([...claims.scopes]) });
+  claims = Object.freeze({ ...claims });
   const rows = agentExecutionRows(tx);
   const threadRows = agentThreadGuardRows(tx);
   const handles = new WeakMap<AgentExecutionScope<Transaction>, Prepared>();
   const recheck = async (prepared: Prepared) => {
     const { command, runtime, context } = prepared;
-    await agentConnectionInTransaction(tx, claims, 'flux.action.execute', command.projectId);
+    await agentConnectionInTransaction(tx, claims, 'write', command.projectId);
     enforce(await evaluateProject({ kind: 'agent', id: context.agentId }, 'project.write', command.projectId, accessReader(tx), { lock: true }), 'project');
     for (const source of command.sources) if (await rows.sourceVersion(context.workspaceId, command.projectId, source.materialId) !== source.version)
       throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
@@ -52,8 +52,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     if (!binding || binding.generation !== context.bindingGeneration || !liveRuntime || liveRuntime.revokedAt || liveRuntime.expiresAt <= now
       || liveRuntime.bindingId !== runtime.bindingId || liveRuntime.bindingGeneration !== context.bindingGeneration
       || liveRuntime.connectionId !== context.connectionId || liveRuntime.ownerUserId !== context.ownerUserId
-      || liveRuntime.agentId !== context.agentId || liveRuntime.workspaceId !== context.workspaceId
-      || JSON.stringify([...liveRuntime.scopes].sort()) !== JSON.stringify([...context.scopes].sort())) throw denied();
+      || liveRuntime.agentId !== context.agentId || liveRuntime.workspaceId !== context.workspaceId) throw denied();
     return now;
   };
   const postState = async (prepared: Prepared, conditions: AgentPostcondition[]) => {
@@ -109,7 +108,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         // becomes a conversation UUID after creation, including on a stored receipt replay.
         command = { ...command, fingerprint: createHash('sha256').update(JSON.stringify([privateTarget, command.fingerprint])).digest('hex') };
       }
-      const current = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', command.projectId);
+      const current = await agentConnectionInTransaction(tx, claims, 'write', command.projectId);
       if (!claims.grantReferenceId?.startsWith('flux-grant:') || !claims.clientId) throw denied('ACTION_BINDING_REQUIRED');
       const bindingId = claims.grantReferenceId.slice('flux-grant:'.length);
       const binding = await rows.lockBinding(bindingId);
@@ -117,19 +116,17 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       if (!binding || !runtime || runtime.bindingId !== bindingId || runtime.bindingGeneration !== binding.generation
         || binding.ownerUserId !== claims.ownerUserId || binding.connectionId !== claims.connectionId || binding.clientId !== claims.clientId
         || runtime.ownerUserId !== claims.ownerUserId || runtime.connectionId !== claims.connectionId || runtime.agentId !== current.principal.id
-        || runtime.workspaceId !== current.workspaceId || !runtime.scopes.includes('flux.action.execute')
-        || runtime.scopes.some((scope) => !current.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
+        || runtime.workspaceId !== current.workspaceId)
         throw denied();
       const initialNow = await rows.now();
       if (runtime.revokedAt || runtime.expiresAt <= initialNow) throw denied();
       const context: AuthenticatedAgentRuntime = Object.freeze({ id: runtime.id, workspaceId: runtime.workspaceId,
         connectionId: runtime.connectionId, ownerUserId: runtime.ownerUserId, agentId: runtime.agentId,
         clientId: binding.clientId, grantReferenceId: claims.grantReferenceId, bindingGeneration: binding.generation,
-        scopes: [...runtime.scopes] as AuthenticatedAgentRuntime['scopes'], createdAt: runtime.createdAt.toISOString(), expiresAt: runtime.expiresAt.toISOString() });
-      Object.freeze(context.scopes);
+        createdAt: runtime.createdAt.toISOString(), expiresAt: runtime.expiresAt.toISOString() });
       const fingerprint = createHash('sha256').update(JSON.stringify([command.fingerprint, context.ownerUserId,
         context.connectionId, context.agentId, context.workspaceId, context.clientId, context.grantReferenceId,
-        context.bindingGeneration, [...context.scopes].sort(), [...claims.scopes].sort()])).digest('hex');
+        context.bindingGeneration])).digest('hex');
       await rows.lockCommand(claims.connectionId, command.clientCommandId);
       const stored = await rows.receipt(claims.connectionId, command.clientCommandId);
       if (stored && (stored.fingerprint !== fingerprint || stored.runtimeSessionId !== runtime.id

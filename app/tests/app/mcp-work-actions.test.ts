@@ -13,9 +13,8 @@ test('a standing work.create grant creates one planned native task through MCP; 
       { name: 'flux_undo_task_creation', operation: 'work.creation.revert', available: true },
       { name: 'flux_record_result', operation: 'result.record', available: true }, { name: 'flux_propose_decision', operation: 'decision.propose', available: true },
       { name: 'flux_link_pull_request', operation: 'work.update', available: true }]);
-  const create = await f.grant('work.create', 'plan');
   const command = (clientCommandId: string, title = 'Compare against the baseline') => ({ projectId: f.projectId,
-    runtimeSessionId: f.runtimeSessionId, grantId: create.id, clientCommandId, peerRequestClass: 'plan', sources: [f.source],
+    runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'plan', sources: [f.source],
     task: { title, criteria: ['The comparison names both runs'], dependencyIds: [f.prerequisiteId],
       planIntent: { ...f.source, intentKey: 'compare-step' } } });
   const before = await f.tasks();
@@ -61,11 +60,10 @@ test('a standing work.create grant creates one planned native task through MCP; 
 
 test('a standing work.update grant changes a task at its read version and keeps prerequisite and version rules', async () => {
   const f = await actionScene(pool);
-  const update = await f.grant('work.update', 'execute');
   const target = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`,
     { body: { title: 'Run the comparison', dependencyIds: [f.prerequisiteId] } }), 201);
   const change = (expectedVersion: number, changes: Record<string, unknown>, clientCommandId = randomUUID()) => ({ projectId: f.projectId,
-    runtimeSessionId: f.runtimeSessionId, grantId: update.id, clientCommandId, peerRequestClass: 'execute', sources: [],
+    runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'execute', sources: [],
     workId: target.id, expectedVersion, changes });
   const unmet = toolFailure(await f.tool('flux_update_task', change(Number(target.version), { status: 'in_progress' })));
   assert.equal(unmet.code, 'TASK_PREREQUISITES_UNMET');
@@ -91,12 +89,10 @@ test('a standing work.update grant changes a task at its read version and keeps 
 
 test('standing result and decision grants record a finding that finishes a task and propose a decision, never accept it', async () => {
   const f = await actionScene(pool);
-  const results = await f.grant('result.record', 'execute');
-  const decisions = await f.grant('decision.propose', 'plan');
   const prerequisite = await f.read(f.prerequisiteId);
-  const base = (grantId: string, peerRequestClass: string, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
-    runtimeSessionId: f.runtimeSessionId, grantId, clientCommandId, peerRequestClass, sources: [f.source] });
-  const finding = (clientCommandId?: string) => ({ ...base(results.id, 'execute', clientCommandId), result: { title: 'Baseline measured',
+  const base = (peerRequestClass: string, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
+    runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass, sources: [f.source] });
+  const finding = (clientCommandId?: string) => ({ ...base('execute', clientCommandId), result: { title: 'Baseline measured',
     finding: 'negative', evidence: 'Runtime stayed at four hours', workIds: [f.prerequisiteId],
     finishes: { workId: f.prerequisiteId, expectedVersion: Number(prerequisite.version) } } });
   const first = randomUUID();
@@ -110,7 +106,7 @@ test('standing result and decision grants record a finding that finishes a task 
   const planClass = await f.tool('flux_record_result', { ...finding(), peerRequestClass: 'plan' });
   assert.ok(planClass?.error || (planClass?.result as { isError?: boolean } | undefined)?.isError, 'a result needs an execute-class grant');
 
-  const proposal = { ...base(decisions.id, 'plan'), decision: { title: 'Keep the four-hour baseline', rationale: 'The measured runtime holds',
+  const proposal = { ...base('plan'), decision: { title: 'Keep the four-hour baseline', rationale: 'The measured runtime holds',
     affects: [f.prerequisiteId] } };
   const proposed = toolValue(await f.tool('flux_propose_decision', proposal));
   const decision = expect(await f.owner.request('GET', `/api/v1/decisions/${proposed.decisionId}`), 200);

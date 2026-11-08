@@ -111,8 +111,7 @@ class AgentsViewJourney(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace}/agents", {"name": agent_name, "owner": "self"}, status=201)
         hubert = self.page("hubert")
         for name, client in connections:
-            self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project],
-                     "scopes": ["flux.context.read", "flux.proposal.write"], "name": name, "clientDesignation": client}, status=201)
+            self.api(page, "POST", "/api/v1/integration/agent-connections", {"agentId": agent["id"], "name": name, "clientDesignation": client}, status=201)
 
     def open_agents(self, who: str, *, thread: bool = True, **kwargs) -> Page:
         # The list is the view; a task's thread opens under it from `?task=` (the task's own link and detail panel).

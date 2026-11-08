@@ -1,6 +1,6 @@
 import type { McpServer, ToolAnnotations, ToolCallback } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, AGENT_MCP_ENTRIES, AGENT_PEER_REQUEST_CLASSES, agentScopeRefusal, type AgentMcpPolicy, type AgentOperation, type AgentPeerRequestClass, type AgentScope, type AgentToolCapability } from '@flux/contracts';
+import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentMayDo, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 
@@ -51,9 +51,10 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 /**
  * The change tools a local client shares with a run, and the co-work tools that can give something to another person's client: a unit
- * assigned or transferred to it and a request to it wait for the owner's OK like a task for someone else (C-18). Their other uses do not wait.
+ * assigned or transferred to it and a request to it wait for the owner's OK like a task for someone else, and taking back a task it created
+ * is a deletion, which always waits (C-18). Their other uses do not wait.
  */
-const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_send_request', 'flux_transfer_unit']);
+const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_send_request', 'flux_transfer_unit', 'flux_undo_task_creation']);
 const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
   + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
@@ -79,22 +80,21 @@ export interface AgentToolRegistrar {
 }
 /**
  * Capability entries are written only when the corresponding real MCP tool is registered. `bound`, set for
- * a personal run's token only, sees every tool result before it is returned (F-022 "Caps").
- * `granted` is the permissions the person granted (token scopes within the connection's): this is the one
- * place that scopes tools to them (#548). A tool outside the grant is never listed, and a call to it
- * returns a structured refusal naming the missing permission before anything runs or is written.
+ * a personal run's token only, sees every tool result before it is returned (F-022 "Caps"). Every tool is listed
+ * to every client: what a call may do is decided when it is made, by the owner's rights and the agent's "What it may do"
+ * (an agent set to Only read gets plain words for a change), never by a scope or a switch chosen at sign-in (#859).
  */
 export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>,
-  granted?: readonly string[], run?: { projectId: string }) {
+  run?: { projectId: string }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
   return {
-    forScope(requiredScope: AgentScope, effect?: { operation: AgentOperation; classes: readonly AgentPeerRequestClass[] }): AgentToolRegistrar {
+    forAccess(access: AgentToolAccess, effect?: { operation: AgentOperation; classes: readonly AgentPeerRequestClass[] }): AgentToolRegistrar {
       return { registerTool<I extends z.ZodType>(name: string, config: ToolConfiguration<I>, callback: ToolCallback<I>) {
         if (entries.has(name)) throw new Error('A Flux tool cannot be registered twice');
-        const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === name);
-        if (!entry || entry.requiredScope !== requiredScope || entry.operation !== (effect?.operation ?? null))
-          throw new Error('A Flux tool must match its exact registered permission');
+        const entry = AGENT_TOOLS.find((item) => item.kind === 'tool' && item.name === name);
+        if (!entry || entry.access !== access || entry.operation !== (effect?.operation ?? null))
+          throw new Error('A Flux tool must match its exact entry in the tool list');
         dispatch.declare('tool', name);
         if (effect && (run ? RUN_EFFECTS.has(name) : CHANGE_TOOLS.has(name))) {
           const original = callback as (...args: unknown[]) => unknown;
@@ -114,25 +114,17 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         // Proxy preserves the SDK's schema-dependent callback type and forwards
         // its original receiver/arguments without reconstructing a conditional signature.
         const guarded = new Proxy(callback, { apply(target, receiver, args) {
-          const refusal = granted ? agentScopeRefusal(name, granted) : null;
-          if (refusal) return Promise.resolve({ content: [{ type: 'text' as const, text: JSON.stringify(refusal) }], isError: true });
           const output = dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
           return bound ? Promise.resolve(output).then(bound) : output;
         } });
         const handle = server.registerTool(name, config, guarded);
-        if (granted && !granted.includes(requiredScope)) handle.disable();
         handles.set(name, handle);
-        entries.set(name, { name, title: config.title, requiredScope, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
+        entries.set(name, { name, title: config.title, access, operation: effect?.operation ?? null, classes: effect?.classes ?? [] });
       } };
     },
-    capabilities(scopes: readonly AgentScope[], policy: AgentMcpPolicy): AgentToolCapability[] {
-      // The listing and bootstrap agree (#548): a tool outside the grant is neither listed nor named here.
-      return [...entries.values()].filter((item) => !granted || granted.includes(item.requiredScope)).map((item) => {
-        const entry = AGENT_MCP_ENTRIES.find((candidate) => candidate.kind === 'tool' && candidate.name === item.name)!;
-        return { ...item, classes: [...item.classes], available: scopes.includes(item.requiredScope)
-          && policy.enabledEntryIds.includes(entry.id)
-          && entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id)) };
-      });
+    /** What the client is told it can do now: a change tool is not available to an agent set to Only read. */
+    capabilities(mayDo: AgentMayDo): AgentToolCapability[] {
+      return [...entries.values()].map((item) => ({ ...item, classes: [...item.classes], available: item.access === 'read' || mayDo !== 'read' }));
     },
     /**
      * Lists and runs only `names` (a personal run's exact tools, F-022 "Agent connection and permissions");
@@ -142,9 +134,9 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
       for (const [name, handle] of handles) if (!names.has(name)) handle.disable();
     },
     verifyManifest() {
-      const declared = AGENT_MCP_ENTRIES.filter((entry) => entry.kind === 'tool').map((entry) => entry.name).sort();
+      const declared = AGENT_TOOLS.filter((entry) => entry.kind === 'tool').map((entry) => entry.name).sort();
       if (JSON.stringify([...entries.keys()].sort()) !== JSON.stringify(declared))
-        throw new Error('The Flux tool manifest must match every actual registration');
+        throw new Error('The Flux tool list must match every actual registration');
     },
   };
 }

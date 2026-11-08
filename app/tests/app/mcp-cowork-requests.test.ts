@@ -10,7 +10,6 @@ import { addMember, expectStatus, grant, person, project, workspace, type Person
 // #153 AC-2/AC-4 over the real OAuth bearer: flux_send_request, flux_coordination_inbox, flux_resolve_request with a
 // review verdict pinned to the exact target version, and the task's coordination read for people (#400 AC-4/AC-5).
 // Docker regression evidence, not real-client evidence.
-const ACTION_SCOPES = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 type Role = 'execute' | 'review' | 'plan';
 
 async function scene() {
@@ -22,16 +21,11 @@ async function scene() {
   await grant(hubert, p.id, marek, 'contributor');
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
-    const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], ACTION_SCOPES);
-    const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
-        clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
-    const base = (grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id,
-      runtimeSessionId: connected.runtimeSessionId, grantId, clientCommandId, peerRequestClass: role });
+    const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id]);
+    const base = (role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id,
+      runtimeSessionId: connected.runtimeSessionId, clientCommandId, peerRequestClass: role });
     const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
-      const g = await standing('cowork.claim', unitId, role);
-      return toolValue(await connected.tool('flux_claim_unit', { ...base(g.id, role), unitId, expectedVersion })) as
+      return toolValue(await connected.tool('flux_claim_unit', { ...base(role), unitId, expectedVersion })) as
         { generation: number; version: number; lease: { id: string } };
     };
     /** A unit for another person's client waits for the sender's owner (C-18): this approves it as that owner and returns the unit's id. */
@@ -45,7 +39,7 @@ async function scene() {
       assert.ok(waits(message), 'a request to another person\'s client waits');
       return approveWaiting(pool, who.browser, connected.connectionId, 'cowork.request');
     };
-    return { ...connected, standing, base, claimUnit, give, sendApproved };
+    return { ...connected, base, claimUnit, give, sendApproved };
   };
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
@@ -60,20 +54,16 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
   const codex = await f.connect(f.hubert, 'Hubert Codex'), marekClaude = await f.connect(f.marek, 'Marek Claude');
   const a = await f.task('Native outcome A');
   // Codex takes task A and opens a review unit for Marek's connection (another owner).
-  const take = await codex.standing('cowork.unit.create', a.id, 'execute');
-  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base(take.id, 'execute'), taskId: a.id, unitKey: 'take',
+  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base('execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
   const rootUnit = String(root.unitId);
   const rootClaim = await codex.claimUnit(rootUnit, 'execute');
-  const openReview = await codex.standing('cowork.unit.create', a.id, 'review');
-  const reviewUnit = await codex.give(marekClaude, { ...codex.base(openReview.id, 'review'), taskId: a.id, unitKey: 'review', expectedTaskVersion: a.version,
+  const reviewUnit = await codex.give(marekClaude, { ...codex.base('review'), taskId: a.id, unitKey: 'review', expectedTaskVersion: a.version,
     parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } });
   const reviewClaim = await marekClaude.claimUnit(reviewUnit, 'review');
 
-  // One standing request grant covers every later request of this unit: no per-request owner prompt.
-  const ask = await codex.standing('cowork.request', rootUnit, 'execute');
   const send = (intentKey: string, target: Record<string, unknown>, clientCommandId: string = randomUUID(), kind = 'review') =>
-    codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute', clientCommandId), unitId: rootUnit, generation: rootClaim.generation,
+    codex.tool('flux_send_request', { ...codex.base('execute', clientCommandId), unitId: rootUnit, generation: rootClaim.generation,
       leaseId: rootClaim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version,
       recipientConnectionId: marekClaude.connectionId, intentKey, parentRequestId: null, kind, target,
       sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
@@ -100,19 +90,16 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
     'the sender\'s inbox holds only what is addressed to it');
 
   // An execution-class grant cannot pick up a review request.
-  const wideExecute = await marekClaude.standing('cowork.request.claim', null, 'execute');
   const fence = { unitId: reviewUnit, generation: reviewClaim.generation, leaseId: reviewClaim.lease.id, requestId: String(sent.requestId) };
-  assert.equal(toolFailure(await marekClaude.tool('flux_claim_request', { ...marekClaude.base(wideExecute.id, 'execute'), ...fence,
+  assert.equal(toolFailure(await marekClaude.tool('flux_claim_request', { ...marekClaude.base('execute'), ...fence,
     expectedRequestVersion: 1 })).code, 'COWORK_UNIT_NOT_FOUND');
-  const claimGrant = await marekClaude.standing('cowork.request.claim', reviewUnit, 'review');
-  const claimed = toolValue(await marekClaude.tool('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence, expectedRequestVersion: 1 }));
+  const claimed = toolValue(await marekClaude.tool('flux_claim_request', { ...marekClaude.base('review'), ...fence, expectedRequestVersion: 1 }));
   assert.equal(claimed.state, 'claimed');
 
   // Resolution needs evidence that exists now and, for a review, a verdict; refusals leave no verdict or debit.
-  const respond = await marekClaude.standing('cowork.request.respond', reviewUnit, 'review');
   const evidence = { type: 'material', id: f.material.materialId, version: 1 };
   const resolve = (change: Record<string, unknown>, clientCommandId: string = randomUUID()) => marekClaude.tool('flux_resolve_request',
-    { ...marekClaude.base(respond.id, 'review', clientCommandId), ...fence, expectedRequestVersion: Number(claimed.version), evidence, ...change });
+    { ...marekClaude.base('review', clientCommandId), ...fence, expectedRequestVersion: Number(claimed.version), evidence, ...change });
   assert.equal(toolFailure(await resolve({})).code, 'COWORK_VERDICT_REQUIRED');
   assert.equal(toolFailure(await resolve({ verdict: 'passed', evidence: { type: 'result', id: randomUUID() } })).code, 'COWORK_RESPONSE_UNAVAILABLE');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [a.id])).rows[0].n, 0);
@@ -140,7 +127,7 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
   assert.deepEqual(coordination.verdicts.map((v) => ({ verdict: v.verdict, current: v.current, target: v.target })),
     [{ verdict: 'passed', current: false, target: { type: 'work', id: a.id, version: a.version } }]);
 
-  // The author asks again for the new version under the same standing grant: no other owner prompt or grant.
+  // The author asks again for the new version; the sender's owner approves it again, as for any request to another person's client.
   const again = await codex.sendApproved(await send('review-2', { type: 'work', id: a.id, version: changed.version }));
   assert.equal(again.status, 'created');
   coordination = await read();
@@ -152,36 +139,31 @@ test('a non-review request is resolved with evidence only; a verdict on it is re
   const f = await scene();
   const codex = await f.connect(f.hubert, 'Hubert Codex'), claude = await f.connect(f.hubert, 'Hubert Claude');
   const a = await f.task('Native outcome B');
-  const take = await codex.standing('cowork.unit.create', a.id, 'execute');
-  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base(take.id, 'execute'), taskId: a.id, unitKey: 'take',
+  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base('execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
   const rootUnit = String(root.unitId);
   const rootClaim = await codex.claimUnit(rootUnit, 'execute');
-  const child = await codex.standing('cowork.unit.create', a.id, 'execute');
-  const helper = toolValue(await codex.tool('flux_create_unit', { ...codex.base(child.id, 'execute'), taskId: a.id, unitKey: 'help',
+  const helper = toolValue(await codex.tool('flux_create_unit', { ...codex.base('execute'), taskId: a.id, unitKey: 'help',
     expectedTaskVersion: a.version, assignmentConnectionId: claude.connectionId,
     parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } }));
   const helperUnit = String(helper.unitId);
   // The helper unit is pending; claim it so the request can be answered.
-  const ask = await codex.standing('cowork.request', rootUnit, 'execute');
   const helperClaim = await claude.claimUnit(helperUnit, 'execute');
-  const sent = toolValue(await codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute'), unitId: rootUnit, generation: rootClaim.generation,
+  const sent = toolValue(await codex.tool('flux_send_request', { ...codex.base('execute'), unitId: rootUnit, generation: rootClaim.generation,
     leaseId: rootClaim.lease.id, recipientUnitId: helperUnit, expectedRecipientUnitVersion: await f.unitVersion(helperUnit),
     recipientConnectionId: claude.connectionId, intentKey: 'help-1', parentRequestId: null, kind: 'handoff',
     target: { type: 'work', id: a.id, version: a.version }, sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }],
     criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false }));
   // Sending to yourself is refused.
-  assert.equal(toolFailure(await codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute'), unitId: rootUnit, generation: rootClaim.generation,
+  assert.equal(toolFailure(await codex.tool('flux_send_request', { ...codex.base('execute'), unitId: rootUnit, generation: rootClaim.generation,
     leaseId: rootClaim.lease.id, recipientUnitId: rootUnit, expectedRecipientUnitVersion: await f.unitVersion(rootUnit),
     recipientConnectionId: codex.connectionId, intentKey: 'self', parentRequestId: null, kind: 'help',
     target: { type: 'work', id: a.id, version: a.version }, sourceRefs: [{ type: 'work', id: a.id, version: a.version }],
     criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false })).code, 'COWORK_SELF_REQUEST');
   const fence = { unitId: helperUnit, generation: helperClaim.generation, leaseId: helperClaim.lease.id, requestId: String(sent.requestId) };
-  const claimGrant = await claude.standing('cowork.request.claim', helperUnit, 'execute');
-  const claimed = toolValue(await claude.tool('flux_claim_request', { ...claude.base(claimGrant.id, 'execute'), ...fence, expectedRequestVersion: 1 }));
-  const respond = await claude.standing('cowork.request.respond', helperUnit, 'execute');
+  const claimed = toolValue(await claude.tool('flux_claim_request', { ...claude.base('execute'), ...fence, expectedRequestVersion: 1 }));
   const evidence = { type: 'material', id: f.material.materialId, version: 1 };
-  const input = { ...claude.base(respond.id, 'execute'), ...fence, expectedRequestVersion: Number(claimed.version), evidence };
+  const input = { ...claude.base('execute'), ...fence, expectedRequestVersion: Number(claimed.version), evidence };
   assert.equal(toolFailure(await claude.tool('flux_resolve_request', { ...input, verdict: 'passed' })).code, 'COWORK_VERDICT_NOT_REVIEW');
   const resolved = toolValue(await claude.tool('flux_resolve_request', { ...input, clientCommandId: randomUUID() }));
   assert.equal(resolved.state, 'resolved');
@@ -194,17 +176,14 @@ test('the recipient defers a queued request with a reason and boundary without c
   const f = await scene();
   const codex = await f.connect(f.hubert, 'Hubert Codex'), marekClaude = await f.connect(f.marek, 'Marek Claude');
   const a = await f.task('Native outcome A');
-  const take = await codex.standing('cowork.unit.create', a.id, 'execute');
-  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base(take.id, 'execute'), taskId: a.id, unitKey: 'take',
+  const root = toolValue(await codex.tool('flux_create_unit', { ...codex.base('execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
   const rootUnit = String(root.unitId);
   const rootClaim = await codex.claimUnit(rootUnit, 'execute');
-  const openHelp = await codex.standing('cowork.unit.create', a.id, 'plan');
-  const helpUnit = await codex.give(marekClaude, { ...codex.base(openHelp.id, 'plan'), taskId: a.id, unitKey: 'help', expectedTaskVersion: a.version,
+  const helpUnit = await codex.give(marekClaude, { ...codex.base('plan'), taskId: a.id, unitKey: 'help', expectedTaskVersion: a.version,
     parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } });
-  const ask = await codex.standing('cowork.request', rootUnit, 'execute');
   const target = { type: 'work', id: a.id, version: a.version };
-  const send = async (intentKey: string, kind: string) => { const reply = await codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute'),
+  const send = async (intentKey: string, kind: string) => { const reply = await codex.tool('flux_send_request', { ...codex.base('execute'),
     unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id, recipientUnitId: helpUnit,
     expectedRecipientUnitVersion: await f.unitVersion(helpUnit), recipientConnectionId: marekClaude.connectionId, intentKey, parentRequestId: null,
     kind, target, sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: false });
@@ -218,9 +197,8 @@ test('the recipient defers a queued request with a reason and boundary without c
   assert.deepEqual([(await card()).state, (await card()).status, (await card()).nextBoundary], ['queued', 'queued', null]);
 
   // Deferral: no claim on the recipient's unit is needed, a busy peer is not interrupted, and the sender sees why.
-  const respond = await marekClaude.standing('cowork.request.respond', helpUnit, 'plan');
   const defer = (change: Record<string, unknown> = {}, clientCommandId: string = randomUUID()) => marekClaude.tool('flux_defer_request',
-    { ...marekClaude.base(respond.id, 'plan', clientCommandId), unitId: helpUnit, requestId, expectedRequestVersion: 1, reason: 'busy',
+    { ...marekClaude.base('plan', clientCommandId), unitId: helpUnit, requestId, expectedRequestVersion: 1, reason: 'busy',
       nextBoundary: 'after_step', ...change });
   assert.equal(toolFailure(await defer({ reason: 'dependency', nextBoundary: 'after_step' })).code, 'INVALID_INPUT', 'a dependency names its record');
   assert.ok(schemaRefused(await defer({ reason: 'because' })), 'free-text reasons are refused by the schema');
@@ -238,8 +216,7 @@ test('the recipient defers a queued request with a reason and boundary without c
     dependencyRef: { type: 'material', id: f.material.materialId, version: 1 } }));
   assert.equal(redeferred.version, 3);
   // Another connection cannot defer it.
-  const codexRespond = await codex.standing('cowork.request.respond', null, 'plan');
-  assert.equal(toolFailure(await codex.tool('flux_defer_request', { ...codex.base(codexRespond.id, 'plan'), unitId: helpUnit, requestId,
+  assert.equal(toolFailure(await codex.tool('flux_defer_request', { ...codex.base('plan'), unitId: helpUnit, requestId,
     expectedRequestVersion: 3, reason: 'busy', nextBoundary: 'after_step' })).code, 'COWORK_UNIT_NOT_FOUND');
 
   // A recipient without a live session is offline, whatever the request says; its return makes it deferred again.
@@ -250,8 +227,7 @@ test('the recipient defers a queued request with a reason and boundary without c
 
   // Taking it up shows it as working; a claimed request is answered, not deferred.
   const unitClaim = await marekClaude.claimUnit(helpUnit, 'plan', await f.unitVersion(helpUnit));
-  const claimGrant = await marekClaude.standing('cowork.request.claim', helpUnit, 'plan');
-  const claimed = toolValue(await marekClaude.tool('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'plan'), unitId: helpUnit,
+  const claimed = toolValue(await marekClaude.tool('flux_claim_request', { ...marekClaude.base('plan'), unitId: helpUnit,
     generation: unitClaim.generation, leaseId: unitClaim.lease.id, requestId, expectedRequestVersion: 3 }));
   assert.equal(claimed.state, 'claimed');
   assert.deepEqual([(await card()).state, (await card()).status], ['claimed', 'working']);

@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
-  type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
+  type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
+import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -30,10 +30,10 @@ export interface AssistantCall {
   /** The server-selected run-private view the arguments were validated against (R2); a waiting change decodes with exactly this one. */
   view?: string;
   /**
-   * The sign-in of the local client that made a waiting co-work call (clientId, grant reference and token scopes, which name no secret): Approve
+   * The sign-in of the local client that made a waiting co-work call (clientId and grant reference, which name no secret): Approve
    * repeats the call as that client, under its runtime session and claim, which must still be live. Never set for a run.
    */
-  bearer?: { clientId: string | null; grantReferenceId: string | null; scopes: string[] };
+  bearer?: { clientId: string | null; grantReferenceId: string | null };
 }
 /** What the run's tool returns instead of an object when its change waits or is deferred: plain words. */
 export interface AssistantText { assistantText: string }
@@ -83,7 +83,7 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'work.create': 'work', 'work.update': 'work', 'result.record': 'result', 'decision.propose': 'decision', 'doc.create': 'doc',
   'doc.update': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
-  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.request': 'work', 'cowork.unit.transfer': 'work',
+  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.request': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
 };
 
 interface Target {
@@ -170,7 +170,7 @@ async function withinRunPlace(tx: Transaction, operation: AgentOperation, object
 
 /** Who made the target and how the change reads, read inside the change's transaction. */
 async function describe(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>,
-  owner: string, client: boolean): Promise<Target> {
+  owner: string, client: boolean, agentId: string | null = null, projectId: string | null = null): Promise<Target> {
   const rows = assistantChangeRows(tx as DbExecutor);
   // "Yours" is what you or any of your agents made (F-036 Terms), not only this agent.
   const agents = await rows.agentIdsOf(owner);
@@ -269,17 +269,26 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'conversation.create': case 'conversation.reply':
       return { ...base, objectId: null, title: text((payload as { body?: unknown }).body).slice(0, 80) };
+    case 'work.creation.revert': {
+      // Taking back its own unused task is a deletion (AG-3: deleting always waits). Nothing else about the task is read here.
+      const work = objectId ? await rows.work(objectId) : null;
+      // Only the agent that created it takes it back: another creator's task is refused now, not left waiting for an OK that could not apply.
+      if (work && agentId && (work.createdByKind !== 'agent' || work.createdById !== agentId))
+        throw new DomainError(403, 'TASK_CREATION_UNDO_FORBIDDEN', 'Only the agent that created this task can take it back');
+      return { ...base, title: work ? `#${work.number} ${work.title}`.slice(0, 200) : '', removal: true, mine: true,
+        beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : work?.version ?? null };
+    }
     case 'cowork.unit.transfer': {
-      const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, null) : null;
-      if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
+      const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
+      if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt || !to.usable) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
       const forOther = to.ownerUserId !== owner;
       return { ...base, objectId, title: `unit to ${to.label}`.slice(0, 200), forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label };
     }
     case 'cowork.request': {
       // A local client asks another person's client for something (C-18, #859): another person's thing, so it waits for the owner's OK.
       const asked = (payload.request ?? {}) as { recipientConnectionId?: unknown; kind?: unknown };
-      const recipient = typeof asked.recipientConnectionId === 'string' ? await rows.connection(asked.recipientConnectionId, null) : null;
-      if (!client || !recipient || recipient.computeSource === 'owner_assistant' || recipient.revokedAt)
+      const recipient = typeof asked.recipientConnectionId === 'string' ? await rows.connection(asked.recipientConnectionId, projectId) : null;
+      if (!client || !recipient || recipient.computeSource === 'owner_assistant' || recipient.revokedAt || !recipient.usable)
         throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
       const forOther = recipient.ownerUserId !== owner;
       return { ...base, objectId, title: `${typeof asked.kind === 'string' ? asked.kind : 'help'} request to ${recipient.label}`.slice(0, 200), forOther,
@@ -289,8 +298,8 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       if (client) {
         // A local client's child unit for another client (C-18, #859): for another person's client it is another person's thing and waits.
         const task = objectId ? await rows.work(objectId) : null;
-        const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, null) : null;
-        if (!to || to.computeSource === 'owner_assistant' || to.revokedAt) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
+        const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
+        if (!to || to.computeSource === 'owner_assistant' || to.revokedAt || !to.usable) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
         const forOther = to.ownerUserId !== owner;
         return { ...base, title: task ? `#${task.number} ${task.title}`.slice(0, 200) : '', forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label,
           beforeVersion: typeof payload.expectedTaskVersion === 'number' ? payload.expectedTaskVersion : task?.version ?? null };
@@ -298,8 +307,8 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       // A hand-off is to the owner's own other agent only. A foreign or unavailable recipient is refused before anything waits, so no
       // owner Apply can ever be asked to authorize it. The adapter checks it again under its locks when the unit is opened.
       const work = objectId ? await rows.work(objectId) : null;
-      const recipient = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, work?.projectId ?? null) : null;
-      if (!recipient || recipient.ownerUserId !== owner || recipient.computeSource === 'owner_assistant' || recipient.revokedAt || !recipient.selected)
+      const recipient = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
+      if (!recipient || recipient.ownerUserId !== owner || recipient.computeSource === 'owner_assistant' || recipient.revokedAt || !recipient.usable)
         throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not one of yours in this project');
       if (!work) return { ...base, mine: false, words: assistantChangeWords(operation), recipient: recipient.label };
       const maker = work.ownerUserId || work.ownerAgentId ? { userId: work.ownerUserId, agentId: work.ownerAgentId }
@@ -350,7 +359,7 @@ const producedId = (value: Record<string, unknown>) => {
 type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockRun']>>>;
 type ClientRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockClient']>>>;
 interface Authority {
-  runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string; policyVersion: number;
+  runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string;
   /** The assistant's run; null for a local client's change. */
   run: RunRow | null;
   /** The agent's "What it may do", read with its connection row held. */
@@ -374,9 +383,8 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     agentId = context.principal.id; workspaceId = context.workspaceId;
   } else if (run) {
     const grant = await createAgentConnectionStore(tx).grantForRun(claims.ownerUserId, claims.connectionId);
-    if (!grant || grant.connection.id !== claims.connectionId || grant.connection.computeSource !== 'owner_assistant'
-      || !grant.connection.scopes.includes('flux.action.execute') || !grant.connection.selectedProjectIds.includes(projectId))
-      throw invalidated('Your assistant can no longer reach this project');
+    if (!grant || grant.connection.id !== claims.connectionId || grant.connection.computeSource !== 'owner_assistant')
+      throw invalidated('Your assistant is no longer available');
     agentId = grant.connection.agentId; workspaceId = grant.connection.workspaceId;
     const actor = await loadActor({ kind: 'agent', id: agentId }, workspaceId, tx, { lock: true });
     if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('Your assistant is no longer available');
@@ -384,10 +392,9 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('You can no longer change this');
   } else {
     // A local client's saved change, approved by its owner in their own session: no token is involved, so the connection itself
-    // must still be live, still the owner's, and still reach the project.
+    // must still be live and still the owner's; the project is the owner's own rights, read again below.
     const connection = await createAgentConnectionStore(tx).resolve(claims.ownerUserId, claims.connectionId);
-    if (!connection || connection.computeSource === 'owner_assistant' || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(projectId))
-      throw invalidated('This client can no longer reach this project');
+    if (!connection || connection.computeSource === 'owner_assistant') throw invalidated('This client is no longer available');
     agentId = connection.agentId; workspaceId = connection.workspaceId;
     const actor = await loadActor({ kind: 'agent', id: agentId }, workspaceId, tx, { lock: true });
     if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('This client is no longer available');
@@ -396,19 +403,14 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     const checked = await evaluateProject({ kind: 'agent', id: agentId }, 'project.write', projectId, accessReader(tx), { lock: true });
     if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('You can no longer change this');
   }
-  const policy = await lockAgentMcpPolicy(tx, claims.connectionId);
-  const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === tool);
-  if (!policy || !entry || !policy.selectedProjectIds.includes(projectId) || !policy.enabledEntryIds.includes(entry.id)
-    || !entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id))) throw invalidated('This kind of change is unavailable now');
   const now = new Date();
-  const scopes = ['flux.context.read', 'flux.action.execute'] as AgentScope[];
   if (client) {
     // A local client: its connection row, held `FOR SHARE`, is the one place "What it may do" is read.
     if (client.ownerUserId !== claims.ownerUserId || client.revokedAt || client.agentId !== agentId || client.workspaceId !== workspaceId) throw invalidated('This client is no longer available');
     const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: claims.connectionId, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
-      agentId, clientId: claims.clientId ?? 'flux-client', grantReferenceId: claims.grantReferenceId ?? `flux-client:${claims.connectionId}`, bindingGeneration: 0, scopes,
+      agentId, clientId: claims.clientId ?? 'flux-client', grantReferenceId: claims.grantReferenceId ?? `flux-client:${claims.connectionId}`, bindingGeneration: 0,
       createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
-    return { runtime, workspaceId, agentId, policyVersion: policy.version, run: null, mayDo: client.mayDo, ownerCanWrite, engine: 'client', payer: 'Your own client' };
+    return { runtime, workspaceId, agentId, run: null, mayDo: client.mayDo, ownerCanWrite, engine: 'client', payer: 'Your own client' };
   }
   if (!run || run.ownerUserId !== claims.ownerUserId || run.projectId !== projectId || run.agentId !== agentId) throw invalidated('This request is unavailable');
   if (approval) {
@@ -422,9 +424,9 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then approve again');
   if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
-    agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes,
+    agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0,
     createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
-  return { runtime, workspaceId, agentId, policyVersion: policy.version, run, mayDo: settings.mayDo, ownerCanWrite, engine: run.engine, payer: enablement.payer };
+  return { runtime, workspaceId, agentId, run, mayDo: settings.mayDo, ownerCanWrite, engine: run.engine, payer: enablement.payer };
 }
 
 /**
@@ -462,10 +464,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           throw new DomainError(409, 'ASSISTANT_CHANGE_UNAVAILABLE', 'This change is no longer waiting');
         // A bearer's call is checked first, replay included: a revoked connection, a switched-off tool, another host binding or a space
         // with AI off refuse the retry of a change as they refuse the change (nothing more reaches a token whose grant is gone).
-        const context = approval ? null : await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
+        const context = approval ? null : await agentConnectionInTransaction(tx, claims, 'write', null);
         if (context) {
           enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', input.projectId, accessReader(tx), { lock: true })).allowed);
-          if (!context.connection.selectedProjectIds.includes(input.projectId)) throw runId ? outsideRunPlace() : new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
           await context.requireProject(input.projectId, 'project.read');
         }
         if (!approval) {
@@ -495,7 +496,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         for (const source of input.sources ?? []) if (await sourceRows.sourceVersion(authority.workspaceId, input.projectId, source.materialId) !== source.version)
           throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
-        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId, !runId);
+        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId, !runId, authority.agentId, input.projectId);
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
@@ -510,7 +511,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null,
-              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, createdAt: new Date() });
+              beforeVersion: target.beforeVersion, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `${refusal}: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
@@ -521,8 +522,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
-              preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId, scopes: [...claims.scopes] } } : call,
-              policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
+              preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId } } : call,
+              beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
@@ -561,7 +562,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         } else {
           await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ...conversationId, ownerUserId: claims.ownerUserId,
             agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-            objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call), policyVersion: authority.policyVersion,
+            objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call),
             beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt: new Date() });
         }
         await session.flushEvents();
@@ -580,7 +581,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           if (await rows.byCommand(runId, input.clientCommandId)) return;
           await rows.insert({ id: randomUUID(), workspaceId: held.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
             agentId: held.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-            objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null, policyVersion: held.policyVersion, beforeVersion: target.beforeVersion,
+            objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null, beforeVersion: target.beforeVersion,
             createdAt: new Date() });
         });
         throw new DomainError(409, SKIPPED, refusal);

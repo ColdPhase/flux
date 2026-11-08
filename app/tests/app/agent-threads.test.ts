@@ -87,10 +87,10 @@ test('agent-thread posts are absent from people roots/lists, including generic h
 });
 
 test('all new-space agent replies fail closed while an actual OAuth v1 people reply remains valid', async () => {
-  const f = await actionScene(pool); const replyGrant = await f.grant('conversation.reply', 'execute');
+  const f = await actionScene(pool);
   const task = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Thread guard trial' } }), 201) as unknown as WorkItem;
   const posted = expect(await f.owner.request('POST', `/api/v1/work/${task.id}/agent-thread`, { body: { body: 'The human starts the thread.', clientMessageId: randomUUID() } }), 201) as unknown as ConversationMessage;
-  const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: replyGrant.id,
+  const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
     clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [] };
   const blocked = toolFailure(await f.tool('flux_reply_in_conversation', { ...envelope, conversationId: posted.conversationId, message: { body: 'An unguarded agent turn' } }));
   assert.equal(blocked.code, 'AGENT_EXECUTION_UNAVAILABLE');
@@ -104,9 +104,8 @@ test('all new-space agent replies fail closed while an actual OAuth v1 people re
 });
 
 test('a new thread post versus unused AI-task Undo has one winner under the shared real fence', async () => {
-  const f = await actionScene(pool); const createGrant = await f.grant('work.create', 'execute');
-  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId: createGrant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Unused thread race' } }));
+  const f = await actionScene(pool);
+  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Unused thread race' } }));
   const item = await f.read(String(created.workId)) as unknown as WorkItem;
   const [post, undo] = await Promise.all([
     f.owner.request('POST', `/api/v1/work/${item.id}/agent-thread`, { body: { body: 'The first actual use.', clientMessageId: randomUUID() } }),
@@ -217,9 +216,8 @@ async function bounded<T>(promise: Promise<T>): Promise<T> {
   finally { clearTimeout(timer); }
 }
 async function unusedAgentTask() {
-  const f = await actionScene(pool); const grant = await f.grant('work.create', 'execute');
-  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId: grant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Deterministic thread/Undo trial' } }));
+  const f = await actionScene(pool);
+  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Deterministic thread/Undo trial' } }));
   const item = await f.read(String(created.workId)) as unknown as WorkItem;
   const ownerId = (await pool.query('SELECT owner_user_id FROM agents WHERE id=$1', [f.agentId])).rows[0].owner_user_id as string;
   return { ...f, item, ownerId, path: `/api/v1/work/${item.id}/agent-thread` };
