@@ -8,7 +8,6 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from message_gestures import open_message_menu
 from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
 from test_work_pagination import api
 
@@ -201,7 +200,8 @@ class OverviewWorkJourney(unittest.TestCase):
         expect(page.locator(f"#thread .thread__root[data-message-id='{self.m0}']")).to_have_count(1)
         message = page.locator(f"#message-{self.m0}"); expect(message).to_have_count(1)
         message.scroll_into_view_if_needed()
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Details").click()
+        message.hover()
+        message.get_by_role("button", name=re.compile("view linked objects")).click()  # a message with more than it shows opens the rest (#867: no Details in the menu)
         ov = self.ready(page)
         expect(ov.get_by_role("heading", name="Message from you", exact=True)).to_be_visible()
         expect(ov.locator(".ov-quote")).to_have_text("Compare the earliest measurements before ordering another sensor.")

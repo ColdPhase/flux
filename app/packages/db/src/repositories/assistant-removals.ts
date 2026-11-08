@@ -8,11 +8,11 @@ import type { DbExecutor } from './push.js';
  * has a delete for any of them: this is reachable only through the Undo of a change-log row.
  *
  * "Used" means a trace of anyone else: an edit, a decision, a reply or later activity in the thread (a message the assistant itself
- * took back is none), or a citation (an object link, a message reference, a thought started from it). The reason comes back in
+ * took back is none), or a citation (an object link, a thought started from it). The reason comes back in
  * plain words for the run's message. Maps are never copied (only a direct message's map is copied into a project), so copies are not checked.
  * The caller holds the project's task-graph lock first (a map's own row before that, see `lockMap`), and every work path that cites one of
- * these re-checks its targets after taking the same lock; a message reference, written without it, holds the cited message `FOR SHARE`
- * (`lockCitable`). So a citation is either committed before the checks below or finds the object gone.
+ * these re-checks its targets after taking the same lock. So a citation is either committed before the checks below or finds the object gone.
+ * (A message could once be cited by another message, with its own lock; that citation went with the Cite action, #867.)
  * A message keeps its row as a tombstone (its place in the conversation, its sequence and the ids events carry stay); a map, a
  * result and a decision leave with the objects that only they owned (their links and the notices about them).
  */
@@ -54,10 +54,9 @@ const inUse = (error: unknown) => {
 };
 
 export function assistantRemovalRows(db: DbExecutor) {
-  /** Something other than the object's own creation points at it: an object link, a message reference or a thought started from it. */
+  /** Something other than the object's own creation points at it: an object link or a thought started from it. */
   const cited = (id: string, kind: 'message' | 'other') => yes(db, sql`SELECT (
     EXISTS (SELECT 1 FROM project_object_links WHERE to_id = ${id})
-    OR EXISTS (SELECT 1 FROM message_references WHERE target_id = ${id})
     ${kind === 'message' ? sql`OR EXISTS (SELECT 1 FROM sketch_thoughts WHERE source_project_message_id = ${id})` : sql``}
   ) AS found`);
   /** The notices that carried the object's title or text to people: they go with it. */

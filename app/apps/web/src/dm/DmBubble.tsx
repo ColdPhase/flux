@@ -5,6 +5,7 @@ import { OutboxStatus, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime } from '../app/messageParts';
 import { MessageText } from '../app/MessageText';
+import { useAddToMyMap } from '../sketch/myMap';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
 
 /** The part of this message the person selected with the pointer, if any: the starting excerpt of a task copy. */
@@ -23,8 +24,10 @@ function selectedIn(messageId: string, body: string): string | undefined {
  * grouping, time, day line and actions everywhere: reply in thread and create task beside it on a computer, swipe
  * left and long press on a phone, and the thread count under a root that has replies.
  */
-export function DmBubble({ message, pending, mine, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
+export function DmBubble({ dmId, message, pending, mine, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
   onReply, onCreateTask, onOpenThread, onRetry, onRemove }: {
+  /** The conversation, for the message's link. */
+  dmId: string;
   /** The stored message, or (while it is being sent) the person's queued one, which the stored one then replaces in place (#264). */
   message: DmMessage | null; pending?: PendingSend | null; mine: boolean; name: string; continued: boolean; groupLast: boolean;
   /** The day label when this message starts a new day. */
@@ -39,10 +42,12 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
   onOpenThread?: (message: DmMessage, trigger: HTMLElement) => void;
   onRetry?: () => void; onRemove?: () => void;
 }) {
+  const addToMyMap = useAddToMyMap();
   const actions: DmActionOptions | null = !message ? null : {
-    kind: 'dm', messageId: message.id, body: message.body, writable,
+    kind: 'dm', dmId, messageId: message.id, threadRootId: message.threadRootId, body: message.body, writable,
     onCreateWork: () => onCreateTask(message, selectedIn(message.id, message.body)),
     onReply,
+    onAddToMap: () => void addToMyMap(message.body),
   };
   const touch = useTouchActions<HTMLLIElement>(actions);
   const { className: touchClass, ...touchHandlers } = touch.props;

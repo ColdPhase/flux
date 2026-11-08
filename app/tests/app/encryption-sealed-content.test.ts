@@ -31,7 +31,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string; doc: string; material: string; sketch: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string; doc: string; material: string; sketch: string; thought: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -42,9 +42,10 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const c = canaries[side];
   const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: c.project, visibility: 'workspace' }, 201) as unknown as Project;
   const conversation = await post(ada, `/api/v1/projects/${project.id}/conversations`, { body: c.message, clientMessageId: randomUUID() }, 201);
-  // #469: the reply cites the opening message, so the cards of a sealed workspace are covered by the same canary scan.
-  const opening = (conversation.messages as { id: string }[])[0]!.id;
-  await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.reply, clientMessageId: randomUUID(), references: [{ kind: 'message', id: opening }] }, 201);
+  // #469: the reply cites a map thought, so the cards of a sealed workspace are covered by the same canary scan.
+  const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: c.mapTitle, scope: 'project', projectId: project.id }, 201);
+  const one = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: c.thought, x: 0, y: 0 }, 201);
+  await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.reply, clientMessageId: randomUUID(), references: [{ kind: 'thought', id: (one.thought as { id: string }).id }] }, 201);
   await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: c.large, clientMessageId: randomUUID() }, 201);
   const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id, cy.id], title: c.dmTitle }, 201);
   await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: c.dmMessage, clientMessageId: randomUUID() }, 201);
@@ -66,12 +67,10 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   await post(ada, `/api/v1/docs/${doc.id}/sections`, { from: { type: 'decision', id: decision.id } }, 200, { 'if-match': `"${patched.currentVersion ?? patched.version}"` });
   const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: c.materialTitle, body: c.materialBody,
     url: `https://example.test/${c.materialUrl}` }, 201);
-  const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: c.mapTitle, scope: 'project', projectId: project.id }, 201);
-  const one = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: c.thought, x: 0, y: 0 }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: (one.thought as { id: string }).id, toId: (two.thought as { id: string }).id, label: c.linkLabel.slice(0, 60) }, 201);
   ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
-    task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id) };
+    task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id), thought: String((one.thought as { id: string }).id) };
 }
 
 /** Every row of every table of the public schema, as text. */
@@ -155,7 +154,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const read = async () => expectStatus(await ben.browser.request('GET', `/api/v1/conversations/${id.conversation}`), 200) as { messages: { id: string; references?: { kind: string; state: string; title?: string; place?: string; author?: string }[] }[] };
       const reply = (await read()).messages[1]!;
       assert.deepEqual(reply.references?.map(({ kind, state, title, place, author }) => ({ kind, state, title, place, author })),
-        [{ kind: 'message', state: 'available', title: c.message, place: c.project, author: 'Ada' }], `${side}: the card opens the sealed message and project name`);
+        [{ kind: 'thought', state: 'available', title: c.thought, place: c.mapTitle, author: 'Ada' }], `${side}: the card opens the sealed thought and sketch title`);
       const stored = (await pool.query(`SELECT kind, target_id FROM message_references WHERE project_message_id = $1`, [reply.id])).rows;
       assert.equal(stored.length, 1, side);
       assert.deepEqual(Object.keys(stored[0]).sort(), ['kind', 'target_id'], `${side}: a reference row is a kind and an id`);
@@ -177,10 +176,10 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     const places = [`/api/v1/projects/${ids.B.project}/conversations`, `/api/v1/dms/${ids.B.dm}/messages`];
     const check = async (label: string) => {
       for (const path of places) {
-        const absent = await attempt(path, { kind: 'message', id: randomUUID() });
+        const absent = await attempt(path, { kind: 'thought', id: randomUUID() });
         assert.equal(absent.status, 404, `${label}: an absent id`);
         assert.match(absent.body, /REFERENCE_UNAVAILABLE/);
-        for (const reference of [{ kind: 'message', id: opening }, { kind: 'message', id: dmMessage }, { kind: 'thought', id: opening }]) {
+        for (const reference of [{ kind: 'thought', id: ids.A.thought }, { kind: 'thought', id: opening }, { kind: 'thought', id: dmMessage }]) {
           assert.deepEqual(await attempt(path, reference), absent, `${label}: ${path} ${reference.kind} of A answers like an absent id`);
         }
       }
@@ -189,7 +188,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     expectStatus(await lock(ada.browser, A), 200);
     try {
       await check('locked');
-      assert.equal(JSON.stringify(await attempt(places[0]!, { kind: 'message', id: opening })).includes('Garden club'), false, 'the answer never names the locked workspace');
+      assert.equal(JSON.stringify(await attempt(places[0]!, { kind: 'thought', id: ids.A.thought })).includes('Garden club'), false, 'the answer never names the locked workspace');
     } finally {
       expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
     }

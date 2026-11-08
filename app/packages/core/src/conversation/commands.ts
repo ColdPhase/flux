@@ -63,18 +63,18 @@ export function normalizeAttachmentIds(value: unknown): string[] {
 }
 
 /**
- * What a message cites besides a Wiki version (#469): at most MESSAGE_REFERENCE_LIMIT distinct map thoughts or messages.
+ * What a message cites besides a Wiki version (#469): at most MESSAGE_REFERENCE_LIMIT distinct map thoughts.
  * The ids are lowercased so one target is one reference however it was written. Whether the sender may read each is decided
  * where the message is stored, against current access.
  */
 export function normalizeReferences(value: unknown): MessageReference[] {
   if (value === undefined) return [];
   if (!Array.isArray(value) || value.length > MESSAGE_REFERENCE_LIMIT)
-    throw new InvalidInputError(`references must list at most ${MESSAGE_REFERENCE_LIMIT} thoughts or messages`);
+    throw new InvalidInputError(`references must list at most ${MESSAGE_REFERENCE_LIMIT} thoughts`);
   const references = value.map((item, index): MessageReference => {
     if (!item || typeof item !== 'object' || Object.keys(item).some((key) => key !== 'kind' && key !== 'id')) throw new InvalidInputError(`references[${index}] must be a kind and an id`);
     const { kind, id } = item as { kind?: unknown; id?: unknown };
-    if (kind !== 'thought' && kind !== 'message') throw new InvalidInputError(`references[${index}].kind must be thought or message`);
+    if (kind !== 'thought') throw new InvalidInputError(`references[${index}].kind must be thought`);
     return { kind, id: uuid(id, `references[${index}].id`).toLowerCase() };
   });
   if (new Set(references.map((reference) => `${reference.kind}:${reference.id}`)).size !== references.length) throw new InvalidInputError('references must be distinct');

@@ -12,8 +12,7 @@ phone (390 x 844, touch):
   another page (Inbox); Back brings it back.
 * H11-9: a decision proposed and accepted together is one card with a line under it, not two
   identical cards; the owner's face in the task panel shows her initials, not "M(" from "(you)".
-* A phone's long press keeps the five drawn items and puts "Propose a decision", "Record a result",
-  "Add to map" and "Details" under "More…" (#763 FT-4).
+* A phone's long press is one level: Reply in thread, Create task, Add to map and Copy link (#867).
 """
 
 from __future__ import annotations
@@ -40,7 +39,7 @@ TASK = "Design the reminder email"
 DUE = "4 Nov 2026"
 OPEN_RULE = "Drop shift swapping"
 DECIDED = "Launch on 21 November"
-DRAWN = ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"]
+PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link"]
 
 
 class ReturnFixes(unittest.TestCase):
@@ -184,7 +183,7 @@ class ReturnFixes(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone message menu
 
-    def test_04_a_phone_long_press_keeps_five_items_and_puts_map_and_details_under_more(self) -> None:
+    def test_04_a_phone_long_press_is_one_level_and_add_to_map_leads_to_the_map(self) -> None:
         page = self.page(phone=True)
         page.goto(f"/projects/{self.ids['project']}")
         bubble = page.locator(f"#message-{self.ids['message']} .message-bubble > .message-body")
@@ -194,31 +193,13 @@ class ReturnFixes(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(names, [*DRAWN, "More…"], "the five drawn items, then More…")
-        menu.get_by_role("menuitem", name="More…").click()
-        expect(menu).to_be_visible()
-        names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        # #763 FT-4 (#806): a phone also proposes a decision or records a result from the message, under More…; as on a
-        # computer, Add to map leads and the object-making items follow the separator.
-        self.assertEqual(names, ["Add to map", "Propose a decision", "Record a result", "Details"])
-        expect(menu.get_by_role("menuitem", name="Add to map")).to_be_focused()
+        self.assertEqual(names, PHONE_MENU, "one level (#867): the computer's two toolbar actions, then Add to map and Copy link")
+        self.assertEqual(menu.get_by_role("menuitem", name="More…").count(), 0)
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44, "a touch target")
-        shot(page, "h11-phone-menu-more")
-        menu.get_by_role("menuitem", name="Details").click()
-        expect(menu).to_have_count(0)
-        sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet).to_be_visible()
-        # Add to map is there too and leads to the project's map.
-        page.keyboard.press("Escape")
-        expect(sheet).to_have_count(0)
-        bubble.scroll_into_view_if_needed()
-        long_press(bubble)
-        expect(menu).to_be_visible()
-        menu.get_by_role("menuitem", name="More…").click()
+        shot(page, "h11-phone-menu")
         menu.get_by_role("menuitem", name="Add to map").click()
         expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/map/"))
-
 
 if __name__ == "__main__":
     unittest.main()

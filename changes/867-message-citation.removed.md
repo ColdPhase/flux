@@ -1,0 +1,1 @@
+- A message can no longer be cited by another message, because nothing offers Cite any more: a message cites a map thought only, and the API refuses a `message` reference ([#867](https://github.com/ColdPhase/flux/issues/867)).

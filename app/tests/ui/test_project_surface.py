@@ -350,17 +350,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes")).click()
         expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
         page.go_back()
-        # A message's own Details show what was made from it. Nia's message is a reply in the thread beside
-        # the stream (UI116-1), where its actions open from one ⋯ in its corner.
-        message = page.locator(f"#message-{self.ids['m1']}")
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Details").click()
-        expect(panel.get_by_role("heading", name="Message from Nia Okafor")).to_be_visible()
-        made = panel.get_by_role("region", name="Made from this message")
-        expect(made.get_by_role("button", name=re.compile("Camera caught 38% of gestures"))).to_be_visible()
-        expect(made).not_to_contain_text("Order two VL53L5CX boards")
+        # A message has no Details in its menu (#867): the space's own Details are the one look, and they link the Wiki and the maps.
+        open_details(page)
         expect(panel.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
-        panel.get_by_role("button", name="This conversation").click()
-        expect(panel.get_by_role("region", name="Linked in this conversation")).to_be_visible()
         panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
         expect(page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
@@ -483,11 +475,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Nothing sits under a message on the phone: its actions are a swipe left and a long press (F-026 S6).
         message = page.locator(f"#message-{self.ids['m4']}")
         expect(message.locator(".msg-acts")).to_have_count(0)
-        # The long press shows the five drawn items (#763 B3); Details waits under More… (#763).
+        # The long press shows one level (#867): Reply in thread, Create task, Add to map and Copy link; there is no Details.
         menu = open_message_menu(message, phone=True)
         expect(menu.get_by_role("menuitem", name="Details")).to_have_count(0)
-        menu.get_by_role("menuitem", name="More…").click()
-        expect(menu.get_by_role("menuitem", name="Details")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="More…")).to_have_count(0)
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)

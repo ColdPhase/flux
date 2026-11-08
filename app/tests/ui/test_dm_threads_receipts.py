@@ -15,6 +15,7 @@ import json
 import re
 import time
 import unittest
+import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
@@ -145,10 +146,10 @@ class DmThreadsReceipts(unittest.TestCase):
         assert body and pill
         self.assertGreaterEqual(pill["x"], body["x"] + body["width"] - 1, "the actions sit beside the bubble, not over its text")
         shot(page, "dm-threads-desktop-actions-light")
-        # More lists only real, authorized commands.
+        # More lists only real, authorized commands (#867): Add to map (My map) and Copy link; the toolbar has Reply and Create task.
         actions.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Copy text"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link"])
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         # Own bubbles take the actions on their left.
@@ -158,7 +159,62 @@ class DmThreadsReceipts(unittest.TestCase):
         assert own_body and own_pill
         self.assertLessEqual(own_pill["x"] + own_pill["width"], own_body["x"] + 1)
 
+    def test_01a_add_to_map_puts_a_private_message_on_my_map(self) -> None:
+        # A private message has no space whose map could take it, so Add to map puts its words on the person's My map (#867, #948).
+        page = self.page("ada")
+        page.goto(f"/dm/{self.dm_id}")
+        row = self.row(page, self.root)
+        row.scroll_into_view_if_needed()
+        row.locator(".dm-msg__body").hover()
+        row.get_by_role("group", name="Actions on this message").get_by_role("button", name="More actions").click()
+        page.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Add to map").click()
+        expect(page.get_by_role("status").filter(has_text="Added to My map")).to_be_visible()
+        mine = self.get(page, f"/api/v1/workspaces/{self.workspace_id}/sketches?scope=private&limit=100&offset=0")["items"]
+        self.assertEqual(len(mine), 1, "one private map for the person")
+        thoughts = self.get(page, f"/api/v1/sketches/{mine[0]['id']}")["thoughts"]
+        self.assertEqual([t["text"] for t in thoughts], [ROOT_TEXT], "the message's words are a thought on My map")
+        page.get_by_role("status").get_by_role("button", name="Open").click()
+        expect(page).to_have_url(re.compile(r"/map$"))
+        expect(page.get_by_text(ROOT_TEXT).first).to_be_visible()
+
     # ------------------------------------------------------------------ private reply thread
+
+    def test_01b_copy_link_of_a_reply_opens_its_thread_at_the_reply_and_add_to_map_stays_when_the_other_left(self) -> None:
+        # A pair of its own, so the shared group's runs, counts and receipts (the tests below) are untouched.
+        pair = self.post("ada", f"/api/v1/workspaces/{self.workspace_id}/dms", {"participantIds": [self.ids["max"]]}, 201)
+        root = self.post("ada", f"/api/v1/dms/{pair['id']}/messages", {"body": f"A root to reply to {uuid.uuid4().hex[:6]}", "clientMessageId": str(uuid.uuid4())}, 201)
+        # A reply's link names its thread and the reply (review of #1007): opening it shows the thread, with that reply in view.
+        words = f"A reply to be linked {uuid.uuid4().hex[:6]}"
+        reply = self.post("max", f"/api/v1/dms/{pair['id']}/threads/{root['id']}/replies", {"body": words, "clientMessageId": str(uuid.uuid4())}, 201)
+        page = self.page("ada")
+        page.add_init_script("Object.defineProperty(navigator, 'clipboard', { value: { writeText: (text) => { window.__copied = text; return Promise.resolve(); } }, configurable: true })")
+        page.goto(f"/dm/{pair['id']}?thread={root['id']}")
+        row = page.locator(f"#thread-message-{reply['id']}")
+        expect(row).to_be_visible()
+        row.locator(".dm-msg__body").hover()
+        row.get_by_role("group", name="Actions on this message").get_by_role("button", name="More actions").click()
+        page.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Copy link").click()
+        link = page.evaluate("window.__copied")
+        self.assertTrue(link.endswith(f"/dm/{pair['id']}?thread={root['id']}#thread-message-{reply['id']}"), link)
+        opened = self.page("max")
+        opened.goto(link.removeprefix(ORIGIN))
+        expect(opened.locator("[data-dm-thread]")).to_be_visible()
+        expect(opened.locator(f"#thread-message-{reply['id']}")).to_be_focused()
+        expect(opened.locator(f"#thread-message-{reply['id']}")).to_be_in_viewport()
+        expect(opened.locator(f"#thread-message-{reply['id']}").locator(".dm-msg__body")).to_have_text(words)
+        # My map does not depend on the conversation: in a 1:1 whose other person left, Add to map is still offered, and nothing else is.
+        said = self.post("max", f"/api/v1/dms/{pair['id']}/messages", {"body": "I am leaving this chat", "clientMessageId": str(uuid.uuid4())}, 201)
+        self.post("max", f"/api/v1/dms/{pair['id']}/leave", {}, 204)
+        gone = self.page("ada")
+        gone.goto(f"/dm/{pair['id']}")
+        line = gone.locator(f"#message-{said['id']}")
+        expect(line).to_be_visible()
+        line.locator(".dm-msg__body").hover()
+        actions = line.get_by_role("group", name="Actions on this message")
+        self.assertEqual(actions.get_by_role("button", name="Reply in thread").count() + actions.get_by_role("button", name="Create task").count(), 0, "nothing can be sent")
+        actions.get_by_role("button", name="More actions").click()
+        menu = gone.get_by_role("menu", name="Message actions")
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link"])
 
     def test_02_a_private_reply_thread_with_a_visible_count_that_survives_reload(self) -> None:
         kai = self.page("kai")
@@ -366,7 +422,7 @@ class DmThreadsReceipts(unittest.TestCase):
         # Long press opens the menu; Create task opens the preview as a sheet.
         long_press(row.locator(".dm-msg__body"))
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Copy text"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link"])
         menu.get_by_role("menuitem", name="Create task").click()
         dialog = page.get_by_role("dialog", name="Create a task from this message")
         expect(dialog).to_be_visible()

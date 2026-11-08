@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useLocation } from 'react-router';
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
 import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
@@ -88,6 +89,31 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
     setOlder(cursor);
     return found;
   }, [dmId, rootId, older, learn]);
+  // A link to one reply (`?thread=<root>#thread-message-<reply>`, Copy link on a reply) opens this thread at that reply: it is read back to
+  // when it is older than the newest replies, then brought into view and focused.
+  const hash = useLocation().hash;
+  const target = hash.startsWith('#thread-message-') ? hash.slice('#thread-message-'.length) : null;
+  const targetLoaded = !!target && shown.some((message) => message.id === target);
+  useEffect(() => {
+    if (!target || opening || targetLoaded || !older) return;
+    let cancelled = false;
+    void pageBackTo(target, older, async (before) => {
+      const page = await olderDmReplies(dmId, rootId, before);
+      return { messages: page.replies, messagePage: page.messagePage, people: page.people };
+    }).then(({ pages, cursor }) => {
+      if (cancelled) return;
+      for (const page of pages) learn(page.people);
+      setReplies((current) => pages.reduce((all, page) => merge(all, page.messages), current));
+      setOlder(cursor);
+    }).catch((cause: unknown) => { onDenied(cause); });
+    return () => { cancelled = true; };
+    // Seek once per target; later pages come from "Show earlier replies".
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [target, opening]);
+  useLayoutEffect(() => {
+    const anchor = target && targetLoaded ? document.getElementById(`thread-message-${target}`) : null;
+    if (anchor) { anchor.scrollIntoView({ block: 'center' }); anchor.focus({ preventScroll: true }); }
+  }, [target, targetLoaded]);
   const rootElementId = thread ? `thread-message-${thread.root.id}` : null;
   const returned = useReturnPlace({ wanted, loaded: !opening, have: (id) => id === rootElementId || shown.some((message) => `thread-message-${message.id}` === id), hasOlder: !!older, seek: seekPlace });
   useMessageReadingPosition(feed, returned.pending ? null : feedNode, !returned.pending && !opening, '', returned.restore, slot);
@@ -101,10 +127,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   }, [feedNode]);
   useLayoutEffect(() => {
     // A return positions itself, once its reply is loaded.
-    if (returned.pending || returned.restore) return;
+    if (returned.pending || returned.restore || target) return;
     const el = feed.current;
     if (el && (opening || stick.current)) el.scrollTop = el.scrollHeight;
-  }, [opening, shown.length, returned.pending, returned.restore]);
+  }, [opening, shown.length, returned.pending, returned.restore, target]);
   useEffect(() => { if (!opening && focusComposer) field.current?.focus({ preventScroll: true }); }, [opening, focusComposer]);
   useLayoutEffect(() => {
     const el = field.current;
@@ -166,7 +192,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
           <div className="thread__in dm__in" ref={columnRef}>
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">
-                <DmBubble key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
+                <DmBubble dmId={dmId} key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
                   writable={writable} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
@@ -178,13 +204,13 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
                 const mine = line.authorId === meId;
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
-                  return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
+                  return <DmBubble dmId={dmId} key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
                     writable={writable} arrived={false} observed={false} seenBy={[]} nav="thread"
                     onCreateTask={onCreateTask} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
-                return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
-                  day={newDay ? dayLabel : null} writable={writable} arrived={false} observed={!mine} nav="thread"
+                return <DmBubble dmId={dmId} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
+                  day={newDay ? dayLabel : null} writable={writable} arrived={target === message.id} observed={!mine} nav="thread"
                   seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
               })}

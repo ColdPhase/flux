@@ -12,10 +12,10 @@ what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844
   composer focused and the decision beside it, from the panel and from the Inbox.
 * D4/D6: "Add to a Wiki page" closes the form back to the decision, lists the page under "In the Wiki"
   and says where it went with one toast and Open.
-* B2: "Hand off to an agent" with no agent explains that and offers "Connect your own agent", and makes
+* B2: (gone with #867: a message has no "Hand off to an agent")
   no task.
 * B3: a phone's long press lifts the message above the blur and shows the five drawn items under it.
-* B4: a computer's More actions lists only what the toolbar lacks, and says "Record a result".
+* B4: a computer's More actions lists only what the toolbar lacks: Add to map and Copy link (#867).
 * B5: a task made from a message is titled with its first clause, selected.
 * B6: "Propose a decision" has one title and no pager for one page of rules.
 """
@@ -44,7 +44,7 @@ NO_SOURCE = "Water the beds before eight in the morning"
 RULE = "Log moisture every ten minutes"
 RESULT = "Capacitive probes hold steady for three weeks"
 PAGE = "Decisions and why"
-DRAWN = ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"]
+PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link"]
 
 
 class DecisionFlows(unittest.TestCase):
@@ -261,6 +261,7 @@ class DecisionFlows(unittest.TestCase):
     # ---------------------------------------------------------------- B2, B4, B5 (computer)
 
     def test_08_the_computer_menu_lists_what_the_toolbar_lacks(self) -> None:
+        """#867: one level, the same order everywhere: the toolbar has Reply in thread and Create task, the menu Add to map and Copy link."""
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
         message = self.message(page)
@@ -268,27 +269,10 @@ class DecisionFlows(unittest.TestCase):
         message.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Reply in thread")).to_have_count(0)
-        expect(menu.get_by_role("menuitem", name="Record a result", exact=True)).to_be_visible()
-        expect(menu.get_by_role("menuitem", name="Attach a result")).to_have_count(0)
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link"])
+        for gone in ("Record a result", "Propose a decision", "Hand off to an agent", "Cite", "Copy text", "Details"):
+            expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
-
-    def test_09_hand_off_with_no_agent_explains_and_offers_connect(self) -> None:
-        page = self.page()
-        pid = self.ids["project"]
-        tasks_before = len(self.api(page, "GET", f"/api/v1/projects/{pid}/work?limit=100").get("items", []))
-        page.goto(f"/projects/{pid}")
-        message = self.message(page)
-        message.hover()
-        message.get_by_role("button", name="More actions").click()
-        page.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Hand off to an agent").click()
-        dialog = page.get_by_role("dialog", name="Hand off a task")
-        expect(dialog.get_by_role("heading", name="No agents in this project yet")).to_be_visible()
-        expect(dialog.get_by_role("link", name="Connect your own agent")).to_have_attribute("href", "/connect-agent")
-        expect(page.get_by_role("dialog", name=re.compile("Create"))).to_have_count(0)
-        shot(page, "decision-flows-b2-no-agent")
-        dialog.get_by_role("button", name="Cancel").click()
-        expect(dialog).to_have_count(0)
-        self.assertEqual(len(self.api(page, "GET", f"/api/v1/projects/{pid}/work?limit=100").get("items", [])), tasks_before, "no task was made")
 
     def test_10_a_task_from_a_message_is_titled_with_its_first_clause_selected(self) -> None:
         page = self.page()
@@ -326,7 +310,7 @@ class DecisionFlows(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         items = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(items, [*DRAWN, "More…"], "the five drawn items, in order, then More… (Add to map, Details; #763)")
+        self.assertEqual(items, PHONE_MENU, "one level (#867): the toolbar's two actions, then Add to map and Copy link")
         lifted = page.locator(".msg-menu__lift")
         expect(lifted).to_be_visible()
         expect(lifted).to_contain_text("The resistive probes in bed 5")
@@ -343,7 +327,7 @@ class DecisionFlows(unittest.TestCase):
                             [lift_box["x"] + lift_box["width"] / 2, lift_box["y"] + lift_box["height"] / 2])
         self.assertIn("msg-menu__lift", hit)
         shot(page, "decision-flows-b3-longpress")
-        menu.get_by_role("menuitem", name="Copy text").focus()
+        menu.get_by_role("menuitem", name="Copy link").focus()
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(lifted).to_have_count(0)

@@ -1,39 +1,34 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import { messagePreview, type ConversationMessage } from '@flux/contracts';
-import { Icon, Kreska, useMediaQuery, usePop, useToast, type IconName } from '../ui';
-import { useShellActions } from '../app/shellContext';
-import { useShellData } from '../app/data';
-import { useProjectAiBlocked } from '../ai/spaceAi';
-import { useNeedsYou } from '../notifications/needsYou';
-import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
-import { useProjectShell } from '../project/data';
-import { HandOffDialog } from '../agents/HandOff';
-import { firstClause, firstLine } from './format';
+import type { ConversationMessage } from '@flux/contracts';
+import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import './message-actions.css';
 
-// Actions on one message (F-026 S6). On a computer they appear on hover and focus: reply in a thread,
-// create a task, and a menu with the rest. On a phone they are two gestures, a long press (the message menu)
-// and a swipe right (Reply in thread), plus the same menu for keyboards and screen readers (founder direction
-// 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left; Done and Not now are in
-// the menu only for a message that is waiting in the person's Inbox. Decisions and results stay in the menu.
+// Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
+// they are two gestures, a long press (the message menu) and a swipe right (Reply in thread), plus the same menu for keyboards and
+// screen readers (founder direction 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left.
+// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, then (on your own messages) Edit and Delete.
+// The phone's list starts with the two actions the computer shows beside the message.
 
 /**
- * A private direct-message bubble (#536, #537): reply in its thread and create a task from an excerpt. Nothing
- * else is offered (no decision, result, hand-off or Details), because none of those exist for a private message.
+ * A private direct-message bubble (#536, #537): reply in its thread, create a task from an excerpt, add its words to My map and copy
+ * its link. Nothing else is offered, because nothing else exists for a private message.
  */
 export interface DmActionOptions {
   kind: 'dm';
-  /** The message, to find the Inbox item it raised (a question or an @mention), if any. */
+  dmId: string;
   messageId?: string;
-  /** The message text, for Copy text. */
+  /** The root a reply belongs to: a reply's link opens its thread, at the reply. */
+  threadRootId?: string | null;
+  /** The message text, for Add to map. */
   body: string;
   /** False when the conversation takes no new messages (a 1:1 whose other person left). */
   writable: boolean;
   /** Creating a task needs a project the person can change; the preview says so when there is none. */
   onCreateWork: () => void;
   onReply?: () => void;
-  onCite?: undefined;
+  /** Puts the words on My map. */
+  onAddToMap?: () => void;
 }
 
 export interface MessageActionOptions {
@@ -41,116 +36,48 @@ export interface MessageActionOptions {
   projectId: string;
   message: ConversationMessage;
   writable: boolean;
-  /** A task is being made from this message. */
   /** Makes a task from the message and opens it in Details. */
   onCreateWork: () => void;
   /** Opens the thread beside the stream for a reply, or focuses the reply field. */
   onReply?: () => void;
-  /** Quotes the message into the composer. */
-  onCite?: () => void;
   /** Opens the project map with this message ready to become a thought. */
   onAddToMap?: () => void;
 }
 
-const messageOf = (options: MessageActionOptions | DmActionOptions) => options.kind === 'dm' ? options.messageId ?? null : options.message.id;
+/** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
+interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
 
-/** `more`: on a phone, under the menu's "More…" item (#763), so the long press keeps the five drawn items. */
-interface MenuItem { id: string; label: string; icon: IconName | 'kreska'; run: () => void; disabled?: boolean; secondary?: boolean; ai?: boolean; more?: boolean }
+/** A message's own address: a project's message opens in its thread, a private one in its conversation. */
+const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.location.origin}${options.kind === 'dm'
+  ? options.messageId && options.threadRootId ? `/dm/${options.dmId}?thread=${options.threadRootId}#thread-message-${options.messageId}`
+    : `/dm/${options.dmId}${options.messageId ? `#message-${options.messageId}` : ''}`
+  : `/projects/${options.projectId}/messages/${options.message.id}`}`;
 
 /**
- * The menu's items, in the drawn order: reply, task, hand off, cite, copy; then what makes objects. A phone's long press
- * shows the five drawn items first (F-026 `phone-messagemenu.webp`, #763 B3); "Propose a decision", "Record a result",
- * "Add to map" and "Details" wait under "More…" there (#763 FT-4). A computer's
- * menu lists only what its toolbar lacks (#763 B4).
+ * The menu's items, in the one order: Reply in thread and Create task (only where the message has no toolbar beside it, that is on a
+ * phone), then Add to map and Copy link. The same list on every device and for every kind of message.
  */
-function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): { items: MenuItem[]; extra: ReactNode } {
-  const { openDetails, openCreate } = useShellActions();
-  const { me } = useShellData();
+function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
   const toast = useToast();
-  const aiOff = useProjectAiBlocked();
-  const shell = useProjectShell();
-  // "Hand off to an agent" with no agent in the project explains that and offers Connect (#763 B2), never a plain task.
-  const [noAgent, setNoAgent] = useState(false);
-  if (!options) return { items: [], extra: null };
-  const text = options.kind === 'dm' ? options.body : options.message.body;
+  if (!options) return [];
   const copy = () => {
-    const done = () => toast({ message: 'Copied', timeout: 2000 });
-    const failed = () => toast({ message: 'Could not copy this text', tone: 'danger' });
+    const done = () => toast({ message: 'Link copied', timeout: 2000 });
+    const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
-    navigator.clipboard.writeText(text).then(done, failed);
+    navigator.clipboard.writeText(linkOf(options)).then(done, failed);
   };
-  const copyItem: MenuItem[] = text ? [{ id: 'copy', label: 'Copy text', icon: 'copy', run: copy }] : [];
-  if (options.kind === 'dm') {
-    return { extra: null, items: [
-      ...(options.writable && options.onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: options.onReply }] : []),
-      ...(options.writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: options.onCreateWork }] : []),
-      ...copyItem,
-    ] };
-  }
-  const { projectId, message, writable, onCreateWork, onReply, onCite, onAddToMap } = options;
-  const source = { messageId: message.id, text: message.body };
-  const details: MenuItem = { id: 'details', label: 'Details', icon: 'panel', secondary: true,
-    run: () => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } }) };
-  if (!writable) return { items: touch ? [...copyItem, { ...details, more: true }] : [...copyItem, details], extra: null };
-  const project = shell?.project.id === projectId ? shell : null;
-  // The project's people say whether an agent can be handed work here; unread people keep the task path.
-  const agentHere = !project?.people || project.people.some((person) => person.kind === 'agent');
-  const handOff = () => { if (agentHere) onCreateWork(); else setNoAgent(true); };
-  // The same Create window as Create task, on its Decision tab, with the message as the source and a short title
-  // from its first clause, selected (#763 SP-5, WF-3).
-  const decision: MenuItem = { id: 'decision', label: 'Propose a decision', icon: 'rule', secondary: true, run: () => {
-    const preview = firstLine(messagePreview(message.body, message.files?.length));
-    openCreate({ kind: 'decision', projectId, title: firstClause(preview), sources: [{ ref: { type: 'message', id: message.id }, label: preview }] });
-  } };
-  const result: MenuItem = { id: 'result', label: 'Record a result', icon: 'result', secondary: true, run: () => openDetails({ kind: 'attach-result', projectId, source }) };
-  const extra = project && noAgent ? <HandOffDialog open onClose={() => setNoAgent(false)} project={project.project} /> : null;
-  const items: MenuItem[] = [
-    // On a computer the toolbar already has Reply and Create task: its menu lists only what the toolbar lacks (#763 B4).
-    ...(onReply && touch ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    ...(touch ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
-    ...(onAddToMap && !touch ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
-    // There is no hand-off command yet (#347): a hand-off is a task, so it is made and opened in Details,
-    // where its owner is chosen.
-    // Not offered while the project's workspace has AI off (F-029, #614).
-    ...(aiOff(projectId) ? [] : [{ id: 'handoff', label: 'Hand off to an agent', icon: 'kreska' as const, run: handOff, ai: true }]),
-    ...(onCite ? [{ id: 'cite', label: 'Cite', icon: 'cite' as const, run: onCite }] : []),
-    ...copyItem,
-    ...(touch ? [
-      // #763 FT-4: a phone proposes a decision or records a result from the message too, with the same source link.
-      { ...decision, more: true },
-      { ...result, more: true },
-      ...(onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap, more: true }] : []),
-      { ...details, more: true },
-    ] : [decision, result, details] satisfies MenuItem[]),
-  ];
-  return { items, extra };
-}
-
-/**
- * Done and Not now for a message that is waiting in the person's Inbox (a question to them or an @mention),
- * acting on that item exactly as the Inbox does (#343, founder direction 2026-10-16). Other messages get
- * nothing: Inbox stays the one queue and a message has no state of its own. Read when the menu opens.
- */
-function useWaiting(messageId: string | null): MenuItem[] {
-  const { me } = useShellData();
-  const queue = useNeedsYou(me.user.id);
-  const handlers = useNeedsYouActions(queue);
-  const item = messageId ? queue.items?.find((entry) => entry.url.endsWith(`#message-${messageId}`)) : undefined;
-  if (!item) return [];
+  const { writable, onCreateWork, onReply, onAddToMap } = options;
   return [
-    { id: 'inbox-done', label: 'Done', icon: 'check', secondary: true, run: () => handlers.done(item) },
-    { id: 'inbox-later', label: 'Not now', icon: 'clock', secondary: true, run: () => handlers.snooze(item, 'tomorrow') },
+    ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
+    ...(touch && writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
+    // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
+    ...((writable || options.kind === 'dm') && onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
+    { id: 'link', label: 'Copy link', icon: 'link' as const, run: copy },
   ];
 }
 
 /** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
-function MessageMenu({ items: own, anchor, press, onClose, label, messageId, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null; popProps: ReturnType<typeof usePop>['props'] }) {
-  // A phone's "More…" shows the items kept under it in place of the menu's own (#763); the menu stays where it is.
-  const [expanded, setExpanded] = useState(false);
-  const all = [...own, ...useWaiting(messageId)];
-  const hidden = all.filter((item) => item.more);
-  const items = expanded ? hidden : [...all.filter((item) => !item.more),
-    ...(hidden.length ? [{ id: 'more', label: 'More…', icon: 'more' as const, secondary: true, run: () => setExpanded(true) }] : [])];
+function MessageMenu({ items, anchor, press, onClose, label, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; popProps: ReturnType<typeof usePop>['props'] }) {
   const menu = useRef<HTMLDivElement>(null);
   const lift = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
@@ -189,7 +116,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
     const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
     setPlace({ top, left });
   }, [anchor, items.length, press]);
-  useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, [expanded]);
+  useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const buttons = [...menu.current!.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
     const at = buttons.indexOf(document.activeElement as HTMLElement);
@@ -204,9 +131,8 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
   const primary = items.filter((item) => !item.secondary);
   const secondary = items.filter((item) => item.secondary);
   const render = (item: MenuItem) => (
-    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} data-ai-surface={item.ai ? `message-${item.id}` : undefined} disabled={item.disabled}
-      aria-haspopup={item.id === 'more' ? 'menu' : undefined} onClick={() => { if (item.id !== 'more') onClose(false); item.run(); }}>
-      {item.icon === 'kreska' ? <Kreska size={18} /> : <Icon name={item.icon} size={18} />}{item.label}
+    <button key={item.id} type="button" role="menuitem" className="msg-menu__item" data-action={item.id} disabled={item.disabled} onClick={() => { onClose(false); item.run(); }}>
+      <Icon name={item.icon} size={18} />{item.label}
     </button>
   );
   return createPortal(
@@ -227,7 +153,7 @@ function MessageMenu({ items: own, anchor, press, onClose, label, messageId, pop
  * The menu and its scrim leave as they came (#593 AC-1): the opener keeps the last anchor and says whether the menu is `open`; a
  * closed menu stays mounted for --dur-out, inert, while focus is already back on its opener.
  */
-function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; messageId: string | null }) {
+function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string }) {
   const pop = usePop(open);
   return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
 }
@@ -238,7 +164,7 @@ function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[];
  */
 export function MessageActions(options: MessageActionOptions | DmActionOptions) {
   const touch = useMediaQuery('(hover: none)');
-  const { items, extra } = useMenuItems(options, touch);
+  const items = useMenuItems(options, touch);
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
@@ -264,9 +190,8 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
-      {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions" messageId={messageOf(options)}
+      {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions"
         onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}
-      {extra}
     </div>
   );
 }
@@ -298,7 +223,7 @@ interface TouchProps<E extends HTMLElement> {
  */
 export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
-  const { items, extra } = useMenuItems(options, touch);
+  const items = useMenuItems(options, touch);
   const ref = useRef<E>(null);
   // The last menu stays (inert) while it leaves; `menu` is the open one, if any.
   const [last, setLast] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
@@ -373,9 +298,8 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
-      {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions" messageId={messageOf(options)}
+      {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions"
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
-      {extra}
     </>
   );
   return { props, node };

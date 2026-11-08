@@ -1,13 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useComposerDraft, useComposerScope, type DraftCite } from '../composer/draft';
-import { onCite, takeHeldCite } from '../app/citeBus';
+import { takeHeldCite } from '../app/citeBus';
 import type { PaneCore } from './paneCore';
 
 /**
  * The pane's two drafts (#264): the public one (a new root in the stream, a reply in a thread) and the private
  * prompt to the person's assistant, with which of them the field edits now ("asking"). What arrives from elsewhere
- * joins them here: `?ask=1`, and a cited message or thought.
+ * joins them here: `?ask=1`, and a thought cited on the map.
  */
 export function useComposerDrafts({ me, project, conversation, composerId, writable, aiOff }: PaneCore) {
   const [asking, setAsking] = useState(false);
@@ -38,7 +38,7 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
     field.style.height = 'auto';
     field.style.height = `${field.scrollHeight}px`;
   }, [draft, composerId]);
-  // A cited message or map thought joins this pane's composer as a tile (Cite in the message menu, Cite on the map, #469).
+  // A map thought cited on the map joins this pane's composer as a tile (#469).
   const citeRef = useRef((citation: DraftCite) => { void citation; });
   useEffect(() => { citeRef.current = (citation: DraftCite) => {
     if (!writable) return;
@@ -47,7 +47,6 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
     setAsking(false);
     requestAnimationFrame(() => { if (field instanceof HTMLTextAreaElement) field.focus(); });
   }; });
-  useEffect(() => onCite(conversation ? 'thread' : 'stream', (citation) => citeRef.current(citation)), [conversation]);
   // A thought cited on the map waits for this project's own composer to open.
   useEffect(() => {
     if (conversation || !writable) return;

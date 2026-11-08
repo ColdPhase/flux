@@ -606,18 +606,10 @@ class ScenarioJourney:
         thoughts = {text: self.thought_id(sketch, text) for text in (CAMERA, SENSOR, PRIVACY, LOW_LIGHT)}
         s["thoughts"] = thoughts
 
-        # A person proposes the first rule from Jonas's message and accepts it.
+        # A person proposes the first rule and accepts it.
         page = self.page("ada")
-        if self.phone:
-            # A phone's long press shows the five drawn items (#763 B3): a decision starts from "+" Create.
-            page.goto(f"/projects/{lamp}?open=propose-decision")
-        else:
-            page.goto(f"/projects/{lamp}")
-            message = page.locator(f"#message-{s['m1']}")
-            menu = open_message_menu(message, phone=False)
-            self.tap(menu.get_by_role("menuitem", name="Propose a decision"))
-            # #763 SP-5: the message's Propose a decision opens the Create window; the full form (Replaces) is one step on.
-            self.tap(page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…"))
+        # A message has no Propose a decision (#867); the full form (Replaces) opens from its address.
+        page.goto(f"/projects/{lamp}?open=propose-decision")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         panel.get_by_label("Decision").fill(D1)

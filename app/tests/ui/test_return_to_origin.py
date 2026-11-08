@@ -596,11 +596,8 @@ class ReturnToOrigin(unittest.TestCase):
                 page.on("pageerror", lambda error: errors.append(str(error)))
                 page.goto(f"/projects/{project}")
                 self.wait_stream(page)
-                message = page.locator("li.project-convo__message", has_text=secret)
-                message.hover()
-                message.get_by_role("button", name="More actions").click()
-                page.get_by_role("menuitem", name="Propose a decision").click()
-                page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()  # #763 SP-5
+                expect(page.locator("li.project-convo__message", has_text=secret)).to_be_visible()
+                page.goto(f"/projects/{project}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
                 expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
                 page.wait_for_timeout(800)
                 kept = page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:') && key !== 'flux:place:index')")
