@@ -39,12 +39,13 @@ const oneLine = (text: string) => flat(text).trim();
 type Kind = 'task' | 'thought' | 'decision' | 'page';
 /** The New space window is not one of the four panels: it has its own title, Name and Cancel (F-037, S20). */
 type Shown = Kind | 'space';
-const KINDS: { id: Shown; label: string; name: string }[] = [
+const KINDS: { id: Shown; label: string; name: string; manual?: boolean }[] = [
   { id: 'task', label: 'Task', name: 'New task' },
   { id: 'thought', label: 'Thought', name: 'New thought' },
   { id: 'decision', label: 'Decision', name: 'New decision' },
   { id: 'page', label: 'Page', name: 'New page' },
-  { id: 'space', label: 'Space', name: 'New space' },
+  // Space leaves the panels for a window of its own, so the arrow keys only move focus to it; Enter, Space or a click opens it.
+  { id: 'space', label: 'Space', name: 'New space', manual: true },
 ];
 
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
