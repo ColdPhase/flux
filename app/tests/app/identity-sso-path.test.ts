@@ -94,6 +94,41 @@ describe('the provider\'s discovery document is read lazily and retried', () => 
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(await reachable(), false, 'the held probe\'s answer replaced it');
   });
+
+  test('what startup found out is the first answer, so the first sign-in page after a start never waits for a probe (#1023)', async () => {
+    let probes = 0; let clock = 0;
+    // A provider that is down: a probe would take its whole timeout (3 s) to say so.
+    const reachable = cachedReachability(issuer, 5000, () => { probes += 1; return new Promise<boolean>(() => undefined); }, () => clock);
+    reachable.known(false);
+    assert.equal(await Promise.race([reachable(), new Promise<string>((resolve) => setTimeout(() => resolve('waited'), 50))]), false, 'answered at once from startup');
+    assert.equal(probes, 0, 'no probe was needed');
+    clock = 5000;
+    assert.equal(await Promise.race([reachable(), new Promise<string>((resolve) => setTimeout(() => resolve('waited'), 50))]), false, 'and still at once after the interval');
+    assert.equal(probes, 1, 'while a new probe runs behind it');
+  });
+
+  test('a provider that was down at the start and is installed later is reachable at the next answer, not one answer after it (#1023)', async () => {
+    let probes = 0; let clock = 0;
+    const reachable = cachedReachability(issuer, 5000, () => { probes += 1; return new Promise<boolean>(() => undefined); }, () => clock);
+    reachable.known(false);
+    assert.equal(await reachable(), false, 'down at the start');
+    clock = 60_000;
+    reachable.known(true);
+    assert.equal(await reachable(), true, 'installed since: the first answer already says so');
+    assert.equal(probes, 0);
+  });
+
+  test('a probe that was running when startup or the install told the answer does not overwrite it when it ends', async () => {
+    let clock = 0; let end: (value: boolean) => void = () => undefined;
+    const reachable = cachedReachability(issuer, 5000, () => new Promise<boolean>((resolve) => { end = resolve; }), () => clock);
+    reachable.known(false);
+    clock = 6000;
+    assert.equal(await reachable(), false, 'a probe is now running behind this answer');
+    reachable.known(true);
+    end(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await reachable(), true, 'the older probe\'s answer is not the news');
+  });
 });
 
 describe('the confirmation age (F-024 S2, #312)', () => {

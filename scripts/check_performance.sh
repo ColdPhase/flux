@@ -16,6 +16,8 @@
 #   FLUX_PERF_CPUS       the CPU-limited phase's cap for the API and the database each (default 1.0, so the pair stands for a
 #                        2 vCPU host; #850 AC-3, #862). The phase repeats the warm and concurrent runs under it, and the report holds
 #                        them to the targets (p95 at most 50 ms).
+#   FLUX_PERF_ENFORCE=1  exit 1 when a CPU-limited phase misses the p95 target (it is printed as FAIL either way; #1023). Only 1 or true
+#                        turns it on: 0, false or empty leave it off.
 # Runs at most two clients at a time; keep it to one run at a time on a shared host.
 set -eu
 
@@ -225,7 +227,12 @@ if phase profile; then
   $compose cp api:/tmp/flux-prof "$out/profile" >/dev/null 2>&1 || echo "No CPU profile was written" >&2
 fi
 
-if [ -s "$out/measure.jsonl" ]; then python3 scripts/perf_report.py "$out/measure.jsonl" "$out/api.log" --json "$out/report.json" --targets | tee "$out/report.md"; else : > "$out/report.md"; fi
+report_status=0
+case "${FLUX_PERF_ENFORCE:-}" in 1|true) enforce=--fail-on-targets ;; *) enforce= ;; esac
+if [ -s "$out/measure.jsonl" ]; then
+  python3 scripts/perf_report.py "$out/measure.jsonl" "$out/api.log" --json "$out/report.json" --targets $enforce > "$out/report.md" || report_status=$?
+  cat "$out/report.md"
+else : > "$out/report.md"; fi
 for extra in idle.txt bundle.txt restart.txt; do
   if [ -f "$out/$extra" ]; then printf '\n' >> "$out/report.md"; cat "$out/$extra" >> "$out/report.md"; fi
 done
@@ -233,3 +240,4 @@ if [ -f "$out/pool-samples.txt" ]; then
   awk -F'|' 'NF >= 3 { if ($1 + 0 > max) max = $1 + 0 } END { print "Most API connections seen at once: " max + 0 " (pool max 10)" }' "$out/pool-samples.txt" | tee -a "$out/report.md"
 fi
 echo "Results: $out"
+if [ "$report_status" != 0 ]; then echo "A CPU-limited phase missed the p95 target of 50 ms (FLUX_PERF_ENFORCE=1)" >&2; exit "$report_status"; fi

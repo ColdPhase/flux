@@ -102,6 +102,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
       if (await discoveryReachable(oidc)) {
         try {
           await start(true);
+          // The provider that was down at the start is installed now: the sign-in page says so at once, not one answer later (#1023).
+          reachable?.known(true);
           app.log.info({ issuer: oidc.issuer }, 'Single sign-on is available');
           return;
         } catch (error) {
@@ -127,6 +129,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     // The first sign-up owns the company: on a public address, say so while nobody has signed up (#994).
     const unclaimed = unclaimedCompanyWarning(config, !!await accessPorts.workspaces(db).company());
     if (unclaimed) app.log.warn(unclaimed);
+    // What startup found out is the first answer of the sign-in page, which then never waits for a probe of its own (#1023).
+    reachable?.known(providerInstalled);
     await idpStanding?.reconcile();
     standing?.start();
     // Password-only accounts cannot sign in once SSO-only mode is on. Say how many, so the cutover is never silent (#315).

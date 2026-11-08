@@ -31,7 +31,7 @@ export interface SessionResolver {
   /** Reads the current session row on every call; a revoked or expired session yields null. */
   resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null>;
   /** For HTTP handlers, stream upgrades and other entry points; throws a 401 error without a live session. */
-  requirePrincipal(request: { headers: IncomingHttpHeaders }): Promise<SessionContext>;
+  requirePrincipal(request: { headers: IncomingHttpHeaders; acceptCredential?: ((proof: { sessionToken: string }) => void) | null }): Promise<SessionContext>;
 }
 
 /** `confirmation` ends a provider session whose provider confirmation lapsed (F-024 S2, #312). */
@@ -46,7 +46,8 @@ export interface SessionLimits { db: Database; maxAgeMs: number }
 
 export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation,
   ssoOnly: SsoOnlySessions | null = null, limits: SessionLimits | null = null): SessionResolver {
-  async function resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null> {
+  /** The session the request's cookie names, and its token: what the API's request limit needs to know which credential was checked (#1022). */
+  async function resolve(headers: IncomingHttpHeaders): Promise<{ context: SessionContext; token: string } | null> {
     if (!headers.cookie) return null;
     const result = await auth.api.getSession({
       headers: fromNodeHeaders({ cookie: headers.cookie }),
@@ -69,20 +70,26 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     if (standing && !await standing.stands(user.id)) return null;
     if (await confirmation?.endIfLapsed(session.id)) return null;
     return {
-      principal: { id: user.id, kind: 'human' },
-      sessionId: session.id,
-      expiresAt: new Date(session.expiresAt),
-      user: { id: user.id, email: user.email, name: user.name },
+      context: {
+        principal: { id: user.id, kind: 'human' },
+        sessionId: session.id,
+        expiresAt: new Date(session.expiresAt),
+        user: { id: user.id, email: user.email, name: user.name },
+      },
+      token: session.token,
     };
   }
   return {
-    resolveSession,
+    async resolveSession(headers) { return (await resolve(headers))?.context ?? null; },
     async requirePrincipal(request) {
-      const context = await resolveSession(request.headers);
-      if (!context) throw new UnauthenticatedError();
+      const resolved = await resolve(request.headers);
+      if (!resolved) throw new UnauthenticatedError();
       // A refused request (403) is logged with the person it was refused to (#997).
-      rememberPrincipal(request, context.principal.id);
-      return context;
+      rememberPrincipal(request, resolved.context.principal.id);
+      // The cookie resolved to a person: the API's request limit gives the credential a budget of its own from now on, if it is the one this
+      // session's token names (#1022).
+      request.acceptCredential?.({ sessionToken: resolved.token });
+      return resolved.context;
     },
   };
 }

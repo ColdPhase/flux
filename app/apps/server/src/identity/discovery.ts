@@ -31,15 +31,23 @@ export async function waitForDiscovery(oidc: Pick<OidcConfig, 'issuer'>, options
  * A probe result shared for a few seconds, so a busy sign-in page does not hammer the provider. Only the very first answer waits for
  * a probe: after that an expired result is answered at once with the last known one while a new probe runs in the background
  * (#847), so a sign-in page never waits for the provider's discovery document (about half a second on a real install). A page that
- * asks again every few seconds while the provider is down sees it come back one answer later.
+ * asks again every few seconds while the provider is down sees it come back one answer later. `known` seeds the first answer with what
+ * startup already found out (the provider's discovery document was read, or was not, a moment ago), so even the first sign-in page after a
+ * start never waits for a probe (up to 3 s when the provider is down; #1023).
  */
 export function cachedReachability(oidc: Pick<OidcConfig, 'issuer'>, ttlMs = 5000, probe: () => Promise<boolean> = () => discoveryReachable(oidc), now: () => number = Date.now) {
   let cached: { at: number; value: Promise<boolean> } | null = null;
   let last: boolean | null = null;
-  return () => {
+  // A probe that was running when `known` told the answer must not overwrite it when it ends.
+  let told = 0;
+  const reachable = () => {
     if (!cached || now() - cached.at >= ttlMs) {
-      cached = { at: now(), value: probe().then((value) => { last = value; return value; }, () => { last = false; return false; }) };
+      const asked = told;
+      cached = { at: now(), value: probe().then((value) => { if (asked === told) last = value; return value; }, () => { if (asked === told) last = false; return false; }) };
     }
     return last === null ? cached.value : Promise.resolve(last);
   };
+  return Object.assign(reachable, {
+    known(value: boolean) { told += 1; last = value; cached = { at: now(), value: Promise.resolve(value) }; },
+  });
 }

@@ -63,6 +63,8 @@ interface Scene {
   role?: WorkspaceRole;
   aiState?: 'allowed' | 'blocked';
   sealed?: boolean;
+  /** The person is a guest of the company (they get no AI, #986). */
+  guest?: boolean;
   targetRole?: WorkspaceRole;
   ownerCount?: number;
   /** What `dropUnlockPassword` answers. */
@@ -151,6 +153,8 @@ function scene(options: Scene = {}, checked = true) {
       log('agents.insert');
       return { id: row.id, workspaceId: row.workspaceId, name: row.name, ownerUserId: row.ownerUserId, revokedAt: null, createdAt: now };
     },
+    // A guest of the company has no AI (#986): the person's company role is read once, under the workspace lock.
+    isCompanyGuest: async () => { log('agents.isCompanyGuest'); return options.guest ?? false; },
     revoke: async (id: string, revokedAt: Date) => { log('agents.revoke'); return { id, workspaceId: WS, name: 'Helper', ownerUserId: OWNER, revokedAt, createdAt: now }; },
   };
   const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'stopUnits']
@@ -365,10 +369,14 @@ describe('grant and agent use cases over in-memory repositories', () => {
     const s = scene();
     const agent = await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, s.db, s.ports);
     assert.deepEqual(agent.owner, { kind: 'human', id: OWNER });
-    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'agents.insert', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'agents.isCompanyGuest', 'agents.insert', ...EVENT_LAST, 'commit']);
     const off = scene({ aiState: 'blocked' });
     await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, off.db, off.ports);
     assert.ok(off.calls.includes('agents.insert'));
+    // A guest of the company makes no agent, whatever role a workspace gives them (#986).
+    const guest = scene({ guest: true });
+    await assert.rejects(createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, guest.db, guest.ports), (error: unknown) => (error as { code?: string }).code === 'GUEST_NO_AI');
+    assert.ok(!guest.calls.includes('agents.insert'), 'nothing was inserted');
   });
 
 });

@@ -44,7 +44,9 @@ navigation and the CPU of an idle stack are the evidence; times are context.
   are announced), and the client sends presence when it changed or every 2 s.
 - **Requests.** The project shell's reads (the project, its people and its docs) that are in flight together are one
   request (`share: true` in `api/client.ts`); each caller parses its own copy, aborting stops the request only when every
-  caller has aborted, and a write ends the sharing so no one is handed an answer from before it. Reads that do not ask
+  caller has aborted. The sharing ends when a write of this tab is sent and settles, when an event of the live stream arrives (another
+  tab's write, someone else's change) and when the stream asks for a re-read, so a read asked for after a change never joins one
+  that began before it (`stream-ends-shared-reads.test.ts`). Reads that do not ask
   are never shared: views that hold or reorder their own reads (the Inbox, the focus pause, the Tasks refresh) need each
   answer to be its own, and sharing every read broke four of their tests. The shell reads the person and the workspaces
   together, then the projects, conversations and agents together: two round trips, not four in a row. The video-call
@@ -180,6 +182,7 @@ noticed up to a minute later (the check was every 30 s); until then a job sent m
 FLUX_PERF_PHASES="count warm concurrent limited bundle" ./scripts/check_performance.sh
 FLUX_PERF_PHASES=restart FLUX_PERF_RESTARTS=10 ./scripts/check_performance.sh   # idle numbers and restart times, 5 minutes
 FLUX_PERF_CPUS=1.0 ./scripts/check_performance.sh                 # the CPU cap of the limited phase (1.0 stands for 2 vCPU)
+FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh                # exit 1 when a CPU-limited phase misses the p95 target of 50 ms (only 1 or true; 0 leaves it off)
 ./scripts/check_ui.sh test_navigation_requests                    # requests per move
 python3 scripts/perf_report.py perf-results/<time>/measure.jsonl perf-results/<time>/api.log --targets
 ```

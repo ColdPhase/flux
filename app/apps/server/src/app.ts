@@ -81,6 +81,7 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 import { useApiRateLimit } from './http/rate-limit.js';
+import { sessionCookieName } from './identity/session-cookie.js';
 import { useSecurityHeaders } from './http/security-headers.js';
 
 /**
@@ -143,7 +144,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
   // The floor under every route's own limits (#838); off with FLUX_AUTH_RATE_LIMIT=false, as the sign-in limit is.
-  useApiRateLimit(app, { enabled: identityConfig.rateLimit });
+  useApiRateLimit(app, { enabled: identityConfig.rateLimit, sessionCookie: sessionCookieName(identityConfig.publicOrigin.startsWith('https:')) });
   // nosniff, Referrer-Policy, no-store on /api/ and, for an https origin, Strict-Transport-Security (#992).
   useSecurityHeaders(app, { hsts: identityConfig.publicOrigin.startsWith('https:') });
   const { pool, db } = registerDatabase(app, connectionString);
