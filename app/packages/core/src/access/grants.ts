@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
-import { recordEvent } from '../events.js';
-import type { Database, Principal } from '../types.js';
+import { eventAudience, principalKey, recordEvent } from '../events.js';
+import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
 import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, isUuid } from './policy.js';
@@ -87,6 +87,22 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
     if (!grant) throw new NotFoundError('Grant', 'GRANT_NOT_FOUND');
     await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grantId);
-    await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });
+    await recordGrantRevoked(ports, tx, principal, project!.workspaceId, grant);
   });
 }
+
+/**
+ * The event of a removed grant, for the space's people and for the person it removed (#862). That person can no longer read
+ * the space, so the ordinary audience (decided after the grant is gone) leaves them out, and their open tabs kept showing the
+ * space from what they had read until the next refresh. They are added by name; the stream's final check lets this one kind
+ * through to its own audience rows (`authorizeDelivery`). Like every event it carries the space's id and its kind, nothing else.
+ */
+export async function recordGrantRevoked(ports: Pick<AccessPorts, 'access' | 'events'>, tx: Executor, principal: Principal, workspaceId: string, grant: GrantRecord) {
+  const events = eventPorts(ports, tx);
+  const recipients = await eventAudience(events, { kind: GRANT_REVOKED, workspaceId, objectId: grant.projectId });
+  const removed = principalKey({ kind: 'human', id: grant.userId });
+  await events.repository.insert({ id: randomUUID(), kind: GRANT_REVOKED, objectId: grant.projectId, actorId: principalKey(principal), data: { grantId: grant.id }, workspaceId },
+    recipients.includes(removed) ? recipients : [...recipients, removed]);
+}
+
+const GRANT_REVOKED = 'project.grant_revoked.v1';

@@ -215,3 +215,36 @@ test('a refusal that says access changed forgets kept answers, so the next read 
   calls[2]!.finish({ code: 'WORKSPACE_LOCKED', error: 'Locked' }, 423);
   await assert.rejects(again, (error: unknown) => (error as { status?: number }).status === 423);
 });
+
+test('a 403 refuses what a role may not do and leaves kept answers; an answer kept for one page is not given on the next', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const project = request('/api/v1/kept/guest-project', { share: true, keep: 10_000 });
+  await settle();
+  calls[0]!.finish({ id: 'p' });
+  await project;
+  const members = request('/api/v1/kept/guest-members', { share: true });
+  await settle();
+  calls[1]!.finish({ code: 'FORBIDDEN', error: 'Not for a guest' }, 403);
+  await assert.rejects(members, (error: unknown) => (error as { status?: number }).status === 403);
+  assert.deepEqual(await request('/api/v1/kept/guest-project', { share: true, keep: 10_000 }), { id: 'p' });
+  assert.equal(calls.length, 2, 'a guest who may not list the members still keeps the project');
+
+  const where = globalThis as { location?: { pathname: string } };
+  const before = where.location;
+  where.location = { pathname: '/inbox' };
+  context.after(() => { where.location = before; });
+  const queue = () => request<{ count: number }>('/api/v1/kept/one-page-queue', { share: true, keep: 10_000, onePage: true });
+  const first = queue();
+  await settle();
+  calls[2]!.finish({ count: 1 });
+  await first;
+  assert.deepEqual(await queue(), { count: 1 });
+  assert.equal(calls.length, 3, 'the sidebar and the page share one read on the same page');
+  where.location = { pathname: '/' };
+  const next = queue();
+  await settle();
+  assert.equal(calls.length, 4, 'the next page reads again (an item handled on another device sends no event here)');
+  calls[3]!.finish({ count: 0 });
+  assert.deepEqual(await next, { count: 0 });
+});

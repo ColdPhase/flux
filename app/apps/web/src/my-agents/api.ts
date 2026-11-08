@@ -19,7 +19,11 @@ export const editAgentMemory = (agentId: string, itemId: string, command: EditAg
 export const deleteAgentMemory = (agentId: string, itemId: string) => request<null>(myAgentMemoryItemPath(agentId, itemId), { method: 'DELETE' });
 
 // The private chats (#842): what an agent said on its own, and what the owner has not read. The owner's words and the answers are runs.
-/** `fresh`: a refresh (focus, an event, the poll); a move to another page may take the answer kept from a moment ago (#862). */
+/**
+ * `fresh`: a refresh (focus, an event, the poll); a move to another page may take the answer kept from a moment ago (#862). A chat read
+ * on another device sends no event here, so its dot may stay until the person comes back to this window (which reads again) or 30 s:
+ * a dot, not something to act on, unlike the Inbox's items (`needs-you` is kept for one page).
+ */
 export const listAgentChats = (signal?: AbortSignal, fresh = false) =>
   request<{ items: AgentChatSummary[] }>(AGENT_CHATS_PATH, { signal, share: true, keep: KEEP_MS, fresh }).then((list) => list.items);
 export const listAgentChatMessages = (agentId: string, signal?: AbortSignal) => request<{ items: AgentChatMessage[] }>(agentChatMessagesPath(agentId), { signal }).then((list) => list.items);

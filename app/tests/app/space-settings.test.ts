@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, projectGrantsPath, projectLeavePath, projectPath, type InboxResponse, type NeedsYouResponse, type Project, type SearchResponse } from '@flux/contracts';
-import { authorizeEvent } from '@flux/core';
+import { authorizeDelivery, authorizeEvent } from '@flux/core';
 import { accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
@@ -97,6 +97,30 @@ describe('space settings: who may do what', () => {
     await grant(spaceAdmin, space.id, member, 'manager');
     assert.equal((await leave(spaceAdmin)).status, 204);
     assert.equal((expectStatus(await member.browser.request('GET', projectPath(space.id)), 200) as Project).access, 'manager', 'the remaining admin keeps it');
+  });
+
+  test('a person removed from a space, or who leaves it, hears of it by its id alone, so their open tabs drop it (#862)', async () => {
+    const space = await newSpace('Removed and told');
+    const revoked = async () => (await pool.query(`SELECT e.id, e.data, array_agg(a.recipient ORDER BY a.recipient) AS recipients FROM events e
+      JOIN event_audience a ON a.event_id = e.id WHERE e.kind = 'project.grant_revoked.v1' AND e.object_id = $1 GROUP BY e.id, e.data, e.seq ORDER BY e.seq`, [space.id]))
+      .rows as { id: string; data: Record<string, unknown>; recipients: string[] }[];
+    await removeFromSpace(spaceAdmin, space.id, member);
+    expectStatus(await member.browser.request('GET', projectPath(space.id)), 404);
+    const [removal] = await revoked();
+    assert.ok(removal!.recipients.includes(`human:${member.id}`), 'the removed person is in its audience, by name');
+    assert.ok(!removal!.recipients.includes(`human:${outsider.id}`) && !removal!.recipients.includes(`human:${stranger.id}`), 'nobody who could not open the space');
+    assert.deepEqual(Object.keys(removal!.data), ['grantId'], 'ids only');
+    const event = { kind: 'project.grant_revoked.v1', workspaceId: wsId, objectId: space.id };
+    assert.equal(await authorizeDelivery({ kind: 'human', id: member.id }, event, accessReader(db)), true, 'the stream delivers it from their own row');
+    assert.equal(await authorizeEvent({ kind: 'human', id: member.id }, event, accessReader(db)), false, 'an audience or an event looked up by id still needs the space');
+    assert.equal(await authorizeDelivery({ kind: 'human', id: member.id }, { ...event, kind: 'project.renamed.v1' }, accessReader(db)), false, 'no other event of the space');
+    assert.equal(await authorizeDelivery({ kind: 'human', id: stranger.id }, event, accessReader(db)), false, 'not someone outside the company');
+    assert.equal(await authorizeDelivery({ kind: 'agent', id: randomUUID() }, event, accessReader(db)), false);
+    // Leaving tells the person's other tabs and devices too.
+    expectStatus(await guest.browser.request('POST', projectLeavePath(space.id)), 204);
+    const [, left] = await revoked();
+    assert.ok(left!.recipients.includes(`human:${guest.id}`) && left!.recipients.includes(`human:${spaceAdmin.id}`), 'the person who left and the space\'s people');
+    assert.ok(!left!.recipients.includes(`human:${member.id}`), 'not the person removed before');
   });
 
   test('delete: a space admin and a company admin; not a member, a guest, an outsider or a stranger; everything in it is erased', async () => {

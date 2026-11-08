@@ -16,8 +16,8 @@ import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
-/** `fresh`: a refresh (focus, an event, a change of the Inbox, a poll); the first read of a view may take the answer kept from a moment ago (#862). */
-export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, fresh }).then(noteLockedWorkspaces);
+/** `fresh`: a refresh (focus, an event, a change of the Inbox, a poll). The sidebar's count and the page's queue share one read per page (#862). */
+export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, onePage: true, fresh }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
 /** Undo of `resolveNeedsYou`: the item is back as it was. */

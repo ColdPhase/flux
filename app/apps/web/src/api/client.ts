@@ -51,6 +51,12 @@ export interface ApiRequestInit {
    * it reads, and keeps what it gets for the next view that opens.
    */
   fresh?: boolean;
+  /**
+   * With `keep`: the answer is given only on the page where it was read. For the person's own list that changes without an event
+   * reaching this tab and holds things to act on (the Inbox, whose item may have been handled on another device): the sidebar and the
+   * view that ask one after the other share one read, and the next page reads again.
+   */
+  onePage?: true;
 }
 
 /** How long the reads that every view of a space or the shell asks for are kept (#862). */
@@ -78,7 +84,9 @@ interface SharedRead { answer: Promise<Answer>; callers: number; abort: AbortCon
 interface Answer { ok: boolean; status: number; statusText: string; text: string }
 const inFlight = new Map<string, SharedRead>();
 /** Answers kept for later callers (`keep`), by address, and the generation that a write, an event or sign-out advances. */
-const kept = new Map<string, { answer: Answer; until: number }>();
+const kept = new Map<string, { answer: Answer; until: number; page: string | null }>();
+/** The page an answer was read on, for `onePage`. */
+const page = () => (typeof location === 'undefined' ? '' : location.pathname);
 let keptGeneration = 0;
 
 /**
@@ -99,13 +107,18 @@ if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') forgetKeptReads(); });
 }
 
-/** A refusal that says access changed (signed out, no longer allowed, gone, locked): nothing kept from before it is still to be shown. */
-const ACCESS_CHANGED = new Set([401, 403, 404, 410, 423]);
+/**
+ * A refusal that says access changed (signed out, the place is gone or hidden, locked): nothing kept from before it is still to be shown.
+ * Not a 403, which refuses what a role may not do in a place the person still opens (a guest's read of the members, an AI read in a
+ * space whose AI is off); a change of role reaches the person as an event.
+ */
+const ACCESS_CHANGED = new Set([401, 404, 410, 423]);
 
 /**
  * Nothing in flight is joined any more: a read asked for from now on is a request of its own. Called when something changed that a read
  * already on its way may not show: a write of this tab (`send`), and an event of the live stream, which is another tab's write or another
- * person's change (the stream, #1023). The callers already waiting keep their answer.
+ * person's change (the stream, #1023); both through `forgetKeptReads`, which forgets the kept answers too (#862). The callers already
+ * waiting keep their answer.
  */
 export function endSharedReads() {
   inFlight.clear();
@@ -225,14 +238,14 @@ export async function request<T>(path: string, init: ApiRequestInit = {}): Promi
   const keep = plainRead && init.keep ? init.keep : 0;
   const held = keep && !init.fresh ? kept.get(path) : undefined;
   let response: Answer;
-  if (held && held.until > Date.now()) {
+  if (held && held.until > Date.now() && (held.page === null || held.page === page())) {
     if (init.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
     response = held.answer;
   } else {
     const generation = keptGeneration;
     response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
     // Kept only when nothing could have changed it while it was read.
-    if (keep && response.ok && generation === keptGeneration) kept.set(path, { answer: response, until: Date.now() + keep });
+    if (keep && response.ok && generation === keptGeneration) kept.set(path, { answer: response, until: Date.now() + keep, page: init.onePage ? page() : null });
   }
   let data: unknown = null;
   if (response.text) {

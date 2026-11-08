@@ -1,0 +1,1 @@
+- Someone removed from a space, or who leaves it in another tab, sees it leave their sidebar at once, and Back into it says the space is no longer available instead of showing what the page had loaded ([#862](https://github.com/ColdPhase/flux/issues/862)).

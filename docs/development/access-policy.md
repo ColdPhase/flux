@@ -20,7 +20,7 @@ where the table below says `reader`. Core exports:
 | `authorize(principal, action, resource, reader)` | Returns `{ allowed, visible }` for one object. |
 | `assertAuthorized(principal, action, resource, reader)` | Throws `NotFoundError` (404) when `visible` is false, and `ForbiddenError` (403) when the object is visible but the action is not allowed. |
 | `visibleFilter(principal, workspaceId, 'project' \| 'sketch' \| 'dm', db)` (`@flux/db`) | Returns a SQL condition. Put it in the `WHERE` clause of both the list query and its count, so invisible rows never reach counts, pages or payloads. It is the adapter's own list condition for the same rules (a SQL fragment cannot live in core), over the same actor standing `authorize` reads. |
-| `authorizeEvent(principal, event, reader)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time. |
+| `authorizeEvent(principal, event, reader)` | Whether a recipient may receive one event now: the principal is active in the event's workspace and can read the object the event is about. `recordEvent` calls it per member/agent to write the stream audience, and the stream calls it again for every event at delivery time (through `authorizeDelivery`, which also lets a removed grant reach its person, #862). |
 | `visibleWorkspaceOf(principal, resource, reader)` | The workspace of an object the principal can see, or `null`. Used to scope records such as idempotency keys without revealing invisible objects. |
 
 `authorize` and `assertAuthorized` take an optional `{ lock: true }`. Inside a commit
@@ -418,6 +418,14 @@ share, a removal) and the seq lock is held only for the two inserts. Rows commit
 their event and therefore in `seq` order. This is write-side work proportional to the
 workspace's members and agents; readers never pay for events outside their audience.
 Events recorded before migration 0004 have no audience rows and are not replayed.
+
+**A removed grant reaches its person (#862).** Removing a person from a space (`DELETE .../grants/:id`) and leaving it
+(`POST .../leave`) record `project.grant_revoked.v1` for the space's people, decided after the grant is gone, and for the
+person whose grant went, added by name (`recordGrantRevoked`), so their open tabs forget what they kept of the space and
+drop it from the sidebar at once. The stream's final check of a recipient's own audience rows is `authorizeDelivery`:
+`authorizeEvent`, or this one kind for an active person of the company. Like every stream event it names the kind, the
+company and the space's id, nothing else. Audiences and an event looked up by id (a `?cursor=` that is an event id, the
+return view) still use `authorizeEvent` alone.
 
 The event's object type comes from the first segment of its kind: `workspace`,
 `project`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:

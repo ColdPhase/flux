@@ -14,7 +14,7 @@ export function useInboxDot(identity: string, pathname: string): number {
   const read = useCallback((fresh: boolean) => {
     void getNeedsYou(undefined, fresh).then((queue) => setUnread({ identity, count: queue.count }), () => undefined);
   }, [identity]);
-  // A refresh (focus, an event, a change of the Inbox, the two-minute poll) reads; a move to another page may take the kept answer (#862).
+  // A refresh (focus, an event, a change of the Inbox, the two-minute poll) reads; a new page shares one read with its own queue (#862).
   const refresh = useCallback(() => read(true), [read]);
   const soon = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);

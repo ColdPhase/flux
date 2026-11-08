@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose, open_select
 from create_window import create_other, new_space_window, open_create
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder, view_tab
 from test_personal_assistant import mock
 
 PASSWORD = "settings for a space"
@@ -398,6 +398,38 @@ class SpaceSettings(unittest.TestCase):
             expect(page.get_by_text(line)).to_have_count(0)
         finally:
             mock("/__script", {"reset": True})
+
+
+    def test_09_a_person_removed_from_a_space_is_told_at_once_and_back_into_it_says_so(self) -> None:
+        """#862 (#592, FT-8): the removal reaches the removed person's open tab, by the space's id alone. The space leaves their sidebar
+        at once, and Back into its Map or Tasks reads again instead of showing what the tab had kept: "That space is no longer available to you."."""
+        self.ensure_world()
+        ada = self.page("ada")
+        space = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Glaze recipes", "visibility": "restricted", "people": [self.ids["lee"]]}, status=201)
+        pid = space["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Cone 6 test tiles on Friday", "clientMessageId": str(uuid.uuid4())}, status=201)
+        for view in ("Map", "Tasks"):
+            with self.subTest(view=view):
+                lee = self.page("lee")
+                lee.goto("/")
+                spaces = lee.get_by_role("navigation", name="Spaces")
+                spaces.get_by_role("link", name=re.compile("^Glaze recipes")).click()
+                expect(lee.get_by_text("Cone 6 test tiles on Friday").first).to_be_visible()
+                view_tab(lee, view)
+                expect(lee).to_have_url(re.compile(rf"/projects/{pid}/{view.lower()}"))
+                lee.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+                expect(lee.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                grants = self.api(ada, "GET", f"/api/v1/projects/{pid}/grants")
+                grant = next(g for g in grants if g["principal"]["id"] == self.ids["lee"])
+                removed = ada.request.delete(f"{ORIGIN}/api/v1/projects/{pid}/grants/{grant['id']}", headers={"origin": ORIGIN})
+                self.assertEqual(removed.status, 204, removed.text())
+                # Told at once: the space leaves the sidebar without a reload or a click.
+                expect(spaces.get_by_role("link", name=re.compile("^Glaze recipes"))).to_have_count(0)
+                lee.go_back()
+                expect(lee.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
+                expect(lee).to_have_url(re.compile(r"/projects$"))
+                expect(lee.get_by_text("Glaze recipes")).to_have_count(0)
+                self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["lee"]}, "role": "contributor"}, status=201)
 
 
 if __name__ == "__main__":
