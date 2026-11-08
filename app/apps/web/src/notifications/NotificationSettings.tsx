@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, type NotificationPreferences, type UpdateNotificationPreferencesCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -207,9 +207,8 @@ function AccountNotificationSettings() {
             <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>A recent notification email could not be delivered.</b> Flux will retry for a while. Everything is in your inbox.</span></p>
           ) : null}
           <div className="sset-card" role="group" aria-labelledby={ids.email}>
-            <SwitchRow icon={<Icon name="mail" size={16} />} label={email.accountAddress} switchLabel={`Notification email to ${email.accountAddress}`}
-              detail={email.accountEnabled ? 'Your sign-in address' : 'Your sign-in address · switched off'} checked={email.accountEnabled}
-              onChange={(accountEnabled) => change({ accountEnabled }, (current) => ({ ...current, email: { ...current.email, accountEnabled } }))} />
+            <AddressRow email={email.accountAddress} note="Your sign-in address" ticked={email.accountEnabled}
+              onTick={(accountEnabled) => change({ accountEnabled }, (current) => ({ ...current, email: { ...current.email, accountEnabled } }))} />
             {email.addresses.map((address) => <ExtraAddress key={address.id} address={address} save={save} onSwitch={switchExtra} />)}
             <AddAddress full={email.addresses.length >= MAX_EXTRA_ADDRESSES} save={save} />
           </div>
@@ -318,25 +317,38 @@ function QuietHours({ prefs, open, panelId, onToggle, onChange }: { prefs: Notif
 
 type Save = (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean>;
 
-/** One extra address: waiting for its link (Send again, Remove), or confirmed with its own switch and Remove. */
+/**
+ * One address as the final design draws it: a tick on the left, the address and a line under it, and the quiet actions at the right
+ * edge: Send again, then Remove. On a phone Remove stays at the right edge of the first line and Send again drops under the text, so
+ * a long address is never squeezed and Remove is in the same place on every row.
+ */
+function AddressRow({ email, note, ticked, disabled, onTick, send, remove }: {
+  email: string; note: string; ticked: boolean; disabled?: boolean; onTick?: (on: boolean) => void; send?: ReactNode; remove?: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <div className="sset-row nset__addr">
+      <label className="nset__tick">
+        <input id={id} type="checkbox" checked={ticked} disabled={disabled} aria-label={`Notification email to ${email}`} aria-describedby={`${id}-d`}
+          onChange={(event) => onTick?.(event.target.checked)} />
+      </label>
+      <label className="sset-row__b" htmlFor={id}>
+        <span className="sset-row__t">{email}</span>
+        <span className="sset-row__s" id={`${id}-d`}>{note}</span>
+      </label>
+      {send ? <span className="nset__send">{send}</span> : null}
+      {remove ? <span className="nset__remove">{remove}</span> : null}
+    </div>
+  );
+}
+
+/** One extra address: confirmed, with its tick and Remove, or waiting for its link, with Send again and Remove. */
 function ExtraAddress({ address, save, onSwitch }: { address: NotificationAddress; save: Save; onSwitch: (id: string, enabled: boolean) => void }) {
   const remove = <Button variant="quiet" size="sm" aria-label={`Remove ${address.email}`} onClick={() => void save(() => removeAddress(address.id), 'Address removed')}>Remove</Button>;
-  if (address.verified) {
-    return (
-      <SwitchRow icon={<Icon name="mail" size={16} />} label={address.email} switchLabel={`Notification email to ${address.email}`} checked={address.enabled} aside={remove}
-        detail={address.enabled ? 'Confirmed · receives notification email only' : 'Confirmed · switched off'} onChange={(enabled) => onSwitch(address.id, enabled)} />
-    );
-  }
+  if (address.verified) return <AddressRow email={address.email} note="Confirmed" ticked={address.enabled} onTick={(enabled) => onSwitch(address.id, enabled)} remove={remove} />;
   return (
-    <div className="sset-row nset__extra">
-      <span className="sset-row__ic" aria-hidden="true"><Icon name="mail" size={16} /></span>
-      <span className="sset-row__b">
-        <span className="sset-row__t">{address.email}</span>
-        <span className="sset-row__s">Waiting for you to open the link we sent. It works once and expires in 24 hours.</span>
-      </span>
-      <Button variant="quiet" size="sm" aria-label={`Send again to ${address.email}`} onClick={() => void save(() => resendVerification(address.id), 'Sent again')}>Send again</Button>
-      {remove}
-    </div>
+    <AddressRow email={address.email} note="Waiting for you to confirm it from that inbox" ticked={false} disabled remove={remove}
+      send={<Button variant="quiet" size="sm" aria-label={`Send again to ${address.email}`} onClick={() => void save(() => resendVerification(address.id), 'Sent again')}>Send again</Button>} />
   );
 }
 

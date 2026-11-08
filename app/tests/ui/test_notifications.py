@@ -331,8 +331,11 @@ class NotificationJourney(unittest.TestCase):
         expect(page.get_by_text("We send a confirmation link to a new address before any notification goes there.")).to_be_visible()
         page.get_by_label("Add another address").fill(EXTRA)
         page.get_by_role("button", name="Add", exact=True).click()
-        expect(page.locator(".nset__extra")).to_contain_text(EXTRA)
-        expect(page.locator(".nset__extra")).to_contain_text("Waiting for you to open the link")
+        row = page.locator(".nset__addr").filter(has_text=EXTRA)
+        expect(row).to_contain_text("Waiting for you to confirm it from that inbox")
+        # Not confirmed yet: the tick is there but unticked and cannot be ticked.
+        expect(row.get_by_role("checkbox")).not_to_be_checked()
+        expect(row.get_by_role("checkbox")).to_be_disabled()
         expect(page.get_by_role("button", name=f"Send again to {EXTRA}")).to_be_visible()
         expect(page.get_by_text("To 1 address")).to_be_visible()
         text = wait_for_mail(EXTRA, "/settings/notifications/verify?token=")
@@ -343,9 +346,9 @@ class NotificationJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Address confirmed")).to_be_visible()
         page.get_by_role("link", name="Notification settings").last.click()
         # A confirmed address has its own switch, like the sign-in address (C-49).
-        extra = page.get_by_role("switch", name=f"Notification email to {EXTRA}")
-        account = page.get_by_role("switch", name=f"Notification email to {PEOPLE['ada'][1]}")
-        expect(extra).to_have_attribute("aria-checked", "true")
+        extra = page.get_by_role("checkbox", name=f"Notification email to {EXTRA}")
+        account = page.get_by_role("checkbox", name=f"Notification email to {PEOPLE['ada'][1]}")
+        expect(extra).to_be_checked()
         expect(page.get_by_text("To 2 addresses")).to_be_visible()
         prefs = self.api(page, "GET", "/api/v1/notification-preferences")
         self.assertTrue(prefs["email"]["addresses"][0]["verified"])
@@ -353,7 +356,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertTrue(prefs["emailMe"])
         shot(page, "notifications-desktop-1440-address")
         extra.click()
-        expect(extra).to_have_attribute("aria-checked", "false")
+        expect(extra).not_to_be_checked()
         expect(page.get_by_text("To 1 address")).to_be_visible()
         expect(page.locator(".nset__saved")).to_contain_text("Saved")
         prefs = self.api(page, "GET", "/api/v1/notification-preferences")
@@ -362,15 +365,15 @@ class NotificationJourney(unittest.TestCase):
         shot(page, "notifications-desktop-1440-address-off")
         # The sign-in address is listed first and switches the same way; no address on at all says so.
         account.click()
-        expect(account).to_have_attribute("aria-checked", "false")
+        expect(account).not_to_be_checked()
         expect(page.get_by_text("No address is switched on")).to_be_visible()
         expect(page.locator(".nset__saved")).to_contain_text("Saved")
         self.assertFalse(self.api(page, "GET", "/api/v1/notification-preferences")["email"]["accountEnabled"])
         account.click()
-        expect(account).to_have_attribute("aria-checked", "true")
+        expect(account).to_be_checked()
         extra.click()
-        expect(extra).to_have_attribute("aria-checked", "true")
-        expect(account).to_have_attribute("aria-checked", "true")
+        expect(extra).to_be_checked()
+        expect(account).to_be_checked()
         expect(page.get_by_text("To 2 addresses")).to_be_visible()
         expect(page.locator(".nset__saved")).to_contain_text("Saved")
         prefs = self.api(page, "GET", "/api/v1/notification-preferences")
@@ -411,6 +414,40 @@ class NotificationJourney(unittest.TestCase):
             assert_touch_target(self, page, control)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "the opened quiet hours fit the phone")
         shot(page, "notifications-phone-390-quiet-hours")
+
+    def test_05b_address_rows_keep_remove_at_the_right_edge_and_long_addresses_their_width_on_a_phone(self) -> None:
+        """#1056: the rows are the final design's (a tick on the left, Remove at the right edge); at 390 px a confirmed and an unconfirmed
+        row have Remove in the same place and the same width for the address, and a long address is not squeezed by Send again."""
+        page = self.page("ada", phone=True)
+        shown = self.api(page, "GET", "/api/v1/notification-preferences")
+        long_address = "a.very.long.name.of.someone.who.collects.addresses@a-subdomain.of-a-long-company-name.example.org"
+        shown["email"]["addresses"] = [
+            {"id": "11111111-1111-4111-8111-111111111111", "email": "short@example.test", "enabled": True, "verified": True, "verifiedAt": "2026-11-08T10:00:00Z", "sentAt": None},
+            {"id": "22222222-2222-4222-8222-222222222222", "email": long_address, "enabled": False, "verified": False, "verifiedAt": None, "sentAt": "2026-11-08T10:00:00Z"},
+        ]
+        page.route("**/api/v1/notification-preferences", lambda route: route.fulfill(json=shown) if route.request.method == "GET" else route.continue_())
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+        page.goto("/settings/notifications")
+        rows = page.locator(".nset__addr")
+        expect(rows).to_have_count(3)
+        boxes = []
+        for index in range(3):
+            row = rows.nth(index)
+            text = row.locator(".sset-row__b").bounding_box()
+            remove = row.locator(".nset__remove").bounding_box() if index else None
+            boxes.append((text, remove))
+        self.assertEqual(rows.nth(0).locator(".nset__remove").count(), 0, "the sign-in address cannot be removed")
+        self.assertAlmostEqual(boxes[1][1]["x"] + boxes[1][1]["width"], boxes[2][1]["x"] + boxes[2][1]["width"], delta=1, msg="Remove is at the same right edge on a confirmed and an unconfirmed row")
+        self.assertAlmostEqual(boxes[1][0]["width"], boxes[2][0]["width"], delta=1, msg="the address column is as wide on the unconfirmed row as on the confirmed one")
+        self.assertGreaterEqual(boxes[2][0]["width"], 200, "a long address keeps its width")
+        send = rows.nth(2).get_by_role("button", name=re.compile("^Send again"))
+        self.assertGreater(send.bounding_box()["y"], boxes[2][0]["y"], "Send again is under the address, not beside it")
+        self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
+        for index in range(3):
+            assert_touch_target(self, page, rows.nth(index).get_by_role("checkbox"))
+        for control in (rows.nth(1).get_by_role("button", name=re.compile("^Remove")), rows.nth(2).get_by_role("button", name=re.compile("^Remove")), send):
+            assert_touch_target(self, page, control)
+        shot(page, "1056-addresses-phone-390")
 
     def test_06_dark_inbox_and_unsubscribe_page(self) -> None:
         page = self.page("ada", dark=True)

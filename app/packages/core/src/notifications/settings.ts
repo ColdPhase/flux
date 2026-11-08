@@ -25,8 +25,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A deliberately plain check; verification proves the mailbox. */
 const EMAIL = /^[^\s@<>()[\],;:"]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 export const VERIFICATION_TTL_MS = 24 * 3600_000;
-/** Verification sends per person, across add, replace and resend (#113: bounded send attempts). */
+/** Verification sends per person, across add and resend, for all of their addresses (#113: bounded send attempts). */
 export const VERIFICATION_LIMITS = { cooldownSeconds: 60, perWindow: 5, windowSeconds: 3600 } as const;
+/**
+ * Verification sends to one address, whichever account asks (#1056): several accounts cannot each send a stranger a link.
+ * Kept under a hash of the address, so no readable address is stored.
+ */
+export const TARGET_VERIFICATION_LIMITS = { perWindow: 3, windowSeconds: 3600 } as const;
 
 export class MailUnavailableError extends DomainError {
   constructor() {
@@ -41,8 +46,8 @@ export class MailSendError extends DomainError {
 }
 
 export class TooSoonError extends DomainError {
-  constructor(readonly retryAfterSeconds: number) {
-    super(429, 'VERIFICATION_RECENTLY_SENT', retryAfterSeconds > VERIFICATION_LIMITS.cooldownSeconds
+  constructor(readonly retryAfterSeconds: number, hourly = false) {
+    super(429, 'VERIFICATION_RECENTLY_SENT', hourly || retryAfterSeconds > VERIFICATION_LIMITS.cooldownSeconds
       ? 'Too many verification links this hour; try again later'
       : 'A verification link was sent less than a minute ago');
     this.details = { retryAfterSeconds };
@@ -70,8 +75,9 @@ function addressView(record: AddressRecord): NotificationAddress {
   return { id: record.id, email: record.email, enabled: record.enabled, verified: !!record.verifiedAt, verifiedAt: record.verifiedAt?.toISOString() ?? null, sentAt: record.lastSentAt?.toISOString() ?? null };
 }
 
+/** Trimmed, in Unicode normal form C (é typed as one character or as e and an accent is one address, #1056), with the domain in lower case. */
 export function normalizeEmail(value: unknown) {
-  const email = typeof value === 'string' ? value.trim() : '';
+  const email = typeof value === 'string' ? value.trim().normalize('NFC') : '';
   if (email.length > 254 || !EMAIL.test(email)) throw new InvalidInputError('Enter an email address such as name@example.org', 'INVALID_EMAIL');
   const at = email.lastIndexOf('@');
   return `${email.slice(0, at)}@${email.slice(at + 1).toLowerCase()}`;
@@ -99,9 +105,12 @@ export function createNotificationSettings(ports: SettingsPorts) {
     };
   }
 
-  async function reserveSend(userId: string) {
-    const reserved = await ports.addresses.reserveVerificationSend(userId, VERIFICATION_LIMITS);
-    if (!reserved.allowed) throw new TooSoonError(reserved.retryAfterSeconds);
+  /** One send, within the person's limit and the address's own (#1056). */
+  async function reserveSend(userId: string, email: string) {
+    const person = await ports.addresses.reserveVerificationSend(userId, VERIFICATION_LIMITS);
+    if (!person.allowed) throw new TooSoonError(person.retryAfterSeconds);
+    const target = await ports.addresses.reserveAddressSend(hashToken(email.toLowerCase()), TARGET_VERIFICATION_LIMITS);
+    if (!target.allowed) throw new TooSoonError(target.retryAfterSeconds, true);
   }
 
   async function sendVerification(address: AddressRecord) {
@@ -142,14 +151,14 @@ export function createNotificationSettings(ports: SettingsPorts) {
     async addAddress(account: Account, input: { email: unknown }) {
       if (!ports.mailer.available) throw new MailUnavailableError();
       const email = normalizeEmail(input?.email);
-      if (email.toLowerCase() === account.email.toLowerCase()) {
+      if (email.toLowerCase() === account.email.normalize('NFC').toLowerCase()) {
         throw new ConflictError('This is your sign-in address; it is already in the list', 'ADDRESS_IS_ACCOUNT');
       }
       const current = await ports.addresses.list(account.userId);
       if (current.some((item) => item.email.toLowerCase() === email.toLowerCase())) throw new ConflictError('This address is already in your list', 'ADDRESS_EXISTS');
       if (current.length >= MAX_EXTRA_ADDRESSES) throw new ConflictError(`You can add up to ${MAX_EXTRA_ADDRESSES} more addresses; remove one first`, 'TOO_MANY_ADDRESSES');
       // Reserved before the address is stored, so adding and removing cannot reset the limit.
-      await reserveSend(account.userId);
+      await reserveSend(account.userId, email);
       const address = await ports.addresses.add(account.userId, randomUUID(), email);
       if (!address) throw new ConflictError('This address is already in your list', 'ADDRESS_EXISTS');
       await sendVerification(address);
@@ -158,15 +167,16 @@ export function createNotificationSettings(ports: SettingsPorts) {
 
     async resend(account: Account, addressId: string) {
       if (!ports.mailer.available) throw new MailUnavailableError();
-      const address = await ports.addresses.find(account.userId, addressId);
+      const address = UUID.test(addressId) ? await ports.addresses.find(account.userId, addressId) : null;
       if (!address || address.verifiedAt) throw new NotFoundError('Unverified address', 'ADDRESS_NOT_PENDING');
-      await reserveSend(account.userId);
+      await reserveSend(account.userId, address.email);
       await sendVerification(address);
       return view(account);
     },
 
     /** An extra address's own switch. An address not yet confirmed has one too, but nothing goes to it before it is. */
     async setAddressEnabled(account: Account, addressId: string, command: SetNotificationAddressCommand) {
+      if (!UUID.test(addressId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
       if (!command || typeof command.enabled !== 'boolean') throw new InvalidInputError('enabled must be true or false', 'INVALID_ADDRESS_ENABLED');
       if (!await ports.addresses.setEnabled(account.userId, addressId, command.enabled)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
       return view(account);
@@ -186,7 +196,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
 
     /** Removing an extra address never switches another address on by itself. */
     async removeAddress(account: Account, addressId: string) {
-      if (!await ports.addresses.remove(account.userId, addressId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
+      if (!UUID.test(addressId) || !await ports.addresses.remove(account.userId, addressId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
       return view(account);
     },
   };

@@ -9,6 +9,7 @@ import {
   deliverNotificationEmail,
   localMinutes,
   loadNotificationMailConfig,
+  normalizeEmail,
   type NotificationMailer,
   type PushSendJob,
 } from '@flux/core';
@@ -1060,19 +1061,71 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     const racers = [1, 2, 3, 4].map((n) => `wes.race${n}-${randomUUID()}@example.test`);
     const racing = await Promise.all(racers.map((email) => someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email } })));
     assert.deepEqual(racing.map((response) => response.status).sort(), [200, 429, 429, 429]);
+    const winner = (racing.find((response) => response.status === 200)!.json as NotificationPreferences).email.addresses.find((item) => racers.includes(item.email))!;
 
-    // Even with the cooldown out of the way, at most 5 per hour.
+    // Even with the cooldown out of the way, at most 5 per hour: two sends before plus three here make five (each address is asked for twice or less).
     const statuses: number[] = [];
-    for (let i = 0; i < 6; i += 1) {
+    for (const id of [targetId, winner.id, targetId, winner.id, targetId, winner.id]) {
       await skipCooldown(someone);
-      const response = await someone.browser.request('POST', `/api/v1/notification-addresses/${targetId}/resend`);
+      const response = await someone.browser.request('POST', `/api/v1/notification-addresses/${id}/resend`);
       statuses.push(response.status);
       if (response.status === 429) assert.ok(Number(response.headers.get('retry-after')) > 60, 'the hourly limit says when it resets');
     }
-    assert.deepEqual(statuses, [200, 200, 200, 429, 429, 429], 'two sends before plus three here make five');
+    assert.deepEqual(statuses, [200, 200, 200, 429, 429, 429]);
     await sleep(1000);
-    const sent = (await mailsTo(target)).length + (await Promise.all(racers.map((email) => mailsTo(email)))).flat().length;
-    assert.equal(sent, 5, 'five verification emails in all, no more');
+    assert.equal((await mailsTo(target)).length, 3, 'the address added first: its link and two more');
+    assert.equal((await mailsTo(winner.email)).length, 2, 'the address added by the race: its link and one more');
+  });
+
+  test('one address gets at most three confirmation links an hour, whichever accounts ask for it (#1056)', async () => {
+    const stranger = `target-${randomUUID()}@example.test`;
+    const asking = [await person('Ann Rowe'), await person('Bo Lind'), await person('Cy Park'), await person('Di Voss')];
+    const statuses: number[] = [];
+    for (const someone of asking) {
+      const response = await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: stranger } });
+      statuses.push(response.status);
+      if (response.status === 429) assert.ok(Number(response.headers.get('retry-after')) > 60, 'it says when the hour is over');
+    }
+    assert.deepEqual(statuses, [200, 200, 200, 429], 'three people could each send the address a link; a fourth could not');
+    await sleep(800);
+    assert.equal((await mailsTo(stranger)).length, 3);
+    // The refused one left nothing behind: no address was added to that account.
+    const refused = expectStatus(await asking[3]!.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.deepEqual(refused.email.addresses, []);
+    // The same address in another letter case is the same address, so it counts against the same limit.
+    await skipCooldown(asking[3]!);
+    assert.equal((await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: stranger.replace('@example.test', '@EXAMPLE.test') } })).status, 429);
+  });
+
+  test('a malformed address id is a missing address, not a server error (#1056)', async () => {
+    const someone = await person('Eve Lund');
+    for (const [method, path, body] of [
+      ['PATCH', '/api/v1/notification-addresses/not-a-uuid', { enabled: true }],
+      ['PATCH', '/api/v1/notification-addresses/verify', { enabled: true }],
+      ['DELETE', '/api/v1/notification-addresses/not-a-uuid', undefined],
+      ['POST', '/api/v1/notification-addresses/not-a-uuid/resend', undefined],
+      ['DELETE', `/api/v1/notification-addresses/${'x'.repeat(90)}`, undefined],
+    ] as const) {
+      const response = await someone.browser.request(method, path, body ? { body } : undefined);
+      assert.equal(response.status, 404, `${method} ${path.slice(0, 60)}: ${response.text}`);
+    }
+  });
+
+  test('the same address typed with a composed and a decomposed letter is one address (#1056)', async () => {
+    const someone = await person('Fay Nord');
+    const local = `jos\u00e9.${randomUUID().slice(0, 8)}`;
+    const composed = `${local}@example.test`;
+    const decomposed = `${local.replace('\u00e9', 'e\u0301')}@example.test`;
+    assert.notEqual(composed, decomposed);
+    const added = expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: composed } }), 200) as NotificationPreferences;
+    assert.equal(added.email.addresses[0]!.email, composed);
+    await skipCooldown(someone);
+    const again = await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: decomposed } });
+    assert.equal(again.status, 409, again.text);
+    assert.match(again.text, /ADDRESS_EXISTS/);
+    // Stored in the one form, whichever way it was typed.
+    assert.deepEqual((await pool.query('SELECT email FROM notification_addresses WHERE user_id = $1', [someone.id])).rows.map((row) => row.email), [composed]);
+    assert.equal(normalizeEmail(decomposed), composed);
   });
 
   test('quiet hours switched on after a job was queued drop its email and push, and nothing catches up when they end (C-31)', async () => {
