@@ -177,12 +177,12 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_03_propose_and_accept_a_decision_with_the_keyboard(self) -> None:
         page = self.open_conversation("owner")
         message = page.locator(f"#message-{self.messages['idea']}")
-        message.get_by_role("button", name="More actions").focus()
-        page.keyboard.press("Enter")
-        page.get_by_role("menuitem", name="Propose a decision").focus()
-        page.keyboard.press("Enter")
-        # #763 SP-5: the Create window's Decision tab; its full form in Details is one key away.
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").focus()
+        # A message has no Propose a decision (#867): the Create window's Decision tab, opened with C; its full form in Details is one key away.
+        page.locator("body").press("c")
+        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
+        window = page.get_by_role("dialog", name="New decision")
+        window.get_by_role("textbox", name="Decision", exact=True).fill(IDEA)
+        window.get_by_role("button", name="Replace an accepted decision…").focus()
         page.keyboard.press("Enter")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -202,34 +202,21 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel).to_contain_text("Ada Lind")
         decision = self.work(page)["decisions"][0]
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
-        self.assertEqual([link["to"]["id"] for link in decision["links"] if link["role"] == "source"], [self.messages["idea"]])
         page.keyboard.press("Escape")
-        expect(message.get_by_role("button", name="Decision: Use a camera for gesture control")).to_be_visible()
 
     # ---------------------------------------------------------------- negative result, other person
 
-    def test_04_attach_a_negative_result_that_finishes_the_experiment(self) -> None:
+    def test_04_a_negative_result_finishes_the_experiment(self) -> None:
+        # A message has no "Record a result" (#867): a result is made by an agent's tool, so it is made here through the API.
         page = self.open_conversation("partner")
-        message = page.locator(f"#message-{self.messages['finding']}")
-        # A reply sits in the thread beside the stream (UI116-1); its actions float over its corner on hover.
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Record a result").click()
-        panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Record a result")).to_be_visible()
-        panel.get_by_label("Finding").fill("The camera cannot track gestures below 10 lux")
-        panel.get_by_text("Negative", exact=True).click()
-        panel.get_by_label("Evidence").fill("38% of 20 gestures at 5 lux")
-        choose(panel.get_by_label("For work"), label=IDEA)
-        panel.get_by_label(f"This finishes “{IDEA}”").check()
-        panel.get_by_role("button", name="Attach result").click()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Negative result")
-        expect(panel.get_by_role("button", name=re.compile(IDEA))).to_be_visible()
-        # The result took the form's place, which took the thread's: the way back leads to the reply it was made from.
-        panel.get_by_role("button", name="Thread", exact=True).click()
-        expect(message.get_by_role("button", name="Result: The camera cannot track gestures below 10 lux")).to_be_visible()
+        idea = next(item for item in self.work(page)["work"] if item["title"] == IDEA)
+        made = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/results", {
+            "clientCommandId": str(uuid.uuid4()), "title": "The camera cannot track gestures below 10 lux", "finding": "negative",
+            "evidence": "38% of 20 gestures at 5 lux", "work": [idea["id"]], "finishes": {"id": idea["id"], "expectedVersion": idea["version"]}}, status=201)
+        self.assertEqual(made["finding"], "negative")
         stored = self.work(page)
         self.assertEqual(stored["results"][0]["finding"], "negative")
         self.assertEqual(stored["work"][0]["status"], "done", "a negative result finished the experiment")
-        shot(page, "result-desktop-1440-negative")
 
         page.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
@@ -260,8 +247,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         # open the original conversation explicitly.
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         message = page.locator(f"#message-{self.messages['pivot']}")
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()  # #763 SP-5
+        page.goto(f"/projects/{self.project_id}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()

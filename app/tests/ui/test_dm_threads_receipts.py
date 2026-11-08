@@ -145,10 +145,10 @@ class DmThreadsReceipts(unittest.TestCase):
         assert body and pill
         self.assertGreaterEqual(pill["x"], body["x"] + body["width"] - 1, "the actions sit beside the bubble, not over its text")
         shot(page, "dm-threads-desktop-actions-light")
-        # More lists only real, authorized commands.
+        # More lists only real, authorized commands (#867): Add to map (My map) and Copy link; the toolbar has Reply and Create task.
         actions.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Copy text"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link"])
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         # Own bubbles take the actions on their left.
@@ -366,7 +366,7 @@ class DmThreadsReceipts(unittest.TestCase):
         # Long press opens the menu; Create task opens the preview as a sheet.
         long_press(row.locator(".dm-msg__body"))
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Copy text"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link"])
         menu.get_by_role("menuitem", name="Create task").click()
         dialog = page.get_by_role("dialog", name="Create a task from this message")
         expect(dialog).to_be_visible()

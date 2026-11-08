@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
 
 from app_select import choose, expect_value, values
-from message_gestures import open_message_menu
 from test_app_shell import ORIGIN, UPSTREAM, SHOTS, shot, start_forwarder
 from test_work_pagination import api
 
@@ -153,9 +152,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 expect_value(select, self.done["id"])
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
-        page=self.page();page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
-        message=page.locator(f"#message-{self.message}");open_message_menu(message,phone=False).get_by_role("menuitem",name="Propose a decision").click()
-        page.get_by_role("dialog",name="New decision").get_by_role("button",name="Replace an accepted decision…").click()  # #763 SP-5
+        page=self.page();page.goto(f"/projects/{self.project}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
         panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")

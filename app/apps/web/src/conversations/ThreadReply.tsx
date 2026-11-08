@@ -3,7 +3,6 @@ import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { AgentAuthor, AuthorFace, ContributionMark, MessageTime, SourceCitation, SourceTag, ViaTag, pendingMessageRow } from '../app/messageParts';
-import { cite as citeMessage, messageCite } from '../app/citeBus';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import type { MessageWorkPreview } from '../work/message-associations';
@@ -35,7 +34,6 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
-    onCite: () => citeMessage('thread', messageCite(message, stored.name)),
     onAddToMap: () => mapDraft({ messageId: message.id, body: message.body }),
   } : null;
   const touch = useTouchActions(actions);

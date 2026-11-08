@@ -6,7 +6,7 @@ about a 4-digit SMS code, a map "Pickup ideas" whose thought came from that mess
 decisions, task #1 with three done-when criteria and a positive result, and the Wiki page "How pickup
 works". Lena joins afterwards as a contributor. On a computer (1440 x 900) and a phone (390 x 844, touch):
 
-* CW-1: the phone's long press puts a message on the map under "More…", source kept; `/map` does it from the composer.
+* CW-1: the phone's long press puts a message on the map, source kept; `/map` does it from the composer.
 * CW-2: the thought's "Open message" opens the message in its thread; the message shows an "On the map" chip.
 * CW-4: the Wiki editor shows a reference's kind, never `flux:decision/<id>`.
 * CW-5: a toast never lies over a sheet's buttons on the phone.
@@ -180,7 +180,6 @@ class ConnectedFlow(unittest.TestCase):
         bubble.scroll_into_view_if_needed()
         long_press(bubble)
         menu = page.get_by_role("menu", name="Message actions")
-        menu.get_by_role("menuitem", name="More…").click()
         menu.get_by_role("menuitem", name="Add to map").click()
         expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}"))
         self.save_draft(page, LOCKERS)

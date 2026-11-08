@@ -347,24 +347,14 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
-        names = menu.get_by_role("menuitem").all_inner_texts()
-        # The menu lists only what the toolbar lacks (#763 B4): Reply in thread and Create task are on the toolbar.
-        self.assertEqual(names[:4], ["Add to map", "Hand off to an agent", "Cite", "Copy text"])
-        self.assertIn("Record a result", names)
+        names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
+        # One level (#867): the toolbar has Reply in thread and Create task, so the menu lists Add to map and Copy link, and nothing else
+        # on a message that is not the person's own (Edit and Delete follow on their own messages).
+        self.assertEqual(names, ["Add to map", "Copy link"])
         page.keyboard.press("ArrowDown")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(more).to_be_focused()
-        # Cite puts the message in the composer as a tile (#469); the field keeps only the person's own words.
-        message.hover()
-        more.click()
-        page.get_by_role("menuitem", name="Cite").click()
-        tile = page.locator(".composer-cite")
-        expect(tile.locator("strong")).to_have_text(re.compile("^The probes arrive Thursday"))
-        expect(tile.locator("small")).to_have_text("Cited message · Jonas Berg")
-        expect(self.composer(page)).to_have_value("")
-        tile.get_by_role("button", name=re.compile("^Remove citation")).click()
-        expect(tile).to_have_count(0)
         # Create task makes a task from the message and opens it.
         message.hover()
         before = len(self.work_titles(page))
@@ -414,19 +404,14 @@ class ConversationFinal(unittest.TestCase):
         long_press(bubble)
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
-        names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
-        self.assertNotIn("Done", names, "a message that waits for nobody has no Done")
+        names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertNotIn("Done", names, "a message has no Done: the Inbox is the one queue")
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44)
         shot(page, "conversation-final-messagemenu-phone")
-        page.get_by_role("menuitem", name="Cite").click()
-        tile = page.locator(".composer-cite")
-        expect(tile.locator("strong")).to_have_text(re.compile("^The probes arrive Thursday"))
-        expect(self.composer(page)).to_have_value("")
-        self.assertGreaterEqual(tile.get_by_role("button", name=re.compile("^Remove citation")).bounding_box()["height"], 44, "the tile's × is a touch target")
-        tile.get_by_role("button", name=re.compile("^Remove citation")).click()
-        expect(tile).to_have_count(0)
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         # Escape and a tap outside close the menu; the hidden keyboard button opens the same menu.
         long_press(bubble)
         expect(menu).to_be_visible()
@@ -435,8 +420,8 @@ class ConversationFinal(unittest.TestCase):
         message.get_by_role("button", name="Message actions", exact=True).focus()
         page.keyboard.press("Enter")
         expect(menu).to_be_visible()
-        names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
+        names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
         page.keyboard.press("Escape")
         # A scroll gesture is not a long press: nothing opens.
         swipe_down = bubble.bounding_box()
@@ -447,9 +432,8 @@ class ConversationFinal(unittest.TestCase):
         items = self.api(page, "GET", "/api/v1/needs-you")["items"]
         return any(item["url"].endswith(f"#message-{message_id}") for item in items)
 
-    def test_07b_a_message_waiting_in_the_inbox_has_done_and_not_now_in_its_menu(self) -> None:
-        # Founder direction 2026-10-16: the long-press menu of a message that waits in the Inbox also offers Done and Not now,
-        # acting on that Inbox item exactly as Inbox does. Inbox stays the one queue.
+    def test_07b_a_message_waiting_in_the_inbox_has_the_same_menu_as_any_other(self) -> None:
+        # #867: the Inbox is the one queue, so Done and Not now are not in a message's menu even when the message waits there.
         page = self.open("ada", phone=True)
         for _ in range(100):
             if self.waiting(page, self.ids["mention"]):
@@ -460,21 +444,12 @@ class ConversationFinal(unittest.TestCase):
         message.scroll_into_view_if_needed()
         long_press(message.locator(".message-bubble > .message-body"))
         menu = page.get_by_role("menu", name="Message actions")
-        expect(menu.get_by_role("menuitem", name="Done")).to_be_visible()
-        names = menu.get_by_role("menuitem").all_inner_texts()
-        self.assertEqual(names[:5], ["Reply in thread", "Create task", "Hand off to an agent", "Cite", "Copy text"])
-        self.assertIn("Not now", names)
-        shot(page, "conversation-final-messagemenu-inbox-phone")
-        menu.get_by_role("menuitem", name="Done").click()
-        expect(page.get_by_text("Marked done")).to_be_visible()
-        for _ in range(100):
-            if not self.waiting(page, self.ids["mention"]):
-                break
-            page.wait_for_timeout(100)
-        self.assertFalse(self.waiting(page, self.ids["mention"]), "Done resolved the Inbox item")
-        long_press(message.locator(".message-bubble > .message-body"))
-        expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
-        expect(page.get_by_role("menuitem", name="Done")).to_have_count(0)
+        expect(menu).to_be_visible()
+        names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertNotIn("Done", names)
+        self.assertNotIn("Not now", names)
+        self.assertTrue(self.waiting(page, self.ids["mention"]), "nothing was resolved")
 
     def test_08_the_phone_composer_says_at_and_slash_and_opens_the_menu_by_touch(self) -> None:
         page = self.open("ada", phone=True)

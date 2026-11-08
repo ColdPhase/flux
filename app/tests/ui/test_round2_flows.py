@@ -23,7 +23,6 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "round two keeps the first minutes calm"
@@ -181,21 +180,19 @@ class Round2Flows(unittest.TestCase):
 
     # ---------------------------------------------------------------- WF-3, SP-5
 
-    def test_03_a_decision_from_a_message_is_short_and_can_be_undone(self) -> None:
+    def test_03_a_decision_from_the_window_is_short_and_can_be_undone(self) -> None:
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
-        message = page.locator(f"#message-{self.ids['question']}")
-        expect(message).to_be_visible()
+        expect(page.locator(f"#message-{self.ids['question']}")).to_be_visible()
 
         def propose() -> None:
-            open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
+            # A message has no Propose a decision (#867): the Create window's Decision tab is the short form.
+            page.locator("body").press("c")
+            page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
             dialog = page.get_by_role("dialog", name="New decision")
             field = dialog.get_by_role("textbox", name="Decision", exact=True)
-            expect(field).to_have_value(CLAUSE)
-            expect(field).to_be_focused()
-            self.assertEqual(field.evaluate("el => [el.selectionStart, el.selectionEnd]"), [0, len(CLAUSE)], "the title is selected")
-            expect(dialog.locator(".create__source")).to_contain_text("It reads 18 %")
-            shot(page, f"r2-propose-from-message-1440-{UI_BROWSER}")
+            field.fill(CLAUSE)
+            shot(page, f"r2-propose-from-window-1440-{UI_BROWSER}")
             dialog.get_by_role("button", name="Propose decision").click()
             expect(dialog).to_have_count(0)
             expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
@@ -205,7 +202,7 @@ class Round2Flows(unittest.TestCase):
         expect(page.locator(".ui-toast", has_text="Not proposed")).to_be_visible()
         time.sleep(7)
         self.assertNotIn(CLAUSE, [item["title"] for item in self.decisions()], "an undone proposal never reached anyone")
-        # Without Undo it is proposed when the window ends, with the message as its source.
+        # Without Undo it is proposed when the window ends.
         propose()
         found = None
         for _ in range(60):
@@ -216,7 +213,9 @@ class Round2Flows(unittest.TestCase):
         self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
         self.assertEqual(found["status"], "proposed")
         # The full form with Replaces stays one step away.
-        open_message_menu(message, phone=False).get_by_role("menuitem", name="Propose a decision").click()
+        page.locator("body").press("c")
+        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
+        page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True).fill(CLAUSE)
         page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()

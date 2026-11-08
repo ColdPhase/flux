@@ -244,8 +244,8 @@ def journey(page: Page, rec: Recorder) -> None:
     moisture = messages.filter(has_text="Moisture first")
     expect(moisture).to_be_visible()
     moisture.hover()
-    rec.click(moisture.get_by_role("button", name="More actions"))
-    rec.click(page.get_by_role("menuitem", name="Propose a decision"))
+    page.locator("body").press("c")  # the one Create window, on its Decision tab (#867): a message has no Propose a decision
+    rec.click(page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True))
     window = page.get_by_role("dialog", name="New decision")
     expect(window).to_be_visible()
     rec.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")

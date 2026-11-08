@@ -166,7 +166,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
           <div className="thread__in dm__in" ref={columnRef}>
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">
-                <DmBubble key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
+                <DmBubble dmId={dmId} key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
                   writable={writable} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
@@ -178,12 +178,12 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
                 const mine = line.authorId === meId;
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
-                  return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
+                  return <DmBubble dmId={dmId} key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
                     writable={writable} arrived={false} observed={false} seenBy={[]} nav="thread"
                     onCreateTask={onCreateTask} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
-                return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
+                return <DmBubble dmId={dmId} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
                   day={newDay ? dayLabel : null} writable={writable} arrived={false} observed={!mine} nav="thread"
                   seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;

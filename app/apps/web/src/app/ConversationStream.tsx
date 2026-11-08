@@ -23,7 +23,6 @@ import { onSent, outboxView, useComposerDraft, type PendingSend } from '../compo
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
-import { cite as citeMessage, messageCite } from './citeBus';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
@@ -841,7 +840,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const addToMap = stored && message ? () => mapDraft({ messageId: message.id, body: message.body }) : undefined;
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable, onCreateWork: () => void stored.makeWork.create(message),
-    onReply: () => stored.onOpen(stored.root, true), onCite: () => citeMessage('stream', messageCite(message, name)), onAddToMap: addToMap,
+    onReply: () => stored.onOpen(stored.root, true), onAddToMap: addToMap,
   } : null;
   // The same hooks run for the queued root and the stored one, so the stored root keeps the queued root's list item.
   const touch = useTouchActions(actions);

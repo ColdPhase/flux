@@ -235,9 +235,9 @@ def journey(take: Take) -> None:
     moisture = messages.filter(has_text="Moisture first")
     expect(moisture).to_be_visible()
     take.hover(moisture)
-    take.click(moisture.get_by_role("button", name="More actions"))
-    take.click(page.get_by_role("menuitem", name="Propose a decision"))
-    # The one Create window opens on the Decision tab with the message as its source (#345).
+    # The one Create window (C), on its Decision tab (#345, #867): a message has no Propose a decision.
+    page.locator("body").press("c")
+    take.click(page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True))
     window = page.get_by_role("dialog", name="New decision")
     expect(window).to_be_visible()
     take.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")

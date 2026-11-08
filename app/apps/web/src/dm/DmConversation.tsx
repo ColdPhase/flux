@@ -392,14 +392,14 @@ function DmContent({ initial }: { initial: Dm }) {
               {rows.map(({ line, label, newDay, continued, groupLast }) => {
                 if (!line.message) {
                   const item = line.item!;
-                  return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
+                  return <DmBubble dmId={dm.id} key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
                     writable={!recipientGone} arrived={false} observed={false} seenBy={[]} nav="stream"
                     onCreateTask={startCopy} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
                 const mine = message.authorId === me.user.id;
                 // A message confirmed from its queued one keeps that list item: nothing moves (#264).
-                return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
+                return <DmBubble dmId={dm.id} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
                   day={newDay ? label : null} writable={!recipientGone} arrived={arrived === message.id}
                   observed={!mine} seenBy={(seen.get(message.id) ?? []).map((p) => p.name)} nav="stream"
                   onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;

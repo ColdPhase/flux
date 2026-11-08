@@ -20,7 +20,6 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from contrast import MEASURE
-from message_gestures import long_press
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -223,64 +222,6 @@ class MessageReferences(unittest.TestCase):
                     background = page.evaluate("getComputedStyle(document.body).backgroundColor")
                     channels = [int(v) for v in re.findall(r"\d+", background)[:3]]
                     self.assertLess(sum(channels) / 3, 90, f"dark theme page background {background}")
-
-    def test_d_cite_a_message_in_the_composer_then_send_it(self) -> None:
-        page = self.page("ada")
-        message = page.locator(f"#message-{self.ids['jonas_root']}")
-        message.hover()
-        message.get_by_role("button", name="More actions").click()
-        page.get_by_role("menuitem", name="Cite").click()
-        tile = page.locator(".composer-cite")
-        expect(tile).to_have_count(1)
-        expect(tile.locator("small")).to_have_text("Cited message · Jonas Berg")
-        expect(tile.locator("strong")).to_have_text("What about this one?")
-        expect(page.locator("#project-composer")).to_have_value("")
-        # The tile comes out with its ×, and then nothing is cited.
-        tile.get_by_role("button", name=re.compile("^Remove citation")).click()
-        expect(tile).to_have_count(0)
-        message.hover()
-        message.get_by_role("button", name="More actions").click()
-        page.get_by_role("menuitem", name="Cite").click()
-        expect(tile).to_have_count(1)
-        page.locator("#project-composer").fill("Replying to this, not to the map idea")
-        with page.expect_request(lambda request: request.method == "POST" and request.url.endswith(f"/projects/{self.ids['project']}/conversations")) as sent:
-            page.locator("#project-composer").press("Enter")
-        self.assertEqual(sent.value.post_data_json["references"], [{"kind": "message", "id": self.ids["jonas_root"]}])
-        expect(tile).to_have_count(0)
-        mine = page.locator(".project-convo__message", has_text="Replying to this, not to the map idea")
-        card = mine.locator(".ref-card[data-ref='message']")
-        expect(card).to_have_count(1)
-        expect(card.locator("strong")).to_have_text("What about this one?")
-        expect(card.locator("small")).to_have_text("Message · Garden sensors")
-        # Reloaded, the card is the same: it comes from the server, made for this reader.
-        page.reload()
-        expect(page.locator(".project-convo__message", has_text="Replying to this, not to the map idea").locator(".ref-card[data-ref='message'] strong")).to_have_text("What about this one?")
-
-    def test_h_a_phone_cites_a_message_from_its_long_press_menu(self) -> None:
-        """A phone has no hover: the message menu opens by long press (or swipe for Reply), and its Cite puts the tile in the composer."""
-        for dark in (False, True):
-            with self.subTest(dark=dark):
-                page = self.page("ada", phone=True, dark=dark)
-                message = page.locator(f"#message-{self.ids['jonas_root']}")
-                bubble = message.locator(".message-bubble")
-                bubble.scroll_into_view_if_needed()
-                long_press(bubble)
-                menu = page.get_by_role("menu", name="Message actions")
-                expect(menu).to_be_visible()
-                menu.get_by_role("menuitem", name="Cite").click()
-                tile = page.locator(".composer-cite")
-                expect(tile).to_have_count(1)
-                expect(tile.locator("small")).to_have_text("Cited message · Jonas Berg")
-                expect(tile.locator("strong")).to_have_text("What about this one?")
-                box = tile.bounding_box()
-                self.assertGreaterEqual(box["height"], 44, box)
-                self.assertGreaterEqual(box["x"], 0)
-                self.assertLessEqual(box["x"] + box["width"], page.viewport_size["width"] + 0.5, "the tile stays inside the screen")
-                remove = tile.get_by_role("button", name=re.compile("^Remove citation"))
-                self.assertGreaterEqual(remove.bounding_box()["height"], 44)
-                self.assertGreaterEqual(remove.bounding_box()["width"], 44)
-                remove.click()
-                expect(tile).to_have_count(0)
 
     def test_e_cite_the_selected_thought_from_the_map(self) -> None:
         page = self.page("ada", path=f"/map/{self.ids['sketch']}")

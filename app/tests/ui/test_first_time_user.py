@@ -6,7 +6,7 @@ Anna owns a space with a restricted project "Volunteer sign-up app". Dev is a me
 * FT-2 as #859 changed it: Dev's own agent has Dev's rights and there are no standing grants, so handing it a task is one
   click in the Owner field, and nothing is granted.
 * FT-3: An invite link made from the project's People also opens the project; the new person lands in it.
-* FT-4: A phone's long-press menu offers "Propose a decision" under More…, and a visible ⋯ opens the same menu.
+* FT-4: A phone's long-press menu is one level (#867), and a visible ⋯ opens the same menu.
 * FT-7, FT-11, FT-13: Change access alone offers Invite; the project field is "Space name"; Revoke asks once.
 """
 
@@ -154,11 +154,11 @@ class FirstTimeUser(unittest.TestCase):
         page.keyboard.press("Escape")
         long_press(message.locator(".message-bubble > .message-body"))
         expect(menu).to_be_visible()
-        menu.get_by_role("menuitem", name="More…").click()
-        expect(menu.get_by_role("menuitem", name="Propose a decision")).to_be_visible()
-        shot(page, "ftu-phone-more-decision")
-        menu.get_by_role("menuitem", name="Propose a decision").click()
-        expect(page.get_by_role("dialog").filter(has_text=re.compile("Should sign-up ask for a phone number"))).to_be_visible()
+        # One level, the same on every device (#867): Reply in thread and Create task lead the phone's list, then Add to map and Copy link.
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        shot(page, "ftu-phone-message-menu")
+        menu.get_by_role("menuitem", name="Create task").click()
+        expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(re.compile("Should sign-up ask for a phone number"))
 
     def test_05_someone_new_joins_the_company_by_link_and_is_then_added_to_the_space(self) -> None:
         """F-037: an invite link joins the company; the space's people are added from the company afterwards."""
