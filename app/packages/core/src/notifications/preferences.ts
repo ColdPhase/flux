@@ -42,16 +42,19 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
+/** A live call invitation is inbox and push only, never email: the call may be over before a mail is read (docs/development/live-sessions.md). */
+const NEVER_EMAILED = new Set<NotificationReason>(['invitation']);
 
 /**
  * The channels each reason has under the stored level: the inbox always; push for the reasons the level lets interrupt
- * (the reasons that need you, every reason, or none); email on the same reasons when "Email me too" is on.
+ * (the reasons that need you, every reason, or none); email on the same reasons when "Email me too" is on, except a live call
+ * invitation, which is never emailed.
  */
 export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>): Record<NotificationReason, ChannelChoice> {
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) {
     const interrupts = stored.level === 'everything' || (stored.level === 'needsYou' && NEEDS_YOU.has(reason));
-    result[reason] = { inApp: true, push: interrupts, email: interrupts && stored.emailMe };
+    result[reason] = { inApp: true, push: interrupts, email: interrupts && stored.emailMe && !NEVER_EMAILED.has(reason) };
   }
   return result;
 }

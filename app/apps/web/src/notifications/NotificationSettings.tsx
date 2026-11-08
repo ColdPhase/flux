@@ -168,10 +168,12 @@ function AccountNotificationSettings() {
         {LEVELS.map((option) => (
           <label key={option.id} className={`sset-row sset-choice${prefs.level === option.id ? ' is-on' : ''}`}>
             <span className="sset-row__b">
-              <span className="sset-row__t">{option.label}</span>
-              <span className="sset-row__s">{option.detail}</span>
+              <span className="sset-row__t" id={`${ids.level}-${option.id}`}>{option.label}</span>
+              <span className="sset-row__s" id={`${ids.level}-${option.id}-d`}>{option.detail}</span>
             </span>
-            <input type="radio" name="notification-level" value={option.id} checked={prefs.level === option.id} onChange={() => setLevel(option.id)} />
+            {/* The option is named by its title and described by its line, so a screen reader says each once. */}
+            <input type="radio" name="notification-level" value={option.id} checked={prefs.level === option.id} aria-labelledby={`${ids.level}-${option.id}`}
+              aria-describedby={`${ids.level}-${option.id}-d`} onChange={() => setLevel(option.id)} />
             <span className="sset-check" aria-hidden="true"><Icon name="check" size={12} /></span>
           </label>
         ))}
@@ -423,9 +425,11 @@ export function UnsubscribePage() {
     setState('working');
     unsubscribe(token).then((result) => setState(result.result === 'stale' ? 'stale' : result.stopped), () => setState('failed'));
   };
+  // The link of the sign-in address turns "Email me too" off, which stops notification email to every address; an extra address's link removes that address.
+  const ask = 'Flux will stop sending notification email. If this message came to your sign-in address, that turns off “Email me too”, so no address of yours gets notification email any more; if it came to an extra address, that address is removed. Your Inbox and push stay as they are, and so does how you sign in.';
   const copy = {
-    ask: ['Stop notification emails?', 'Flux will stop sending notification email to the address this message went to. Nothing else changes, including how you sign in.'],
-    working: ['Stop notification emails?', 'Flux will stop sending notification email to the address this message went to. Nothing else changes, including how you sign in.'],
+    ask: ['Stop notification emails?', ask],
+    working: ['Stop notification emails?', ask],
     account: ['Emails stopped', '“Email me too” is now off, so Flux sends no notification email. Your Inbox and push are unchanged, and you can turn email back on in notification settings.'],
     extra: ['Emails stopped', 'Flux removed this address and will not send notification email to it. Your Inbox, push and other addresses are unchanged.'],
     stale: ['This link no longer applies', 'It was for an address that is no longer one Flux emails, so nothing changed. You can manage your email addresses in notification settings.'],

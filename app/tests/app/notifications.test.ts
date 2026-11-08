@@ -965,6 +965,37 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account', emailMe: false });
   });
 
+  test('the unsubscribe link of an extra address removes that address and nothing else; replaying it changes nothing, and each footer says what its link does', async () => {
+    const lead = await person('Wilf Crane');
+    const reader = await person('Xan Pike');
+    const space = (await workspace(lead, 'Extra link lane')).id;
+    await addMember(lead, space, reader, 'member');
+    const extra = `xan.extra-${randomUUID()}@example.test`;
+    await verifyExtra(reader, extra);
+    const mention = async (name: string) => {
+      const room = (await project(lead, space, name, 'workspace')).id;
+      const thread = await conversation(lead, room, `@Xan Pike ${name} is ready`);
+      await waitForItem(reader, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, name);
+    };
+    await mention('Rota X');
+    const [toExtra] = await waitForMails(extra, 2, 'the email to the extra address');
+    const [toAccount] = await waitForMails(reader.email, 1, 'the email to the sign-in address');
+    // The footer names what the link does: the sign-in address's link stops all notification email, an extra address's only that address.
+    assert.match((await mailText(toAccount!.ID)).Text, /Stop all notification email:/);
+    assert.match((await mailText(toExtra!.ID)).Text, /Stop notification email to this address:/);
+    const link = unsubscribeUrl((await mailText(toExtra!.ID)).headers);
+    assert.deepEqual(await oneClick(link), { result: 'stopped', stopped: 'extra', emailMe: true });
+    const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.equal(settings.email.extra, null, 'the extra address is removed');
+    assert.equal(settings.emailMe, true, 'Email me too is untouched: the sign-in address still gets mail');
+    assert.deepEqual(await oneClick(link), { result: 'stale', stopped: 'extra', emailMe: true }, 'a replay changes nothing');
+    const before = (await mailsTo(reader.email)).length;
+    await mention('Rota Y');
+    await waitForMails(reader.email, before + 1, 'the next email to the sign-in address');
+    await sleep(800);
+    assert.equal((await mailsTo(extra)).length, 2, 'the removed address got nothing more (its confirmation and one notification)');
+  });
+
   test('verification sends are bounded across add, replace and resend, also when requests race', async () => {
     const someone = await person('Wes Moor');
     const target = `wes.target-${randomUUID()}@example.test`;

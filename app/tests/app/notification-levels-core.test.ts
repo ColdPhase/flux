@@ -24,7 +24,7 @@ describe('notification levels', () => {
       const needsYou = (NEEDS_YOU_REASONS as readonly string[]).includes(reason);
       assert.equal(channels[reason].inApp, true, `${reason} reaches the inbox`);
       assert.equal(channels[reason].push, needsYou, `${reason} push`);
-      assert.equal(channels[reason].email, needsYou, `${reason} email follows push`);
+      assert.equal(channels[reason].email, needsYou && reason !== 'invitation', `${reason} email follows push, a live call invitation excepted`);
     }
     assert.equal(channels.reply.push, false);
   });
@@ -32,7 +32,7 @@ describe('notification levels', () => {
   test('Everything, Nothing and back: the inbox is never turned off', () => {
     const everything = applyPreferenceChange(fresh(), { level: 'everything' });
     assert.equal(everything.level, 'everything');
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email));
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (reason !== 'invitation')));
 
     const nothing = applyPreferenceChange(everything, { level: 'nothing' });
     const off = channelsOf(nothing);
@@ -48,7 +48,8 @@ describe('notification levels', () => {
     assert.ok(NOTIFICATION_REASONS.every((reason) => !channelsOf(noEmail)[reason].email), 'no reason emails');
     assert.deepEqual(NOTIFICATION_REASONS.map((reason) => channelsOf(noEmail)[reason].push), NOTIFICATION_REASONS.map((reason) => channelsOf(fresh())[reason].push), 'push is unchanged');
     const everything = applyPreferenceChange(fresh(), { level: 'everything', emailMe: true });
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email), 'Everything emails every reason');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (reason !== 'invitation')), 'Everything emails every reason but a live call invitation');
+    assert.equal(channelsOf(everything).invitation.push, true, 'the invitation still rings on push, and is in the Inbox');
   });
 
   test('unknown levels and non-boolean switches are refused', () => {

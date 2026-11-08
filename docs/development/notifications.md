@@ -67,7 +67,8 @@ The settings page sends its saves one after another, numbered, and shows only th
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`) at `needsYou`, to every
-  reason (adding `reply`) at `everything`, and to none at `nothing`. Nothing else is stored per reason: the per-kind
+  reason (adding `reply`) at `everything`, and to none at `nothing`. Email follows push except for `invitation`: a live call
+  invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33.
 - **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
   enabled, confirmed address (today the sign-in address and a confirmed extra address; one switch per address
@@ -145,7 +146,10 @@ confirmation.
   off (`stopped: "account"`, answered with the current `emailMe`); for the extra address it removes that
   address (`stopped: "extra"`), only while that address is still the current one. A link for a replaced
   extra address or a changed sign-in address answers `result: "stale"`, changes nothing, and the page says
-  "This link no longer applies". The body links to `/unsubscribe?token=…`, a page with one button.
+  "This link no longer applies". The body links to `/unsubscribe?token=…`, a page with one button. The words
+  say what the link does: an email to the sign-in address offers "Stop all notification email" and the page
+  before the click says that it turns off Email me too for every address; an email to an extra address offers
+  "Stop notification email to this address".
 
 ## Inbox UI
 

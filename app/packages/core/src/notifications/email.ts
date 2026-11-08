@@ -3,7 +3,7 @@ import { NOTIFICATION_EMAIL_SUBJECT, NOTIFICATION_UNSUBSCRIBE_PATH } from '@flux
 import { readsSource } from '../push/notifications.js';
 import type { EmailDeliveryUnitOfWork, EmailJob, NotificationMailer, OutgoingMail } from './ports.js';
 import { NOTIFICATION_EMAIL_QUEUE } from './generate.js';
-import { channelOn, EMAIL_KINDS, inQuietHours } from './preferences.js';
+import { channelOn, inQuietHours } from './preferences.js';
 
 // Notification email (issue #116, founder direction on #44). Email is a channel above the same
 // permissioned inbox as push: every message is the same generic notice with an authorized link,
@@ -19,8 +19,8 @@ export function unsubscribeLinks(origin: string, token: string) {
 }
 
 /** The whole email: a fixed subject and body, an in-app link that rechecks access, and unsubscribe. */
-export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null }): OutgoingMail {
-  const { origin, to, emailId, notificationId, token, company } = input;
+export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null; addressKind?: 'account' | 'extra' }): OutgoingMail {
+  const { origin, to, emailId, notificationId, token, company, addressKind = 'account' } = input;
   const links = unsubscribeLinks(origin, token);
   const host = new URL(origin).hostname || 'flux.invalid';
   const text = [
@@ -32,7 +32,8 @@ export function buildNotificationEmail(input: { origin: string; to: string; emai
     'Flux never puts messages or space details in email. Choose what reaches you by email:',
     `${origin}/settings/notifications`,
     '',
-    'Stop these emails to this address:',
+    // The link of the sign-in address turns "Email me too" off, which stops notification email to every address; an extra address's link removes that address.
+    addressKind === 'extra' ? 'Stop notification email to this address:' : 'Stop all notification email:',
     links.page,
     '',
   ].join('\n');
@@ -102,7 +103,6 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     const preferences = await ports.preferences.get(row.userId);
     if (notification.reason && !channelOn(preferences, notification.reason, 'email')) return skip('email turned off for this reason');
     if (await ports.preferences.isMuted(row.userId, notification.source)) return skip('place muted');
-    if (!EMAIL_KINDS.includes(row.addressKind)) return skip('address no longer chosen');
     const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
     if (!address) return skip('no verified address');
     // One message per actual mailbox: the account and the extra address can be the same one,
@@ -118,7 +118,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
 
   const { row, address, token } = claim;
   const company = await options.company?.() ?? null;
-  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company });
+  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company, addressKind: row.addressKind });
   const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
   if (admission.status === 'unknown') {
     // SMTP may already have accepted it. A skipped row would free its mailbox for another copy.

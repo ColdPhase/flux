@@ -141,7 +141,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       if (!ports.mailer.available) throw new MailUnavailableError();
       const email = normalizeEmail(input?.email);
       if (email.toLowerCase() === account.email.toLowerCase()) {
-        throw new ConflictError('This is already your sign-in address; choose it under "Where email goes"', 'ADDRESS_IS_ACCOUNT');
+        throw new ConflictError('This is already your sign-in address; it receives notification email whenever “Email me too” is on', 'ADDRESS_IS_ACCOUNT');
       }
       // Reserved before the address changes, so replacing it cannot reset the limit.
       await reserveSend(account.userId);
@@ -180,11 +180,11 @@ export function createNotificationSettings(ports: SettingsPorts) {
 }
 
 /**
- * One-click unsubscribe (RFC 8058) with the token from one email. It stops email only to the
- * exact address that email went to, and only while that address is still the person's current
- * one of that kind: a link from a replaced extra address or a changed sign-in address is
- * harmless (`stale`). It needs no session and changes nothing but whether email comes to that address.
- * Repeating it is harmless.
+ * One-click unsubscribe (RFC 8058) with the token from one email. The link of the sign-in address turns
+ * "Email me too" off, which stops notification email to every address; the link of an extra address removes that
+ * address. Either only while that address is still the person's current one of that kind: a link from a replaced
+ * extra address or a changed sign-in address is harmless (`stale`). It needs no session and changes nothing but
+ * where notification email goes. Repeating it is harmless.
  */
 export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'unsubscribes' | 'addresses'>, token: unknown): Promise<UnsubscribeResponse> {
   const value = typeof token === 'string' ? token.trim() : '';
