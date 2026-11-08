@@ -243,11 +243,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         add_task(page, "Design the diffuser")
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
-        # Attaching a result to work opened that task's own conversation (#154), now the project's newest one:
-        # open the original conversation explicitly.
-        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        message = page.locator(f"#message-{self.messages['pivot']}")
         page.goto(f"/projects/{self.project_id}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
+        panel.get_by_role("textbox", name="Decision", exact=True).fill(PIVOT)
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
         choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()

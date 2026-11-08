@@ -158,6 +158,24 @@ class DmThreadsReceipts(unittest.TestCase):
         assert own_body and own_pill
         self.assertLessEqual(own_pill["x"] + own_pill["width"], own_body["x"] + 1)
 
+    def test_01a_add_to_map_puts_a_private_message_on_my_map(self) -> None:
+        # A private message has no space whose map could take it, so Add to map puts its words on the person's My map (#867, #948).
+        page = self.page("ada")
+        page.goto(f"/dm/{self.dm_id}")
+        row = self.row(page, self.root)
+        row.scroll_into_view_if_needed()
+        row.locator(".dm-msg__body").hover()
+        row.get_by_role("group", name="Actions on this message").get_by_role("button", name="More actions").click()
+        page.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Add to map").click()
+        expect(page.get_by_role("status").filter(has_text="Added to My map")).to_be_visible()
+        mine = self.get(page, f"/api/v1/workspaces/{self.workspace_id}/sketches?scope=private&limit=100&offset=0")["items"]
+        self.assertEqual(len(mine), 1, "one private map for the person")
+        thoughts = self.get(page, f"/api/v1/sketches/{mine[0]['id']}")["thoughts"]
+        self.assertEqual([t["text"] for t in thoughts], [ROOT_TEXT], "the message's words are a thought on My map")
+        page.get_by_role("status").get_by_role("button", name="Open").click()
+        expect(page).to_have_url(re.compile(r"/map$"))
+        expect(page.get_by_text(ROOT_TEXT).first).to_be_visible()
+
     # ------------------------------------------------------------------ private reply thread
 
     def test_02_a_private_reply_thread_with_a_visible_count_that_survives_reload(self) -> None:
