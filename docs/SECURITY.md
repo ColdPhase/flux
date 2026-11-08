@@ -6,9 +6,16 @@ Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is the firs
 on the latest `main` branch; historical commits and earlier releases do not have
 maintenance branches or promised backports.
 
-The application has accounts, sessions and server-side authorization, but it has not
-had an independent security review. Read the [hardening guide](operations/hardening.md)
-before you expose an instance to the internet.
+The application has accounts, sessions and server-side authorization. In November 2026 an
+agent that did not write the code reviewed v0.2: the [threat model](security/threat-model.md)
+and an [OWASP ASVS 4.0.3 Level 2 checklist](security/asvs-l2.md) list what was checked, and
+every finding is an issue in the v0.2 milestone (#837). It found no P1. An agent review is not a
+human audit. The project plans an external human penetration test and cryptography review before
+Flux is offered for production use by companies. The scope is in the threat model's
+[external audit section](security/threat-model.md#external-human-audit-decision-for-837). Until
+the password and session findings are fixed, use single sign-on for any server reachable from the
+internet. Read the [hardening guide](operations/hardening.md) before you expose an instance to the
+internet.
 
 ## Report a vulnerability
 
