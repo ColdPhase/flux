@@ -46,7 +46,8 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
   busy: 'Too many pages were read just now. Carry on without it, or try again later.',
   off: 'Reading the web is not turned on for this Flux.',
   empty: 'The page has no text to read.',
-  private_text: 'That address carries words you read in Flux, and nothing from Flux may go into a web address. Open the page without them; to look something up, use your web search.',
+  // The same on every engine (#1136): not every engine has a web search, and the brief already tells one that has it to look things up there.
+  private_text: 'That address carries words you read in Flux, and nothing from Flux may go into a web address. Open the page without them.',
 };
 
 export function webReader(options: WebReaderOptions) {

@@ -22,7 +22,7 @@ import { dropSearch, requestParts, runToolLoop, type LoopResult, type RunAccount
 import {
   centsToMicros, connectionCallsTools, parseOutput, runChargeMicros, runReservationMicros, runTokensWithinLimits, type SuppliedSource,
 } from './validation.js';
-import { buildBrief } from './brief.js';
+import { briefPrivateText, buildBrief, type BriefInput } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -378,10 +378,11 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
     // One brief for every place and both engines (#1064); its request is rendered again as the fit drops old messages.
     const asked = new Date(now());
-    const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief({
+    const briefInput = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean): BriefInput => ({
       engine: 'server', kind: run.kind, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
     });
+    const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief(briefInput(sources, dropped, webSearch));
     let fitted: Awaited<ReturnType<typeof fit>>;
     // The provider's own web search (#954, C-29): for a run with tools, while the operator's switch is on, on a provider that has one.
     // Every other run is told plainly that it has none.
@@ -433,9 +434,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (checked.connection.id !== connection.id) return end('unavailable');
       if (!fitted) return end('input_too_large');
       await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date(), answerSources: fitted.sources.map((source) => source.ref) });
-      // What the model is given is private Flux text the run read (#1065, C-30): a web address may not carry it. All it read, the fit aside.
-      const briefed = brief(read.sources, false, search);
-      await ports.runs.addPrivateText(run.id, keptPrivateText(`${briefed.system}\n${briefed.request}`));
+      // What people, the company and its tools wrote in the brief is private Flux text the run read (#1065, #1136, C-30): a web address
+      // may not carry it. All it read, the fit aside; Flux's own words in the brief are not private.
+      await ports.runs.addPrivateText(run.id, keptPrivateText(briefPrivateText(briefInput(read.sources, false, search))));
       await taskFence?.mark();
       return { done: false as const, fitted };
     });

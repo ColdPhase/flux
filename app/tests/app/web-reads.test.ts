@@ -3,12 +3,14 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { pool } from './support/db.js';
 import { taskDiscussionPath, type TaskDiscussion } from '@flux/contracts';
-import { taskRunPrompt } from '@flux/core';
+import { keptPrivateText, taskRunPrompt } from '@flux/core';
+import { personalRunWebReadRows } from '@flux/db';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { actionScene } from './support/mcp-actions.js';
 import { expectStatus } from './support/people.js';
 import { db } from './support/db.js';
 import { waitFor } from './support/wait.js';
+import { apiUrl } from './support/http.js';
 import { assistantScene, result, text, type AssistantScene } from './support/assistant-scene.js';
 
 // An agent reads a web page (#918, F-036 AG-8) through Flux's own tool, flux_read_web, on the real /mcp route with a run's token. The API of
@@ -252,5 +254,115 @@ describe('flux_read_web: written before the request, listed when there is no ans
     assert.equal(result((await reading(run, `${at('/read/links')}#Private%20plan`)).message)?.isError, undefined);
     assert.deepEqual(await rowsOf(run.runId), [{ final_url: at('/read/links'), outcome: 'read' }]);
     await scene.complete(run.runId);
+  });
+});
+
+// The post-merge review of #1134 (#1136), on the real /mcp route: the check's cost, pages a person named, a link's id in a query of its own
+// site, dates, and how long the run's private text is kept.
+describe('flux_read_web: the check after the review of #1134 (#1136)', () => {
+  let scene: AssistantScene;
+  before(async () => { scene = await assistantScene('wk'); });
+  beforeEach(async () => { await scene.reset(); await fetch(`${SITE}/__reset`); });
+  const other = (path: string) => `http://other.test${path}`;
+  const post = async (body: string) => expectStatusPost(await scene.peer.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`,
+    { body: { body, clientMessageId: randomUUID() } }));
+  const readTalk = async (run: Awaited<ReturnType<AssistantScene['liveRun']>>) => {
+    const talk = await run.call('flux_get_conversation', { projectId: scene.place.id, id: scene.thread.id });
+    assert.equal(result(talk.message)?.isError, undefined, text(talk.message).slice(0, 300));
+  };
+  const kept = async (runId: string) => Number((await pool.query('SELECT count(*)::int AS n FROM personal_run_private_texts WHERE run_id = $1', [runId])).rows[0].n);
+  const opened = (message: Record<string, unknown> | null) => assert.equal(result(message)?.isError, undefined, text(message));
+
+  test('P1: the reviewer\'s run, then 30,000 more links and 8 MiB of words kept, and a 2 KB address: the read is quick and /api/v1/health stays responsive', async (t) => {
+    // A member posts 12 messages of 50 links; the run reads the conversation 60 times (the review's repro: 22,234 ms on #1134).
+    const link = (m: number, j: number) => `https://d${m}x${j}.example/a${String(j).padStart(11, '0')}/b${String(m).padStart(11, '0')}/c${String(j + m).padStart(11, '0')}/d${String(j * 7).padStart(11, '0')}`;
+    for (let m = 0; m < 12; m++) await post(`Reading list ${m}: ${Array.from({ length: 50 }, (_, j) => link(m, j)).join(' ')}`);
+    const run = await scene.liveRun(undefined, 'Summarise the reading list');
+    for (let call = 0; call < 60; call++) await readTalk(run);
+    // And as much again as a run can read: 30,000 other links and 8 MiB of words, kept as the API keeps a result.
+    let seed = 11;
+    const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const more = keptPrivateText(Array.from({ length: 30_000 }, (_, j) => link(100 + (j % 60), j)).join(' '));
+    const words = keptPrivateText(Array.from({ length: 1 << 20 }, () => `${['lamp', 'sensor', 'north', 'barrel', 'harbour', 'plan', 'camera', 'below'][Math.floor(random() * 8)]} ${Math.floor(random() * 99)}`).join(' ').slice(0, 8 << 20));
+    for (const row of [more, words]) await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [run.runId, row.body, row.addresses]);
+    const size = (await pool.query(`SELECT count(*)::int AS texts, sum(cardinality(addresses))::int AS links, sum(length(body))::int AS body FROM personal_run_private_texts WHERE run_id = $1`, [run.runId])).rows[0];
+    assert.ok(size.links >= 60_000 && size.body >= 8 << 20, JSON.stringify(size));
+    const runOf = (n: number) => Array.from({ length: n }, () => 'abcdef234567'[Math.floor(random() * 12)]).join('');
+    const crafted = `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040);
+    let worst = 0;
+    let probes = 0;
+    let stop = false;
+    const watch = (async () => {
+      while (!stop) {
+        const started = Date.now();
+        await (await fetch(`${apiUrl}/api/v1/health`)).arrayBuffer();
+        worst = Math.max(worst, Date.now() - started);
+        probes++;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const timings: number[] = [];
+    for (const address of [crafted, crafted, `${at('/read/second')}?x=${runOf(1_500)}`]) {
+      const started = Date.now();
+      const read = await reading(run, address);
+      timings.push(Date.now() - started);
+      assert.notEqual(code(read.message), 'WEB_READ_PRIVATE_TEXT', address.slice(0, 60));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    stop = true;
+    await watch;
+    t.diagnostic(`kept ${JSON.stringify(size)}; flux_read_web took ${timings.join(', ')} ms; worst /api/v1/health ${worst} ms over ${probes} probes`);
+    assert.ok(Math.max(...timings) < 2_000, `flux_read_web took ${timings.join(', ')} ms`);
+    assert.ok(worst < 250, `/api/v1/health waited ${worst} ms`);
+    await scene.complete(run.runId);
+  });
+
+  test('P2: a page a person named opens: the link itself, private words around it or not, and its redirect to another site; its id carried there by the agent is refused', async () => {
+    await post(`Our Release Plan 2026 page is ${at('/any/wiki/Release+Plan+2026')} and the paper is ${at('/doi/10.1145/3593013.3594067')}`);
+    const run = await scene.liveRun(undefined, 'Read what Jonas sent');
+    await readTalk(run);
+    opened((await reading(run, at('/any/wiki/Release+Plan+2026'))).message);
+    const paper = await reading(run, at('/doi/10.1145/3593013.3594067'));
+    opened(paper.message);
+    assert.equal((JSON.parse(text(paper.message)) as { url: string }).url, other('/doi/10.1145/3593013.3594067'), 'read at the publisher: the hop carries only what the address before it did');
+    assert.equal(code((await reading(run, other('/doi/10.1145/3593013.3594067'))).message), 'WEB_READ_PRIVATE_TEXT', 'the id carried to another site by the agent itself');
+    assert.equal(code((await reading(run, `${at('/read/second')}?q=Release+Plan+2026`)).message), 'WEB_READ_PRIVATE_TEXT', 'the page\'s words in another address');
+    assert.deepEqual((await hits('/')).map((hit) => [hit.headers.host, hit.path]), [['public.test', '/any/wiki/Release+Plan+2026'],
+      ['public.test', '/doi/10.1145/3593013.3594067'], ['other.test', '/doi/10.1145/3593013.3594067']]);
+    const rows = (await pool.query(`SELECT final_url, outcome FROM personal_run_web_reads WHERE run_id = $1 ORDER BY read_at, id`, [run.runId])).rows;
+    assert.deepEqual(rows.map((row) => [row.final_url, row.outcome]), [[at('/any/wiki/Release+Plan+2026'), 'read'], [at('/doi/10.1145/3593013.3594067'), 'redirected'],
+      [other('/doi/10.1145/3593013.3594067'), 'read']]);
+    await scene.complete(run.runId);
+  });
+
+  test('P2: a private link\'s id does not ride in a query of its own site (a form); its path neighbours open, and so does today\'s date from a tool result', async () => {
+    await post(`The draft is at ${at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/edit')}`);
+    const run = await scene.liveRun(undefined, 'Read the draft');
+    await readTalk(run);
+    opened((await reading(run, at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/export?format=txt'))).message);
+    assert.equal(code((await reading(run, at('/any/forms/e/attacker/formResponse?entry.1=1Zq81mK2pX9aBcD3eF4gH5iJ6kL7'))).message), 'WEB_READ_PRIVATE_TEXT');
+    // The conversation came back with this minute's createdAt: an address with the same date and time is no private text.
+    const since = `${new Date().toISOString().slice(0, 16)}:00Z`;
+    opened((await reading(run, `${at('/read/second')}?since=${since}`)).message);
+    assert.deepEqual((await hits('/')).map((hit) => hit.path), ['/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/export?format=txt', `/read/second?since=${since}`]);
+    await scene.complete(run.runId);
+  });
+
+  test('P2: the run\'s private text is kept only while it is in flight: any end deletes it, a late result keeps nothing; an error result is kept too', async () => {
+    await post('The camera fails below 5 lux in the low-light test');
+    const ends = [`status = 'completed', committed_at = now(), answer_body = 'Done', run_token_closed_at = now()`, `status = 'stopped'`,
+      `status = 'cap_reached', end_reason = 'max_turns'`, `status = 'unavailable'`];
+    for (const end of ends) {
+      const run = await scene.liveRun(undefined, 'What fails?');
+      await readTalk(run);
+      const missing = await run.call('flux_get_conversation', { projectId: scene.place.id, id: randomUUID() });
+      assert.equal(result(missing.message)?.isError, true);
+      assert.equal(await kept(run.runId), 2, 'the conversation and the error');
+      await pool.query(`UPDATE personal_runs SET ${end}, completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.runId]);
+      assert.equal(await kept(run.runId), 0, end);
+      await db.transaction((tx) => personalRunWebReadRows(tx).addPrivateText(run.runId, keptPrivateText('A result that came back after the end')));
+      assert.equal(await kept(run.runId), 0, 'nothing is kept for a run that ended');
+    }
   });
 });

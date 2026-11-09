@@ -318,7 +318,7 @@ Shared live editing of maps and Wiki pages. `off` keeps the ordinary saved views
 
 **Type** `on`, `off` · **Default** `off` · **Used by** api (release, source)
 
-`on` lets the server fetch the title and description of links in messages for their cards. Only public `http(s)` addresses on default ports; never in encrypted spaces. A fetch tells the site this server's address. Example: `on`.
+`on` lets the server fetch the title and description of links in messages for their cards. Only public `http(s)` addresses on default ports; never in encrypted spaces, and never for a line an agent that runs on the server wrote. A fetch tells the site this server's address. Example: `on`.
 
 ### `FLUX_STREAM_HEARTBEAT_MS`
 

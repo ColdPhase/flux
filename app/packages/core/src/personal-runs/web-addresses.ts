@@ -3,9 +3,10 @@ import { domainToUnicode } from 'node:url';
 // Web addresses in a run (#918, #953, #954, #1065, F-036 AG-8, C-30). Since the founder's direction of 2026-11-09 an agent may open ANY
 // public address. An address is still a way to send something to a site (`http://site/collect?d=<what the agent knows>`), so the server
 // refuses one that carries private Flux text the run read (`privateFragmentIn`): written into it as it was, percent-encoded, in other case
-// or accents, with invisible characters, or as a run of hex, base64 or base32. The brief tells the agent never to put anything from Flux
-// into an address; this check stops the copy. What the agent rewrote (other words, hyphens for spaces, pieces under 12 characters), or
-// signals by which address it chooses, can still leave; the founder accepted that (decisions.md, "The risk, recorded").
+// or accents, with invisible characters, spelled in hidden characters, or as a run of hex, base64 or base32. A link written in that text
+// opens, and a redirect hop is refused only for what is new in it (#1136). The brief tells the agent never to put anything from Flux into an
+// address; this check stops the copy. What the agent rewrote (other words, hyphens for spaces, pieces under 12 characters), or signals by
+// which address it chooses, can still leave; the founder accepted that (decisions.md, "The risk, recorded").
 /** The most addresses taken from one text, and from one page's text. */
 export const ADDRESSES_PER_TEXT = 50;
 /** The longest address that is read (the tool's own bound). */
@@ -62,8 +63,8 @@ const FRAGMENT_LETTERS = 6;
  * it stops changing: each pass that changes it shortens it, so an address of at most `ADDRESS_MAX` characters stops within that many passes.
  */
 const TEXT_DECODE_PASSES = 4;
-/** The most addresses kept of one private text, as written in it: one carried to another site is refused. */
-const WRITTEN_ADDRESSES = 500;
+/** A link inside a link's query (Google's `/url?q=`, Outlook's safe links, `l.php?u=`) is a link written in the text too, this deep. */
+const WRAPPED_DEPTH = 2;
 
 /** Runs of percent-encoded bytes, decoded as UTF-8 (a broken sequence becomes U+FFFD, never an error). */
 const decodedOnce = (text: string) => text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => Buffer.from(run.replace(/%/g, ''), 'hex').toString('utf8'));
@@ -80,7 +81,7 @@ function percentLayers(text: string, passes: number): string[] {
   return layers;
 }
 
-/** An address's layers as the check reads them: as written, decoded as often as private text is, and decoded until it stops changing. */
+/** A part of an address as the check reads it: as written, decoded as often as private text is, and decoded until it stops changing. */
 function addressLayers(text: string): string[] {
   const layers = percentLayers(text, TEXT_DECODE_PASSES);
   let last = layers[layers.length - 1]!;
@@ -89,7 +90,7 @@ function addressLayers(text: string): string[] {
     if (decoded === last) break;
     last = decoded;
   }
-  return [...new Set([...layers, last])];
+  return last === layers[layers.length - 1] ? layers : [...layers, last];
 }
 
 /** Characters a site can drop without a trace: format characters (zero-width spaces, joiners, soft hyphens) and control characters but space. */
@@ -102,11 +103,22 @@ function folded(text: string): string {
 }
 
 /**
- * Text as an address and private Flux text are compared (#1065): percent-decoded, then lower case, without accents or invisible
- * characters, compatibility forms folded, `+` as a space and each run of space characters as one space.
+ * Characters that spell a text no one sees (#1136): tag characters (ASCII at U+E0020–E007E) and runs of variation selectors (a byte
+ * each). They are read as what they spell, never dropped: a link with a hidden text after it is not that link.
+ */
+const HIDDEN = /[\u{E0020}-\u{E007E}]|(?:[\uFE00-\uFE0F]|[\u{E0100}-\u{E01EF}])+/gu;
+const revealed = (text: string) => text.replace(HIDDEN, (run) => {
+  const first = run.codePointAt(0)!;
+  if (first >= 0xe0020 && first <= 0xe007e) return String.fromCharCode(first - 0xe0000);
+  return Buffer.from([...run].map((char) => { const point = char.codePointAt(0)!; return point <= 0xfe0f ? point - 0xfe00 : point - 0xe0100 + 16; })).toString('utf8');
+});
+
+/**
+ * Text as an address and private Flux text are compared (#1065): percent-decoded, hidden text revealed, then lower case, without accents
+ * or invisible characters, compatibility forms folded, `+` as a space and each run of space characters as one space.
  */
 export function comparableText(text: string): string {
-  return folded(percentLayers(text, TEXT_DECODE_PASSES).at(-1)!);
+  return folded(revealed(percentLayers(text, TEXT_DECODE_PASSES).at(-1)!));
 }
 
 /**
@@ -117,64 +129,122 @@ const BARE_SITE = /(?<![\p{L}\p{N}@._/-])(?:[\p{L}\p{N}-]+\.)+\p{Ll}{2,63}(?![\p
 
 /** Where a compared address starts: after its scheme and a leading `www.` (`news.example/2026/lamps`). */
 const withoutScheme = (compared: string) => compared.replace(/^https?:\/\/(?:www\.)?/, '');
-/** An address as the check compares it: comparable, without its scheme, `www.` and fragment. */
-const comparedAddress = (address: string) => withoutScheme(comparableText(address));
 
-/** Private Flux text as a run keeps it for the check (#1065, C-30): comparable, and the web addresses written in it. */
+/**
+ * Where kept text was cut: a link left out of the words, a date or a time. No window of an address can span it: a compared address
+ * never holds a line break (`folded` makes every space one space).
+ */
+const CUT = '\n';
+/** The cut in the text as written, before it is compared: a private-use character that folding keeps. */
+const CUT_MARK = '';
+/**
+ * Dates and times (C-30, #1136): an ISO date or timestamp (`2026-11-09`, `2026-11-09t08:15:00.000z`, the brief's `2026-11-09 08:15`), a date
+ * written with slashes or dots either way round (`2026/11/09`, `09.11.2026`) and a time (`08:15`, `08:15:30`). They are not private: a
+ * tool's `createdAt` and today's date are in every run, and "what changed since this morning" is ordinary work. Read in compared text.
+ */
+const TIME = String.raw`\d{1,2}:\d{2}(?::\d{2}(?:[.,]\d{1,9})?)?(?:z|[+-]\d{2}(?::?\d{2})?)?`;
+const DATE_TIME = new RegExp(String.raw`(?<!\d)(?:(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[-/.]\d{1,2}[-/.]\d{4})(?:[t ]${TIME})?|${TIME})(?!\d)`, 'g');
+const withoutDates = (compared: string) => compared.replace(DATE_TIME, CUT);
+
+/** A web address as the check compares it: comparable, without its scheme, `www.`, fragment, dates and times. */
+const comparedAddress = (address: string) => withoutDates(withoutScheme(comparableText(address)));
+
+/** The links inside a link's query: a redirect wrapper's target (`google.com/url?q=https://…`). */
+function wrappedTargets(address: string): string[] {
+  const targets: string[] = [];
+  for (const value of new URL(address).searchParams.values()) {
+    const target = /^https?:\/\//i.test(value) ? normalizedAddress(value) : null;
+    if (target && targets.length < 4) targets.push(target);
+  }
+  return targets;
+}
+
+/**
+ * Private Flux text as a run keeps it for the check (#1065, #1136, C-30): `body`, its words, compared, with each link, date and time cut
+ * out; `addresses`, the links written in it, compared (and a wrapper's target as a link too).
+ */
 export interface KeptPrivateText { body: string; addresses: string[] }
 
 /**
- * Keeps private Flux text a run read for the check (#1065): its comparable form without the web addresses written in it, so that a page a
- * person named (`https://news.example/2026/11/09/lamps`, `wiki.example/lamp`) still opens and its words refuse no other address; and
- * those addresses as the check compares them, so that one carried to another site is refused (`privateFragmentIn`). Only the address is
- * left out, never the words around it (a tool's JSON has no spaces between its fields), and an email address is not an address.
+ * Keeps private Flux text a run read for the check (#1065, #1136): its words, compared, with the web addresses written in it cut out
+ * (an address with a scheme, or a site named without one, such as `wiki.example/lamp`; never the words around it, since a tool's JSON
+ * has no spaces between its fields; an email address is not an address) and its dates and times cut out; and those addresses, compared,
+ * with the target inside a redirect wrapper's query. Linear in the text.
  */
 export function keptPrivateText(text: string): KeptPrivateText {
-  const addresses = new Set<string>();
+  const links = new Set<string>();
+  const keep = (address: string, depth: number) => {
+    links.add(comparedAddress(address));
+    if (depth < WRAPPED_DEPTH) for (const target of wrappedTargets(address)) keep(target, depth + 1);
+  };
   const leaveOut = (raw: string, scheme: string) => {
     const kept = withoutTrailingMarks(raw);
     const address = normalizedAddress(`${scheme}${kept}`);
     if (!address) return raw;
-    if (addresses.size < WRITTEN_ADDRESSES) addresses.add(comparedAddress(address));
-    return ` ${raw.slice(kept.length)}`;
+    keep(address, 0);
+    return `${CUT_MARK}${raw.slice(kept.length)}`;
   };
-  const body = text.replace(ADDRESS, (raw) => leaveOut(raw, '')).replace(BARE_SITE, (raw) => leaveOut(raw, 'https://'));
-  return { body: comparableText(body), addresses: [...addresses] };
+  const words = text.replace(ADDRESS, (raw) => leaveOut(raw, '')).replace(BARE_SITE, (raw) => leaveOut(raw, 'https://'));
+  return { body: withoutDates(comparableText(words)).replaceAll(CUT_MARK, CUT), addresses: [...links] };
+}
+
+/** What a run's check reads, built once for one read from all the text the run kept: its words and its links, each once. */
+export interface PrivateTextIndex { words: readonly string[]; links: readonly string[]; linkSet: ReadonlySet<string> }
+
+export function privateTextIndex(texts: readonly KeptPrivateText[]): PrivateTextIndex {
+  const words = new Set<string>();
+  const links = new Set<string>();
+  for (const kept of texts) {
+    if (kept.body.trim()) words.add(kept.body);
+    for (const address of kept.addresses) links.add(address);
+  }
+  return { words: [...words], links: [...links], linkSet: links };
 }
 
 /**
- * Whether a window of compared text can be a fragment: 12 characters with at least 6 letters or digits, of two words or more, with a
- * digit or with an `@` (an email address, a handle). One long word alone ("documentation", a name) is too common to tell what a run read
- * from what everybody writes.
+ * The windows the addresses of one read carried, the address asked for and each redirect hop after it (#1136): a hop may carry again
+ * whatever an address before it carried, so DOI → publisher, twitter.com → x.com and a GitHub permalink → raw.githubusercontent.com open.
  */
-function fragmentLike(window: string): boolean {
-  return (window.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= FRAGMENT_LETTERS && /[\s\p{N}@]/u.test(window);
-}
+export type AddressChain = Set<string>;
+export const addressChain = (): AddressChain => new Set<string>();
 
 /** The host (and port) a compared address without its scheme begins with. */
 const siteOf = (address: string) => /^[^/?#\s]*/.exec(address)![0];
 
-/**
- * What of an address written in private text (`written`, compared, without its scheme) a reading of another site's address carries: the
- * whole address, when it names more than its site, or a long part of its path or query (12 characters or more, with a digit, a space or an
- * `@`: an id, a token). A date or a word of its path alone is not its part: another site's page of the same day opens.
- */
-function carriedPart(reading: string, written: string): string | null {
-  const path = written.slice(siteOf(written).length);
-  if (path.length > 1 && containsWhole(reading, written)) return written;
-  for (const part of path.split(/[/?&=#;]+/)) if (part.length >= PRIVATE_FRAGMENT_CHARS && fragmentLike(part) && containsWhole(reading, part)) return part;
-  return null;
-}
+/** A window lies in the host and path of a plain reading of the address; or anywhere else (its query, a decoded run). */
+const IN_PATH = 1;
+const ELSEWHERE = 2;
 
-/** Whether `text` holds `whole` with no letter or digit glued to either end of it (`x.example/a` is not in `box.example/abc`). */
-function containsWhole(text: string, whole: string): boolean {
-  const glued = /[\p{L}\p{N}-]/u;
-  for (let at = text.indexOf(whole); at >= 0; at = text.indexOf(whole, at + 1)) {
-    const before = at > 0 ? text[at - 1]! : '';
-    const after = text[at + whole.length] ?? '';
-    if (!glued.test(before) && !/[\p{L}\p{N}]/u.test(after)) return true;
+const ALNUM = /[\p{L}\p{N}]/u;
+const MARK = /[\s\p{N}@]/u;
+/**
+ * The fragment-like windows of `text` (#1065): 12 characters with at least 6 letters or digits and a space, a digit or an `@`. One long
+ * word alone ("documentation", a name) is too common to tell what a run read from what everybody writes. Linear in the text.
+ */
+function addWindows(text: string, pathEnd: number, into: Map<string, number>) {
+  const n = text.length;
+  if (n < PRIVATE_FRAGMENT_CHARS) return;
+  const letters = new Uint8Array(n);
+  const marks = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const char = text[i]!;
+    letters[i] = ALNUM.test(char) ? 1 : 0;
+    marks[i] = MARK.test(char) ? 1 : 0;
   }
-  return false;
+  let letterCount = 0;
+  let markCount = 0;
+  for (let i = 0; i < n; i++) {
+    letterCount += letters[i]!;
+    markCount += marks[i]!;
+    const at = i - PRIVATE_FRAGMENT_CHARS + 1;
+    if (at < 0) continue;
+    if (letterCount >= FRAGMENT_LETTERS && markCount > 0) {
+      const window = text.slice(at, at + PRIVATE_FRAGMENT_CHARS);
+      into.set(window, (into.get(window) ?? 0) | (i < pathEnd ? IN_PATH : ELSEWHERE));
+    }
+    letterCount -= letters[at]!;
+    markCount -= marks[at]!;
+  }
 }
 
 /** Hex, base64 (either alphabet) and base32 runs long enough to hold a fragment, decoded at each alignment, then percent-decoded. */
@@ -202,61 +272,137 @@ function base32(text: string): Buffer {
 }
 
 /**
- * Every way the address can carry text to a site (#1065): as the agent wrote it and as the server sends it (the URL parser drops tabs and
- * line breaks and encodes the host), with its host in Unicode, each percent-decoded as often as it was encoded; and the hex, base64 and
- * base32 runs of the decoded address, decoded. The fragment (`#…`) is never sent and is not read. Null when it is no address (nothing is sent).
+ * Every way the address can carry text to a site (#1065), as windows: its host and path, then its query, as the server sends it (the URL
+ * parser drops tabs and line breaks and encodes the host) and with its host in Unicode, each percent-decoded as often as it was encoded and
+ * with any hidden text revealed;
+ * and the hex, base64 and base32 runs of the decoded address, decoded. The fragment (`#…`) is never sent and is not read. Null when it is no
+ * web address (nothing is sent). Bounded by the address's length (`ADDRESS_MAX`), never by what the run read.
  */
-function readingsOf(address: string): { plain: string[]; decoded: string[] } | null {
+function readingsOf(address: string): { windows: Map<string, number>; compared: string } | null {
   let url: URL;
   try { url = new URL(address); } catch { return null; }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
   url.hash = '';
-  const unicodeHost = domainToUnicode(url.hostname);
-  const sources = new Set([address.split('#')[0]!, url.href, unicodeHost ? url.href.replace(url.hostname, unicodeHost) : url.href]);
-  const plain = new Set<string>();
-  const decoded = new Set<string>();
-  for (const source of sources) {
-    const layers = addressLayers(source);
-    for (const layer of layers) plain.add(withoutScheme(folded(layer).trim()));
-    for (const run of decodedRuns(layers[layers.length - 1]!)) decoded.add(folded(run));
+  const hosts = new Set([url.host]);
+  const unicode = domainToUnicode(url.hostname);
+  if (unicode && unicode !== url.hostname) hosts.add(url.port ? `${unicode}:${url.port}` : unicode);
+  const paths = addressLayers(url.pathname).map(revealed);
+  const queries = addressLayers(url.search).map(revealed);
+  const windows = new Map<string, number>();
+  for (const host of hosts) {
+    for (let layer = 0; layer < Math.max(paths.length, queries.length); layer++) {
+      const hostPath = folded(`${host}${paths[Math.min(layer, paths.length - 1)]!}`).replace(/^www\./, '');
+      addWindows(`${hostPath}${folded(queries[Math.min(layer, queries.length - 1)]!)}`, hostPath.length, windows);
+    }
   }
-  return { plain: [...plain], decoded: [...decoded] };
+  for (const run of [...decodedRuns(`${url.host}${paths.at(-1)!}`), ...decodedRuns(queries.at(-1)!)]) addWindows(folded(run), 0, windows);
+  return { windows, compared: comparedAddress(url.href) };
 }
 
 /**
- * The first fragment of private Flux text the run read (`texts`, kept by `keptPrivateText`) that `address` carries (#1065, C-30), in
- * any of its readings, or an address written in that text that it carries to another site: the server refuses to open it. Null when it
- * carries none.
+ * The longest link written in the private text that the address begins with, followed by nothing, a path or a query (`doc/edit` →
+ * `doc/edit?usp=sharing`). A few `Set` lookups, one at each mark of the address.
  */
-export function privateFragmentIn(address: string, texts: readonly KeptPrivateText[]): string | null {
-  const readings = readingsOf(address);
-  if (!readings) return null;
-  for (const { addresses } of texts) {
-    for (const written of addresses) {
-      for (const plain of readings.plain) {
-        const carried = siteOf(plain) === siteOf(written) ? null : carriedPart(plain, written);
-        if (carried) return carried.slice(0, 80);
-      }
-      for (const decoded of readings.decoded) {
-        const carried = carriedPart(decoded, written);
-        if (carried) return carried.slice(0, 80);
-      }
-    }
-  }
-  const windows = new Set<string>();
-  for (const compared of [...readings.plain, ...readings.decoded]) {
-    for (let at = 0; at + PRIVATE_FRAGMENT_CHARS <= compared.length; at++) {
-      const window = compared.slice(at, at + PRIVATE_FRAGMENT_CHARS);
-      if (fragmentLike(window)) windows.add(window);
-    }
-  }
-  if (!windows.size) return null;
-  for (const { body } of texts) {
-    for (let at = 0; at + PRIVATE_FRAGMENT_CHARS <= body.length; at++) {
-      const window = body.slice(at, at + PRIVATE_FRAGMENT_CHARS);
-      if (windows.has(window)) return window;
-    }
+function writtenPrefix(compared: string, links: ReadonlySet<string>): string | null {
+  if (links.has(compared)) return compared;
+  for (let end = compared.length - 1; end > 0; end--) {
+    if (!'/?&;=#'.includes(compared[end]!)) continue;
+    if (links.has(compared.slice(0, end + 1))) return compared.slice(0, end + 1);
+    if (links.has(compared.slice(0, end))) return compared.slice(0, end);
   }
   return null;
+}
+
+// A rolling hash of 12-character windows (Rabin-Karp): one pass over the run's kept text finds which of the address's windows stand in it,
+// whatever the number of links or texts. The multiplier is random for each process, so text cannot be made to collide with an address.
+const W = PRIVATE_FRAGMENT_CHARS;
+const BASE = (Math.floor(Math.random() * 0x3fffffff) * 2 + 1) | 0;
+const BASE_POW = Array.from({ length: W - 1 }).reduce<number>((power) => Math.imul(power, BASE), 1);
+const hashOf = (text: string, at: number) => { let hash = 0; for (let i = 0; i < W; i++) hash = (Math.imul(hash, BASE) + text.charCodeAt(at + i)) | 0; return hash; };
+/** How much kept text is read between two yields to the event loop: about a millisecond's work. */
+const SCAN_SLICE = 1 << 18;
+const yieldToLoop = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+interface Candidate { window: string; where: number; sameSite: boolean }
+
+/** The address's windows that are not allowed, looked up by hash, with a bitmap in front of the map. */
+class Candidates {
+  private readonly table = new Map<number, Candidate[]>();
+  private readonly bits: Uint32Array;
+  private readonly shift: number;
+  constructor(windows: Iterable<[string, number]>, count: number) {
+    const size = Math.min(24, Math.max(12, Math.ceil(Math.log2(count * 32))));
+    this.bits = new Uint32Array((1 << size) >>> 5);
+    this.shift = 32 - size;
+    for (const [window, where] of windows) {
+      const hash = hashOf(window, 0);
+      const list = this.table.get(hash);
+      if (list) list.push({ window, where, sameSite: false }); else this.table.set(hash, [{ window, where, sameSite: false }]);
+      const slot = hash >>> this.shift;
+      this.bits[slot >>> 5]! |= 1 << (slot & 31);
+    }
+  }
+  /** Each candidate that stands in `text` at a window starting in [from, to): `hit` returns the refused window, or null to go on. */
+  scan(text: string, from: number, to: number, hit: (candidate: Candidate) => string | null): string | null {
+    if (from >= to) return null;
+    const { bits, table, shift } = this;
+    let hash = hashOf(text, from);
+    for (let at = from; ; at++) {
+      const slot = hash >>> shift;
+      if (bits[slot >>> 5]! & (1 << (slot & 31))) {
+        for (const candidate of table.get(hash) ?? []) {
+          if (text.startsWith(candidate.window, at)) { const refused = hit(candidate); if (refused) return refused; }
+        }
+      }
+      if (at + 1 >= to) return null;
+      hash = (Math.imul(hash - Math.imul(text.charCodeAt(at), BASE_POW), BASE) + text.charCodeAt(at + W)) | 0;
+    }
+  }
+}
+
+/**
+ * The fragment of private Flux text the run read that `address` carries (#1065, #1136, C-30), or null: the server refuses to open it. A
+ * fragment is a 12-character window of a reading of the address (with at least 6 letters or digits and a space, a digit or an `@`) that
+ * stands in the run's words, or in a link written in its private text. These do not count:
+ * - what the address it came from carried (`chain`: the address asked for, then each redirect hop);
+ * - the text of a link written in the private text that the address is, or begins with (a page a person named, its page 2, `?raw=true`);
+ * - in its host and path, the text of a link of the same site (`docs/d/<id>/edit` → `docs/d/<id>/export`); never in its query, where a
+ *   form or a search on that site could collect it (`docs.google.com/forms/…/formResponse?entry.1=<id>`).
+ * The work is bounded by the address's length and one pass over the kept text, which yields to the event loop as it goes. An address that
+ * opens adds its windows to `chain`.
+ */
+export async function privateFragmentIn(address: string, index: PrivateTextIndex, chain: AddressChain = addressChain()): Promise<string | null> {
+  const readings = readingsOf(address);
+  if (!readings) return null;
+  const opened = () => { for (const window of readings.windows.keys()) chain.add(window); return null; };
+  const named = writtenPrefix(readings.compared, index.linkSet);
+  if (named === readings.compared) return opened();
+  const allowed = new Map<string, number>();
+  if (named) addWindows(named, 0, allowed);
+  const open = [...readings.windows].filter(([window]) => !chain.has(window) && !allowed.has(window));
+  if (!open.length) return opened();
+  const candidates = new Candidates(open, open.length);
+  const site = siteOf(readings.compared);
+  const sameSite = (link: string) => link.startsWith(site) && (link.length === site.length || '/?#'.includes(link[site.length]!));
+  let budget = SCAN_SLICE;
+  const read = async (text: string, hit: (candidate: Candidate) => string | null): Promise<string | null> => {
+    for (let from = 0, last = text.length - W + 1; from < last;) {
+      const to = Math.min(last, from + budget);
+      const refused = candidates.scan(text, from, to, hit);
+      if (refused) return refused;
+      budget -= to - from;
+      from = to;
+      if (budget <= 0) { await yieldToLoop(); budget = SCAN_SLICE; }
+    }
+    return null;
+  };
+  // First the links of the address's own site: a window of its host and path that one of them holds is that link's own text.
+  const own = (candidate: Candidate) => (candidate.where & ELSEWHERE ? candidate.window : ((candidate.sameSite = true), null));
+  for (const link of index.links) if (sameSite(link)) { const refused = await read(link, own); if (refused) return refused; }
+  const other = (candidate: Candidate) => (candidate.where & ELSEWHERE || !candidate.sameSite ? candidate.window : null);
+  for (const link of index.links) if (!sameSite(link)) { const refused = await read(link, other); if (refused) return refused; }
+  for (const words of index.words) { const refused = await read(words, other); if (refused) return refused; }
+  return opened();
 }
 
 /**

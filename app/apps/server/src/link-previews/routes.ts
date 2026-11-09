@@ -13,7 +13,7 @@ interface Options { db: Database; sessions: SessionResolver; config: LinkPreview
  * Link cards (#469, F-026 §6). The server reads the addresses from the stored message, for a reader who may read its project, and
  * only then fetches: a caller never names an address, so this is not a way to make the server request something. A sealed
  * workspace never gets a fetch (its links would leave the server in the clear, which sealing exists to prevent), and neither does an
- * install whose operator has not turned previews on.
+ * install whose operator has not turned previews on, nor a message an agent that runs on the server wrote (#1136).
  */
 export async function linkPreviewRoutes(app: FastifyInstance, { db, sessions, config, service, rules }: Options) {
   const cards = service ?? linkPreviews({ rules: rules ?? (config.testHosts.size ? CLOSED_WORLD_RULES : undefined), connectTo: config.testHosts.size ? (host) => config.testHosts.get(host) ?? null : undefined });
@@ -31,6 +31,9 @@ export async function linkPreviewRoutes(app: FastifyInstance, { db, sessions, co
     const message = await messageReferenceRows(db).message(messageId, workspaceId);
     if (!message || message.kind !== 'project' || message.projectId !== projectId) throw new NotFoundError('Message');
     if (!config.enabled) return { status: 'off', cards: [] };
+    // An agent that runs on the server wrote it (#1136, C-30): no page is fetched, so an address it wrote cannot carry what it read past the
+    // check of its own web reads. A person's message, an answer they posted with Show everyone and their local client's post are theirs.
+    if (message.author.kind === 'agent' && await messageReferenceRows(db).writtenOnServer(message.author.id)) return { status: 'agent', cards: [] };
     const addresses = messageLinkUrls(message.body);
     if (!addresses.length) return { status: 'ready', cards: [] };
     const result = await cards.cards(principal.id, addresses);

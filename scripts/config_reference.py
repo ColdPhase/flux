@@ -195,7 +195,8 @@ VARIABLES: dict[str, Var] = {
         "working copies before turning it off. Other values stop the API.", "off"),
     "FLUX_LINK_PREVIEWS": Var("collaboration", "`on` · `off`",
         "`on` lets the server fetch the title and description of links in messages for their cards. Only public "
-        "`http(s)` addresses on default ports; never in encrypted spaces. A fetch tells the site this server's address.", "on"),
+        "`http(s)` addresses on default ports; never in encrypted spaces, and never for a line an agent that runs on the server wrote. "
+        "A fetch tells the site this server's address.", "on"),
     "FLUX_WEB_READS": Var("ai", "`on` · `off`",
         "On by default (founder direction 2026-11-08, C-29): a server agent's run reads public web pages and searches the web. "
         "`off` turns both off. Reading is Flux's `flux_read_web` tool (read-only, GET only), with the guard of link cards: public `http(s)` addresses on default "

@@ -64,6 +64,11 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
   if (path === '/cookie') { response.writeHead(302, { location: '/echo', 'set-cookie': 'session=abc123; Path=/' }); return response.end(); }
   if (path === '/echo') return html(response, page('<title>Echo</title>'));
   if (path === '/redirect-ok') return redirect(response, '/article');
+  // #1136: a DOI-like resolver on public.test that sends a reader on to its publisher, another site (other.test), with the same id.
+  if (path.startsWith('/doi/')) return request.headers.host === 'other.test' ? html(response, page(`<title>Publisher: ${path.slice(5)}</title>`).replace('<h1>body</h1>', '<p>The article.</p>'))
+    : redirect(response, `http://other.test${path}`);
+  // #1136: any other page of a site (a wiki page, a document and its export, a form), with its path as its words.
+  if (path.startsWith('/any/')) return html(response, page(`<title>Page</title>`).replace('<h1>body</h1>', `<p>The page at ${path.slice(5).replace(/[<>&"]/g, '')}.</p>`));
   // #1065: a site that unpacks an address it was sent (here: written backwards) and redirects to it.
   if (path.startsWith('/unpack/')) return redirect(response, [...decodeURIComponent(path.slice(8))].reverse().join(''));
   if (path.startsWith('/hop/')) {

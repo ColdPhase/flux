@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, MessageLinkPreviews, Project, Workspace } from '@flux/contracts';
+import { taskDiscussionPath, type Conversation, type MessageLinkPreviews, type Project, type TaskDiscussion, type Workspace } from '@flux/contracts';
+import type { Database } from '@flux/db';
+import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
+import { assistantScene } from './support/assistant-scene.js';
+import { db, pool } from './support/db.js';
+import { toolValue } from './support/mcp.js';
+import { agentConnection } from './support/mcp-actions.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { FETCHES_PER_MINUTE } from '../../apps/server/src/link-previews/service.js';
@@ -266,5 +272,30 @@ describe('where previews are never fetched', () => {
       assert.deepEqual(response.json(), { status: 'off', cards: [] });
     } finally { await off.close(); }
     assert.equal((await hitsOf()).length, 0);
+  });
+});
+
+// The review of #1134 (#1136, C-30): an agent that runs on the server could write an address carrying what it read into a line of a task's
+// discussion, and the card would fetch it with no check. Its lines get no card; a person's own tools are the person's.
+describe('no card for a line an agent on the server wrote (#1136)', () => {
+  test('a server agent\'s line in a task\'s discussion fetches nothing; the person\'s own local client\'s line does', async () => {
+    const team = await assistantScene('lpa');
+    await reset();
+    const task = await team.task(team.owner, 'Read the timetable');
+    expectStatus(await team.peer.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Please take this', clientMessageId: randomUUID() } }), 201);
+    await db.transaction((tx) => taskDiscussionUseCases(tx as unknown as Database).contribute({ kind: 'agent', id: team.agentId }, task.id,
+      { body: `Done, see ${site('/article')}?d=the-words-it-read`, clientMessageId: randomUUID() }, { byFlux: true }));
+    const talk = expectStatus(await team.owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    const line = talk.messages.find((message) => message.body.startsWith('Done, see'))!;
+    assert.deepEqual(await cardsOf(team.owner, team.place.id, line.id), { status: 'agent', cards: [] });
+    assert.deepEqual(await hitsOf('/article'), [], 'nothing was fetched');
+    // A local client writes in the discussion as its own agent, but it is the person's tool: its card is fetched like theirs.
+    const desk = expectStatus(await team.owner.browser.request('POST', `/api/v1/workspaces/${team.ws.id}/agents`, { body: { name: 'Ada desk', owner: 'self' } }), 201) as { id: string };
+    const client = await agentConnection(pool, team.owner.browser, desk.id, [team.place.id]);
+    const posted = toolValue(await client.tool('flux_reply_in_conversation', { projectId: team.place.id, clientCommandId: randomUUID(), sources: [],
+      conversationId: talk.conversationId, message: { body: `Notes: ${site('/page/from-a-local-client')}` } }));
+    const card = await cardsOf(team.owner, team.place.id, String(posted.messageId));
+    assert.deepEqual([card.status, card.cards.map((item) => item.title)], ['ready', ['Page from-a-local-client']]);
+    assert.equal((await hitsOf('/page/from-a-local-client')).length, 1);
   });
 });

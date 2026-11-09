@@ -77,11 +77,17 @@ export function personalRunWebReadRows(db: DbExecutor) {
       return { queries: [...queries], cited: [...cited] };
     },
     /**
-     * Private Flux text the run read (#1065, C-30), as core keeps it (`keptPrivateText`): its comparable form, what an address may not carry,
-     * and the addresses written in it, which still open.
+     * Private Flux text the run read (#1065, #1136, C-30), as core keeps it (`keptPrivateText`): its words, compared, and the links written
+     * in it. Kept only while the run is in flight: the run's row is share-locked, so a run that ends at the same moment either sees this row
+     * and deletes it with the rest (migration 0050's trigger), or this insert sees the run ended and keeps nothing. A text that is only links
+     * keeps its links.
      */
     async addPrivateText(runId: string, kept: { body: string; addresses: readonly string[] }) {
-      if (kept.body.trim()) await db.insert(schema.personalRunPrivateTexts).values({ runId, body: kept.body, addresses: [...kept.addresses] });
+      if (!kept.body.trim() && !kept.addresses.length) return;
+      const body = kept.body.trim() ? kept.body : '';
+      await db.execute(sql`INSERT INTO personal_run_private_texts (run_id, body, addresses)
+        SELECT r.id, ${body}, ${sql.param([...kept.addresses])}::text[] FROM personal_runs r
+        WHERE r.id = ${runId} AND r.status IN ('reading', 'dispatching') FOR SHARE OF r`);
     },
     /** All the private text the run has read, for the check of an address it asks for. */
     async privateTexts(runId: string): Promise<{ body: string; addresses: string[] }[]> {
