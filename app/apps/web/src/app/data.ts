@@ -3,6 +3,7 @@ import { ME_PROBE_HEADER, WORKSPACES_PATH, type MyAgent, type ProjectAccess, typ
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { pacedShellRead } from './shellPace';
+import { forgetKeptPages } from './keepPage';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { listMyAgents } from '../my-agents/api';
@@ -94,6 +95,8 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   const [me, read] = await Promise.all([getMe(request.signal),
     apiRead<EncryptedWorkspace[] | null>(WORKSPACES_PATH, { signal: request.signal, headers: { [ME_PROBE_HEADER]: '1' } }).catch(() => null)]);
   if (!me) {
+    // No session: no page that was shown for one is kept for the next person who signs in here (#1141).
+    forgetKeptPages();
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }

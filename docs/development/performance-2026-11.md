@@ -220,6 +220,13 @@ conversation's reads together.
   - when a timer fires far later than it was set for (the machine slept).
 
   The server's pings cannot be seen from a page.
+- **A failed refresh keeps the page (#1141).** A read that refreshes a page in the background (an event, focus, a retry) and gets
+  no answer, a 5xx or a 429 that outlasted the client's own waits no longer replaces the page with "Something went wrong".
+  Every loader of the signed-in app (`keepPagesOnRefresh` in `app/keepPage.ts`, applied to the router's tree once) gives back
+  what it last read for the same page (same params and search) and asks again by itself after 1, 2, 4, 8 and 16 s; after
+  that the next event or focus asks. The error screen stays for a first load, another page, and answers that say the data is
+  gone or closed (401, 403, 404, 423, other 4xx, a redirect to sign in). Sign-out, and a read that finds no session, forget
+  what was kept.
 - **Live calls.** A call starting still sends no event, so the "live now" cue (only with LiveKit configured) looks every
   30 s while the stream is open, every 12 s otherwise.
 
