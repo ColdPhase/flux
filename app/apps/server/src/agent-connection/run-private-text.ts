@@ -1,4 +1,4 @@
-import { AddressTooLong, addressChain, DomainError, PrivateTextIndex, privateFragmentIn, writtenAddresses, type AddressChain } from '@flux/core';
+import { AddressTooLong, addressChain, DomainError, PrivateTextIndex, privateFragmentIn, privateFragmentsIn, writtenAddresses, type AddressChain } from '@flux/core';
 import { personalRunWebReadRows, type DbExecutor } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -84,13 +84,15 @@ export function forgetRunPrivateText(runId: string) { cache.delete(runId); }
 
 /**
  * The fragment of the run's private text the address carries, or null (`privateFragmentIn`), behind the gate. `index` is the read's own,
- * from its first address, for its redirect hops; without it the run's index is brought up to date first.
+ * from its first address, for its redirect hops; without it the run's index is brought up to date first. `writable`, from the same pass:
+ * whether what a run writes may hold the address (#1156), so Flux's list of the run's pages links it or defangs it without the kept text.
  */
 export async function checkRunAddress(db: DbExecutor, runId: string, address: string, chain: AddressChain, index?: PrivateTextIndex):
-  Promise<{ fragment: string | null; index: PrivateTextIndex }> {
+  Promise<{ fragment: string | null; writable: boolean; index: PrivateTextIndex }> {
   return gated(runId, async () => {
     const current = index ?? await synced(db, runId);
-    return { fragment: await privateFragmentIn(address, current, chain), index: current };
+    const found = await privateFragmentsIn(address, current, chain);
+    return { fragment: found.read, writable: found.written === null, index: current };
   });
 }
 

@@ -53,6 +53,7 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, re
       // address longer than the tool takes, as it is sent (a redirect's Location is not bounded), is neither checked nor asked (#1136).
       const chain = addressChain();
       let index: PrivateTextIndex | undefined;
+      // Each address checked is marked too: whether what a run writes may hold it (#1156), which the list of the run's pages follows.
       const refuseCarrying = async (address: string) => {
         let sent: string | null = null;
         try { sent = new URL(address).href; } catch { /* no web address: the reader says so */ }
@@ -60,17 +61,18 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, re
         const checked = await checkRunAddress(db, run.id, address, chain, index);
         index = checked.index;
         if (checked.fragment) throw new DomainError(422, 'WEB_READ_PRIVATE_TEXT', `${WEB_READ_WORDS.private_text} (It carries "${checked.fragment}".)`);
+        return checked.writable;
       };
-      await refuseCarrying(url);
+      const first = await refuseCarrying(url);
       // Each address is written down, with the run checked live again, BEFORE its request goes out (the first and each redirect hop): a run
       // that is stopped sends nothing more, and one that is stopped while the site answers still lists what it sent.
       const ids: string[] = [];
       let read: Awaited<ReturnType<WebReader['read']>>;
       try {
         read = await reader.read(url, { beforeRequest: async (address) => {
-          if (address !== asked) await refuseCarrying(address);
+          const writable = address === asked ? first : await refuseCarrying(address);
           await withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
-            ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked' }));
+            ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked', writable }));
           });
         } });
       } catch (error) {

@@ -11,7 +11,7 @@ import type {
 import { isAsked, isPrivateAnswer, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
-import { answerWithSchedule } from './schedule-request.js';
+import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
@@ -309,8 +309,24 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   /** How a run that did not end in an answer is closed: at one of its own bounds, or at a standing check. */
   type Early = { status: RunEndStatus; stage: Stage; endReason?: RunRecord['endReason'] };
 
+  /**
+   * The answer as it will be committed, worked out before the commit's transaction (#1156): cleaning reads and checks the run's kept text,
+   * and that transaction holds the space's task lock. The kept text is still all there: only the commit deletes it.
+   */
+  async function answerToCommit(runId: string, text: string, sources: SuppliedSource[]) {
+    // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
+    const redacted = redactSecrets(text);
+    const parsed = parseOutput(redacted.text, sources);
+    // The answer's final text, cleaned (#1143, #1149, C-30): after its marks and its schedule block are taken out (and the schedule's
+    // instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
+    const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(runId)));
+    const searches = await uow.run((ports) => ports.runs.webSearches(runId));
+    return { redacted, parsed, prepared: await preparedAnswer(parsed.body, cleaner, searches.cited) };
+  }
+
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
+    const answer = result?.kind === 'completed' && !early ? await answerToCommit(runId, result.text, sources) : null;
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
@@ -342,17 +358,12 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // Access, grant, pause or connection changed after the read: the output is withheld.
       if ('refusal' in checked) return (await updateAndAnnounce(ports, run.id, ended(checked.refusal, 'before_commit', charge))).status;
       const truncated = result.stopReason === 'max_tokens';
-      // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
-      const redacted = redactSecrets(result.text);
-      const parsed = parseOutput(redacted.text, sources);
-      // The answer's final text, cleaned while the run's kept text still exists (#1143, #1149, C-30): after its marks and its schedule block are
-      // taken out (and the schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
-      const cleaner = answerCleaner(() => ports.runs.privateTexts(run.id));
-      parsed.body = await answerWithWebSources(ports, run, await cleaner.cleanAnswer(await answerWithSchedule(ports, run, parsed.body, cleaner)), cleaner.listed);
+      const { redacted, parsed, prepared } = answer!;
+      const body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, prepared), prepared.cited);
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
-        ...charge, answerBody: parsed.body || '(No answer text.)',
+        ...charge, answerBody: body || '(No answer text.)',
         answerTruncated: truncated, answerSources: parsed.sources, answerRedacted: redacted.changed, committedAt,
       }));
       // The answer to `/ai`, to a chat and of a schedule is its owner's alone: the space hears nothing until Show everyone (#842, #1104).

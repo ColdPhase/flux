@@ -251,17 +251,21 @@ pages, founder direction 2026-11-09, #1113).
   Each redirect hop is checked in `beforeRequest` before it is asked, under the same gate and with the read's index; the hop already sent is
   listed as redirected. **A run's change** (`tool-registry.ts`'s effect wrapper, `refusedPrivateAddress`, #1138) is checked the same way: each
   web address its arguments hold (`writtenAddresses`) against the run's index; one that carries private text refuses the change
-  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. **A run's answer** (`answerCleaner`, #1143, #1149) is cleaned by the worker inside the commit's
-  transaction, while the run's kept text still exists, in its final form: after `parseOutput` and `answerWithSchedule` (whose schedule
-  instruction it cleans too), before `answerWithWebSources`; `cleanAnswer` also decodes the `<ask>` block's JSON, cleans its fields and
-  writes it back. Each address that carries private text, or is too long to be read, becomes `[address left out]`
-  (`withoutPrivateAddresses`, with `sameSitePaths: false`: what a run writes never gets rule (2); the change check of #1138 uses the same
-  option and refuses an over-long address too). `parseOutput`, `takeScheduleBlocks`, `takeAsk` and `withoutCitationMarks` take pieces out
-  with no gap only when that joins no new address (`joinsAddress`); otherwise a space stands in their place. `answerWithWebSources` lists, under an answer, a page the run could read only by rule (2), and a search result that a run may not
-  write, defanged (`AnswerCleaner.listed.read`, `.cited`), and
-  `webSourcesLine` lists search queries with any address in them defanged
-  (`defangedAddresses`): a query is never checked, and a run without an answer has no kept text left when its end line is written. A site on object storage's
-  path-style hosts (`pathStyleStorage`: the same list as C-30) is the host and the bucket (#1144, #1149). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
+  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. **A run's answer** (`answerCleaner`, #1143, #1149) is cleaned by the worker before the
+  commit's transaction (#1156: that transaction holds the space's task lock), while the run's kept text still exists, in its final form:
+  `preparedAnswer` runs after `parseOutput`, takes the `<schedule>` block out and cleans its instruction and its name (`titleFromText` when it gives none), cleans the text (`cleanAnswer` also
+  decodes the `<ask>` block's JSON, cleans its fields and writes it back) and works out the listed form of each cited result; inside the
+  transaction `answerWithSchedule` only prepares the cleaned schedule and `answerWithWebSources` only lists. Each address that carries private
+  text, or is too long to be read, becomes `[address left out]` (`withoutPrivateAddresses`, with `sameSitePaths: false`: what a run writes
+  never gets rule (2); the change check of #1138 uses the same option and refuses an over-long address too). `privateFragmentsIn` gives
+  both answers from one pass. `parseOutput`, `takeScheduleBlocks`, `takeAsk` and `withoutCitationMarks` take pieces out with no gap only
+  when that joins no new address (`joinsAddress`); otherwise a space stands in their place, and `takeAsk` reads a block only before Flux's
+  list (`webSourcesAt`). Each address `flux_read_web` asks is marked when it is asked (`personal_run_web_reads.writable`, migration 0051:
+  `checkRunAddress`'s second answer), and `webSourcesLine` lists one that is not writable defanged, so a list needs no kept text; a search
+  result a run may not write is listed defanged (`AnswerCleaner.cited`; `endedSourcesLine` defangs every one, as a run without an answer has
+  no kept text left), and search queries are listed with any address in them defanged (`defangedAddresses`): a query is never checked. A
+  site on object storage's path-style hosts (`pathStyleStorage`: the same list as C-30) is the host and the bucket (#1144, #1149), and on
+  Backblaze B2's download hosts the host and `/file/<bucket>` (#1156); a window that ends at the `/` after the host is the host's. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
   search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
   the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote (other words,
   hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before

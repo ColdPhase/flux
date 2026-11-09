@@ -10,7 +10,7 @@ import type {
 import { announce, updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
-import { answerWithSchedule } from './schedule-request.js';
+import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
 import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
@@ -351,6 +351,16 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // Every search the CLI reported is written before the run's end is.
       await recorded;
       await hooks.afterDispatch?.(run);
+      // The answer as it will be committed, worked out before the commit's transaction (#1156): cleaning reads and checks the run's kept
+      // text, and that transaction holds the space's task lock. AIM-3 "Committed answer": token patterns and the exact run token become
+      // "[removed: looked like a secret]"; then its final text is cleaned (#1143, #1149, C-30): after its schedule block is taken out (and the
+      // schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
+      const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await (async (text: string) => {
+        const redacted = redactSecrets(text, [grant.token]);
+        const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(run.id)));
+        const searches = await uow.run((ports) => ports.runs.webSearches(run.id));
+        return { redacted, prepared: await preparedAnswer(redacted.text, cleaner, searches.cited) };
+      })(end.text) : null;
 
       return uow.run(async (ports) => {
         const located = await ports.runs.findRun(run.id);
@@ -372,19 +382,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           if (end.reason === 'plan_limit') await pauseUntilReset(ports, current, end.planResetsAt, now());
           return status;
         }
-        const bytes = Buffer.byteLength(end.text, 'utf8');
-        if (bytes > caps.maxAnswerBytes) return save(ended('cap_reached', null, { ...used, endReason: 'answer_too_large' }));
-        // AIM-3 "Committed answer": token patterns and the exact run token become "[removed: looked like a secret]".
-        const redacted = redactSecrets(end.text, [grant.token]);
+        if (!answer) return save(ended('cap_reached', null, { ...used, endReason: 'answer_too_large' }));
+        const { redacted, prepared } = answer;
         const agent: Principal = { kind: 'agent', id: run.agentId };
-        // The answer's final text, cleaned while the run's kept text still exists (#1143, #1149, C-30): after its schedule block is taken out
-        // (and the schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
-        const cleaner = answerCleaner(() => ports.runs.privateTexts(run.id));
-        const answer = await cleaner.cleanAnswer(await answerWithSchedule(ports, run, redacted.text, cleaner));
+        const text = await answerWithSchedule(ports, run, prepared);
         // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned
         // them; those of the cleaned answer, so an address left out is never listed.
-        if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(answer, WEB_SEARCH_BOUNDS.cited) }));
-        const words = await answerWithWebSources(ports, run, answer, cleaner.listed);
+        if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(text, WEB_SEARCH_BOUNDS.cited) }));
+        const words = await answerWithWebSources(ports, run, text, prepared.cited);
         const status = await save(ended('completed', null, {
           ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,
           committedAt: new Date(),

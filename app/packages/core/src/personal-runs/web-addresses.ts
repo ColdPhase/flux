@@ -351,7 +351,8 @@ const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.len
  * (`storage.googleapis.com`, `storage.cloud.google.com`); every host that starts with `s3.` or `s3-` under Amazon S3 (`amazonaws.com`:
  * `s3.amazonaws.com`, `s3.<region>…`, `s3-<region>…`, `s3.dualstack.<region>…`), Wasabi (`wasabisys.com`), Backblaze B2
  * (`backblazeb2.com`) and Scaleway (`scw.cloud`); and a region's own host of DigitalOcean Spaces (`<region>.digitaloceanspaces.com`) and
- * Akamai/Linode Object Storage (`<region>.linodeobjects.com`).
+ * Akamai/Linode Object Storage (`<region>.linodeobjects.com`). Backblaze B2's download hosts (`f<NNN>.backblazeb2.com/file/<bucket>/…`,
+ * #1156) name the bucket in the path's second part.
  */
 const PATH_STYLE_HOSTS = new Set(['storage.googleapis.com', 'storage.cloud.google.com']);
 const PATH_STYLE_S3 = ['amazonaws.com', 'wasabisys.com', 'backblazeb2.com', 'scw.cloud'];
@@ -370,6 +371,9 @@ function pathStyleStorage(host: string): boolean {
  */
 function siteOf(address: string): string {
   const host = /^[^/?#\s]*/.exec(address)![0];
+  const label = host.replace(/:\d+$/, '').split('.');
+  if (label.length === 3 && label[1] === 'backblazeb2' && label[2] === 'com' && /^f\d{3}$/.test(label[0]!))
+    return host + (/^\/file\/[^/?#\s]*/.exec(address.slice(host.length))?.[0] ?? '');
   if (!pathStyleStorage(host)) return host;
   return host + (/^\/[^/?#\s]*/.exec(address.slice(host.length))?.[0] ?? '');
 }
@@ -504,7 +508,8 @@ function addWindows(text: string, pathEnd: number, into: Map<string, number>, ho
     if (at < 0) continue;
     if (letterCount >= FRAGMENT_LETTERS && markCount > 0) {
       const window = text.slice(at, at + PRIVATE_FRAGMENT_CHARS);
-      into.set(window, (into.get(window) ?? 0) | (i < pathEnd ? IN_PATH : ELSEWHERE) | (i < hostEnd ? IN_HOST : 0));
+      // A window that ends at the `/` after the host holds the host's text alone (#1156): every page of the host has it.
+      into.set(window, (into.get(window) ?? 0) | (i < pathEnd ? IN_PATH : ELSEWHERE) | (i < hostEnd || (i === hostEnd && text[i] === '/') ? IN_HOST : 0));
     }
     letterCount -= letters[at]!;
     markCount -= marks[at]!;
@@ -627,9 +632,19 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
   options: { sameSitePaths?: boolean } = {}): Promise<string | null> {
   // `sameSitePaths: false` (#1149): what a run writes into Flux (an answer, a change) may carry a link's text only as that link or after it,
   // never by its site's path rule alone, so a later run that reads it as a written link gives it nothing the writing run did not have.
-  const sameSitePaths = options.sameSitePaths ?? true;
+  const found = await privateFragmentsIn(address, index, chain);
+  return (options.sameSitePaths ?? true) ? found.read : found.written;
+}
+
+/**
+ * Both answers of `privateFragmentIn` from one pass (#1156): `read`, the fragment a read may not carry; `written`, the one what a run writes
+ * may not (no rule (2)). A read marks with the second whether a list Flux writes may hold its address as a link.
+ */
+export async function privateFragmentsIn(address: string, index: PrivateTextIndex, chain: AddressChain = addressChain()):
+  Promise<{ read: string | null; written: string | null }> {
+  const none = { read: null, written: null };
   const readings = readingsOf(address);
-  if (!readings) return null;
+  if (!readings) return none;
   const named = index.writtenPrefix(readings.compared);
   const allowed = new Map<string, number>();
   if (named) addWindows(named, 0, allowed);
@@ -637,9 +652,9 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
     chain.started = true;
     for (const window of allowed.keys()) chain.named.add(window);
   }
-  if (named === readings.compared) return null;
+  if (named === readings.compared) return none;
   const open = [...readings.windows].filter(([window]) => !chain.named.has(window) && !allowed.has(window));
-  if (!open.length) return null;
+  if (!open.length) return none;
   const candidates = new Candidates(open, open.length);
   const site = siteOf(readings.compared);
   const pacer = new Pacer();
@@ -656,22 +671,33 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
   };
   // The links first, in one pass: a window found in a link of the address's own site (or its one named pair) lies in that link's
   // text; one found anywhere else in the query or a decoded run is refused at once. A host-and-path window found in another site's link is
-  // refused at the end, unless a link of its own site held it too.
+  // refused at the end, unless a link of its own site held it too. What a run writes has no rule (2): there any path window found in a link
+  // is refused at the end (`written`), and only a window of the host is a site's.
   const elsewhere = new Set<Candidate>();
+  const writtenElsewhere = new Set<Candidate>();
   for (const block of index.blocks) {
     const refused = await read(block.text, (candidate, at) => {
       if (candidate.where & ELSEWHERE) return candidate.window;
       const linkSite = block.sites[linkAt(block.starts, at)]!;
       // A window of the address's own host is that host's text, shared by every page of it; a path's window is a link's own text.
-      if (candidate.where & IN_HOST ? sameSite(hostOf(site), hostOf(linkSite)) : sameSitePaths && sameSite(site, linkSite)) candidate.sameSite = true; else elsewhere.add(candidate);
+      if (candidate.where & IN_HOST) {
+        if (sameSite(hostOf(site), hostOf(linkSite))) candidate.sameSite = true; else { elsewhere.add(candidate); writtenElsewhere.add(candidate); }
+      } else {
+        if (sameSite(site, linkSite)) candidate.sameSite = true; else elsewhere.add(candidate);
+        writtenElsewhere.add(candidate);
+      }
       return null;
     });
-    if (refused) return refused;
+    if (refused) return { read: refused, written: refused };
   }
-  for (const candidate of elsewhere) if (!candidate.sameSite) return candidate.window;
+  const writtenSameSite = (candidate: Candidate) => candidate.sameSite && (candidate.where & IN_HOST) !== 0;
+  let written: string | null = null;
+  for (const candidate of writtenElsewhere) if (!writtenSameSite(candidate)) { written = candidate.window; break; }
+  for (const candidate of elsewhere) if (!candidate.sameSite) return { read: candidate.window, written };
+  // Past this point a window counts the same for both, unless one was refused to what a run writes above.
   const inWords = (candidate: Candidate) => (candidate.where & ELSEWHERE || !candidate.sameSite ? candidate.window : null);
-  for (const words of index.words) { const refused = await read(words, inWords); if (refused) return refused; }
-  return null;
+  for (const words of index.words) { const refused = await read(words, inWords); if (refused) return { read: refused, written: written ?? refused }; }
+  return { read: null, written };
 }
 
 /**

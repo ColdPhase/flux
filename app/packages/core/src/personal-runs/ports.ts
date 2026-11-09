@@ -164,7 +164,7 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
-  webReads(runId: string): Promise<{ finalUrl: string; outcome: string }[]>;
+  webReads(runId: string): Promise<{ finalUrl: string; outcome: string; writable: boolean }[]>;
   /** The run's searches (#954): their queries and the addresses the answers cited, each once, in the order found. */
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
