@@ -350,17 +350,25 @@ else edited. Nothing that waits ever expires.
   message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
-  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed; a created page
-  stays, as there is no Draft to move it back to (#942). **A created map, a recorded result, a proposed decision and a posted message** (founder direction
+  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed. **A created map, a recorded result, a proposed decision and a posted message** (founder direction
   2026-10-29, #68 closeout) are taken back by `assistantRemovalRows` (`packages/db/src/repositories/assistant-removals.ts`), reachable only
   from this Undo, only for the assistant's owner, only for what this agent made and only while nobody used it (edited, decided,
-  replied to, cited; the reason comes back in words). It takes the project's task-graph lock first (a map's own row before that, `FOR NO KEY UPDATE`, as the writers
+  replied to, cited; the reason comes back in words).
+  Taking one of these back takes the project's task-graph lock first (a map's own row before that, `FOR NO KEY UPDATE`, as the writers
   of its thoughts do), and every work path that cites one of them re-checks its targets right after taking the same lock. (A message reference once held the cited message `FOR SHARE` through
   `lockCitable`; messages are no longer citable, #867.) A citation and the
   Undo serialize and the loser is refused (race tests in `assistant-changes.test.ts`). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with
   Undo]"); a result also tombstones its contribution messages and puts the task it finished back; a map, a decision and a result
   are deleted with the links and notices only they owned. The change row keeps who and when, a hash and length for a message, and
   the event `project.assistant_change_undone.v1` carries ids only. Refused while the workspace's AI is off (F-029, F-030).
+  **A page the assistant started** (#1021) is the one exception: it is taken back by the page delete of #941 (`docs.deleteDoc`), as the owner,
+  and only for the owner, with the AI switch on. `untouchedDoc` first checks, under the page's row lock, that every version was written by
+  that agent (or is the version the owner's own Undo of that agent's edit wrote; the receipt of that undone `doc.update` names it as
+  `undone.version`, so an Undo of a whole run, which takes the edit back first, can then take the page), that nothing names the page
+  (a link to it, a message that cited it, an agent suggestion or a task plan item made from it), that no call is held on it
+  (`live_sessions`, available or rotating) and that nobody has unsaved text in its shared copy. Otherwise it says "Changed since. Open
+  it" or "Used since. Open it" and the page stays. Unlike the map, result, decision and message, taking a page back does not take the task-graph lock first: the page delete takes
+  the page's row, then the graph, and the Undo follows that order.
 - **The lane.** One working run and one waiting request per owner. `personal_runs.authority`
   (`owner_request|owner_schedule`, migration 0108; `owner_reaction` went with reactions, #858) and `background_label` (a schedule's name) say what
   started a run; A8 sets the last. The owner's own requests start before queued background runs, and a

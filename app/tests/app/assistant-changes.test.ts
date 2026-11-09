@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
+import * as Y from 'yjs';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, personalRunTokenPath,
@@ -8,6 +9,8 @@ import {
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
+import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
+import type { SessionContext } from '../../apps/server/src/identity/session.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { assistantChangeUseCases } from '../../apps/server/src/assistant/changes.js';
 import { needsYouUseCases } from '../../apps/server/src/needs-you/adapters.js';
@@ -18,7 +21,7 @@ import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { mcp, toolValue } from './support/mcp.js';
-import { agentConnection } from './support/mcp-actions.js';
+import { agentConnection, approveWaiting, waits } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
@@ -374,7 +377,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await stranger.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 404);
   });
 
-  test('AST-6.2: a created thought and link are removed; a created page stays (no Draft to move it to); a map thought text is restored only when untouched', async () => {
+  test('AST-6.2: a created thought, link and page are removed; a map thought text is restored only when untouched', async () => {
     const sketch = await map(owner);
     const mine = await thought(owner, sketch.id, 'Sensor rig');
     const run = await liveRun();
@@ -383,13 +386,12 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const page = JSON.parse(text((await run.call('flux_create_doc', { doc: { title: 'Mounting', body: 'How to mount' } })).message)) as { docId: string };
     await complete(run.runId);
     const undone = await undoRun(run.runId);
-    assert.equal(undone.undone, 2, undone.message);
-    assert.ok(undone.changes.every((entry) => entry.change.objectType !== 'doc'), 'a page the assistant started is not taken back');
+    assert.equal(undone.undone, 3, undone.message);
+    assert.ok(undone.changes.some((entry) => entry.change.objectType === 'doc' && entry.change.state === 'undone'), 'a page the assistant started is taken back (#1021)');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_thoughts WHERE id = $1`, [added.thoughtId])).rows[0].n, 0, 'the created thought is removed');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_links WHERE id = $1`, [added.linkId])).rows[0].n, 0);
     assert.equal((await pool.query(`SELECT text FROM sketch_thoughts WHERE id = $1`, [thoughtId(mine)])).rows[0].text, 'Sensor rig');
-    const kept = (await pool.query(`SELECT m.current_version AS version, v.title FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version WHERE m.id = $1`, [page.docId])).rows[0];
-    assert.deepEqual([kept.version, kept.title], [1, 'Mounting'], 'the page stays as the assistant wrote it');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_materials WHERE id = $1`, [page.docId])).rows[0].n, 0, 'the untouched page is gone');
   });
 
   test('AST-6.3: a worker killed after two committed changes leaves a message with exactly those two changes once recovery ends the run', async () => {
@@ -703,6 +705,149 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.deepEqual([await count('sketches', made.mapId), await count('project_decisions', proposed.decisionId)], [1, 1]);
     assert.equal((await stateOf(decisionChange!.id)).state, 'applied');
     assert.equal((await undoRun(run.runId)).undone, 2, 'the owner takes both back');
+  });
+
+  /** Text typed into a page's shared copy and not saved yet, as the live editor sends it. */
+  async function typeIntoSharedCopy(who: Person, docId: string) {
+    const [session] = (await pool.query('SELECT id, expires_at FROM auth_sessions WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1', [who.id])).rows;
+    const [row] = (await pool.query('SELECT name, email FROM auth_users WHERE id = $1', [who.id])).rows;
+    const context: SessionContext = { sessionId: session.id, expiresAt: session.expires_at, principal: { kind: 'human', id: who.id }, user: { id: who.id, ...row } };
+    const authority = wikiAuthority({ pool });
+    const copy = new Y.Doc();
+    try {
+      const head = await authority.bootstrap(context, docId);
+      await authority.enroll(context, docId, { generation: head.generation, replicaId: copy.clientID });
+      Y.applyUpdate(copy, Buffer.from(head.checkpoint, 'base64'));
+      copy.getText('body').insert(head.body.length, ' Typed, not saved yet.');
+      const envelope = { workspace: head.workspaceId, kind: 'wiki' as const, room: head.resourceId, generation: head.generation, actor: who.id, operation: 'text' as const,
+        uuid: randomUUID(), replica: copy.clientID, parameters: null };
+      const bytes = Y.encodeStateAsUpdate(copy);
+      await authority.submit(context, docId, envelope, bytes, authority.reserve(bytes));
+    } finally { copy.destroy(); await authority.close(); }
+  }
+  const pageRows = async (id: string) => Number((await pool.query(`SELECT count(*) FROM project_materials WHERE id = $1`, [id])).rows[0].count);
+
+  test('#1021 page: Undo deletes a page only the assistant wrote and nothing names, as the owner, through the page delete', async () => {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_doc', { doc: { title: 'Probe notes', body: 'Measured twice' } }));
+    await complete(run.runId);
+    const [change] = await changesOf(run.runId);
+    const listed = (await listRun(run.runId))[0]!;
+    assert.deepEqual([listed.operation, listed.objectType, listed.objectId, listed.undoable], ['doc.create', 'doc', made.docId, true]);
+    assert.equal((change!.receipt as { undo?: { plan: { kind: string } } }).undo?.plan.kind, 'removal');
+    // Only the assistant's owner takes a page back; someone else who may edit sees it done, with no Undo of their own.
+    const theirs = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change!.id);
+    assert.equal(theirs?.undoable, false);
+    assert.equal((await undoOne(change!.id, peer)).message, 'Only ac-ada can take back what their agent made');
+    assert.equal(await pageRows(made.docId), 1);
+
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 1, undone.message);
+    assert.deepEqual([await pageRows(made.docId), (await stateOf(change!.id)).state, (await stateOf(change!.id)).decided_by], [0, 'undone', owner.id]);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_material_versions WHERE material_id = $1`, [made.docId])).rows[0].n, 0, 'its versions went with it');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM search_documents WHERE kind = 'doc' AND object_id = $1`, [made.docId])).rows[0].n, 0, 'no longer found by search');
+    expectStatus(await owner.browser.request('GET', `/api/v1/docs/${made.docId}`), 404);
+    const events = (await pool.query(`SELECT kind, actor_id FROM events WHERE data->>'docId' = $1 OR data->>'objectId' = $1 ORDER BY seq`, [made.docId])).rows as { kind: string; actor_id: string }[];
+    assert.deepEqual(events.map((event) => event.kind), ['project.doc_created.v1', 'project.doc_deleted.v1', 'project.assistant_change_undone.v1']);
+    assert.equal(events[1]!.actor_id, `human:${owner.id}`, 'the delete is the owner\'s, under their rights');
+    assert.equal((await undoOne(change!.id)).message, 'This one can’t be undone', 'a second Undo changes nothing');
+  });
+
+  test('#1021 page: a run that also edited its page takes both back; a page edited, named or being typed in by anyone else stays, with the reason', async () => {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_doc', { doc: { title: 'Wiring notes', body: 'First pass' } }));
+    await run.call('flux_update_doc', { docId: made.docId, expectedVersion: Number(made.version), changes: { body: 'Second pass' } });
+    await complete(run.runId);
+    assert.equal((await listRun(run.runId)).filter((item) => item.undoable).length, 2);
+    const both = await undoRun(run.runId);
+    assert.equal(both.undone, 2, both.message);
+    assert.equal(await pageRows(made.docId), 0, 'the edit is taken back first, as a version by the owner; the page is still the assistant\'s own');
+
+    const refusals: [string, (id: string) => Promise<unknown>, string][] = [
+      ['edited by a person', async (id) => expectStatus(await peer.browser.request('PATCH', `/api/v1/docs/${id}`, { body: { body: 'Jonas wrote this' }, headers: { 'if-match': '"1"' } }), 200), 'Changed since. Open it'],
+      ['edited by its owner', async (id) => expectStatus(await owner.browser.request('PATCH', `/api/v1/docs/${id}`, { body: { title: 'Wiring notes, mine' }, headers: { 'if-match': '"1"' } }), 200), 'Changed since. Open it'],
+      ['named by another page', async (id) => doc(peer, 'Index', `See [the wiring](flux:doc/${id}).`), 'Used since. Open it'],
+      ['typed in and not saved', async (id) => typeIntoSharedCopy(peer, id), 'Changed since. Open it'],
+    ];
+    for (const [name, use, reason] of refusals) {
+      const other = await liveRun();
+      const kept = value(await other.call('flux_create_doc', { doc: { title: 'Wiring notes', body: 'First pass' } }));
+      await complete(other.runId);
+      await use(kept.docId);
+      const [row] = await changesOf(other.runId);
+      assert.equal((await undoOne(row!.id)).message, reason, name);
+      assert.equal(await pageRows(kept.docId), 1, `${name}: the page stays`);
+      assert.equal((await stateOf(row!.id)).state, 'applied', name);
+      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.doc_deleted.v1' AND data->>'docId' = $1`, [kept.docId])).rows[0].n, 0, `${name}: nothing was deleted`);
+    }
+  });
+
+  /** One page the assistant started in a finished run, and its change row. */
+  async function agentPage(title: string) {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_doc', { doc: { title, body: 'Measured twice' } }));
+    await complete(run.runId);
+    const [change] = await changesOf(run.runId);
+    return { docId: made.docId!, changeId: change!.id };
+  }
+
+  test('#1021 page: another agent\'s version keeps the page, whatever its reason says; so do a citing message, a suggestion, a plan item, a task made from it and a call held on it', async () => {
+    // Another person's own agent edits the page with a reason that starts like the owner's Undo ("Undo: "): the reason decides nothing.
+    const edited = await agentPage('Edited by Jonas\'s agent');
+    const jonasAgent = (expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Jonas Codex', owner: 'self' } }), 201) as { id: string }).id;
+    const local = await agentConnection(pool, peer.browser, jonasAgent, [place.id]);
+    const saved = await local.tool('flux_update_doc', { projectId: place.id, clientCommandId: randomUUID(), docId: edited.docId, expectedVersion: 1,
+      changes: { body: 'Jonas\'s agent rewrote this with two new paragraphs.', reason: 'Undo: put the intro back the way Jonas wrote it' } });
+    if (waits(saved)) await approveWaiting(pool, peer.browser, local.connectionId, 'doc.update');
+    const versions = (await pool.query(`SELECT author_id, author_agent_id, reason FROM project_material_versions WHERE material_id = $1 ORDER BY version`, [edited.docId])).rows as
+      { author_id: string | null; author_agent_id: string | null; reason: string }[];
+    assert.deepEqual(versions.map((version) => [version.author_id, version.author_agent_id === agentId, version.reason.startsWith('Undo: ')]), [[null, true, false], [null, false, true]]);
+    assert.equal((await undoOne(edited.changeId)).message, 'Changed since. Open it');
+    assert.equal(await pageRows(edited.docId), 1, 'a version by another agent keeps the page');
+
+    const cited = await agentPage('Cited by a message');
+    expectStatus(await peer.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`,
+      { body: { body: 'See the page.', clientMessageId: randomUUID(), source: { materialId: cited.docId, version: 1 } } }), 201);
+    const suggested = await agentPage('Suggested from');
+    await pool.query(`INSERT INTO agent_proposals (id, workspace_id, project_id, agent_id, owner_user_id, compute_source, source_material_id, source_material_version,
+      client_command_id, request_fingerprint, fact, interpretation, suggested_action)
+      VALUES ($1, $2, $3, $4, $5, 'user_operated_external_client', $6, 1, $7, $8, 'A fact', 'A reading', 'An action')`,
+    [randomUUID(), ws.id, place.id, agentId, owner.id, suggested.docId, randomUUID(), 'a'.repeat(64)]);
+    const planned = await agentPage('Planned from');
+    const planTask = (await task(peer, 'Measure the bracket')).id;
+    await pool.query(`INSERT INTO project_task_plan_intents (workspace_id, project_id, material_id, material_version, intent_key, task_id, creation_fingerprint, task_version)
+      VALUES ($1, $2, $3, 1, 'measure', $4, $5, 1)`, [ws.id, place.id, planned.docId, planTask, 'b'.repeat(64)]);
+    const sourced = await agentPage('Task made from');
+    expectStatus(await peer.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Read it', sources: [{ type: 'material', id: sourced.docId, version: 1 }] } }), 201);
+    const called = await agentPage('Call held here');
+    const room = randomUUID();
+    await pool.query(`INSERT INTO live_sessions (id, workspace_id, project_id, doc_id, created_by, client_session_id, room_id, state)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'available')`, [room, ws.id, place.id, called.docId, peer.id, randomUUID(), `live_${randomUUID()}`]);
+    for (const [name, page] of [['a message that cited it', cited], ['an agent suggestion', suggested], ['a task plan item', planned], ['a task made from it', sourced], ['a call held on it', called]] as const) {
+      assert.equal((await undoOne(page.changeId)).message, 'Used since. Open it', name);
+      assert.equal(await pageRows(page.docId), 1, `${name}: the page stays`);
+      assert.equal((await stateOf(page.changeId)).state, 'applied', name);
+    }
+    // The call ended (or was never started): nothing is held, and the page is the assistant's own again.
+    await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now(), updated_at = now() WHERE id = $1`, [room]);
+    assert.equal((await undoOne(called.changeId)).message, null);
+    assert.equal(await pageRows(called.docId), 0);
+    assert.equal((await pool.query(`SELECT state, doc_id FROM live_sessions WHERE id = $1`, [room])).rows[0].doc_id, called.docId, 'the ended call keeps the page\'s id as history');
+  });
+
+  test('#1021 page: Undo of a page follows the AI switch of its space, like the other removals', async () => {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_doc', { doc: { title: 'Locked page', body: 'Text' } }));
+    await complete(run.runId);
+    const [change] = await changesOf(run.runId);
+    await setSpaceAi(place.id, 'blocked');
+    try {
+      const refused = await owner.browser.request('POST', assistantChangeActionPath(change!.id, 'undo'), { body: {} });
+      assert.deepEqual([refused.status, (refused.json as { code?: string }).code], [403, 'SPACE_AI_OFF']);
+      assert.equal(await pageRows(made.docId), 1);
+    } finally { await ensureSpaceAiAllowed(place.id); }
+    assert.equal((await undoRun(run.runId)).undone, 1);
+    assert.equal(await pageRows(made.docId), 0);
   });
 
   /** Two requests started `offset` ms apart, the second one the other way round on `swap`. */

@@ -24,10 +24,13 @@ export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 20
  * Why a person's save is the version it is, when the change itself does not say. The server checks the cause against the
  * page and writes the sentence History shows ("Restored version 3"); a person never writes a version's reason. Without a
  * cause the server describes the change ("Edited the text", "Renamed to “…”").
- * - `import`: a new page made from a file (create only): "Imported from notes.md".
- * - `restore`: version `version` put back as the next version: "Restored version 3".
- * - `keep_mine`: the saver kept their own text over the version `version` that someone else saved: "In place of Ada’s version 4".
- * - `page_left`: the page was left with unsaved text, saved over the head `version`: "Saved as the page was left, in place of version 4".
+ * - `import`: a new page made from a file (create only): "Imported from notes.md" (the name as its last part, on one line, at most 60 characters).
+ * - `restore`: version `version` put back as the next version: "Restored version 3", only when the saved title and text are that version's;
+ *   otherwise the change is described.
+ * - `keep_mine`: the saver kept their own text over a newer version: "In place of Ada’s version 4", naming the page's head that the save
+ *   replaces and who wrote it, whichever `version` the request names; over their own version the change is described.
+ * - `page_left`: the page was left with unsaved text, saved over the head: "Saved as the page was left, in place of version 4" (the head).
+ * A `version` the page does not have is refused.
  */
 export type DocChangeCause =
   | { kind: 'import'; fileName: string }

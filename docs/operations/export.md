@@ -90,13 +90,12 @@ names.
   instance), and pending agent proposals, which are not part of format version 1;
 - events, idempotency records and other internal rows.
 
-Drafts shared with the project are also left out in format version 1: a shared note becomes
-project content when it is published as a material. Links whose target the export leaves out
-are dropped, so an export never names an object it does not contain. `app/tests/app/export.test.ts`
-checks this with distinctive text in another project, a DM, a private note (published from, so
-its id is referenced internally), a private sketch that places the note, and another member's
+Links whose target the export leaves out are dropped, so an export never names an object it does not
+contain. (Private drafts and the placement of a note on a sketch are not in the list above because
+they no longer exist: they went with "Your notes", #947, #999.) `app/tests/app/export.test.ts`
+checks this with distinctive text in another project, a DM, a private sketch, and another member's
 extra notification address, quiet hours and mute, and also checks that
-no e-mail address, private note id, client mutation id, agent connection id or other project
+no e-mail address, client mutation id, agent connection id or other project
 id appears.
 `scripts/check_backup.sh` checks the same for `./flux export` on the demo data.
 

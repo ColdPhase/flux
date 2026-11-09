@@ -2,8 +2,8 @@ import { sql } from 'drizzle-orm';
 import type { DbExecutor } from './push.js';
 
 /**
- * What the assistant's Undo may take back of the four things it can create that no person can remove: a map, a recorded result,
- * a proposed decision and a posted message (F-027 AST-6, #68 closeout, founder direction 2026-10-29). Each function runs inside
+ * What the assistant's Undo may take back of the things it can create that no person can remove: a map, a recorded result,
+ * a proposed decision and a posted message (F-027 AST-6, #68 closeout, founder direction 2026-10-29), and a page it started (#1021). Each function runs inside
  * the Undo's transaction, locks the object, and removes it only if the assistant made it and nobody has used it since. No person
  * has a delete for any of them: this is reachable only through the Undo of a change-log row.
  *
@@ -15,6 +15,8 @@ import type { DbExecutor } from './push.js';
  * (A message could once be cited by another message, with its own lock; that citation went with the Cite action, #867.)
  * A message keeps its row as a tombstone (its place in the conversation, its sequence and the ids events carry stay); a map, a
  * result and a decision leave with the objects that only they owned (their links and the notices about them).
+ * A page is the exception in two ways: a person can delete one (#941), and its Undo goes through that delete, so `untouchedDoc` only
+ * checks, under the page's row lock, and the graph lock is taken by the delete after the page, never before it.
  */
 
 /** The marker a removed message carries instead of its text. */
@@ -30,9 +32,10 @@ export type Removal =
   /** `used`: someone used it since, `reason` says how; `gone`: it is not there any more; `foreign`: the assistant did not make it. */
   | { ok: false; why: 'used' | 'gone' | 'foreign'; reason: string };
 
-const used = (reason: string): Removal => ({ ok: false, why: 'used', reason });
-const gone = (): Removal => ({ ok: false, why: 'gone', reason: 'Already gone' });
-const foreign = (): Removal => ({ ok: false, why: 'foreign', reason: 'This one can’t be undone' });
+type Refused = Extract<Removal, { ok: false }>;
+const used = (reason: string): Refused => ({ ok: false, why: 'used', reason });
+const gone = (): Refused => ({ ok: false, why: 'gone', reason: 'Already gone' });
+const foreign = (): Refused => ({ ok: false, why: 'foreign', reason: 'This one can’t be undone' });
 
 export const REMOVAL_REASONS = {
   replies: 'Replies since. Open it',
@@ -132,6 +135,43 @@ export function assistantRemovalRows(db: DbExecutor) {
       } catch (error) { if (inUse(error)) return used(REMOVAL_REASONS.cited); throw error; }
       await forgetNotices(map.projectId, map.id);
       return { ok: true, snapshot: { projectId: map.projectId } };
+    },
+
+    /**
+     * A page the assistant started (#1021), looked at under the page's row lock and before the Undo deletes it through the page delete
+     * (#941), which carries the version returned here: an edit that lands meanwhile makes that delete a version conflict, so the page
+     * is then "changed since" and stays. It is untouched while
+     * - every version of it was written by this agent, or is the version the owner's own Undo of this agent's edit wrote (the receipt of
+     *   that undone `doc.update` names it, so an Undo of a whole run, which takes the edit back first, can then take the page; no text
+     *   of a version, such as its reason, decides it);
+     * - nothing names it: a link to it, a message that cited it, an agent suggestion or a task plan item made from it;
+     * - nobody is on it: no call is held on it, and nobody has unsaved text in its shared copy.
+     * The lock order is the page's, then its shared copy, as the page delete takes them: the project's task graph is NOT taken first,
+     * because the delete takes it after the page.
+     */
+    async untouchedDoc(input: { docId: string; agentId: string; ownerUserId: string }): Promise<{ ok: true; version: number } | Refused> {
+      const doc = await first<{ id: string; projectId: string; agentId: string | null; version: number }>(db, sql`
+        SELECT id, project_id AS "projectId", created_by_agent_id AS "agentId", current_version AS version
+        FROM project_materials WHERE id = ${input.docId} AND kind = 'doc' FOR UPDATE`);
+      if (!doc) return gone();
+      if (doc.agentId !== input.agentId) return foreign();
+      // An agent's version has no person (`author_id` is NULL), so a comparison with the owner is NULL for it: COALESCE keeps that from hiding it.
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_material_versions v
+        WHERE v.material_id = ${doc.id} AND v.author_agent_id IS DISTINCT FROM ${input.agentId}
+          AND NOT COALESCE(v.author_id = ${input.ownerUserId} AND EXISTS (SELECT 1 FROM assistant_changes c
+            WHERE c.object_id = ${doc.id} AND c.operation = 'doc.update' AND c.state = 'undone' AND c.owner_user_id = ${input.ownerUserId}
+              AND c.agent_id = ${input.agentId}::uuid AND c.receipt->'undone'->>'version' = v.version::text), false)) AS found`)) return used(REMOVAL_REASONS.changed);
+      if (await yes(db, sql`SELECT (
+        EXISTS (SELECT 1 FROM project_object_links WHERE to_id = ${doc.id})
+        OR EXISTS (SELECT 1 FROM project_messages WHERE source_material_id = ${doc.id})
+        OR EXISTS (SELECT 1 FROM agent_proposals WHERE source_material_id = ${doc.id})
+        OR EXISTS (SELECT 1 FROM project_task_plan_intents WHERE material_id = ${doc.id})
+        OR EXISTS (SELECT 1 FROM live_sessions WHERE doc_id = ${doc.id} AND state IN ('available', 'rotating'))
+      ) AS found`)) return used(REMOVAL_REASONS.cited);
+      // Text typed in the shared copy and not saved yet belongs to a person: deleting the page would take it with it.
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM doc_live_heads WHERE doc_id = ${doc.id} AND sequence > saved_sequence) AS found`))
+        return used(REMOVAL_REASONS.changed);
+      return { ok: true, version: doc.version };
     },
 
     /** A decision the assistant proposed: still proposed, not edited since, not cited, not parking a task, not superseded or superseding. */

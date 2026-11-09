@@ -682,6 +682,21 @@ class WikiPanesJourney(unittest.TestCase):
         for doc in (typed, watched, racing):
             self.api(writing, "GET", f"/api/v1/docs/{doc['id']}", status=404)
 
+    def test_15_a_page_deleted_while_the_switcher_is_open_leaves_it_at_once(self) -> None:
+        owner = self.page("owner")
+        going = self.scratch_page(owner, "Going scratch")
+        staying = self.scratch_page(owner, "Staying scratch")
+        reading = self.page("partner")
+        reading.goto(f"/projects/{self.project_id}/docs/{staying['id']}")
+        wait_until_shared(reading)
+        pages = self.switcher(reading)
+        expect(pages.get_by_role("link", name="Going scratch")).to_be_visible()
+        # Someone else deletes a page while the list is open: the list drops it without being closed or opened again (#1021).
+        self.delete_page(owner, going["id"])
+        expect(pages.get_by_role("link", name="Going scratch")).to_have_count(0)
+        expect(pages.get_by_role("link", name="Staying scratch")).to_have_attribute("aria-current", "page")
+        expect(pages).to_be_visible()
+
 
 if __name__ == "__main__":
     unittest.main()

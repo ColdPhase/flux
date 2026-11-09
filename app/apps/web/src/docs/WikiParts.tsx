@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router';
 import type { DocSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
+import { useStreamEvents } from '../api/stream';
+import { useShellData } from '../app/data';
 import { Icon, Spinner, prefersReducedMotion, usePop, useToast } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
@@ -128,6 +130,7 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
 /** "Lending rules ▾": the space's pages with "Find a page", and "+ New page" at the bottom (#869). */
 function PageSwitcher({ docId, title, titleId }: { docId: string; title: string; titleId: string }) {
   const { project, docs: loaded } = useWiki();
+  const userId = useShellData().me.user.id;
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   // The pages read when the switcher opened; until then (and after it closes) the Wiki's own list.
@@ -141,14 +144,22 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   const id = useId();
   const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
   useAway(open, () => close(false), surface, button);
+  // The list as it is now: someone may have added a page since this one opened. A newer read replaces one still on its way.
+  const reading = useRef<AbortController | null>(null);
+  const read = useCallback(() => {
+    reading.current?.abort();
+    const controller = new AbortController();
+    reading.current = controller;
+    listProjectDocs(project.id, controller.signal).then((items) => { if (!controller.signal.aborted) setFresh(items); }, () => undefined);
+  }, [project.id]);
   useEffect(() => {
     if (!open) return;
     findRef.current?.focus();
-    // The list as it is now: someone may have added a page since this one opened.
-    const controller = new AbortController();
-    listProjectDocs(project.id, controller.signal).then(setFresh, () => undefined);
-    return () => controller.abort();
-  }, [open, project.id]);
+    read();
+    return () => reading.current?.abort();
+  }, [open, read]);
+  // A page deleted while the list is open leaves it at once (#1021): the event names the space, so the list is read again.
+  useStreamEvents(userId, (event) => { if (open && event.kind === 'project.doc_deleted.v1' && event.objectId === project.id) read(); });
   const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
   const needle = fold(query.trim());
   const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;

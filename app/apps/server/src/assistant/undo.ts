@@ -17,8 +17,8 @@ import { transactionEventSession } from '../work/transaction-events.js';
 export interface UndoResult { done: boolean; message: string | null }
 export const CHANGED_SINCE = 'Changed since. Open it';
 export const NOT_UNDOABLE = 'This one can’t be undone';
-/** The changes whose Undo removes something no person can remove (#68): they follow the space's AI switch (AG-10), as the assistant's work does. */
-export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
+/** The changes whose Undo removes something no person can remove (#68), or a page (#1021, which a person deletes after an OK): they follow the space's AI switch (AG-10), as the assistant's work does. */
+export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['doc.create', 'map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
 export const requireAiOn = (db: Database, projectId: string) => db.transaction(async (tx) => { await requireSpaceAi(accessReader(tx as DbExecutor), projectId); });
 class Since extends Error { constructor(readonly message: string = CHANGED_SINCE) { super(message); } }
 
@@ -58,6 +58,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
         fingerprint: sha(`undo:${row.id}`), retainUntil: (release) => releases.add(release) });
       const { plan } = record;
       let removal: Removal | null = null;
+      let restoredVersion: number | null = null;
       const id = row.objectId;
       // "Ada undid their assistant's change", or "Jonas undid Ada's assistant's change" when someone else takes it back.
       const reason = `Undo: ${byName} undid ${by.id === row.ownerUserId ? 'their' : `${ownerName}'s`} assistant's change`;
@@ -96,7 +97,10 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const fields = Object.fromEntries(plan.fields.map((key) => [key, { before: before[key], after: after[key] }]));
           const { restore, changedSince } = restorableFields(fields, current);
           if (changedSince.length) throw new Since();
-          await docs.updateDoc(owner, id!, restore, current.version, reason);
+          // The version this Undo writes is kept in the receipt: the Undo of the page's creation counts it as the assistant's own (#1021).
+          // Only a version newer than the one it started from is this Undo's: a save that changes nothing returns the page as it is.
+          const restored = (await docs.updateDoc(owner, id!, restore, current.version, reason)).version;
+          if (restored > current.version) restoredVersion = restored;
           break;
         }
         case 'map.thought.create': {
@@ -140,6 +144,19 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           if (cancelled.result !== 'cancelled') throw new Since();
           break;
         }
+        case 'doc.create': {
+          // A page the assistant started (#1021): deleted through the page delete (#941) while only this agent has written it and nothing uses it.
+          if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
+          await requireSpaceAi(accessReader(tx as DbExecutor), row.projectId, { lock: true });
+          // The page's row, then its shared copy, as every writer takes them; the task graph is taken by the delete itself, after the page.
+          const page = await assistantRemovalRows(tx as DbExecutor).untouchedDoc({ docId: id, agentId: row.agentId, ownerUserId: row.ownerUserId });
+          if (!page.ok) throw new Since(page.why === 'foreign' ? NOT_UNDOABLE : page.reason);
+          await docs.deleteDoc(owner, id, page.version);
+          await session.record(by, row.workspaceId, 'project.assistant_change_undone.v1', row.projectId,
+            { changeId: row.id, objectType: row.objectType, objectId: id });
+          removal = { ok: true, snapshot: { projectId: row.projectId, version: page.version } };
+          break;
+        }
         case 'map.create': case 'decision.propose': case 'result.record': case 'conversation.create': case 'conversation.reply': {
           // The four things no person can remove (#68 closeout): taken back only if the assistant made it in this run and nobody has used it.
           if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
@@ -176,7 +193,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
       const scrubbed = removal?.ok ? { preparedCommand: null,
         ...(row.operation.startsWith('conversation.') ? { objectTitle: '', receipt: { ...(locked.receipt ?? {}), undo: { ...record, after: null } } } : {}) } : {};
       await rows.update(row.id, { state: 'undone', decidedBy: owner.id, decidedAt, ...scrubbed,
-        receipt: { ...((scrubbed as { receipt?: Record<string, unknown> }).receipt ?? locked.receipt ?? {}), undone: { by: owner.id, at: decidedAt.toISOString(), ...(removal?.ok ? { removed: removal.snapshot } : {}) } } as never });
+        receipt: { ...((scrubbed as { receipt?: Record<string, unknown> }).receipt ?? locked.receipt ?? {}), undone: { by: owner.id, at: decidedAt.toISOString(), ...(removal?.ok ? { removed: removal.snapshot } : {}), ...(restoredVersion ? { version: restoredVersion } : {}) } } as never });
       await session.flushEvents();
     });
     return { done: true, message: null };

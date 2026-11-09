@@ -99,25 +99,49 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal(json<Doc>(await patch(partner, at(''), { body: 'Second text', reason: 'Because I said so', state: 'draft' }, ifMatch(1)), 200).reason, 'Edited the text');
     const restored = json<Doc>(await patch(owner, at(''), { body: 'From a file', cause: { kind: 'restore', version: 1 } }, ifMatch(2)), 200);
     assert.deepEqual([restored.version, restored.reason], [3, 'Restored version 1']);
-    // Keeping one's own text over someone else's version names whose it was; over one's own version nothing is replaced.
-    const kept = json<Doc>(await patch(owner, at(''), { body: 'Owner text', cause: { kind: 'keep_mine', version: 2 } }, ifMatch(3)), 200);
-    assert.equal(kept.reason, 'In place of docs-partner’s version 2');
-    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'Owner text again', cause: { kind: 'keep_mine', version: 3 } }, ifMatch(4)), 200).reason, 'Edited the text');
-    const left = json<Doc>(await patch(owner, at(''), { body: 'Left text', cause: { kind: 'page_left', version: 5 } }, ifMatch(5)), 200);
-    assert.deepEqual([left.version, left.reason], [6, 'Saved as the page was left, in place of version 5']);
+    json<Doc>(await patch(partner, at(''), { body: 'Partner text' }, ifMatch(3)), 200);
+    // Keeping one's own text names the version it really replaces and who wrote it, whichever version the request names (#1021):
+    // version 4 is the partner's, though the request says version 2.
+    const kept = json<Doc>(await patch(owner, at(''), { body: 'Owner text', cause: { kind: 'keep_mine', version: 2 } }, ifMatch(4)), 200);
+    assert.equal(kept.reason, 'In place of docs-partner’s version 4');
+    // Over one's own newest version nobody's is replaced, though the request names the partner's version 2: the change describes itself.
+    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'Owner text again', cause: { kind: 'keep_mine', version: 2 } }, ifMatch(5)), 200).reason, 'Edited the text');
+    // Saved on leaving the page, which is at version 6, though the request says version 1.
+    const left = json<Doc>(await patch(owner, at(''), { body: 'Left text', cause: { kind: 'page_left', version: 1 } }, ifMatch(6)), 200);
+    assert.deepEqual([left.version, left.reason], [7, 'Saved as the page was left, in place of version 6']);
+    // A restore that saves text no version ever had is no restore.
+    const never = json<Doc>(await patch(owner, at(''), { body: 'Never saved', cause: { kind: 'restore', version: 1 } }, ifMatch(7)), 200);
+    assert.deepEqual([never.version, never.reason], [8, 'Edited the text']);
+    // Nor is the text of version 1 under another title: the title is part of the version.
+    assert.equal(json<Doc>(await patch(owner, at(''), { title: 'Renamed page' }, ifMatch(8)), 200).reason, 'Renamed to “Renamed page”');
+    const retitled = json<Doc>(await patch(owner, at(''), { body: 'From a file', cause: { kind: 'restore', version: 1 } }, ifMatch(9)), 200);
+    assert.deepEqual([retitled.version, retitled.title, retitled.reason], [10, 'Renamed page', 'Edited the text']);
+    // Title and text both version 1's: the restore.
+    const again = json<Doc>(await patch(owner, at(''), { title: 'Imported page', body: 'From a file', cause: { kind: 'restore', version: 1 } }, ifMatch(10)), 200);
+    assert.deepEqual([again.version, again.reason], [11, 'Restored version 1']);
     // A cause does not make a version of text that is already the page.
-    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'Left text', cause: { kind: 'restore', version: 1 } }, ifMatch(6)), 200).version, 6);
+    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'From a file', cause: { kind: 'restore', version: 1 } }, ifMatch(11)), 200).version, 11);
 
     for (const [body, label] of [[{ body: 'x', cause: { kind: 'restore', version: 99 } }, 'a version the page does not have'],
-      [{ body: 'x', cause: { kind: 'keep_mine', version: 7 } }, 'a version that is not there yet'],
+      [{ body: 'x', cause: { kind: 'keep_mine', version: 12 } }, 'a version that is not there yet'],
+      [{ body: 'x', cause: { kind: 'page_left', version: 12 } }, 'a version that is not there yet on leaving'],
       [{ body: 'x', cause: { kind: 'restore', version: 0 } }, 'version 0'], [{ body: 'x', cause: { kind: 'import', fileName: 'notes.md' } }, 'an import on a save'],
       [{ body: 'x', cause: { kind: 'published' } }, 'a kind that is not one'], [{ cause: { kind: 'restore', version: 1 } }, 'a cause alone']] as const) {
-      assert.equal((await patch(owner, at(''), body, ifMatch(6))).status, 400, label);
+      assert.equal((await patch(owner, at(''), body, ifMatch(11))).status, 400, label);
     }
     const history = json<Page<DocVersionSummary>>(await get(viewer, at('/versions')), 200);
-    assert.deepEqual(history.items.map((item) => item.reason), ['Saved as the page was left, in place of version 5', 'Edited the text',
-      'In place of docs-partner’s version 2', 'Restored version 1', 'Edited the text', 'Imported from notes.md']);
+    assert.deepEqual(history.items.map((item) => item.reason), ['Restored version 1', 'Edited the text', 'Renamed to “Renamed page”', 'Edited the text',
+      'Saved as the page was left, in place of version 6', 'Edited the text', 'In place of docs-partner’s version 4', 'Edited the text', 'Restored version 1', 'Edited the text',
+      'Imported from notes.md']);
     assert.ok(history.items.every((item) => !('state' in item)));
+
+    // An import's file name is the last part of the name, on one line, and short (#1021): a long or odd name does not fill the reason.
+    const named = async (fileName: string) => json<Doc>(await post(owner, docs, { title: 'From a file', body: 'x', cause: { kind: 'import', fileName } }), 201).reason;
+    assert.equal(await named('C:\\Users\\Ada\\notes.md'), 'Imported from notes.md');
+    assert.equal(await named('../../etc/passwd'), 'Imported from passwd');
+    assert.equal(await named('  a\u202Eb\n\tc.md  '), 'Imported from ab c.md');
+    const long = await named(`${'Lamp review '.repeat(14)}.md`);
+    assert.ok(long.startsWith('Imported from Lamp review') && long.endsWith('….md') && long.length <= 'Imported from '.length + 60, long);
   });
 
   test('access follows the project: members read, outsiders see nothing, agents read but do not write', async () => {

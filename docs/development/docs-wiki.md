@@ -50,10 +50,13 @@ cause it has checked against the page:
 
 | `cause` | Allowed on | The reason the server writes |
 | --- | --- | --- |
-| `{ kind: 'import', fileName }` | create | "Imported from notes.md" |
-| `{ kind: 'restore', version }` | save | "Restored version 3" (the version must exist) |
-| `{ kind: 'keep_mine', version }` | save | "In place of Ada’s version 4": the saver kept their text over version 4, which Ada wrote; over their own version the change describes itself |
-| `{ kind: 'page_left', version }` | save | "Saved as the page was left, in place of version 4" |
+| `{ kind: 'import', fileName }` | create | "Imported from notes.md": the name's last part, without control or direction characters, on one line, at most 60 characters (a longer one keeps its start and its extension) |
+| `{ kind: 'restore', version }` | save | "Restored version 3" (the version must exist), **only when the saved title and text are that version's**; any other save is described by its change |
+| `{ kind: 'keep_mine', version }` | save | "In place of Ada’s version 4": the saver kept their text over the page's head, which Ada wrote. The sentence names the head the save replaces, whichever `version` the request names; over their own version the change describes itself |
+| `{ kind: 'page_left', version }` | save | "Saved as the page was left, in place of version 4", with the page's head as the version |
+
+A request that names a version the page does not have is `400`. The sentences are true to what happened (#1021): a request cannot make the
+history say a restore that was no restore, or a version it did not replace.
 
 A cause names no more than a kind and a version or file name; it adds nothing else to the page. The same
 cause is accepted on the live save (`POST /api/v1/docs/:docId/live/save`), except `import`. Agents and the
@@ -156,8 +159,13 @@ one transaction with the page's row and its shared text locked, and removes the 
 It records one event, `project.doc_deleted.v1` with `{ docId, version }` (ids only). **Agents** propose it with `flux_delete_doc`
 (operation `doc.delete`, postcondition `doc_removed`): the call always waits for the owner's OK in both modes that change anything (F-036
 AG-3), shows as "Delete / Keep" in the owner's change log, and has no Undo, since nothing can be put back. A person-facing route refuses an
-agent principal (`DOC_NEEDS_PERSON`); only the owner's approval runs the delete for the agent. The assistant's Undo of a page it started
-still leaves the page (there is no Draft to move it to, #942): to take it away, a person deletes it.
+agent principal (`DOC_NEEDS_PERSON`); only the owner's approval runs the delete for the agent.
+
+**Undo of a page an agent started** (AG-8, #1021) is this delete. The change log keeps a removal plan for `doc.create`; the owner's Undo
+deletes the page, as the owner, if every version was written by that agent (or is the owner's own Undo of its edit), nothing names the page (a
+link to it, a message that cited it, a suggestion or a task plan item made from it), no call is held on it and nobody has unsaved text in its shared copy. The delete
+carries the version the check read, so an edit that lands meanwhile is a version conflict and the page stays. Otherwise the Undo changes nothing
+and says "Changed since. Open it" or "Used since. Open it". The space's AI switch applies (as for any removal Undo).
 
 ## Events
 
