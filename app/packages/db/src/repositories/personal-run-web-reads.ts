@@ -3,7 +3,7 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
 /** What one request of the server for a run's agent came to; the same words as the table's `outcome`. */
-export type StoredWebRead = { url: string; finalUrl: string; title: string | null; outcome: string };
+export type StoredWebRead = { url: string; finalUrl: string; title: string | null; outcome: string; writable: boolean };
 
 /**
  * The addresses the server sent a request to for a run (#918, #953): written by the tool in the transaction that answers the agent,
@@ -15,7 +15,7 @@ export function personalRunWebReadRows(db: DbExecutor) {
     /** Written before the request goes out (outcome `asked`); returns the row, which `settle` closes when the read ends. */
     async add(runId: string, read: StoredWebRead): Promise<string> {
       const [row] = await db.insert(w).values({ runId, url: read.url.slice(0, 2048), finalUrl: read.finalUrl.slice(0, 2048), title: read.title?.slice(0, 300) ?? null,
-        outcome: read.outcome as typeof w.$inferInsert.outcome,
+        outcome: read.outcome as typeof w.$inferInsert.outcome, writable: read.writable,
         // The clock's own time and not the transaction's: the hops of one read are written one after another and are listed in the order asked.
         readAt: sql`clock_timestamp()` }).returning({ id: w.id });
       return row!.id;
@@ -24,14 +24,17 @@ export function personalRunWebReadRows(db: DbExecutor) {
     async settle(id: string, end: { outcome: string; title?: string | null }) {
       await db.update(w).set({ outcome: end.outcome as typeof w.$inferInsert.outcome, ...(end.title !== undefined ? { title: end.title?.slice(0, 300) ?? null } : {}) }).where(eq(w.id, id));
     },
-    /** Every distinct address requested, in the order first requested; an address that came back at any time counts as read. */
-    async forRun(runId: string): Promise<{ finalUrl: string; outcome: string }[]> {
-      const rows = await db.select({ finalUrl: w.finalUrl, outcome: w.outcome }).from(w).where(eq(w.runId, runId)).orderBy(asc(w.readAt), asc(w.id));
-      const first = new Map<string, { finalUrl: string; outcome: string }>();
+    /**
+     * Every distinct address requested, in the order first requested; an address that came back at any time counts as read, and one is
+     * writable only when it was each time it was asked.
+     */
+    async forRun(runId: string): Promise<{ finalUrl: string; outcome: string; writable: boolean }[]> {
+      const rows = await db.select({ finalUrl: w.finalUrl, outcome: w.outcome, writable: w.writable }).from(w).where(eq(w.runId, runId)).orderBy(asc(w.readAt), asc(w.id));
+      const first = new Map<string, { finalUrl: string; outcome: string; writable: boolean }>();
       for (const row of rows) {
         const earlier = first.get(row.finalUrl);
         if (!earlier) first.set(row.finalUrl, row);
-        else if (row.outcome === 'read' && earlier.outcome !== 'read') first.set(row.finalUrl, { ...earlier, outcome: 'read' });
+        else first.set(row.finalUrl, { ...earlier, outcome: row.outcome === 'read' ? 'read' : earlier.outcome, writable: earlier.writable && row.writable });
       }
       return [...first.values()];
     },

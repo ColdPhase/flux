@@ -1728,7 +1728,8 @@ export const agentTaskEvents = pgTable('agent_task_events', {
 /**
  * The addresses the server sent a request to for a run's agent (#918, migration 0013; #953, migration 0019): the run's answer ends with
  * them, the pages that came back and the others. `finalUrl` is the address requested (each redirect hop is one row), `outcome` what became
- * of it. The page's text is never kept.
+ * of it, `writable` whether what a run writes may hold it (C-30, migration 0051, #1156): set when it is asked, so a list of it is written
+ * without the run's kept text. The page's text is never kept.
  */
 export const personalRunWebReads = pgTable('personal_run_web_reads', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1737,6 +1738,7 @@ export const personalRunWebReads = pgTable('personal_run_web_reads', {
   finalUrl: text('final_url').notNull(),
   title: text('title'),
   outcome: text('outcome', { enum: ['asked', 'read', 'redirected', 'blocked', 'unreachable', 'timeout', 'status', 'type', 'redirects', 'invalid', 'empty'] }).notNull().default('read'),
+  writable: boolean('writable').notNull().default(false),
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('personal_run_web_reads_run_idx').on(table.runId, table.readAt)]);
 

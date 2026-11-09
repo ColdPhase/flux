@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { pool } from './support/db.js';
 import { taskDiscussionPath, type TaskDiscussion } from '@flux/contracts';
-import { keptPrivateText, taskRunPrompt } from '@flux/core';
+import { defangedAddresses, keptPrivateText, taskRunPrompt } from '@flux/core';
 import { personalRunWebReadRows } from '@flux/db';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { actionScene } from './support/mcp-actions.js';
@@ -347,6 +347,25 @@ describe('flux_read_web: the check after the review of #1134 (#1136)', () => {
     opened((await reading(run, `${at('/read/second')}?since=${since}`)).message);
     assert.deepEqual((await hits('/')).map((hit) => hit.path), ['/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/export?format=txt', `/read/second?since=${since}`]);
     await scene.complete(run.runId);
+  });
+
+  test('#1156: each address is marked when it is asked: one read only by its site\'s path rule is listed defanged in the end line of a run without an answer', async () => {
+    await post(`The draft is at ${at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/edit')} and the paper is ${at('/doi/10.1145/3593013.3594067')}`);
+    const run = await scene.liveRun(undefined, 'Read the draft');
+    await readTalk(run);
+    const exported = at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/export?format=txt');
+    opened((await reading(run, exported)).message);
+    opened((await reading(run, at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/edit'))).message);
+    opened((await reading(run, at('/doi/10.1145/3593013.3594067'))).message);
+    const marks = (await pool.query(`SELECT final_url, outcome, writable FROM personal_run_web_reads WHERE run_id = $1 ORDER BY read_at, id`, [run.runId])).rows;
+    assert.deepEqual(marks.map((row) => [row.final_url, row.outcome, row.writable]), [[exported, 'read', false], [at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/edit'), 'read', true],
+      [at('/doi/10.1145/3593013.3594067'), 'redirected', true], [other('/doi/10.1145/3593013.3594067'), 'read', true]], 'a person\'s link and its redirect are links');
+    // The run ends at a limit, with no answer: its kept text is gone, and the end line follows the marks.
+    await pool.query(`UPDATE personal_runs SET status = 'cap_reached', end_reason = 'max_turns', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.runId]);
+    assert.equal(await kept(run.runId), 0);
+    const view = expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs/${run.runId}`), 200) as { webSources?: string };
+    assert.equal(view.webSources, `Read on the web:\n- ${defangedAddresses(exported)}\n- ${at('/any/doc/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7/edit')}\n- ${other('/doi/10.1145/3593013.3594067')}`
+      + `\nRequested, not read:\n- ${at('/doi/10.1145/3593013.3594067')} (it sent the request on to another address)`);
   });
 
   test('P2: the run\'s private text is kept only while it is in flight: any end deletes it, a late result keeps nothing; an error result is kept too', async () => {

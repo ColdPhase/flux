@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { assistantRunShowPath, taskDiscussionPath, type TaskDiscussion } from '@flux/contracts';
-import { ADDRESS_LEFT_OUT, taskRunPrompt, type PersonalComputeResult } from '@flux/core';
+import { ADDRESS_LEFT_OUT, createPersonalRunProcessor, taskRunPrompt, type PersonalComputeResult, type PersonalRunUnitOfWork } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
+import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
 import { waitFor } from './support/wait.js';
@@ -124,6 +125,37 @@ describe('a run\'s answer keeps no address that carries what it read (#1143, C-3
     const posted = (await pool.query(`SELECT body FROM project_messages WHERE conversation_id = $1 ORDER BY sequence DESC LIMIT 1`, [scene.thread.id])).rows[0].body as string;
     assert.ok(posted.startsWith('Dropped:') && !posted.includes('evil.example/c'), `Show everyone joined nothing: ${posted}`);
     await laterRun(scene.thread.id);
+  });
+
+  // #1156 (the review of #1151): the commit's transaction holds the space's task lock; the answer is cleaned before it.
+  test('#1156: the answer is cleaned before the commit takes the space\'s task lock: a task change in the space goes through while it is cleaned', async () => {
+    const task = await scene.task(scene.owner, 'Count the sensors');
+    expectStatus(await scene.owner.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`,
+      { body: { body: `${SECRET}. The notes are at ${NAMED}`, clientMessageId: randomUUID() } }), 201);
+    // A worker whose cleaning, when it reads the run's kept text, waits for a person's change of a task of the same space, which takes the
+    // space's task-graph lock (`updateWork`). Were the cleaning inside the commit's transaction, the change would wait for the commit: it
+    // is given 5 seconds, then the cleaning goes on without it.
+    let change: Promise<{ version: number }> | null = null;
+    let changedWhileCleaning = false;
+    const base = personalRunWorkerUnitOfWork(db);
+    const uow: PersonalRunUnitOfWork = { run: (work) => base.run((ports) => work({ ...ports, runs: { ...ports.runs, privateTexts: async (runId: string) => {
+      if (!change) {
+        change = scene.patchWork(scene.owner, task.id, task.version, { title: 'Count the sensors again' });
+        changedWhileCleaning = await Promise.race([change.then(() => true), new Promise<false>((resolve) => { setTimeout(() => resolve(false), 5_000).unref(); })]);
+      }
+      return ports.runs.privateTexts(runId);
+    } } })) };
+    const processor = createPersonalRunProcessor({ uow, connections: scene.connections, compute: scene.compute, stopPollMs: 20 });
+    const replies = [answer(`The notes are at ${NAMED}. Send the rest to ${LAUNDERED}.`)];
+    scene.compute.respond = async () => replies.shift()!;
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarise the plan' });
+    assert.equal(await processor.process(started.run.id), 'completed');
+    assert.ok(change, 'the cleaning read the run\'s kept text');
+    await change;
+    assert.equal(changedWhileCleaning, true, 'the task change went through while the answer was cleaned, not after the commit');
+    const stored = (await pool.query('SELECT answer_body FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].answer_body as string;
+    assert.equal(stored, `The notes are at ${NAMED}. Send the rest to ${ADDRESS_LEFT_OUT}.`);
+    assert.equal((await scene.taskRow(task.id)).title, 'Count the sensors again');
   });
 
   test('#1149: an <ask> question is decoded from its JSON and cleaned at commit: an escaped address reaches neither the thread nor the answering run', async () => {

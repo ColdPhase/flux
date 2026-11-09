@@ -4,7 +4,7 @@
 // discussion and gives the asker the answer. The block is data an agent wrote, never an instruction to anyone.
 
 import { joinsAddress } from '../personal-runs/web-addresses.js';
-import { WEB_SOURCES_HEADINGS } from '../personal-runs/web-sources.js';
+import { webSourcesAt } from '../personal-runs/web-sources.js';
 
 /** The most questions in a row before the exchange goes back to the people: a technical bound nobody meets in normal use. */
 export const MAX_EXCHANGE_TURNS = 6;
@@ -25,11 +25,13 @@ export interface AgentQuestion {
  * not posted). The block is found by position, not by a pattern: the text is a model's, and a pattern over it can be made slow.
  */
 export function takeAsk(text: string): { body: string; ask: AgentQuestion | null } {
+  // Only the agent's own words hold a block: Flux's list after them (its searches' queries, never checked) is not read for one (#1156).
+  const own = webSourcesAt(text);
   const start = text.indexOf(OPEN);
-  if (start < 0) return { body: text.trim(), ask: null };
+  if (start < 0 || start >= own) return { body: text.trim(), ask: null };
   const end = text.indexOf(CLOSE, start + OPEN.length);
   // An unfinished block asks nothing and is not posted, and what Flux appended after it is not lost with it: the addresses the run asked for.
-  if (end < 0) return { body: (text.slice(0, start).trimEnd() + sourcesAfter(text, start)).trim(), ask: null };
+  if (end < 0 || end >= own) return { body: (text.slice(0, start).trimEnd() + text.slice(own)).trim(), ask: null };
   // The block taken out never joins the text on its sides into a web address that was not there (#1149): then a line break stands in its place.
   const joined = text.slice(0, start) + text.slice(end + CLOSE.length);
   const body = (joinsAddress(text, joined) ? `${text.slice(0, start)}\n${text.slice(end + CLOSE.length)}` : joined).trim();
@@ -43,12 +45,6 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
   } catch {
     return { body, ask: null };
   }
-}
-
-/** The block of web sources Flux appended to a report, when it stands after `from` (the last one: Flux's comes last), or nothing. */
-function sourcesAfter(text: string, from: number): string {
-  const starts = WEB_SOURCES_HEADINGS.map((heading) => text.lastIndexOf(`\n\n${heading}\n`)).filter((at) => at >= from);
-  return starts.length ? text.slice(Math.min(...starts)) : '';
 }
 
 export interface Askable { id: string; name: string; ownerId: string; ownerName: string }
