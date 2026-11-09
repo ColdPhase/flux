@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { passwordDigest } from '../../apps/server/src/identity/auth.js';
 import { pool } from './support/db.js';
 import { Browser, publicOrigin, register, signIn, uniqueEmail, waitForMail } from './support/http.js';
 import { password, person } from './support/people.js';
@@ -16,8 +15,8 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const NEW_PASSWORD = 'the harbour lights at dawn';
 const hashOf = async (userId: string) => (await pool.query<{ password: string }>(`SELECT password FROM auth_accounts WHERE user_id = $1 AND provider_id = 'credential'`, [userId])).rows[0]!.password;
 const sessionCount = async (userId: string) => Number((await pool.query('SELECT count(*) AS n FROM auth_sessions WHERE user_id = $1', [userId])).rows[0].n);
-const insertSession = (userId: string, digest: string | null) => pool.query(
-  'INSERT INTO auth_sessions (id, user_id, token, expires_at, password_digest) VALUES ($1, $2, $3, now() + interval \'1 hour\', $4)', [randomUUID(), userId, randomUUID(), digest]);
+const insertSession = (userId: string, checked: string | null) => pool.query(
+  'INSERT INTO auth_sessions (id, user_id, token, expires_at, password_checked) VALUES ($1, $2, $3, now() + interval \'1 hour\', $4)', [randomUUID(), userId, randomUUID(), checked]);
 const setHash = (userId: string, hash: string, expected: string | null = null) => pool.query(
   `UPDATE auth_accounts SET password = $2, password_expected = $3 WHERE user_id = $1 AND provider_id = 'credential'`, [userId, hash, expected]);
 const failure = (promise: Promise<unknown>) => promise.then(() => null, (error: Error) => error);
@@ -26,15 +25,15 @@ describe('the database refuses a session or a password change whose password che
   test('a session whose check is still current is created, and nothing about the password stays in the row', async () => {
     const owner = await person('pc-fresh');
     const before = await sessionCount(owner.id);
-    await insertSession(owner.id, passwordDigest(await hashOf(owner.id)));
+    await insertSession(owner.id, await hashOf(owner.id));
     assert.equal(await sessionCount(owner.id), before + 1);
-    assert.equal((await pool.query('SELECT count(*) AS n FROM auth_sessions WHERE user_id = $1 AND password_digest IS NOT NULL', [owner.id])).rows[0].n, '0');
+    assert.equal((await pool.query('SELECT count(*) AS n FROM auth_sessions WHERE user_id = $1 AND password_checked IS NOT NULL', [owner.id])).rows[0].n, '0');
   });
 
   test('a session whose check is out of date is refused, and one with no check is not looked at', async () => {
     const owner = await person('pc-stale');
     const before = await sessionCount(owner.id);
-    const error = await failure(insertSession(owner.id, passwordDigest('a hash that was replaced')));
+    const error = await failure(insertSession(owner.id, 'a hash that was replaced'));
     assert.match(error?.message ?? '', /flux:password_changed/);
     assert.equal(await sessionCount(owner.id), before);
     await insertSession(owner.id, null);
@@ -43,7 +42,7 @@ describe('the database refuses a session or a password change whose password che
 
   test('a reset that is writing makes a session with the old check wait, and then refuses it', async () => {
     const owner = await person('pc-reset-first');
-    const old = passwordDigest(await hashOf(owner.id));
+    const old = await hashOf(owner.id);
     const reset = await pool.connect();
     try {
       await reset.query('BEGIN');
@@ -58,11 +57,11 @@ describe('the database refuses a session or a password change whose password che
 
   test('a session that is being created makes a reset wait for it, and the reset then deletes it', async () => {
     const owner = await person('pc-insert-first');
-    const old = passwordDigest(await hashOf(owner.id));
+    const old = await hashOf(owner.id);
     const creating = await pool.connect();
     try {
       await creating.query('BEGIN');
-      await creating.query('INSERT INTO auth_sessions (id, user_id, token, expires_at, password_digest) VALUES ($1, $2, $3, now() + interval \'1 hour\', $4)', [randomUUID(), owner.id, randomUUID(), old]);
+      await creating.query('INSERT INTO auth_sessions (id, user_id, token, expires_at, password_checked) VALUES ($1, $2, $3, now() + interval \'1 hour\', $4)', [randomUUID(), owner.id, randomUUID(), old]);
       let resetDone = false;
       const reset = setHash(owner.id, 'scrypt-hash-after-the-reset').then(() => { resetDone = true; });
       await sleep(300);
@@ -76,7 +75,7 @@ describe('the database refuses a session or a password change whose password che
 
   test('a session created after the reset deleted the sessions and before it wrote the hash is deleted by the write', async () => {
     const owner = await person('pc-between');
-    const old = passwordDigest(await hashOf(owner.id));
+    const old = await hashOf(owner.id);
     const reset = await pool.connect();
     try {
       // Better Auth's reset deletes the sessions, then writes the hash, in one transaction.
@@ -93,12 +92,12 @@ describe('the database refuses a session or a password change whose password che
   test('a password change is written only if the hash is the one it was checked against, and a reset carries no check', async () => {
     const owner = await person('pc-change');
     const first = await hashOf(owner.id);
-    const stale = await failure(setHash(owner.id, 'the old password put back', passwordDigest('a hash that was replaced')));
+    const stale = await failure(setHash(owner.id, 'the old password put back', 'a hash that was replaced'));
     assert.match(stale?.message ?? '', /flux:password_changed/);
     assert.equal(await hashOf(owner.id), first, 'a refused change leaves the hash');
-    await setHash(owner.id, 'second hash', passwordDigest(first));
+    await setHash(owner.id, 'second hash', first);
     assert.equal(await hashOf(owner.id), 'second hash');
-    assert.equal((await pool.query(`SELECT password_expected FROM auth_accounts WHERE user_id = $1 AND provider_id = 'credential'`, [owner.id])).rows[0].password_expected, null, 'and keeps no digest');
+    assert.equal((await pool.query(`SELECT password_expected FROM auth_accounts WHERE user_id = $1 AND provider_id = 'credential'`, [owner.id])).rows[0].password_expected, null, 'and keeps no hash');
     assert.equal(await sessionCount(owner.id), 1, 'a change that was checked keeps the sessions (Better Auth signs the others out itself)');
     await setHash(owner.id, 'third hash');
     assert.equal(await hashOf(owner.id), 'third hash');
@@ -112,7 +111,7 @@ describe('the database refuses a session or a password change whose password che
     try {
       await reset.query('BEGIN');
       await reset.query(`UPDATE auth_accounts SET password = 'scrypt-hash-after-the-reset' WHERE user_id = $1 AND provider_id = 'credential'`, [owner.id]);
-      const change = failure(setHash(owner.id, old, passwordDigest(old)));
+      const change = failure(setHash(owner.id, old, old));
       await sleep(300);
       await reset.query('COMMIT');
       assert.match((await change)?.message ?? '', /flux:password_changed/);

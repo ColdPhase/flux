@@ -22,9 +22,9 @@ export interface SignInFacts {
   /** With `email_claim`: the secret for the browser that completed the provider sign-in (#313). Set as a cookie by the bridge. */
   claimToken?: string;
   /**
-   * A digest of the password hash that a password check in this request accepted (#1088). The session this request creates, and the change
-   * of the password it makes, carry it to the database, which refuses them if the hash is no longer the one that was accepted: a reset that
-   * commits between the check and the write must not be outlived or undone.
+   * The password hash that a password check in this request accepted (#1088). The session this request creates, and the change of the
+   * password it makes, carry it to the database, which refuses them if the hash is no longer the one that was accepted: a reset that commits
+   * between the check and the write must not be outlived or undone. Kept in memory for the request; the database clears it from the row.
    */
   passwordChecked?: string;
 }

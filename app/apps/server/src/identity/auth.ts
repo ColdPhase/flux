@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
 import { verifyPassword } from 'better-auth/crypto';
 import { APIError, createAuthMiddleware, createEmailVerificationToken, getSessionFromCtx } from 'better-auth/api';
@@ -102,9 +102,6 @@ export function withoutIdpTokens<T extends Record<string, unknown>>(account: T):
   for (const field of IDP_TOKEN_FIELDS) if (field in clean) clean[field] = null;
   return clean as T;
 }
-
-/** What a password hash is carried as to the database for the check at the write (#1088, migration 0039): a digest, so no hash is copied anywhere. */
-export const passwordDigest = (hash: string) => createHash('sha256').update(hash, 'utf8').digest('hex');
 
 /** The payload of an ID token the plugin verified before calling getUserInfo. */
 function idTokenClaims(idToken: string | undefined): Record<string, unknown> | null {
@@ -259,7 +256,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // (`createSessionResolver`), because Better Auth only renews it (#993).
     session: { modelName: 'authSessions', cookieCache: { enabled: false }, expiresIn: config.sessionIdleSeconds,
       updateAge: Math.min(86_400, Math.max(60, Math.floor(config.sessionIdleSeconds / 4))),
-      additionalFields: { passwordDigest: { type: 'string', required: false, input: false, returned: false } } },
+      additionalFields: { passwordChecked: { type: 'string', required: false, input: false, returned: false } } },
     // A new identity never acquires an existing account by asserting the same email (#113).
     account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true },
       additionalFields: { passwordExpected: { type: 'string', required: false, input: false, returned: false } } },
@@ -465,10 +462,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             if (!checked) return;
             const [credential] = await db.select({ password: schema.authAccounts.password }).from(schema.authAccounts)
               .where(and(eq(schema.authAccounts.userId, session.userId), eq(schema.authAccounts.providerId, 'credential')));
-            if (!credential?.password || passwordDigest(credential.password) !== checked) {
+            if (credential?.password !== checked) {
               throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
             }
-            return { data: { passwordDigest: checked } };
+            return { data: { passwordChecked: checked } };
           },
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
           after: async (session) => {
@@ -500,7 +497,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             // same request creates next is for the new hash.
             if (typeof data.password === 'string' && facts?.passwordChecked) {
               const expected = facts.passwordChecked;
-              facts.passwordChecked = passwordDigest(data.password);
+              facts.passwordChecked = data.password;
               return { data: { ...data, passwordExpected: expected } };
             }
             return { data };
@@ -519,7 +516,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         verify: async (input) => {
           const accepted = await verifyPassword(input);
           const facts = signIns.getStore();
-          if (accepted && facts) facts.passwordChecked = passwordDigest(input.hash);
+          if (accepted && facts) facts.passwordChecked = input.hash;
           return accepted;
         },
       },

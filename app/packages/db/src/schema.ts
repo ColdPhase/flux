@@ -60,8 +60,8 @@ export const authSessions = pgTable('auth_sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
-  /** Carries, for one INSERT, a digest of the password hash a check accepted (migration 0039, #1088); the trigger compares it and clears it. */
-  passwordDigest: text('password_digest'),
+  /** Carries, for one INSERT, the password hash a check accepted (migration 0039, #1088); the trigger compares it and clears it, so it is never stored. */
+  passwordChecked: text('password_checked'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_sessions_user_id_idx').on(table.userId)]);
@@ -78,7 +78,7 @@ export const authAccounts = pgTable('auth_accounts', {
   refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
   scope: text('scope'),
   password: text('password'),
-  /** Carries, for one UPDATE, a digest of the hash the change was checked against (migration 0039, #1088); the trigger compares it and clears it. */
+  /** Carries, for one UPDATE, the hash the change was checked against (migration 0039, #1088); the trigger compares it and clears it, so it is never stored. */
   passwordExpected: text('password_expected'),
   /** When the identity provider last confirmed this identity (migration 0071, #312); null for a password account. */
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
