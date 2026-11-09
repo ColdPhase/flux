@@ -200,12 +200,15 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     const another = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Another task' } }), 201) as WorkItem;
     const other = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Still waits for another task',
       owner: { kind: 'human', id: writer.id }, status: 'blocked', waitingOn: { kind: 'task', id: another.id } } }), 201) as WorkItem;
-    fixture.set(REPO, 86, { state: 'closed', merged: true });
-    await github.link(actor(owner), task.id, { bindingId: binding.id, number: 60, role: 'required_output' });
+    fixture.set(REPO, 86, {});
+    await github.link(actor(owner), task.id, { bindingId: binding.id, number: 86, role: 'required_output' });
     await enable(owner, task);
     await settle(binding);
+    assert.equal((await work(owner, task)).status, 'in_progress', 'an open pull request starts the task');
+    fixture.set(REPO, 86, { state: 'closed', merged: true });
+    await webhook('pull_request', pullEvent('closed', REPO, 86)); await settle(binding);
     const finished = await work(owner, task);
-    assert.equal(finished.status, 'done', 'a merged required pull request finishes the task');
+    assert.equal(finished.status, 'done', 'a merged required pull request with passing checks finishes the task');
     // The waiting task is Doing and says why, once, in the stream, in its activity and to its owner, as for the other paths.
     const resumed = await work(owner, waiting);
     assert.deepEqual([resumed.status, resumed.waitingOn], ['in_progress', null]);
