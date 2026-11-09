@@ -172,6 +172,12 @@ export interface PersonalRunRepository {
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
   addWebSearch(runId: string, found: WebSearchFound): Promise<void>;
+  /** A search the owner's Claude Code started (#1065, C-30), written as in progress with its query; returns its row. */
+  startWebSearch(runId: string, query: string): Promise<string>;
+  /** The results of that search came back: normalized, bounded, readable by the run from now on. */
+  settleWebSearch(id: string, results: string[]): Promise<void>;
+  /** The run ended: a search still in progress brought nothing. */
+  endWebSearches(runId: string): Promise<void>;
   /**
    * The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and what people wrote in
    * the place the run is in (#842, C-30): a conversation's, the space's people's conversations for its main conversation, a DM's; a chat has none.
@@ -579,10 +585,15 @@ export interface PersonalRuntimeAvailability {
 /** Where one owner's runtime run goes: their bound slot and binding directory, never chosen by a request. */
 export interface PersonalRuntimeTarget { slot: string; bindingId: string; client?: PersonalRuntimeClient }
 
-/** What the runtime reported while a run ran (the CLI's JSONL reduced by the slot to closed shapes). */
+/**
+ * What the runtime reported while a run ran (the CLI's JSONL reduced by the slot to closed shapes). `search` and `found` (#1065): Claude
+ * Code started its `n`th web search, and what its result entries held.
+ */
 export type PersonalRuntimeEvent =
   | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[] }
-  | { kind: 'tool'; name: string };
+  | { kind: 'tool'; name: string }
+  | { kind: 'search'; n: number; query: string }
+  | { kind: 'found'; n: number; results: string[] };
 
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =
@@ -597,6 +608,8 @@ export interface PersonalRuntimeRunRequest {
   caps: { maxTurns: number; wallClockSeconds: number; idleSeconds: number; maxAnswerBytes: number };
   /** The model the run was sent with (F-027 AST-11), for the CLI's own model option; absent: the CLI's default. */
   model?: string;
+  /** Claude Code keeps its own `WebSearch` (#1065, C-29); never sent for Codex. */
+  webSearch?: true;
 }
 
 /**
@@ -605,6 +618,8 @@ export interface PersonalRuntimeRunRequest {
  */
 export interface PersonalRuntime {
   readonly enabled: boolean;
+  /** The operator's web switch (`FLUX_WEB_READS`, C-29): a run on the owner's Claude Code searches with its own `WebSearch` (#1065). */
+  readonly webSearch?: boolean;
   /** The owner's signed-in CLI of the run (Claude Code or Codex), or why it cannot run now. */
   target(ownerUserId: string, client?: PersonalRuntimeClient): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;
   run(target: PersonalRuntimeTarget, request: PersonalRuntimeRunRequest, onEvent: (event: PersonalRuntimeEvent) => void): Promise<PersonalRuntimeEnd>;

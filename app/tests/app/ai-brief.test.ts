@@ -58,7 +58,8 @@ const ASKABLE = 'Task #12: Calibrate north barrel\nAgents of other people in thi
 const space = (conversationId: string | null, task: { number: number; title: string } | null = null) =>
   ({ kind: 'space' as const, spaceId: SPACE_ID, spaceName: 'Field sensors', conversationId, task });
 const base: BriefInput = {
-  // An API-key run on a provider with its own web search, as a new install has it (#954, C-29); the CLI's engine never has one.
+  // A run that can search the web, as a new install has it (C-29): an API-key run on a provider with its own search (#954), and on the
+  // runtime engine a run on the owner's Claude Code with its own WebSearch (#1065). Codex has none (the `-no-search` runtime case).
   engine: 'server', kind: 'ask', tools: [...READS, ...CHANGES, ...WEB], webSearch: true, agentName: 'Assistant', ownerName: OWNER, now: NOW, timeZone: 'Europe/Warsaw',
   place: space(THREAD_ID), task: null, scheduleTitle: null,
   agent: { name: 'Assistant', instructions: 'Answer briefly. Use metric units.', memory: ['The north barrel is the reference barrel.'] },
@@ -91,6 +92,7 @@ const CASES: Record<string, BriefInput> = {
   'task-answer': answer,
   'scheduled': scheduled,
   'runtime-space-thread': { ...base, engine: 'runtime', sources: [] },
+  'runtime-space-thread-no-search': { ...base, engine: 'runtime', sources: [], webSearch: false },
   'runtime-space-main-conversation': { ...base, engine: 'runtime', place: space(null), sources: [], prompt: 'What is new since Friday?' },
   'runtime-space-map-thought': { ...base, engine: 'runtime', kind: 'map_thought', sources: [], thought: { sketchId: 'k-1', thoughtId: 't-1' }, prompt: 'Is this worth a test?' },
   'runtime-dm': { ...dm, engine: 'runtime' },

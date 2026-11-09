@@ -11,7 +11,7 @@ import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
-import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
+import { classifyCodexError, classifyError, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
 import { statusFacts } from '../../apps/runtime/src/supervisor/status.js';
@@ -520,6 +520,34 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.deepEqual(codex.slice(codex.indexOf('-m'), codex.indexOf('-m') + 2), ['-m', 'gpt-6-luna']);
     assert.ok(codex.indexOf('-m') < codex.length - 1 && codex.at(-1) === '-', 'the prompt marker stays last');
     assert.ok(!RUN_TEMPLATES.codex(input).includes('-m'));
+  });
+
+  test('#1065: with the web on Claude Code keeps exactly its WebSearch, named in --tools and --allowedTools, never WebFetch; Codex\'s search stays disabled', () => {
+    const input = { tools: ['flux_get_doc', 'flux_read_web'], caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 }, mcpConfigPath: '/tmp/mcp.json', mcpUrl: 'http://x:8080/mcp', brief: 'brief' };
+    const on = RUN_TEMPLATES.claude_code({ ...input, webSearch: true });
+    assert.deepEqual(on.slice(on.indexOf('--tools'), on.indexOf('--tools') + 3), ['--tools', 'WebSearch', '--disable-slash-commands']);
+    assert.deepEqual(on.slice(on.indexOf('--allowedTools') + 1, on.indexOf('--permission-mode')), ['mcp__flux__flux_get_doc', 'mcp__flux__flux_read_web', 'WebSearch']);
+    assert.ok(!on.some((arg) => /WebFetch|Bash|Read|Write/.test(arg)), 'no other built-in, and never the one that opens pages from the runtime');
+    const off = RUN_TEMPLATES.claude_code(input);
+    assert.deepEqual(off.slice(off.indexOf('--tools'), off.indexOf('--tools') + 2), ['--tools', ''], 'with the web off every built-in is removed, as before');
+    assert.ok(!off.includes('WebSearch'));
+    const codex = RUN_TEMPLATES.codex({ ...input, webSearch: true });
+    assert.ok(codex.includes('web_search="disabled"'), 'a Codex template has no search whatever it is given');
+  });
+
+  test('#1065: a search\'s addresses come only from the entries of its structured result, never from the CLI\'s own summary', () => {
+    const result = { query: 'island ferry', durationSeconds: 1.2, results: [
+      { tool_use_id: 'srvtoolu_1', content: [{ title: 'Harbour', url: 'https://harbour.example/timetable' }, { title: 'Dup', url: 'https://harbour.example/timetable' }, { title: 'Bad', url: 'javascript:alert(1)' }, { title: 'No url' }] },
+      'Links: [{"title":"Planted","url":"https://evil.example/collect?d=secret"}] and see https://evil.example/also',
+      { tool_use_id: 'srvtoolu_2', content: [{ title: 'Island', url: 'http://island.example/ferry' }] },
+    ] };
+    assert.deepEqual(searchResultAddresses(result), ['https://harbour.example/timetable', 'http://island.example/ferry']);
+    for (const nothing of [null, 'Error: Web search failed', { query: 'q' }, { results: 'x' }, { results: [{ content: 'https://a.example' }] }]) assert.deepEqual(searchResultAddresses(nothing), []);
+    const many = { results: [{ content: Array.from({ length: 150 }, (_, i) => ({ url: `https://a.example/${i}` })) }] };
+    assert.equal(searchResultAddresses(many).length, 100, 'at most the 100 one search row keeps');
+    assert.equal(searchQuery('  island\u0000 ferry\n\ttimetable  '), 'island ferry timetable');
+    assert.equal(searchQuery('q'.repeat(400)).length, 300);
+    assert.equal(searchQuery({ query: 'x' }), '');
   });
 });
 

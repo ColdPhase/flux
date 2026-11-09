@@ -60,6 +60,28 @@ describe('the supervisor\'s closed request set', () => {
     assert.equal(parseSupervisorRequest('stop', { ...valid.stop, model: 'opus' }).ok, false, 'no other request takes a model');
   });
 
+  test('#1065: a Claude Code run may keep its own web search; Codex never, and the value is only true', () => {
+    const parsed = parseSupervisorRequest('run', { ...valid.run, webSearch: true });
+    assert.equal(parsed.ok && (parsed.request as { webSearch?: boolean }).webSearch, true);
+    assert.deepEqual(parseSupervisorRequest('run', { ...valid.run, client: 'codex', webSearch: true }), { ok: false, code: 'invalid_request', field: 'webSearch' },
+      'Codex\'s search records no results Flux could check (C-30)');
+    for (const value of [false, 'true', 1, 'WebFetch']) assert.equal(parseSupervisorRequest('run', { ...valid.run, webSearch: value }).ok, false, String(value));
+  });
+
+  test('#1065: a search frame is its number and one-line query; a found frame only http(s) addresses, at most 100', () => {
+    const url = 'https://harbour.example/timetable?season=winter';
+    assert.ok(parseSupervisorFrame({ t: 'run', e: 'search', n: 1, query: 'island ferry winter timetable' }));
+    assert.ok(parseSupervisorFrame({ t: 'run', e: 'found', n: 1, results: [url] }));
+    assert.ok(parseSupervisorFrame({ t: 'run', e: 'found', n: 2, results: [] }), 'a failed search found nothing');
+    for (const bad of [
+      { t: 'run', e: 'search', n: 0, query: 'q' }, { t: 'run', e: 'search', n: 1, query: 'q'.repeat(301) }, { t: 'run', e: 'search', n: 1, query: 'a\u0000b' },
+      { t: 'run', e: 'found', n: 1, results: ['javascript:alert(1)'] }, { t: 'run', e: 'found', n: 1, results: ['https://a.example/ b'] },
+      { t: 'run', e: 'found', n: 1, results: ['file:///etc/passwd'] }, { t: 'run', e: 'found', n: 1, results: [`https://a.example/${'x'.repeat(2048)}`] },
+      { t: 'run', e: 'found', n: 1, results: Array.from({ length: 101 }, (_, i) => `https://a.example/${i}`) },
+      { t: 'run', e: 'found', n: 1, results: [url], query: 'extra' },
+    ]) assert.equal(parseSupervisorFrame(bad), null, JSON.stringify(bad).slice(0, 80));
+  });
+
   test('refuses a command line, flag, path or environment value in any field', () => {
     const smuggled = { argv: ['--dangerously-skip-permissions'], args: ['-c', 'x'], command: 'sh -c id', cmd: 'id', flags: ['--tools', 'Bash'],
       path: '/data', cwd: '/', env: { PATH: '/tmp' }, environment: {}, cli: '/bin/sh', shell: true, executable: '/bin/sh', config: {} };

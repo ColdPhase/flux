@@ -181,7 +181,8 @@ pages, founder direction 2026-11-09, #1113).
   Chat Completions has none, and `checkRequestLimits` refuses `webSearch` there or without tools. A model in
   `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
   its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
-  addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise, and always on the CLI's engine, #1065).
+  addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise). The runtime engine's brief has `RUNTIME_WEB_SEARCH_LINE`
+  on Claude Code with the switch on, and `NO_WEB_SEARCH_LINE` on Codex (see "Claude Code's own search" below).
 - **A refused search.** When the provider refuses the tool, recognised only from the error's own `type` and `message`
   (`anthropicSearchRefusal`: a 400 `invalid_request_error` saying web search is not enabled, an organization whose admin
   turned it off; `openAiSearchRefusal`: a 400 `invalid_request_error` saying the tool `web_search` is not supported, a model
@@ -233,7 +234,21 @@ pages, founder direction 2026-11-09, #1113).
   what Flux records never passes the key's day; one request's own bill can pass it by that request. A response that reports searches when none
   were offered is outside its bounds. A key's budget is refused when saved if it cannot hold one request with the room for results on a
   provider that has a search.
-- **Not here.** The Claude Code and Codex runtime have no search yet (#1065); local clients use their own tools.
+- **Claude Code's own search (#1065, RT-5).** With `FLUX_WEB_READS` on, `managerPersonalRuntime(…, { webSearch })`
+  marks the runtime, and a run on Claude Code sends `webSearch: true` in the supervisor's run request (the protocol
+  refuses it for Codex). The template then keeps exactly one built-in, `--tools WebSearch`, with `WebSearch` in
+  `--allowedTools` (never `WebFetch`), and the `system/init` read-back (the slot's and `localToolInInit`) accepts it.
+  The slot reduces the stream to two closed frames: `search` (`n`, the query; from the assistant's `WebSearch` tool use)
+  and `found` (`n`, the addresses of the result entries of the `user` event's structured `tool_use_result`:
+  `searchResultAddresses`; never an address from the tool's text, which interleaves the CLI's own summary, and none
+  for an error). The worker handles them in stream order through one promise chain (`record`): `startWebSearch`
+  writes a `personal_run_web_searches` row with the query and `pending = true` (migration 0046), `settleWebSearch`
+  fills its `results` and clears `pending`, and at the end `endWebSearches` clears any left. `flux_read_web` checks the
+  address; if the run cannot read it yet and has a search in progress (`searching`), it polls every 100 ms until none
+  is (at most `SEARCH_WAIT_MS`, 30 s) and checks again. Claude Code hands Flux no citations: at the commit, the
+  addresses the answer names (`addressesIn`) are written as the run's cited row, and `searches` lists those its search
+  returned under "Found on the web:". Codex's `web_search` stays disabled: its item carries no results. Local clients
+  use their own tools.
 - **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
   `/ai` answer.
 

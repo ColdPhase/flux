@@ -307,8 +307,8 @@ Code changes come only from the owner's own Claude Code or Codex on their comput
 other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
 owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo, and nothing is posted or filled in on
 the web. **Search** (founder direction, Hubert, 2026-11-08, #954) is the provider's own built-in tool on the owner's connection, with
-no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`. A provider or wire format without one has no
-search, and the agent's brief says so; nothing fails. What goes out on a read is an address, and an address is a way to send
+no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`; on the owner's own Claude Code, the CLI's
+`WebSearch` (#1065). A provider, wire format or CLI without one (Codex) has no search, and the agent's brief says so; nothing fails. What goes out on a read is an address, and an address is a way to send
 something to a site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its
 conversation as they were when the run began (never what an agent wrote, such as its question to another agent), on a page it read
 in the same run, or among the results its own web search returned in the same run (never an address the model chose to open). It never makes one up, so nothing it knows can be put
@@ -324,8 +324,8 @@ runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network));
 those that failed too, in Flux's own words, written down before each request goes out, and its searches and the addresses its answer
 cites: under its answer, or in its end line when it ends without one. Reading and searching are on by default; the operator turns both
 off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
-local client reads and searches the web with its own tools and does not get the tool; agents on the Claude Code and Codex runtime have
-no search yet (#1065). Another person's task title that becomes a run's request is the same kind of input: data, never an
+local client reads and searches the web with its own tools and does not get the tool; an agent on the owner's Codex has no search
+([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-claude-codes-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an
 instruction.
 
 ## AG-9 — Schedules

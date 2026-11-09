@@ -38,8 +38,11 @@ export type SupervisorRequest =
   | { kind: 'status'; bindingId?: string; client?: RuntimeClient; bootId?: string }
   /** Only through the sign-in console (console.ts): the supervisor runs the method's fixed command in a PTY. */
   | { kind: 'login'; bindingId: string; bootId: string; client: RuntimeClient; method: RuntimeLoginMethod; cols: number; rows: number }
-  /** `model`: the assistant's chosen model (F-027 AST-11), passed to the CLI's own model option; absent: the account's default. */
-  | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model?: string }
+  /**
+   * `model`: the assistant's chosen model (F-027 AST-11), passed to the CLI's own model option; absent: the account's default.
+   * `webSearch`: Claude Code keeps its own `WebSearch` tool (#1065, C-29: the operator's web switch is on); never for Codex.
+   */
+  | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model?: string; webSearch?: true }
   | { kind: 'stop'; bindingId: string; runId: string }
   | { kind: 'logout'; bindingId: string; bootId: string; client: RuntimeClient }
   | { kind: 'release'; bindingId: string };
@@ -62,7 +65,7 @@ const SHAPES: Record<SupervisorRequestKind, Fields> = {
   login: { required: { bindingId, bootId: str(UUID, 36), client, method: oneOf([...RUNTIME_LOGIN_METHODS.claude_code, ...RUNTIME_LOGIN_METHODS.codex]),
     cols: int(CONSOLE_SIZE.cols.min, CONSOLE_SIZE.cols.max), rows: int(CONSOLE_SIZE.rows.min, CONSOLE_SIZE.rows.max) } },
   run: { required: { bindingId, client, runId: str(UUID, 36), prompt: text(REQUEST_LIMITS.promptCharacters, 1), runToken: str(RUN_TOKEN, 12_300), tools: uniqueTools, caps },
-    optional: { model: str(MODEL_ID, 64) } },
+    optional: { model: str(MODEL_ID, 64), webSearch: (value: unknown): value is true => value === true } },
   stop: { required: { bindingId, runId: str(UUID, 36) } },
   logout: { required: { bindingId, bootId: str(UUID, 36), client } },
   release: { required: { bindingId } },
@@ -88,6 +91,8 @@ export function parseSupervisorRequest(kind: unknown, body: unknown): ParsedRequ
   const fields = body as Record<string, unknown>;
   if (kind === 'status' && fields.client !== undefined && fields.bindingId === undefined) return { ok: false, code: 'invalid_request', field: 'bindingId' };
   if (kind === 'status' && fields.client !== undefined && fields.bootId === undefined) return { ok: false, code: 'invalid_request', field: 'bootId' };
+  // Codex's own search stays off (#1065): its event stream carries no results Flux could record (C-30).
+  if (kind === 'run' && fields.webSearch !== undefined && fields.client !== 'claude_code') return { ok: false, code: 'invalid_request', field: 'webSearch' };
   if (kind === 'login' && !(RUNTIME_LOGIN_METHODS[fields.client as RuntimeClient] as readonly string[]).includes(fields.method as string)) {
     return { ok: false, code: 'invalid_request', field: 'method' };
   }

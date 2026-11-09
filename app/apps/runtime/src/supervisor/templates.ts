@@ -78,14 +78,22 @@ export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): re
  * letter or digit, so it is never a flag). Claude Code takes it as `--model <alias>`, Codex as `-m <id>`; absent, the CLI
  * uses its account's default, as it did before the assistant had a choice.
  */
-export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined }
+/**
+ * `webSearch` (Claude Code only, #1065, C-29): the CLI keeps exactly one built-in tool, its own `WebSearch`, which searches at Anthropic
+ * through the Messages API it already uses. `WebFetch`, which would open pages from the runtime, is never kept: pages are opened only by
+ * `flux_read_web` on the Flux server (RT-4).
+ */
+export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined; webSearch?: boolean }
+
+/** Claude Code's own web search tool, the one built-in tool a run may keep (#1065). */
+export const CLAUDE_WEB_SEARCH_TOOL = 'WebSearch';
 
 export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) => string[] } = {
-  claude_code: ({ tools, caps, mcpConfigPath, brief, model }) => [
+  claude_code: ({ tools, caps, mcpConfigPath, brief, model, webSearch }) => [
     '-p', '--output-format', 'stream-json', '--verbose', '--include-partial-messages',
-    '--restricted', '--tools', '', '--disable-slash-commands',
+    '--restricted', '--tools', webSearch ? CLAUDE_WEB_SEARCH_TOOL : '', '--disable-slash-commands',
     '--strict-mcp-config', '--mcp-config', mcpConfigPath,
-    '--allowedTools', ...tools.map((tool) => `mcp__flux__${tool}`),
+    '--allowedTools', ...tools.map((tool) => `mcp__flux__${tool}`), ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : []),
     '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
     '--no-session-persistence', '--max-turns', String(caps.maxTurns), ...(model ? ['--model', model] : []), '--append-system-prompt', brief,
   ],

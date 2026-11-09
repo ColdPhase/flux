@@ -213,8 +213,19 @@ function flagValues(argv: string[], flag: string): string[] {
 /** `${VAR}` in an MCP header, from the CLI's own environment (as Claude Code expands it). */
 const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => process.env[name] ?? '');
 
+/**
+ * A planned call. `WebSearch` (#1065) is Claude Code's own search: the fake answers it itself, as the real CLI does through Anthropic's
+ * Messages API, with `results` as the search's entries, `summary` as the CLI's own text about them and `error` for a failed search.
+ * `raceRead` names an address the fake asks `flux_read_web` for two seconds after starting the search and one second BEFORE it prints the
+ * search's result, as a CLI that ran ahead of its own output would: the read must wait for the search to be recorded.
+ */
+interface PlannedCall {
+  name: string; args?: Record<string, unknown>;
+  results?: { title: string; url: string }[]; summary?: string; error?: boolean; raceRead?: string;
+}
+
 interface RunScript {
-  calls?: { name: string; args?: Record<string, unknown> }[];
+  calls?: PlannedCall[];
   probes?: { name: string; args?: Record<string, unknown> }[];
   answer?: string;
   /** A pause before each call after the first (a model thinking between turns). */
@@ -229,8 +240,8 @@ interface RunScript {
  * `${FLUX_RUN_TOKEN}` from its environment), prints `system/init` with the tools that server lists, makes
  * REAL MCP calls and prints a `result`. A run script in the home (`fake-run.json`) chooses the calls, the
  * answer (`{{results}}` is replaced by what the calls returned) and silent `probes` (calls made without a
- * tool-use event, as a CLI ignoring its permissions would). Every MCP answer is recorded in
- * `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
+ * tool-use event, as a CLI ignoring its permissions would). A `WebSearch` call is answered by the fake itself (see PlannedCall). Every
+ * MCP answer is recorded in `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
  * run_plan_limit, run_plan_limit_soon (resets in two hours), run_plan_limit_no_time, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
  * run_big_answer, run_secret_answer, run_broken_stream, run_ignore_sigint, run_max_turns. Without
  * `--no-session-persistence` it writes a transcript under `projects/`, as the real CLI would.
@@ -273,7 +284,8 @@ async function claudeRun(argv: string[]): Promise<number> {
   const session = randomBytes(8).toString('hex');
   emit({ type: 'system', subtype: 'init', cwd: process.cwd(), session_id: session, model: 'claude-fake', permissionMode: 'dontAsk', apiKeySource: 'none',
     claude_code_version: '2.1.285', output_style: 'default', slash_commands: [], agents: [], skills: [], plugins: [], uuid: randomBytes(16).toString('hex'),
-    tools: [...names.map((name) => `mcp__flux__${name}`), ...(mode === 'run_extra_tool' ? ['Bash'] : [])],
+    // `--tools` keeps the built-ins it names: none (''), or with the web on only WebSearch (#1065).
+    tools: [...names.map((name) => `mcp__flux__${name}`), ...flagValues(argv, '--tools').filter((name) => name === 'WebSearch'), ...(mode === 'run_extra_tool' ? ['Bash'] : [])],
     // The field set of the pinned real CLI's `system/init` (2.1.285, observed 2026-10-16 against the scripted model).
     mcp_servers: [{ name: 'flux', status: listed.status === 200 ? 'connected' : 'failed', source: 'dynamic' },
       ...(mode === 'run_extra_server' ? [{ name: 'other', status: 'connected', source: 'dynamic' }] : [])] });
@@ -303,11 +315,42 @@ async function claudeRun(argv: string[]): Promise<number> {
     record('claude_code', argv, { event: 'tool_result', name, status: answer.status, isError, text });
     return { name, isError, text };
   };
+  const pause = (ms: number) => new Promise((wait) => setTimeout(wait, ms));
+  /** Claude Code's `WebSearch` result: its text for the model and the structured `tool_use_result` (#1065; the shape of the pinned CLI). */
+  const searchResult = (useId: string, planned: PlannedCall) => {
+    const query = String(planned.args?.query ?? '');
+    const entries = planned.results ?? [];
+    const summary = planned.summary ?? 'The pages above answer the question.';
+    const text = planned.error ? 'Error: Web search failed' : `Web search results for query: "${query}"\n\nLinks: ${JSON.stringify(entries)}\n\n${summary}\n\n`
+      + 'REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.';
+    record('claude_code', argv, { event: 'web_search', query, results: entries.length });
+    emit({ type: 'user', session_id: session, parent_tool_use_id: null, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: useId, content: text, ...(planned.error ? { is_error: true } : {}) }] },
+      tool_use_result: planned.error ? 'Error: Web search failed' : { query, results: [{ tool_use_id: `srvtoolu_${randomBytes(6).toString('hex')}`, content: entries }, summary], durationSeconds: 1.2 } });
+    return { name: 'WebSearch', isError: planned.error === true, text };
+  };
   for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
   for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     const useId = `toolu_${index + 1}`;
+    if (planned.name === 'WebSearch') {
+      emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: 'WebSearch', input: planned.args ?? {} }] } });
+      if (planned.raceRead) {
+        await pause(2_000);
+        const readId = `toolu_${index + 1}_read`;
+        emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}_read`, role: 'assistant', content: [{ type: 'tool_use', id: readId, name: 'mcp__flux__flux_read_web', input: { url: planned.raceRead } }] } });
+        const read = call('flux_read_web', { url: planned.raceRead });
+        await pause(1_000);
+        results.push(searchResult(useId, planned));
+        const answered = await read;
+        results.push(answered);
+        emit({ type: 'user', session_id: session, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: readId, content: answered.text, is_error: answered.isError }] } });
+        continue;
+      }
+      await pause(50);
+      results.push(searchResult(useId, planned));
+      continue;
+    }
     emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: `mcp__flux__${planned.name}`, input: planned.args ?? {} }] } });
     const result = await call(planned.name, planned.args ?? {});
     results.push(result);
