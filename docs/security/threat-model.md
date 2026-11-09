@@ -11,10 +11,11 @@ Related work, kept separate on purpose:
 - [#839](https://github.com/ColdPhase/flux/issues/839): the authorization and tenant-isolation pentest. This document does not repeat its
   object-by-object authorization tests.
 - [#840](https://github.com/ColdPhase/flux/issues/840): image signing.
-- Open PRs that change what is described here: #983 (web reads only fetch addresses an agent was
-  given, and every address asked is listed, for #953), #984 (Focus mode goes; no security effect) and
-  #842 (`/ai` in every conversation; it widens where an agent answers, so the audience rule C-12
-  matters more).
+- Changes merged after this audit that change what is described here: #983 (every address asked is listed, for #953), then
+  #1065/#1134 (an agent opens any public address; the server refuses one that carries private Flux text the run read, C-30)
+  and #1136 (that check's cost, the pages a person named, link cards for agents' lines, the kept text deleted when the run ends);
+  #984 (Focus mode goes; no security effect) and #842 (`/ai` in every conversation; it widens where an agent answers, so the
+  audience rule C-12 matters more).
 
 ## What changed since v0.1
 
@@ -31,8 +32,8 @@ v0.1 was never independently reviewed. Since then:
 - **Local MCP clients with one-click sign-in** (#928, #943, C-19 to C-23). OAuth 2.1 with PKCE, Client
   ID Metadata Documents, a single `offline_access` scope, and an agent of the person's own made on
   Allow.
-- **Web reads** (#949). Server agents can read public pages through the link cards' SSRF guard. #983
-  narrows this.
+- **Web reads** (#949). Server agents can read public pages through the link cards' SSRF guard. Since #1065 any public address,
+  refused when it carries private Flux text the run read (C-30, #1136).
 - **Dependency upgrades** (#913) and the security scans of #834 to #836: Dependabot, Trivy and CodeQL.
 
 ## System and trust boundaries
@@ -169,7 +170,7 @@ is what remains, and an issue number marks a finding of this audit.
 
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
-| SSRF through link cards and web reads | Default ports only; DNS resolved once by the socket's lookup with every answer checked; private, loopback, link-local, CGNAT, NAT64, IPv4-mapped and metadata ranges refused; redirects re-checked; size and time limits (`link-previews/safe-fetch.ts`, `packages/agent-runtime/src/endpoint-policy.ts`). Probe: `127.0.0.1.nip.io` and `169.254.169.254` gave no card, `example.com` did | Data exfiltration in the URL an agent asks for: [#953](https://github.com/ColdPhase/flux/issues/953), PR #983 |
+| SSRF through link cards and web reads | Default ports only; DNS resolved once by the socket's lookup with every answer checked; private, loopback, link-local, CGNAT, NAT64, IPv4-mapped and metadata ranges refused; redirects re-checked; size and time limits (`link-previews/safe-fetch.ts`, `packages/agent-runtime/src/endpoint-policy.ts`). Probe: `127.0.0.1.nip.io` and `169.254.169.254` gave no card, `example.com` did | Data exfiltration in the URL an agent asks for: the check of C-30 refuses verbatim private text (#1065, #1136); rewritten text is the founder's accepted risk. A link card (`FLUX_LINK_PREVIEWS=on`, off by default) fetches a person's link with no such check, and nothing for a line an agent that runs on the server wrote (#1136) |
 | SSRF through an OpenAI-compatible endpoint | The same classifier, `FLUX_AI_PRIVATE_TARGETS` opt-in, metadata always refused, guarded lookup at connect time | Operator configuration |
 | SSRF through Web Push endpoints | HTTPS DNS names only; the worker refuses non-public resolutions | None found |
 | Provider sees company content | Only what the agent may read goes into a request (C-12); encrypted spaces never have AI; guests have no AI | The provider's retention policy is the person's choice of connection |
@@ -180,9 +181,9 @@ is what remains, and an issue number marks a finding of this audit.
 | --- | --- | --- |
 | Indirect prompt injection makes an agent change things | Only the owner prompts (C-13: questions from other agents never change anything); "What it may do"; deletions and other people's things wait; Undo on each agent message; agents never write to GitHub or the web | Under "Do it and tell me" (the default), an injected instruction can still create, edit and move the owner's own things, and post messages where the owner can |
 | An agent leaks private text into a shared place | `/ai` in a conversation reads only what that conversation's audience can see (C-12); a task's agents use only what all of the task's people can see (C-10); memory and instructions are never quoted in shared answers (C-8) | A run in the owner's **private** agent conversation can read everything the owner can and is not stopped from posting into a shared conversation. The guarantee is about reads in shared places, not writes from a private run. Not probed: it needs a model run. Worth a design note in `assistant.md` |
-| Exfiltration through tools that reach outside | Server agents only read the web; the egress allow-list for CLIs | Web reads can carry data out in a URL until #983 lands; CLIs through allowed vendor hosts (above) |
+| Exfiltration through tools that reach outside | Server agents only read the web; the egress allow-list for CLIs; every address the server asks is listed; an address carrying verbatim private Flux text the run read is refused (C-30), and a redirect hop that adds any; the kept text exists only while the run is in flight (#1136) | What the agent rewrote can leave in an address (accepted by the founder); Codex's `web.run` `open` sends an address the model chose to OpenAI unchecked (read from its cached index, by OpenAI's description); CLIs through allowed vendor hosts (above) |
 | An agent approves its own work | No approve tool; owner session only | None found |
-| Runaway cost or denial of service | Capacity from memory (F-036 point 12), a daily budget for API keys, result-size bounds per run token | Flux sets no limits of its own, by decision. A provider plan's limits are the only brake on a person's agents |
+| Runaway cost or denial of service | Capacity from memory (F-036 point 12), a daily budget for API keys, result-size bounds per run token; the address check is one pass over the run's kept text, bounded by the address and the 8 MiB result bound, yielding to the event loop (#1136: #1134's check could hold the API for 22 s) | Flux sets no limits of its own, by decision. A provider plan's limits are the only brake on a person's agents |
 
 ### B10 GitHub, B11 operator, supply chain
 
@@ -207,8 +208,9 @@ is what remains, and an issue number marks a finding of this audit.
    This is a design-level risk, not a defect.
 4. **Web reads can carry data out in a URL** ([#953](https://github.com/ColdPhase/flux/issues/953)). Since the founder's direction of
    2026-11-09 (#1065, C-30) an agent may open any address; the server refuses one that carries private Flux text the run read, as it was,
-   percent-encoded or in a hex, base64 or base32 run, and each redirect hop that does; what the agent rewrote can still leave. The founder
-   accepted that risk.
+   percent-encoded or in a hex, base64 or base32 run, and each redirect hop that adds any (#1136); what the agent rewrote can still leave.
+   The founder accepted that risk. With `FLUX_LINK_PREVIEWS=on` a link card is fetched for a person's message without that check, and never
+   for a line an agent that runs on the server wrote.
 
 ## What this audit could not verify
 
