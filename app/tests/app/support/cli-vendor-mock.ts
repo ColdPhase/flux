@@ -1,5 +1,6 @@
 import type http from 'node:http';
 import { randomBytes } from 'node:crypto';
+import { claudeReal, codexReal, codexSearchReal, realModelOn, realTranscript } from './real-model.js';
 
 /**
  * TEST ONLY (#1125): the vendors of the REAL pinned Claude Code and Codex, served by the `providermock` service for
@@ -23,6 +24,10 @@ import { randomBytes } from 'node:crypto';
  * `response.failed`. After the last step the model answers "Done.". Claude Code's side requests (no Flux tool) get a plain answer, and
  * its `WebSearch` sub-request (a `web_search_*` server tool) gets the pending search's results. An API key that starts with
  * `sk-ant-mock-expired` is refused as the API refuses a revoked key.
+ *
+ * With `FLUX_CLI_REAL_MODEL_URL` set (scripts/check_ai_real_model.sh), a REAL local model answers instead of the steps: the model requests
+ * and the searches go to real-model.ts, `GET /__real/transcript?since=n` returns what the model was sent and answered, and everything else
+ * here (sign-in, refresh, usage, the revoked key, the journal) stays as it is.
  */
 
 type Json = Record<string, unknown>;
@@ -142,6 +147,13 @@ function claudeMessages(request: http.IncomingMessage, response: http.ServerResp
     // The API's answer to a revoked key; `x-should-retry: false` ends Claude Code's ten retries at once (the text is the same either way).
     return json(response, 401, { type: 'error', error: { type: 'authentication_error', message: 'invalid x-api-key' }, request_id: 'req_mock_401' }, { 'x-should-retry': 'false' });
   }
+  if (realModelOn()) {
+    const search = tools.some((tool) => String(tool.type ?? '').startsWith('web_search_'));
+    const main = names.some((name) => name.startsWith('mcp__flux__') || name === 'WebSearch');
+    record({ client: 'claude', kind: search ? 'web_search' : main ? 'main' : 'side', path, credential: key, model, tools: names, results });
+    void claudeReal(response, body);
+    return;
+  }
   if (tools.some((tool) => String(tool.type ?? '').startsWith('web_search_'))) {
     const search = state.pendingSearch ?? { query: 'nothing', results: [] };
     record({ client: 'claude', kind: 'web_search', path, credential: key, model, detail: { query: search.query } });
@@ -193,6 +205,11 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
   const results = input.filter((item) => item.type === 'function_call_output' || item.type === 'custom_tool_call_output').map((item) => textOf(item.output));
   const tools = codexTools(body);
   const model = typeof body.model === 'string' ? body.model : '';
+  if (realModelOn()) {
+    record({ client: 'codex', kind: 'main', path, credential: bearer, model, tools, results });
+    void codexReal(response, body);
+    return;
+  }
   const { step, index } = nextStep('codex');
   record({ client: 'codex', kind: 'main', path, credential: bearer, model, tools, results, step: index,
     detail: { account: request.headers['chatgpt-account-id'] ?? null, encoding: request.headers['content-encoding'] ?? null } });
@@ -234,6 +251,12 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
  */
 function codexSearch(request: http.IncomingMessage, response: http.ServerResponse, path: string, body: Json) {
   const bearer = (request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+  if (realModelOn()) {
+    const settings = (body.settings && typeof body.settings === 'object' ? body.settings : {}) as Json;
+    record({ client: 'codex', kind: 'web_search', path, credential: bearer, detail: { commands: body.commands ?? null, externalWebAccess: settings.external_web_access ?? null } });
+    void codexSearchReal(response, body);
+    return;
+  }
   const search = state.pendingSearch ?? { query: 'nothing', results: [] };
   const settings = (body.settings && typeof body.settings === 'object' ? body.settings : {}) as Json;
   record({ client: 'codex', kind: 'web_search', path, credential: bearer, detail: { query: search.query, commands: body.commands ?? null,
@@ -326,6 +349,7 @@ export function handleCliVendor(request: http.IncomingMessage, response: http.Se
     json(response, 200, { approved }); return true;
   }
   if (path === '/__cli/journal') { json(response, 200, { journal: state.journal }); return true; }
+  if (path === '/__real/transcript') { json(response, 200, { transcript: realTranscript(Number(url.searchParams.get('since') ?? '0')) }); return true; }
   if (!path.startsWith('/cli/')) return false;
 
   if (path.startsWith('/cli/anthropic/')) {

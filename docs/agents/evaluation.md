@@ -182,14 +182,45 @@ stage wraps each binary so its model and sign-in hosts are the mock; the runtime
 reached. It asserts Flux's side effects, never model text. Run it, alone, after a change to the runtime's templates, run reader,
 error classification, sign-in console or CLI pins, and in release acceptance.
 
-| Covered without an account | Still needs a real account (release acceptance) |
+| Covered without an account | Not covered without an account |
 | --- | --- |
 | On each engine, an `/ai` run and an agent task run calling Flux's MCP tools (a conversation, a task's discussion, a task and a subtask, `flux_read_web`), the run token, the change log and web reads, and exactly which tools the model is offered | Claude plan sign-in (its OAuth hosts are fixed in the binary; the check signs in with an API key in the person's CLI home) |
 | Each CLI's own web search: Claude Code's `WebSearch`, and Codex's standalone `web.run` with `external_web_access: false` ([#1065](https://github.com/ColdPhase/flux/issues/1065)); the search and its result addresses recorded, a result read | Claude plan limits: `You've hit your … limit` and the `anthropic-ratelimit-unified-*` headers exist only in plan (OAuth) mode |
 | The CLIs' own texts for an over-long request, a 429 or usage limit and a revoked sign-in, and what Flux records and shows ([#1129](https://github.com/ColdPhase/flux/issues/1129)) | Codex's device card: Flux draws it only for `https://auth.openai.com/codex/device`; the mock issuer's page is shown in the terminal |
 | Codex: the ChatGPT device sign-in through Flux's console (device code, approval, code exchange, status), a token refresh, the usage limit's reset time read by Flux's app-server client, sign-out with revocation | The path through runtime-egress's CONNECT to the vendors, and Codex's WebSocket transport (the mock answers 426) |
-| Codex's tools from Flux's model catalog ([#1127](https://github.com/ColdPhase/flux/issues/1127)) | Real model behaviour and quality (including the vendors' models with plain tools instead of code mode), and drift of the vendors' wording after the pinned versions |
+| Codex's tools from Flux's model catalog ([#1127](https://github.com/ColdPhase/flux/issues/1127)) | The vendors' own models' behaviour and quality (with plain tools instead of code mode; a local model's is checked [below](#ai-acceptance-with-a-real-local-model)), and drift of the vendors' wording after the pinned versions |
 | No vendor credential in the database or the service logs | The runtime's start on a host with `kernel.yama.ptrace_scope` 0: there the check reads that one file as 1 (and says so) |
+
+## AI acceptance with a real local model
+
+Release acceptance with a vendor account was cancelled: the AI is accepted by simulating it with the REAL Claude Code and the REAL
+Codex and a real local model (founder direction, Hubert, 2026-11-09). `scripts/check_ai_real_model.sh` runs the stack of
+`check_cli_runtime.sh` (the pinned CLIs in the runtime image, driven by Flux; sign-in, refresh and usage against the vendor mock) with
+one difference: `providermock` forwards each CLI's model requests to a local model (`app/tests/app/support/real-model.ts`). It turns
+Claude Code's Anthropic Messages and Codex's Responses requests into one Chat Completions request and the answer back into the
+vendor's stream, with temperature 0, a fixed seed and the vendor's keepalives. Flux's production brief, tools and CLI templates are
+unchanged; `docker/compose.ai-real-model.test.yaml` lists every other difference. A local model has no vendor-side search, so the
+shim answers Claude Code's `WebSearch` sub-request and Codex's `web.run` (`alpha/search`, its `open` too) from a Polish fixture corpus
+on linkmock (`app/tests/app/support/web-corpus-pl.ts`, one page with a prompt injection), in the vendor's result format.
+
+Eight scenarios run on each engine, Claude Code as Ada and Codex as Bogdan, on a seeded space with Polish threads
+(`app/tests/app/ai-real-model.check.ts`): `/ai` summarises and makes a task (private, Show everyone, the approval rule); a task given
+to the agent ends Done or handed back by "What it may do"; a page a person linked is read and cited; Polish law with no link is
+searched, read and cited; a prompt-injection page (C-30's address check, approvals, the answer's addresses); a schedule from a
+sentence in the private chat, turned on and run now; one agent asks another with `<ask>`; nobody else prompts an agent. Checks are on
+Flux's records and plain properties of an answer (its language, a fact, a source), never its text. A `security` check must hold on
+every attempt; an `outcome` check on one of `FLUX_AI_ATTEMPTS` (default 2). Each attempt's Flux state, model transcript and timings go
+to `FLUX_AI_EVIDENCE_DIR` (default `.worktrees/ai-real-model-evidence/<time>` of the main checkout).
+
+The model is configurable. By default it is the `strata` container on Hubert's host (llama.cpp-based, ROCm on the RX 7900 XTX,
+Qwen3.8-Flash-Next IQ3_S, its saved preset's 131,072-token context): the script starts it only with 52 GB of RAM available, attaches
+it to the stack's network, reads its local key without printing it, and stops it again afterwards. `FLUX_AI_MODEL_URL` (and
+`FLUX_AI_MODEL_KEY`) points at any other Chat Completions server the stack can reach. Run it alone; a local model is slow.
+
+Tell a Flux finding from a small model's weakness before reporting a failure: a confusing brief, tool description or error text, a
+missing record or a rule that did not hold is Flux's; a wrong tool choice or a weak answer with a clear brief is the model's. A
+local model is weaker than the vendors' models, so a pass here shows that Flux's brief, tools and rules work with a real model, not
+how Claude or GPT answer, and the vendors' own search, sign-in and wording stay unverified.
 
 ## At release acceptance
 

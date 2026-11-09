@@ -487,11 +487,10 @@ export function personalRunRows(db: DbExecutor) {
       return Boolean(row);
     },
 
-    /** The "What it may do" (F-036 AG-3) of the owner's first agent here, or null without one. */
-    async assistantMayDo(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null> {
+    /** The "What it may do" (F-036 AG-3: one row on each agent's page) of this agent of the owner, or null when it is gone. */
+    async assistantMayDo(ownerUserId: string, agentId: string): Promise<AgentMayDo | null> {
       const [row] = await db.select({ mayDo: k.mayDo }).from(e).innerJoin(k, eq(k.id, e.connectionId)).innerJoin(ag, eq(ag.id, e.agentId))
-        .where(and(eq(e.ownerUserId, ownerUserId), eq(e.workspaceId, workspaceId), isNull(ag.revokedAt), isNull(k.revokedAt)))
-        .orderBy(asc(e.createdAt), asc(e.agentId)).limit(1);
+        .where(and(eq(e.ownerUserId, ownerUserId), eq(e.agentId, agentId), isNull(ag.revokedAt), isNull(k.revokedAt)));
       return row?.mayDo ?? null;
     },
 

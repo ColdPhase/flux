@@ -319,7 +319,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const { body, ask } = takeAsk(run.answerBody ?? '');
       if (body || !ask) await say(tx, work, run.agentId, body || '(No answer text.)', `report:${run.id}`, run);
       if (ask) return asking(tx, work, run, ask);
-      const mayDo = await personalRunRows(tx).assistantMayDo(run.ownerUserId, run.workspaceId);
+      // The row of the agent that worked the task, not the owner's first agent: each agent has its own (AG-3, AG-5).
+      const mayDo = await personalRunRows(tx).assistantMayDo(run.ownerUserId, run.agentId);
       const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
       // A task that is Blocked when the run ends stays Blocked, with the agent, in both modes (#868, C-52): it is waiting for something, so it is
       // not Done and not handed back, and the tasks waiting for it do not resume. When what it waits for is resolved the agent takes it up again.

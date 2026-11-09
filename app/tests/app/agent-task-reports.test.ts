@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { assistantRunChangesActionPath, taskDiscussionPath, type AgentChatMessage, type AssistantRunUndone, type TaskDiscussion } from '@flux/contracts';
+import { agentConnectionPath, assistantRunChangesActionPath, MY_AGENTS_PATH, taskDiscussionPath, type AgentChatMessage, type AssistantRunUndone, type MyAgentList,
+  type TaskDiscussion } from '@flux/contracts';
 import { stopRunBy } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -16,19 +17,19 @@ import { waitFor } from './support/wait.js';
 
 describe('the report of a run on a task (#919)', () => {
   let scene: AssistantScene;
-  const chat = async () => scene.runs.agentChatMessages(human(scene.owner), scene.agentId);
+  const chat = async (agentId = scene.agentId) => scene.runs.agentChatMessages(human(scene.owner), agentId);
   const unread = async () => (await scene.runs.agentChats(human(scene.owner))).find((item) => item.agentId === scene.agentId)!.unread;
-  const reportOf = (runId: string) => waitFor(async () => (await chat()).find((line) => line.runId === runId), `the report of run ${runId}`);
+  const reportOf = (runId: string, agentId = scene.agentId) => waitFor(async () => (await chat(agentId)).find((line) => line.runId === runId), `the report of run ${runId}`);
 
   /** A task of Ada's with its discussion open, held by her agent, and a run of the agent on it, started the way an assignment starts it. */
-  async function started(title: string) {
+  async function started(title: string, agentId = scene.agentId) {
     const task = await scene.task(scene.owner, title);
     expectStatus(await scene.owner.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Go ahead', clientMessageId: randomUUID() } }), 201);
     const talk = expectStatus(await scene.owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
-    const begun = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { ownerUserId: scene.owner.id, agentId: scene.agentId, workId: task.id,
+    const begun = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { ownerUserId: scene.owner.id, agentId, workId: task.id,
       projectId: scene.place.id, conversationId: talk.conversationId!, prompt: `Task #${task.number}: ${title}`, clientRunId: randomUUID() }));
     assert.ok(begun.started, JSON.stringify(begun));
-    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, scene.agentId]);
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, agentId]);
     return { task, run: begun.run };
   }
   /** The run ends with its report (the worker's commit); the drain then marks the task Done or hands it back. */
@@ -70,6 +71,33 @@ describe('the report of a run on a task (#919)', () => {
       assert.equal(line.body, `Back to you to check: #${task.number} Re-check the south barrel wiring`);
       assert.equal((await scene.taskRow(task.id)).status !== 'done', true);
     } finally { await scene.setMayDo('act'); }
+  });
+
+  test('each agent finishes by its own What it may do, not the owner\'s first agent\'s (AG-3, AG-5; found by the real-model acceptance)', async () => {
+    // A second agent of Ada's, on "Ask me first", while her first agent stays on "Do it and tell me"; then the other way round.
+    const planner = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada planner', owner: 'self' } }), 201) as { id: string }).id;
+    const connection = randomUUID();
+    scene.connections.connect(scene.owner.id, connection);
+    await scene.runs.enable(human(scene.owner), { agentId: planner, connection, model: 'claude-sonnet-5' });
+    const plannerConnection = (expectStatus(await scene.owner.browser.request('GET', MY_AGENTS_PATH), 200) as MyAgentList).items.find((item) => item.id === planner)!.connectionId;
+    const setPlanner = async (mayDo: 'act' | 'ask') => expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(plannerConnection), { body: { mayDo } }), 200);
+    try {
+      await scene.setMayDo('act');
+      await setPlanner('ask');
+      const asked = await started('Planner checks the north barrel', planner);
+      await complete(asked.run.id, 'The north barrel looks fine; please check it.');
+      assert.equal((await reportOf(asked.run.id, planner)).body, `Back to you to check: #${asked.task.number} Planner checks the north barrel`);
+      assert.notEqual((await scene.taskRow(asked.task.id)).status, 'done', 'Ask me first on the agent that worked: handed back, whatever the first agent says');
+      await scene.setMayDo('ask');
+      await setPlanner('act');
+      const done = await started('Planner closes the south barrel', planner);
+      await complete(done.run.id, 'The south barrel is closed.');
+      assert.equal((await reportOf(done.run.id, planner)).body, `Done: #${done.task.number} Planner closes the south barrel`);
+      assert.equal((await scene.taskRow(done.task.id)).status, 'done', 'Do it and tell me on the agent that worked: Done');
+    } finally {
+      await scene.setMayDo('act');
+      await pool.query('UPDATE agents SET revoked_at = now() WHERE id = $1', [planner]);
+    }
   });
 
   test('a task that is Blocked when the run ends stays Blocked with its agent, in both modes: the line says Blocked, and what waits for it does not resume', async () => {
