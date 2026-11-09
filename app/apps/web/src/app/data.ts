@@ -2,6 +2,7 @@ import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-rou
 import { ME_PROBE_HEADER, WORKSPACES_PATH, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type WorkspaceRole } from '@flux/contracts';
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
+import { pacedShellRead } from './shellPace';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { listMyAgents } from '../my-agents/api';
@@ -80,7 +81,8 @@ export async function allAiBlocked(): Promise<boolean> {
 
 /** Auth guard: restores the session from its cookie on every full load, or sends the person to sign in. */
 export function appLoader(args: LoaderFunctionArgs): Promise<ShellData> {
-  const loading = readShell(args);
+  // Paced (#1126): a page that navigates or revalidates in a loop, or whose reads keep failing, does not read the shell in a loop.
+  const loading = pacedShellRead(args.request.signal, () => readShell(args));
   latestShell = loading;
   return loading;
 }

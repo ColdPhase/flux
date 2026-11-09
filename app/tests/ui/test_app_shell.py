@@ -372,7 +372,18 @@ class AppShellJourney(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        # How often each page reads the person (#1126): a page that loops on it is a failure whatever else it shows.
+        reads = {"me": 0}
+        page.on("request", lambda request: reads.__setitem__("me", reads["me"] + 1) if request.url.split("?")[0].endswith("/api/v1/me") else None)
+        if not hasattr(self, "me_reads"):
+            self.me_reads = []
+        self.me_reads.append((page, reads))
         return page
+
+    def assert_few_me_reads(self, at_most: int = 40) -> None:
+        """No page of this test read the person more than a handful of times (#1126: a revoked page read it 52,800 times)."""
+        for page, reads in getattr(self, "me_reads", []):
+            self.assertLessEqual(reads["me"], at_most, f"{page.url}: {reads['me']} reads of /api/v1/me")
 
     def save_state(self, page: Page) -> None:
         type(self).state = page.context.storage_state()
@@ -1233,6 +1244,12 @@ class AppShellJourney(unittest.TestCase):
         phone.reload()
         expect(phone.get_by_text("Agreed. Test low light too.", exact=True)).to_have_count(0)
         self.assertEqual(phone.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").status, 404)
+        # Every page of this test settles, the revoked ones included: none reads the person in a loop (#1126).
+        for page, _reads in self.me_reads:
+            if not page.is_closed():
+                page.wait_for_timeout(1500)
+                break
+        self.assert_few_me_reads()
 
     def test_13_project_pagination_and_live_history(self) -> None:
         """The 101st item is reachable, and a fresh reply cannot punch a hole in loaded history."""

@@ -20,6 +20,7 @@ import { forgetBrowserDrafts } from '../drafts/store';
 import { forgetPlaces } from '../place/memory';
 import { forgetDocumentDrafts } from '../docs/drafts';
 import { forgetThoughtImages } from '../sketch/ThoughtImage';
+import { pacedShellRead } from '../app/shellPace';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
 
@@ -119,7 +120,8 @@ const hasErrors = (errors: FieldErrors) => Object.values(errors).some(Boolean);
 export async function redirectIfSignedIn({ request }: LoaderFunctionArgs) {
   const next = safeNext(new URL(request.url).searchParams.get('next'));
   try {
-    if (await getMe(request.signal)) return redirect(next);
+    // Paced with the shell's own reads (#1126): a sign-in page and the app sending each other back and forth cannot loop on it.
+    if (await pacedShellRead(request.signal, () => getMe(request.signal))) return redirect(next);
   } catch {
     // Offline or server trouble: show the form; submitting reports the problem.
   }
