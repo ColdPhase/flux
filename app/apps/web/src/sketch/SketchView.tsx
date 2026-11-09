@@ -22,6 +22,7 @@ import { planReparent } from './outline';
 import { useOutline } from './useOutline';
 import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
 import { useMoveToSpaceMap } from './MoveToSpaceMap';
+import { DockRow } from './DockRow';
 import { DraftCapture, draftReady } from './DraftCapture';
 import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
 import { useThoughtTasks } from './ThoughtTasks';
@@ -663,7 +664,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   const toast = useToast();
   const moveTo = useMoveToSpaceMap({
     sketch, selection, versionOf: (id) => (doc.confirmedThoughts ?? sketch?.thoughts)?.find((thought) => thought.id === id)?.version,
-    onMoved: (text) => { setConnectFrom(null); say(text, false); focusThought('.sk-node:not([aria-pressed="true"]), .sk-li-t, .sk-canvas'); },
+    // The toast says where it went, with Undo: the status line does not say it again (#1116).
+    onMoved: () => { setConnectFrom(null); say('', false); focusThought('.sk-node:not([aria-pressed="true"]), .sk-li-t, .sk-canvas'); },
     onBack: (text) => say(text, false),
   });
   const copyLink = sketch?.scope === 'private' && selection.length === 1 ? () => {
@@ -903,7 +905,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           </div>
           <div className="sk-dock">
             <div className="sk-line">{statusLine}</div>
-            {dock ? <div className="sk-dock__row">{dock}</div> : null}
+            {dock ? <DockRow>{dock}</DockRow> : null}
           </div>
           {connections}
           {moveTo.dialog}

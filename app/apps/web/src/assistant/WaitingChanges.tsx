@@ -96,7 +96,9 @@ function ChangeLine({ changes, onChanged, meId, standalone, here }: { changes: A
   if (!done.length && !skips.length || changes[0]!.runState === 'working') return null;
   const runId = changes[0]!.runId;
   const live = done.filter((change) => change.state !== 'undone');
-  const undoneBy = done.find((change) => change.state === 'undone' && change.decidedBy)?.decidedBy?.name;
+  // "Undone by Ada": the first name, as the line's own label and the guide say.
+  const undoer = done.find((change) => change.state === 'undone' && change.decidedBy)?.decidedBy?.name;
+  const undoneBy = undoer ? undoer.trim().split(/\s+/)[0] || undoer : undefined;
   const owner = changes[0]!.owner;
   const first = owner.name.trim().split(/\s+/)[0] || owner.name;
   const whose = !meId || owner.id === meId ? 'your' : `${first}’s`;

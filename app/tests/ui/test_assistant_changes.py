@@ -213,7 +213,7 @@ class AssistantChanges(unittest.TestCase):
         expect(line).to_contain_text("Updated the Wiki page Calibration (2 changes) · moved #4 to In progress")
         shot(page, "assistant-changes-1440-light-change-line")
         line.get_by_role("button", name="Undo", exact=True).click()
-        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        expect(line).to_contain_text(f"Undone by {ADA['name'].split()[0]}")
         expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         self.assertEqual(calls, [("run", "undo")])
 
@@ -416,7 +416,7 @@ class AssistantChanges(unittest.TestCase):
         expect(line.get_by_role("button", name="Undo", exact=True)).to_be_visible()
         # An untouched one is taken back, and the line says who did it.
         line.get_by_role("button", name="Undo", exact=True).click()
-        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        expect(line).to_contain_text(f"Undone by {ADA['name'].split()[0]}")
         expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         self.assertEqual(calls, [("run", "refused"), ("run", "undo")])
 

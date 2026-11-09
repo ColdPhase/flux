@@ -10,8 +10,9 @@ import './assistant.css';
 
 // What a local client changed on a task, a Wiki page or a map, on that page (#868, mcp-cowork LC-2): the same change line with Undo as the
 // assistant's messages, one per change, so an Undo takes back that change and never the client's earlier work (C-18). The newest three
-// show; the earlier ones are one quiet button away. Everyone who can read the page sees the line; Undo is the owner's, or anyone who may
-// edit it, and the server says which (`undoable`). Nothing shows while the space has AI off.
+// show; the earlier ones are one quiet button away. Everyone who can read the page sees the line, a guest of the company too (LC-2: "Everyone
+// who can read the object sees it", and the server lists what was done to them as it does for a conversation); Undo is the owner's, or anyone
+// who may edit it, and the server says which (`undoable`). Nothing shows while the space has AI off.
 
 const SHOWN = 3;
 /** The events that say the page's changes may have moved: the object's own changes, and an Undo by anyone. */
@@ -19,13 +20,15 @@ const MOVED: Record<AssistantChangeScope, RegExp> = {
   work: /^project\.(work_|assistant_change_undone\.)/, doc: /^project\.(doc_|assistant_change_undone\.)/, map: /^project\.assistant_change_undone\./,
 };
 
-export function ClientChanges({ projectId, kind, id, refreshKey }: {
+export function ClientChanges({ projectId, kind, id, refreshKey, onChanges }: {
   projectId: string; kind: AssistantChangeScope; id: string;
   /** Anything that says the page was read again (a task's activity, a page's version): the lines are read again with it. */
   refreshKey?: unknown;
+  /** The changes the lines show, as they are read: a task's timeline leaves out the entries these lines already say (#1116). */
+  onChanges?: (changes: AssistantChange[]) => void;
 }) {
-  const { me, workspace } = useShellData();
-  const aiOff = useSpaceAi(projectId).blocked || workspace?.role === 'guest';
+  const { me } = useShellData();
+  const aiOff = useSpaceAi(projectId).blocked;
   const [changes, setChanges] = useState<AssistantChange[]>([]);
   const [tick, setTick] = useState(0);
   const [all, setAll] = useState(false);
@@ -46,6 +49,7 @@ export function ClientChanges({ projectId, kind, id, refreshKey }: {
     if (event.objectType === 'sketch' ? kind === 'map' && event.objectId === id : event.objectType === 'project' && event.objectId === projectId && MOVED[kind].test(event.kind)) reread();
   }, reread);
 
+  useEffect(() => { onChanges?.(aiOff ? [] : changes); }, [changes, aiOff, onChanges]);
   // Each change is its own group (its ID), newest first.
   const groups = useMemo(() => [...changes].reverse().map((change) => [change]), [changes]);
   if (aiOff || !groups.length) return null;

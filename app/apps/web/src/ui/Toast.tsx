@@ -1,4 +1,4 @@
-import { createContext, type CSSProperties, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, type CSSProperties, type RefObject, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Icon } from './Icon';
 import { Kreska, type KreskaExpression } from './Kreska';
@@ -131,7 +131,7 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
  * them never lands on a toast. Measured from the open modal surfaces while any toast shows; `movedAt` is when that last
  * changed, for the action's tap guard.
  */
-function useModalLift(active: boolean): { inset: number; movedAt: number } {
+function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { inset: number; movedAt: number } {
   const [lift, setLift] = useState({ inset: 0, movedAt: -Infinity });
   useLayoutEffect(() => {
     if (!active) return undefined;
@@ -144,16 +144,47 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         let top = Infinity;
+        let surfaceTop = Infinity;
+        const controls: DOMRect[] = [];
         for (const surface of document.querySelectorAll<HTMLElement>('[aria-modal="true"]')) {
           const box = surface.getBoundingClientRect();
           if (!box.height || box.bottom < window.innerHeight - 160) continue;
+          surfaceTop = Math.min(surfaceTop, box.top);
           // The surface's footer actions, where they reach the band at the bottom of the screen that toasts use.
-          for (const control of surface.querySelectorAll<HTMLElement>('button, a[href], [role="button"], input, select, textarea')) {
+          for (const control of surface.querySelectorAll<HTMLElement>('button, a[href], [role="button"], input, select, textarea, label:has(input[type="checkbox"], input[type="radio"])')) {
             const rect = control.getBoundingClientRect();
-            if (rect.height && rect.bottom > Math.max(box.bottom - 120, window.innerHeight - 160) && rect.top < window.innerHeight) top = Math.min(top, rect.top);
+            if (!rect.height || rect.top >= window.innerHeight) continue;
+            controls.push(rect);
+            if (rect.bottom > Math.max(box.bottom - 120, window.innerHeight - 160)) top = Math.min(top, rect.top);
           }
         }
-        const inset = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
+        const band = Number.isFinite(top) ? Math.max(0, Math.round(window.innerHeight - top + 8)) : 0;
+        // The toast is also kept off any control it would stand on where it lands: it is as tall as its message and lands above the lowest
+        // control, which can put it on the one above (a phone sheet's "Dropped, not finished" and "What came of it", #1116). It is raised
+        // above each control it would cover until none is; a sheet whose controls leave no such place within the lower half of the
+        // window (a sheet is a stack of rows) has the toast stand above the sheet, over the page behind it, when there is room there.
+        const node = stack.current;
+        let inset = band;
+        if (node && controls.length) {
+          const kept = node.style.getPropertyValue('--toast-modal-inset');
+          node.style.setProperty('--toast-modal-inset', '0px');
+          const rest = node.getBoundingClientRect();
+          if (kept) node.style.setProperty('--toast-modal-inset', kept); else node.style.removeProperty('--toast-modal-inset');
+          if (rest.height) {
+            const start = Math.max(band, window.innerHeight - rest.bottom);
+            let bottom = start;
+            for (let pass = 0; pass < 12; pass += 1) {
+              const over = controls.find((rect) => window.innerHeight - rect.top > bottom + 0.5 && window.innerHeight - rect.bottom < bottom + rest.height);
+              if (!over) break;
+              bottom = window.innerHeight - over.top + 8;
+            }
+            // Only a toast that would stand on a control is moved from where the band puts it.
+            if (bottom > start) {
+              if (bottom <= window.innerHeight / 2) inset = Math.round(bottom);
+              else if (surfaceTop >= rest.height + 16) inset = Math.round(window.innerHeight - surfaceTop + 8);
+            }
+          }
+        }
         const now = performance.now();
         const settled = placedAt !== null && now - placedAt >= ACTION_ARMED_MS;
         placedAt ??= now;
@@ -174,7 +205,7 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
     window.addEventListener('resize', measure);
     measure();
     return () => { cancelAnimationFrame(frame); observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [active]);
+  }, [active, stack]);
   return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
 
@@ -230,7 +261,7 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
   }, []);
   const value = useMemo(() => show, [show]);
   const visible = toasts.filter((toast) => toast.sessionEpoch === sessionEpoch);
-  const lift = useModalLift(visible.length > 0);
+  const lift = useModalLift(visible.length > 0, stack);
   useLayoutEffect(() => {
     const node = stack.current;
     if (!node) return;

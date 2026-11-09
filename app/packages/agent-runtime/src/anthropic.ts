@@ -42,9 +42,10 @@ function stopReason(value: Anthropic.StopReason | null): StopReason {
     case 'refusal': return 'refusal';
     // `tool_use` is read by the caller, which checks that tools were offered and that a call is complete.
     case 'tool_use': return 'tool_use';
-    // `pause_turn` belongs to the server tools: only the web search is ever offered (#954). It is not continued: the text so far is the
-    // answer. Searches are no longer limited (#1113), so a request that searches ten times in one turn can pause at the server's own loop
-    // limit; a model that searches a little at a time, one request after another, does not.
+    // `pause_turn` belongs to the server tools: only the web search is ever offered (#954). Searches are not limited (#1113), so a request
+    // that searches ten times in one turn pauses at the server's own loop limit. The run's loop sends the paused answer back to go on
+    // (#1116); it is never the answer.
+    case 'pause_turn': return 'pause_turn';
     default: return 'end_turn';
   }
 }
@@ -139,9 +140,11 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
         // A call counts only when tools were offered and the answer stopped to use them: one cut off
         // by `max_tokens` can hold a partial `tool_use` block, which is never executable.
         const calls = request.tools?.length && message.stop_reason === 'tool_use' ? anthropicToolCalls(message.content) : [];
-        const reason: StopReason = calls.length ? 'tool_use' : message.stop_reason === 'tool_use' ? 'end_turn' : stopReason(message.stop_reason);
+        // A paused turn is sent back whole to go on: only a request that offered the search can pause, and only with something to send.
+        const paused = request.webSearch === true && message.stop_reason === 'pause_turn' && message.content.length > 0;
+        const reason: StopReason = calls.length ? 'tool_use' : paused ? 'pause_turn' : message.stop_reason === 'tool_use' || message.stop_reason === 'pause_turn' ? 'end_turn' : stopReason(message.stop_reason);
         return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens, ...(webSearches ? { webSearches } : {}) },
-          ...(calls.length ? { toolCalls: calls, replay: message.content } : {}), ...(found ? { webSearch: found } : {}) };
+          ...(calls.length || paused ? { ...(calls.length ? { toolCalls: calls } : {}), replay: message.content } : {}), ...(found ? { webSearch: found } : {}) };
       } catch (error) {
         // An organization whose admin turned web search off refuses every request that offers it with a 400 (#954): not billed, and
         // the tool loop sends the request again without the search.

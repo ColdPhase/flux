@@ -24,6 +24,8 @@ export interface NativeMapOptions {
   commandId?:string;sessionId?:string;fingerprint?:string;operation?:string;principal?:Principal;retainUntil?: (release:()=>void)=>void;prepared?:boolean;resourceId?:string;context?:unknown;
   /** Acquire HTTP owner metadata before any protected live input/admission. */
   protectLifetime?:()=>void;
+  /** The other maps a command locks besides `resourceId` (a move's target): the replay locks them all in id order, as the command does (#1116). */
+  alsoLock?:string[];
 }
 const conflict=()=>new ConflictError('This command UUID belongs to another immutable intent','EDITING_IDEMPOTENCY_CONFLICT');
 /** Only affected raw objects/dependency bags enter the durable journal; delivery projects current read rights. */
@@ -109,7 +111,11 @@ export function nativeMapJournal(db:DbExecutor,repository:SketchRepository,optio
       if(options.principal?.kind==='human'&&options.sessionId&&!await editingSessionRows(db,options.confirmation).lock({actorId:options.principal.id,sessionId:options.sessionId}))throw new ConflictError('The current session ended','UNAUTHENTICATED');
       if(!options.commandId||!options.resourceId||options.principal?.kind!=='human')return {found:false as const};
       const principal=options.principal;
-      await policySketchAccess(accessReader(db)).requireSketch(principal,'sketch.read',options.resourceId,{lock:true});
+      // Every map the command will lock is locked here in id order, the order the command itself uses: two moves between the same maps in
+      // opposite directions each took their source map first and then waited for the other's (a deadlock, a 500; #1116).
+      const access=policySketchAccess(accessReader(db));
+      for(const sketchId of [...new Set([options.resourceId,...(options.alsoLock??[])])].sort())
+        await access.requireSketch(principal,sketchId===options.resourceId?'sketch.read':'sketch.write',sketchId,{lock:true});
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.editing.intent:'+principal.id+':'+options.commandId},0))`);
       const old=await liveEditingIntents(db).find(principal.id,options.commandId);
       if(!old)return {found:false as const};

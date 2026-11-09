@@ -166,7 +166,7 @@ class AssistantUndo(unittest.TestCase):
         suffix = f"{'390' if phone else '1440'}-{'dark' if dark else 'light'}"
         shot(page, f"assistant-undo-{suffix}-message")
         line.get_by_role("button", name="Undo", exact=True).click()
-        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        expect(line).to_contain_text(f"Undone by {ADA['name'].split()[0]}")
         # The guide: after Undo the line is struck through and ends "Undone by Ada".
         struck = line.locator("s")
         expect(struck).to_contain_text("Order spare probes")
@@ -211,7 +211,7 @@ class AssistantUndo(unittest.TestCase):
         undo.focus()
         expect(undo).to_be_focused()
         page.keyboard.press("Enter")
-        expect(message.locator(".assistant-message__line")).to_contain_text(f"Undone by {ADA['name']}")
+        expect(message.locator(".assistant-message__line")).to_contain_text(f"Undone by {ADA['name'].split()[0]}")
         expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         # The button that was pressed is gone; focus is on the message, not on the page (AC-8, keyboard).
         expect(message).to_be_focused()

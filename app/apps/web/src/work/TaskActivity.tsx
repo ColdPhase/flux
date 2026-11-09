@@ -213,6 +213,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
 }) {
   const owners = useAgentOwners(project);
+  // A local client's change is said once, by its change line with Undo above; the timeline does not name the same change again, as "Claude
+  // Code [Agent] for Ada" under another name (#1116). The two are made in one request, so they are told apart by their time.
+  const [clientChanges, setClientChanges] = useState<AssistantChange[]>([]);
   const makeWork = useCreateWorkFromMessage(project);
   const headingId = useId();
   const { discussion } = state;
@@ -238,7 +241,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
       <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
       {/* What a local client changed on this task, with its change line and Undo, as the assistant's changes have (#868, LC-2). */}
-      <ClientChanges key={item.id} projectId={project.id} kind="work" id={item.id} refreshKey={state.lines.length} />
+      <ClientChanges key={item.id} projectId={project.id} kind="work" id={item.id} refreshKey={state.lines.length} onChanges={setClientChanges} />
       {/* The person's own agent at work and what it answered them: theirs alone (#842). */}
       <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
         lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '' }} />
@@ -252,7 +255,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         </li>
       ))}</ol> : null}
       <ol className="wd-act" aria-label="Task activity">
-        {(state.loading ? [] : state.lines).map((line) => {
+        {(state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
+          && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => {
           if (line.kind === 'message') {
             const message = line.message;
             const name = state.author(message);

@@ -53,7 +53,7 @@ complicated or different").
   its text, a map's change (also its thoughts and links) on the map, in its dock or at the head of its
   List. The line is the assistant's own, "Ada · via Claude Code", "Moved #4 to Doing · Undo", one per
   change, newest first, three at most with the earlier ones one button away. Everyone who can read the
-  object sees it; the owner or anyone who may edit it takes it back, and a created task, map or page
+  object sees it, a guest of the company who can read the space too (#1116); the owner or anyone who may edit it takes it back, and a created task, map or page
   only its owner (AG-3). After someone else changed the same thing it reads "Changed since" and puts
   nothing back. Nothing shows in a space with AI off. What it posts is the person's own message with
   its own Delete (below), and its lines in a task's discussion are its owner's to delete (TA-3).

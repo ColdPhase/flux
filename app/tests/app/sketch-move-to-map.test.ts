@@ -196,7 +196,7 @@ describe('moving thoughts to another map (#948)', () => {
 
   test('a thought with an image stays on its map', async () => {
     const one = await createSketch(ada, ws.id, { title: 'Pictures', scope: 'project', projectId: garden.id });
-    const two = await createSketch(ada, ws.id, { title: 'More pictures', scope: 'project', projectId: garden.id });
+    const two = await ownMap(ada, ws.id);
     const staged = await fetch(new URL(`/api/v1/projects/${garden.id}/files?uploadId=${randomUUID()}&name=Picture.png`, ada.browser.base), {
       method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: ada.browser.cookieHeader(), origin: ada.browser.defaultOrigin }, body: Buffer.from(PNG),
     });
@@ -207,6 +207,68 @@ describe('moving thoughts to another map (#948)', () => {
     const refused = expectStatus(await ada.browser.request('POST', move(one.id), { body: { toSketchId: two.id, thoughts: [{ id: picture.id, expectedVersion: picture.version }] } }), 422) as { code: string };
     assert.equal(refused.code, 'IMAGE_THOUGHT_STAYS');
     assert.equal((await detail(ada, one.id)).thoughts.length, 1, 'it is still where it was');
-    assert.equal((await detail(ada, two.id)).thoughts.length, 0);
+    assert.equal((await detail(ada, two.id)).thoughts.some((thought) => thought.id === picture.id), false);
+  });
+  test('one side of a move is the caller\'s own My map: a thought of a space is not moved to another space, even by someone who can change both (#1116)', async () => {
+    const from = await createSketch(ada, ws.id, { title: 'Space one', scope: 'project', projectId: garden.id });
+    const to = await createSketch(ada, ws.id, { title: 'Space two', scope: 'project', projectId: hidden.id });
+    const t = await addThought(ada, from.id, { text: 'Somebody else\'s thought', x: 0, y: 0 });
+    // Ben can change both maps (a contributor of both spaces), and the thought is not his.
+    const refused = expectStatus(await ben.browser.request('POST', move(from.id), { body: { toSketchId: to.id, thoughts: [{ id: t.id, expectedVersion: t.version }] } }), 422) as { code: string };
+    assert.equal(refused.code, 'MOVE_NEEDS_MY_MAP');
+    const asOwner = expectStatus(await ada.browser.request('POST', move(from.id), { body: { toSketchId: to.id, thoughts: [{ id: t.id, expectedVersion: t.version }] } }), 422) as { code: string };
+    assert.equal(asOwner.code, 'MOVE_NEEDS_MY_MAP', 'not even the one who made it: it is a thought of a space');
+    assert.deepEqual((await detail(ada, from.id)).thoughts.map((thought) => thought.id), [t.id], 'nothing moved');
+    assert.equal((await detail(ada, to.id)).thoughts.length, 0);
+    // Out of a space into one\'s own My map, and out of My map into a space, are the two moves there are.
+    const bens = await ownMap(ben, ws.id);
+    expectStatus(await ben.browser.request('POST', move(from.id), { body: { toSketchId: bens.id, thoughts: [{ id: t.id, expectedVersion: t.version }] } }), 200, 'to their own My map');
+  });
+
+  test('a space with no map gets its first one in the same change as the move; a move that fails makes none (#1116)', async () => {
+    const mine = await ownMap(ada, ws.id);
+    const empty = await project(ada, ws.id, 'No map yet', 'restricted');
+    const mapsOf = async (projectId: string) => (expectStatus(await ada.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?projectId=${projectId}&limit=100`), 200) as SketchPage).items;
+    const a = await addThought(ada, mine.id, { text: 'First on a new map', x: 30, y: 40 });
+    const b = await addThought(ada, mine.id, { text: 'And its neighbour', x: 330, y: 40 });
+    await link(ada, mine.id, a.id, b.id, 'with');
+    const stale = expectStatus(await ada.browser.request('POST', move(mine.id), {
+      body: { inSpace: { workspaceId: ws.id, projectId: empty.id }, thoughts: [{ id: a.id, expectedVersion: a.version + 5 }] } }), 409) as PositionsConflict;
+    assert.equal(stale.code, 'VERSION_CONFLICT');
+    assert.deepEqual(await mapsOf(empty.id), [], 'a stale version made no map');
+    expectStatus(await ada.browser.request('POST', move(mine.id), { body: { inSpace: { workspaceId: ws.id, projectId: empty.id }, thoughts: [{ id: 'not-an-id', expectedVersion: 1 }] } }), 400, 'a thought that is not an id');
+    assert.deepEqual(await mapsOf(empty.id), [], 'nor did a refused request');
+    const moved = expectStatus(await ada.browser.request('POST', move(mine.id), {
+      body: { inSpace: { workspaceId: ws.id, projectId: empty.id }, thoughts: [{ id: a.id, expectedVersion: a.version }, { id: b.id, expectedVersion: b.version }] },
+      headers: { 'idempotency-key': randomUUID() } }), 200) as MovedToMap;
+    const made = await mapsOf(empty.id);
+    assert.equal(made.length, 1, 'the space\'s first map');
+    assert.equal(made[0]!.id, moved.toSketchId);
+    assert.equal(made[0]!.title, 'Untitled map');
+    assert.equal(made[0]!.createdBy.id, ada.id);
+    const arrived = await detail(ada, moved.toSketchId);
+    assert.deepEqual(arrived.thoughts.map((thought) => thought.text).sort(), ['And its neighbour', 'First on a new map']);
+    assert.equal(arrived.links.length, 1, 'the connection went along');
+    // Exactly one of the two ways to name the map; somewhere the caller cannot change is not a place.
+    expectStatus(await ada.browser.request('POST', move(mine.id), { body: { toSketchId: moved.toSketchId, inSpace: { workspaceId: ws.id, projectId: empty.id }, thoughts: [{ id: randomUUID(), expectedVersion: 1 }] } }), 400, 'both');
+    expectStatus(await ada.browser.request('POST', move(mine.id), { body: { thoughts: [{ id: randomUUID(), expectedVersion: 1 }] } }), 400, 'neither');
+    const c = await addThought(ada, mine.id, { text: 'Not for Cleo\'s space', x: 0, y: 0 });
+    expectStatus(await cleo.browser.request('POST', move((await ownMap(cleo, ws.id)).id), { body: { inSpace: { workspaceId: ws.id, projectId: hidden.id }, thoughts: [{ id: randomUUID(), expectedVersion: 1 }] } }), 404, 'a space they are not in');
+    expectStatus(await ada.browser.request('POST', move(mine.id), { body: { inSpace: { workspaceId: elsewhere.id, projectId: empty.id }, thoughts: [{ id: c.id, expectedVersion: c.version }] } }), 422, 'a space of another company is not a place in this one');
+    assert.equal((await mapsOf(empty.id)).length, 1, 'no second map');
+  });
+
+  test('two moves between the same maps in opposite directions, each with an Idempotency-Key, both succeed (#1116: they waited on each other and one answered 500)', async () => {
+    const mine = await ownMap(ada, ws.id);
+    const space = await createSketch(ada, ws.id, { title: 'Both ways', scope: 'project', projectId: garden.id });
+    for (let round = 0; round < 12; round += 1) {
+      const down = await addThought(ada, mine.id, { text: `down ${round}`, x: 0, y: 0 });
+      const up = await addThought(ada, space.id, { text: `up ${round}`, x: 0, y: 0 });
+      const [one, two] = await Promise.all([
+        ada.browser.request('POST', move(mine.id), { body: { toSketchId: space.id, thoughts: [{ id: down.id, expectedVersion: down.version }] }, headers: { 'idempotency-key': randomUUID() } }),
+        ada.browser.request('POST', move(space.id), { body: { toSketchId: mine.id, thoughts: [{ id: up.id, expectedVersion: up.version }] }, headers: { 'idempotency-key': randomUUID() } }),
+      ]);
+      assert.deepEqual([one.status, two.status], [200, 200], `round ${round}: ${one.text} ${two.text}`);
+    }
   });
 });

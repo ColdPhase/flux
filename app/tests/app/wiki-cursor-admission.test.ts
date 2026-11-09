@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
 import WebSocket, { WebSocketServer } from 'ws';
 import * as Y from 'yjs';
-import { DomainError } from '@flux/core';
+import { ConflictError, DomainError } from '@flux/core';
 import type { LiveCursor, LiveReceipt, WikiTextEnvelope } from '@flux/contracts';
 import type { EditingContext } from '../../apps/server/src/editing/gate.js';
 import { EditingOutputBudget } from '../../apps/server/src/editing/output.js';
@@ -17,7 +17,7 @@ import { packet } from '../../apps/server/src/editing/codec/assembly.mjs';
 import { wikiController } from '../../apps/server/src/editing/wiki-controller.js';
 
 type Authority = Parameters<typeof wikiController>[0];
-type Message = { type: string; code?: string; commandId?: string; retryable?: boolean };
+type Message = { type: string; code?: string; commandId?: string; retryable?: boolean; reason?: string };
 const MiB = 1024 * 1024;
 function barrier() {
   let release = () => {};
@@ -44,6 +44,7 @@ async function fixture() {
   const cursors: (LiveCursor | null)[] = [], submissions: { envelope: WikiTextEnvelope; bytes: Buffer }[] = [];
   const receipts = new Map<string, LiveReceipt>();
   const gate = barrier(); let permitted = true, refuseText = false, firstAlreadyAuthorized = false;
+  let generationMoved = false; const ended: { code?: number } = {};
   const counts = { reads: 0, handoffs: 0 }; let head = 0; let preview: { html: string; mentions: [] } | null = null; let presenceNow: unknown[] = [];
   const authority: Authority = {
     runtime,
@@ -60,6 +61,7 @@ async function fixture() {
     async deliverReceipt(_session, _id, commandId, handoff) { handoff(receipts.get(commandId) ?? null); },
     async deliver(_session, _id, _generation, afterSequence, handoff) {
       counts.reads++;
+      if (generationMoved) throw new ConflictError('The shared generation changed; keep earlier pending text private', 'EDITING_GENERATION_CHANGED');
       // A controlled confirmed head: every pending update, and its preview when one is set.
       const principal = () => ({ kind: 'human' as const, id: actor, name: 'Controlled Cursor' });
       const updates = Array.from({ length: head - afterSequence }, (_, index) => ({ sequence: afterSequence + 1 + index,
@@ -70,6 +72,7 @@ async function fixture() {
     async handoff(_session, _id, handoff) { counts.handoffs++; handoff(); },
     async cursor(_session, _id, _generation, _connection, value) {
       const first = cursors.length === 0; cursors.push(value); await gate.promise;
+      if (generationMoved) throw new ConflictError('The shared generation changed; keep earlier pending text private', 'EDITING_GENERATION_CHANGED');
       if (!permitted && !(first && firstAlreadyAuthorized)) throw new DomainError(403, 'CONTROLLED_CURSOR_ACCESS_ENDED', 'Controlled current access ended');
     },
     close: runtime.close,
@@ -81,6 +84,7 @@ async function fixture() {
   const address = server.address(); assert.ok(address && typeof address === 'object');
   const peer = new WebSocket(`ws://127.0.0.1:${address.port}`, { perMessageDeflate: false });
   peer.on('error', () => {});
+  peer.on('close', (code) => { ended.code = code; });
   peer.on('message', (raw, binary) => {
     if (!binary) { messages.push(JSON.parse(raw.toString()) as Message); return; }
     const frame = raw as Buffer; updates.push(JSON.parse(frame.subarray(4, 4 + frame.readUInt32BE(0)).toString()) as { type: string; deliveryId: string; sequence: number });
@@ -102,7 +106,9 @@ async function fixture() {
     const frame = packet({ ...envelope, count: 1, index: 0 }, bytes); doc.destroy();
     peer.send(frame); return { envelope, bytes };
   };
-  return { peer, runtime, budget, controller, messages, cursors, submissions, peaks, resources, cursor, text, counts, updates, room,
+  return { peer, runtime, budget, controller, messages, cursors, submissions, peaks, resources, cursor, text, counts, updates, room, ended,
+    /** The page was written outside the editor: its generation is no longer this room's. `notify`: the commit's own wake-up. */
+    moveGeneration: (notify = true) => { generationMoved = true; if (notify) controller.notify(room); },
     commit: () => { head++; controller.notify(room); },
     /** Several commits arrive before the peer reads again. */
     commitSilently: (count: number) => { head += count; },
@@ -296,5 +302,30 @@ test('a cursor that was cleared reaches the reader at once, not when its last re
     const told = presences().length;
     await delay(800);
     assert.equal(presences().length, told, 'and it is told once');
+  } finally { await f.close(); }
+});
+
+test('a page written underneath the room tells the editor to read it again and closes the room, instead of an error the editor keeps (#1116)', { timeout: 10_000 }, async () => {
+  const f = await fixture();
+  try {
+    await observed(() => f.counts.reads >= 1, 'The subscribed editor was read once');
+    f.moveGeneration();
+    await observed(() => f.messages.some(message => message.type === 'resync'), 'The editor is told to read the page again');
+    assert.equal(f.messages.find(message => message.type === 'resync')!.reason, 'generation');
+    assert.equal(f.messages.some(message => message.type === 'error'), false, 'There is no "Sharing is not confirmed" error to keep');
+    await observed(() => f.ended.code === 1008, 'The room closes this connection for a new snapshot');
+    assert.equal(f.resources().wikiConnections, 0);
+  } finally { await f.close(); }
+});
+
+test('a cursor sent for a generation the page has left is answered the same way (#1116)', { timeout: 10_000 }, async () => {
+  const f = await fixture();
+  try {
+    await observed(() => f.counts.reads >= 1, 'The subscribed editor was read once');
+    f.moveGeneration(false);
+    f.cursor({ anchor: 'a', head: 'a' }); f.release();
+    await observed(() => f.messages.some(message => message.type === 'resync'), 'The editor is told to read the page again');
+    assert.equal(f.messages.some(message => message.type === 'error'), false);
+    await observed(() => f.ended.code === 1008, 'and the connection ends');
   } finally { await f.close(); }
 });

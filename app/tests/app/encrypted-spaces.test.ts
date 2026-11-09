@@ -292,4 +292,27 @@ describe('an encrypted space of the company', () => {
     assert.equal(await roleIn(space, kept.id), null);
     await pool.query("UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2", [companyId, guested.id]);
   });
+
+  test('a move into an encrypted space keeps no plain copy of its words in the company: the key is kept sealed in the space (#1116)', async () => {
+    const quiet = await person('Spaces Mover');
+    await join(quiet, 'member');
+    const space = made(await create(quiet, { name: 'Moved into', recoveryCode: makeCode() }));
+    const words = 'Quarterly payroll runs on the twenty-fifth, never earlier';
+    const listed = expectStatus(await quiet.browser.request('GET', `/api/v1/workspaces/${companyId}/sketches?scope=private&limit=100`), 200) as { items: { id: string }[] };
+    const mine = listed.items[0] ?? expectStatus(await quiet.browser.request('POST', `/api/v1/workspaces/${companyId}/sketches`, { body: { title: 'My map', scope: 'private' } }), 201) as { id: string };
+    const thought = (expectStatus(await quiet.browser.request('POST', `/api/v1/sketches/${mine.id}/thoughts`, { body: { text: words, x: 10, y: 10 } }), 201) as { thought: { id: string; version: number } }).thought;
+    const key = randomUUID();
+    const body = { inSpace: { workspaceId: space.workspace.id, projectId: space.project!.id }, thoughts: [{ id: thought.id, expectedVersion: thought.version }] };
+    const first = expectStatus(await quiet.browser.request('POST', `/api/v1/sketches/${mine.id}/move-to-map`, { body, headers: { 'idempotency-key': key } }), 200) as { moved: { thought: { text: string } }[] };
+    assert.equal(first.moved[0]!.thought.text, words, 'the answer says where it went');
+    const kept = async (workspaceId: string) => (await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM idempotency_keys WHERE workspace_id = $1 AND key = $2', [workspaceId, key])).rows[0]!.n;
+    assert.equal(await kept(companyId), 0, 'nothing of the move is kept in the company\'s rows');
+    assert.equal(await kept(space.workspace.id), 1, 'the key is kept in the space it went to');
+    assert.equal((await pool.query('SELECT 1 FROM idempotency_keys WHERE response_body::text LIKE $1', [`%payroll%`])).rowCount, 0, 'and no row holds the words in plain text');
+    // A retry after a lost answer is still answered once, from where the key is.
+    const retry = await quiet.browser.request('POST', `/api/v1/sketches/${mine.id}/move-to-map`, { body, headers: { 'idempotency-key': key } });
+    assert.equal(retry.status, 200, retry.text);
+    assert.equal(retry.headers.get('idempotent-replayed'), 'true');
+    assert.deepEqual(retry.json, first);
+  });
 });

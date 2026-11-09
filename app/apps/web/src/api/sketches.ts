@@ -55,8 +55,15 @@ export async function openMyMap(workspaceId: string, signal?: AbortSignal): Prom
 }
 
 /** The maps of a space, empty ones too (a space's map nobody has put anything on yet is still where a thought can go), newest change first. */
-export const listSpaceMaps = (workspaceId: string, projectId: string, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=50&offset=0&projectId=${encodeURIComponent(projectId)}`, { signal });
+/** Every map of a space, newest change first: the pages of 100 are read until the last (a space can have more than one page of maps, #1116). */
+export async function listSpaceMaps(workspaceId: string, projectId: string, signal?: AbortSignal): Promise<SketchPage> {
+  const items: SketchPage['items'] = [];
+  for (;;) {
+    const page = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=${items.length}&projectId=${encodeURIComponent(projectId)}`, { signal });
+    items.push(...page.items);
+    if (!page.items.length || items.length >= page.total || items.length >= 2_000) return { ...page, items, offset: 0, limit: items.length };
+  }
+}
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>

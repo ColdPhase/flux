@@ -4,7 +4,7 @@ import { addressesIn, isGivenAddress, givenAddresses, normalizedAddress, takeAsk
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
 import { loadWebReadsConfig } from '../../apps/server/src/web-reads/config.js';
 import { READ_TEXT_MAX, readablePage } from '../../apps/server/src/web-reads/readable.js';
-import { READS_AT_ONCE, READS_PER_MINUTE, webReader } from '../../apps/server/src/web-reads/reader.js';
+import { READS_AT_ONCE, webReader } from '../../apps/server/src/web-reads/reader.js';
 
 // An agent reads a web page (#918, F-036 AG-8): the text it gets, the bounds, the switch, and how the run keeps its sources. No network.
 
@@ -68,7 +68,7 @@ describe('the reader', () => {
   test('is on unless the operator turns it off (#954, C-29), and off it reads nothing and fetches nothing', async () => {
     let fetched = 0;
     const off = webReader({ enabled: false, fetch: async (address) => { fetched++; return ok(address); } });
-    assert.deepEqual(await off.read('ada', 'https://example.org/'), { ok: false, reason: 'off', requested: [] });
+    assert.deepEqual(await off.read('https://example.org/'), { ok: false, reason: 'off', requested: [] });
     assert.equal(fetched, 0);
     const env = (extra: Record<string, string> = {}) => ({ ...process.env, ...extra });
     assert.equal(loadWebReadsConfig(env({ FLUX_WEB_READS: '' })).enabled, true, 'on is the default');
@@ -79,43 +79,39 @@ describe('the reader', () => {
 
   test('reads a page as text with where it ended, and a page with no words as nothing', async () => {
     const reader = webReader({ enabled: true, fetch: async (address) => address.endsWith('/empty') ? { ok: true, url: address, html: '<script>x</script>', type: 'text/html' } : { ...(await ok(address)), url: 'https://example.org/final' } });
-    assert.deepEqual(await reader.read('ada', 'https://example.org/start'), { ok: true, url: 'https://example.org/start', finalUrl: 'https://example.org/final', title: 'T', text: 'Words.', truncated: false, requested: ['https://example.org/start', 'https://example.org/final'] });
-    assert.deepEqual(await reader.read('ada', 'https://example.org/empty'), { ok: false, reason: 'empty', requested: ['https://example.org/empty'] });
+    assert.deepEqual(await reader.read('https://example.org/start'), { ok: true, url: 'https://example.org/start', finalUrl: 'https://example.org/final', title: 'T', text: 'Words.', truncated: false, requested: ['https://example.org/start', 'https://example.org/final'] });
+    assert.deepEqual(await reader.read('https://example.org/empty'), { ok: false, reason: 'empty', requested: ['https://example.org/empty'] });
   });
 
   test('a refusal of the guard is passed on in its own words, never a way round', async () => {
     const reader = webReader({ enabled: true, fetch: async () => ({ ok: false, reason: 'blocked' }) });
-    assert.deepEqual(await reader.read('ada', 'http://169.254.169.254/'), { ok: false, reason: 'blocked', requested: [] });
+    assert.deepEqual(await reader.read('http://169.254.169.254/'), { ok: false, reason: 'blocked', requested: [] });
     // A fetch that got as far as asking says which addresses it asked: a failed read has sent them all the same (#953).
     const asked = webReader({ enabled: true, fetch: async () => ({ ok: false, reason: 'status', requested: ['https://example.org/a', 'https://example.org/b'] }) });
-    assert.deepEqual(await asked.read('ada', 'https://example.org/a'), { ok: false, reason: 'status', requested: ['https://example.org/a', 'https://example.org/b'] });
+    assert.deepEqual(await asked.read('https://example.org/a'), { ok: false, reason: 'status', requested: ['https://example.org/a', 'https://example.org/b'] });
   });
 
-  test('an address the guard refuses from its text alone costs no read: no network is used, so no rate is spent', async () => {
+  test('an address the guard refuses from its text alone costs no read: no network is used, so no read is spent', async () => {
     let fetched = 0;
     const reader = webReader({ enabled: true, fetch: async (address) => { fetched++; return ok(address); } });
-    for (let i = 0; i < READS_PER_MINUTE + 5; i++)
+    for (let i = 0; i < 25; i++)
       for (const address of ['http://127.0.0.1/', 'http://localhost/x', 'ftp://example.org/', 'https://user:pw@example.org/', 'https://example.org:8443/', 'not a web address'])
-        assert.equal((await reader.read('ada', address)).ok, false);
+        assert.equal((await reader.read(address)).ok, false);
     assert.equal(fetched, 0);
-    assert.equal((await reader.read('ada', 'https://example.org/real')).ok, true, 'and the owner can still read');
+    assert.equal((await reader.read('https://example.org/real')).ok, true, 'and the owner can still read');
   });
 
-  test('one owner\'s agents read a bounded number of pages a minute, and the server a bounded number at once', async () => {
-    let clock = 1_000_000;
-    const reader = webReader({ enabled: true, now: () => clock, fetch: ok });
-    for (let i = 0; i < READS_PER_MINUTE; i++) assert.equal((await reader.read('ada', `https://example.org/${i}`)).ok, true);
-    assert.deepEqual(await reader.read('ada', 'https://example.org/one-more'), { ok: false, reason: 'busy', requested: [] });
-    assert.equal((await reader.read('jonas', 'https://example.org/jonas')).ok, true, 'another owner is not held back');
-    clock += 61_000;
-    assert.equal((await reader.read('ada', 'https://example.org/later')).ok, true, 'a minute later');
+  test('pages are not limited per minute (#1116): any number of reads one after another; the server only reads a bounded number at once', async () => {
+    const reader = webReader({ enabled: true, fetch: ok });
+    for (let i = 0; i < 100; i++) assert.equal((await reader.read(`https://example.org/${i}`)).ok, true, `read ${i + 1}`);
     let release = () => undefined as void;
     const hold = new Promise<void>((resolve) => { release = resolve; });
     const slow = webReader({ enabled: true, fetch: async (address) => { await hold; return ok(address); } });
-    const reading = Array.from({ length: READS_AT_ONCE }, (_, i) => slow.read(`owner-${i}`, `https://example.org/${i}`));
-    assert.deepEqual(await slow.read('another', 'https://example.org/x'), { ok: false, reason: 'busy', requested: [] });
+    const reading = Array.from({ length: READS_AT_ONCE }, (_, i) => slow.read(`https://example.org/${i}`));
+    assert.deepEqual(await slow.read('https://example.org/x'), { ok: false, reason: 'busy', requested: [] });
     release();
     assert.ok((await Promise.all(reading)).every((result) => result.ok));
+    assert.equal((await slow.read('https://example.org/after')).ok, true, 'a slot is free again once a read ends');
   });
 });
 

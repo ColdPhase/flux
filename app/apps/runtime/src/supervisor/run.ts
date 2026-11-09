@@ -356,6 +356,9 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
             searches += 1;
             if (typeof use.id === 'string') searching.set(use.id, searches);
             send({ t: 'run', e: 'search', n: searches, query: searchQuery(isObject(use.input) ? use.input.query : '') });
+            // A search with no id of its own cannot be matched to a result: it is listed, and found nothing, at once, so no read of this run waits
+            // for its result up to the longest wait (#1116).
+            if (typeof use.id !== 'string') send({ t: 'run', e: 'found', n: searches, results: [] });
             continue;
           }
           const tool = name.startsWith(MCP_PREFIX) ? name.slice(MCP_PREFIX.length) : '';

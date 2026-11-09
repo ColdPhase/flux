@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_THOUGHT_SIZE,
   SKETCH_LIMITS,
+  UNTITLED_SKETCH,
   type CreateLinkCommand,
   type CreateSketchCommand,
   type CreatedThought,
@@ -312,7 +313,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
      */
     async moveToMap(principal: Principal, fromSketchId: string, command: MoveToMapCommand): Promise<MovedToMap> {
       const fromId = valid.id(fromSketchId, 'sketchId');
-      const toId = valid.id(command?.toSketchId, 'toSketchId');
+      // One of the two: a map that exists, or a space's first map made with the move (so a move that fails leaves no empty map, #1116).
+      if ((command?.toSketchId === undefined) === (command?.inSpace === undefined)) throw new InvalidInputError('Name the map to move to, or the space to make a map in');
+      const toId = command.toSketchId === undefined ? null : valid.id(command.toSketchId, 'toSketchId');
+      const inSpace = command.inSpace === undefined ? null : {
+        workspaceId: valid.id(command.inSpace?.workspaceId, 'inSpace.workspaceId'), projectId: valid.id(command.inSpace?.projectId, 'inSpace.projectId'),
+        title: command.inSpace.title === undefined ? UNTITLED_SKETCH : valid.text(command.inSpace.title, 'inSpace.title', SKETCH_LIMITS.title),
+      };
       if (fromId === toId) throw new InvalidInputError('Choose another map to move the thoughts to', 'SAME_MAP');
       const listed = command?.thoughts;
       if (!Array.isArray(listed) || !listed.length || listed.length > SKETCH_LIMITS.moves) throw new InvalidInputError(`thoughts must list 1–${SKETCH_LIMITS.moves} thoughts`);
@@ -320,10 +327,25 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       if (new Set(parsed.map((item) => item.id)).size !== parsed.length) throw new InvalidInputError('Each thought may appear once in thoughts');
       const at = command.at === undefined ? null : { x: valid.coordinate(command.at?.x, 'at.x'), y: valid.coordinate(command.at?.y, 'at.y') };
       return uow.run(async (ports) => {
-        const maps = new Map<string, Awaited<ReturnType<typeof authorized>>>();
-        for (const id of [fromId, toId].sort()) maps.set(id, await authorized(ports, principal, 'sketch.write', id));
-        const source = maps.get(fromId)!.sketch;
-        const target = maps.get(toId)!.sketch;
+        let source: SketchRecord;
+        let target: SketchRecord;
+        if (toId !== null) {
+          const maps = new Map<string, Awaited<ReturnType<typeof authorized>>>();
+          for (const id of [fromId, toId].sort()) maps.set(id, await authorized(ports, principal, 'sketch.write', id));
+          source = maps.get(fromId)!.sketch;
+          target = maps.get(toId)!.sketch;
+        } else {
+          source = (await authorized(ports, principal, 'sketch.write', fromId)).sketch;
+          // The space's first map, in this same change: as any new map is made (the caller must be able to change the space).
+          const place = { scope: 'project' as const, workspaceId: inSpace!.workspaceId, projectId: inSpace!.projectId };
+          await ports.access.requireCreate(principal, place);
+          target = await ports.sketches.insertSketch({ id: randomUUID(), workspaceId: place.workspaceId, scope: 'project', projectId: place.projectId, title: inSpace!.title, createdBy: principal });
+          await ports.events.record(principal, place.workspaceId, 'sketch.created.v1', target.id, { scope: target.scope, thoughtIds: [] });
+        }
+        // My map is the one place a move starts or ends (#1116): the caller moves their own thoughts out of it, or into it. A thought of a
+        // space is not moved to another space by anyone who can change both maps.
+        const own = (map: SketchRecord) => map.scope === 'private' && map.createdBy.id === principal.id;
+        if (!own(source) && !own(target)) throw new RuleViolationError('Move thoughts to or from your own My map', 'MOVE_NEEDS_MY_MAP');
         const locked = new Map((await ports.sketches.lockThoughts(source.id, parsed.map((item) => item.id))).map((row) => [row.id, row]));
         if (locked.size !== parsed.length) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
         const stale = parsed.filter((item) => locked.get(item.id)!.version !== valid.expectedVersion(item.expectedVersion));

@@ -61,6 +61,31 @@ describe('the provider\'s own web search on each wire format (#954; Docker mock 
     assert.equal(result.stopReason, 'end_turn');
   });
 
+  test('Anthropic: a turn the server paused (#1116) comes back as a pause with its own answer to send back, never as the answer; one that offered no search is the end', async () => {
+    await control('/__script', { wire: 'anthropic', mode: 'paused', text: 'Half the timetable so far.', search: SEARCH, usage: { input: 3_000, output: 90 } });
+    const paused = await compute().dispatch(requestOn('anthropic'), live);
+    assert.equal(paused.kind, 'completed');
+    if (paused.kind !== 'completed') return;
+    assert.equal(paused.stopReason, 'pause_turn');
+    assert.equal(paused.toolCalls, undefined, 'there is no call to run');
+    assert.ok(Array.isArray(paused.replay) && paused.replay.some((block) => (block as { type?: string }).type === 'server_tool_use'), 'the paused answer, search blocks and all');
+    assert.deepEqual(paused.usage, { inputTokens: 3_000, outputTokens: 90, webSearches: 1 }, 'what it cost so far is counted');
+    assert.deepEqual(paused.webSearch, { queries: [SEARCH.query], results: SEARCH.results, cited: [PAGE] });
+    // The next request is that answer sent back: the assistant's blocks are the last message, with nothing after them.
+    const turn = { text: paused.text, calls: [], results: [], replay: paused.replay };
+    await control('/__script', { wire: 'anthropic', text: 'The last boat leaves at 17:40.', usage: { input: 3_500, output: 60 } });
+    const done = await compute().dispatch(requestOn('anthropic', { turns: [turn] }), live);
+    assert.equal(done.kind === 'completed' && done.text, 'The last boat leaves at 17:40.');
+    assert.equal(done.kind === 'completed' && done.stopReason, 'end_turn');
+    const sent = (await control('/__requests')).requests.at(-1)!.body as { messages: { role: string; content: unknown }[] };
+    assert.deepEqual(sent.messages.map((message) => message.role), ['user', 'assistant'], 'the paused answer is the last message');
+    assert.deepEqual(sent.messages[1]!.content, paused.replay);
+    // A request that was not offered the search cannot pause: whatever it says is its end.
+    await control('/__script', { wire: 'anthropic', mode: 'paused', text: 'No search was offered.' });
+    const plain = await compute(false).dispatch(requestOn('anthropic', { webSearch: undefined }), live);
+    assert.equal(plain.kind === 'completed' && plain.stopReason, 'end_turn');
+  });
+
   test('Anthropic: the token count carries the search tool too, so the preflight bound is not understated', async () => {
     await compute().countInputTokens!(requestOn('anthropic'));
     const [counted] = (await control('/__requests')).requests;

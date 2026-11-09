@@ -212,6 +212,8 @@ export function assistantDoneWords(change: { operation: string; objectType: Assi
   const title = change.objectTitle.trim();
   const number = change.objectType === 'work' ? title.split(' ')[0] ?? '' : '';
   if (change.operation === 'work.update' && change.status && change.status !== 'done') return `moved ${number || 'a task'} to ${STATUS_WORDS[change.status] ?? change.status}`;
+  // The title of a move is already the count, "1 thought" or "3 thoughts" (#1116): not "moved thought 1 thought".
+  if (change.operation === 'map.positions.update') return title ? `moved ${title}` : 'moved thoughts';
   if (change.operation === 'doc.update') return `updated ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.delete') return `deleted ${DONE_NOUNS.doc} ${title}`.trim();

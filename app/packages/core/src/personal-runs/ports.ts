@@ -442,6 +442,7 @@ export interface PersonalToolResult {
  */
 export interface PersonalTurn {
   text: string;
+  /** None, with a `replay`, for a turn the provider paused (#1116): the next request is that answer sent back, with no results after it. */
   calls: PersonalToolCall[];
   results: PersonalToolResult[];
   replay?: unknown;
@@ -490,9 +491,10 @@ export type PersonalComputeResult =
     kind: 'completed'; text: string; usage: PersonalComputeUsage;
     /**
      * `tool_use`: the model stopped to call tools. Only then are `toolCalls` set, and never from a
-     * response that was cut off or refused (a partial call is not executable).
+     * response that was cut off or refused (a partial call is not executable). `pause_turn` (#1116): the provider paused a long turn
+     * of its own web search; `replay` is the paused answer, which the next request sends back to go on. It is never a run's answer.
      */
-    stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'refusal' | 'tool_use';
+    stopReason: 'end_turn' | 'max_tokens' | 'stop_sequence' | 'refusal' | 'tool_use' | 'pause_turn';
     toolCalls?: PersonalToolCall[];
     /** The provider's own assistant message for the next request, with `toolCalls`; see {@link PersonalTurn}. */
     replay?: unknown;

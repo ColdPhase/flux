@@ -222,6 +222,8 @@ const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, 
 interface PlannedCall {
   name: string; args?: Record<string, unknown>;
   results?: { title: string; url: string }[]; summary?: string; error?: boolean; raceRead?: string;
+  /** The search's tool use carries no id, so its result cannot be matched to it (#1116). */
+  noId?: boolean;
 }
 
 interface RunScript {
@@ -334,7 +336,7 @@ async function claudeRun(argv: string[]): Promise<number> {
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     const useId = `toolu_${index + 1}`;
     if (planned.name === 'WebSearch') {
-      emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: 'WebSearch', input: planned.args ?? {} }] } });
+      emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', ...(planned.noId ? {} : { id: useId }), name: 'WebSearch', input: planned.args ?? {} }] } });
       if (planned.raceRead) {
         await pause(2_000);
         const readId = `toolu_${index + 1}_read`;

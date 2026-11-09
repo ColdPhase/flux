@@ -403,3 +403,44 @@ describe('no limit on searches or pages, only the budget (#1113)', () => {
     assert.equal(provider.sent.length, 30);
   });
 });
+
+// A turn the provider pauses (#1116): Anthropic's own search loop stops after about ten searches of one request with `pause_turn`, and
+// the request goes on by sending that answer back. It was the run's answer before, and a half-finished one.
+describe('a turn the provider paused goes on (#1116)', () => {
+  const searching: PersonalComputeRequest = { ...request, webSearch: true };
+  const paused = (n: number, searches = 10): PersonalComputeResult => ({ kind: 'completed', text: `looking, part ${n}`, stopReason: 'pause_turn',
+    usage: { inputTokens: 1_000, outputTokens: 50, webSearches: searches }, replay: [{ type: 'server_tool_use', id: `s${n}` }] });
+  const finished = (): PersonalComputeResult => ({ kind: 'completed', text: 'The answer, after all of it.', stopReason: 'end_turn', usage: { inputTokens: 1_200, outputTokens: 80, webSearches: 3 } });
+
+  test('the paused answer is sent back as it is, with no result after it, and the answer is the one that follows; every request is charged', async () => {
+    const provider = new FakeProvider((turn) => (turn <= 2 ? paused(turn) : finished()));
+    const session = new FakeSession();
+    const result = await loop(provider, session, { first: searching, reservedMicros: ONE * 100 });
+    assert.equal(result.end.kind, 'answer', JSON.stringify(result.end));
+    assert.equal(result.end.kind === 'answer' && result.end.result.kind === 'completed' && result.end.result.text, 'The answer, after all of it.');
+    assert.equal(provider.sent.length, 3);
+    assert.deepEqual(provider.sent[2]!.turns!.map((turn) => [turn.calls.length, turn.results.length, turn.replay]), [
+      [0, 0, [{ type: 'server_tool_use', id: 's1' }]], [0, 0, [{ type: 'server_tool_use', id: 's2' }]]]);
+    assert.equal(session.calls.length, 0, 'nothing was called');
+    assert.equal(result.account.micros, 2 * (1_000 * 2 + 50 * 10 + 10 * WEB_SEARCH_MICROS) + (1_200 * 2 + 80 * 10 + 3 * WEB_SEARCH_MICROS));
+    assert.equal(result.account.unknown, false);
+  });
+
+  test('a pause is one more request like any other: the turn cap and the money still end the run, and it is not an answer', async () => {
+    const forever = new FakeProvider((turn) => paused(turn, 1));
+    const capped = await loop(forever, new FakeSession(), { first: searching, maxTurns: 5, reservedMicros: ONE * 100 });
+    assert.deepEqual(capped.end, { kind: 'limit', limit: 'turns' });
+    assert.equal(forever.sent.length, 5);
+    const poor = new FakeProvider((turn) => paused(turn, 1));
+    const broke = await loop(poor, new FakeSession(), { first: searching, reservedMicros: ONE });
+    assert.deepEqual(broke.end, { kind: 'limit', limit: 'money' });
+  });
+
+  test('a pause with nothing to send back is the end of the turn', async () => {
+    const provider = new FakeProvider(() => ({ ...paused(1), replay: undefined }));
+    const result = await loop(provider, new FakeSession(), { first: searching, reservedMicros: ONE * 100 });
+    assert.equal(result.end.kind, 'answer');
+    assert.equal(result.end.kind === 'answer' && result.end.result.kind === 'completed' && result.end.result.stopReason, 'end_turn');
+    assert.equal(provider.sent.length, 1);
+  });
+});

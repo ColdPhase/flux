@@ -1,4 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
+import { sql } from 'drizzle-orm';
 import {
   SKETCHES_PATH,
   THOUGHT_SHAPES,
@@ -55,6 +56,7 @@ async function scopedCreators(db: Database, workspaceId: string, page: SketchPag
     ? { ...sketch, createdBy: scopedPrincipal(sketch.createdBy, owners.get(sketch.projectId)!) } : sketch) };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const id = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const number = { type: 'number' } as const;
 const version = { type: 'integer', minimum: 1 } as const;
@@ -145,15 +147,26 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
     finally {owner?.settled();lifetimes.delete(reply);preparedReplies.delete(reply);}
   }
   const sketches = sketchUseCases(db);
-  function native(conn:Database,actor:Principal,request:FastifyRequest,session:SessionContext,reply:import('fastify').FastifyReply) {
+  function native(conn:Database,actor:Principal,request:FastifyRequest,session:SessionContext,reply:import('fastify').FastifyReply,alsoLock:string[]=[]) {
     const key=request.headers['idempotency-key'];const original=typeof key==='string'?key:null;
     const url=routeUrl(request);
     const uuid=original&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(original)?original.toLowerCase():original?derivedUuid('flux.map.legacy-key.v1',actor.kind,actor.id,request.method,url,original):undefined;
     const lifetime=lifetimes.get(reply);if(!lifetime)throw new Error('Native HTTP work has no response owner');
-    return sketchUseCases(conn,storage,{confirmation,context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:preparedReplies.has(reply),resourceId:(request.params as {sketchId?:string}).sketchId,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
+    return sketchUseCases(conn,storage,{confirmation,context:{params:request.params,body:request.body,query:request.query,headers:request.headers,session},prepared:preparedReplies.has(reply),resourceId:(request.params as {sketchId?:string}).sketchId,alsoLock,principal:actor,sessionId:session.sessionId,commandId:uuid,protectLifetime:()=>lifetime.protect(),retainUntil:(release)=>lifetime.retain(release),
       operation:`native:${request.method} ${url}`,fingerprint:requestHash({params:request.params,body:request.body??null,query:request.query,ifMatch:request.headers['if-match']??null})});
   }
   const sketchScope = (sketchId: string): ResourceRef => ({ type: 'sketch', id: sketchId });
+  /** Where a move's thoughts go, as an object whose workspace is the one the key is kept in: the target map, or the space a new map is made in. */
+  const moveTarget = (body: MoveToMapCommand): ResourceRef => body.inSpace ? { type: 'project', id: body.inSpace.projectId } : sketchScope(body.toSketchId!);
+  /** Whether the thoughts of a move go to an encrypted workspace (an encrypted space is a hidden workspace of its own, sealed at rest). */
+  async function sealedWorkspace(conn: Database, body: MoveToMapCommand): Promise<boolean> {
+    const target = body.inSpace ? body.inSpace.projectId : body.toSketchId;
+    if (typeof target !== 'string' || !UUID.test(target)) return false;
+    const found = await conn.execute<{ encrypted: boolean }>(body.inSpace
+      ? sql`SELECT w.encrypted FROM projects p JOIN workspaces w ON w.id = p.workspace_id WHERE p.id = ${target}`
+      : sql`SELECT w.encrypted FROM sketches s JOIN workspaces w ON w.id = s.workspace_id WHERE s.id = ${target}`);
+    return found.rows[0]?.encrypted === true;
+  }
   const readSketch = (sketchId: string) => requires('sketch', 'sketch.read', () => sketchId);
   const thoughtEtag = (body: unknown) => versionEtag((body as CreatedThought | null)?.thought ?? null);
 
@@ -247,17 +260,22 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   app.post<{ Params: { sketchId: string }; Body: MoveToMapCommand }>(`${SKETCH}/move-to-map`, {
     schema: {
       body: {
-        type: 'object', required: ['toSketchId', 'thoughts'], additionalProperties: false,
+        type: 'object', required: ['thoughts'], additionalProperties: false,
         properties: {
           toSketchId: id,
+          inSpace: { type: 'object', required: ['workspaceId', 'projectId'], additionalProperties: false, properties: { workspaceId: id, projectId: id, title: { type: 'string', maxLength: 400 } } },
           thoughts: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id, expectedVersion: version } } },
           at: { type: 'object', required: ['x', 'y'], additionalProperties: false, properties: { x: number, y: number } },
         },
       },
     },
   }, async (request, reply) => command(request, reply, {
-    operation: `POST ${SKETCH}/move-to-map`, scope: sketchScope(request.params.sketchId),
-    run: (actor, conn, session) => native(conn,actor,request,session,reply).moveToMap(actor, request.params.sketchId, request.body),
+    operation: `POST ${SKETCH}/move-to-map`,
+    // The key is kept in the workspace the words go to: a move into an encrypted space (a workspace of its own) is not kept in plain text in the
+    // company's rows until the key expires (#1116). Any other move keeps it in the source map's workspace, as before.
+    scope: async (conn) => (await sealedWorkspace(conn, request.body)) ? moveTarget(request.body) : sketchScope(request.params.sketchId),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply,[request.body.toSketchId].filter((value): value is string => typeof value === 'string' && UUID.test(value)))
+      .moveToMap(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 

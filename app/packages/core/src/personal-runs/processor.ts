@@ -327,7 +327,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, { ...charge, ...(early.endReason ? { endReason: early.endReason } : {}) }))).status;
       // A `tool_use` stop here means a request without tools came back asking for some: its text is
       // half an answer to a call that will never be made, so nothing is posted (the cost stays as observed).
-      if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use') {
+      if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use' || result.stopReason === 'pause_turn') {
         const credits: RunChanges = result?.kind === 'failed' && result.reason === 'no_credits' ? { endReason: 'credits' } : {};
         return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, { ...charge, ...credits }))).status;
       }

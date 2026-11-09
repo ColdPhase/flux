@@ -635,6 +635,29 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual((await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}"))["title"], "Renamed while Kai types")
         self.assertEqual(reads, [], "Kai's page followed the title without reading the page")
 
+    async def test_10h_a_page_written_outside_the_open_editors_reaches_both_without_a_notice_and_they_go_on_working(self):
+        # #1116: a version written outside the editor (here the API, as a client's edit over MCP and a restore are) starts a new generation of
+        # the shared text. The room told the open editors nothing but an error ("Sharing is not confirmed (EDITING_GENERATION_CHANGED)") and they
+        # kept the old text until the page was read again; the map's room asks its editors to read again, and now the Wiki's does.
+        await self.create_doc("Before the outside edit.")
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        await self.editor("ada"), await self.editor("kai")
+        field = lambda page: page.locator('.cm-content[aria-label="Page text"]')
+        current = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
+        await self.api(ada, "PATCH", f"/api/v1/docs/{self.doc_id}", {"body": "After the outside edit."}, 200, {"if-match": f'"{current["version"]}"'})
+        for page in (ada, kai):
+            await expect(field(page)).to_contain_text("After the outside edit.", timeout=20000)
+            await expect(field(page)).not_to_contain_text("Before the outside edit.")
+            await expect(page.locator('[data-live-status="live"]')).to_be_visible(timeout=20000)
+        for page in (ada, kai):
+            await expect(page.get_by_text("Sharing is not confirmed")).to_have_count(0)
+            self.assertEqual(await page.get_by_role("alert").count(), 0, "no notice on the page")
+        # Both editors share the new text: what one types, the other sees, and it is saved as a version.
+        await self.type_text(kai, field(kai), " Kai writes on.")
+        await expect(field(ada)).to_contain_text("Kai writes on.", timeout=15000)
+        saved = await self.saved_doc(ada, "Kai writes on.")
+        self.assertIn("After the outside edit.", saved["body"])
+
     async def test_10g_an_idle_caret_is_renewed_rarely_and_then_not_at_all(self):
         # #950, #862: a focused editor that does not type renews its caret every 2.5 s (the server keeps it 5 s), and only
         # within 30 s of its last keystroke or caret move; then the caret leaves the other screen.

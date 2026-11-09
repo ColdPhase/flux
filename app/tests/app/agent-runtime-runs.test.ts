@@ -708,6 +708,17 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       assert.deepEqual((await searchRows(started.run.id)).map((entry) => entry.pending), [false, false], 'no search is left in progress');
     });
 
+    test('a search whose tool use has no id is listed and found nothing at once: a read of an address it could not give is refused, with no wait for a result (#1116)', async () => {
+      await script({ calls: [{ name: 'WebSearch', args: { query: 'ferry strike' }, noId: true, results: [{ title: 'Second', url: at('/read/second') }] },
+        { name: 'flux_read_web', args: { url: at('/read/second') } }], answer: 'Read nothing.' });
+      const started = await ask('Is there a ferry strike?');
+      const begun = Date.now();
+      assert.equal(await searching.process(started.run.id), 'completed');
+      assert.ok(Date.now() - begun < 20_000, 'the read did not wait for a result that cannot come back to its search');
+      assert.equal(refusal((await reads())[0]), 'WEB_READ_NOT_GIVEN');
+      assert.deepEqual((await searchRows(started.run.id)).map((entry) => [entry.queries, entry.results, entry.pending]), [[['ferry strike'], [], false]]);
+    });
+
     test('a failed search finds nothing to read and is still listed; with the web off the CLI keeps no tool and a WebSearch stops the run', async () => {
       await script({ calls: [{ name: 'WebSearch', args: { query: 'ferry strike' }, error: true }, { name: 'flux_read_web', args: { url: at('/read/second') } }], answer: 'No news.' });
       const failed = await ask('Is there a ferry strike?');

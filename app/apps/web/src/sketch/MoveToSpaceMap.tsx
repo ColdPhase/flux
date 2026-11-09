@@ -5,7 +5,6 @@ import { useIntentKeys } from '../api/intent-keys';
 import { addLink, listSpaceMaps, moveThoughtsToMap } from '../api/sketches';
 import { useShellData, type ProjectSummary } from '../app/data';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
-import { createProjectSketch } from '../project/data';
 import { Button, Icon, MEDIA, Option, Overlay, Select, useMediaQuery, useToast } from '../ui';
 import { quote } from './format';
 import '../people/space.css';
@@ -47,7 +46,7 @@ export function useMoveToSpaceMap({ sketch, selection, versionOf, onMoved, onBac
   selection: string[];
   /** The version the server last confirmed for a thought. */
   versionOf: (id: string) => number | undefined;
-  onMoved: (text: string) => void;
+  onMoved: () => void;
   onBack: (text: string) => void;
 }): { start: (() => void) | null; dialog: ReactNode } {
   const [moving, setMoving] = useState<Moving | null>(null);
@@ -91,7 +90,7 @@ export function useMoveToSpaceMap({ sketch, selection, versionOf, onMoved, onBac
       onMoved={(moved, project, mapTitle) => {
         setMoving(null);
         const where = `${project.name}`;
-        onMoved(`Moved ${moving?.label ?? 'the thought'} to ${where}`);
+        onMoved();
         toast({ message: `Moved to ${where}${mapTitle && mapTitle !== UNTITLED_SKETCH ? ` · ${mapTitle}` : ''}`, tone: 'success', timeout: 8000, action: { label: 'Undo', key: 'Z', onClick: () => { void undo(moved, where); } } });
       }} />
   );
@@ -148,13 +147,13 @@ function MoveForm({ moving, onClose, onMoved }: { moving: Moving; onClose: () =>
     const attempt = `move:${moving.sketchId}:${moving.thoughts.map((thought) => `${thought.id}@${thought.expectedVersion}`).join(',')}:${mapId || project.id}`;
     try {
       await assertSignedInAs(me.user.id);
-      // A space with no map gets its first one as the thought arrives. One key per attempt, so a retry after a lost answer makes one map.
-      const into = target ?? await createProjectSketch(workspaceId, project.id, UNTITLED_SKETCH, intents.keyFor(`${attempt}:map`));
-      const moved = await moveThoughtsToMap(moving.sketchId, { toSketchId: into.id, thoughts: moving.thoughts }, intents.keyFor(attempt));
+      // A space with no map gets its first one in the same change as the thought arrives: a move that fails leaves no empty map behind (#1116).
+      // One key per attempt, so a retry after a lost answer moves once.
+      const moved = await moveThoughtsToMap(moving.sketchId, target ? { toSketchId: target.id, thoughts: moving.thoughts }
+        : { inSpace: { workspaceId, projectId: project.id }, thoughts: moving.thoughts }, intents.keyFor(attempt));
       intents.settle(attempt);
-      intents.settle(`${attempt}:map`);
       writeLast(me.user.id, project.id);
-      onMoved(moved, project, into.title);
+      onMoved(moved, project, target?.title ?? UNTITLED_SKETCH);
     } catch (cause) {
       if (mounted.current) setError(moveProblem(cause));
     } finally {
