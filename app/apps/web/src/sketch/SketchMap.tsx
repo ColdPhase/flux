@@ -29,6 +29,8 @@ export interface SketchMapProps {
   /** The floating toolbar at the bottom (computer) and the line above it: hint or status. */
   dock: ReactNode;
   hint: ReactNode;
+  /** What a local client changed on this map, with its change line and Undo (#868): in the dock, whose height the map reserves, so it never covers a thought. */
+  changes?: ReactNode;
   /** Map/List remains reachable in the phone's named Map options sheet. */
   viewModes: ReactNode;
   bar: SelectionTools;
@@ -385,7 +387,7 @@ export function SketchMap(props: SketchMapProps) {
       const gap = 12;
       const maxX = Math.max(14, pane.width - box.width - 14);
       const maxY = Math.max(14, pane.height - box.height - 14);
-      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock > .sk-hint')]
+      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock .client-changes, .sk-dock > .sk-hint')]
         .map((el) => {
           const r = el.getBoundingClientRect();
           return { left: r.left - pane.left, top: r.top - pane.top, right: r.right - pane.left, bottom: r.bottom - pane.top,
@@ -1079,6 +1081,7 @@ export function SketchMap(props: SketchMapProps) {
     </div>
       {!compact ? <div className="sk-corner"><Minimap canvas={canvasRef} zoom={zoom} origin={origin} rects={rects} />{zoomControls}</div> : null}
       <div className="sk-dock" ref={dockRef}>
+        {!compact ? props.changes : null}
         {!compact ? (wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : props.hint) : null}
         {props.dock ? <div className="sk-dock__row">{props.dock}</div> : null}
       </div>
@@ -1094,6 +1097,7 @@ export function SketchMap(props: SketchMapProps) {
       </div> : null}
       {compact && !hasComposition ? (
         <div className="sk-phone" ref={phoneToolsRef}>
+          {props.changes}
           {props.hint}
           {canWrite ? <>
           <div className="sk-phone__secondary">

@@ -49,6 +49,7 @@
 .assistant-message__who { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
 .assistant-message__line { display: flex; align-items: center; flex-wrap: wrap; column-gap: 0; margin: 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-message__line .ui-link { font-size: var(--fs-sm); min-height: 24px; }
+.assistant-message__line > [aria-hidden="true"] { white-space: pre; }
 .assistant-message__note { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
 .assistant-queued { margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
@@ -202,3 +203,8 @@
 @media (max-width: 600px) {
   .assistant-private__foot .ui-btn { min-height: 44px; }
 }
+
+/* What a local client changed on this task, page or map (#868): the same change line, one per change, newest first, three at most. */
+.client-changes { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 0 0 var(--s-3); min-width: 0; }
+.client-changes .assistant-message { margin-top: 0; max-width: 100%; }
+.client-changes > .ui-link { font-size: var(--fs-sm); min-height: 24px; }

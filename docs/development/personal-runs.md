@@ -433,7 +433,10 @@ else edited. Nothing that waits ever expires.
   stranger gets 404). What was done is the run's message for everyone who can read the conversation
   (`GET /api/v1/conversations/:id/assistant-changes`: the owner sees all of their own rows, others only what was
   done); a waiting change or a refused Approve never leaves its owner. The web shows this as one line on the
-  message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
+  message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. A local client's changes to a task,
+  a Wiki page or a map show the same line on that object (#868): `assistant_changes.scope_id` (migration 0047) names the task, the page or the map
+  (also for a thought, a link or a move on it), `GET /api/v1/projects/:id/assistant-changes?kind=work|doc|map&id=` lists them, and the web's
+  `ClientChanges` shows the newest three with the change line's own Undo. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
   name; a page's text; a thought's text and position; created thoughts, links and tasks are removed. **A created map, a proposed decision and a posted message** (founder direction
@@ -662,6 +665,7 @@ from the request.
 | `POST /api/v1/assistant-runs/:id/stop` | the run's owner | Before dispatch: `stopped` and free. During dispatch: best-effort abort, the charge is kept and nothing is committed. |
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
 | `GET /api/v1/conversations/:id/assistant-changes` | project readers | The run messages of the conversation: the owner's own rows in every state, everyone else's what was done (applied, approved, undone, skipped) with `undoable` true only for someone who may edit (F-027 A4). Non-readers get 404. |
+| `GET /api/v1/projects/:id/assistant-changes?kind=work\|doc\|map&id=` | project readers | The local clients' applied changes (applied, approved, undone) to one task, Wiki page or map of the space, oldest first, the newest 50, with `via` ("Claude Code", "Codex" or the client's name) and `undoable` as for a conversation's list (#868, LC-2). A waiting change and a run's change are not listed. Non-readers get 404, a wrong `kind` or `id` 400. |
 | `GET /api/v1/conversations/:id/assistant-activity` | project readers | `{ working: [{ ownerId, ownerName }] }`: whose assistant is working there now, nothing more (F-027 AST-6). |
 | `POST /api/v1/assistant-changes/:id/apply`, `…/skip`, `…/edit`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/skip` | the owner only, in their own session | Decide waiting changes (F-036 AG-3). Everyone else gets 404. |
 | `POST /api/v1/assistant-changes/:id/undo`, `POST /api/v1/assistant-runs/:id/changes/undo` | the owner, or anyone who may edit | Take back one change or the whole message (F-027 A4). A reader who may not edit gets 403, a non-reader 404; only the owner takes back a created task. |

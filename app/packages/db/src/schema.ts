@@ -1768,6 +1768,8 @@ export const assistantChanges = pgTable('assistant_changes', {
   connectionId: uuid('connection_id').references(() => agentConnections.id, { onDelete: 'cascade' }),
   /** The conversation a local client's message went to, so its change line shows on that message. */
   conversationId: uuid('conversation_id'),
+  /** 0047 (#868): the task, Wiki page or map the change is about (the map, for a thought, link or move on it), so its line shows there. */
+  scopeId: uuid('scope_id'),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
   clientCommandId: uuid('client_command_id').notNull(),
@@ -1800,6 +1802,7 @@ export const assistantChanges = pgTable('assistant_changes', {
   index('assistant_changes_run_idx').on(table.runId, table.createdAt),
   index('assistant_changes_connection_idx').on(table.connectionId, table.createdAt).where(sql`${table.connectionId} IS NOT NULL`),
   index('assistant_changes_conversation_idx').on(table.conversationId, table.createdAt).where(sql`${table.conversationId} IS NOT NULL`),
+  index('assistant_changes_scope_idx').on(table.projectId, table.scopeId, table.createdAt).where(sql`${table.scopeId} IS NOT NULL`),
   check('assistant_changes_source_check', sql`num_nonnulls(${table.runId}, ${table.connectionId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),

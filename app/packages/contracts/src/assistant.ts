@@ -61,6 +61,8 @@ export interface AssistantChange {
   runId: string;
   /** The agent that made it, for the Inbox item: "Assistant", or a local client by its name ("Claude Code on this computer"). */
   agentName: string;
+  /** How a local client's change is labelled on its line, "Ada · via Claude Code" (mcp-cowork LC-2): "Claude Code", "Codex" or its own name. Null for the assistant's. */
+  via: string | null;
   projectId: string;
   conversationId: string;
   operation: string;
@@ -112,6 +114,13 @@ export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone
 export interface EditAssistantChangeCommand { expectedVersion: number; title: string }
 
 export const conversationAssistantChangesPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-changes`;
+/** What a task, a Wiki page and a map show of their local clients' changes (#868). */
+export type AssistantChangeScope = 'work' | 'doc' | 'map';
+/**
+ * `GET` with `?kind=work|doc|map&id=` of the task, page or map: the changes a local client made to it, applied, with their change line
+ * and Undo for everyone who can read it (mcp-cowork LC-2). Waiting changes are the owner's Inbox, and a run's are in its conversation.
+ */
+export const projectAssistantChangesPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-changes`;
 /** Project-audience event, identifiers only: an agent started or stopped working on a task or a schedule's firing in a conversation. The run of `/ai` and of a chat is private (#842) and sends none. */
 export const ASSISTANT_WORKING_EVENT = 'project.assistant_working.v1';
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;

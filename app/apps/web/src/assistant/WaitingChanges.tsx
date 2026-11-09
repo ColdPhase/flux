@@ -71,10 +71,11 @@ export function useRunChanges(runId: string | null, refreshKey: unknown, enabled
 // Undo, Approve and Skip never fail silently offline: they say "Offline" (AST-10.15).
 export const failure = (error: unknown) => error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.message ? error.message : 'Couldn’t reach Flux. Try again.';
 
-/** "Changed since. Open it": the closing words open the object, when it has a place to open. */
-function Said({ text, change }: { text: string; change: AssistantChange | undefined }) {
+/** "Changed since. Open it": the closing words open the object, when it has a place to open; on the object's own page (`here`) they go. */
+function Said({ text, change, here }: { text: string; change: AssistantChange | undefined; here: boolean }) {
   const { openDetails } = useShellActions();
   const open = /\. (Open (?:it|the task))$/.exec(text);
+  if (here && open) return <>{text.slice(0, open.index + 1)}</>;
   if (!open || !change?.objectId) return <>{text}</>;
   const head = text.slice(0, open.index + 1);
   const target = change.objectType === 'work' ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'work', id: change.objectId! })}>{open[1]}</button>
@@ -86,7 +87,7 @@ function Said({ text, change }: { text: string; change: AssistantChange | undefi
  * The change line on the agent's message (AG-3): "Updated the Wiki page Calibration (3 changes) · moved #4 to In progress · Undo".
  * Undo restores the earlier versions; the line is then struck through and ends "Undone by Ada". There is no separate Activity list.
  */
-function ChangeLine({ changes, onChanged, meId, standalone }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string; standalone: boolean }) {
+function ChangeLine({ changes, onChanged, meId, standalone, here }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string; standalone: boolean; here: boolean }) {
   const [busy, setBusy] = useState(false);
   const [note, setNote] = useState<{ text: string; change?: AssistantChange } | null>(null);
   const { ref: home, keep } = useKeepFocus<HTMLElement>(() => document.getElementById(`answer-${changes[0]?.runId}`));
@@ -97,7 +98,10 @@ function ChangeLine({ changes, onChanged, meId, standalone }: { changes: Assista
   const live = done.filter((change) => change.state !== 'undone');
   const undoneBy = done.find((change) => change.state === 'undone' && change.decidedBy)?.decidedBy?.name;
   const owner = changes[0]!.owner;
-  const whose = !meId || owner.id === meId ? 'your' : `${owner.name.trim().split(/\s+/)[0] || owner.name}’s`;
+  const first = owner.name.trim().split(/\s+/)[0] || owner.name;
+  const whose = !meId || owner.id === meId ? 'your' : `${first}’s`;
+  // A local client's change is labelled "Ada · via Claude Code" (mcp-cowork LC-2), for its owner too; the assistant's reads "Ada's assistant".
+  const via = changes[0]!.via;
   const undo = () => keep(async () => {
     setBusy(true); setNote(null);
     try {
@@ -108,15 +112,16 @@ function ChangeLine({ changes, onChanged, meId, standalone }: { changes: Assista
     finally { setBusy(false); await onChanged(); }
   });
   return (
-    <section ref={home} tabIndex={-1} className="assistant-message" aria-label={`What ${whose} assistant changed`} data-run={runId}>
-      {standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
+    <section ref={home} tabIndex={-1} className="assistant-message" aria-label={via ? `What ${via} changed` : `What ${whose} assistant changed`} data-run={runId}>
+      {standalone && via ? <p className="assistant-message__who">{first} · via {via}</p>
+        : standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
       {done.length ? <p className="assistant-message__line" role="status" aria-live="polite">
         {live.length ? <span>{assistantChangeLine(live)}</span> : <s>{assistantChangeLine(done)}</s>}
         {live.length && live.some((change) => change.undoable) ? <><span aria-hidden="true"> · </span>
           <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button></> : null}
         {!live.length ? <><span aria-hidden="true"> · </span><span>Undone by {undoneBy ?? 'you'}</span></> : null}
       </p> : null}
-      {note ? <p className="assistant-message__note" role="status"><Said text={note.text} change={note.change} /></p> : null}
+      {note ? <p className="assistant-message__note" role="status"><Said text={note.text} change={note.change} here={here} /></p> : null}
       {skips.map((change) => <p key={change.id} className="assistant-message__note">{change.line}</p>)}
     </section>
   );
@@ -205,9 +210,11 @@ function ProposalGroup({ changes, agent, busy, onAct, editing, onEdit }: {
 }
 
 /** One run's message: the change line with Undo for everyone who can read it, then what waits for its owner. */
-export function WaitingChanges({ changes, onChanged, meId, standalone = false }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string;
+export function WaitingChanges({ changes, onChanged, meId, standalone = false, here = false }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string;
   /** Not under the assistant's own answer: the message names whose assistant it is itself. */
-  standalone?: boolean }) {
+  standalone?: boolean;
+  /** On the changed object's own page: "Changed since" has no "Open it", the person is there already. */
+  here?: boolean }) {
   const pending = changes.filter(waiting);
   const proposals = pending.filter((change) => !!change.forPerson);
   const singles = proposals.length > 1 ? pending.filter((change) => !change.forPerson) : pending;
@@ -228,7 +235,7 @@ export function WaitingChanges({ changes, onChanged, meId, standalone = false }:
   });
   const settled = changes.filter(decided);
   return (<>
-    <ChangeLine changes={changes} onChanged={onChanged} meId={meId} standalone={standalone} />
+    <ChangeLine changes={changes} onChanged={onChanged} meId={meId} standalone={standalone} here={here} />
     {pending.length || settled.length || messages.length ? <section ref={home} tabIndex={-1} className="assistant-waiting" aria-label="Waiting for your OK" data-run={runId}>
       {pending.length ? <ul className="assistant-waiting__cards">
         {singles.map((change) => <WaitingCard key={change.id} change={change} agent={agent} busy={busy} onAct={act}

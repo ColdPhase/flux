@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantChangesPath, WORK_LIMITS, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
+  conversationAssistantChangesPath, projectAssistantChangesPath, WORK_LIMITS, type AssistantChange, type AssistantChangeDecision, type AssistantObjectType, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantChangeRows, changeGroup, isCompanyGuest, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
@@ -111,6 +111,8 @@ const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | unde
   if (run.status === 'stopped' || run.stopRequestedAt) return 'stopped';
   return run.status === 'completed' || run.status === 'truncated' ? 'done' : 'failed';
 };
+/** The change kinds a task, a Wiki page and a map show (#868): a map shows its thoughts and links too. */
+const SCOPE_TYPES: Record<string, readonly AssistantObjectType[] | undefined> = { work: ['work'], doc: ['doc'], map: ['map', 'thought', 'link'] };
 const statusOf = (row: AssistantChangeRow) => {
   const changes = (row.preparedCommand?.args as { changes?: Record<string, unknown> } | undefined)?.changes;
   return typeof changes?.status === 'string' ? changes.status : null;
@@ -175,7 +177,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const phrase = `${words.phrase} ${words.noun}`;
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
       const tells = (told.get(row.id) ?? []).map((id) => ({ id, name: names.get(id) ?? '' }));
-      return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
+      return { id: row.id, runId: changeGroup(row), agentName: row.agentName, via: row.via, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: threadLineRemoved(row, names) ?? (hideState(row) ? null : handoffLine(row, units)) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
           otherName: row.waitReason === 'tells' && tells.length ? joinedNames(tells.map((person) => person.name)) : row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
@@ -325,6 +327,20 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         .filter((row) => isDone(row) || row.ownerUserId === userId && !guest);
       return { items: await view(list, await undoers(principal, list)) };
     },
+    /**
+     * A local client's changes to one task, Wiki page or map, for everyone who can read it (#868, mcp-cowork LC-2): what was done, with
+     * its change line, taken back with the same Undo as the client's messages (the owner, or anyone who may edit it). A waiting change
+     * is in the owner's Inbox, never here, and neither is a run's change. A space the caller cannot read answers as one that does not
+     * exist, as the conversation's list does.
+     */
+    async forObject(principal: Principal, projectId: string, scope: unknown, id: unknown): Promise<{ items: AssistantChange[] }> {
+      owner(principal);
+      const types = typeof scope === 'string' && Object.hasOwn(SCOPE_TYPES, scope) ? SCOPE_TYPES[scope] : undefined;
+      if (!isUuid(projectId) || !types || !isUuid(id)) throw new InvalidInputError('Name a task, doc or map and its ID');
+      if (!(await evaluateProject(principal, 'project.read', projectId, accessReader(db))).allowed) throw missing();
+      const list = (await rows().forScope(projectId, id, types)).filter(isDone);
+      return { items: await view(list, await undoers(principal, list)) };
+    },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       // A run that made no change has an empty list for its asker, not a 404 (#842: the private answer asks for it every time); anyone else gets the 404.
       if (isUuid(runId) && !(await rows().forRun(runId)).length) {
@@ -440,6 +456,8 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
   const noStore = { 'cache-control': 'no-store' };
   app.get<{ Params: { conversationId: string } }>(conversationAssistantChangesPath(':conversationId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forConversation(await who(request), request.params.conversationId)));
+  app.get<{ Params: { projectId: string }; Querystring: { kind?: string; id?: string } }>(projectAssistantChangesPath(':projectId'), async (request, reply) =>
+    reply.headers(noStore).send(await changes.forObject(await who(request), request.params.projectId, request.query.kind, request.query.id)));
   app.get<{ Params: { runId: string } }>(assistantRunChangesPath(':runId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forRun(await who(request), request.params.runId)));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'apply'), async (request) => changes.applyAll(await who(request), request.params.runId));

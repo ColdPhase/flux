@@ -3,8 +3,8 @@ import {
   assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath,
   agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
-  assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, dmThreadAssistantRunsPath, projectAssistantRunsPath,
-  type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
+  assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, dmThreadAssistantRunsPath, projectAssistantChangesPath, projectAssistantRunsPath,
+  type AssistantChange, type AssistantChangeDecision, type AssistantChangeScope, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantPlace, type AssistantRun, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type ShowAnswerResult,
 } from '@flux/contracts';
@@ -47,6 +47,9 @@ export const listAnswers = (conversationId: string, offset = 0, signal?: AbortSi
 // signed-in session, approves, edits or skips a waiting change.
 export const listConversationChanges = (conversationId: string, signal?: AbortSignal) =>
   request<{ items: AssistantChange[] }>(conversationAssistantChangesPath(conversationId), { signal });
+/** A local client's changes to one task, Wiki page or map, with their change line and Undo (#868). */
+export const listObjectChanges = (projectId: string, kind: AssistantChangeScope, id: string, signal?: AbortSignal) =>
+  request<{ items: AssistantChange[] }>(`${projectAssistantChangesPath(projectId)}?kind=${kind}&id=${id}`, { signal });
 /** Approve one waiting change (Delete, for a deletion). */
 export const applyChange = (change: Pick<AssistantChange, 'id' | 'version'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'apply'), { method: 'POST', body: { expectedVersion: change.version } });
