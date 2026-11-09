@@ -1,0 +1,1 @@
+- Asking AI in a direct message of an encrypted space now says that AI is always off there, instead of asking the person to make an agent ([#1131](https://github.com/ColdPhase/flux/issues/1131)).

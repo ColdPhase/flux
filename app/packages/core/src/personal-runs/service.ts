@@ -458,6 +458,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       if (!isId(wanted.dmId)) throw new NotFoundError('Direct message', 'DM_NOT_FOUND');
       const dmId = wanted.dmId.toLowerCase();
       const { workspaceId } = await ports.access.requireDm(principal, dmId, lock);
+      // AI is always off in an encrypted space (F-030): a direct message there has no switch, so its participants are told that, not to make an agent.
+      if (await ports.runs.workspaceEncrypted(workspaceId)) throw new ConflictError('AI is always off in an encrypted space', 'WORKSPACE_ENCRYPTED_AI_OFF');
       // A thread hangs on a root message of this DM (not a reply, not the line "used AI here"); any other id is as unknown as a missing DM.
       const threadRootId = wanted.threadRootId === null ? null : isId(wanted.threadRootId) ? wanted.threadRootId.toLowerCase() : 'invalid';
       if (threadRootId !== null && (threadRootId === 'invalid' || !(await ports.runs.isDmThreadRoot(dmId, threadRootId)))) throw new NotFoundError('Message', 'DM_MESSAGE_NOT_FOUND');

@@ -132,7 +132,8 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     }
     assert.equal(new Set(seen).size, seen.length, 'no result twice');
     assert.deepEqual([...seen].sort(), all.items.map((item) => item.id).sort(), 'the pages together are the whole answer');
-    assert.ok(all.items.length >= 12);
+    // Five of each side: a message, a decision, a task, a doc and a material (the Result object went in #1108), so pages of three cross both.
+    assert.ok(all.items.length >= 10, `${all.items.length} results`);
   });
 
   test('the index follows edits, deletions and access changes at once', async () => {

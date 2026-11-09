@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Conversation, ConversationMessage, ConversationRootWindow, ProjectPerson, TaskDiscussion, WorkItem } from '@flux/contracts';
-import { NotFoundError } from '@flux/core';
+import { conversationUseCases, NotFoundError } from '@flux/core';
 import { projectAuthorOwners } from '../../apps/server/src/conversation/author-owners.js';
+import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, removeMember, workspace } from './support/people.js';
@@ -26,13 +27,20 @@ async function scene() {
   const command = { body: 'Actual historical contribution.', clientMessageId: randomUUID() };
   const actor = { kind: 'agent' as const, id: agent.id };
   const receipt = await taskDiscussionUseCases(db).contribute(actor, task.id, command);
-  const read = async () => {
+  // A task's discussion is not a root of the space's conversation (#868, #1048); the agent's own remark there is.
+  const remark = (await conversationUseCases(conversationStore(db, { agentAuthors: true }))
+    .createConversation(actor, place.id, { body: 'Actual historical remark.', clientMessageId: randomUUID() })).messages[0]!;
+  /** Every surface that shows the agent's history, each with the receipt its row was stored from. */
+  const read = async (): Promise<[ConversationMessage, ConversationMessage][]> => {
     const discussion = expectStatus(await reader.browser.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as TaskDiscussion;
     const conversation = expectStatus(await reader.browser.request('GET', `/api/v1/conversations/${receipt.conversationId}`), 200) as Conversation;
     const stream = expectStatus(await reader.browser.request('GET', `/api/v1/projects/${place.id}/conversation-roots`), 200) as ConversationRootWindow;
-    return [discussion.root!, discussion.messages[0]!, conversation.messages[0]!, stream.roots[0]!.message];
+    assert.ok(!stream.roots.some((root) => root.conversationId === receipt.conversationId), 'the task discussion stays in the task');
+    const root = stream.roots.find((item) => item.message.id === remark.id);
+    assert.ok(root, 'the agent\'s remark is a root of the stream');
+    return [[discussion.root!, receipt], [discussion.messages[0]!, receipt], [conversation.messages[0]!, receipt], [root.message, remark]];
   };
-  return { manager, owner, reader, ws, place, agent, task, actor, command, receipt, read };
+  return { manager, owner, reader, ws, place, agent, task, actor, command, receipt, remark, read };
 }
 
 function unchangedIdentity(row: ConversationMessage, receipt: ConversationMessage) {
@@ -48,28 +56,29 @@ test('the current-project owner stays visible in genuine agent history; deny/mem
   const before = (await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0];
   const exactReceipt = JSON.stringify(f.receipt);
   assert.equal(Object.hasOwn(f.receipt.author!, 'projectOwner'), false);
+  assert.equal(Object.hasOwn(f.remark.author!, 'projectOwner'), false);
   assert.equal(JSON.stringify(await taskDiscussionUseCases(db).contribute(f.actor, f.task.id, f.command)), exactReceipt);
-  for (const row of await f.read()) {
-    unchangedIdentity(row, f.receipt);
+  for (const [row, stored] of await f.read()) {
+    unchangedIdentity(row, stored);
   }
   const people = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/people`), 200) as ProjectPerson[];
   assert.ok(people.some((person) => person.kind === 'human' && person.id === f.owner.id));
   assert.equal((await f.reader.browser.request('GET', `/api/v1/workspaces/${f.ws.id}/members`)).status, 403);
-  for (const row of await f.read()) {
-    unchangedIdentity(row, f.receipt);
+  for (const [row, stored] of await f.read()) {
+    unchangedIdentity(row, stored);
     assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   }
   await removeFromSpace(f.manager, f.place.id, f.owner);
   // The owner kept out, its agent is too (F-036 AG-3): it can no longer write here.
   await assert.rejects(taskDiscussionUseCases(db).contribute(f.actor, f.task.id, { ...f.command, clientMessageId: randomUUID() }), NotFoundError);
-  for (const row of await f.read()) {
-    unchangedIdentity(row, f.receipt);
+  for (const [row, stored] of await f.read()) {
+    unchangedIdentity(row, stored);
     assert.equal(Object.hasOwn(row.author!, 'projectOwner'), false, 'a hidden owner ID is omitted entirely');
   }
   await grant(f.manager, f.place.id, f.owner, 'contributor');
-  for (const row of await f.read()) assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
+  for (const [row] of await f.read()) assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   await removeMember(f.manager, f.ws.id, f.owner);
-  for (const row of await f.read()) assert.equal(Object.hasOwn(row.author!, 'projectOwner'), false);
+  for (const [row] of await f.read()) assert.equal(Object.hasOwn(row.author!, 'projectOwner'), false);
   assert.deepEqual((await pool.query('SELECT * FROM project_messages WHERE id=$1', [f.receipt.id])).rows[0], before);
 });
 

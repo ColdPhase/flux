@@ -208,7 +208,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   expect(await browser.request('POST', `/api/v1/conversations/${conversation.id}/messages`, { body: { body: 'A later real contribution', clientMessageId: randomUUID() } }), 201);
   const changed = toolValue((await mcp(bearer, 50, 'tools/call', { name: 'flux_changes_since', arguments: { projectId, known: recorded } })).message);
   assert.deepEqual(new Set((changed.changed as { checkpoint: { kind: string } }[]).map((row) => row.checkpoint.kind)), new Set(['doc', 'work', 'conversation', 'map']));
-  assert.equal((changed.unchanged as unknown[]).length, 3);
+  assert.equal((changed.unchanged as unknown[]).length, 2, 'the material and the decision');
   assert.equal(changed.coverage, 'supplied_references_only'); assert.equal(changed.newObjectDiscovery, 'use_project_orientation');
   const created = await mcp(bearer, 3, 'tools/call', { name: 'flux_create_proposal', arguments: {
     projectId, materialId, version: 1, clientCommandId: randomUUID(),

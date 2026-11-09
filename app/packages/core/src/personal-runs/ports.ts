@@ -213,6 +213,8 @@ export interface PersonalRunRepository {
   findRun(id: string, options?: { lock?: boolean; visibleToOwner?: boolean }): Promise<RunRecord | null>;
   /** Whether the owner is a guest of the company now: their keys and plan sign-in are kept, but the assistant's status and model list show none (C-50, #1059). */
   ownerIsGuest(ownerUserId: string): Promise<boolean>;
+  /** Whether a workspace is an encrypted space, where AI is always off (F-030). */
+  workspaceEncrypted(workspaceId: string): Promise<boolean>;
   /** The owner's working runs and queued requests that are not paused by a limit (AST-6 queue). */
   inFlightCount(ownerUserId: string): Promise<number>;
   /** How many changes this run made or left waiting: what a second try would repeat. */

@@ -131,7 +131,7 @@ describe('a task has a due date and a history of who changed it', () => {
         assert.equal(entry.automation, undefined);
       }
       const byKind = (entries: TaskActivityEntry[], kind: string) => entries.find((entry) => entry.kind === kind)!;
-      assert.deepEqual(byKind(first.items, 'status').status, { from: 'open', to: 'in_progress', blocker: null, waitingFor: null });
+      assert.deepEqual(byKind(first.items, 'status').status, { from: 'open', to: 'in_progress', blocker: null, waitingFor: null, waitingOn: null, dropped: false });
       assert.deepEqual(byKind(first.items, 'title').title, { from: 'Mount the sensor', to: 'Mount the distance sensor' });
       assert.deepEqual(byKind(first.items, 'due').due, { from: '2026-11-03', to: '2026-12-01' });
       assert.deepEqual(byKind(first.items, 'owner').owner, { from: { kind: 'human', id: ada.id, name: 'da-ada' }, to: { kind: 'human', id: kai.id, name: 'da-kai' } });
@@ -176,15 +176,15 @@ describe('a task has a due date and a history of who changed it', () => {
       assert.equal(done.status, 'done');
       const entries = (await activity(task)).items.map((entry) => entry.status);
       assert.deepEqual(entries, [
-        { from: 'blocked', to: 'done', blocker: null, waitingFor: null },
-        { from: 'in_progress', to: 'blocked', blocker: 'Which focal length, and which mount?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' } },
-        { from: 'blocked', to: 'in_progress', blocker: null, waitingFor: null },
-        { from: 'open', to: 'blocked', blocker: 'Which focal length?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' } },
+        { from: 'blocked', to: 'done', blocker: null, waitingFor: null, waitingOn: null, dropped: false },
+        { from: 'in_progress', to: 'blocked', blocker: 'Which focal length, and which mount?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' }, waitingOn: null, dropped: false },
+        { from: 'blocked', to: 'in_progress', blocker: null, waitingFor: null, waitingOn: null, dropped: false },
+        { from: 'open', to: 'blocked', blocker: 'Which focal length?', waitingFor: { kind: 'human', id: kai.id, name: 'da-kai' }, waitingOn: null, dropped: false },
       ], 'a restore is a status change like any other');
       // Blocked with no one to wait for.
       const lone = await create({ title: 'No one in particular' });
       await patch(lone, { status: 'blocked', blocker: 'Waiting on the weather' });
-      assert.deepEqual((await activity(lone)).items[0]!.status, { from: 'open', to: 'blocked', blocker: 'Waiting on the weather', waitingFor: null });
+      assert.deepEqual((await activity(lone)).items[0]!.status, { from: 'open', to: 'blocked', blocker: 'Waiting on the weather', waitingFor: null, waitingOn: null, dropped: false });
     });
 
     test('records an agent as the agent, and a person as the person, whichever path made the change', async () => {
@@ -226,7 +226,7 @@ describe('a task has a due date and a history of who changed it', () => {
       const task = await create({ title: 'Measure it', status: 'in_progress' });
       await patch(task, { status: 'done', cameOfIt: 'Four hours', clientCommandId: randomUUID() });
       const [entry] = (await activity(task)).items;
-      assert.deepEqual([entry!.kind, entry!.actor.id, entry!.status], ['status', ada.id, { from: 'in_progress', to: 'done', blocker: null, waitingFor: null }]);
+      assert.deepEqual([entry!.kind, entry!.actor.id, entry!.status], ['status', ada.id, { from: 'in_progress', to: 'done', blocker: null, waitingFor: null, waitingOn: null, dropped: false }]);
     });
 
     test('pages newest first with a stable cursor, and refuses a limit or cursor it cannot use', async () => {
