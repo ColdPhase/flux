@@ -29,6 +29,7 @@ import { authSecurityEvent } from './security-events.js';
 import { PASSWORD_TOO_WEAK_MESSAGE, passwordProblem } from './password-policy.js';
 import { createSignInThrottle } from './sign-in-throttle.js';
 import { createDevices } from './devices.js';
+import { authLogEntry } from './auth-log.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -93,6 +94,13 @@ export async function recordGrantAuthentication(db: Database, userId: string, se
   await db.insert(schema.oauthGrantAuthentication).values({ authorizationCodeId, userId, referenceId,
     authMethod: facts.method, authIdpSid: facts.idpSid, authConfirmedAt: facts.confirmedAt }).onConflictDoNothing();
 }
+
+/** Where Better Auth's log lines go when the API gives no logger (tests that build the auth by itself). */
+const CONSOLE_LOG = {
+  info: (object: object, message: string) => console.info(message, object),
+  warn: (object: object, message: string) => console.warn(message, object),
+  error: (object: object, message: string) => console.error(message, object),
+};
 
 const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
 
@@ -239,6 +247,15 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // which logs only the class, the SQLSTATE and the constraint and answers 500 (#991, ASVS V7.4.1; found in the review of #1093). Better Auth's own
     // errors (a wrong password, a refused origin) are still answered as they were.
     onAPIError: { throw: true },
+    // Better Auth's own log lines go to Flux's logger, reduced to what says why something failed and nothing personal or secret (`auth-log.ts`):
+    // a failed statement is quoted with its parameters (a sign-up that lost a race with the same address prints the email and the name), and
+    // Better Auth hands that error to its logger (#1088, found in the delta reviews of #1093 and #1098).
+    logger: {
+      log: (level, message, ...details) => {
+        const entry = authLogEntry(level, message, details);
+        (log ?? CONSOLE_LOG)[entry.level](entry.object, entry.text);
+      },
+    },
     baseURL: config.publicOrigin,
     basePath: '/api/auth',
     secret: config.secret,
@@ -481,9 +498,17 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
           after: async (session) => {
             const sign = signIns.getStore();
-            await db.insert(schema.authSessionIdentities).values({
-              sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
-            }).onConflictDoNothing();
+            try {
+              await db.insert(schema.authSessionIdentities).values({
+                sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
+              }).onConflictDoNothing();
+            } catch (error) {
+              // A reset that ended the sessions after this one was written (the password check was still current when the row went in) took it away
+              // before it could be recorded: the sign-in lost the race, and is answered as a refused one (#1088).
+              const state = (error as { code?: unknown; cause?: { code?: unknown } }).cause?.code ?? (error as { code?: unknown }).code;
+              if (state === '23503' && !sign?.providerId) throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
+              throw error;
+            }
             // A provider sign-in is the provider vouching for the person now (F-024 S2, #312).
             if (sign?.providerId) await confirmation.confirm(session.userId, sign.providerId);
             // The provider vouched for the person just now: keep its offline token for the standing check and

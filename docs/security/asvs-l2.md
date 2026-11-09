@@ -92,8 +92,11 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   parameter of a statement that can fail on the check** (review of #1093: drizzle quotes a failed statement with its parameters, and Better
   Auth's router and better-call printed the error, so a refused request put the hash in the API log four times). The write of the new hash
   itself still carries it, so `onAPIError: { throw: true }` keeps every error that is not Better Auth's own out of both loggers and sends it to
-  Flux's error handler, which logs only the class, the SQLSTATE and the constraint (#991). `check_application.sh` looks for a password hash
-  (`<32 hex>:<128 hex>`, `$argon2`, `$2a$`) in the API, worker and provider-mock logs after the named test files and after the full suite. The hook refuses
+  Flux's error handler, which logs only the class, the SQLSTATE and the constraint (#991). Better Auth's own log lines (a sign-up that lost a race
+  with the same address logged the failed insert with its email and name) go to Flux's logger through a handler that reduces an error to those
+  three and replaces an address in a line's text. A sign-in that loses to a reset after its session row was written is answered 401, like the
+  other refused sign-ins. `check_application.sh` looks for a password hash (`<32 hex>:<128 hex>`, `$argon2`, `$2a$`) and for the address and name
+  of the log tests in the API, API 2, worker and provider-mock logs after the named test files and after the full suite. The hook refuses
   first when the new hash is already visible, with "Invalid email or password"; a request that loses the race inside the statement gets the generic error.
 - **#991, errors.** Every error that is not a domain refusal, a 401 or a Fastify 4xx answers `500` with a class code and logs only the
   redacted error. The encrypted-space rule of F-030 now holds for every space, so there is one path to keep correct, not two.
