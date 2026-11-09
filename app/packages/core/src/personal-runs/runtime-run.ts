@@ -142,11 +142,14 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   };
 }
 
-/** The brief without what could not be read: the run goes on, and its tools and the commit's checks still decide what it may do. */
-function unreadContext(run: RunRecord): RuntimeContext {
+/**
+ * The brief without what could not be read: the run goes on, and its tools and the commit's checks still decide what it may do. What the
+ * owner gave the agent is its own read, as before #1064, so the agent keeps its instructions and memory.
+ */
+function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext {
   return {
-    brief: null, sources: [], leftOut: false, turns: [],
-    facts: { ownerName: 'your owner', agentName: 'Assistant', timeZone: 'UTC', task: null, scheduleTitle: null,
+    brief, sources: [], leftOut: false, turns: [],
+    facts: { ownerName: 'your owner', agentName: brief?.name ?? 'Assistant', timeZone: 'UTC', task: null, scheduleTitle: null,
       place: run.projectId !== null ? { kind: 'space', spaceId: run.projectId, spaceName: null, conversationId: run.conversationId, task: null }
         : run.dmId !== null ? { kind: 'dm', others: [], thread: run.dmThreadRootId !== null } : { kind: 'chat' } },
   };
@@ -290,7 +293,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       try {
         // The model is the one recorded when the request was sent (F-027 AST-11), never the owner's current choice.
         const model = runtimeModelFlag(run.model);
-        const read = await uow.run((ports) => runtimeContext(ports, run)).catch(() => unreadContext(run));
+        const read = await uow.run((ports) => runtimeContext(ports, run))
+          .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
         // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
         const prompt = runtimeBrief({
           engine: 'runtime', kind: run.kind, silent: run.silent, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,

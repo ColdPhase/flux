@@ -137,7 +137,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal((await row(started.run.id)).ai_epoch !== null, true, 'a space run is admitted under the space\'s AI epoch');
     await finish(started.run.id);
     assert.match(sentToTheModel(), new RegExp(TOKENS.space), 'the main conversation is what its roots say');
-    assert.match(sentToTheModel(), new RegExp(`<message ref="S\\d+" thread="Camera fails below 5 lux ${TOKENS.space}" from="pai-hubert"`), 'a message names the thread it belongs to (#1064)');
+    assert.match(sentToTheModel(), new RegExp(`<message ref="S\\d+" thread="Camera fails below 5 lux ${TOKENS.space}" from="pai-kai"`), 'a message names its thread when the thread changes (#1064)');
     assert.equal(sentToTheModel().includes(TOKENS.otherSpace), false);
     // The route of the space's main conversation, and a person outside the space.
     // The route exists and reaches the same use case (this API composes no provider, so it answers that, not that the place is unknown).

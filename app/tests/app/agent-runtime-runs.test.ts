@@ -229,6 +229,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.ok(run.envNames.includes('FLUX_RUN_TOKEN'));
     assert.equal(run.persist, false);
     assert.ok(run.prompt.includes('What do the notes say about the sensor?') && run.prompt.includes(place.id), 'the prompt goes on stdin with the place');
+    assert.ok(run.prompt.startsWith('You are My assistant, the AI agent of rt-run-owner in Flux') && run.prompt.includes('<place space="Lamp sensor" conversation="thread"/>'), 'the CLI\'s brief names the agent, its owner and the space (#1064)');
     assert.ok(!run.argv.some((arg) => /^eyJ/.test(arg)), 'the token is never an argument');
     for (const entry of recorded.filter((e) => e.event === 'tool_result')) assert.equal(entry.isError, false, String(entry.name));
     // No transcript and no MCP configuration remain; no file holds the token.

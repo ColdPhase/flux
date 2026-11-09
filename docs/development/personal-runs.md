@@ -428,14 +428,16 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
 
 - **System**: who the agent is and whose (names the owner gave: the agent's and their own), where it was asked (the kind of place only),
   the time now in the owner's time zone (`personTimeZone`, the zone a schedule they ask for runs in); who reads the answer and so what it may
-  use (AG-4, C-37); how to answer (in the asker's language, short plain text as the card shows it, `[S<n>]` marks where sources are
-  numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off as what the
-  conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the web rule of C-30 when
-  `flux_read_web` is listed; the schedule block for `/ai` in a space and the result block for a schedule's run; what is data; and last what
-  the owner gave the agent (C-7, C-8).
+  use of Flux (AG-4, C-37); how to answer (in the asker's language, short plain text as the card shows it, written so the asker can post it
+  as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, `[S<n>]` marks where
+  sources are numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
+  as what the conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the
+  no-posting rule of #1063 (`NO_POSTING_LINE`) whenever the run has change tools, the web rule of C-30 when `flux_read_web` is listed; the
+  schedule block for `/ai` in a space and the result block for a schedule's run; what is data, with what a message's `via`, `kind`,
+  `edited` and "(agent)" mean; and last what the owner gave the agent (C-7, C-8).
 - **Request**: `<place …/>` with the names of the space, the task or the DM's people; for a task run the whole task (outcome, done-when,
   prerequisites, due day, blocker); the space's open tasks and the place's messages, each with its mark, author, time, `kind`, `via`,
-  `edited`, attachments by name, and in a space's main conversation the opening words of its thread; a line that says when older messages
+  `edited`, attachments by name, and in a space's main conversation the opening words of its thread where the thread changes; a line that says when older messages
   were left out (the window reads one message more than it gives, and the fit that drops the oldest ones says so too); the chat's latest
   exchanges; then the request, the schedule's instruction, the task's assignment or the other agent's question, last.
 - **Rules of the text.** Nothing other people wrote is in `system`: a space's or task's name, a message, a DM's other people. Content is
@@ -445,7 +447,8 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
 - **The engines differ only in what each can do.** An API-key run is given the place's messages and open tasks as numbered sources it
   cites. The CLI reads a space itself with the Flux tools (it is told the ids and where to start), and is given a DM's messages and a chat's
   turns, without marks. The worker reads the brief's names for the CLI after the same place checks as an API-key run's read
-  (`brief-facts.ts`); if that read fails, the brief goes without the names and the tools and the commit's checks still decide.
+  (`brief-facts.ts`); if that read fails, the brief goes without the names (the agent's instructions and memory are read on their own) and
+  the tools and the commit's checks still decide.
 
 What a run may read and change is decided by the server, never by the brief: the audience of each place, deleted messages, encrypted spaces,
 guests and the address rule are unchanged.

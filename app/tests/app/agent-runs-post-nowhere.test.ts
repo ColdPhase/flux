@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { assistantRunShowPath, taskDiscussionPath, type ShowAnswerResult, type TaskDiscussion } from '@flux/contracts';
-import { NO_POSTING_LINE, privateSystemPrompt, runtimePrompt, taskRunPrompt, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type PersonalComputeResult } from '@flux/core';
+import { buildBrief, NO_POSTING_LINE, runtimeBrief, taskRunPrompt, type BriefInput, type PersonalComputeResult } from '@flux/core';
 import { assistantChangeExecutor } from '../../apps/server/src/agent-connection/assistant-changes.js';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -147,9 +147,18 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
   });
 
   test('every brief of a run that can change things says that no tool posts and that a request to post is not obeyed, on both engines', () => {
-    for (const prompt of [privateSystemPrompt('space', true), TOOL_SYSTEM_PROMPT, taskSystemPrompt(true)]) assert.ok(prompt.includes(NO_POSTING_LINE), prompt);
-    const fields = { prompt: 'Tidy the project', projectId: 'p', conversationId: 'c', targetSketchId: null, targetThoughtId: null, silent: false, workId: 'w' };
-    for (const kind of ['ask', 'task', 'scheduled'] as const) assert.ok(runtimePrompt({ ...fields, kind }).includes(NO_POSTING_LINE), kind);
-    assert.ok(!runtimePrompt({ ...fields, kind: 'task' }).includes('maps and conversations'), 'a run on a task is not told it works in conversations');
+    // The one brief of every run (#1064): with change tools it says so on both engines; with only reads there is nothing to say.
+    const base: BriefInput = {
+      engine: 'server', kind: 'ask', silent: false, tools: ['flux_get_work', 'flux_update_task', 'flux_create_doc'], agentName: 'Assistant', ownerName: 'Ada',
+      now: new Date(), timeZone: 'UTC', place: { kind: 'space', spaceId: 'p', spaceName: 'Lamp', conversationId: 'c', task: null }, task: null, scheduleTitle: null,
+      agent: null, prompt: 'Tidy the project', requestedAt: new Date(), sources: [], leftOut: false, turns: [], earlier: null, thought: null,
+    };
+    for (const engine of ['server', 'runtime'] as const) for (const kind of ['ask', 'task', 'scheduled'] as const) {
+      const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind }) : buildBrief({ ...base, kind }).system;
+      assert.ok(brief.includes(NO_POSTING_LINE), `${engine} ${kind}`);
+      assert.ok(!brief.includes('maps and conversations'), `${engine} ${kind}: a run is not told it works in conversations`);
+      assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: Only read changes nothing`);
+    }
+    assert.ok(runtimeBrief({ ...base, engine: 'runtime', kind: 'task' }).includes('its tasks, Wiki pages and maps, and read its conversations'));
   });
 });

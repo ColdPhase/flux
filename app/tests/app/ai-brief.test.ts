@@ -181,6 +181,17 @@ describe('the brief of every run (#1064)', () => {
       if (input.place.kind === 'space' && input.tools.length) assert.ok(system.includes(`space id ${SPACE_ID}`), `${name}: the tools get the space`);
     }
     assert.match(buildBrief(CASES['space-thread-only-read']!).system, /Ada Nowak set what you may do to Only read/);
+    // Review of #1077: general knowledge is not forbidden by "use only"; an answer is written so it can be posted as it is; the marks are explained.
+    for (const input of [base, dm]) {
+      const { system } = buildBrief(input);
+      assert.match(system, /So, of Flux, use only /);
+      assert.ok(system.includes('Ada Nowak may post your answer as their own message, so write it as they could send it: no "You asked…" and no lead-in such as "Here is a reply:". When asked to draft a message, give only the text to send.'));
+      assert.ok(system.includes('In <conversation>, via="…" marks an AI answer its author chose to post, not their own words;'));
+    }
+    assert.match(buildBrief(chat).system, /<chat> holds your earlier exchanges with Ada Nowak, as context for this message\./);
+    assert.ok(!buildBrief(CASES['runtime-space-thread']!).system.includes('via="…"'), 'no legend where no conversation is given');
+    const main = buildBrief(CASES['space-main-conversation']!).request;
+    assert.equal(main.match(/<message ref="S\d+" thread="/g)?.length, 2, 'a thread is named when it changes, not on every message');
     assert.match(buildBrief(base).system, /<schedule>/, '/ai in a space may prepare a schedule');
     assert.ok(!/<schedule>/.test(buildBrief(dm).system) && !/<schedule>/.test(buildBrief(scheduled).system), 'nowhere else (AG-9: a schedule never makes one)');
     assert.match(buildBrief(scheduled).system, /reply exactly: Done: nothing to change/);
