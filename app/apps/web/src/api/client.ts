@@ -33,7 +33,34 @@ export interface ApiRequestInit {
    * all want the latest answer and none relies on its own request being ordered against another's (#850): the project shell's.
    */
   share?: boolean;
+  /**
+   * With `share`: how long (ms) a successful answer is kept and given to later callers of the same address without a request (#862: a
+   * navigation asked for the same people, project and needs-you from its layout, its loaders and its components, one after the other).
+   * A kept answer is forgotten on any write, any event of the live stream, a resync, sign-out, a refusal that says access changed, and
+   * when the browser comes back online or the person comes back to the window (`forgetKeptReads`), so it is never older than the last
+   * thing that could have changed it.
+   */
+  keep?: number;
+  /**
+   * A write that cannot change what any kept read holds (where the person stopped reading, which messages they saw): it leaves kept answers
+   * and shared reads alone. Every other write forgets them.
+   */
+  leavesReads?: true;
+  /**
+   * With `keep`: a refresh the person or the stream asked for (focus, a poll, an event, a change of the Inbox), or the entry into a space,
+   * does not take a kept answer; it reads, other callers of the address join it, and it keeps what it gets for the next view that opens.
+   */
+  fresh?: boolean;
+  /**
+   * With `keep`: the answer is given only on the page where it was read. For the person's own list that changes without an event
+   * reaching this tab and holds things to act on (the Inbox, whose item may have been handled on another device): the sidebar and the
+   * view that ask one after the other share one read, and the next page reads again.
+   */
+  onePage?: true;
 }
+
+/** How long the reads that every view of a space or the shell asks for are kept (#862). */
+export const KEEP_MS = 30_000;
 
 // A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
 // its effects; each `fetch` call costs milliseconds on the main thread of a phone, and made in the commit's own task they
@@ -56,11 +83,42 @@ const nextTask = () => new Promise<void>((resolve) => {
 interface SharedRead { answer: Promise<Answer>; callers: number; abort: AbortController }
 interface Answer { ok: boolean; status: number; statusText: string; text: string }
 const inFlight = new Map<string, SharedRead>();
+/** Answers kept for later callers (`keep`), by address, and the generation that a write, an event or sign-out advances. */
+const kept = new Map<string, { answer: Answer; until: number; page: string | null }>();
+/** The page an answer was read on, for `onePage`. */
+const page = () => (typeof location === 'undefined' ? '' : location.pathname);
+let keptGeneration = 0;
+
+/**
+ * Forgets every kept answer and every shared read in flight (#862): a write, an event of the live stream, a resync or sign-out could have
+ * changed what they hold. An answer that arrives after this is not kept either.
+ */
+export function forgetKeptReads() {
+  kept.clear();
+  endSharedReads();
+  keptGeneration += 1;
+}
+
+// What may have changed unseen is read again rather than taken from a kept answer (#862): the browser coming back online, the person
+// coming back to the tab or the window. Registered when the client loads, so before any view's own refresh on the same event.
+if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+  window.addEventListener('online', forgetKeptReads);
+  window.addEventListener('focus', forgetKeptReads);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') forgetKeptReads(); });
+}
+
+/**
+ * A refusal that says access changed (signed out, the place is gone or hidden, locked): nothing kept from before it is still to be shown.
+ * Not a 403, which refuses what a role may not do in a place the person still opens (a guest's read of the members, an AI read in a
+ * space whose AI is off); a change of role reaches the person as an event.
+ */
+const ACCESS_CHANGED = new Set([401, 404, 410, 423]);
 
 /**
  * Nothing in flight is joined any more: a read asked for from now on is a request of its own. Called when something changed that a read
  * already on its way may not show: a write of this tab (`send`), and an event of the live stream, which is another tab's write or another
- * person's change (the stream, #1023). The callers already waiting keep their answer.
+ * person's change (the stream, #1023); both through `forgetKeptReads`, which forgets the kept answers too (#862). The callers already
+ * waiting keep their answer.
  */
 export function endSharedReads() {
   inFlight.clear();
@@ -78,8 +136,8 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
   // after `beforeunload` (#758, #759: working-agents, needs-you and the other shell reads of a page that is left).
   if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   // A write ends the sharing: a read that started before it must not answer a caller that asks after it (nor one that started while it ran).
-  const writes = !!init.method && init.method !== 'GET';
-  if (writes) endSharedReads();
+  const writes = !!init.method && init.method !== 'GET' && !init.leavesReads;
+  if (writes) forgetKeptReads();
   const attempt = async (): Promise<Response> => {
     // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
     // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
@@ -112,12 +170,14 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
     }
     return response;
   } finally {
-    if (writes) endSharedReads();
+    if (writes) forgetKeptReads();
   }
 }
 
 /** The `ApiError` of a failed response, read from its JSON error body when it has one. */
 export function responseError(response: Pick<Response, 'status' | 'statusText'>, data: unknown): ApiError {
+  // The next read of a kept address asks the server, so the place that shows it hears the same refusal (a locked workspace's panel, #655).
+  if (ACCESS_CHANGED.has(response.status)) forgetKeptReads();
   const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
   const code = typeof record.code === 'string' ? record.code : null;
   const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
@@ -138,9 +198,9 @@ async function read(path: string, init: ApiRequestInit): Promise<Answer> {
 
 /**
  * Reads that ask to share (`share: true`) and are of the same address in flight together are one request (#850, #862: a navigation asked
- * for the same project and people up to four times, from its route loaders and its components). Only what is in flight is shared, never an
- * answer that has already arrived, and a write ends the sharing, so nothing is served stale; each caller parses its own copy of the text,
- * and aborting stops the request only when every caller that wanted it has aborted. Reads that do not ask are never shared: several
+ * for the same project and people up to four times, from its route loaders and its components). Sharing alone gives only what is in flight,
+ * never an answer that has already arrived (that takes `keep`), and a write ends the sharing, so nothing is served stale; each caller parses
+ * its own copy of the text, and aborting stops the request only when every caller that wanted it has aborted. Reads that do not ask are never shared: several
  * views hold or reorder their own reads and need each answer to be its own.
  */
 function startSharedRead(path: string): SharedRead {
@@ -175,7 +235,20 @@ function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const plainRead = init.share === true && (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
-  const response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
+  const keep = plainRead && init.keep ? init.keep : 0;
+  // A fresh read drops what was kept, so a caller that asks while it is on its way joins it instead of taking the older answer.
+  if (keep && init.fresh) kept.delete(path);
+  const held = keep && !init.fresh ? kept.get(path) : undefined;
+  let response: Answer;
+  if (held && held.until > Date.now() && (held.page === null || held.page === page())) {
+    if (init.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
+    response = held.answer;
+  } else {
+    const generation = keptGeneration;
+    response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
+    // Kept only when nothing could have changed it while it was read.
+    if (keep && response.ok && generation === keptGeneration) kept.set(path, { answer: response, until: Date.now() + keep, page: init.onePage ? page() : null });
+  }
   let data: unknown = null;
   if (response.text) {
     try { data = JSON.parse(response.text); } catch { data = null; }

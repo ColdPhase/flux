@@ -20,7 +20,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | Idle: at most 100 database statements a minute | 122 | 95 | met, narrowly, see [Idle statements](#idle-statements) |
 | An open tab: at most 4 requests a minute | not measured here | not changed | not met, the client's polling is the data-layer batch |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
-| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4 | not met for four moves, see [Navigation](#navigation) |
+| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4 | not met for three moves, see [Kept reads](#kept-reads-862-the-data-layers-first-part) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files | not met, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
@@ -140,6 +140,51 @@ Getting to 8 means loading `docs`, `sketches`, the members, `personal-assistant`
 "space shell" read), asking `needs-you` and `return` once per move instead of from each place that shows them, and reading
 the project and its people once from the layout route instead of from each view's loader: the client's data layer. The
 test fails any move that costs more than it does today, so it cannot get worse meanwhile.
+
+### Kept reads (#862, the data layer's first part)
+
+**Changed.** A read that shares (`share: true`) may also ask to be kept (`keep`, 30 s for the reads below): a later caller
+of the same address gets the answer that arrived without a request. This builds on #1004's sharing rather than replacing
+it: the same in-flight entry, now with a short memory. What is kept is forgotten on any write (a write that cannot change
+a kept read, `leavesReads`, leaves it: where the person stopped reading, which messages they saw), on any event of the
+live stream, on a resync, at sign-out, on a refusal that says access changed (401, 404, 410, 423: a locked workspace's
+place then shows its panel; not a 403, which refuses what a role may not do, such as a guest's read of the members), and
+when the browser comes back online or the person comes back to the window; an answer read while a write ran is not kept.
+Entering a space reads the space itself (`fresh`), never a kept answer, and the views' own loaders join that read, so Back into
+a space a person lost says it is no longer available (#592). A person removed from the company or an encrypted space, or who
+left it elsewhere, also hears of it: `workspace.access_ended.v1` reaches them alone, and their tab forgets every kept answer and
+reads its shell again. A person removed from a space also hears of it: `project.access_ended.v1` reaches them alone, by the space's
+id ([access policy](access-policy.md)), so it leaves their sidebar at once and an open place of it lands on the project list. The
+Inbox, which changes without an event when an item is handled on another device, is kept for one page only (`onePage`): the
+sidebar's count and the page's queue share one read, and the next page reads again. The agents' unread dots are kept as the
+rest: a chat read on another device may leave a dot until the person comes back to this window or 30 s, a dot and not an
+item to act on. A refresh the person or the stream asked for (focus, a poll, an event, a change of
+the Inbox) passes `fresh`: it reads, and keeps what it gets for the next view. Kept: the project, its people, the
+workspace members, the space's docs, `needs-you` (the sidebar count and the Inbox or Home queue) and `agent-chats` (the
+agents' unread dots). No library: about 40 lines in `api/client.ts`, unit-tested in `api-client-coalescing.test.ts`.
+
+**Observed.** `test_navigation_requests`, Chromium, on `main` at `dffb6cf79` (after #1004, and with the agents' chat
+dots of #1012, one read more on every move) and then with kept reads (2026-11-08, same host, one after the other; `needs-you`
+is read once on every page, so each move has one request for it, and entering a space reads the space itself):
+
+| Move | `main` | Kept reads |
+| --- | ---: | ---: |
+| Home → Inbox | 4 (`needs-you` twice) | 2 |
+| Inbox → Home | 5 (`needs-you` twice) | 3 |
+| Home → a space | 20 (the people three times) | 15 |
+| Conversation → Tasks | 10 | 7 |
+| Tasks → Map | 5 | 4 |
+| Map → Wiki | 9 (the project and the docs twice each) | 5 |
+| Wiki → Conversation | 16 (the people twice) | 15 |
+| Conversation → another space | 19 (the people twice) | 16 |
+| Another space → My tasks | 5 | 4 |
+
+No move repeats an address now. **Inferred.** Three moves stay over 8: entering a space and the Wiki back to its
+Conversation read a dozen distinct things a conversation shows (`assistant-runs`, `personal-assistant`,
+`agent-questions`, `conversation-roots`, `materials`, `object-notices`, `task-notices`, `work-associations`,
+`work-summary`, `sketches`, `return`), and the Wiki's own writes and events forget the kept project and people on the way
+back (with `needs-you` and `agent-chats`). The next parts of the data layer forget only the entries an event changes (in place of all of them) and fold the
+conversation's reads together.
 
 ## First screen
 

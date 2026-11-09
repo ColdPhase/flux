@@ -11,15 +11,17 @@ import { getNeedsYou } from './needsYou';
 export function useInboxDot(identity: string, pathname: string): number {
   const [unread, setUnread] = useState<{ identity: string; count: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const refresh = useCallback(() => {
-    void getNeedsYou().then((queue) => setUnread({ identity, count: queue.count }), () => undefined);
+  const read = useCallback((fresh: boolean) => {
+    void getNeedsYou(undefined, fresh).then((queue) => setUnread({ identity, count: queue.count }), () => undefined);
   }, [identity]);
+  // A refresh (focus, an event, a change of the Inbox, the two-minute poll) reads; a new page shares one read with its own queue (#862).
+  const refresh = useCallback(() => read(true), [read]);
   const soon = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(refresh, 1500);
   }, [refresh]);
 
-  useEffect(() => { refresh(); }, [refresh, identity, pathname]);
+  useEffect(() => { read(false); }, [read, identity, pathname]);
   useEffect(() => {
     const onFocus = () => refresh();
     window.addEventListener(INBOX_CHANGED, refresh);

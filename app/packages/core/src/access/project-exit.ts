@@ -1,9 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { eventAudience, principalKey, recordEvent } from '../events.js';
+import { eventAudience, principalKey } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { RuleViolationError } from './errors.js';
-import { requireAnotherSpaceAdmin } from './grants.js';
+import { recordGrantRevoked, requireAnotherSpaceAdmin } from './grants.js';
 import { enforce, evaluateProject } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 
@@ -48,6 +48,7 @@ export async function leaveProject(principal: Principal, projectId: string, db: 
     if (!grant) throw new RuleViolationError('You are in this space through the company, not added to it, so there is nothing to leave', 'NOT_ADDED');
     await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grant.id);
-    await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId: grant.id });
+    // Their other tabs and devices hear of it too (#862).
+    await recordGrantRevoked(ports, tx, principal, project!.workspaceId, grant);
   });
 }

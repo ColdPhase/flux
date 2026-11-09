@@ -1,7 +1,7 @@
 import type { AddMemberCommand, ChangeRoleCommand, RemovedPerson, WorkspaceMember } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
-import { eventPorts, requireRoleAuthority } from './common.js';
+import { eventPorts, recordAccessEnded, requireRoleAuthority } from './common.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
 import { dropUnlockPassword, endPlacesInEncryptedSpaces, lockKeysForManagerChange, type MemberPorts } from './encrypted-places.js';
 import { requireSpacePerson } from './space-person.js';
@@ -134,6 +134,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     await workspaces.recordRemoved(workspaceId, userId, principal.id);
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
+    await recordAccessEnded(ports, tx, principal, workspaceId, userId);
     // Leaving the company ends a person's place in its encrypted spaces too, with the same key change as leaving one (C-24).
     await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);
   });

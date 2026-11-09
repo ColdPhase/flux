@@ -45,7 +45,7 @@ export const olderDmReplies = (id: string, rootId: string, beforeSequence: numbe
 export const sendDmReply = (id: string, rootId: string, command: SendDmMessageCommand) => request<DmMessage>(dmRepliesPath(id, rootId), { method: 'POST', body: command });
 /** Viewing receipts (#534): what this person saw, and who saw the runs of their own messages. */
 export const observeDmMessages = (id: string, messageIds: string[]) => request<ObserveMessagesResult>(dmObservationsPath(id), { method: 'POST', body: { messageIds } });
-export const dmReceipts = (id: string, runs: string[][], signal?: AbortSignal) => request<MessageReceiptsResult>(dmReceiptsPath(id), { method: 'POST', body: { runs }, signal });
+export const dmReceipts = (id: string, runs: string[][], signal?: AbortSignal) => request<MessageReceiptsResult>(dmReceiptsPath(id), { method: 'POST', body: { runs }, leavesReads: true, signal });
 /** An explicit excerpt copy into a project task (#537). */
 export const previewDmTaskCopy = (id: string, body: DmTaskCopyPreviewCommand, signal?: AbortSignal) => request<DmTaskCopyPreview>(dmTaskCopyPreviewPath(id), { method: 'POST', body, signal });
 export const copyDmToTask = (id: string, body: { messageId: string; excerpt: string; projectId: string; token: string; clientCommandId: string }, idempotencyKey: string) =>

@@ -17,7 +17,7 @@ import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, isOwned, type CreateRequest, type DetailsView, type OwnedPanel } from './shellContext';
-import { arrivalEntry, entryOf, onFlush, recall, remember as keepPlace, setCurrentEntry } from '../place/memory';
+import { arrivalEntry, entryOf, noteSpaceLost, onFlush, recall, remember as keepPlace, setCurrentEntry } from '../place/memory';
 import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
@@ -275,6 +275,16 @@ function AppLayoutContent() {
     if (event.kind === 'project.grant_set.v1' || event.kind === 'project.grant_revoked.v1') { revalidator.revalidate(); return; }
     // Someone's company role changed: a member made a guest has no AI from that moment (AG-2, #1034), so the shell reads its role again at once.
     if (event.kind === 'workspace.member_role_changed.v1') { revalidator.revalidate(); return; }
+    // This person was removed from a space, or left it elsewhere (#862): it leaves the sidebar, and a place of it that is open lands on the
+    // nearest place with one line saying why (#592).
+    if (event.kind === 'project.access_ended.v1') { noteSpaceLost(event.objectId); revalidator.revalidate(); return; }
+    // This person's place in the company or an encrypted space ended (#862): the tab has forgotten what it kept (every event does), reads its
+    // shell again, and a place of one of its spaces that is open lands on the nearest place with one line, as above.
+    if (event.kind === 'workspace.access_ended.v1') {
+      for (const project of projects) if (project.workspaceId === event.objectId) noteSpaceLost(project.id);
+      revalidator.revalidate();
+      return;
+    }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);

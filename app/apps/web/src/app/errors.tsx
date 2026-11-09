@@ -7,7 +7,7 @@ import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
 import { getProject } from '../project/api';
-import { useReturning } from '../place/memory';
+import { spaceLost, useReturning } from '../place/memory';
 import { isWorkspaceLocked, lockedWorkspaceId } from '../encryption/api';
 import { LockedSpace } from '../encryption/LockedSpace';
 
@@ -28,7 +28,10 @@ export function RouteErrorPage() {
   // Back, Forward or the way back to a project place that is gone or no longer allowed: not an error page (#592).
   const revoked = (error instanceof ApiError || isRouteErrorResponse(error)) && (error.status === 403 || error.status === 404);
   const pathname = useLocation().pathname;
-  const returning = useReturning() && revoked && /^\/(projects|materials|dm)\/[0-9a-f-]{36}/i.test(pathname);
+  // Or a space the person was just removed from while one of its places was open (#862): the same calm landing, not an error page.
+  const space = /^\/projects\/([0-9a-f-]{36})/i.exec(pathname)?.[1];
+  const back = useReturning();
+  const returning = revoked && (back ? /^\/(projects|materials|dm)\/[0-9a-f-]{36}/i.test(pathname) : !!space && spaceLost(space));
   // "This page will work again once the server answers": when the device is back online, and every
   // 10 s while the page is visible, it tries again by itself.
   useEffect(() => {

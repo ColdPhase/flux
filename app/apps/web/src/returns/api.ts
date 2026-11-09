@@ -8,7 +8,7 @@ export function getReturnSummary(place: ReturnPlace, signal?: AbortSignal) {
   return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal }).then(noteLockedWorkspaces);
 }
 export const saveReturnPoint = (place: ReturnPlace, mark: string | null) =>
-  request<ReturnPoint>(RETURN_POINTS_PATH, { method: 'PUT', body: { place, mark } });
+  request<ReturnPoint>(RETURN_POINTS_PATH, { method: 'PUT', body: { place, mark }, leavesReads: true });
 
 /** Where an item's source opens. Work, decisions and results open in Details on their project. */
 export function sourceHref(source: ReturnSource) {

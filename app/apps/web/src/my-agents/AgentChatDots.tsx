@@ -16,10 +16,12 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
   const open = pathname.match(/^\/agents\/([^/]+)/)?.[1] ?? null;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const last = useRef(0);
-  const refresh = useCallback(() => {
+  const read = useCallback((fresh: boolean) => {
     last.current = Date.now();
-    void listAgentChats().then((chats) => setUnread({ identity, agents: new Set(chats.filter((chat) => chat.unread > 0).map((chat) => chat.agentId)) }), () => undefined);
+    void listAgentChats(undefined, fresh).then((chats) => setUnread({ identity, agents: new Set(chats.filter((chat) => chat.unread > 0).map((chat) => chat.agentId)) }), () => undefined);
   }, [identity]);
+  // A refresh (focus, an event, the poll) reads; a move to another page may take the kept answer (#862).
+  const refresh = useCallback(() => read(true), [read]);
   // The worker writes a report shortly after the run ends, and an open chat reads itself: look again after a short pause. A running agent
   // records an event for each step (the stream carries identifiers only, so a report cannot be told from a step), so looks are at most one
   // every ten seconds: one is always pending, never one per event.
@@ -28,7 +30,7 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
     const wait = Math.max(1200, last.current + 10_000 - Date.now());
     timer.current = setTimeout(() => { timer.current = null; refresh(); }, wait);
   }, [refresh]);
-  useEffect(() => { refresh(); }, [refresh, pathname]);
+  useEffect(() => { read(false); }, [read, pathname]);
   useEffect(() => {
     // A hidden tab asks nothing; it looks again when it is shown.
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };

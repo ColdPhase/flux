@@ -4,6 +4,7 @@ export {
   authorize,
   assertAuthorized,
   authorizeEvent,
+  authorizeDelivery,
   eventResource,
   enforce,
   accessName,

@@ -1,5 +1,5 @@
 import type { IncomingHttpHeaders } from 'node:http';
-import { audienceKey, authorizeEvent, eventResource, isUuid, type Principal, type StreamAudienceRepository } from '@flux/core';
+import { audienceKey, authorizeDelivery, authorizeEvent, eventResource, isUuid, type Principal, type StreamAudienceRepository } from '@flux/core';
 import { accessReader, type Executor } from '@flux/db';
 import type { ApiError, StreamEvent, StreamMessage } from '@flux/contracts';
 import type { CursorCodec } from './cursor.js';
@@ -90,8 +90,8 @@ export async function drain(sources: DeliverySources, subscription: Subscription
       const resource = eventResource(row);
       if (count) work.authorizations += 1;
       // Final check: the row says the recipient could read the event when it was fanned
-      // out; membership, grants and visibility are read again now.
-      if (resource && await authorizeEvent(subscription.principal, row, accessReader(sources.db))) {
+      // out; membership, grants and visibility are read again now (the end of a person's access still reaches them, #862).
+      if (resource && await authorizeDelivery(subscription.principal, row, accessReader(sources.db))) {
         // Revalidate right before each delivery: a revoked session gets nothing more.
         if (!(await target.revalidate())) return;
         subscription.visible = row.seq;

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
-import { recordEvent } from '../events.js';
-import type { Database, Principal } from '../types.js';
+import { eventAudience, principalKey, recordEvent } from '../events.js';
+import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
 import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, isUuid } from './policy.js';
@@ -87,6 +87,25 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
     if (!grant) throw new NotFoundError('Grant', 'GRANT_NOT_FOUND');
     await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grantId);
-    await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });
+    await recordGrantRevoked(ports, tx, principal, project!.workspaceId, grant);
   });
 }
+
+/**
+ * The events of a removed grant (#862). `project.grant_revoked.v1` goes to the space's people, decided after the grant is gone.
+ * The person it removed can no longer read the space, so they would hear nothing and their open tabs would keep showing it:
+ * `project.access_ended.v1` goes to them alone, by name, and the stream's final check lets this one kind through to its own
+ * audience rows (`authorizeDelivery`). Someone who still opens the space through the company lost only the grant and is told by
+ * the first event. Like every event they carry the space's id and their kind, nothing else.
+ */
+export async function recordGrantRevoked(ports: Pick<AccessPorts, 'access' | 'events'>, tx: Executor, principal: Principal, workspaceId: string, grant: GrantRecord) {
+  const events = eventPorts(ports, tx);
+  const recipients = await eventAudience(events, { kind: GRANT_REVOKED, workspaceId, objectId: grant.projectId });
+  const removed = principalKey({ kind: 'human', id: grant.userId });
+  const event = { objectId: grant.projectId, actorId: principalKey(principal), workspaceId };
+  await events.repository.insert({ id: randomUUID(), kind: GRANT_REVOKED, data: { grantId: grant.id }, ...event }, recipients);
+  if (!recipients.includes(removed)) await events.repository.insert({ id: randomUUID(), kind: ACCESS_ENDED, data: {}, ...event }, [removed]);
+}
+
+const GRANT_REVOKED = 'project.grant_revoked.v1';
+const ACCESS_ENDED = 'project.access_ended.v1';
