@@ -1,6 +1,6 @@
 import type { McpServer, ToolAnnotations, ToolCallback } from '@modelcontextprotocol/server';
 import { z } from 'zod';
-import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentMayDo, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
+import { ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_UNIT_CREATE_VIEW, RUN_NEVER_POSTS, AGENT_PEER_REQUEST_CLASSES, AGENT_TOOLS, type AgentMayDo, type AgentOperation, type AgentPeerRequestClass, type AgentToolAccess, type AgentToolCapability } from '@flux/contracts';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 
@@ -25,8 +25,6 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_move_thoughts: 'Move thoughts on a map, each at the version you last read.',
   flux_link_thoughts: 'Link two thoughts of one map.',
   flux_unlink_thoughts: 'Remove one link (deleting always waits for your owner\'s OK).',
-  flux_start_conversation: 'Start a conversation in this project.',
-  flux_reply_in_conversation: 'Reply in one conversation of this project.',
   flux_create_unit: 'Hand one task to one of your owner\'s own agents (execute, review or plan) at the task version you last read. The authority is this run: '
     + 'there is no bootstrap. The agent still has to claim it itself. It may need your owner\'s OK first; the result then says so.',
 };
@@ -51,11 +49,11 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
 };
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 /**
- * The change tools a local client shares with a run, and the co-work tools that can give something to another person's client: a unit
- * assigned or transferred to it waits for the owner's OK like a task for someone else, and taking back a task it created
- * is a deletion, which always waits (C-18). Their other uses do not wait.
+ * The change tools a local client shares with a run, its own posting tools (which no run has, #1063), and the co-work tools that can
+ * give something to another person's client: a unit assigned or transferred to it waits for the owner's OK like a task for someone
+ * else, and taking back a task it created is a deletion, which always waits (C-18). Their other uses do not wait.
  */
-const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_transfer_unit', 'flux_undo_task_creation']);
+const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, ...RUN_NEVER_POSTS, 'flux_transfer_unit', 'flux_undo_task_creation']);
 const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
   + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };

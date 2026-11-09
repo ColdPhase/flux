@@ -439,7 +439,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       ['flux_move_thoughts', { mapId: map.id, moves: moved }],
       ['flux_link_thoughts', { mapId: map.id, fromId: to.id, toId: from.id }],
       ['flux_unlink_thoughts', { mapId: map.id, linkId: link.id }],
-      ['flux_reply_in_conversation', { conversationId: talk.id, message: { body: 'Changed from outside' } }],
       ['flux_create_unit', { taskId: task.id, unitKey: 'outside', expectedTaskVersion: task.version, assignmentConnectionId: await scene.assistantConnectionId(), parent: null, peerRequestClass: 'execute' }],
       ['flux_record_result', finishes],
       // Something of another space named through this place's own map.
@@ -452,7 +451,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       ['flux_create_task', { ...elsewhere, task: { title: 'Outside the place' } }],
       ['flux_create_doc', { ...elsewhere, doc: { title: 'Outside the place' } }],
       ['flux_create_map', { ...elsewhere, title: 'Outside the place' }],
-      ['flux_start_conversation', { ...elsewhere, message: { body: 'Outside the place' } }],
       ['flux_propose_decision', { ...elsewhere, decision: { title: 'Outside the place' } }],
       ['flux_record_result', { ...elsewhere, ...finishes }],
     ];

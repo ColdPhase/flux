@@ -6,15 +6,23 @@ import type { AgentMayDo } from './agent-proposals.js';
  * is the authority. Not listed: undo of a created task, the question card, and every other co-work unit tool (claim, renew,
  * release, complete, transfer, requests). The own-agent hand-off `flux_create_unit` is listed with its own run-private input
  * (`assistant-unit-create/v1`) and its own bounded adapter. Never listed (F-036 AG-3 "Never possible"): approving, access,
- * decisions' acceptance and anything outside the run's place have no tool at all.
+ * decisions' acceptance and anything outside the run's place have no tool at all, and neither has posting in a conversation
+ * (`RUN_NEVER_POSTS`, #1063).
  */
 export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision', 'flux_create_unit',
   'flux_create_doc', 'flux_update_doc', 'flux_delete_doc',
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
-  'flux_start_conversation', 'flux_reply_in_conversation',
 ] as const;
+
+/**
+ * The tools that post a message in a space's conversation. A run never gets them, whatever its "What it may do" (F-036 AG-3 "Never
+ * possible: posting in a conversation with other people", AG-8, C-39; #1063): its answer goes only where Flux puts it, the asker's card
+ * (which only their Show everyone posts), the task's discussion for a run on a task, or the agent's private chat. A local client, which
+ * only its person prompts, keeps them (LC-2, LC-3) and goes through the same change path.
+ */
+export const RUN_NEVER_POSTS = ['flux_start_conversation', 'flux_reply_in_conversation'] as const;
 
 /**
  * The exact Flux tools of one assistant run: every read tool the assistant is offered and, unless its "What it may do" is Only

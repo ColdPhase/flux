@@ -36,7 +36,9 @@ async function setup(label: string) {
 
 test('the assistant\'s tools are the reads, and the changes unless it only reads; reserved co-work tools and the project policy are absent', () => {
   const tools = assistantRunTools('act');
-  for (const name of ['flux_create_doc', 'flux_update_doc', 'flux_reply_in_conversation', 'flux_create_unit']) assert.ok(tools.includes(name), name);
+  for (const name of ['flux_create_doc', 'flux_update_doc', 'flux_create_unit']) assert.ok(tools.includes(name), name);
+  // No run posts in a conversation by itself (#1063): only its owner's Show everyone does.
+  for (const name of ['flux_reply_in_conversation', 'flux_start_conversation']) assert.ok(!tools.includes(name), name);
   for (const name of ['flux_bootstrap', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit', 'flux_transfer_unit']) assert.ok(!tools.includes(name), name);
   assert.ok(!AGENT_TOOLS.some((entry) => entry.id === 'resource:flux_project_policy'), 'no project agent policy (F-036)');
   assert.ok(!assistantRunTools('read').some((name) => ASSISTANT_RUN_EFFECT_TOOLS.includes(name as never)), 'Only read lists no change tool');

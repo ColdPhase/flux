@@ -75,6 +75,14 @@ export function callSummary(call: AssistantCall): AssistantCall {
 }
 const invalidated = (message: string) => new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', message);
 const outsideRunPlace = () => new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+/**
+ * A run posts in no conversation by itself (F-036 AG-3 "Never possible", AG-8, C-39; #1063): its answer goes only where Flux puts it (the
+ * asker's card, which only their Show everyone posts; the task's discussion for a run on a task; the agent's private chat). No run is
+ * listed a tool for it (`RUN_NEVER_POSTS`); this refuses a run's post whatever brings it here, a call or an Approve of a saved one.
+ * A local client's post (no run) goes on: its person prompts it (LC-2).
+ */
+const POSTS: ReadonlySet<string> = new Set(['conversation.create', 'conversation.reply']);
+const runPostsNowhere = () => new DomainError(403, 'RUN_POSTS_NOWHERE', 'An agent\'s run does not post in a conversation; its owner can post the answer with Show everyone');
 export const SKIPPED = 'ASSISTANT_CHANGE_SKIPPED';
 const isVersionConflict = (error: unknown) => error instanceof DomainError && error.status === 409
   && /VERSION_CONFLICT|STALE|CHANGED/.test(error.code) && error.code !== 'IDEMPOTENCY_CONFLICT';
@@ -440,6 +448,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
     const approval = claims.approval;
     // A run's change names the run; a local client's names its connection (the claims), and is the one with no run.
     const runId = claims.run?.id ?? approval?.runId ?? null;
+    if (runId && POSTS.has(operation)) throw runPostsNowhere();
     if (!call) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its tool call');
     // Anything outside the run's place has no tool to reach it.
     if (claims.run && input.projectId !== claims.run.projectId) throw outsideRunPlace();

@@ -188,6 +188,13 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   (`boundRunResult`): over 256 KiB per result or 8 MiB per run (safety bounds, #843), the result is replaced by an error and the
   run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
   The delivery fence rechecks the run, so nothing reaches a token after its run ended.
+- **No run posts (#1063).** An agent's run posts in no conversation by itself, whatever its "What it may do" (F-036 AG-3
+  "Never possible", AG-8, C-39). Its tools never include `flux_start_conversation` or `flux_reply_in_conversation`
+  (`RUN_NEVER_POSTS`; a local client keeps them, LC-2), and the change executor refuses a run's `conversation.create` and
+  `conversation.reply` with `RUN_POSTS_NOWHERE`, on its call and on an Approve of a saved one. Its answer reaches others only
+  where Flux puts it: the asker's Show everyone, the task's discussion for a run on a task, the agent's private chat. Every brief of
+  a run that can change things says so (`NO_POSTING_LINE`). `agent-runs-post-nowhere.test.ts` has a model obey a message in the
+  conversation that tells it to post, and nothing is posted.
 - **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
   token, lists the tools (MCP 2026-07-28, stateless HTTP) and offers the model only the minted ones; a
   refused call (401/403 or a JSON-RPC error) is an error result; `close` ends the token
