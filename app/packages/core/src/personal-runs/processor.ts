@@ -8,7 +8,7 @@ import type {
   AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
-import { isPrivateAnswer, WebSearchRefusedError } from './ports.js';
+import { isAsked, isPrivateAnswer, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
@@ -188,7 +188,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<Rea
     if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId && previous.dmId === run.dmId && previous.dmThreadRootId === run.dmThreadRootId) earlier = previous.answerBody;
   }
   // The private chat has no conversation to read: it remembers what was said in it last (the agent's memory is told in its brief).
-  const turns = run.projectId === null && run.dmId === null ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
+  const turns = run.projectId === null && run.dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
   return { sources, earlier, brief, turns, facts: await readBriefFacts(ports, run, brief), leftOut };
 }
 
@@ -381,7 +381,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     // One brief for every place and both engines (#1064); its request is rendered again as the fit drops old messages.
     const asked = new Date(now());
     const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief({
-      engine: 'server', kind: run.kind, silent: run.silent, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
+      engine: 'server', kind: run.kind, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
     });
     let fitted: Awaited<ReturnType<typeof fit>>;

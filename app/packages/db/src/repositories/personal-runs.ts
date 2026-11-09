@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
-import type { AgentMayDo } from '@flux/contracts';
+import type { AgentChatMessage, AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
@@ -36,8 +36,6 @@ const e = schema.assistantSettings;
 const ag = schema.agents;
 const r = schema.personalRuns;
 const k = schema.agentConnections;
-/** The same words as `nothingToChange` in core (a posting schedule never posts them). */
-const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
 const FINISHED_WORK: 'done'[] = ['done'];
 
@@ -293,20 +291,13 @@ export function personalRunRows(db: DbExecutor) {
       pagedRuns(and(eq(r.ownerUserId, ownerUserId), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`, !place ? undefined
         : 'conversationId' in place ? eq(r.conversationId, place.conversationId)
           : 'spaceId' in place ? and(eq(r.projectId, place.spaceId), isNull(r.conversationId))
+            // A chat lists what its owner said and the answers to it; a schedule's run is none of that: its result is a line of the chat (#858).
             : 'dmId' in place ? and(eq(r.dmId, place.dmId), place.dmThreadRootId === null ? isNull(r.dmThreadRootId) : eq(r.dmThreadRootId, place.dmThreadRootId))
-              : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId)))!, 'newest', window),
+              : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId), sql`${r.kind} <> 'scheduled'`))!, 'newest', window),
 
-    // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed. The report of a
-    // run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
+    // The report of a run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
     listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought')`,
-        sql`NOT (${r.kind} = 'scheduled' AND ${r.answerBody} ~* ${NOTHING_TO_CHANGE})`)!, 'committed', window),
-
-    async jobOfRun(runId: string) {
-      const [row] = await db.select({ id: schema.assistantJobs.id, title: schema.assistantJobs.title }).from(schema.assistantJobRuns)
-        .innerJoin(schema.assistantJobs, eq(schema.assistantJobs.id, schema.assistantJobRuns.jobId)).where(eq(schema.assistantJobRuns.runId, runId)).limit(1);
-      return row ?? null;
-    },
+      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought')`)!, 'committed', window),
 
     async names(userIds: string[]) {
       const unique = [...new Set(userIds)];
@@ -391,24 +382,25 @@ export function personalRunRows(db: DbExecutor) {
         body: company, kind: 'ai_used' }).onConflictDoNothing();
     },
 
-    async postAgentChat(line: { agentId: string; runId: string; key: string; body: string }) {
+    async postAgentChat(line: { agentId: string; runId: string | null; key: string; body: string; schedule?: AgentChatMessage['schedule'] }) {
       const t = schema.agentChatMessages;
       const [owner] = await db.select({ ownerUserId: e.ownerUserId, workspaceId: e.workspaceId }).from(e).innerJoin(ag, eq(ag.id, e.agentId)).where(and(eq(e.agentId, line.agentId), isNull(ag.revokedAt)));
       if (!owner) return null;
-      const [made] = await db.insert(t).values({ id: randomUUID(), workspaceId: owner.workspaceId, agentId: line.agentId, ownerUserId: owner.ownerUserId, runId: line.runId, key: line.key, body: line.body })
-        .onConflictDoNothing().returning();
+      const [made] = await db.insert(t).values({ id: randomUUID(), workspaceId: owner.workspaceId, agentId: line.agentId, ownerUserId: owner.ownerUserId, runId: line.runId, key: line.key, body: line.body,
+        schedule: line.schedule ?? null }).onConflictDoNothing().returning();
       const [row] = made ? [made] : await db.select().from(t).where(and(eq(t.agentId, line.agentId), eq(t.key, line.key)));
-      const counts = row ? (await undoableChanges([row.runId])).get(row.runId) : undefined;
-      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(), changes: counts?.standing ?? 0, undone: counts?.undone ?? 0, words: null, task: null }, created: !!made } : null;
+      const counts = row?.runId ? (await undoableChanges([row.runId])).get(row.runId) : undefined;
+      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(), changes: counts?.standing ?? 0, undone: counts?.undone ?? 0, words: null, task: null,
+        schedule: row.schedule ?? null }, created: !!made } : null;
     },
 
     async agentChatMessages(agentId: string, limit: number) {
       const t = schema.agentChatMessages;
       const rows = await db.select().from(t).where(eq(t.agentId, agentId)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit);
-      const counts = await undoableChanges([...new Set(rows.map((row) => row.runId))]);
+      const counts = await undoableChanges([...new Set(rows.flatMap((row) => (row.runId ? [row.runId] : [])))]);
       // The agent's words and the task chip are the use case's to add: they need the reader's access.
       return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(),
-        changes: counts.get(row.runId)?.standing ?? 0, undone: counts.get(row.runId)?.undone ?? 0, words: null, task: null }));
+        changes: row.runId ? counts.get(row.runId)?.standing ?? 0 : 0, undone: row.runId ? counts.get(row.runId)?.undone ?? 0 : 0, words: null, task: null, schedule: row.schedule ?? null }));
     },
 
     /** What came after the owner last opened a chat: the agent's answers (runs that ended in it) and its own lines. */

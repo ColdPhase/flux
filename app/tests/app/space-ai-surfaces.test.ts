@@ -165,14 +165,13 @@ describe('space AI switch: the remaining surfaces', () => {
 
   test('other spaces keep AI: the second scene\'s owner works normally while the first is blocked', async () => {
     await setSpaceAi(scene.place.id, 'blocked');
-    const asked = await other.owner.browser.request('POST', `/api/v1/workspaces/${other.ws.id}/assistants/${other.owner.id}/schedules`,
-      { body: { projectId: other.place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } });
-    assert.equal(asked.status, 201, asked.text);
+    const ask = (who: typeof other) => who.owner.browser.request('POST', `/api/v1/conversations/${who.thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'List what moved' } });
+    const asked = await ask(other);
+    assert.notEqual(code(asked.json), 'SPACE_AI_OFF', 'the other space is not refused by the first one\'s switch (the check stack has no provider, which is its own answer)');
     const space = expectStatus(await other.owner.browser.request('GET', `/api/v1/projects/${other.place.id}`), 200) as { ai: string };
     assert.equal(space.ai, 'allowed');
-    // The same person in the blocked space: the schedule is refused there.
-    const refused = await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/assistants/${scene.owner.id}/schedules`,
-      { body: { projectId: scene.place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } });
+    // The same person in the blocked space: the question is refused there.
+    const refused = await ask(scene);
     assert.deepEqual([refused.status, code(refused.json)], [403, 'SPACE_AI_OFF']);
   });
 });

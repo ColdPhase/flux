@@ -1,10 +1,10 @@
 export type { AgentSetup, AgentSetupChanges, AssistantIdentityPort } from './ports.js';
 export { assistantWaitLine, classifyAssistantChange, REFUSALS as ASSISTANT_REFUSALS, type AssistantChangeFacts, type AssistantWaitLineInput, type AssistantChangeOutcome } from './changes.js';
 export { changedParagraphs, fieldWords, restorableFields, undoSentence, type UndoPlan, type UndoRecord } from './undo.js';
-export type { JobRecord, JobRunRecord, AssistantJobRepository, AssistantJobInbox, AssistantJobPorts, AssistantJobUnitOfWork, NewJob, NewJobRun, JobChanges, JobRunChanges, SettledRunFacts } from './jobs-ports.js';
+export type { JobRecord, JobRunRecord, AssistantJobRepository, AssistantJobPorts, AssistantJobUnitOfWork, NewJob, NewJobRun, JobChanges, JobRunChanges } from './jobs-ports.js';
 export { accountKey, backgroundNote, createAssistantJobs, fireJob, guardText, prepareSchedule, runView as assistantJobRunView, titleFromText, uuidFrom, type AssistantJobUseCases, type JobDeps } from './jobs.js';
 export { cronWords, nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, shortClock, timeLabel, type CronFields } from './schedule.js';
 export { assistantTick, ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, type TickDeps, type TickResult } from './job-tick.js';
-export { clockIn, nothingToChange, resultOf } from './job-result.js';
+export { chatSchedule, clockIn, nothingToReport, resultOf } from './job-result.js';
 export { settleOne, settleOwnerRuns } from './job-settle.js';
 export { takeScheduleBlocks, type ScheduleRequest } from './schedule-block.js';

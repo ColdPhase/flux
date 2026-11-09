@@ -299,7 +299,6 @@ SCREENS = [
     Screen("settings-claude-code", "/settings/agents/claude-code"),
     Screen("settings-codex", "/settings/agents/codex"),
     Screen("settings-shortcuts", "/settings/shortcuts"),
-    Screen("settings-assistant", "/settings/assistant"),
     Screen("settings-ai-connections", "/settings/ai-connections"),
     Screen("connect-agent", "/connect-agent"),
     Screen("not-found", "/no-such-page-here"),

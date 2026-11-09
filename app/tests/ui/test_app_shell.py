@@ -457,7 +457,7 @@ class AppShellJourney(unittest.TestCase):
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My tasks", "My map"])
         # Personal settings have their own header; Home is not current there (#184 delta review S1).
-        for path, title in (("/settings/assistant", "Schedules"),):
+        for path, title in (("/settings/agents", "Settings"),):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
             expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
@@ -1550,19 +1550,6 @@ class AppShellJourney(unittest.TestCase):
         start = self.open_while_leaving(page, "/sign-in")
         expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
-
-    def test_14e_the_assistant_page_reads_its_status_only_once_the_page_is_live(self) -> None:
-        """Settings > Assistant opened while the page is being left reads its status after the grace (#471)."""
-        page = self.page(signed_in=False)
-        page.add_init_script(FETCH_RECORDER)
-        page.goto("/sign-up")
-        page.get_by_label("Name").fill("Leaving Owner")
-        page.get_by_label("Email").fill(f"leaving-setup+{int(time.time() * 1000)}@example.test")
-        page.get_by_label("Password").fill(PASSWORD)
-        page.get_by_role("button", name="Create account").click()
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        start = self.open_while_leaving(page, "/settings/assistant")
-        self.assert_read_waits_for_the_grace(page, start, "/api/v1/personal-assistant")
 
 
 if __name__ == "__main__":

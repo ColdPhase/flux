@@ -1692,9 +1692,12 @@ export const agentChatMessages = pgTable('agent_chat_messages', {
   workspaceId: uuid('workspace_id').notNull(),
   agentId: uuid('agent_id').notNull().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  /** Null for a schedule's firing that could not start (0024, C-53). */
+  runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   key: text('key').notNull(),
   body: text('body').notNull(),
+  /** 0024 (#858): a schedule's line: `{ title, words, failed }`. */
+  schedule: jsonb('schedule').$type<{ title: string; words: string; failed: boolean }>(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.agentId, table.key)]);
 
@@ -1811,29 +1814,25 @@ export const assistantJobs = pgTable('assistant_jobs', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id').notNull(),
+  /** 0024 (#858): the agent the schedule belongs to; it runs in that agent's private chat and posts its results there. */
+  agentId: uuid('agent_id').notNull().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   text: text('text').notNull(),
+  /** 0024 (C-30): the web addresses a run of it may read: only those its owner typed (the sentence that asked for it, or Change), never the agent's own words. */
+  given: text('given').array().notNull().default(sql`'{}'::text[]`),
   scheduleKind: text('schedule_kind', { enum: ASSISTANT_JOB_KINDS }).notNull(),
   schedule: jsonb('schedule').$type<Record<string, unknown>>().notNull(),
   timeZone: text('time_zone').notNull(),
-  conversationId: uuid('conversation_id'),
-  postToConversation: boolean('post_to_conversation').notNull().default(false),
   enabled: boolean('enabled').notNull().default(false),
   prepared: boolean('prepared').notNull().default(false),
   preparedRunId: uuid('prepared_run_id').references(() => personalRuns.id, { onDelete: 'set null' }),
-  pausedReason: text('paused_reason', { enum: ['failures'] }),
   nextRunAt: timestamp('next_run_at', { withTimezone: true }),
   lastRunAt: timestamp('last_run_at', { withTimezone: true }),
-  failureStreak: integer('failure_streak').notNull().default(0),
   deletedAt: timestamp('deleted_at', { withTimezone: true }),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
-]);
+});
 
 export const assistantJobRuns = pgTable('assistant_job_runs', {
   id: uuid('id').primaryKey(),
@@ -1844,7 +1843,6 @@ export const assistantJobRuns = pgTable('assistant_job_runs', {
   runId: uuid('run_id').references(() => personalRuns.id, { onDelete: 'set null' }),
   state: text('state', { enum: ['running', 'done', 'skipped', 'failed'] }).notNull(),
   resultLine: text('result_line').notNull().default(''),
-  needsYou: boolean('needs_you').notNull().default(false),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
   finishedAt: timestamp('finished_at', { withTimezone: true }),
 }, (table) => [unique().on(table.jobId, table.firedAt, table.firedBy)]);

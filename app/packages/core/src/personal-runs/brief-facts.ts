@@ -32,7 +32,8 @@ export async function readBriefFacts(ports: PersonalRunPorts, run: RunRecord, br
     id: found.id, number: found.number, title: found.title, status: found.status, outcome: found.outcome, criteria: found.criteria,
     dueOn: found.dueOn, blocker: found.blocker, prerequisites: found.prerequisites,
   } : null;
-  const scheduleTitle = run.kind === 'scheduled' ? (await ports.runs.jobOfRun?.(run.id))?.title ?? null : null;
+  // The name its owner knows a schedule by is the label its run was started with (`startBackground`).
+  const scheduleTitle = run.kind === 'scheduled' ? run.backgroundLabel : null;
   return { ownerName, agentName: brief?.name ?? 'Assistant', timeZone, place, task, scheduleTitle };
 }
 

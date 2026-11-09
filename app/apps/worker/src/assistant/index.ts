@@ -1,12 +1,12 @@
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { assistantJobRows, pushSubscriptionRepository, sql, type DbExecutor, type Database } from '@flux/db';
+import { assistantJobRows, sql, type DbExecutor, type Database } from '@flux/db';
 import {
-  ASSISTANT_TICK_JOB, PERSONAL_RUN_JOB, PUSH_SEND_JOB, assistantTick, createPersonalRunUseCases,
+  ASSISTANT_TICK_JOB, PERSONAL_RUN_JOB, assistantTick, createPersonalRunUseCases,
   type AssistantJobUnitOfWork, type PersonalConnectionLookup, type PersonalRuntimeAvailability,
 } from '@flux/core';
 import { personalRunPorts } from '../personal-runs/adapters.js';
 
-// "On a schedule" in the worker (F-027 AST-7 "Engine", A8 #408). One singleton tick a minute (pg-boss gives a scheduled job
+// An agent's schedules in the worker (F-036 AG-9, #858; F-027 AST-7 "Engine"). One singleton tick a minute (pg-boss gives a scheduled job
 // one slot per minute across all workers) fires what is due and closes what ended; it is also safe if two workers run it at
 // once (see packages/core/src/assistant/job-tick.ts).
 
@@ -24,20 +24,8 @@ const queueIn = (tx: DbExecutor, boss: Pick<PgBoss, 'send'>) => ({
   },
 });
 
-/** The Inbox item of a paused schedule, with its push, inside the tick's transaction. */
-function inboxIn(tx: DbExecutor, boss: Pick<PgBoss, 'send'>) {
-  return {
-    async tell(ownerUserId: string, projectId: string, title: string, body: string, url: string) {
-      const id = await assistantJobRows(tx).notify(ownerUserId, projectId, title, body, url);
-      for (const subscriptionId of await pushSubscriptionRepository(tx).deliverableIdsForUser(ownerUserId))
-        await boss.send(PUSH_SEND_JOB, { notificationId: id, subscriptionId, userId: ownerUserId }, { db: fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql), singletonKey: `${id}:${subscriptionId}` });
-      return id;
-    },
-  };
-}
-
 export function assistantUnitOfWork(db: Database, boss: Pick<PgBoss, 'send'>): AssistantJobUnitOfWork {
-  return { run: (work) => db.transaction((tx) => work({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx), inbox: inboxIn(tx, boss) })) };
+  return { run: (work) => db.transaction((tx) => work({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx) })) };
 }
 
 export function startBackgroundOf(composition: AssistantTickComposition, db: Database, boss: Pick<PgBoss, 'send'>) {

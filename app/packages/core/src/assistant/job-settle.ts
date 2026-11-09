@@ -1,21 +1,42 @@
 import { ASSISTANT_JOB_LIMITS } from '@flux/contracts';
 import { announce } from '../personal-runs/progress.js';
 import type { RunRecord } from '../personal-runs/ports.js';
-import { clockIn, nothingToChange, resultOf } from './job-result.js';
+import { postToAgentChat } from '../personal-runs/agent-chat.js';
+import { chatSchedule, clockIn, nothingToReport, resultOf } from './job-result.js';
 import type { AssistantJobPorts } from './jobs-ports.js';
 
-// Closing a schedule's firing once its run has ended (F-027 AST-7, A8 #408): its words, the failure streak, the pause after
-// three failures and the Inbox. Shared by the worker's tick and by the owner's own list (so the screen is current at once).
+// Closing a schedule's firing once its run has ended (F-036 AG-9, #858): its words in the history, and the result in the agent's
+// private conversation. A failed run is told there like any other and the schedule goes on at its next time: no streak, no pause
+// (C-14). Shared by the worker's tick and by the owner's own list (so the screen is current at once).
 
 const IN_FLIGHT = new Set<RunRecord['status']>(['queued', 'reading', 'dispatching']);
 
-/** Closes the firing of a run that ended: its words, the streak, the pause after three failures, the Inbox. */
+/**
+ * What a firing leaves in the agent's conversation: the answer of a run that ended well, what happened otherwise. Nothing to report says nothing.
+ * The words are the result alone: the schedule's name and times are the line's own (`chatSchedule`).
+ */
+function chatBody(state: 'done' | 'skipped' | 'failed', line: string, answer: string | null): string | null {
+  if (state === 'done') return nothingToReport(answer) ? null : (answer ?? '').trim();
+  return line;
+}
+
+/** Whether a firing whose run has not ended has to wait: it is working, or queued within the missed-run window. */
+const waiting = (run: RunRecord, firedAt: Date, now: Date) =>
+  IN_FLIGHT.has(run.status) && (run.status !== 'queued' || now.getTime() - firedAt.getTime() <= ASSISTANT_JOB_LIMITS.missedMinutes * 60_000);
+
+/** Closes the firing of a run that ended: its words in the history and in the agent's conversation. */
 export async function settleOne(ports: AssistantJobPorts, jobRunId: string, now: Date): Promise<boolean> {
+  // A plain read first: the owner's open chat asks again while a run works, and a run that is still going has nothing to close, so no row is locked for it.
+  const seen = await ports.jobs.findRun(jobRunId);
+  if (!seen || seen.state !== 'running') return false;
+  const working = seen.runId ? await ports.runs.findRun(seen.runId) : null;
+  if (working && waiting(working, seen.firedAt, now)) return false;
+  // The schedule's row first, then the firing's: the order of agent deletion (its schedule rows, then the firings that go with them) and of a firing,
+  // so two transactions that need both never wait on each other.
+  const job = await ports.jobs.find(seen.jobId, { lock: true });
   const firing = await ports.jobs.findRun(jobRunId, { lock: true });
   if (!firing || firing.state !== 'running') return false;
-  const job = await ports.jobs.find(firing.jobId, { lock: true });
-  const finish = (state: 'done' | 'skipped' | 'failed', line: string, needsYou = false) =>
-    ports.jobs.updateRun(firing.id, { state, resultLine: line, needsYou, finishedAt: now });
+  const finish = (state: 'done' | 'skipped' | 'failed', line: string) => ports.jobs.updateRun(firing.id, { state, resultLine: line, finishedAt: now });
   if (!job) return false;
   const run = firing.runId ? await ports.runs.findRun(firing.runId, { lock: true }) : null;
   if (!run) {
@@ -24,27 +45,16 @@ export async function settleOne(ports: AssistantJobPorts, jobRunId: string, now:
   }
   if (IN_FLIGHT.has(run.status)) {
     // Still waiting for the owner's lane after the missed-run window: skipped, never run late.
-    if (run.status !== 'queued' || now.getTime() - firing.firedAt.getTime() <= ASSISTANT_JOB_LIMITS.missedMinutes * 60_000) return false;
+    if (waiting(run, firing.firedAt, now)) return false;
     const stopped = await ports.runs.updateRun(run.id, { status: 'stopped', stoppedAtStage: 'before_read', costState: 'released', chargedMicros: 0, completedAt: now });
     await announce(ports, stopped);
     await finish('skipped', `Skipped: your assistant was busy at ${clockIn(firing.firedAt, job.timeZone)}`);
     return true;
   }
-  const facts = await ports.jobs.settledFacts(run.id);
-  const result = resultOf(run, { applied: facts.appliedChanges, waiting: facts.waitingChanges }, job.timeZone, now);
-  // When something waits for the owner, the run is one Inbox item (F-036 AG-7).
-  const needsYou = facts.waitingChanges > 0;
-  // A schedule that posts in a conversation never posts "Done: nothing to change" (AST-7.11).
-  if (result.state === 'done' && !run.silent && nothingToChange(run.answerBody) && !facts.appliedChanges && !facts.waitingChanges)
-    await ports.runs.updateRun(run.id, { silent: true });
-  await finish(result.state, result.line, needsYou);
-  const streak = result.state === 'failed' ? job.failureStreak + 1 : result.state === 'done' ? 0 : job.failureStreak;
-  const pause = result.state === 'failed' && streak >= ASSISTANT_JOB_LIMITS.failuresToPause && job.enabled;
-  await ports.jobs.update(job.id, { failureStreak: streak, ...(pause ? { enabled: false, nextRunAt: null, pausedReason: 'failures' as const } : {}) });
-  if (pause) {
-    const reason = /^Sign in/.test(result.line) ? `${result.line[0]!.toLowerCase()}${result.line.slice(1)}` : 'it failed three times in a row';
-    await ports.inbox.tell(job.ownerUserId, job.projectId, `Paused ${job.title}: ${reason}`.slice(0, 200), 'Your assistant paused this schedule. Turn it on again when it is fixed.', '/settings/assistant');
-  }
+  const result = resultOf(run, job.timeZone, now);
+  await finish(result.state, result.line);
+  const body = chatBody(result.state, result.line, run.answerBody);
+  if (body) await postToAgentChat(ports, { agentId: job.agentId, runId: run.id, key: `job:${firing.id}`, body, schedule: chatSchedule(job, result.state !== 'done') });
   await ports.jobs.trimRuns(job.id, ASSISTANT_JOB_LIMITS.history);
   return true;
 }

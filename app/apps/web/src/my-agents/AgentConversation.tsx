@@ -11,7 +11,9 @@ import { MessageBubble } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ConnectionLine } from '../composer/Outbox';
 import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { ReadySchedule, ScheduleHeader } from './AgentSchedules';
 import { useAgentChat, type AgentChat } from './useAgentChat';
+import { useAgentSchedules, type AgentSchedulesState } from './useAgentSchedules';
 import '../dm/dm.css';
 import './my-agents.css';
 
@@ -33,8 +35,11 @@ export function AgentConversation() {
   return <AgentChatPane key={agent.id} agent={agent} />;
 }
 
+/** A chat's answers cite nothing of a space: the sources it names (none, for a schedule's result) have no project to open. */
+const NO_LOOKUPS = { projectId: '', messages: [], work: new Map(), author: () => '' };
+
 /** One turn: what the owner said, then what the agent is doing or answered. */
-function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: MyAgent; chat: AgentChat; first: boolean; newDay: boolean }) {
+function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRun; agent: MyAgent; chat: AgentChat; schedules: AgentSchedulesState; first: boolean; newDay: boolean }) {
   const [busy, setBusy] = useState('');
   const [failed, setFailed] = useState('');
   const act = async (name: string, action: () => Promise<void>) => {
@@ -44,6 +49,7 @@ function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: M
   };
   const working = isWorking(run);
   const ended = !working && !run.answer ? endedText(run) : null;
+  const prepared = run.answer ? schedules.jobs?.find((job) => job.preparedRunId === run.id) ?? null : null;
   return (
     <>
       <li className="dm-msg is-mine agc__turn" data-run-id={run.id} data-chat-me="">
@@ -55,8 +61,9 @@ function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: M
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">
             {first ? <p className="dm-msg__meta"><b>{agent.name}</b></p> : null}
-            {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={{ projectId: '', messages: [], work: new Map(), author: () => '' }} /></div></MessageBubble>
+            {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={NO_LOOKUPS} /></div></MessageBubble>
               : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? workingText(run) : ended ?? 'Nothing to say.'}</div>}
+            {prepared ? <ReadySchedule job={prepared} state={schedules} agent={agent} /> : null}
             {run.answer?.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
             <div className="agc__actions">
               {working && !run.stopRequested ? <Button variant="quiet" busy={busy === 'stop'} onClick={() => void act('stop', () => chat.stop(run))}>Stop</Button> : null}
@@ -74,15 +81,47 @@ function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: M
 }
 
 /**
+ * A schedule's result in the chat, as drawn (mockup AgentReports, phone "Assistant · 9:00 · Every weekday 9:00"): one message of the agent, said once,
+ * with the schedule's name and times after its own. A firing that gave no result says why in a muted line (C-53), with the way to fix a sign-out.
+ */
+function ScheduleLine({ line, schedule, agent, newDay }: { line: AgentChatMessage; schedule: NonNullable<AgentChatMessage['schedule']>; agent: MyAgent; newDay: boolean }) {
+  return (
+    <li className="dm-msg agc__turn" data-line-id={line.id} data-schedule-line={schedule.failed ? 'failed' : 'result'} data-chat-agent="">
+      {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
+      <div className="dm-msg__row">
+        <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
+        <div className="dm-msg__main">
+          {/* One line, as drawn ("Assistant · 9:00 · Every weekday 9:00"): the rest is one item that is cut with an ellipsis rather than broken into columns. */}
+          <p className="dm-msg__meta agc__meta"><b>{agent.name}</b><span className="agc__meta-rest" title={`${schedule.words} · ${schedule.title}`}>· <time className="agc__time" dateTime={line.createdAt}>{clock(line.createdAt)}</time> · {schedule.words} · {schedule.title}</span></p>
+          {schedule.failed ? (
+            <div className="agc__line agc__line--failed">
+              <Icon name="alert" size={13} />
+              <span>{line.body}</span>
+              {/^Sign in to /.test(line.body) ? <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/settings/agents">Sign in</Link> : null}
+            </div>
+          ) : <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={{ body: line.body, sources: [] }} lookups={NO_LOOKUPS} /></div></MessageBubble>}
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** One line the agent said on its own: a schedule's result, or the report of its work. */
+function Line({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
+  return line.schedule ? <ScheduleLine line={line} schedule={line.schedule} agent={agent} newDay={newDay} /> : <ReportLine line={line} agent={agent} newDay={newDay} onChanged={onChanged} />;
+}
+
+/**
  * One report of the agent's work (#842, #919; mockup AgentReports): its own words and the task chip, then the muted change line under them,
  * "Done: #4 … · 3 changes · Undo". Undo reverses the changes of the run this line reports, the same call as the change line of a task's
  * discussion (#856); once nothing stands the line is struck through and says "Undone by you".
  */
-function Line({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
+function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
   const [undoing, setUndoing] = useState(false);
   const [failed, setFailed] = useState(false);
   const [note, setNote] = useState('');
   const undo = async () => {
+    if (!line.runId) return;
     setUndoing(true); setFailed(false); setNote('');
     try {
       const result = await undoRunChanges(line.runId);
@@ -128,6 +167,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const touch = useMediaQuery(MEDIA.touch);
   const { me } = useShellData();
   const chat = useAgentChat(agent.id, me.user.id);
+  const schedules = useAgentSchedules(agent.id, chat.version, chat.refresh);
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
@@ -157,12 +197,18 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
 
   return (
     <div className="dm agc-pane" data-agent-conversation={agent.id}>
-      <div className="dm__feed" ref={feed}>
+      {/* The agent's bar and its schedules line stay above the history, so the line is in view whatever the chat holds (the drawing has it in the header). */}
+      <div className="agc__top">
         <div className="dm__in agc">
           <div className="agc__bar">
             <span className="agc__who"><Kreska size={24} hue={agent.colour} /><b>{agent.name}</b><span className="agc__tag">Your agent</span></span>
             <Link className="ui-link agc__settings" to={`/settings/agents/${agent.id}`}>Settings</Link>
           </div>
+          <ScheduleHeader agent={agent} state={schedules} />
+        </div>
+      </div>
+      <div className="dm__feed" ref={feed}>
+        <div className="dm__in agc">
           <p className="agc__note"><Icon name="lock" size={13} />Only you talk to {agent.name}. Reports of its work arrive here.</p>
           {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">Couldn’t read this chat. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
             : entries.length ? (
@@ -170,7 +216,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                 {entries.map((entry, index) => {
                   const previous = entries[index - 1];
                   const newDay = !previous || day(previous.at) !== day(entry.at);
-                  return entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} first newDay={newDay} />
+                  return entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} schedules={schedules} first newDay={newDay} />
                     : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} onChanged={chat.refresh} />;
                 })}
               </ol>

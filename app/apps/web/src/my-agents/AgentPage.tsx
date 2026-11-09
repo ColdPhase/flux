@@ -6,6 +6,7 @@ import { useShellData } from '../app/data';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Spinner } from '../ui';
+import { AgentSchedules } from './AgentSchedules';
 import { addAgentMemory, deleteAgentMemory, deleteMyAgent, editAgentMemory, getAgentMemory, updateMyAgent } from './api';
 import './my-agents.css';
 
@@ -32,10 +33,10 @@ export function AgentPage() {
       </div></div>
     );
   }
-  return <AgentSettings key={agent.id} agent={agent} first={agents[0]?.id === agent.id} />;
+  return <AgentSettings key={agent.id} agent={agent} />;
 }
 
-function AgentSettings({ agent, first }: { agent: MyAgent; first: boolean }) {
+function AgentSettings({ agent }: { agent: MyAgent }) {
   const { choice } = useAssistantModel();
   const revalidator = useRevalidator();
   const navigate = useNavigate();
@@ -127,12 +128,12 @@ function AgentSettings({ agent, first }: { agent: MyAgent; first: boolean }) {
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
 
       <Remembers agent={agent} />
-      {first ? <p className="agp__more"><Link className="ui-link" to="/settings/assistant">{agent.name}’s schedules</Link></p> : null}
+      <AgentSchedules agent={agent} />
 
       <div className="agp__delete">
         {confirming ? (
           <div className="details__confirm" role="group" aria-label={`Delete ${agent.name}`}>
-            <p>Delete {agent.name}? Its open tasks go back to you and what it remembers is deleted. What it already wrote stays.</p>
+            <p>Delete {agent.name}? Its open tasks go back to you, and what it remembers and its schedules are deleted. What it already wrote stays.</p>
             <div className="aset__actions">
               <Button variant="danger" busy={deleting} onClick={() => void remove()}>Delete {agent.name}</Button>
               <Button variant="quiet" onClick={() => setConfirming(false)}>Keep</Button>

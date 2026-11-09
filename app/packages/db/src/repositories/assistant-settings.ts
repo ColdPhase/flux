@@ -105,13 +105,15 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       await tx.update(a).set({ name, updatedAt: new Date() }).where(eq(a.id, agentId));
       await tx.update(k).set({ name, updatedAt: new Date() }).where(and(eq(k.agentId, agentId), eq(k.computeSource, 'owner_assistant')));
     },
-    /** Deleting an agent: it stops acting on its next call, its tasks go back to its owner and its memory goes. */
+    /** Deleting an agent: it stops acting on its next call, its tasks go back to its owner and its memory and its schedules go (nothing fires for an agent that is gone). */
     async remove(ownerUserId: string, agentId: string): Promise<void> {
       await lockAssistantOwner(tx, ownerUserId);
       const now = new Date();
       await tx.update(k).set({ revokedAt: now, updatedAt: now }).where(and(eq(k.agentId, agentId), eq(k.computeSource, 'owner_assistant')));
       await tx.update(a).set({ revokedAt: now, updatedAt: now }).where(eq(a.id, agentId));
       await tx.delete(m).where(eq(m.agentId, agentId));
+      // The schedules and their history, Undo window and all: an agent that is gone has nothing to run them (its row stays, revoked, so the cascade does not).
+      await tx.delete(schema.assistantJobs).where(eq(schema.assistantJobs.agentId, agentId));
       const w = schema.projectWorkItems;
       await tx.update(w).set({ ownerAgentId: null, ownerUserId, version: sql`${w.version} + 1`, updatedAt: now }).where(and(eq(w.ownerAgentId, agentId), sql`${w.status} <> 'done'`));
     },

@@ -502,6 +502,28 @@ opening the chat sets (`POST /api/v1/agent-chats/:agentId/read`); `GET /api/v1/a
 for a run outside a space), then the run row. Dismiss and `markShown` take only the run row; Show everyone posts in its own transaction
 before it.
 
+**Schedules (#858).** A schedule (`assistant_jobs`, migration `0024`) belongs to one of its owner's agents and to no space. The worker's per-minute tick
+fires it through `startBackground`, which makes a `scheduled` run in the agent's chat place (no project, conversation or DM; `authority: owner_schedule`).
+It reads like a chat run and changes nothing; the answer is a private one (`isPrivateAnswer`). The chat lists what its owner said and the answers to it
+(`GET /assistant-runs?chatAgentId=`), not a schedule's run: when the firing settles (`job-settle.ts`, by the tick or by the owner's own list, which reads
+first and locks only what has ended) the result is one message in the agent's chat through `postToAgentChat` (key `job:<firing>`, `schedule` = its name,
+times and whether it failed), except "Nothing to report". A firing that fails or cannot start ("Sign in to Claude again", no budget, Flux was off) has no
+run: `fireJob` writes its history line and the same words in the chat (`run_id` null, no event: the open chat reads them when it next reads) once, not again
+while the same line repeats, and trims the history. There is no failure count and no pause (C-14). Deleting an agent deletes its schedules.
+What the owner says to the agent in its chat can prepare a schedule: the chat's brief tells the model to end its answer with one `<schedule>` block,
+`answerWithSchedule` takes it out and prepares the job off, and the owner's tap (`PATCH` with `enabled: true`) turns it on. `/ai` in a space and a
+schedule's own run drop the block. The routes are `/api/v1/my-agents/:agentId/schedules`.
+
+**Web addresses of a schedule (C-30).** The schedule's text is the agent's words as often as the owner's, so `startBackground` never reads it for addresses.
+A job keeps `given`: the addresses its owner typed, fixed when it is made, from the request that prepared it (the prompt of `preparedRunId`) or from the text
+of a schedule the owner made through the API. Change (`PATCH` with `text`) edits the wording only and never touches `given`: comparing the old and the new text
+cannot be made airtight, because where an address ends depends on the character after it, so to give a schedule a new address the owner asks the agent again,
+which prepares a new schedule from their words. Every firing passes `given` to the run, which reads those and what its own search returned, and nothing the agent
+wrote. A scheduled run cannot be retried (`ASSISTANT_RUN_NOT_RETRYABLE`: Run now is the way), and `givenAtStart` never reads a `scheduled` prompt, so no path
+gives a run the addresses of the schedule's text. Deleting an agent locks its schedule rows before the owner's lock (`removeAgent`), the order a firing has, and
+settling a firing takes the schedule row before the firing's own, so none of the three can deadlock with another. A schedule whose owner is a guest of the company
+(C-50, #1059) neither fires nor writes a history row or a chat line; its next time moves on.
+
 ## The brief (#1064)
 
 Every run is told what to do by one builder, `buildBrief` in `app/packages/core/src/personal-runs/brief.ts`, for every place (`/ai` in a
@@ -519,7 +541,7 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
   sources are numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
   as what the conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the
   no-posting rule of #1063 (`NO_POSTING_LINE`) whenever the run has change tools, the web rule of C-30 when `flux_read_web` is listed; the
-  schedule block for `/ai` in a space and the result block for a schedule's run; what is data, with what a message's `via`, `kind`,
+  schedule block for the agent's private chat (C-53: `/ai` in a space and a schedule's own run make none); what is data, with what a message's `via`, `kind`,
   `edited` and "(agent)" mean; and last what the owner gave the agent (C-7, C-8).
 - **Request**: `<place …/>` with the names of the space, the task or the DM's people; for a task run the whole task (outcome, done-when,
   prerequisites, due day, blocker); the space's open tasks and the place's messages, each with its mark, author, time, `kind`, `via`,

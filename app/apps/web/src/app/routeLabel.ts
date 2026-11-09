@@ -7,7 +7,6 @@ export function routeLabel(pathname: string): string {
   if (/^\/(connect-agent|consent)(\/|$)/.test(pathname)) return 'agent connection';
   if (pathname === '/settings/agents/connect') return 'agent connection';
   if (pathname === '/settings/ai-connections') return 'your API keys';
-  if (pathname === '/settings/assistant') return 'schedules';
   if (pathname.startsWith('/settings/notifications')) return 'notification settings';
   if (pathname.startsWith('/settings')) return 'settings';
   if (pathname === '/projects') return 'projects';
