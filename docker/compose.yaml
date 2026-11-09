@@ -89,8 +89,8 @@ services:
       FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       # Link cards (#469): off unless `on`; see docker/.env.example.
       FLUX_LINK_PREVIEWS: ${FLUX_LINK_PREVIEWS:-off}
-      # Agents reading web pages (#918): off unless `on`.
-      FLUX_WEB_READS: ${FLUX_WEB_READS:-off}
+      # Agents reading and searching the web (#918, #954, C-29): on unless `off`.
+      FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
       # Owner AI connections (F-020): the assistant on the owner's own API key and background suggestions are off
       # unless `on`; both also need the background key file (FLUX_BACKGROUND_KEY_HOST_FILE, see docs/operations/configuration.md).
       # Private targets an OpenAI-compatible endpoint may reach; empty allows public HTTPS endpoints only.
@@ -153,6 +153,8 @@ services:
       # The same switches and allowlist as the API: the worker runs the assistant and suggestions and checks the allowlist at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
+      # The same web switch as the API (#954): `off` offers no run its provider's web search.
+      FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}

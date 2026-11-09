@@ -5,6 +5,7 @@ import {
   AGENT_LIMITS,
   ASSISTANT_PLAN_MODELS,
   AI_PROVIDERS,
+  aiModelSearchesWeb,
   assistantModelName,
   type AddAgentMemoryCommand,
   type AgentChatMessage,
@@ -253,14 +254,14 @@ export async function usableConnection(connections: PersonalConnectionLookup, pr
  * admitted against what was already charged (`admit`): the owner's lane runs one request at a time, so the reservation of
  * the request working now must not pause the one waiting behind it. The worker reserves when it starts the request.
  */
-export async function reserveOnKey(ports: PersonalRunPorts, connection: PersonalConnection, tools: boolean, turns: number, exceptRunId?: string, admit = false):
+export async function reserveOnKey(ports: PersonalRunPorts, connection: PersonalConnection, tools: boolean, turns: number, exceptRunId?: string, admit = false, webSearch = false):
   Promise<{ reservedMicros: number; largestRequestMicros: number | null } | { paused: Date }> {
   const spend: KeySpend | null = await ports.runs.keySpend(connection, exceptRunId);
   if (!spend) return { paused: new Date(Date.now() + 24 * 3600_000) };
   const left = centsToMicros(spend.budgetCents) - spend.chargedMicros - (admit ? 0 : spend.reservedMicros);
-  const reserved = budgetedReservationMicros(connection.price, tools, left, turns);
+  const reserved = budgetedReservationMicros(connection.price, tools, left, turns, webSearch);
   if (reserved === null || reserved === 'budget') return { paused: spend.resetsAt };
-  return { reservedMicros: admit ? 0 : reserved, largestRequestMicros: runReservationMicros(connection.price, tools) };
+  return { reservedMicros: admit ? 0 : reserved, largestRequestMicros: runReservationMicros(connection.price, tools, webSearch) };
 }
 
 function unavailable(reason: PersonalAssistantUnavailableReason) {
@@ -350,7 +351,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const priced = connectionOnModel(item.connection, option.id);
       if (!priced?.price) throw modelUnavailable(`Flux doesn't know the price of ${assistantModelName(option.id)} yet, so its daily budget can't hold.${still}`);
       // A budget below one request would wait for a day that never comes.
-      if (runReservationMicros(priced.price, true)! > centsToMicros(item.connection.dailyBudgetCents))
+      // With its provider's own web search a request may also make its searches (#954): the budget must hold that too.
+      if (runReservationMicros(priced.price, true, aiModelSearchesWeb(priced.provider, option.id))! > centsToMicros(item.connection.dailyBudgetCents))
         throw modelUnavailable(`One request on ${assistantModelName(option.id)} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
     }
     return { item, model: option.id };

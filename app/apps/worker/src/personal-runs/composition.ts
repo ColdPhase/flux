@@ -42,6 +42,16 @@ function runPorts(env: NodeJS.ProcessEnv, db: Database, compute: PersonalCompute
   return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
 }
 
+/**
+ * The operator's web switch, the same `FLUX_WEB_READS` the API reads for `flux_read_web` (#954, C-29): on unless `off`, so a run with
+ * tools is offered its provider's own web search. Any other value stops the worker, as it stops the API.
+ */
+export function webSearchSwitch(env: NodeJS.ProcessEnv): boolean {
+  const value = env.FLUX_WEB_READS || 'on';
+  if (value !== 'on' && value !== 'off') throw new Error('FLUX_WEB_READS must be on or off');
+  return value === 'on';
+}
+
 /** The agent runtime switched off (FLUX_AGENT_RUNTIME empty): no runtime run can start. */
 const RUNTIME_OFF: AgentRuntimeConfig = { clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null };
 
@@ -49,6 +59,7 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
   const mode = env.FLUX_TEST_PERSONAL_RUNS ?? '';
   // A malformed operator allowlist or switch stops the worker in every mode.
   const policy = aiEndpointPolicyFromEnv(env);
+  const webSearch = webSearchSwitch(env);
   const switchedOn = (() => {
     const value = env.FLUX_PERSONAL_RUNS ?? '';
     if (value !== '' && value !== 'off' && value !== 'on') throw new Error('FLUX_PERSONAL_RUNS must be empty, off or on');
@@ -56,7 +67,7 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
   })();
   if (!mode) {
     const masterKey = switchedOn ? loadBackgroundMasterKey() : null;
-    const compute = switchedOn && masterKey ? providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy }) : unavailablePersonalCompute;
+    const compute = switchedOn && masterKey ? providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy, webSearch }) : unavailablePersonalCompute;
     return { connections: personalConnectionLookup(db), compute, mode: 'production', ...runPorts(env, db, compute, runtimeConfig) };
   }
   if (mode !== 'anthropic-mock') throw new Error('FLUX_TEST_PERSONAL_RUNS must be empty or anthropic-mock');
@@ -65,7 +76,7 @@ export function personalRunWorkerComposition(env: NodeJS.ProcessEnv, db: Databas
   const mock = /^http:\/\/([a-z0-9.-]+)(:\d+)?$/.exec(baseURL);
   if (!mock) throw new Error('FLUX_TEST_ANTHROPIC_URL must be the http origin of the mock provider');
   const compute = providerPersonalCompute({
-    enabled: true, timeoutMs: 30_000, baseUrls: { anthropic: baseURL },
+    enabled: true, timeoutMs: 30_000, baseUrls: { anthropic: baseURL }, webSearch,
     policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(',')),
     resolveKey: async (keyRef) => (keyRef === TEST_FIXTURE_KEY_REF ? TEST_FIXTURE_API_KEY : null),
   });

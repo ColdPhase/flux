@@ -197,6 +197,27 @@ class PrivateAiJourney(unittest.TestCase):
         expect(jo.locator(".project-convo__message").filter(has_text="far beds will use LoRa")).to_be_visible()
         expect(self.private_card(jo)).to_have_count(0)
 
+    def test_02b_an_answer_that_searched_the_web_lists_what_it_searched_and_the_page_it_cites(self) -> None:
+        """#954: the provider's own web search is on by default; Flux lists the search and the cited address under the answer, in its own words."""
+        cited = "https://lora-alliance.example/coverage/far-beds"
+        mock("/__script", {"reset": True, "text": "LoRa reaches about two kilometres through a wet hedge.",
+                           "search": {"query": "LoRa range through wet hedge", "results": [cited, "https://wifi.example/range"], "cite": cited}})
+        jo = self.space("jo")
+        self.ask_in(jo, "#project-composer", "how far does LoRa reach through a wet hedge?")
+        card = self.private_card(jo)
+        expect(card).to_be_visible(timeout=20000)
+        expect(card).to_contain_text("Based on the search, LoRa reaches about two kilometres through a wet hedge.")
+        expect(card).to_contain_text("Searched the web for:")
+        expect(card).to_contain_text("LoRa range through wet hedge")
+        expect(card).to_contain_text("Found on the web:")
+        expect(card).to_contain_text(cited)
+        self.assertNotIn("wifi.example", card.inner_text(), "a result the answer does not cite is not listed as its source")
+        shot(jo, "private-ai-1440-web-search-sources")
+        sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
+        self.assertIn({"type": "web_search_20250305", "name": "web_search", "max_uses": 5}, sent[-1]["body"]["tools"], "Anthropic's own search was offered")
+        card.get_by_role("button", name="Dismiss").click()
+        expect(card).to_have_count(0)
+
     # ---------------------------------------------------------------- a thread
 
     def test_03_in_a_thread_dismiss_puts_it_away_and_a_reload_does_not_bring_it_back(self) -> None:
@@ -249,8 +270,8 @@ class PrivateAiJourney(unittest.TestCase):
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
         self.assertIn(DM_TOKEN, json.dumps(sent[-1]["body"]))
         self.assertNotIn(OPENING, json.dumps(sent[-1]["body"]), "the DM is all the model was given")
-        # The one tool a DM run has reads a public page; this stack has reading the web off, so it is not even listed (#918).
-        self.assertTrue({tool["name"] for tool in sent[-1]["body"].get("tools", [])} <= {"flux_read_web"})
+        # The only tools a DM run has read the web: a public page (#918) and, on by default, the provider's own search (#954).
+        self.assertTrue({tool["name"] for tool in sent[-1]["body"].get("tools", [])} <= {"flux_read_web", "web_search"})
         shot(jo, "private-ai-1440-direct-message")
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)

@@ -4,6 +4,7 @@ import { anthropicPersonalCompute } from './anthropic.js';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import type { PersonalKeyResolver } from './limits.js';
 import { openAiCompatiblePersonalCompute } from './openai-compatible.js';
+import { openAiResponsesPersonalCompute } from './responses.js';
 
 // The adapter registry (F-020 PROV-2): one adapter per wire format, selected by the connection's
 // provider kind. Every provider takes the same Flux path in core; this is the only place that
@@ -19,16 +20,22 @@ export interface ProviderRegistryOptions {
 
 export const wireOf = (provider: AiProviderKind): AiWireFormat => AI_PROVIDERS[provider].wire;
 
-/** `PersonalCompute` over both wire formats. Only the Anthropic wire format has a token-count endpoint. */
-export function providerPersonalCompute(options: ProviderRegistryOptions & { enabled: boolean; resolveKey: PersonalKeyResolver }): PersonalCompute {
-  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs, maxResponseBytes, enabled, resolveKey } = options;
+/**
+ * `PersonalCompute` over the three wire formats. Only the Anthropic wire format has a token-count endpoint. `webSearch` is the
+ * operator's `FLUX_WEB_READS` (#954, C-29): whether a run with tools is offered its provider's own web search, where it has one.
+ */
+export function providerPersonalCompute(options: ProviderRegistryOptions & { enabled: boolean; resolveKey: PersonalKeyResolver; webSearch?: boolean }): PersonalCompute {
+  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs, maxResponseBytes, enabled, resolveKey, webSearch = false } = options;
   const adapters: Record<AiWireFormat, PersonalCompute> = {
     anthropic_messages: anthropicPersonalCompute({ enabled, resolveKey, policy, timeoutMs, maxResponseBytes,
       ...(baseUrls.anthropic ? { baseURL: baseUrls.anthropic } : {}) }),
+    openai_responses: openAiResponsesPersonalCompute({ enabled, resolveKey, policy, timeoutMs, maxResponseBytes,
+      ...(baseUrls.openai ? { baseUrl: baseUrls.openai } : {}) }),
     openai_chat_completions: openAiCompatiblePersonalCompute({ enabled, resolveKey, policy, baseUrls, timeoutMs, maxResponseBytes }),
   };
   return {
     enabled,
+    webSearch,
     async countInputTokens(request) {
       const adapter = adapters[wireOf(request.connection.provider)];
       return adapter.countInputTokens ? adapter.countInputTokens(request) : null;

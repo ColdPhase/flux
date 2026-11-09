@@ -293,7 +293,7 @@ no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_se
 search, and the agent's brief says so; nothing fails. What goes out on a read is an address, and an address is a way to send
 something to a site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its
 conversation as they were when the run began (never what an agent wrote, such as its question to another agent), on a page it read
-in the same run, or among the results of its own web search in the same run. It never makes one up, so nothing it knows can be put
+in the same run, or among the results its own web search returned in the same run (never an address the model chose to open). It never makes one up, so nothing it knows can be put
 into one; it can still choose among the given ones, so one run asks for at most 20 ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 A test shows that web content cannot bypass an approval and that an agent which obeys a page cannot send what it knows to a site (#918,
 #953), and that a search result is an address for its own run only (#954). The server reads the page, not the agent's process, so the

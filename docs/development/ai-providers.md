@@ -15,7 +15,7 @@ consent, caps and fail-closed rules are those of
 | `app/packages/core/src/personal-runs/` | The personal-run prompt, parsing, reservation and commit, shared by every provider. |
 | `app/packages/agent-runtime/src/endpoint-policy.ts` | The SSRF guard: address classes, the operator allowlist, save-time and connect-time checks. |
 | `app/packages/agent-runtime/src/guarded-fetch.ts` | The one HTTP transport of every adapter: guarded lookup, no redirects, size and time bounds. |
-| `app/packages/agent-runtime/src/anthropic.ts`, `chat-completions.ts`, `openai-compatible.ts`, `comparison.ts` | The two wire formats, for personal runs and comparisons. |
+| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `chat-completions.ts`, `openai-compatible.ts` | The three wire formats of personal runs: Anthropic Messages, OpenAI's Responses API (#954) and Chat Completions. |
 | `app/packages/agent-runtime/src/registry.ts` | `providerPersonalCompute` and `providerComparison`: the adapter chosen by the connection's provider kind. |
 | `app/packages/agent-runtime/src/model-list.ts` | Keyless model listings and the provider price listing. |
 | `app/apps/server/src/proactive-comparison/ai-composition.ts` | The API's endpoint policy, save-time check and listings. |
@@ -27,7 +27,7 @@ consent, caps and fail-closed rules are those of
 | Kind | Wire format | Base URL | Key format | Models |
 | --- | --- | --- | --- | --- |
 | `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | typed (listing needs a key) |
-| `openai` | Chat Completions | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | typed |
+| `openai` | Responses API (#954) | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | typed |
 | `openrouter` | Chat Completions | `https://openrouter.ai/api/v1` | `sk-or-…` | listed without a key (listed prices only prefill the owner's price) |
 | `gemini` | Chat Completions | `https://generativelanguage.googleapis.com/v1beta/openai` | `AIza…` | typed |
 | `openai_compatible` | Chat Completions | the owner's URL | any visible ASCII, 8–512 characters | listed when the server answers `GET /models` without a key |
@@ -48,18 +48,26 @@ providers is exercised with a real key yet. A model id is the owner's free choic
 within `^[A-Za-z0-9][A-Za-z0-9._:/@+-]{0,199}$`; OpenRouter's `:online` variants, which add a
 provider-hosted web search, are refused.
 
-Both wire formats send the same request: the Flux system prompt, one user message, the output
-bound, no tools (a `server` run with the Flux tool loop adds only the Flux tools, each request one turn: see
-[personal runs](personal-runs.md#tool-loop-f-027-ast-8-406-first-part)), no streaming, no retries. The differences are the wire format only:
+Every wire format sends the same request: the Flux system prompt, one user message, the output
+bound, no tools (a `server` run with the Flux tool loop adds the Flux tools and, while the operator's `FLUX_WEB_READS`
+is on, the provider's own web search where it has one, each request one turn: see
+[personal runs](personal-runs.md#tool-loop-f-027-ast-8-406-first-part) and [web search](personal-runs.md#web-search-954)), no streaming, no retries. The differences are the wire format only:
 
 - Anthropic: `x-api-key`, `max_tokens`, `output_config.effort: "low"`, and for comparisons
   `output_config.format` with the answer schema; the official SDK with `maxRetries: 0` and the
   guarded transport as its `fetch`. Its token-count endpoint may raise the Flux estimate.
-- Chat Completions: `Authorization: Bearer`, `max_completion_tokens` for OpenAI (its reasoning
-  models accept nothing else) and `max_tokens` elsewhere, `response_format` with the answer schema
-  for comparisons, and `usage: { include: true }` for OpenRouter, whose `usage.cost` becomes the
-  charge. No effort field: non-reasoning models reject `reasoning_effort`, and the output bound,
-  which includes reasoning tokens, stays the cost bound. A small fetch client, not a vendor SDK.
+- OpenAI Responses (#954): `Authorization: Bearer`, `POST <base>/responses`, the brief as `instructions`,
+  `max_output_tokens` (it includes reasoning tokens), `store: false` (nothing is kept at OpenAI; a run's
+  earlier turns travel in every request as the model's words and function calls, without item ids; no
+  reasoning is carried between turns and no encrypted reasoning is asked for, which non-reasoning models refuse),
+  function tools with `strict: false`, results as `function_call_output` items. No effort field. A small
+  fetch client, not a vendor SDK. Flux speaks it to OpenAI because OpenAI's own web search is a Responses
+  tool; GPT-6 Astra and GPT-6.1 Sol, which call tools only there, call tools now.
+- Chat Completions (OpenRouter, Gemini's compatible endpoint, self-hosted servers): `Authorization: Bearer`,
+  `max_tokens`, `response_format` with the answer schema for comparisons, and `usage: { include: true }`
+  for OpenRouter, whose `usage.cost` becomes the charge. No effort field: non-reasoning models reject
+  `reasoning_effort`, and the output bound, which includes reasoning tokens, stays the cost bound. A small
+  fetch client, not a vendor SDK.
 
 Every outcome maps to the same closed result: `completed` with `end_turn`, `max_tokens` (also a
 Chat `length`), `refusal` (also a Chat `refusal` message or `content_filter`) or `stop_sequence`;
@@ -115,6 +123,13 @@ row would under-reserve, so for those models the owner enters the price.
   of the background key (`apiKeySpendToday` counts personal runs and comparisons on the key together).
 - Usage is charged at the connection's price, or reconciled at the cost the provider reported in
   the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
+- A search of the provider's own web search (#954) is charged `WEB_SEARCH_MICROS` ($0.01; Anthropic and
+  OpenAI both list $10 per 1,000, read 2026-11-08) on top of the tokens, and a request that offers it
+  reserves 5 (`WEB_SEARCHES_PER_REQUEST`). A response that reports more searches than its request
+  offered is outside its bounds (a lost response). Such a request also has room for 5 searches' results in its
+  input bound (`WEB_SEARCH_INPUT_TOKENS`, 10,000 each, Flux's assumption), reserved at the input price. A key's
+  budget must hold one request with its searches when its provider has a search. A refused search is not billed
+  and the request is sent once more without it.
 - The charge never exceeds the reservation (`boundedUsageMicros`). Usage above the request's token
   limits, or a cost above its reservation, is not stored: a personal run ends `provider_failed`
   with cost `unknown` and its reservation counted, and a comparison ends `unknown`
@@ -172,6 +187,7 @@ candidates or proposals. Seeded keys of every adapter carry the marker `owner-bu
 | `app/tests/app/ai-endpoint-guard.test.ts` | Address classes, the allowlist, DNS rebinding, redirects, size and time bounds; key formats, model ids, base URLs and the estimate. |
 | `app/tests/app/ai-connections.test.ts` | The API: every provider kind, validation, save-time SSRF refusals, model lists, enabling without a price, and worker dispatch on both wire formats with reservation and usage at the connection's price. |
 | `app/tests/app/personal-runs-providers.test.ts` | Personal runs through the real registry on both wire formats. |
+| `app/tests/app/web-search.test.ts` | The provider's own web search on Anthropic Messages and the Responses API against the Docker mock, a search's results as its own run's addresses through the real worker and `/mcp`, the sources line, the charge and the operator switch (#954). |
 | `app/tests/app/ai-connections-migration.test.ts` | `0042` on earlier data, its constraints and its guarded reversal. |
 | `app/tests/ui/test_ai_connections.py` | The settings form, model listing, prices, refused endpoints, phone width, neutral copy and the Connect guide. |
 

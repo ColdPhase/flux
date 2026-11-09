@@ -67,7 +67,7 @@ describe('the reservation over the turns (AST-8, PROV-3)', () => {
     assert.equal(connectionCallsTools({ provider: 'anthropic', model: 'claude-sonnet-5' }), true);
     assert.equal(connectionCallsTools({ provider: 'anthropic', model: 'claude-sonnet-5', toolCalling: true }), true);
     assert.equal(connectionCallsTools({ provider: 'anthropic', model: 'claude-sonnet-5', toolCalling: false }), false, 'the owner\'s mark');
-    assert.equal(connectionCallsTools({ provider: 'openai', model: 'gpt-6-astra' }), false, 'dated table: needs the Responses API');
+    assert.equal(connectionCallsTools({ provider: 'openai', model: 'gpt-6-astra' }), true, 'it needs the Responses API, which Flux speaks to OpenAI since #954');
     assert.equal(connectionCallsTools({ provider: 'openai', model: 'gpt-5.4' }), true);
   });
 });

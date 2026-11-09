@@ -190,6 +190,10 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
   webReads(runId: string): Promise<{ finalUrl: string; outcome: string }[]>;
+  /** The run's searches (#954): their queries and the addresses the answers cited, each once, in the order found. */
+  webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
+  /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
+  addWebSearch(runId: string, found: WebSearchFound): Promise<void>;
   /**
    * The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and what people wrote in
    * the place the run is in (#842, C-30): a conversation's, the space's people's conversations for its main conversation, a DM's; a chat has none.
@@ -471,7 +475,7 @@ export interface PersonalTurn {
 
 /**
  * One bounded request (O-008 §3) to the owner's connection, the same for every provider (F-020):
- * no hosted tools, no hosted search, no automatic retries. The adapter of `connection.provider`
+ * no hosted tools but the provider's own web search (`webSearch`, #954), no automatic retries. The adapter of `connection.provider`
  * translates it. Without `tools` it is exactly the single request of O-008 (no tools on the wire).
  * With `tools` (F-027 AST-8) the same request is one turn of the worker's bounded tool loop:
  * `turns` carries the earlier turns, each with the results that came back, and every turn is still
@@ -486,10 +490,26 @@ export interface PersonalComputeRequest {
   input: string;
   tools?: readonly PersonalTool[];
   turns?: readonly PersonalTurn[];
+  /**
+   * Offer the provider's own built-in web search (#954, C-29): only with `tools`, only while the operator's switch is on, and only
+   * to a provider that has one (`AI_PROVIDERS[kind].searchesWeb`); at most `WEB_SEARCHES_PER_REQUEST` searches. Absent: no search.
+   */
+  webSearch?: true;
 }
 
-/** `reportedCostMicros`: the provider's own cost of the response, when it reports one (PROV-3 source 1). */
-export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null }
+/**
+ * `reportedCostMicros`: the provider's own cost of the response, when it reports one (PROV-3 source 1). `webSearches`: how many
+ * searches of the provider's built-in web search the response made (#954), each charged `WEB_SEARCH_MICROS`.
+ */
+export interface PersonalComputeUsage { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number }
+
+/**
+ * What a response of the provider's built-in web search brought (#954, C-30), read from the provider's structured answer and never
+ * from the model's text: the queries it searched, the addresses the search returned and the addresses the answer cites. Each address
+ * is normalized (no fragment) and at most `ADDRESS_MAX` long. Only the results are the run's readable addresses from then on (C-30);
+ * the queries, and the cited addresses that a search of the run returned, are listed under its answer.
+ */
+export interface WebSearchFound { queries: string[]; results: string[]; cited: string[] }
 
 export type PersonalComputeResult =
   | {
@@ -502,9 +522,14 @@ export type PersonalComputeResult =
     toolCalls?: PersonalToolCall[];
     /** The provider's own assistant message for the next request, with `toolCalls`; see {@link PersonalTurn}. */
     replay?: unknown;
+    /** Set when the response searched the web or cites a search result (#954). */
+    webSearch?: WebSearchFound;
   }
-  /** `billed: 'none'` when the provider documents no charge (e.g. 429, 5xx before work); else `unknown`. */
-  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted' | 'no_credits'; billed: 'none' | 'unknown' };
+  /**
+   * `billed: 'none'` when the provider documents no charge (e.g. 429, 5xx before work); else `unknown`. `searchRefused`: the provider
+   * refused its own web search tool on this key or model (#954), with no charge; the tool loop sends the request again without it.
+   */
+  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted' | 'no_credits'; billed: 'none' | 'unknown'; searchRefused?: true };
 
 /**
  * The provider behind the `agent-runtime` port: the adapters of `@flux/agent-runtime`, selected by
@@ -512,6 +537,8 @@ export type PersonalComputeResult =
  */
 export interface PersonalCompute {
   readonly enabled: boolean;
+  /** The operator's `FLUX_WEB_READS` (#954, C-29): whether a run with tools is offered its provider's built-in web search. */
+  readonly webSearch?: boolean;
   /**
    * An optional provider token count of the request's input (free, not a dispatch). It may only
    * raise the conservative Flux estimate that bounds every provider's input (PROV-3).
@@ -519,6 +546,17 @@ export interface PersonalCompute {
   countInputTokens?(request: PersonalComputeRequest): Promise<number | null>;
   /** Sends the request once. `signal` aborts it as best effort when the owner stops the run. */
   dispatch(request: PersonalComputeRequest, signal: AbortSignal): Promise<PersonalComputeResult>;
+}
+
+/**
+ * The provider refused its own web search tool when Flux counted a request's tokens (#954; the review of #1073): the request is counted
+ * again without the search. Thrown by `PersonalCompute.countInputTokens` only for a request that offered the search.
+ */
+export class WebSearchRefusedError extends Error {
+  constructor() {
+    super('The provider refused its web search tool');
+    this.name = 'WebSearchRefusedError';
+  }
 }
 
 /**

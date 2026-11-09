@@ -42,7 +42,7 @@ export interface ServerConfig {
   agentRuntime: AgentRuntimeConfig;
   /** `FLUX_LINK_PREVIEWS=on` (#469): the server may fetch the pages of links in messages for their cards. Off by default. */
   linkPreviews: LinkPreviewsConfig;
-  /** `FLUX_WEB_READS=on` (#918): the agents may read web pages through a Flux tool. Off by default. */
+  /** `FLUX_WEB_READS` (#918, #954, C-29): the agents may read web pages through a Flux tool and search with their provider. On by default. */
   webReads: WebReadsConfig;
 }
 

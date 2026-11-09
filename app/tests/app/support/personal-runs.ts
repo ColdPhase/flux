@@ -75,6 +75,8 @@ export const echo: Responder = async (request) => ({
 /** A fake provider that records every counted and dispatched request. */
 export class FakeCompute implements PersonalCompute {
   enabled = true;
+  /** The operator's web switch as the worker sees it (#954): a run with tools is then offered its provider's own search. Off unless a test says. */
+  webSearch?: boolean;
   counted: PersonalComputeRequest[] = [];
   dispatched: PersonalComputeRequest[] = [];
   respond: Responder = echo;

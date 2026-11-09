@@ -53,4 +53,6 @@ export function checkRequestLimits(request: PersonalComputeRequest, wire: AiWire
   if (request.maxTokens > PERSONAL_RUN_LIMITS.maxOutputTokens || request.maxTokens < 1) throw new Error('max_tokens exceeds the O-008 limit');
   if (request.effort !== PERSONAL_RUN_LIMITS.effort) throw new Error('Only low effort is allowed');
   checkTools(request);
+  // The provider's own web search (#954) goes only with the Flux tools, and only to a provider that has one.
+  if (request.webSearch && (!request.tools?.length || !AI_PROVIDERS[request.connection.provider].searchesWeb)) throw new Error('Web search is not offered on this request');
 }

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
+import { aiModelSearchesWeb, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -9,16 +9,17 @@ import type {
   AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
-import { isPrivateAnswer } from './ports.js';
+import { isPrivateAnswer, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerWithWebSources } from './web-sources.js';
+import { boundedWebSearch } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
-import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
+import { dropSearch, requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
   centsToMicros, connectionCallsTools, parseOutput, runChargeMicros, runReservationMicros, runTokensWithinLimits, type SuppliedSource,
 } from './validation.js';
@@ -227,11 +228,28 @@ export const unavailablePersonalCompute: PersonalCompute = {
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
 
+/** How long a provider's refusal of its own search tool for a key's model is remembered (#954). */
+const SEARCH_REFUSED_MS = 6 * 3600_000;
+
 /** The safety clock of a run with tools (#843): the same as a run on a plan. */
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
 
 export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
   wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps }: PersonalRunProcessorDeps) {
+  /**
+   * The keys and models whose provider refused its own web search tool (#954), until when: their runs are not offered it, so not every
+   * run sends a refused request first. In this worker's memory only; a restart asks again.
+   */
+  const searchRefusedUntil = new Map<string, number>();
+  /** Whether a run on this key and model is offered its provider's own web search: the operator's switch, the model, no recent refusal. */
+  function searchOffered(connectionId: string, provider: PersonalConnection['provider'], model: string): boolean {
+    if (compute.webSearch !== true || !aiModelSearchesWeb(provider, model)) return false;
+    const until = searchRefusedUntil.get(`${connectionId}:${model}`);
+    if (until === undefined) return true;
+    if (until > now()) return false;
+    searchRefusedUntil.delete(`${connectionId}:${model}`);
+    return true;
+  }
   const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}) });
   /** Aborts the provider request as soon as the owner's stop is recorded. */
   function watchStop(runId: string, controller: AbortController) {
@@ -280,9 +298,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
    * earlier requests cost and the most that one could have cost stay counted as `unknown`, and the rest
    * of the reservation is released (#854), so a Stop never uses up the key's day.
    */
-  function settleAccount(run: RunRecord, account: RunAccount, price: AiPrice | null): Settlement {
+  function settleAccount(run: RunRecord, account: RunAccount, price: AiPrice | null, search: boolean): Settlement {
     if (account.unknown) {
-      const lost = account.micros + (runReservationMicros(price, true) ?? run.reservedMicros);
+      const lost = account.micros + (runReservationMicros(price, true, search) ?? run.reservedMicros);
       return { charge: { costState: 'unknown', chargedMicros: 0, reservedMicros: Math.min(run.reservedMicros, lost) }, withhold: true };
     }
     if (account.requests === 0) return { charge: { ...free }, withhold: false };
@@ -354,8 +372,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** The loop's end, as the run's commit: an answer is committed like a single request's; every other end closes the run. */
-  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[], price: AiPrice | null): Promise<PersonalRunOutcome> {
-    const settle = (run: RunRecord) => settleAccount(run, loop.account, price);
+  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[], price: AiPrice | null, search: boolean): Promise<PersonalRunOutcome> {
+    const settle = (run: RunRecord) => settleAccount(run, loop.account, price, search);
     const { end } = loop;
     switch (end.kind) {
       case 'answer': return commit(runId, end.result, sources, settle);
@@ -373,17 +391,31 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
     // One brief for every place and both engines (#1064); its request is rendered again as the fit drops old messages.
     const asked = new Date(now());
-    const brief = (sources: SuppliedSource[], dropped: boolean) => buildBrief({
-      engine: 'server', kind: run.kind, silent: run.silent, tools: session ? session.tools.map((tool) => tool.name) : [], ...read.facts, now: asked,
+    const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief({
+      engine: 'server', kind: run.kind, silent: run.silent, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
     });
     let fitted: Awaited<ReturnType<typeof fit>>;
+    // The provider's own web search (#954, C-29): for a run with tools, while the operator's switch is on, on a provider that has one.
+    // Every other run is told plainly that it has none.
+    let search = !!session && searchOffered(connection.id, connection.provider, run.model);
+    const rememberRefusal = () => { searchRefusedUntil.set(`${connection.id}:${run.model}`, now() + SEARCH_REFUSED_MS); };
+    const fitWith = (webSearch: boolean) => fit(compute, {
+      connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
+      maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
+      system: brief(read.sources, false, webSearch).system, ...(session ? { tools: session.tools } : {}), ...(webSearch ? { webSearch: true as const } : {}),
+    }, read, (sources, dropped) => brief(sources, dropped, webSearch).request, beforeSend, personalRunMaxInputTokens(!!session));
     try {
-      fitted = await fit(compute, {
-        connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
-        maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: brief(read.sources, false).system, ...(session ? { tools: session.tools } : {}),
-      }, read, (sources, dropped) => brief(sources, dropped).request, beforeSend, personalRunMaxInputTokens(!!session));
+      try {
+        fitted = await fitWith(search);
+      } catch (error) {
+        // The provider refused its search tool already at the token count (#954, the review of #1073): counted again without it,
+        // and the key's model is not offered it for a while.
+        if (!search || !(error instanceof WebSearchRefusedError)) throw error;
+        rememberRefusal();
+        search = false;
+        fitted = await fitWith(false);
+      }
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing
       // was dispatched: the run ends at zero cost and the owner may retry it as a new run.
@@ -444,6 +476,11 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         loop = await runToolLoop({
           compute, session, first: ready.fitted.request, price: connection.price!, reservedMicros: run.reservedMicros,
           maxTurns: Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), deadline: now() + wallClockMs, now, gate, signal: controller.signal,
+          // A search's results are the run's readable addresses (C-30) from the moment its response is back, before its calls run.
+          onWebSearch: (found) => uow.run((ports) => ports.runs.addWebSearch(run.id, boundedWebSearch(found))),
+          // Refused by the provider: this run goes on without the search, told so in its brief, and the key's model is not offered it for a while.
+          withoutSearch: (request) => ({ ...dropSearch(request), system: brief([], false, false).system }),
+          onSearchRefused: () => { rememberRefusal(); search = false; },
         });
       } catch {
         // An unexpected failure inside the loop is a lost response: its largest cost stays counted.
@@ -452,7 +489,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         stopWatching();
       }
       await hooks.afterDispatch?.(run);
-      return commitLoop(run.id, loop, ready.fitted.sources, connection.price);
+      return commitLoop(run.id, loop, ready.fitted.sources, connection.price, search);
     }
     let result: PersonalComputeResult;
     try {
@@ -492,7 +529,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         // the key's next day when not even one request fits.
         const onModel = connectionOnModel(checked.connection, run.model);
         const withTools = !!tools && !!onModel && connectionCallsTools(onModel);
-        const held = onModel ? await reserveOnKey(ports, onModel, withTools, Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), run.id) : null;
+        // Each request of a run offered its provider's own web search may also make its searches (#954): they are reserved too.
+        const search = withTools && searchOffered(onModel.id, onModel.provider, run.model);
+        const held = onModel ? await reserveOnKey(ports, onModel, withTools, Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), run.id, false, search) : null;
         if (!held) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_read', free))).status };
         if ('paused' in held) {
           // A background run does not wait for tomorrow: its next firing is its next chance.

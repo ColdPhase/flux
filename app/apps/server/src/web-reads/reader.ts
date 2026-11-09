@@ -45,7 +45,7 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
   busy: 'Too many pages were read just now. Carry on without it, or try again later.',
   off: 'Reading the web is not turned on for this Flux.',
   empty: 'The page has no text to read.',
-  not_given: 'That address was not given to you. You can read an address that is written in the request, in the task or its conversation, or on a page you read; you cannot make one up.',
+  not_given: 'That address was not given to you. You can read an address that is written in the request, in the task or its conversation, on a page you read, or among the results of your own web search; you cannot make one up.',
   run_limit: 'This run has asked for as many addresses as it may. Carry on without more.',
 };
 

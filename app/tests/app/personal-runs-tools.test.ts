@@ -103,7 +103,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     await useConnection({ toolCalling: false });
     assert.equal(await reserved(), 104_000, 'a model marked without tool calling is one request (32,000 × $2/M + 4,000 × $10/M)');
     await useConnection({ provider: 'openai', model: 'gpt-6-astra' });
-    assert.equal(await reserved(), 104_000, 'so is one Flux\'s table lists as needing the Responses API');
+    assert.equal(await reserved(), 10_000_000, 'GPT-6 Astra calls tools on the Responses API since #954: a tool run');
     // Not even one request fits $0.10: the request waits for the key's next day instead of being refused (#854).
     await useConnection({ dailyBudgetCents: 10 });
     const paused = await ask('Too little left');
@@ -175,7 +175,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
   });
 
   test('AST-8.3: a model marked without tool support gets one request with no tools and cannot change anything', async () => {
-    for (const model of [{ toolCalling: false }, { provider: 'openai' as const, model: 'gpt-6-astra' }]) {
+    for (const model of [{ toolCalling: false }]) {
       await useConnection(model);
       compute.dispatched = [];
       compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: nothing changed [S1].', usage: { inputTokens: 900, outputTokens: 30 } });

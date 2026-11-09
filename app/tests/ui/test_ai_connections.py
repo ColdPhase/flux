@@ -372,7 +372,7 @@ class AiConnectionSettings(unittest.TestCase):
         window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
         window.get_by_label("Daily budget (USD)", exact=True).fill("0.10")
         window.get_by_role("button", name="Connect", exact=True).click()
-        expect(window.get_by_role("alert")).to_contain_text("can cost up to $0.17, so the daily budget must be at least that")
+        expect(window.get_by_role("alert")).to_contain_text("can cost up to $0.32, so the daily budget must be at least that")
         window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
         window.get_by_label("Daily budget (USD)", exact=True).fill("5")
         window.get_by_role("button", name="Connect", exact=True).click()

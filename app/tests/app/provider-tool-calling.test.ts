@@ -8,7 +8,7 @@ import { BRIEF } from './support/brief.js';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import {
   ANTHROPIC_DUPLICATE_IDS, ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TWO_CALLS, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
-  CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, TOOL_WIRE_CASES, type ToolWireCase,
+  CHAT_TOOL_CALLS_TRUNCATED, CHAT_TWO_CALLS, FLUX_TOOLS, PROJECT_ID, RESPONSES_FINAL, RESPONSES_TOOL_CALLS, TOOL_WIRE_CASES, type ToolWireCase,
 } from './support/provider-tool-fixtures.js';
 
 // Tool calling in each provider adapter (F-027 AST-8.1, issue #406): the Flux tools written in each
@@ -25,7 +25,7 @@ const INPUT = BRIEF.request;
 const TOOL_SYSTEM_PROMPT = BRIEF.system;
 
 interface WireMessage { role: string; content?: unknown; tool_call_id?: string; tool_calls?: { function: { arguments: string } }[] }
-interface Body { tools?: unknown; messages: WireMessage[]; system?: unknown; model?: unknown; max_tokens?: unknown; max_completion_tokens?: unknown; [field: string]: unknown }
+interface Body { tools?: unknown; messages: WireMessage[]; input?: unknown[]; system?: unknown; model?: unknown; max_tokens?: unknown; max_completion_tokens?: unknown; max_output_tokens?: unknown; [field: string]: unknown }
 interface Seen { path: string; headers: IncomingMessage['headers']; body: Body }
 
 let seen: Seen[] = [];
@@ -62,12 +62,17 @@ function requestFor(wire: Pick<ToolWireCase, 'provider' | 'model'>, overrides: P
 const live = new AbortController().signal;
 const LISTED = '[{"id":"w1","title":"Camera in low light"}]';
 const anthropic = TOOL_WIRE_CASES[0]!;
+/** OpenAI itself, on the Responses API (#954). */
 const openai = TOOL_WIRE_CASES[1]!;
+/** A Chat Completions server (OpenRouter, Gemini's compatible endpoint and self-hosted servers speak it). */
+const chat = TOOL_WIRE_CASES.find((wire) => wire.provider === 'openai_compatible')!;
 
 /** The tool definitions as each wire format must carry them. */
 const toolsOnWire = (wire: ToolWireCase['wire']) => wire === 'anthropic'
   ? FLUX_TOOLS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.inputSchema }))
-  : FLUX_TOOLS.map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } }));
+  : wire === 'responses' ? FLUX_TOOLS.map((tool) => ({ type: 'function', name: tool.name, description: tool.description, parameters: tool.inputSchema, strict: false }))
+    : FLUX_TOOLS.map((tool) => ({ type: 'function', function: { name: tool.name, description: tool.description, parameters: tool.inputSchema } }));
+const pathOf = (wire: ToolWireCase['wire']) => (wire === 'anthropic' ? '/v1/messages' : wire === 'responses' ? '/v1/responses' : '/v1/chat/completions');
 
 describe('tool calling on every provider wire format (AST-8.1; local mock, documented-shape fixtures, no provider pass)', () => {
   before(async () => {
@@ -84,13 +89,13 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         const result = await compute().dispatch(requestFor(wire), live);
         assert.equal(seen.length, 1, 'one request is one turn');
         const [sent] = seen;
-        assert.equal(sent!.path, wire.wire === 'anthropic' ? '/v1/messages' : '/v1/chat/completions');
+        assert.equal(sent!.path, pathOf(wire.wire));
         assert.equal(sent!.headers[wire.wire === 'anthropic' ? 'x-api-key' : 'authorization'], wire.wire === 'anthropic' ? KEY : `Bearer ${KEY}`);
         assert.deepEqual(sent!.body.tools, toolsOnWire(wire.wire));
         assert.equal(sent!.body.tool_choice, undefined, 'the model chooses (auto); a forced choice is refused by some current models');
         for (const hosted of ['web_search_options', 'plugins', 'stream']) assert.equal(sent!.body[hosted], undefined, `no ${hosted}`);
         assert.equal(sent!.body.model, wire.model);
-        assert.equal(sent!.body.max_tokens ?? sent!.body.max_completion_tokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
+        assert.equal(sent!.body.max_tokens ?? sent!.body.max_completion_tokens ?? sent!.body.max_output_tokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
         assert.equal(result.kind, 'completed');
         if (result.kind !== 'completed') return;
         assert.equal(result.stopReason, 'tool_use');
@@ -127,6 +132,14 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
             { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: LISTED }] },
           ], 'tool_result blocks answer the tool_use ids in one user message');
           assert.equal(body.system, TOOL_SYSTEM_PROMPT);
+        } else if (wire.wire === 'responses') {
+          assert.deepEqual(body.input, [
+            { role: 'user', content: INPUT },
+            ...(wire.assistantMessage as unknown[]),
+            { type: 'function_call_output', call_id: id, output: LISTED },
+          ], 'the model\'s function call goes back as it wrote it, without item ids (nothing is stored at OpenAI), then one output per call');
+          assert.deepEqual([body.instructions, body.store, body.include], [TOOL_SYSTEM_PROMPT, false, undefined], 'no encrypted reasoning is asked for (#1073)');
+          assert.ok(!JSON.stringify(body.input).includes('rs_67ccd2bf17f0') && !JSON.stringify(body.input).includes('fc_12345xyz'), 'no reasoning item and no item id go back');
         } else {
           assert.deepEqual(body.messages, [
             { role: 'system', content: TOOL_SYSTEM_PROMPT },
@@ -144,8 +157,9 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         if (first.kind !== 'completed') throw new Error('expected a completed request');
         const id = first.toolCalls![0]!.id;
         await adapter.dispatch(requestFor(wire, { turns: [{ text: '', calls: first.toolCalls!, replay: first.replay, results: [{ callId: id, content: 'Refused: the Wiki switch is off.', isError: true }] }] }), live);
-        const last = seen[1]!.body.messages.at(-1);
+        const last = wire.wire === 'responses' ? seen[1]!.body.input!.at(-1) : seen[1]!.body.messages.at(-1);
         if (wire.wire === 'anthropic') assert.deepEqual(last, { role: 'user', content: [{ type: 'tool_result', tool_use_id: id, content: 'Refused: the Wiki switch is off.', is_error: true }] });
+        else if (wire.wire === 'responses') assert.deepEqual(last, { type: 'function_call_output', call_id: id, output: 'Error: Refused: the Wiki switch is off.' });
         else assert.deepEqual(last, { role: 'tool', tool_call_id: id, content: 'Error: Refused: the Wiki switch is off.' });
       });
 
@@ -153,7 +167,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         script = [{ body: wire.toolCalls }];
         const result = await compute().dispatch(requestFor(wire, { tools: undefined, system: 'Plain brief' }), live);
         const body = seen[0]!.body;
-        for (const field of ['tools', 'tool_choice']) assert.equal(field in body, false, `no ${field}`);
+        for (const field of ['tools', 'tool_choice', 'include', 'max_tool_calls']) assert.equal(field in body, false, `no ${field}`);
         assert.equal(result.kind, 'completed');
         if (result.kind !== 'completed') return;
         assert.equal(result.toolCalls, undefined, 'a model that was offered nothing cannot act');
@@ -184,10 +198,33 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       ] });
     });
 
+    test('Responses: without a replay the turn is rebuilt as function_call items with JSON-string arguments (#954)', async () => {
+      script = [{ body: RESPONSES_FINAL }];
+      const call = { id: 'call_1', name: 'flux_list_work', input: { projectId: PROJECT_ID } };
+      await compute().dispatch(requestFor(openai, { turns: [{ text: 'Looking.', calls: [call], results: [{ callId: 'call_1', content: LISTED, isError: false }] }] }), live);
+      assert.deepEqual(seen[0]!.body.input!.slice(1), [
+        { role: 'assistant', content: 'Looking.' },
+        { type: 'function_call', call_id: 'call_1', name: 'flux_list_work', arguments: JSON.stringify({ projectId: PROJECT_ID }) },
+        { type: 'function_call_output', call_id: 'call_1', output: LISTED },
+      ]);
+    });
+
+    test('Responses: a cut-off answer, a refusal and a repeated call id are never calls (#954)', async () => {
+      const cut = { ...RESPONSES_TOOL_CALLS, status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' } };
+      const refusal = { ...RESPONSES_FINAL, output: [{ id: 'msg_r', type: 'message', status: 'completed', role: 'assistant', content: [{ type: 'refusal', refusal: 'No.' }] }] };
+      const repeated = { ...RESPONSES_TOOL_CALLS, output: [RESPONSES_TOOL_CALLS.output[1], RESPONSES_TOOL_CALLS.output[1]] };
+      script = [{ body: cut }, { body: refusal }, { body: repeated }];
+      const one = await compute().dispatch(requestFor(openai), live);
+      assert.deepEqual(one.kind === 'completed' && [one.stopReason, one.toolCalls], ['max_tokens', undefined]);
+      const two = await compute().dispatch(requestFor(openai), live);
+      assert.deepEqual(two.kind === 'completed' && [two.stopReason, two.text, two.toolCalls], ['refusal', '', undefined]);
+      assert.deepEqual(await compute().dispatch(requestFor(openai), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
+    });
+
     test('Chat: without a replay the assistant message is rebuilt with JSON-string arguments', async () => {
       script = [{ body: CHAT_FINAL }];
       const call = { id: 'call_1', name: 'flux_list_work', input: { projectId: PROJECT_ID } };
-      await compute().dispatch(requestFor(openai, { turns: [{ text: '', calls: [call], results: [{ callId: 'call_1', content: LISTED, isError: false }] }] }), live);
+      await compute().dispatch(requestFor(chat, { turns: [{ text: '', calls: [call], results: [{ callId: 'call_1', content: LISTED, isError: false }] }] }), live);
       assert.deepEqual(seen[0]!.body.messages.slice(2), [
         { role: 'assistant', content: null, tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'flux_list_work', arguments: JSON.stringify({ projectId: PROJECT_ID }) } }] },
         { role: 'tool', tool_call_id: 'call_1', content: LISTED },
@@ -197,7 +234,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
     test('Chat: several calls come back in order, arguments that are not a JSON object are marked invalid, and every call gets one result in call order', async () => {
       script = [{ body: CHAT_TWO_CALLS }, { body: CHAT_FINAL }];
       const adapter = compute();
-      const first = await adapter.dispatch(requestFor(openai), live);
+      const first = await adapter.dispatch(requestFor(chat), live);
       if (first.kind !== 'completed') throw new Error('expected a completed request');
       assert.deepEqual(first.toolCalls, [
         { id: 'call_a', name: 'flux_list_work', input: { projectId: PROJECT_ID } },
@@ -205,7 +242,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       ]);
       // The results are given out of order on purpose: the wire carries them in the order of the calls.
       const results = [{ callId: 'call_b', content: 'The arguments were not a JSON object. Nothing was run.', isError: true }, { callId: 'call_a', content: LISTED, isError: false }];
-      await adapter.dispatch(requestFor(openai, { turns: [{ text: first.text, calls: first.toolCalls!, results, replay: first.replay }] }), live);
+      await adapter.dispatch(requestFor(chat, { turns: [{ text: first.text, calls: first.toolCalls!, results, replay: first.replay }] }), live);
       const messages = seen[1]!.body.messages;
       assert.deepEqual(messages.slice(3).map((message) => [message.role, message.tool_call_id]), [['tool', 'call_a'], ['tool', 'call_b']]);
       assert.equal(messages[2]!.tool_calls![1]!.function.arguments, '{"projectId": ', 'the model\'s own message is sent back as it was');
@@ -216,7 +253,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       const cut = await compute().dispatch(requestFor(anthropic), live);
       assert.equal(cut.kind === 'completed' && cut.stopReason, 'max_tokens');
       assert.equal(cut.kind === 'completed' && cut.toolCalls, undefined);
-      const length = await compute().dispatch(requestFor(openai), live);
+      const length = await compute().dispatch(requestFor(chat), live);
       assert.equal(length.kind === 'completed' && length.stopReason, 'max_tokens');
       assert.equal(length.kind === 'completed' && length.toolCalls, undefined);
     });
@@ -224,7 +261,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
     test('a tool call without an id or name is a malformed answer: the request failed, its charge is unknown', async () => {
       const broken = { ...CHAT_TOOL_CALLS, choices: [{ ...CHAT_TOOL_CALLS.choices[0]!, message: { role: 'assistant', content: null, tool_calls: [{ type: 'function', function: { arguments: '{}' } }] } }] };
       script = [{ body: broken }, { body: { ...ANTHROPIC_TOOL_USE, content: [{ type: 'tool_use', name: 'flux_list_work', input: {} }] } }];
-      assert.deepEqual(await compute().dispatch(requestFor(openai), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
+      assert.deepEqual(await compute().dispatch(requestFor(chat), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
       assert.deepEqual(await compute().dispatch(requestFor(anthropic), live), { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
     });
 
@@ -295,14 +332,18 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
       }
     }
 
-    test('a model Flux knows cannot call tools on its wire format is never offered any (OpenAI GPT-6 Astra needs the Responses API)', async () => {
+    test('OpenAI GPT-6 Astra, which needs the Responses API for tool calling, calls tools now that Flux speaks it (#954)', async () => {
       const astra = { provider: 'openai' as const, model: 'gpt-6-astra' };
-      await assert.rejects(compute().dispatch(requestFor(astra), live), /cannot call tools/);
-      assert.equal(seen.length, 0);
-      // The same model answers in one request with no tools.
-      script = [{ body: CHAT_FINAL }];
-      assert.equal((await compute().dispatch(requestFor(astra, { tools: undefined }), live)).kind, 'completed');
-      assert.equal('tools' in seen[0]!.body, false);
+      script = [{ body: RESPONSES_TOOL_CALLS }];
+      const result = await compute().dispatch(requestFor(astra), live);
+      assert.deepEqual(result.kind === 'completed' && [result.stopReason, result.toolCalls?.map((call) => call.name)], ['tool_use', ['flux_list_work']]);
+      assert.equal(seen[0]!.path, '/v1/responses');
+    });
+
+    test('web search is never offered without the Flux tools, nor to a provider without one (#954)', async () => {
+      await assert.rejects(compute().dispatch(requestFor(anthropic, { tools: undefined, webSearch: true }), live), /Web search is not offered/);
+      await assert.rejects(compute().dispatch(requestFor(chat, { webSearch: true }), live), /Web search is not offered/);
+      assert.equal(seen.length, 0, 'nothing was sent');
     });
   });
 });
