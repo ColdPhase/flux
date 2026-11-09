@@ -1,4 +1,4 @@
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725
 WORKDIR /calibration
 RUN corepack enable && corepack install -g pnpm@12.6.0
 COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./

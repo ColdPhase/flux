@@ -3,7 +3,7 @@ ARG TARGETARCH
 # The one tag of the pinned Codex (#1133): its binaries, its code-mode host and its model catalog are all fetched by it, each checked against
 # its own sha256, so a bump of this tag cannot keep an old catalog: the catalog's digest then fails until it is updated with the others.
 ARG CODEX_TAG=rust-v0.160.1
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime-hardening-build
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS runtime-hardening-build
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
 RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /native/protect.c -o /native/protect.node
@@ -11,7 +11,7 @@ RUN cc -std=c11 -Wall -Wextra -Werror -fPIC -shared -I/usr/local/include/node /n
 # The toolchain shared by the build and the production dependencies: pnpm, the compiler node-pty needs, and the
 # lockfile with its patches. Each stage below downloads its own locked dependencies in a layer that source edits
 # do not invalidate.
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS toolchain
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS toolchain
 WORKDIR /app
 RUN corepack enable && corepack install -g pnpm@12.6.0
 # node-pty (the agent runtime's sign-in console, F-022 T4 #279) has no Linux prebuild, so it compiles
@@ -66,7 +66,7 @@ RUN set -eu; cd node_modules; \
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.
-FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 AS e2e
+FROM mcr.microsoft.com/playwright:v1.65.0-noble@sha256:6e3fb709361521eb27161606e6da6d2674e5e89fa16516cb37d6fdd91372273d AS e2e
 WORKDIR /app
 COPY --from=build /app /app
 CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
@@ -74,7 +74,7 @@ CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
 # --- The agent runtime slot image (F-022 AIM-3, T3 #278): the supervisor (Node built-ins, and node-pty
 # for the sign-in console's terminal, T4 #279) on the same pinned Node base, and nothing of the application. Claude Code is never in an image: the
 # `runtime-install` service puts the pinned, signature-checked release into the tools volume.
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS agent-runtime-base
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS agent-runtime-base
 WORKDIR /opt/flux-runtime
 ENV NODE_ENV=production
 COPY --from=build /app/packages/runtime-protocol/package.json ./packages/runtime-protocol/package.json
@@ -100,10 +100,10 @@ USER node
 
 # The pinned official Codex CLI (Apache-2.0), checked against the SHA-256 digests GitHub lists for the
 # rust-v0.160.1 release assets (retrieved 2026-10-05). Codex stays off until T6 records its hosts.
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-amd64
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS codex-amd64
 ARG CODEX_TAG
 ADD --checksum=sha256:9226581be592d18f7e7f740a352fdb63aa61e45e39f7eb9b09d3888c84bba33f https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64-unknown-linux-musl.tar.gz /codex.tar.gz
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-arm64
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS codex-arm64
 ARG CODEX_TAG
 ADD --checksum=sha256:f54dc5852042445bf41da3aa31156f3cb02f52c5a1a04074de73dc5598f7e1f7 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-aarch64-unknown-linux-musl.tar.gz /codex.tar.gz
 FROM codex-${TARGETARCH} AS codex
@@ -114,10 +114,10 @@ RUN mkdir /tmp/codex && tar -xzf /codex.tar.gz -C /tmp/codex && set -- /tmp/code
 # Code is never in an image: the check downloads the pinned, signature-checked release at run time with the
 # same installer the runtime uses (gpg is only here for that; musl because the release is the musl build). No vendor account or sign-in is involved.
 # Codex 0.160.1 runs MCP tool calls through a separate code-mode host binary (a release asset of the same tag).
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-amd64
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS codex-host-amd64
 ARG CODEX_TAG
 ADD --checksum=sha256:8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz /host.tar.gz
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-arm64
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS codex-host-arm64
 ARG CODEX_TAG
 ADD --checksum=sha256:e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz /host.tar.gz
 FROM codex-host-${TARGETARCH} AS codex-host
@@ -172,7 +172,7 @@ CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 # The Node the application image runs on: the pinned image without what only a build uses. npm, corepack and yarn
 # (24 MB, and their bundled dependencies, which an image scan reports for code that never runs) and Node's C headers
 # go. A RUN rm over the base would leave the files in its layer; `scratch` and one COPY make the removal real.
-FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS node-slim-files
+FROM node@sha256:438603bbb5cda404b9416f0b5c8026f61501ab911760d861ec28c36b5d675725 AS node-slim-files
 RUN rm -rf /usr/local/lib/node_modules /usr/local/include/node /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-v*
 FROM scratch AS node-slim
