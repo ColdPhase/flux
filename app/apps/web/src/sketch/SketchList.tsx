@@ -43,6 +43,9 @@ export interface SketchListProps {
   onConnections(id: string): void;
   /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
   onCite: (() => void) | null;
+  /** My map only (#948): "Move to a space map" for the selection, and "Copy link" to the one selected thought. */
+  onMove: (() => void) | null;
+  onCopyLink: (() => void) | null;
   onSay(text: string): void;
 }
 interface ReturnPoint { sourceId: string; collapsed: string[]; selection: string[]; scrollTop: number }
@@ -261,6 +264,8 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
           <button type="button" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
           {projectId && thought.source?.projectMessageId ? <Link to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={() => setMoreId(null)}>Open message</Link> : null}
           {on.onCite ? <button type="button" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
+          {on.onMove ? <button type="button" onClick={() => { setMoreId(null); on.onMove?.(); }}>Move to a space map</button> : null}
+          {on.onCopyLink && selection.length === 1 ? <button type="button" onClick={() => { setMoreId(null); on.onCopyLink?.(); }}>Copy link</button> : null}
           {canWrite ? <button type="button" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}
         {thought.file || link ? <div className="sk-outline-body">

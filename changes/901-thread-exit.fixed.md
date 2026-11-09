@@ -1,0 +1,1 @@
+- Closing a thread's panel keeps its text through the 120 ms exit on a computer, and on a phone the sheet of a thread, a task or a decision fades out with its head and content instead of vanishing at once ([#901](https://github.com/ColdPhase/flux/issues/901)).

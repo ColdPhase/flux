@@ -145,6 +145,8 @@ export interface SketchRepository {
   touchSketch(id: string, editor?: Principal): Promise<void>;
   thoughts(sketchId: string, page?: Required<PageQuery>): Promise<ThoughtRecord[]>;
   mapCounts(sketchId: string): Promise<{ thoughts: number; links: number }>;
+  /** The left edge and the lowest bottom edge of the thoughts on a map, as stored; null when it has none. */
+  extent(sketchId: string): Promise<{ left: number; bottom: number } | null>;
   /** Project messages with these ids, constrained to the project's own conversation history. */
   projectMessages(projectId: string, ids: string[]): Promise<ProjectMessageView[]>;
   /** Rows of `sketchId` with these ids, locked for update (in id order). */

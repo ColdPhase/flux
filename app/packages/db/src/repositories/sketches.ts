@@ -164,6 +164,10 @@ export function sketchRows(db: DbExecutor) {
       const [links] = await db.select({ count: sql<number>`count(*)::int` }).from(l).where(eq(l.sketchId, sketchId));
       return { thoughts: thoughts!.count, links: links!.count };
     },
+    async extent(sketchId: string) {
+      const [row] = await db.select({ left: sql<number | null>`min(${t.x})`, bottom: sql<number | null>`max(${t.y} + ${t.height})` }).from(t).where(eq(t.sketchId, sketchId));
+      return row && row.left !== null && row.bottom !== null ? { left: Number(row.left), bottom: Number(row.bottom) } : null;
+    },
     async lockThoughts(sketchId: string, ids: string[]) {
       if (!ids.length) return [];
       const locked = await db.select({ id: t.id }).from(t).where(and(eq(t.sketchId, sketchId), inArray(t.id, ids))).orderBy(asc(t.id)).for('update');

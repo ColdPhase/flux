@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
 import { IconButton } from './Button';
 import { Icon } from './Icon';
@@ -153,7 +153,23 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
   );
 }
 
-export function SidePanel(props: SidePanelProps) {
+/**
+ * A panel leaves as it was (#901, motion rule 3). While it is closing the app has already moved on: a thread's panel has lost its kind
+ * ("Thread" is no chip any more, the head would read "Details") and, on a phone, the sheet for a task, a decision or a thread would change
+ * into the plain full sheet, which unmounts the one that is leaving, so it vanished with no fade. What the head says and which kind of
+ * sheet it is therefore come from the last time the panel was open, for the length of its exit.
+ */
+type Head = Pick<SidePanelProps, 'title' | 'closeLabel' | 'chip' | 'contentKey' | 'back' | 'context'>;
+function useLeavingHead(props: SidePanelProps): SidePanelProps {
+  const head: Head = { title: props.title, closeLabel: props.closeLabel, chip: props.chip, contentKey: props.contentKey, back: props.back, context: props.context };
+  const [last, setLast] = useState<Head>(head);
+  // Remembered while open, only when what the head says changes (a state that follows what it is rendered from).
+  if (props.open && (last.title !== head.title || last.closeLabel !== head.closeLabel || last.chip !== head.chip || last.contentKey !== head.contentKey || last.back?.label !== head.back?.label)) setLast(head);
+  return props.open ? props : { ...props, ...last };
+}
+
+export function SidePanel(live: SidePanelProps) {
+  const props = useLeavingHead(live);
   const media = useSidePanelMode();
   const mode = props.over && media === 'docked' ? 'overlay' : media;
   const titleId = useId();

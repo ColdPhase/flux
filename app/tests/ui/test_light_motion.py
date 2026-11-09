@@ -789,6 +789,53 @@ class LightMotionJourney(unittest.TestCase):
                 self.release(held, gate)
                 expect(page.locator("#details .thread__feed")).to_contain_text("Moisture first")
 
+    CLOSE_FRAMES = """(ms) => { const out = window.__close = []; const start = performance.now();
+      const step = () => { const panel = document.getElementById('details'); const surface = panel ? (panel.closest('.ui-overlay__surface') || panel) : null;
+        out.push({ t: Math.round(performance.now() - start), present: !!panel, text: panel?.querySelector('.ui-panel__body')?.innerText.trim().length ?? 0,
+          opacity: surface ? Number(getComputedStyle(surface).opacity) : null });
+        if (performance.now() - start < ms) requestAnimationFrame(step); };
+      requestAnimationFrame(step); }"""
+
+    def test_10k_a_thread_panel_leaves_with_its_content_in_120_ms_on_a_computer_and_a_phone(self):
+        """Closing a thread's panel used to empty it on the first frame and fade a blank box on a computer, and take the phone's sheet away with no fade at
+        all, because the thread is the view's own and goes with its route (#901, motion rule 3). The panel now keeps what it showed through its exit."""
+        for where, phone, how in (("computer, the close control", False, "close"), ("computer, Esc", False, "escape"), ("phone, the close control", True, "close")):
+            with self.subTest(where=where):
+                page = self.page(phone=phone)
+                self.open(page, self.fx.project_url())
+                settled(page)
+                opener = page.get_by_role("button", name=re.compile(r"^\d+ repl(y|ies)")).first
+                opener.tap() if phone else opener.click()
+                panel = page.locator("#details")
+                expect(panel.locator(".thread__feed")).to_contain_text("Moisture first")
+                settled(page)
+                page.evaluate(self.CLOSE_FRAMES, 800)
+                if how == "escape":
+                    page.keyboard.press("Escape")
+                else:
+                    close = panel.locator(".ui-panel__close")
+                    close.tap() if phone else close.click()
+                expect(page.locator("#details")).to_have_count(0)
+                page.wait_for_timeout(900)
+                frames = page.evaluate("window.__close")
+                shown = [frame for frame in frames if frame["present"]]
+                self.assertTrue(shown, f"the panel's exit was seen: {frames[:6]}")
+                for frame in shown:
+                    self.assertGreater(frame["text"], 40, f"the thread's text stays until the panel is gone, never an empty box: {frame}")
+                fading = [frame for frame in shown if frame["opacity"] is not None and 0 < frame["opacity"] < 1]
+                self.assertTrue(fading, f"it fades out instead of vanishing: {shown}")
+                self.assertLessEqual(shown[-1]["t"] - shown[0]["t"], 260, f"within the exit's 120 ms and a few frames: {shown}")
+                self.assertEqual(page.locator("[data-exiting]").count(), 0, "the copy that carried the content through the exit is gone with the panel")
+        calm = self.page(phone=False, reduced=True)
+        self.open(calm, self.fx.project_url())
+        calm.get_by_role("button", name=re.compile(r"^\d+ repl(y|ies)")).first.click()
+        expect(calm.locator("#details .thread__feed")).to_contain_text("Moisture first")
+        calm.evaluate(self.CLOSE_FRAMES, 400)
+        calm.locator("#details .ui-panel__close").click()
+        expect(calm.locator("#details")).to_have_count(0)
+        calm.wait_for_timeout(500)
+        self.assertEqual([entry for entry in recorded(calm) if entry["kind"] == "script" and re.search(r"ui-panel|ui-overlay", entry["target"])], [], "with reduced motion the panel is gone at once, with no animation")
+
     def test_10f_a_panel_that_cannot_know_its_layout_draws_none(self):
         """A decision's lead and the title above its rows have lengths nobody knows before the read: its skeleton is a title bar and quiet lines, with no
         rows, actions or sections at guessed places (the review found a short decision 97 px off) (#863 rule 6)."""

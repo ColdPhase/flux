@@ -188,6 +188,10 @@ palette stand. What it draws and this guide has superseded:
 - the Agents section, as a place for agents (they live in Settings › AI and Messages);
 - the Polish names of the colours (section 2 gives Clay, Ochre, Sage, Teal, Indigo, Plum and Rose).
 
+The tiles "Cześć" (hello), "Śpi" (asleep) and "Świętuje" (celebrate) were redrawn on 2026-11-08 (#849) with the
+marks outside the frame, as `app/apps/web/src/ui/kreska-geometry.ts` draws them. A mark keeps a gap of at least
+0.5 px from the frame at every size from 24 to 112 px (`app/tests/app/kreska-marks.test.ts`).
+
 Kreska is a monoline face in a squircle: one raised brow, two eyes and no mouth.
 
 | Role | Form | Where |
@@ -560,6 +564,15 @@ the composer. The right-hand phone above shows the sheet.
   because its audience differs from the default.
 - A selected thought offers Move to a space map and Copy link. The tools are Select, Move the
   map, + Thought and Undo, with zoom at the bottom right.
+  - **Move to a space map** (#948) opens a small window: choose the space (any space you are in), then its map. A
+    space can have several maps, so the window lists them (newest change first, the newest chosen); a space with
+    none gets its first one as the thought arrives. The thought keeps its text, shape and size and lands under
+    what is already on that map. A connection between two thoughts that move together goes along; one to a thought
+    that stays is left behind, and the window says so. The toast "Moved to <space>" has Undo, which puts the thought
+    back where it was and draws those connections again. Moving needs the right to change that space's map. A
+    thought with an image cannot move (My map has none).
+  - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
+    open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
   follows S15: view and add a thought.
