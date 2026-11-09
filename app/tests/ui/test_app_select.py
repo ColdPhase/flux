@@ -444,18 +444,25 @@ class AppSelect(unittest.TestCase):
         expect(sheet).to_have_count(0)
         expect(place).to_be_focused()
 
-    def test_13_a_select_inside_the_phone_create_sheet_opens_its_own_sheet(self) -> None:
+    def test_13_a_select_inside_the_phone_create_window_opens_its_own_sheet(self) -> None:
+        """The phone's + sheet is five list rows with no Space picker (#1013, F-026 phone-actions-create); the space is chosen in the
+        Create window a row opens, which is itself a bottom sheet on a phone. A select inside that sheet opens its own sheet over it."""
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("button", name=re.compile(r"^(Create|New)")).first.tap()
-        create = page.get_by_role("dialog", name="Create")
+        sheet = page.get_by_role("dialog", name="Create")
+        expect(sheet).to_be_visible()
+        expect(sheet.get_by_role("combobox")).to_have_count(0)
+        sheet.get_by_role("button", name="Task", exact=True).tap()
+        create = page.get_by_role("dialog", name="New task")
         expect(create).to_be_visible()
+        expect(sheet).to_have_count(0)
         project = create.get_by_role("combobox", name="Space")
         project.tap()
         chooser = page.get_by_role("dialog", name="Space")
         expect(chooser).to_be_visible()
-        shot(page, f"app-select-create-sheet-{UI_BROWSER}")
+        shot(page, f"app-select-create-window-{UI_BROWSER}")
         listbox_of(project).get_by_role("option", name="Studio notes", exact=True).tap()
         expect(chooser).to_have_count(0)
         expect(create).to_be_visible()
