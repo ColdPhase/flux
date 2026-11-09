@@ -69,7 +69,12 @@ What was built, in short ([C-24](decisions.md) to C-27):
   guest may turn it on; it asks for the creator's unlock password (twice) and for the recovery code
   to be downloaded before Create. `POST /api/v1/encrypted-workspaces` takes `companyId`, `people`
   and the browser's `recoveryCode`, and makes the workspace, its one space (named for it, AI off) and
-  the people's memberships; a retry with the same `creationId` returns the same space.
+  the people's memberships; a retry with the same `creationId` returns the same space. The workspace and
+  its space are two commits (the space is sealed with the workspace's key, and the key service is not
+  called inside a transaction), so a process that ends between them leaves a workspace with no space; the
+  retry with the same `creationId` makes the space, and nothing else is needed (#981: a sweep that
+  deletes such workspaces by age was not built, it would erase data on a guess for a window of
+  milliseconds; the company's admin sees it in the list and can delete it).
 - **Holders.** Only the space's owner and admins (with their unlock passwords) and the recovery code.
   The company's owners and admins are not members: `GET /api/v1/workspaces/:company/encrypted-spaces`
   tells them a name and a date, and `DELETE /api/v1/encrypted-spaces/:id` erases the space and its

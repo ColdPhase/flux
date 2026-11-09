@@ -745,7 +745,7 @@ class CreateWindow(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))
         made = [item for item in self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/projects?limit=100", status=200)["items"] if item["name"] == name]
         self.assertEqual(len(made), 1)
-        self.assertEqual((made[0]["views"], made[0]["access"]), (["map", "docs"], "manager"))
+        self.assertEqual(made[0]["access"], "manager")
 
     def test_22_a_double_submit_sends_one_command_and_sources_stay_in_their_project(self) -> None:
         self.ensure_account()

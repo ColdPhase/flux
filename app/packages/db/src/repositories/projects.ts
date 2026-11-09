@@ -47,7 +47,7 @@ export function projectRepository(db: DbExecutor) {
       await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('no key update');
     },
 
-    async insert(row: { id: string; workspaceId: string; name: string; visibility: 'workspace' | 'restricted'; views: string[]; createdBy: string }) {
+    async insert(row: { id: string; workspaceId: string; name: string; visibility: 'workspace' | 'restricted'; createdBy: string }) {
       const [created] = await db.insert(schema.projects).values(await sealFor(db, 'projects', row.workspaceId, row)).returning();
       return { ...created!, name: row.name };
     },
@@ -99,13 +99,6 @@ export function projectRepository(db: DbExecutor) {
       await db.execute(sql`DELETE FROM notification_mutes WHERE source_type = 'project' AND source_id = ${projectId}`);
       await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
     },
-
-    async setViews(projectId: string, views: string[]) {
-      const [row] = await db.update(schema.projects).set({ views, version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
-        .where(eq(schema.projects.id, projectId)).returning();
-      return openRow('projects', row!, await sealOf(db, row!.workspaceId, { write: false }));
-    },
-
 
     /** One page of the projects the actor can see, with their level; the filter applies before count and page. */
     async listVisible(actor: AccessActor, page: { limit: number; offset: number }) {

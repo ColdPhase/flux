@@ -5,7 +5,6 @@ import { useStreamEvents } from '../api/stream';
 import { useToast } from '../ui';
 import { getAgentStops, stopAgent } from './api';
 import { getWork, updateWork } from '../work/api';
-import { handOffFailure } from './HandOff';
 
 /** The task a stop is about: its number and its status now (in progress: Stop; open or blocked: Take back). */
 export interface StopTarget { id: string; number: number; status: string }
@@ -17,6 +16,18 @@ export function stopFailure(cause: unknown): string {
     if (cause.code === 'AGENT_NOT_WORKING') return 'That agent was not working on this task any more.';
     if (cause.code === 'STOP_NOT_ALLOWED') return 'Only a project manager, the agent’s owner or the task’s creator can stop it.';
     if (cause.status === 403 || cause.status === 404) return 'You can’t stop this agent here.';
+  }
+  return 'That didn’t work. Nothing changed; try again.';
+}
+
+/** What a person is told when Hand back did not happen; nothing changed in any of these. */
+function handBackFailure(cause: unknown): string {
+  if (cause instanceof NetworkError) return 'Flux can’t be reached right now. Nothing changed; try again in a moment.';
+  if (cause instanceof ApiError) {
+    if (cause.code === 'VERSION_CONFLICT') return 'Someone changed this task a moment ago. Open it again to see its latest state.';
+    if (cause.code === 'OWNER_WITHOUT_ACCESS') return 'Your agents work only in spaces you’re in, so the task wasn’t handed back.';
+    if (cause.status === 403) return 'You no longer have access to this space, so the task wasn’t handed back.';
+    if (cause.status === 404) return 'This task is no longer available to you.';
   }
   return 'That didn’t work. Nothing changed; try again.';
 }
@@ -36,7 +47,7 @@ export function useStopAgent(projectId: string, onSettled: () => void) {
       await updateWork(current, { owner: { kind: 'agent', id: agentId } }, crypto.randomUUID());
       toast({ message: `Handed #${task.number} back to ${agentName}`, tone: 'success' });
     } catch (cause) {
-      toast({ message: handOffFailure(cause), tone: 'danger' });
+      toast({ message: handBackFailure(cause), tone: 'danger' });
     } finally {
       onSettled();
     }

@@ -16,7 +16,6 @@ export type AccountLookup = { userId: string } | { email: string };
 export interface ProjectRecord extends ProjectFacts {
   name: string;
   visibility: ProjectVisibility;
-  views: string[];
   version: number;
   createdAt: Date;
 }

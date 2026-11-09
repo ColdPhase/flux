@@ -1,0 +1,1 @@
+- Pause and Resume of an agent's work are gone from the server: the route, the table, the event, the `paused` field of the working-agents list and the error code `COWORK_PAUSED` (playbook 1.15.0). Stop is the one way a person ends an agent's work ([#985](https://github.com/ColdPhase/flux/issues/985)).

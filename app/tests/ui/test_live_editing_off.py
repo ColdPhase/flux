@@ -247,6 +247,67 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.assertEqual((current["version"], current["body"]), (doc["version"] + 2, "Start text. First part. Second part."))
         self.assertEqual(current["reason"], f"Saved as the page was left, in place of version {doc['version'] + 1}")
 
+    def patch_doc(self, page: Page, doc_id: str, version: int, body: str) -> dict:
+        response = page.request.fetch(f"{ORIGIN}/api/v1/docs/{doc_id}", method="PATCH", data=json.dumps({"body": body}),
+                                      headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{version}"', "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(response.status, 200, response.text())
+        return json.loads(response.text())
+
+    def test_02f_a_kept_copy_whose_save_went_through_is_dropped_not_shown_as_a_conflict(self) -> None:
+        # #982: the tab closed and the save it sent as it closed went through, but its answer was never seen, so the copy stayed on the
+        # device. Someone saved after it. The next visit shows the page as it is now, not a conflict with text the person already saved;
+        # a copy no version holds is still a conflict, and its text is kept.
+        project = self.doc_url.split("/")[2]
+        page, _ = self.page()
+        user_id = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
+        saved = self.api(page, "POST", f"/api/v1/projects/{project}/docs", {"title": "Saved as it closed", "body": "Start text."})
+        closing = self.patch_doc(page, saved["id"], saved["version"], "Start text. Closed with this.")
+        self.patch_doc(page, saved["id"], closing["version"], "Start text. Saved after.")
+        unsaved = self.api(page, "POST", f"/api/v1/projects/{project}/docs", {"title": "Never saved", "body": "Start text."})
+        self.patch_doc(page, unsaved["id"], unsaved["version"], "Start text. Someone else changed it.")
+        left = lambda doc, base, body: (f"flux:doc-left:{user_id}:{doc['id']}", json.dumps({"title": doc["title"], "body": body, "base": base, "attempt": str(uuid.uuid4()),
+                                                                                         "at": int(time.time() * 1000)}))
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        for key, value in (left(saved, saved["version"], "Start text. Closed with this."), left(unsaved, unsaved["version"], "Start text. Never saved text.")):
+            page.evaluate("([key, value]) => localStorage.setItem(key, value)", [key, value])
+        page.goto(f"/projects/{project}/docs/{saved['id']}")
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        # The editor opens once the history has been looked at; only then does the page show a conflict or not.
+        expect(text).to_have_attribute("contenteditable", "true")
+        expect(text).to_contain_text("Start text. Saved after.")
+        expect(page.get_by_role("alert").filter(has_text="while you were writing")).to_have_count(0)
+        self.assertNotIn("Closed with this.", text.inner_text())
+        page.wait_for_function("(key) => localStorage.getItem(key) === null", arg=left(saved, 0, "")[0], timeout=5000)
+        self.assertEqual(self.api(page, "GET", f"/api/v1/docs/{saved['id']}", status=200)["version"], closing["version"] + 1, "and no version was made")
+        page.goto(f"/projects/{project}/docs/{unsaved['id']}")
+        expect(page.get_by_role("alert").filter(has_text="while you were writing")).to_be_visible()
+        expect(text).to_contain_text("Never saved text.")
+
+    def test_02g_copies_left_by_another_account_go_when_the_shell_opens_and_this_ones_stay(self) -> None:
+        # #982 P3: a closed tab's copy stays on the device when the session expired or another account signed in next; another account's
+        # go when an account's shell opens. This account's own never go by age: the copy may be the only place the text still is.
+        page, _ = self.page()
+        user_id = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
+        day = 24 * 3600 * 1000
+        now = int(time.time() * 1000)
+        mine = [f"flux:doc-left:{user_id}:fresh", f"flux:doc-left:{user_id}:old"]
+        copies = {mine[0]: now - 2 * day, mine[1]: now - 400 * day, "flux:doc-left:someone-else:page": now - day}
+        page.goto("/")
+        for key, at in copies.items():
+            page.evaluate("([key, at]) => localStorage.setItem(key, JSON.stringify({ title: 'T', body: 'B', base: 1, at }))", [key, at])
+        page.reload()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        deadline = time.monotonic() + 5
+        while True:
+            left = sorted(page.evaluate("() => Object.keys(localStorage).filter((key) => key.startsWith('flux:doc-left:'))"))
+            if left == sorted(mine) or time.monotonic() > deadline:
+                break
+            time.sleep(0.1)
+        self.assertEqual(left, sorted(mine))
+        for key in mine:
+            page.evaluate("(key) => localStorage.removeItem(key)", key)
+
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()
         page.goto(self.map_url)

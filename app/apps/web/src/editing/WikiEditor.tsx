@@ -17,7 +17,7 @@ import { RefMark, readReferences } from '../docs/WikiRead';
 import { PageGone, usePageGone } from '../docs/page-gone';
 import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { RefHosts, headingsOf, livePreview, setRefData, workRefs } from './livePreview';
-import { LocalWiki } from './local-wiki';
+import { LocalWiki, needsSavedLook, settleKeptCopy } from './local-wiki';
 import { SharedWiki } from './wiki';
 import { decode64 } from './wire';
 import './editing.css';
@@ -50,12 +50,19 @@ function useLocalWiki(doc: Doc | null, userId: string) {
   const [, refresh] = useState(0);
   useEffect(() => {
     if (!doc) return;
-    const next = new LocalWiki(doc, userId);
-    // The copy is an external resource made for this page; React holds it for the editor.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLocal(next);
-    const unsubscribe = next.subscribe(() => refresh((value) => value + 1));
-    return () => { unsubscribe(); next.destroy(); };
+    const controller = new AbortController();
+    let next: LocalWiki | null = null;
+    let unsubscribe = () => { /* not open yet */ };
+    const open = () => {
+      if (controller.signal.aborted) return;
+      next = new LocalWiki(doc, userId);
+      // The copy is an external resource made for this page; React holds it for the editor.
+      setLocal(next);
+      unsubscribe = next.subscribe(() => refresh((value) => value + 1));
+    };
+    // A copy kept from before, older than the page: first ask whether a later save of the person's own already holds it (#982).
+    if (needsSavedLook(doc, userId)) void settleKeptCopy(doc, userId, controller.signal).then(open, open); else open();
+    return () => { controller.abort(); unsubscribe(); next?.destroy(); };
     // One copy per page and person; the page's later reads do not replace text being written.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc?.id, userId]);

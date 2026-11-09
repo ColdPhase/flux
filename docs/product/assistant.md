@@ -228,6 +228,11 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   stopped it: the state line reads "Stopped by Maja" and the agent's private conversation gets
   the same line, not an Inbox item (AG-7). Stopping gives the admin no other power over the
   agent: only the owner prompts or configures it (AG-2).
+- **Changing the Owner is a Stop.** A person who changes a task's Owner away from an agent
+  (taking it back, or giving it to someone else) also ends what a local client had claimed on
+  it: its next call is refused and "Stopped by Maja" is kept as for Stop, and a server agent's
+  run stops (#856). Anyone who may change the Owner field may do it, which is more people than
+  the Stop button allows; the Owner field is theirs to change (#936, #985).
 - "Mine" and My tasks include tasks owned by your agents.
 
 ## AG-6 — Blocked tasks and questions

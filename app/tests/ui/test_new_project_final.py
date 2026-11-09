@@ -153,7 +153,6 @@ class NewProject(unittest.TestCase):
         pid = self.create(page, HERB)
         type(self).ids["space"] = pid
         project = self.api(page, "GET", f"/api/v1/projects/{pid}", status=200)
-        self.assertEqual(project["views"], ["map", "docs"])
         self.assertEqual(project["visibility"], "restricted")
         self.assertEqual(project["access"], "manager")
         self.assertNotIn("goal", project)
@@ -161,7 +160,7 @@ class NewProject(unittest.TestCase):
         self.assertEqual(self.view_names(page)[:4], ["Conversation", "Map", "Tasks", "Wiki"])
         # A space made through the API starts the same way.
         other = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Cargo bike co-op"})
-        self.assertEqual(other["views"], ["map", "docs"])
+        self.assertNotIn("views", other)
 
     def test_05_phone_form_and_the_views_of_a_new_space(self) -> None:
         self.ensure_account()
@@ -228,47 +227,6 @@ class NewProject(unittest.TestCase):
         # A member starts a space of their own too, and is its admin.
         mine = self.create(member, "Kai’s space")
         self.assertEqual(self.api(member, "GET", f"/api/v1/projects/{mine}", status=200)["access"], "manager")
-
-    def test_07_a_late_answer_does_not_pull_you_back_into_the_space(self) -> None:
-        self.ensure_account()
-        page = self.page()
-        a = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Late A", "visibility": "restricted"})
-        b = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Late B", "visibility": "restricted"})
-        held: list = []
-
-        def hold(route) -> None:
-            # The server applies the change; the browser hears about it only when the test lets it.
-            held.append((route, route.fetch()))
-
-        def without_map(route) -> None:
-            # A new space has Map and Wiki from the start (S21), so More offers nothing to add. The browser is told that space A has no Map
-            # (the server still has it, so the late answer changes nothing there); More then offers "Add Map", the one slow layout request.
-            response = route.fetch()
-            body = response.json()
-            body["views"] = [view for view in body["views"] if view != "map"]
-            route.fulfill(response=response, json=body)
-
-        page.route(re.compile(r"/api/v1/projects/[0-9a-f-]{36}/views$"), hold)
-        page.route(re.compile(rf"/api/v1/projects/{a['id']}$"), without_map)
-        page.goto(f"/projects/{a['id']}")
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Add Map").click()
-        deadline = time.time() + 8
-        while not held and time.time() < deadline:
-            page.wait_for_timeout(100)
-        self.assertEqual(len(held), 1)
-        # She moves on to space B and starts a message.
-        page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("Late B")).click()
-        expect(page).to_have_url(re.compile(f"/projects/{b['id']}"))
-        composer = page.get_by_placeholder(re.compile("Message · @ mention"))
-        composer.fill("Half a thought for B")
-        route, response = held[0]
-        route.fulfill(response=response)
-        page.wait_for_timeout(600)
-        expect(page).to_have_url(re.compile(f"/projects/{b['id']}"))
-        expect(composer).to_have_value("Half a thought for B")
-        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{a['id']}", status=200)["views"], ["map", "docs"])
-        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{b['id']}", status=200)["views"], ["map", "docs"])
 
     UNLOCK = "seven loud geese in a hat"
 

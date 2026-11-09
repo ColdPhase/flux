@@ -83,6 +83,20 @@ describe('an encrypted space of the company', () => {
     assert.equal(codeOf(await create(ada, { name: 'Another', creationId })), 'IDEMPOTENCY_CONFLICT');
   });
 
+  test('a creation whose space was not made (the process ended between the two commits) is completed by the retry, not made twice (#981)', async () => {
+    const creationId = randomUUID();
+    const first = made(await create(ada, { name: 'Half made', creationId }));
+    // What a crash after the workspace and before its space leaves: an encrypted workspace with no space in it.
+    await pool.query('DELETE FROM projects WHERE id = $1', [first.project!.id]);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1', [first.workspace.id])).rows[0].n, 0);
+    const again = expectStatus(await create(ada, { name: 'Half made', creationId }), 200) as CreateEncryptedWorkspaceResult;
+    assert.equal(again.workspace.id, first.workspace.id, 'the same workspace, not a second one');
+    assert.equal(again.project?.name, 'Half made');
+    assert.equal(again.project?.workspaceId, first.workspace.id);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM workspaces WHERE creation_id = $1', [creationId])).rows[0].n, 1);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM projects WHERE workspace_id = $1', [first.workspace.id])).rows[0].n, 1);
+  });
+
   test('who may make one: a guest, a stranger and a missing company are refused, and nothing is left behind', async () => {
     const before = Number((await pool.query("SELECT count(*)::int AS n FROM workspaces WHERE encrypted AND name LIKE 'Refused %'")).rows[0].n);
     for (const who of [guest, stranger]) {

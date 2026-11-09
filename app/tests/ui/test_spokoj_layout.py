@@ -68,12 +68,6 @@ class SpokojLayout(unittest.TestCase):
         project = cls.call(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
                            {"name": "Community garden sensors", "visibility": "restricted"}, 201)
         cls.project_id = project["id"]
-        # Wiki appears in the header once a project has it (#351): add it as More does.
-        for view in ("docs",):
-            response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{cls.project_id}/views", method="POST",
-                                          headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
-                                          data=json.dumps({"view": view}))
-            assert response.status == 200, response.text()
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open"), ("Calibrate the rain gauge", "blocked")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project_id}/work", {"title": title, "status": status}, 201)
         # A conversation and a Wiki page: Together has something to anchor to there and is dimmed in the other views.

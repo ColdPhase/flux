@@ -40,12 +40,10 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'PATCH /api/v1/agent-connections/:connectionId': exempt(PERSON),
   'DELETE /api/v1/agent-connections/:connectionId': exempt(REDUCES),
   'GET /api/v1/projects/:projectId/agent-proposals': gated('params', 'projectId', 'project'),
-  'GET /api/v1/projects/:projectId/agents': gated('params', 'projectId', 'project'),
   'GET /api/v1/working-agents': useCase('The person\'s working agents across spaces; work in a space with AI off is left out'),
   'GET /api/v1/projects/:projectId/agent-stops': gated('params', 'projectId', 'project'),
   'POST /api/v1/projects/:projectId/agent-stops': exempt(REDUCES),
   // #160 AC-5: pausing only narrows; resuming lets the agent claim again, so it needs the space's AI on.
-  'POST /api/v1/projects/:projectId/agent-pauses': gated('params', 'projectId', 'project', { body: 'paused', equals: false }),
   'GET /api/v1/projects/:projectId/agent-questions': gated('params', 'projectId', 'project'),
   'POST /api/v1/agent-questions/:questionId/answer': gated('params', 'questionId', 'agent_question'),
   // An owner's API keys (Connect AI, #854).
@@ -148,7 +146,6 @@ export const AI_ADJACENT_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'DELETE /api/v1/agents/:agentId': exempt(REDUCES),
   'GET /api/v1/workspaces/:workspaceId/projects': exempt(SETTINGS),
   'POST /api/v1/workspaces/:workspaceId/projects': exempt(SETTINGS),
-  'POST /api/v1/projects/:projectId/views': exempt('Adding a view is project layout; the Agents view is hidden by the interface and its routes are gated'),
   'GET /api/v1/projects/:projectId': exempt(SETTINGS),
   'PATCH /api/v1/projects/:projectId': exempt(SETTINGS),
   'DELETE /api/v1/projects/:projectId': exempt(`${REDUCES}: erasing a space ends its AI work with everything else`),

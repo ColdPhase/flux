@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.15.0',
+  version: '1.16.0',
   toolContractVersion: 2,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -137,16 +137,14 @@ COWORK_CONNECTION_BUSY means you already hold another live unit: finish or relea
 TASK_PREREQUISITES_UNMET means the task cannot be worked on now; choose other work. COWORK_CLAIM_LOST means you no longer \
 hold a live lease on the unit: recover its current state before any further effect, and claim it again only once no other \
 session holds a live lease on it. COWORK_STOPPED means a person stopped this work: end it now, do not claim the unit again, \
-and ask in the task thread if you need to know why. COWORK_PAUSED means a person paused this work: finish only the step you \
-are in, release the unit at once with flux_release_unit and a checkpoint, take no new step on that task, and continue only after \
-a later Resume. \
+and ask in the task thread if you need to know why. \
 Starting (in_progress) or finishing (done) requires every prerequisite to be done; otherwise finish or report the prerequisite \
 first. Keep the task current with flux_update_task at the version you last read: status, \
 criteria, blocker. After a version conflict, read the task again and reapply only your own change. When the pull request you \
 produced exists, link it to the task you hold with flux_link_pull_request by its URL: Flux checks it \
 with your owner's GitHub authorization, as when a person links it, and the repository must already be connected to the project by \
 a person. The default role required_output means the pull request is what the task needs; use related for one that only touches \
-it. TASK_NOT_HELD means the task is not yours now, COWORK_PAUSED that a person paused it, GITHUB_REPOSITORY_NOT_BOUND that no person \
+it. TASK_NOT_HELD means the task is not yours now, GITHUB_REPOSITORY_NOT_BOUND that no person \
 has connected that repository, and GITHUB_AUTHORIZATION_REQUIRED that your owner has to authorize GitHub in Flux: tell your owner \
 the specific gap instead of retrying. Linking the same pull request again returns the same link. Work locally with the \
 project's own build and test instructions, preserve other authors' work, and at each bounded step record observable progress, \

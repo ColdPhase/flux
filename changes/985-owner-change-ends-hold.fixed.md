@@ -1,0 +1,1 @@
+- Changing a task's Owner in Details away from an agent now also ends the hold of a local client that had claimed it: its unit stops and its next call is told so, as after Stop. The unused Hand-off dialog and the list of a space's connections behind it are gone ([#985](https://github.com/ColdPhase/flux/issues/985)).

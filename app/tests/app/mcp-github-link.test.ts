@@ -136,7 +136,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   });
 
 
-  test('only the agent that holds the task may link, and not while a person has paused it', async () => {
+  test('only the agent that holds the task may link', async () => {
     const s = await scene();
     const other = await s.makeAgent(s.hubert, 'Hubert Claude');
     const code = async (workId: string) => toolFailure(await s.link(s.mine, workId, url(REPO, 71))).code;
@@ -145,13 +145,8 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     const done = await s.task('Already finished', s.mine.agent);
     expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/work/${done.id}`, { body: { status: 'done' }, headers: { 'if-match': `"${done.version}"` } }), 200);
     assert.equal(await code(done.id), 'TASK_NOT_HELD');
-    // A person's Pause keeps the hold but asks the agent to take no new step; Resume lifts it.
-    const paused = await s.task('Paused by a person', s.mine.agent);
-    const pause = (value: boolean) => s.hubert.browser.request('POST', `/api/v1/projects/${s.p.id}/agent-pauses`, { body: { taskId: paused.id, agentId: s.mine.agent.id, paused: value } });
-    expectStatus(await pause(true), 201);
-    assert.equal(await code(paused.id), 'COWORK_PAUSED');
-    expectStatus(await pause(false), 204);
-    assert.equal(toolValue(await s.link(s.mine, paused.id, url(REPO, 72))).number, 72);
+    const held = await s.task('Held by this agent', s.mine.agent);
+    assert.equal(toolValue(await s.link(s.mine, held.id, url(REPO, 72))).number, 72);
     // A task of another project is not found, whoever holds it.
     const foreign = expectStatus(await s.hubert.browser.request('POST', `/api/v1/projects/${s.elsewhere.id}/work`, { body: { title: 'Elsewhere' } }), 201) as WorkItem;
     assert.ok(['OBJECT_NOT_FOUND', 'AGENT_EXECUTION_UNAVAILABLE'].includes(await code(foreign.id)));

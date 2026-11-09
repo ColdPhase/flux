@@ -1,10 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { sql } from 'drizzle-orm';
-import { PROJECT_VIEWS, PROJECTS_PATH, SPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddProjectViewCommand, type CreateProjectCommand, type GrantProjectCommand, type PageQuery,
+import { PROJECTS_PATH, SPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type CreateProjectCommand, type GrantProjectCommand, type PageQuery,
   type RenameProjectCommand, type SetSpaceAiCommand, type SetSpaceAiResult } from '@flux/contracts';
 import {
-  addProjectView,
   assertAuthorized,
   createProject,
   deleteProject,
@@ -45,13 +44,6 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
     operation: `POST ${WORKSPACES_PATH}/:workspaceId/projects`, scope: workspaceScope(request.params.workspaceId), status: 201,
     run: (actor, conn) => createProject(actor, request.params.workspaceId, request.body, conn, accessPorts),
     replay: requires('project', 'project.read', bodyId),
-  }));
-  app.post<{ Params: { projectId: string }; Body: AddProjectViewCommand }>(`${PROJECTS_PATH}/:projectId/views`, {
-    schema: { body: { type: 'object', required: ['view'], additionalProperties: false, properties: { view: { type: 'string', enum: [...PROJECT_VIEWS] } } } },
-  }, async (request, reply) => command(request, reply, {
-    operation: `POST ${PROJECTS_PATH}/:projectId/views`, scope: projectScope(request.params.projectId), status: 200,
-    run: (actor, conn) => addProjectView(actor, request.params.projectId, request.body, conn, accessPorts),
-    replay: requires('project', 'project.write', () => request.params.projectId),
   }));
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request) =>
     getProject(await principal(request), request.params.projectId, db, accessPorts));

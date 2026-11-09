@@ -1,10 +1,7 @@
-import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
+import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath,
   type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
-  type ProjectAgents, type StopAgentCommand } from '@flux/contracts';
+  type StopAgentCommand } from '@flux/contracts';
 import { request } from '../api/client';
-
-/** The Agents view of a project (UI116-2, #136): current connections. */
-export const getProjectAgents = (projectId: string, signal?: AbortSignal) => request<ProjectAgents>(projectAgentsPath(projectId), { signal });
 
 /** Who stopped which agent's work in a project, newest first (S13, #347). */
 export const getAgentStops = (projectId: string, signal?: AbortSignal) => request<AgentStops>(projectAgentStopsPath(projectId), { signal });

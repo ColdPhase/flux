@@ -1,4 +1,4 @@
-import { artifactResetRows, githubRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
+import { agentStopRows, artifactResetRows, githubRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
 import {
   createWorkContributions,
   createWorkUseCases,
@@ -22,6 +22,13 @@ export function workRepository(tx: DbExecutor): WorkRepository {
     ...rows,
     resetArtifact: (scope,boundary,retained)=>artifactResetRows(tx).canonical(scope,
       {kind:boundary.kind,id:boundary.id},boundary,retained),
+    /** A person's change of Owner ends a local client's hold with the stop's own rows (#985): slots first, then the task, then its units. */
+    lockAgentSlots: (workspaceId, agentId) => agentStopRows(tx).lockSlots(workspaceId, agentId),
+    async endAgentHold({ workspaceId, projectId, taskId, agentId, stoppedBy }) {
+      const stops = agentStopRows(tx);
+      const unitsStopped = await stops.stopUnits(workspaceId, projectId, taskId, agentId);
+      return unitsStopped ? { stopId: await stops.insert({ workspaceId, projectId, taskId, agentId, stoppedBy, unitsStopped }) } : null;
+    },
     /** "Let linked PRs move this task" (#74 G-1a) is part of the native task read model. */
     githubRules: (taskIds) => githubRows(tx).taskRules(taskIds),
     suspendGithubRule: (task) => githubRows(tx).suspendRuleForOverride(task),

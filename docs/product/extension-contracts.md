@@ -191,6 +191,7 @@ to the same surface, such as #859's (which removes `requiredScope` and `MCP_SCOP
 #973 is one more: it removes the tools `flux_send_request`, `flux_claim_request`, `flux_defer_request`, `flux_decline_request`, `flux_resolve_request` and
 `flux_coordination_inbox`, the error code `COWORK_UNIT_REQUESTS_OPEN` and the playbook module `request_review_fix` (now `hand_off`, playbook 1.14.0), in place in
 `mcp-tools.v2.json`; contract 1's snapshot stays as it was.
+#985 is one more: it removes the error code `COWORK_PAUSED` and the playbook lines that named it (playbook 1.16.0), because a person's Pause and Resume of an agent's work are gone; the code is dropped in place from `mcp-tools.v2.json`, and contract 1's snapshot stays as it was.
 
 #941 adds the tool `flux_delete_doc` (operation `doc.delete`), an additive change to contract 2 in `mcp-tools.v2.json`; playbook 1.15.0 names it.
 

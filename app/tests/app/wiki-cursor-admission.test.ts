@@ -44,7 +44,7 @@ async function fixture() {
   const cursors: (LiveCursor | null)[] = [], submissions: { envelope: WikiTextEnvelope; bytes: Buffer }[] = [];
   const receipts = new Map<string, LiveReceipt>();
   const gate = barrier(); let permitted = true, refuseText = false, firstAlreadyAuthorized = false;
-  const counts = { reads: 0, handoffs: 0 }; let head = 0; let preview: { html: string; mentions: [] } | null = null;
+  const counts = { reads: 0, handoffs: 0 }; let head = 0; let preview: { html: string; mentions: [] } | null = null; let presenceNow: unknown[] = [];
   const authority: Authority = {
     runtime,
     queueInput: runtime.queueInput,
@@ -65,7 +65,7 @@ async function fixture() {
       const updates = Array.from({ length: head - afterSequence }, (_, index) => ({ sequence: afterSequence + 1 + index,
         hash: `h${afterSequence + 1 + index}`, commandId: randomUUID(), actor: principal(), bytes: new Uint8Array(8) }));
       handoff({ current: { workspaceId: workspace, resourceId: room, generation, sequence: head, hash: `h${head}`, savedVersion: 1, savedSequence: 0 },
-        canWrite: true, actor: principal(), presence: [], updates, preview: preview && { ...preview } } as unknown as Parameters<typeof handoff>[0]);
+        canWrite: true, actor: principal(), presence: presenceNow, updates, preview: preview && { ...preview } } as unknown as Parameters<typeof handoff>[0]);
     },
     async handoff(_session, _id, handoff) { counts.handoffs++; handoff(); },
     async cursor(_session, _id, _generation, _connection, value) {
@@ -107,6 +107,8 @@ async function fixture() {
     /** Several commits arrive before the peer reads again. */
     commitSilently: (count: number) => { head += count; },
     preview: (html: string | null) => { preview = html === null ? null : { html, mentions: [] }; },
+    /** The people whose cursors the next read finds. */
+    presence: (people: unknown[]) => { presenceNow = people; },
     acknowledge: (deliveryId: string) => peer.send(JSON.stringify({ type: 'received', deliveryId, index: 0 })),
     release: () => gate.release(),
     revokeAfterHeldAuthorized: () => { firstAlreadyAuthorized = true; permitted = false; }, refuseText: () => { refuseText = true; },
@@ -275,5 +277,24 @@ test('one read hands off every pending update in order, then the head preview, e
     await observed(() => f.updates.length === 5, 'The next read starts after the batch completed');
     assert.deepEqual([f.updates[4]!.type, f.updates[4]!.sequence], ['update', 4]);
     f.acknowledge(f.updates[4]!.deliveryId);
+  } finally { await f.close(); }
+});
+
+test('a cursor that was cleared reaches the reader at once, not when its last renewal runs out (#982)', { timeout: 10_000 }, async () => {
+  const f = await fixture(); f.release();
+  try {
+    const other = { connectionId: randomUUID(), actor: { kind: 'human', id: randomUUID(), name: 'Ada' }, cursor: { anchor: 'a', head: 'a' }, slot: 0,
+      expiresAt: new Date(Date.now() + 5000).toISOString() };
+    const presences = () => (f.messages as unknown as { type: string; connectionId?: string; cursor?: unknown; expiresAt?: string }[]).filter((message) => message.type === 'presence');
+    f.presence([other]); // the timer reads the connection every 250 ms while it is active
+    await observed(() => presences().some((message) => message.connectionId === other.connectionId && message.cursor !== null), 'The reader sees Ada\'s cursor');
+    // Ada's editor loses focus: her row is deleted, so the next read no longer finds her.
+    f.presence([]);
+    await observed(() => presences().some((message) => message.connectionId === other.connectionId && message.cursor === null), 'The reader is told her cursor is gone');
+    const gone = presences().find((message) => message.cursor === null)!;
+    assert.ok(Date.parse(gone.expiresAt!) <= Date.now(), 'with an expiry that has passed, so the reader drops it');
+    const told = presences().length;
+    await delay(800);
+    assert.equal(presences().length, told, 'and it is told once');
   } finally { await f.close(); }
 });

@@ -20,7 +20,7 @@ interface Connection {
   cadence: Cadence;
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
   sequence: number; previewSequence: number; assemblyCommand: string | null; assembly: CompletedAssembly | null; running: boolean; reading: boolean;
-  pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
+  pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void; sent: Record<string, unknown> }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
   /** The last presence this connection's cursor renewed, and when. */
   renewed: { key: string; at: number } | null;
 }
@@ -93,13 +93,18 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
           // Every changed cursor this read observed goes out under its fence, then the next
           // ordered update or preview in the same callback (contract amendment 2026-10-06).
           const active = new Set(result.presence.map((peer) => peer.connectionId));
-          for (const key of [...c.presence.keys()]) if (!active.has(key)) { c.presence.get(key)!.release(); c.presence.delete(key); }
+          for (const key of [...c.presence.keys()]) if (!active.has(key)) {
+            const gone = c.presence.get(key)!; gone.release(); c.presence.delete(key);
+            // The person's cursor was cleared (their editor lost focus) or ended: the reader hears it now, not when the last renewal runs out
+            // (#982). The message is the one it already has, with no cursor and an expiry that has passed. Nothing depends on it arriving.
+            try { c.output.sendJSON({ ...gone.sent, cursor: null, expiresAt: new Date().toISOString() }); } catch { /* the entry expires by itself */ }
+          }
           for (const peer of result.presence) {
             const value = { type: 'presence', generation: head.generation, ...peer };
             const currentSignature = signature(JSON.stringify(value));
             if (c.presence.get(peer.connectionId)?.hash !== currentSignature) {
               const old = c.presence.get(peer.connectionId); const release = old?.release ?? outputBudget.reserve(512);
-              try { c.output.sendJSON(value); c.presence.set(peer.connectionId, { hash: currentSignature, release }); }
+              try { c.output.sendJSON(value); c.presence.set(peer.connectionId, { hash: currentSignature, release, sent: value }); }
               catch (error) { if (!old) release(); throw error; }
             }
           }

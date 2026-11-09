@@ -287,69 +287,56 @@ test('the sidebar card says whether a working agent was ever signed in (#347 rev
   assert.deepEqual([unsigned?.signedIn, unsigned?.online, unsigned?.working], [false, false, false]);
 });
 
-test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSED, lets the agent checkpoint, and Resume lets it claim again', async () => {
+test('a person changing the Owner of a task ends the local client\'s hold: its unit stops and the agent is told (#936, #985)', async () => {
   const f = await scene();
-  const item = await f.task();
-  const { unitId, claim } = await f.work(item);
-  const pause = (who: Person, paused: boolean, headers: Record<string, string> = {}): Promise<Reply> =>
-    who.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-pauses`, { body: { taskId: item.id, agentId: f.agent.id, paused }, headers }) as Promise<Reply>;
+  const take = async (title: string) => {
+    const item = await f.task(f.hubert, title);
+    return { item, ...await f.work(item) };
+  };
+  const owner = async (id: string, body: Record<string, unknown>) => {
+    const version = (await f.taskRow(id)).version;
+    return f.hubert.browser.request('PATCH', `/api/v1/work/${id}`, { body, headers: { 'if-match': `"${version}"` } });
+  };
 
-  // The same people as Stop: a contributor who is neither manager, owner nor creator may not; a viewer cannot write.
-  assert.deepEqual([(await pause(f.marek, true)).status, (await pause(f.marek, true)).json.code], [403, 'PAUSE_NOT_ALLOWED']);
-  assert.equal((await pause(f.eve, true)).status, 403);
-  const key = randomUUID();
-  const paused = await pause(f.hubert, true, { 'idempotency-key': key });
-  assert.equal(paused.status, 201, paused.text);
-  const replay = await pause(f.hubert, true, { 'idempotency-key': key });
-  assert.equal(replay.headers.get('idempotent-replayed'), 'true');
-  assert.equal((await pause(f.hubert, true)).status, 201, 'pausing again returns the pause in force');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 1);
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind='project.agent_paused.v1' AND object_id=$1", [f.p.id])).rows[0].n, 1);
-  // The hold and the claim are untouched; no conversation message is written.
-  const held = await f.taskRow(item.id);
-  assert.deepEqual([held.status, held.owner_agent_id], ['in_progress', f.agent.id]);
-  assert.equal((await f.unitRow(unitId)).state, 'claimed');
-  const list = expectStatus(await f.marek.browser.request('GET', `/api/v1/projects/${f.p.id}/agent-stops`), 200) as AgentStops;
-  assert.deepEqual(list.pauses.map((entry) => [entry.taskId, entry.taskNumber, entry.agent.id, entry.pausedBy.name]), [[item.id, 1, f.agent.id, 'Hubert']]);
-  // #763 AG-4: the owner's working-agent read (sidebar card, Home) names the pause too, and drops it on Resume (below).
-  const sidebar = (expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.find((entry) => entry.task.id === item.id);
-  assert.deepEqual(sidebar?.paused, { by: { id: f.hubert.id, name: 'Hubert' } });
+  // Taking the task back, or giving it to a person, ends the unit the client had claimed; the next call is told it was stopped.
+  const held = await take('Back to nobody');
+  assert.equal((await f.unitRow(held.unitId)).state, 'claimed');
+  expectStatus(await owner(held.item.id, { owner: null }), 200);
+  const ended = await f.unitRow(held.unitId);
+  assert.deepEqual([ended.state, ended.lease_id, ended.generation > held.claim.generation, ended.version > held.claim.version], ['stopped', null, true, true]);
+  // Stop's own record is kept, so the agent's owner and the project's readers read "Stopped by Hubert" whichever way the hold ended (AG-5).
+  assert.deepEqual((await pool.query('SELECT stopped_by, units_stopped FROM agent_stops WHERE task_id=$1', [held.item.id])).rows, [{ stopped_by: f.hubert.id, units_stopped: 1 }]);
+  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind='project.agent_stopped.v1' AND object_id=$1 AND data->>'taskId'=$2", [f.p.id, held.item.id])).rows[0].n, 1);
+  const listed = expectStatus(await f.marek.browser.request('GET', `/api/v1/projects/${f.p.id}/agent-stops`), 200) as AgentStops;
+  assert.deepEqual(listed.stops.filter((entry) => entry.taskId === held.item.id).map((entry) => [entry.stoppedBy.name, entry.agent.id, entry.unitsStopped]), [['Hubert', f.agent.id, 1]]);
+  assert.equal(toolFailure(await f.connected.tool('flux_renew_unit', { ...f.run(), clientCommandId: randomUUID(), unitId: held.unitId,
+    expectedVersion: held.claim.version, generation: held.claim.generation, leaseId: held.claim.lease.id })).code, 'COWORK_STOPPED');
 
-  // The agent's next renewal is its safe point: refused with COWORK_PAUSED, and it can still release with a checkpoint.
-  assert.equal(toolFailure(await f.connected.tool('flux_renew_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
-    expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id })).code, 'COWORK_PAUSED');
-  const released = toolValue(await f.connected.tool('flux_release_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
-    expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id,
-    checkpoint: { summary: 'Measured three corners.', nextAction: 'Measure the fourth corner.', blocker: null } })) as { state: string; version: number };
-  assert.equal(released.state, 'paused');
-  const refused = toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
-    expectedVersion: released.version }));
-  assert.equal(refused.code, 'COWORK_PAUSED', 'no new step until a person resumes');
+  const handed = await take('To a person');
+  expectStatus(await owner(handed.item.id, { owner: { kind: 'human', id: f.marek.id } }), 200);
+  assert.equal((await f.unitRow(handed.unitId)).state, 'stopped');
 
-  // Resume (204, also when nothing is paused) lets the same unit be claimed again with its checkpoint.
-  assert.equal((await pause(f.hubert, false)).status, 204);
-  assert.equal((await pause(f.hubert, false)).status, 204);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
-  assert.equal((expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.find((entry) => entry.task.id === item.id)?.paused, null);
-  const resumed = toolValue(await f.connected.tool('flux_claim_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
-    expectedVersion: released.version })) as { state: string; checkpoint: { summary: string } | null };
-  assert.deepEqual([resumed.state, resumed.checkpoint?.summary], ['claimed', 'Measured three corners.']);
+  // A renewal takes the agent's slots like the change does, so the two queue instead of deadlocking: whichever wins, the unit ends
+  // up stopped and no claimed unit is left on a task the agent no longer holds.
+  const race = await take('Race');
+  const [change, renewal] = await Promise.all([
+    owner(race.item.id, { owner: null }),
+    f.connected.tool('flux_renew_unit', { ...f.run(), clientCommandId: randomUUID(), unitId: race.unitId, expectedVersion: race.claim.version,
+      generation: race.claim.generation, leaseId: race.claim.lease.id }),
+  ]);
+  assert.equal(change.status, 200, change.text);
+  assert.ok(renewal, 'the renewal answered');
+  assert.equal((await f.unitRow(race.unitId)).state, 'stopped');
+  assert.equal((await f.taskRow(race.item.id)).owner_agent_id, null);
 
-  // A pause needs the agent holding the task; Stop clears a pause in force.
-  assert.equal((await pause(f.hubert, true)).status, 201);
-  assert.equal((await f.stop(f.hubert, item.id)).status, 201);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
-  assert.deepEqual([(await pause(f.hubert, true)).status, (await pause(f.hubert, true)).json.code], [409, 'AGENT_NOT_WORKING']);
-
-  // A pause lasts only while the agent holds the task: finishing it, or handing it to someone else, clears the pause.
-  for (const end of [{ status: 'done' }, { owner: null }] as Record<string, unknown>[]) {
-    const next = await f.task(f.hubert, `Held then ended ${JSON.stringify(end)}`);
-    expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${next.id}`, { body: { owner: { kind: 'agent', id: f.agent.id }, status: 'in_progress' },
-      headers: { 'if-match': `"${next.version}"` } }), 200);
-    expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-pauses`,
-      { body: { taskId: next.id, agentId: f.agent.id, paused: true } }), 201);
-    const version = (await f.taskRow(next.id)).version;
-    expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${next.id}`, { body: end, headers: { 'if-match': `"${version}"` } }), 200);
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [next.id])).rows[0].n, 0, JSON.stringify(end));
-  }
+  // Changing something else, or setting the Owner it already has, leaves the client's hold alone. (A connection holds one live unit,
+  // so this goes last, when the earlier tasks' units are stopped.)
+  const kept = await take('Still the agent\'s');
+  expectStatus(await owner(kept.item.id, { title: 'Still the agent\'s, renamed' }), 200);
+  expectStatus(await owner(kept.item.id, { owner: { kind: 'agent', id: f.agent.id } }), 200);
+  assert.equal((await f.unitRow(kept.unitId)).state, 'claimed');
+  assert.equal((await f.taskRow(kept.item.id)).owner_agent_id, f.agent.id);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_stops WHERE task_id=$1', [kept.item.id])).rows[0].n, 0, 'nothing was stopped, so nothing is recorded');
+  // And the route that took Pause is gone.
+  assert.equal((await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-pauses`, { body: { taskId: kept.item.id, agentId: f.agent.id, paused: true } })).status, 404);
 });

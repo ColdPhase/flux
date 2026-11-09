@@ -263,7 +263,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `POST /api/v1/projects/:id/leave` | `leaveProject` |
 | `PUT /api/v1/projects/:id/ai-policy` | `setSpaceAi` (`state`: `allowed` or `blocked`); answers `{ ai, changed, stopped }` |
 | `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
-| `POST /api/v1/projects/:id/views` | `addProjectView` (#351): adds Map, Wiki (`docs`) or Agents to the project's `views`; needs `project.write`, adding one it has changes nothing. `POST /workspaces/:id/projects` takes an optional `template` (`build`, `research`, `event`, `blank`) that sets the starting `views` (research adds `docs`); without one a project has every view. Migration 0064 gave every existing project all three, so none loses a view it uses. The web app also shows a view the project already uses (sketches, docs, an agent in it). Conversation and Tasks are always shown. |
+| (no `/views`) | A space stores no views (#1043): every space shows Conversation, Tasks, Map and Wiki, so there is no `views` column, no `POST /api/v1/projects/:id/views`, no `project.view_added.v1` and no starting views. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |
 | `GET/POST /api/v1/workspaces/:id/agents` | `listAgents`, `createAgent` |

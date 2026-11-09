@@ -252,6 +252,15 @@ export interface WorkRepository extends TaskGraphReader {
    * (`via`: on behalf of that person by a task rule). A change that leaves them as they were keeps none.
    */
   updateWork(id: string, changes: WorkChanges, by: ActorRef, via?: TaskChangeVia): Promise<WorkRecord>;
+  /**
+   * Optional for pure domain compositions; the production adapter supplies both (#985). A person taking a task from an agent also ends
+   * a local client's hold on it. `lockAgentSlots` takes the agent's co-work connection slots, before any graph or task lock, as claims and
+   * Stop do, so the two never wait on each other; `endAgentHold` ends every unfinished unit of the agent's connections on the task
+   * (state `stopped`, lease cleared) and, when there was one, keeps Stop's own record of who did it ("Stopped by Ada"): its id, or
+   * null when the agent held no unit.
+   */
+  lockAgentSlots?(workspaceId: string, agentId: string): Promise<void>;
+  endAgentHold?(by: { workspaceId: string; projectId: string; taskId: string; agentId: string; stoppedBy: string }): Promise<{ stopId: string } | null>;
   /** The activity of a task, newest first, `limit` entries from after `before`, plus whether older ones exist. */
   listTaskActivity(workId: string, window: { limit: number; before: TaskActivityPosition | null }): Promise<{ items: TaskActivityRecord[]; hasMore: boolean }>;
   /**
@@ -309,7 +318,9 @@ export type WorkEventKind =
   | 'project.decision_proposed.v1'
   | 'project.decision_accepted.v1'
   | 'project.result_recorded.v1'
-  | 'project.link_created.v1';
+  | 'project.link_created.v1'
+  /** A person's change of Owner ended a local client's hold (#985); the same event as a Stop. */
+  | 'project.agent_stopped.v1';
 
 /** Records a versioned project event in the unit of work (identifiers only, never content). */
 export interface WorkEventLog {
