@@ -17,6 +17,14 @@ from playwright.sync_api import Page, Route
 FOLD = re.compile(r".*/api/v1/reads\?")
 
 
+def requested_paths(url: str) -> list[str]:
+    """The reads one request asked for: the addresses inside a fold, or the request's own address."""
+    parsed = urlparse(url)
+    if parsed.path == "/api/v1/reads":
+        return parse_qs(parsed.query).get("path", [])
+    return [url]
+
+
 def route_read(page: Page, pattern: re.Pattern[str], answer: Callable[[str], tuple[int, object]]) -> None:
     """Answers every read whose address matches `pattern` with `answer(address) -> (status, body)`, alone or inside a fold."""
 

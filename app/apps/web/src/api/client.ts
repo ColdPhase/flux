@@ -257,8 +257,8 @@ function foldedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
   });
 }
 
-/** A read's address as a value of the fold's query: what must be escaped is, and its slashes, colons and `?` stay as they are (they may in a query). */
-const foldParam = (path: string) => encodeURIComponent(path).replace(/%2F/gi, '/').replace(/%3A/gi, ':').replace(/%3F/gi, '?');
+/** A read's address as a value of the fold's query: what must be escaped is (`&`, `#`, `%`, `+`), and its slashes, colons, `?` and `=` stay as they are (a query may hold them). */
+const foldParam = (path: string) => encodeURIComponent(path).replace(/%2F/gi, '/').replace(/%3A/gi, ':').replace(/%3F/gi, '?').replace(/%3D/gi, '=');
 
 function flushFolded() {
   const waiting = (folding ?? []).filter((entry) => !entry.left);
