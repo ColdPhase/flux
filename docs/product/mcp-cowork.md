@@ -48,15 +48,22 @@ complicated or different").
   as the person, marked "via Claude Code" or "via Codex" (Hubert, 2026-11-08, [#1089](https://github.com/ColdPhase/flux/issues/1089); how it is stored and shown is below).
   For the same reason a change of its that would notify another person does not wait (AG-3 "Telling
   another person" holds server agents only).
-  Its changes can be taken back (Undo), but only its lines in a task's discussion show the change line and
-  Undo in the app today; a task, page or map change has none yet, and #868 tracks showing them.
+  Its changes can be taken back (Undo), and each shows its change line with Undo where it was made
+  (#868): a task's change in the task's activity, a page's change on the page between its title and
+  its text, a map's change (also its thoughts and links) on the map, in its dock or at the head of its
+  List. The line is the assistant's own, "Ada · via Claude Code", "Moved #4 to Doing · Undo", one per
+  change, newest first, three at most with the earlier ones one button away. Everyone who can read the
+  object sees it; the owner or anyone who may edit it takes it back, and a created task, map or page
+  only its owner (AG-3). After someone else changed the same thing it reads "Changed since" and puts
+  nothing back. Nothing shows in a space with AI off. What it posts is the person's own message with
+  its own Delete (below), and its lines in a task's discussion are its owner's to delete (TA-3).
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
   accepting a decision come only from the person in a signed-in Flux session. The client's grant
   has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
 - **What waits.** A local client's changes wait exactly as an agent's do (AG-3), and what waits is one Inbox item per client:
   "Claude Code on Ada's laptop · 3 things wait for you · Approve all · Open". Its answer to the client is plain words that the
-  change waits; the client does not retry it. What it made carries one change line with Undo where the app shows one (above), and an Undo takes back that change
-  and never the client's earlier work
+  change waits; the client does not retry it. What it made carries one change line with Undo on the task, page or map it changed (above),
+  and an Undo takes back that change and never the client's earlier work
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   Taking a task, claiming or releasing it, asking a question, writing in the task's discussion and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.

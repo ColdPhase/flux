@@ -323,6 +323,10 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-mode .seg__b { min-width: 48px; }
 .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
+/* What a local client changed on the map (#868): its change line stands in the bottom dock, whose height the map reserves, so it never covers a thought; in the List it heads the list. */
+.sk-dock .client-changes, .sk-phone .client-changes { pointer-events: auto; margin: 0; align-items: center; max-width: min(640px, 100%); }
+.sk-dock .client-changes .assistant-message, .sk-phone .client-changes .assistant-message { padding: 6px 12px; border-radius: var(--r-md); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
+.sk-list-scroll .client-changes { max-width: 860px; margin: 0 auto 12px; }
 /* The inset also keeps fractional-height borders inside WebKit's integer scroll clip. */
 .sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); padding: 1px; overflow: auto; }
 .sk-composition .sk-draft { margin: 0; box-shadow: var(--sh-pop); }

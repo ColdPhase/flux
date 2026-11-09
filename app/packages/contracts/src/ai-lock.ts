@@ -62,6 +62,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   // The assistant (F-027).
   'POST /api/v1/workspaces/:workspaceId/assistant-operator-requests': exempt(PERSON),
   'GET /api/v1/conversations/:conversationId/assistant-changes': gated('params', 'conversationId', 'conversation'),
+  'GET /api/v1/projects/:projectId/assistant-changes': gated('params', 'projectId', 'project'),
   'GET /api/v1/assistant-runs/:runId/changes': exempt(`${OWN_HISTORY}: one run's changes, from which the owner can Undo`),
   'POST /api/v1/assistant-runs/:runId/changes/apply': gated('params', 'runId', 'run'),
   'POST /api/v1/assistant-runs/:runId/changes/skip': exempt(REDUCES),

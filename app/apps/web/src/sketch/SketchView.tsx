@@ -24,6 +24,7 @@ import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDra
 import { DraftCapture, draftReady } from './DraftCapture';
 import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
 import { useThoughtTasks } from './ThoughtTasks';
+import { ClientChanges } from '../assistant/ClientChanges';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
@@ -776,6 +777,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
         </label> : null}
     </>
   );
+  // What a local client changed on this space's map, with its change line and Undo (#868); a private map has no client in it.
+  const clientChanges = taskProjectId ? <ClientChanges key={sketchId} projectId={taskProjectId} kind="map" id={sketchId} refreshKey={sketch.version} /> : null;
   const sayLine = doc.problem ? <span className="sk-warn">{doc.problem}</span> : status.text;
   const statusLine = (
     <p className={`sk-status${canWrite ? '' : ' sk-status--readonly'}${phone && status.selection && !doc.problem ? ' sk-status--selection' : ''}`} role="status">
@@ -834,7 +837,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {readonlyNote}
             {notices}
           </div>
-          <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
+          <SketchMap {...shared} changes={clientChanges} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
             bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onCite: citePlace ? citeSelected : null, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
@@ -872,6 +875,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <div className="sk-page sk-page--map sk-page--list" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
         <div className="sk sk--map">
           <div className="sk-list-scroll">
+            {clientChanges}
             {list}
             <p className="sk-help" id={helpId}>{listHelp}</p>
           </div>
@@ -894,7 +898,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
       <div className="sk">
         {head}
-
+        {clientChanges}
 
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>

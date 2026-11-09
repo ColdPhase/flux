@@ -13,6 +13,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { TaskAgentState } from '../agents/TaskAgentState';
+import { ClientChanges } from '../assistant/ClientChanges';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
 import { askError, askState } from '../assistant/format';
 import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
@@ -236,6 +237,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
       <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
+      {/* What a local client changed on this task, with its change line and Undo, as the assistant's changes have (#868, LC-2). */}
+      <ClientChanges key={item.id} projectId={project.id} kind="work" id={item.id} refreshKey={state.lines.length} />
       {/* The person's own agent at work and what it answered them: theirs alone (#842). */}
       <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
         lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '' }} />

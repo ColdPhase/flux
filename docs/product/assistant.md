@@ -179,6 +179,8 @@ applies nothing and says "Changed since you asked".
   An item changed since says "Changed since · Open" and does nothing. The line then reads
   "Undone by Ada".
 - The owner, or anyone who may edit the object, may Undo.
+- A local client's change carries the same line where it was made: on its message, and on the task,
+  Wiki page or map it changed, "Ada · via Claude Code" (LC-2, #868).
 
 **Attribution and conflicts.** The agent is the author of every change, which records its owner
 and the run and is an ordinary versioned write. A write whose version check fails is not

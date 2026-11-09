@@ -1,5 +1,5 @@
 import { AI_PROVIDERS } from '@flux/contracts';
-import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { connectionReaches } from './agent-reach.js';
 import type { DbExecutor } from './push.js';
@@ -20,8 +20,14 @@ export type NewAssistantChangeRow = typeof c.$inferInsert;
  */
 export const changeGroup = (row: Pick<AssistantChangeRow, 'id' | 'runId' | 'connectionId' | 'state'>): string =>
   row.runId ?? (row.state === 'waiting' ? row.connectionId! : row.id);
-/** A change as the owner's views read it: with the conversation it shows in and the name of its agent. */
-export type AssistantChangeInView = AssistantChangeRow & { conversationId: string; agentName: string };
+/**
+ * A change as the owner's views read it: with the conversation it shows in and the name of its agent; and, for a local client's, how its
+ * lines label it ("Claude Code", "Codex", or the client's own name; LC-2 "Ada · via Claude Code"), null for the assistant's.
+ */
+export type AssistantChangeInView = AssistantChangeRow & { conversationId: string; agentName: string; via: string | null };
+/** The label of a local client on its lines: its kind when Flux knows it, else its name without where it runs. */
+const clientLabel = (client: { name: string; designation: string }) =>
+  client.designation === 'claude_code' ? 'Claude Code' : client.designation === 'codex' ? 'Codex' : client.name.replace(/ on this computer$/, '').trim() || 'Agent client';
 
 export interface AssistantRunRow {
   id: string; workspaceId: string; projectId: string | null; conversationId: string | null; ownerUserId: string; agentId: string;
@@ -36,11 +42,14 @@ const first = async <T>(db: DbExecutor, query: ReturnType<typeof sql>) => ((awai
 
 export function assistantChangeRows(db: DbExecutor) {
   /** A change with its run's conversation (or the one a client's message went to) and its agent's name; the runs it joins may be absent. */
-  const viewRows = async (where: ReturnType<typeof and>): Promise<AssistantChangeInView[]> => {
+  const viewRows = async (where: ReturnType<typeof and>, newest?: number): Promise<AssistantChangeInView[]> => {
     const r = schema.personalRuns; const k = schema.agentConnections;
-    const rows = await db.select({ change: c, conversationId: sql<string | null>`COALESCE(${r.conversationId}, ${c.conversationId})`, clientName: k.name })
-      .from(c).leftJoin(r, eq(r.id, c.runId)).leftJoin(k, eq(k.id, c.connectionId)).where(where).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-    return rows.map((row) => ({ ...row.change, conversationId: row.conversationId ?? '', agentName: row.clientName ?? 'Assistant' }));
+    const query = db.select({ change: c, conversationId: sql<string | null>`COALESCE(${r.conversationId}, ${c.conversationId})`, clientName: k.name, clientDesignation: k.clientDesignation })
+      .from(c).leftJoin(r, eq(r.id, c.runId)).leftJoin(k, eq(k.id, c.connectionId)).where(where);
+    // The newest `newest` rows, still oldest first.
+    const rows = newest ? (await query.orderBy(desc(c.createdAt), desc(c.id)).limit(newest)).reverse() : await query.orderBy(asc(c.createdAt), asc(c.id)).limit(500);
+    return rows.map((row) => ({ ...row.change, conversationId: row.conversationId ?? '', agentName: row.clientName ?? 'Assistant',
+      via: row.change.connectionId && row.clientName ? clientLabel({ name: row.clientName, designation: row.clientDesignation ?? 'other' }) : null }));
   };
   const conversationMatch = (conversationId: string) =>
     sql`(${c.conversationId} = ${conversationId} OR ${c.runId} IN (SELECT id FROM personal_runs WHERE conversation_id = ${conversationId}))`;
@@ -128,6 +137,14 @@ export function assistantChangeRows(db: DbExecutor) {
     /** Every change of one conversation's runs, whoever owns them: the use case shows each viewer only what is theirs to see. */
     async forConversationAll(conversationId: string): Promise<AssistantChangeInView[]> {
       return viewRows(conversationMatch(conversationId));
+    },
+    /**
+     * The local clients' changes to one task, Wiki page or map of a space, oldest first, the newest 50 (#868): the change line and Undo shown on
+     * that page. A run's are not here: its owner sees them in the conversation it was asked in. `types` are the change kinds the page shows
+     * (a map shows its thoughts and links too).
+     */
+    async forScope(projectId: string, scopeId: string, types: readonly AssistantChangeRow['objectType'][]): Promise<AssistantChangeInView[]> {
+      return viewRows(and(eq(c.projectId, projectId), eq(c.scopeId, scopeId), isNotNull(c.connectionId), inArray(c.objectType, [...types])), 50);
     },
     /** The project a conversation belongs to, for the read check before its message is shown. */
     async conversationPlace(conversationId: string): Promise<{ projectId: string; workspaceId: string } | null> {

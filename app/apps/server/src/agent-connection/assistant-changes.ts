@@ -395,6 +395,16 @@ const producedId = (value: Record<string, unknown>) => {
   return null;
 };
 
+/**
+ * The task, Wiki page or map a change is about, so its line shows there (#868): the map for a thought, a link or a move on it, whose own
+ * ids are gone once they are deleted or undone. None for a message, a decision and a unit's transfer (it names a unit, not the task).
+ */
+function scopeOf(operation: string, target: Target, objectId: string | null, madeId: string | null): string | null {
+  if (target.objectType === 'work') return operation === 'cowork.unit.transfer' ? null : target.objectId ?? madeId ?? objectId;
+  if (target.objectType === 'doc' || target.objectType === 'map') return target.objectId ?? madeId ?? objectId;
+  return target.objectType === 'thought' || target.objectType === 'link' ? objectId : null;
+}
+
 type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockRun']>>>;
 type ClientRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockClient']>>>;
 interface Authority {
@@ -588,7 +598,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-              objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
+              objectId: target.objectId, scopeId: scopeOf(operation, target, objectId, null), objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
               preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId } } : call,
               beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'tells' ? told : target.maker,
               // Who would read what, for the card, also on a task for someone else that would tell a third person (#1089).
@@ -631,12 +641,12 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const conversationId = !runId && !produced.asOwner && target.objectType === 'message' && typeof sentTo === 'string' ? { conversationId: sentTo } : {};
         if (prepared) {
           await rows.update(prepared.id, { state: 'applied_after_wait', waitReason: null, authority: approval!.purpose, receipt, afterVersion: after,
-            objectId: prepared.objectId ?? createdId, decidedBy: approval!.decidedBy, decidedAt: new Date(), ...conversationId });
+            objectId: prepared.objectId ?? createdId, scopeId: prepared.scopeId ?? scopeOf(operation, target, objectId, createdId), decidedBy: approval!.decidedBy, decidedAt: new Date(), ...conversationId });
         } else {
           await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ...conversationId, ownerUserId: claims.ownerUserId,
             agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-            objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call),
-            beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt: new Date() });
+            objectId: target.objectId ?? createdId, scopeId: scopeOf(operation, target, objectId, createdId), objectTitle: target.title, state: 'applied',
+            authority: 'owner_request', preparedCommand: callSummary(call), beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt: new Date() });
         }
         await session.flushEvents();
         return { ...(produced.value as T), replayed: false };

@@ -11,6 +11,7 @@ import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
+import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
 
 // The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
@@ -116,6 +117,8 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
           ? <div className="wiki-title__h"><RenameField title={title} rename={rename} done={() => { setRenaming(false); menuButton.current?.focus(); }} /></div>
           : <PageSwitcher docId={docId} title={title} titleId={titleId} />}
       </div>
+      {/* What a local client changed on this page, with its change line and Undo (#868, LC-2). */}
+      {shown.current ? <ClientChanges key={docId} projectId={project.id} kind="doc" id={docId} refreshKey={shown.version} /> : null}
       {copyFailed ? <CopyFallback path={linkPath} close={() => { setCopyFailed(false); menuButton.current?.focus(); }} /> : null}
       <DeletePageDialog page={deleting} onClose={() => setDeleting(null)}
         onDeleted={(gone) => { setDeleting(null); toast({ message: `Deleted “${gone.title}”.`, tone: 'success' }); navigate(`/projects/${project.id}/docs`); }} />
