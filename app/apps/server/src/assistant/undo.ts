@@ -98,7 +98,9 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const { restore, changedSince } = restorableFields(fields, current);
           if (changedSince.length) throw new Since();
           // The version this Undo writes is kept in the receipt: the Undo of the page's creation counts it as the assistant's own (#1021).
-          restoredVersion = (await docs.updateDoc(owner, id!, restore, current.version, reason)).version;
+          // Only a version newer than the one it started from is this Undo's: a save that changes nothing returns the page as it is.
+          const restored = (await docs.updateDoc(owner, id!, restore, current.version, reason)).version;
+          if (restored > current.version) restoredVersion = restored;
           break;
         }
         case 'map.thought.create': {
