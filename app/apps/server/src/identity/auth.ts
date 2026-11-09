@@ -9,7 +9,7 @@ import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { accessPorts, schema, type Database } from '@flux/db';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@flux/contracts';
-import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany, redactedError } from '@flux/core';
+import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import { createOneClickSignIn } from '../agent-connection/one-click.js';
@@ -29,6 +29,7 @@ import { authSecurityEvent } from './security-events.js';
 import { PASSWORD_TOO_WEAK_MESSAGE, passwordProblem } from './password-policy.js';
 import { createSignInThrottle } from './sign-in-throttle.js';
 import { createDevices } from './devices.js';
+import { authLogEntry } from './auth-log.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -246,17 +247,13 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // which logs only the class, the SQLSTATE and the constraint and answers 500 (#991, ASVS V7.4.1; found in the review of #1093). Better Auth's own
     // errors (a wrong password, a refused origin) are still answered as they were.
     onAPIError: { throw: true },
-    // Better Auth's own log lines go to Flux's logger, and what an error carries is reduced to its class, SQLSTATE and constraint: a failed
-    // statement is quoted with its parameters (a sign-up that lost a race with the same address prints the email and the name), and Better
-    // Auth hands that error to its logger. A line's text may hold an address (`Sign-up attempt for existing email: …`): those are replaced.
-    // Anything else it passes along is not printed (#1088, found in the delta review of #1093).
+    // Better Auth's own log lines go to Flux's logger, reduced to what says why something failed and nothing personal or secret (`auth-log.ts`):
+    // a failed statement is quoted with its parameters (a sign-up that lost a race with the same address prints the email and the name), and
+    // Better Auth hands that error to its logger (#1088, found in the delta reviews of #1093 and #1098).
     logger: {
       log: (level, message, ...details) => {
-        const errors = details.filter((detail): detail is Error => detail instanceof Error || (typeof detail === 'object' && detail !== null && 'message' in detail))
-          .map((detail) => redactedError(detail).message);
-        const text = String(message).replace(/[^\s@"'`<>(),;:]+@[^\s@"'`<>(),;:]+/g, '<email>').replace(/\s+/g, ' ').slice(0, 240);
-        const sink = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info';
-        (log ?? CONSOLE_LOG)[sink]({ channel: 'auth', ...(errors.length ? { error: errors.join('; ') } : {}) }, text);
+        const entry = authLogEntry(level, message, details);
+        (log ?? CONSOLE_LOG)[entry.level](entry.object, entry.text);
       },
     },
     baseURL: config.publicOrigin,
