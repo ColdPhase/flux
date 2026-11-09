@@ -257,6 +257,9 @@ function foldedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
   });
 }
 
+/** A read's address as a value of the fold's query: what must be escaped is, and its slashes, colons and `?` stay as they are (they may in a query). */
+const foldParam = (path: string) => encodeURIComponent(path).replace(/%2F/gi, '/').replace(/%3A/gi, ':').replace(/%3F/gi, '?');
+
 function flushFolded() {
   const waiting = (folding ?? []).filter((entry) => !entry.left);
   folding = null;
@@ -274,7 +277,7 @@ async function sendFolded(entries: Folded[]) {
   const leave = () => { if (entries.every((entry) => entry.left || entry.signal?.aborted)) abort.abort(); };
   for (const entry of entries) entry.signal?.addEventListener('abort', leave, { once: true });
   try {
-    const response = await send(`${READS_PATH}?${entries.map((entry) => `path=${encodeURIComponent(entry.path)}`).join('&')}`, { accept: 'application/json', signal: abort.signal });
+    const response = await send(`${READS_PATH}?${entries.map((entry) => `path=${foldParam(entry.path)}`).join('&')}`, { accept: 'application/json', signal: abort.signal });
     const text = await response.text();
     if (!response.ok) {
       // The fold itself was refused (signed out, too busy): each read gets that answer, as its own request would have.

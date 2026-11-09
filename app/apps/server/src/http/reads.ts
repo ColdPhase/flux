@@ -8,6 +8,9 @@ import { READS_LIMIT, READS_PATH, foldableRead, type FoldedReadAnswer } from '@f
  * logs. Only the reads `foldableRead` names (JSON reads of the API, nothing that leaves it), at most READS_LIMIT, and only by GET. A cookie
  * a read sets (a session renewed) is set on this answer, so nothing a route does for the caller is lost.
  */
+/** How many of a fold's reads run at once. */
+const READS_AT_ONCE = 4;
+
 export function useFoldedReads(app: FastifyInstance) {
   app.get<{ Querystring: { path?: string | string[] } }>(READS_PATH, {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { path: { anyOf: [{ type: 'string' }, { type: 'array', items: { type: 'string' } }] } } } },
@@ -22,13 +25,19 @@ export function useFoldedReads(app: FastifyInstance) {
       if (typeof value === 'string') headers[name] = value;
     }
     const cookies: string[] = [];
-    const answers = await Promise.all(paths.map(async (url): Promise<FoldedReadAnswer> => {
-      const answer = await app.inject({ method: 'GET', url, headers, remoteAddress: request.ip });
-      const set = answer.headers['set-cookie'];
-      if (set) cookies.push(...(Array.isArray(set) ? set : [String(set)]));
-      const json = /^application\/json\b/i.test(String(answer.headers['content-type'] ?? ''));
-      return { status: answer.statusCode, body: json ? answer.body : '' };
-    }));
+    const answers: FoldedReadAnswer[] = new Array(paths.length);
+    // A few at a time, as a browser asks a server over one connection: a fold never takes more of the database pool than that.
+    let next = 0;
+    const worker = async () => {
+      for (let index = next++; index < paths.length; index = next++) {
+        const answer = await app.inject({ method: 'GET', url: paths[index]!, headers, remoteAddress: request.ip });
+        const set = answer.headers['set-cookie'];
+        if (set) cookies.push(...(Array.isArray(set) ? set : [String(set)]));
+        const json = /^application\/json\b/i.test(String(answer.headers['content-type'] ?? ''));
+        answers[index] = { status: answer.statusCode, body: json ? answer.body : '' };
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(READS_AT_ONCE, paths.length) }, worker));
     if (cookies.length) reply.header('set-cookie', cookies);
     return { answers };
   });

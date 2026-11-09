@@ -16,6 +16,7 @@ import unittest
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
+from folded_reads import route_read
 
 PASSWORD = "stop it before it goes on"
 STAMP = int(time.time() * 1000)
@@ -151,8 +152,8 @@ class StopAndQuestions(unittest.TestCase):
                     "question": "Should the offsets be per bed, or one value for all six?", "options": ["Per bed", "One value"],
                     "createdAt": "2026-10-08T10:00:00.000Z", "answer": state["answer"]}
 
-        def read(route: Route) -> None:
-            route.fulfill(status=200, content_type="application/json", body=json.dumps({"projectId": pid, "questions": [question()]}))
+        def read(_address: str) -> tuple[int, object]:
+            return 200, {"projectId": pid, "questions": [question()]}
 
         def answer(route: Route) -> None:
             body = json.loads(route.request.post_data or "{}")
@@ -162,7 +163,8 @@ class StopAndQuestions(unittest.TestCase):
                                "messageId": message_id, "at": "2026-10-08T10:01:00.000Z"}
             route.fulfill(status=200, content_type="application/json", body=json.dumps(question()))
 
-        page.route(re.compile(r".*/api/v1/projects/[^/]+/agent-questions$"), read)
+        # The question read may be folded with the conversation's other reads (#862).
+        route_read(page, re.compile(r".*/api/v1/projects/[^/]+/agent-questions$"), read)
         page.route(re.compile(r".*/api/v1/agent-questions/[^/]+/answer$"), answer)
         return sent
 
