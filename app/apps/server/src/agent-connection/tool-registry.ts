@@ -15,8 +15,10 @@ import { convertedOnce } from './tool-schema.js';
  * client sees the public schema, with the same note about waiting.
  */
 const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
-  flux_create_task: 'Add one task to this project. A task for another person (ownerUserId) waits for your owner\'s OK. A task made from a message names it (sourceMessageId). To split a task, make each step a subtask of it (parentTaskId).',
-  flux_update_task: 'Change one task at the version you last read (title, outcome, status, blocker, what it waits for, what came of it, done-when, prerequisites).',
+  flux_create_task: 'Add one task to this project. Give it to a person of this space by their name (owner); a task for anyone but your owner waits for your owner\'s OK. '
+    + 'A due day is dueOn, YYYY-MM-DD. A task made from a message names it (sourceMessageId). To split a task, make each step a subtask of it (parentTaskId).',
+  flux_update_task: 'Change one task at the version you last read (title, outcome, status, blocker, what it waits for, its due day, what came of it, done-when, prerequisites). '
+    + 'It does not change who the task is for.',
   flux_propose_decision: 'Propose one decision. It stays proposed; people decide.',
   flux_create_doc: 'Start one Wiki page in this project.',
   flux_update_doc: 'Save the next version of one Wiki page at the version you last read (the complete new text).',

@@ -48,7 +48,7 @@ describe('agents split a task into subtasks, and a task keeps the message it cam
     const parent = await scene.task(scene.owner, 'Calibrate the overflow sensor');
     const run = await scene.liveRun();
     const mine = JSON.parse(text((await run.call('flux_create_task', { task: { title: 'Compare the last 40 readings', parentTaskId: parent.id } })).message)) as { workId: string };
-    const waiting = await run.call('flux_create_task', { task: { title: 'Weigh the full barrel on Thursday', parentTaskId: parent.id, ownerUserId: scene.peer.id } });
+    const waiting = await run.call('flux_create_task', { task: { title: 'Weigh the full barrel on Thursday', parentTaskId: parent.id, owner: scene.peer.id } });
     assert.match(text(waiting.message), /^Waiting for /, 'a task for another person is a proposal');
     let object = await detail(parent.id);
     assert.equal(object.kind, 'work');

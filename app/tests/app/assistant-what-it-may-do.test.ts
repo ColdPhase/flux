@@ -175,9 +175,9 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
 
   test('a task for another person is a proposal: Approve, Edit and Skip; a task for its owner is made at once', async () => {
     const live = await scene.liveRun();
-    assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: 'For Ada herself', ownerUserId: scene.owner.id } })).message)).workId);
+    assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: 'For Ada herself', owner: scene.owner.id } })).message)).workId);
     for (const title of ['Order sensors', 'Skip me'])
-      assert.match(text((await live.call('flux_create_task', { task: { title, ownerUserId: scene.peer.id } })).message), /^Waiting for /);
+      assert.match(text((await live.call('flux_create_task', { task: { title, owner: scene.peer.id } })).message), /^Waiting for /);
     await scene.complete(live.runId);
     const [, order, skip] = await changesOf(live.runId);
     assert.deepEqual([order!.state, order!.wait_reason], ['waiting', 'others']);
@@ -205,10 +205,10 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
 
     const live = await scene.liveRun();
     for (const title of ['One for Jonas', 'Two for Jonas', 'Three for Jonas'])
-      await live.call('flux_create_task', { task: { title, ownerUserId: scene.peer.id } });
+      await live.call('flux_create_task', { task: { title, owner: scene.peer.id } });
     await scene.complete(live.runId);
     const second = await scene.liveRun();
-    await second.call('flux_create_task', { task: { title: 'From the next run', ownerUserId: scene.peer.id } });
+    await second.call('flux_create_task', { task: { title: 'From the next run', owner: scene.peer.id } });
     await scene.complete(second.runId);
 
     const items = await of(live.runId, second.runId);
@@ -306,7 +306,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     const create = (task: Record<string, unknown>) => call('flux_create_task', { task });
     const waits = (message: Parameters<typeof text>[0]) => /^Waiting for /.test(text(message));
 
-    assert.ok(waits(await create({ title: 'For Jonas from a client', ownerUserId: scene.peer.id })));
+    assert.ok(waits(await create({ title: 'For Jonas from a client', owner: scene.peer.id })));
     assert.equal((await titled('For Jonas from a client')).length, 0);
     const theirs = await scene.task(scene.peer, 'Jonas owns this');
     assert.ok(waits(await call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Changed by a client' } })));

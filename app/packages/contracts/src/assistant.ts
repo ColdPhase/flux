@@ -168,9 +168,8 @@ const WORK_FIELD_PHRASES: Record<string, { phrase: string; verb: string }> = {
   criteria: { phrase: 'add done-when to', verb: 'Add done-when' },
   dependencyIds: { phrase: 'set prerequisites of', verb: 'Set prerequisites' },
   waitingFor: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
-  /** The tool's own name for it: a saved call keeps the tool's arguments. */
-  waitingForUserId: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
   waitingOn: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
+  dueOn: { phrase: 'set due date of', verb: 'Set due date' },
 };
 
 /** The object's own verb (UX review P2-5): a finished task is "close", a renamed one "rename". */

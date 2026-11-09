@@ -41,7 +41,7 @@ export function restorableFields(fields: Record<string, { before: unknown; after
 
 const clip = (value: string, length = 60) => value.length > length ? `${value.slice(0, length - 1)}…` : value;
 /** What a field is called in the message when several changed ("done-when, prerequisites"). */
-const FIELD_NAMES: Record<string, string> = { criteria: 'done-when', dependencyIds: 'prerequisites', waitingFor: 'waiting-for', waitingOn: 'waiting-for', blocker: 'blocker', dropped: 'dropped', cameOfIt: 'what came of it' };
+const FIELD_NAMES: Record<string, string> = { criteria: 'done-when', dependencyIds: 'prerequisites', waitingFor: 'waiting-for', waitingOn: 'waiting-for', blocker: 'blocker', dropped: 'dropped', cameOfIt: 'what came of it', dueOn: 'due date' };
 const COUNTED: Record<string, string> = { criteria: 'done-when', dependencyIds: 'prerequisites' };
 /**
  * "Probes" -> "Calibrate the probes" for one changed field; several fields read as their names. A list reads as how many
@@ -56,6 +56,7 @@ export function fieldWords(fields: Record<string, { before: unknown; after: unkn
       if (key === 'waitingFor') return typeof value === 'string' && value ? names.get(value) ?? 'someone' : 'no one';
       if (key === 'waitingOn') return typeof value === 'string' && value ? (value.startsWith('decision:') ? 'a decision' : 'a task') : 'nothing';
       if (key === 'dropped') return value === true ? 'dropped' : 'not dropped';
+      if (key === 'dueOn') return typeof value === 'string' && value ? value : 'no due date';
       return typeof value === 'string' ? (value ? clip(value) : 'empty') : value === null || value === undefined ? 'empty' : clip(String(value));
     };
     return { before: show(only.before), after: show(only.after) };

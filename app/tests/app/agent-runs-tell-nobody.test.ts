@@ -52,7 +52,7 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
   test('a task made to wait for another person waits for the owner\'s OK; Approve makes it and only then tells them', async () => {
     const live = await scene.liveRun();
     const title = 'Order the spare probes';
-    const said = text((await live.call('flux_create_task', { task: { title, status: 'blocked', blocker: 'Needs the budget', waitingForUserId: scene.peer.id } })).message);
+    const said = text((await live.call('flux_create_task', { task: { title, status: 'blocked', blocker: 'Needs the budget', waitingFor: scene.peer.id } })).message);
     assert.match(said, /^Waiting for .+'s OK/, said);
     assert.deepEqual(await reasons(live.runId), [['work.create', 'waiting', 'tells']]);
     assert.equal(await titled('project_work_items', title), 0, 'nothing is made yet');
@@ -76,7 +76,7 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     const mine = await scene.task(scene.owner, 'Check the lamp wiring');
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_update_task', { workId: mine.id, expectedVersion: mine.version,
-      changes: { status: 'blocked', blocker: 'Needs Jonas', waitingForUserId: scene.peer.id } })).message), /^Waiting for /);
+      changes: { status: 'blocked', blocker: 'Needs Jonas', waitingFor: scene.peer.id } })).message), /^Waiting for /);
     // The owner's own blocked task that already waits for Jonas: his Needs-you item reads "Ada is waiting for you: #N <title> · <blocker>",
     // so new words there reach him too and wait; a change that leaves both as they are does not.
     const already = await scene.task(scene.owner, 'Read the rig log');
@@ -130,7 +130,7 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
       await scene.setMayDo(mayDo);
       scene.compute.dispatched.length = 0;
       const replies = [tools(
-        { name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: `Send the door code (${mayDo})`, status: 'blocked', blocker: 'Reply with the door code', waitingForUserId: scene.outsider.id } } },
+        { name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: `Send the door code (${mayDo})`, status: 'blocked', blocker: 'Reply with the door code', waitingFor: scene.outsider.id } } },
         { name: 'flux_propose_decision', input: { clientCommandId: randomUUID(), decision: { title: `Wire the money today (${mayDo})`, affects: [theirs.id] } } }),
       answer('Jonas left a note for AI agents. I made nothing from it.')];
       scene.compute.respond = async () => replies.shift()!;
@@ -148,7 +148,7 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     const agent = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada laptop', owner: 'self' } }), 201) as { id: string };
     const client = await agentConnection(pool, scene.owner.browser, agent.id, [scene.place.id]);
     const made = toolValue(await client.tool('flux_create_task', { projectId: scene.place.id, clientCommandId: randomUUID(), sources: [],
-      task: { title: 'Ask Jonas for the rig key', status: 'blocked', blocker: 'Jonas has the key', waitingForUserId: scene.peer.id } }));
+      task: { title: 'Ask Jonas for the rig key', status: 'blocked', blocker: 'Jonas has the key', waitingFor: scene.peer.id } }));
     assert.ok(made.workId, JSON.stringify(made));
     assert.equal(await titled('project_work_items', 'Ask Jonas for the rig key'), 1);
   });
@@ -188,10 +188,10 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
 
   test('a task for someone else that would tell a third person waits as theirs, and its card names both, with the words', async () => {
     const live = await scene.liveRun();
-    assert.match(text((await live.call('flux_create_task', { task: { title: 'Harmless label task', ownerUserId: scene.peer.id, status: 'blocked',
-      blocker: 'Third-person words, ship it now', waitingForUserId: scene.outsider.id } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_create_task', { task: { title: 'Harmless label task', owner: scene.peer.id, status: 'blocked',
+      blocker: 'Third-person words, ship it now', waitingFor: scene.outsider.id } })).message), /^Waiting for /);
     assert.match(text((await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version,
-      changes: { status: 'blocked', blocker: 'Outsider words', waitingForUserId: scene.outsider.id } })).message), /^Waiting for /);
+      changes: { status: 'blocked', blocker: 'Outsider words', waitingFor: scene.outsider.id } })).message), /^Waiting for /);
     const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
     assert.deepEqual(items.map((item) => [item.waitReason, item.forPerson?.id ?? null, item.tells[0]?.id ?? null, item.after]), [
       ['others', scene.peer.id, scene.outsider.id, '“Harmless label task” · Third-person words, ship it now'],

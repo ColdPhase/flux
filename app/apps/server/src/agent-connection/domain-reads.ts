@@ -11,6 +11,7 @@ import { taskDiscussionInTransaction } from '../work/task-discussions.js';
 import { policySearchAccess, searchRepository } from '../search/adapters.js';
 import { SearchCursorCodec } from '../search/cursor.js';
 import { withAgentConnection } from './context.js';
+import { messagesForAgents, withAgentLabels } from './authors.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
@@ -28,6 +29,10 @@ const RUN_TEXT_CHUNK = 12_000;
 const RUN_TEXT_ENCODED_BYTES = 12 * 1024;
 const RUN_PAGE_LIMIT = 10;
 const annotations = { readOnlyHint: true };
+/** How the two conversation reads name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
+const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Former member" once they can no longer read this space); '
+  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; and "Ada Nowak · via Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
+  + 'not yours. author.id is the person\'s or the agent\'s id.';
 
 /** Chunking always reports coverage; a continuation cannot silently switch source versions. */
 function textChunk(body: string, version: number, offset: number, expected: number | undefined, run: boolean) {
@@ -54,9 +59,12 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   const isRun = ({ claims }: ToolCall) => claims.run !== undefined;
   const pageLimit = (call: ToolCall, limit: number) => isRun(call) ? Math.min(limit, RUN_PAGE_LIMIT) : limit;
   const capped = <T extends { limit: number }>(call: ToolCall, query: T): T => ({ ...query, limit: pageLimit(call, query.limit) });
+  /** A read of one space names every agent in it with its owner, "Assistant (Ada's agent)" (#1160). */
   async function result<T>({ claims }: ToolCall, projectId: string | null, read: Parameters<typeof withAgentConnection<T>>[4]) {
-    try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, read)); }
-    catch (error) { return toolError(error); }
+    try {
+      return toolResult(await withAgentConnection(db, claims, 'read', projectId, async (context) =>
+        projectId === null ? read(context) : withAgentLabels(context.tx, projectId, context.workspaceId, await read(context))));
+    } catch (error) { return toolError(error); }
   }
 
   server.registerTool('flux_list_contexts', { title: 'List your Flux projects',
@@ -118,24 +126,27 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   server.registerTool('flux_list_conversations', { title: 'List project conversations', description: 'A page of project conversations.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }, call) => result(call, projectId, ({ tx, principal }) => conversationUseCases(conversationStore(tx)).listConversations(principal, projectId, capped(call, query))));
   server.registerTool('flux_get_conversation', { title: 'Read a project conversation',
-    description: 'Read up to 50 messages; use nextBeforeSequence for older ones.',
+    description: `Read up to 50 messages; use nextBeforeSequence for older ones. ${AUTHORS}`,
     inputSchema: z.object({ projectId: z.uuid(), id: z.uuid(), limit: z.int().min(1).max(50).default(20), beforeSequence: z.int().min(1).optional() }), annotations },
   ({ projectId, id, ...query }, call) => result(call, projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'conversation', id);
-    return conversationUseCases(conversationStore(tx)).getConversation(principal, id, { ...query, limit: pageLimit(call, query.limit) });
+    const conversation = await conversationUseCases(conversationStore(tx)).getConversation(principal, id, { ...query, limit: pageLimit(call, query.limit) });
+    return { ...conversation, messages: await messagesForAgents(tx, projectId, conversation.messages) };
   }));
 
   // The task's one discussion (#868): the same audience as the task. The task names its project, which must be a selected one.
   server.registerTool('flux_get_task_discussion', { title: 'Read a task\'s discussion',
-    description: 'The people\'s and agents\' messages about a task, up to 50; use messagePage.nextBeforeSequence for older ones. Reading creates nothing.',
+    description: `The people's and agents' messages about a task, up to 50; use messagePage.nextBeforeSequence for older ones. Reading creates nothing. ${AUTHORS}`,
     inputSchema: z.strictObject({ taskId: z.uuid(), limit: z.int().min(1).max(50).default(20), beforeSequence: z.int().min(1).optional() }), annotations },
   async ({ taskId, limit, beforeSequence }, call) => {
     // The lookup runs inside the checked transaction (AG-10): a space with AI off answers SPACE_AI_OFF.
-    return result(call, null, async ({ tx, principal, requireProject }) => {
+    return result(call, null, async ({ tx, principal, requireProject, workspaceId }) => {
       const [task] = await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
       if (!task) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
       await requireProject(task.projectId);
-      return taskDiscussionInTransaction(tx).getDiscussion(principal, taskId, { limit: pageLimit(call, limit), ...(beforeSequence === undefined ? {} : { beforeSequence }) });
+      const discussion = await taskDiscussionInTransaction(tx).getDiscussion(principal, taskId, { limit: pageLimit(call, limit), ...(beforeSequence === undefined ? {} : { beforeSequence }) });
+      const root = discussion.root ? (await messagesForAgents(tx, task.projectId, [discussion.root]))[0]! : null;
+      return withAgentLabels(tx, task.projectId, workspaceId, { ...discussion, root, messages: await messagesForAgents(tx, task.projectId, discussion.messages) });
     });
   });
 

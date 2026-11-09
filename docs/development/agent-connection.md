@@ -311,8 +311,19 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 
 | Tool | Operation | Classes | Change |
 | --- | --- | --- | --- |
-| `flux_create_task` | `work.create` | execute, plan | One task with an optional outcome, status, blocker, done-when criteria, same-project prerequisites and plan intent |
-| `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes; both accept an optional `waitingForUserId` (a project member, blocked tasks only) |
+| `flux_create_task` | `work.create` | execute, plan | One task with an optional owner, outcome, status, blocker, due day, done-when criteria, same-project prerequisites and plan intent |
+| `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields but the owner, and the plan intent never changes; both accept an optional `waitingFor` (blocked tasks only) and `dueOn` (`null` clears it in a change) |
+
+A person in these tools (`owner`, `waitingFor`) is given by their name as Flux shows it or by their user id
+(#1160, [C-56](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)), and
+`spacePerson` (`app/apps/server/src/agent-connection/space-person.ts`) resolves it before the change is prepared, under the
+checks of every read (the owner's rights, the run's place, the space's AI switch), among the space's people: the list its
+People page and the Owner field show (`listSpacePeople`). An exact id, else a full name, else one word of a name (a first name
+or a surname), compared without case or accents. Two people that fit are `PERSON_AMBIGUOUS` (409), with their names and ids;
+nobody is `PERSON_NOT_IN_SPACE` (404) in the same words whoever exists outside the space. A change keeps the resolved id, so
+the owner's Approve repeats exactly the call they saw and resolves nothing again. `dueOn` is `YYYY-MM-DD` (#488) and is checked
+by the same rule as a person's change (`taskDueOn`) before anything is prepared, so a change that would wait never waits for a
+date it cannot set; a due day on another person's task waits like any change to it, and Undo puts the earlier day back.
 | `flux_link_pull_request` | `work.update` | execute, plan | Link the pull request the agent produced to the task it holds, by its URL, on a repository a person already connected to the project (#160 AC-3, below). It uses the task-change grant; it adds no GitHub permission |
 | `flux_undo_task_creation` | `work.creation.revert` | execute, plan | Undo the creation of a task this agent created natively, at its exact version, while it is unchanged and unused (#238); the task stays as read-only history and a retry returns the same receipt. A `work.update` grant does not authorize it |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
@@ -443,6 +454,12 @@ A task has one discussion (#868), where people and agents talk about it:
 - `flux_get_task_discussion {taskId, limit?, beforeSequence?}` reads at most 50 messages of the discussion under `flux.context.read` and
   the conversations switch, for the task's project when that project is selected for the connection; `messagePage.nextBeforeSequence`
   pages back. Reading creates nothing.
+- It and `flux_get_conversation` give each message (and the discussion's `root`) one `author: {kind: 'human' | 'agent', id, name}` in
+  place of `authorId`, the agent author and `via` (#1160, `authors.ts`). `name` is how people see the author: a person's name, an
+  agent with whose it is ("Asystent (Ada's agent)", `agentLabel`), and a person's post of their agent's answer as theirs, "Ada Nowak ·
+  via Asystent". Only a person who can read the space now is named (`spaceReadersNamed`), and an agent's owner by the same rule
+  (`projectAuthorOwners`): anyone else is "Former member", "Asystent (a former member's agent)". Every agent named by any read of a
+  space (a task's owner or creator, a decision's author, a conversation's starter) gets the same label (`withAgentLabels`).
 - At most five agent messages in a row until a person writes; the sixth is refused with `AGENT_TURN_LIMIT` and nothing is written or
   debited. Only a person's message gives an agent more. A retry with the same `clientCommandId` replays. The limit holds for every
   agent write into the discussion, not only this tool: `flux_reply_in_conversation` and `flux_ask_question` with the discussion's

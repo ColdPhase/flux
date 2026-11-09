@@ -197,6 +197,11 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   own message, attributed "Ada · via Assistant". The agent may use the conversation as context, for
   example to summarise it. A guest has no `/ai`. The places, what each may use and what Show everyone
   posts are [C-36 to C-40](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
+- **Who wrote what.** Every message an agent reads names its author as people see them: a person
+  by name, an agent with whose it is ("Asystent (Ada's agent)"), and an answer a person posted with
+  Show everyone as that person's ("Ada Nowak · via Asystent"), never the reading agent's own; the
+  agent is told its own label. Only someone who can read the space now is named; anyone else is
+  "Former member" ([coordinator default C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160).
 - **What `/ai` may use.** Inside a conversation, `/ai` uses only what that conversation's
   audience can see: the conversation and the places its people can all see. So Show everyone
   never publishes anything private, because the answer was drawn only from what its readers
@@ -290,7 +295,7 @@ Server agents act only inside Flux, with their owner's rights:
 
 | Area | Allowed |
 | --- | --- |
-| Tasks | Create tasks for the owner or the owner's agents (tasks for others wait); change status; write in the task discussion |
+| Tasks | Create tasks for the owner or the owner's agents (tasks for others wait, given to a person of the space by name, C-56); change status and the due day; write in the task discussion |
 | Conversations | Read; write only in task discussions and the private conversation. A conversation with other people (a space's or a DM) only through the owner's Show everyone |
 | Wiki | Create and edit pages, with Undo. Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it (no link to it, no message that cited it, no call on it, no one typing in it). Deleting a page always waits for the owner's OK |
 | Map | Add thoughts and link them to tasks |

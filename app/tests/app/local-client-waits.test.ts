@@ -117,10 +117,10 @@ describe('A local client follows the owner\'s rights and waits like the assistan
 
   test('a task for another person waits as a proposal; one for the owner is made at once', async () => {
     await reset();
-    const forPeer = await f.tool('flux_create_task', { projectId: f.projectId, clientCommandId: randomUUID(), task: { title: 'For Jonas', ownerUserId: peer.id } });
+    const forPeer = await f.tool('flux_create_task', { projectId: f.projectId, clientCommandId: randomUUID(), task: { title: 'For Jonas', owner: peer.id } });
     assert.match(text(forPeer), /^Waiting for /);
     assert.equal((await titled('For Jonas')).length, 0);
-    assert.ok(toolValue(await f.tool('flux_create_task', { projectId: f.projectId, clientCommandId: randomUUID(), task: { title: 'For Ada', ownerUserId: owner.id } })).workId);
+    assert.ok(toolValue(await f.tool('flux_create_task', { projectId: f.projectId, clientCommandId: randomUUID(), task: { title: 'For Ada', owner: owner.id } })).workId);
   });
 
   test('Only read: the client reads and changes nothing, and says so', async () => {

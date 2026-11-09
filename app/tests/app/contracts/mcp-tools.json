@@ -918,12 +918,12 @@
                 "type": "string",
                 "maxLength": 2000
               },
-              "ownerUserId": {
+              "owner": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200
               },
-              "waitingForUserId": {
+              "waitingFor": {
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 200
@@ -991,6 +991,10 @@
                 "format": "uuid",
                 "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                 "type": "string"
+              },
+              "dueOn": {
+                "type": "string",
+                "maxLength": 10
               }
             },
             "required": [
@@ -3339,7 +3343,7 @@
                   }
                 ]
               },
-              "waitingForUserId": {
+              "waitingFor": {
                 "anyOf": [
                   {
                     "type": "string",
@@ -3401,6 +3405,17 @@
                     "format": "uuid",
                     "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$",
                     "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "dueOn": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 10
                   },
                   {
                     "type": "null"
@@ -3593,6 +3608,8 @@
     "IDEMPOTENCY_CONFLICT",
     "INVALID_INPUT",
     "MCP_TOOL_UNAVAILABLE",
+    "PERSON_AMBIGUOUS",
+    "PERSON_NOT_IN_SPACE",
     "PLAYBOOK_VERSION_MISMATCH",
     "RUNTIME_UNAVAILABLE",
     "SOURCE_VERSION_CONFLICT",
