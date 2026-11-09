@@ -221,7 +221,9 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   const codex = request.client === 'codex';
   // Claude Code's own search, with the web on (#1065); Codex's stays off whatever a request says (the protocol refuses it too).
   const webSearch = !codex && request.webSearch === true;
-  const argv = RUN_TEMPLATES[request.client]({ tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch });
+  // The template by name, never by indexing with the request's value (CodeQL js/unvalidated-dynamic-method-call; the protocol checked it already).
+  const input = { tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch };
+  const argv = codex ? RUN_TEMPLATES.codex(input) : RUN_TEMPLATES.claude_code(input);
   if (codex) {
     let stopAsked = false;
     runs.set(request.runId, { bindingId: request.bindingId, stop: () => { stopAsked = true; } });
