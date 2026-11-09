@@ -173,8 +173,11 @@ export interface MessageSource {
   contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string };
   /** #1064: when it was written; whether its author changed the words since; the agent whose answer its author posted with Show everyone. */
   createdAt: Date; edited?: boolean; via?: string | null;
-  /** #1064, a space's main conversation only: the opening words of the thread it belongs to. */
-  thread?: string | null;
+  /**
+   * #1064, a space's main conversation only: the conversation (thread) it belongs to, and that thread's opening words; null words when
+   * its author deleted the opening message.
+   */
+  conversationId?: string; thread?: string | null;
 }
 /** One place of the owner's runs (#842): exactly one of these. */
 export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string };

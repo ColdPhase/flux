@@ -341,7 +341,7 @@ export function personalRunRows(db: DbExecutor) {
       // #1064: each message with the opening words of its thread (the conversation's first message, unless its author deleted it).
       const thread = sql<string | null>`(SELECT left(o.body, 120) FROM project_messages o WHERE o.conversation_id = ${m.conversationId} AND o.sequence = 1 AND o.removed_at IS NULL)`;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
-        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, thread,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, conversationId: m.conversationId, thread,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
         .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
