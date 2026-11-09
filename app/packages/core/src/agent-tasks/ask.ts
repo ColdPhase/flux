@@ -65,8 +65,22 @@ export function resolveAsked(ask: AgentQuestion, candidates: readonly Askable[])
   return owned.length === 1 ? { found: owned[0]! } : { ambiguous: owned };
 }
 
-/** "Fieldbot (Jonas's agent)": how an agent is named wherever two people's agents can be mistaken for each other. */
-export const agentLabel = (agent: { name: string; ownerName: string }) => `${agent.name} (${first(agent.ownerName)}'s agent)`;
+/**
+ * "Fieldbot (Jonas's agent)": how an agent is named wherever two people's agents can be mistaken for each other. `full`: its owner shares a
+ * first name with someone else who can read the space, so the owner's whole name tells them apart, "Asystent (Ada Nowak's agent)" (#1163).
+ */
+export const agentLabel = (agent: { name: string; ownerName: string; full?: boolean }) =>
+  `${agent.name} (${agent.full ? agent.ownerName.trim() : first(agent.ownerName)}'s agent)`;
+
+/** A first name as two people's are compared: no case. */
+export const firstName = (name: string) => first(name).toLocaleLowerCase();
+/** Of these people (each once, by id), the ones whose first name someone else among them has (#1163). */
+export function sharedFirstNames(people: readonly { id: string; name: string }[]): Set<string> {
+  const named = new Map(people.map((person) => [person.id, firstName(person.name)]));
+  const count = new Map<string, number>();
+  for (const name of named.values()) count.set(name, (count.get(name) ?? 0) + 1);
+  return new Set([...named].filter(([, name]) => count.get(name)! > 1).map(([id]) => id));
+}
 
 /** A person who wrote in a space and can no longer read it (#763 XC-2): named the same way everywhere, never by name. */
 export const FORMER_MEMBER = 'Former member';
@@ -76,8 +90,8 @@ export const FORMER_MEMBER = 'Former member';
  * person's, with the agent it came from ("Jonas Berg · via Assistant"). A name is null when that person cannot read the space now (they left
  * the company or the space): a person is then a former member, and an agent's owner too. The caller decides that, never this text.
  */
-export function authorLabel(author: { kind: 'human'; name: string | null; via?: string | null } | { kind: 'agent'; name: string; ownerName: string | null }): string {
-  if (author.kind === 'agent') return author.ownerName ? agentLabel({ name: author.name, ownerName: author.ownerName }) : `${author.name} (a former member's agent)`;
+export function authorLabel(author: { kind: 'human'; name: string | null; via?: string | null } | { kind: 'agent'; name: string; ownerName: string | null; full?: boolean }): string {
+  if (author.kind === 'agent') return author.ownerName ? agentLabel({ name: author.name, ownerName: author.ownerName, full: author.full }) : `${author.name} (a former member's agent)`;
   return `${author.name ?? FORMER_MEMBER}${author.via ? ` · via ${author.via}` : ''}`;
 }
 

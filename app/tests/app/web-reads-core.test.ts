@@ -348,7 +348,7 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
   });
 
   test('P2: Flux\'s own words in a brief and dates and times are not private; what people wrote is', async () => {
-    const input: BriefInput = { engine: 'runtime', kind: 'ask', tools: ['flux_get_conversation', 'flux_read_web'], webSearch: false, agentName: 'Assistant', ownerName: 'Ada Nowak',
+    const input: BriefInput = { engine: 'runtime', kind: 'ask', tools: ['flux_get_conversation', 'flux_read_web'], webSearch: false, agentName: 'Assistant', agentId: '0b9d7f1e-4a3c-4d2e-9f00-5e0c0a6b1c04', ownerName: 'Ada Nowak',
       now: new Date('2026-11-08T09:02:00Z'), timeZone: 'Europe/Warsaw', place: { kind: 'chat' }, task: null, scheduleTitle: null,
       agent: { name: 'Assistant', instructions: 'Answer briefly. Use metric units.', memory: ['The north barrel is the reference barrel.'] },
       prompt: 'Find a general knowledge quiz for Friday, and remind me what the language of the contract is', requestedAt: new Date('2026-11-08T09:01:30Z'),

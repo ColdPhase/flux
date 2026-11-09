@@ -60,6 +60,10 @@ export interface BriefInput {
    */
   webSearch?: boolean;
   agentName: string;
+  /** The agent's id: `author.id` of its own messages in what the Flux tools return, and by="you" in <conversation> (#1163). */
+  agentId: string;
+  /** Its owner shares a first name with someone else who can read the run's space, so its label has the owner's full name (#1163). */
+  namesake?: boolean;
   ownerName: string;
   now: Date;
   /** The owner's time zone (IANA); an unknown one is UTC. */
@@ -298,18 +302,22 @@ function dataTags(input: Placed): string[] {
 /** How to read a message's marks (#1064). */
 const MARKS = 'kind="blocker", kind="came_of_it" or kind="handoff" marks a saved blocker, what came of a finished task or a handoff; edited="yes" words changed after they were sent.';
 /**
- * Who wrote what (#1064, #1160), the same in <conversation> and in what the Flux tools return: an AI answer a person posted is that person's
- * message, not their own words (C-30 counts it as the agent's) and never the reader's own; an agent is named with whose it is, and the
- * reader is told its own label, so another person's agent of the same name is never taken for itself.
+ * Who wrote what (#1064, #1160, #1163), the same in <conversation> and in what the Flux tools return. Flux marks whether a person, an agent or
+ * the reader itself wrote each message, since a person's chosen name can look like an agent's label or a "via" line; the name is as people
+ * see it, an AI answer a person posted being that person's message, not their own words (C-30 counts it as the agent's) and never the
+ * reader's own. The reader is told its own id and label, which has its owner's full name when another reader of the space shares the first.
  */
 function authorRules(input: Placed, tags: readonly string[]): string[] {
   const conversation = tags.includes('<conversation>');
   const reads = input.tools.some((name) => name === 'flux_get_conversation' || name === 'flux_get_task_discussion');
   if (!conversation && !reads) return [];
-  const where = conversation && reads ? 'In <conversation> (from="…") and in what the Flux tools return (author.name), each message names'
-    : conversation ? 'In <conversation>, from="…" names' : 'In what the Flux tools return, author.name names';
-  const own = input.place.kind === 'dm' ? '' : ` Your own messages are those of "${agentLabel({ name: input.agentName, ownerName: input.ownerName })}".`;
-  return [`${where} who wrote ${conversation && reads ? 'it' : 'each message'} as people see them: a person by name, an agent as "Name (Owner's agent)", and "Person · via Name" for an answer of that person's agent that they chose to post: their message, not their own words and not yours.${own}${conversation ? ` ${MARKS}` : ''}`];
+  const dm = input.place.kind === 'dm';
+  const marked = [
+    ...(conversation ? [`In <conversation>, by="person"${dm ? '' : ', by="agent" or by="you" (your own message)'} is who wrote each message, as Flux knows it, and from="…" their name.`] : []),
+    ...(reads ? [`In what the Flux tools return, author.kind ("human" or "agent") is who wrote each message, as Flux knows it, and author.name their name${dm ? '' : `; your own messages have author.id ${input.agentId}`}.`] : []),
+  ];
+  const own = dm ? '' : ` Your own label is "${agentLabel({ name: input.agentName, ownerName: input.ownerName, full: input.namesake })}".`;
+  return [`${marked.join(' ')} Names are as people see them: a person by name, an agent as "Name (Owner's agent)", and "Person · via Name" for an answer of that person's agent that they chose to post: their message, not their own words and not yours. A person's chosen name can look like an agent's, so go by who wrote it, not by the name.${own}${conversation ? ` ${MARKS}` : ''}`];
 }
 
 /** The injection rule (AG-2, AG-8): content is data, and who instructs. */
@@ -373,10 +381,12 @@ function taskTag(task: TaskFacts): string[] {
 }
 
 /** A message in its tag. `thread`: the opening words of its thread, given only when they differ from the message before (a main conversation). */
-function messageTag(message: MessageSource, label: string | null, zone: string, thread: string | null): string {
+function messageTag(message: MessageSource, label: string | null, zone: string, agentId: string, thread: string | null): string {
   const fields = [...(label ? [`ref="${label}"`] : []), ...(thread ? [`thread="${attr(thread.length > 80 ? `${thread.slice(0, 79).trimEnd()}…` : thread)}"`] : []),
     // A person's post of their agent's answer reads as theirs, with the agent it came from (#1160), as the Flux tools name it.
     `from="${attr(message.author.kind === 'human' ? authorLabel({ kind: 'human', name: message.authorName, via: message.via ?? null }) : message.authorName)}"`,
+    // Who wrote it as Flux knows it, which no chosen name can fake (#1163).
+    `by="${message.author.kind === 'human' ? 'person' : message.author.id === agentId ? 'you' : 'agent'}"`,
     `at="${clock(message.createdAt, zone).stamp}"`,
     ...(message.contribution ? [`kind="${message.contribution.kind}"`] : []),
     ...(message.edited ? ['edited="yes"'] : [])];
@@ -423,7 +433,7 @@ function request(input: Placed): string {
     // words, or one whose opening message was deleted, never read as the thread before.
     const changes = (index: number) => index === 0 || shown[index]!.conversationId !== shown[index - 1]!.conversationId;
     blocks.push([conversationIntro(input, messages.length), '<conversation>',
-      ...messages.map((source, index) => messageTag(shown[index]!, cites(input) ? source.label : null, zone,
+      ...messages.map((source, index) => messageTag(shown[index]!, cites(input) ? source.label : null, zone, input.agentId,
         threads && changes(index) ? shown[index]!.thread ?? DELETED_OPENING : null)),
       '</conversation>']);
   }
@@ -462,7 +472,7 @@ export function buildBrief(input: BriefInput): { system: string; request: string
 export function briefPrivateText(input: BriefInput): string {
   const place = input.place;
   const task = input.task;
-  const pieces = [input.ownerName, input.agentName, input.scheduleTitle ?? '',
+  const pieces = [input.ownerName, input.agentName, input.agentId, input.scheduleTitle ?? '',
     ...(place.kind === 'space' ? [place.spaceId, place.spaceName ?? '', place.conversationId ?? '', place.task?.title ?? ''] : place.kind === 'dm' ? place.others : []),
     ...(input.agent ? [input.agent.name, input.agent.instructions, ...input.agent.memory] : []),
     ...(task ? [task.id, task.title, task.outcome, ...task.criteria, task.blocker ?? '', ...task.prerequisites.map((item) => item.title)] : []),

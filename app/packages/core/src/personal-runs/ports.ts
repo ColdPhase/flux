@@ -263,6 +263,8 @@ export interface PersonalRunRepository {
   listAnswers(conversationId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Display names of people keyed by id. */
   names(userIds: string[]): Promise<Map<string, string>>;
+  /** The company's people whose first name, in lower case, is one of these (#1163); whether they read a space is asked separately. */
+  namesakes(workspaceId: string, firstNames: string[]): Promise<{ id: string; name: string }[]>;
   messages(conversationId: string, limit: number): Promise<MessageSource[]>;
   /** The latest `limit` messages written in a space's conversations, oldest first: what its main conversation says (#842). */
   spaceMessages(projectId: string, limit: number): Promise<MessageSource[]>;

@@ -1,4 +1,4 @@
-import { authorLabel, FORMER_MEMBER } from '../agent-tasks/ask.js';
+import { authorLabel, firstName, FORMER_MEMBER, sharedFirstNames } from '../agent-tasks/ask.js';
 import type { BriefPlace, TaskFacts } from './brief.js';
 import type { AgentBrief, MessageSource, PersonalRunPorts, RunRecord } from './ports.js';
 
@@ -14,6 +14,10 @@ export const CHAT_TURNS = 6;
 export interface BriefFacts {
   ownerName: string;
   agentName: string;
+  /** The agent's id, which the Flux tools give as `author.id` on its own messages (#1163). */
+  agentId: string;
+  /** Its owner shares a first name with someone else who can read the run's space: the agent is labelled with the owner's full name (#1163). */
+  namesake: boolean;
   timeZone: string;
   place: BriefPlace;
   task: TaskFacts | null;
@@ -35,7 +39,8 @@ export async function readBriefFacts(ports: PersonalRunPorts, run: RunRecord, br
   } : null;
   // The name its owner knows a schedule by is the label its run was started with (`startBackground`).
   const scheduleTitle = run.kind === 'scheduled' ? run.backgroundLabel : null;
-  return { ownerName, agentName: brief?.name ?? 'Assistant', timeZone, place, task, scheduleTitle };
+  const namesake = run.projectId !== null && (await namesakesIn(ports, run.workspaceId, run.projectId, [{ id: run.ownerUserId, name: ownerName }])).has(run.ownerUserId);
+  return { ownerName, agentName: brief?.name ?? 'Assistant', agentId: run.agentId, namesake, timeZone, place, task, scheduleTitle };
 }
 
 /** The latest messages of a place, and whether older ones exist: one more than the window is read to know it. */
@@ -44,16 +49,25 @@ export async function latestMessages(read: (limit: number) => Promise<MessageSou
   return rows.length > MESSAGE_WINDOW ? { messages: rows.slice(rows.length - MESSAGE_WINDOW), leftOut: true } : { messages: rows, leftOut: false };
 }
 
+/** Of these agents' owners, those who share a first name with someone else who can read the space now (#1163). */
+async function namesakesIn(ports: PersonalRunPorts, workspaceId: string, projectId: string, owners: readonly { id: string; name: string }[]): Promise<Set<string>> {
+  const readers = [];
+  for (const person of await ports.runs.namesakes(workspaceId, owners.map((owner) => firstName(owner.name))))
+    if (await ports.access.canUseProject({ kind: 'human', id: person.id }, 'read', projectId)) readers.push(person);
+  return sharedFirstNames([...new Map([...owners, ...readers].map((person) => [person.id, person])).values()]);
+}
+
 /**
  * A space's messages with their authors as people see them (#1160, `authorLabel`): a person by name and an agent with whose it is, "Fieldbot
- * (Jonas's agent)", but only someone who can read the space now is named, which everyone who reads the space sees in its People list (so an
- * answer posted with Show everyone names nobody its readers could not see). Anyone else is a former member, an agent's owner too.
+ * (Jonas's agent)", with the owner's full name when someone else who can read the space has the same first name (#1163). Only someone who
+ * can read the space now is named, which is no more than its members see named there; anyone else is a former member, an agent's owner too.
  */
-export async function namedAuthors(ports: PersonalRunPorts, projectId: string, messages: readonly MessageSource[]): Promise<MessageSource[]> {
+export async function namedAuthors(ports: PersonalRunPorts, run: Pick<RunRecord, 'workspaceId'> & { projectId: string }, messages: readonly MessageSource[]): Promise<MessageSource[]> {
   const people = new Set(messages.flatMap((message) => message.author.kind === 'human' ? [message.author.id] : message.author.ownerUserId ? [message.author.ownerUserId] : []));
   const readers = new Set<string>();
-  for (const id of people) if (await ports.access.canUseProject({ kind: 'human', id }, 'read', projectId)) readers.add(id);
+  for (const id of people) if (await ports.access.canUseProject({ kind: 'human', id }, 'read', run.projectId)) readers.add(id);
   const owners = await ports.runs.names(messages.flatMap((message) => message.author.kind === 'agent' && message.author.ownerUserId && readers.has(message.author.ownerUserId) ? [message.author.ownerUserId] : []));
+  const full = await namesakesIn(ports, run.workspaceId, run.projectId, [...owners].map(([id, name]) => ({ id, name })));
   return messages.map((message) => ({ ...message, authorName: message.author.kind === 'human' ? (readers.has(message.author.id) ? message.authorName : FORMER_MEMBER)
-    : authorLabel({ kind: 'agent', name: message.authorName, ownerName: owners.get(message.author.ownerUserId ?? '') ?? null }) }));
+    : authorLabel({ kind: 'agent', name: message.authorName, ownerName: owners.get(message.author.ownerUserId ?? '') ?? null, full: full.has(message.author.ownerUserId ?? '') }) }));
 }

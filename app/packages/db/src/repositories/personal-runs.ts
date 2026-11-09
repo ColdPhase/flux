@@ -317,6 +317,18 @@ export function personalRunRows(db: DbExecutor) {
       return new Map(rows.map((row) => [row.id, row.name]));
     },
 
+    /**
+     * The company's people whose first name (lower case) is one of these (#1163): who could share an agent owner's first name in a space.
+     * Rows only; whether each can read the space is the caller's question.
+     */
+    async namesakes(workspaceId: string, firstNames: string[]) {
+      const unique = [...new Set(firstNames)];
+      if (!unique.length) return [];
+      const u = schema.authUsers;
+      return db.select({ id: u.id, name: u.name }).from(schema.workspaceMembers).innerJoin(u, eq(u.id, schema.workspaceMembers.userId))
+        .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), inArray(sql<string>`lower(split_part(btrim(${u.name}), ' ', 1))`, unique)));
+    },
+
     /** The latest `limit` messages of one project conversation, oldest first. A message its author deleted (#1006) is not one a model reads. */
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
