@@ -64,7 +64,7 @@ class AssistantJourneys(unittest.TestCase):
     def change(self, **changes) -> dict:
         row = {"id": str(uuid.uuid4()), "runId": str(uuid.uuid4()), "projectId": self.ids["project"], "conversationId": self.ids["conversation"], "operation": "work.update",
                "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#3 Calibrate the probes", "state": "applied", "waitReason": None, "phrase": "renamed task",
-               "verb": "Apply", "line": None, "forPerson": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": "Ada"}, "runState": "done", "before": "Probes", "after": "Calibrate the probes",
+               "verb": "Apply", "line": None, "forPerson": None, "tells": [], "agentName": "Assistant", "via": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": "Ada"}, "runState": "done", "before": "Probes", "after": "Calibrate the probes",
                "undoable": True, "version": 1, "createdAt": datetime.now(timezone.utc).isoformat()}
         row.update(changes)
         return row

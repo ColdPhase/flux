@@ -82,12 +82,13 @@ class RailNavigation(unittest.TestCase):
             rect = locator.bounding_box()
             self.assertTrue(has_minimum_touch_size(rect["width"]) and has_minimum_touch_size(rect["height"]), str(rect))
 
-    def assert_appearance_labels_fit(self, popup):
-        radios = popup.get_by_role("radio")
-        self.assertEqual(radios.count(), 3)
-        for label in ("Light", "Dark", "Match system"):
-            radio = popup.get_by_role("radio", name=label, exact=True)
-            measured = radio.evaluate("""el => {
+    def assert_account_controls_fit(self, popup):
+        """The short account menu (#872): the name, Settings and Sign out. Light, Dark and Match system are in Settings."""
+        expect(popup.get_by_role("radio")).to_have_count(0)
+        for label, control in (("Settings", popup.get_by_role("link", name="Settings", exact=True)),
+                               ("Sign out", popup.get_by_role("button", name="Sign out", exact=True))):
+            expect(control).to_have_count(1)
+            measured = control.evaluate("""el => {
               const box = el.getBoundingClientRect(), range = document.createRange();
               range.selectNodeContents(el);
               const rects = [...range.getClientRects()].filter(r => r.width > 0 && r.height > 0);
@@ -154,14 +155,7 @@ class RailNavigation(unittest.TestCase):
                     name = popup.get_by_text("Ada Kowalska", exact=True)
                     expect(name).to_be_visible()
                     self.assertTrue(name.evaluate("el => el.scrollWidth <= el.clientWidth && el.scrollHeight <= el.clientHeight"), "current full account name is readable")
-                    self.assert_appearance_labels_fit(popup)
-                    system = popup.get_by_role("radio", name="Match system", exact=True)
-                    system.focus()
-                    page.keyboard.press("ArrowLeft")
-                    expect(popup.get_by_role("radio", name="Dark", exact=True)).to_have_attribute("aria-checked", "true")
-                    page.keyboard.press("ArrowRight")
-                    expect(system).to_have_attribute("aria-checked", "true")
-                    expect(system).to_be_focused()
+                    self.assert_account_controls_fit(popup)
                     shot(page, f"340-rail-account-{engine}-{'text200' if text200 else 'default'}")
                 page.evaluate("document.documentElement.style.fontSize = ''")
                 page.keyboard.press("Escape")

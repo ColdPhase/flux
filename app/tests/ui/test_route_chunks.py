@@ -134,10 +134,10 @@ class RouteChunksJourney(unittest.TestCase):
             page.get_by_role("button", name=re.compile(self.name)).click()
             page.get_by_role("dialog", name="Account").get_by_role("link", name="Settings", exact=True).click()
 
-    def my_map(self, page: Page):
-        """A place whose header has Details in its More menu: Home has the button only with an encrypted space (#865)."""
-        page.goto("/map")
-        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+    def space_map(self, page: Page):
+        """A place whose header has Details in its More menu: a space's, as Space details (#871: Home and My map have none)."""
+        page.goto(f"/projects/{self.project_id}/map")
+        expect(page.get_by_role("heading", level=1, name="Chunk boundaries", exact=True)).to_be_visible()
 
     def open_details_by_keyboard(self, page: Page):
         """Tab to the header's More, open its menu and choose Details with the keyboard; More is the opener focus comes back to."""
@@ -545,7 +545,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 held = self.hold(page, "Details")
-                self.my_map(page)
+                self.space_map(page)
                 opener = self.open_details_by_keyboard(page)
                 # The panel's own layout in quiet bars, at its final heights, not a spinner (#863 rule 6).
                 expect(page.locator("#details .wd-skeleton")).to_be_visible()
@@ -555,7 +555,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
-                # My map's header has no text field: the opener, where focus returned, keeps it.
+                # The space's Map has no text field: the opener, where focus returned, keeps it.
                 with page.expect_response(re.compile(r"/assets/Details-[^/]+\.js")):
                     held.pop().continue_()
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
@@ -608,10 +608,6 @@ class RouteChunksJourney(unittest.TestCase):
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page = self.page(engine, phone=True)
-                title = f"Check the first project overview before opening Map {engine}"
-                response = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/work",
-                    headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"title": title}))
-                self.assertEqual(response.status, 201, response.text())
                 # The Map's code may be fetched in the background (a press brings the project's other views, #863), so it is held here:
                 # the first Details render must not depend on it, and it has to stand with the Map's code still on the way.
                 self.hold(page, "ProjectViews")
@@ -619,16 +615,17 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.project_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 open_details(page)
-                # The first project Details list the views as rows (#512, #865): icon, name, count.
-                row = page.locator("#details .ov-row", has_text=re.compile("^Tasks"))
-                expect(row.locator(".ov-row__n")).to_contain_text("open")
-                # A first-open native row must keep its icon, readable text and count in separate
+                # The first Space details list their rows (#512): icon, name and the way in. The views are in the view
+                # switch and no longer repeated here (#873); a space's manager has its GitHub repositories.
+                row = page.locator("#details .ov-row", has_text="GitHub repositories")
+                expect(row).to_be_visible()
+                # A first-open native row must keep its icon, readable text and chevron in separate
                 # columns inside the phone panel. Missing lazy surface CSS must not collapse them.
                 geometry = row.evaluate("""el => {
                     const box = el.getBoundingClientRect();
                     const glyph = el.querySelector('.ov-row__ic').getBoundingClientRect();
                     const body = el.querySelector('.ov-row__b').getBoundingClientRect();
-                    const number = el.querySelector('.ov-row__n').getBoundingClientRect();
+                    const number = el.querySelector('.ov-row__go').getBoundingClientRect();
                     return { height: box.height, left: box.left, right: box.right,
                         iconRight: glyph.right, textLeft: body.left, textRight: body.right, actionLeft: number.left };
                 }""")

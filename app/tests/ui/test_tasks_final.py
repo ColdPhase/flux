@@ -103,8 +103,11 @@ class TasksFinalJourney(unittest.TestCase):
     def task(self, page: Page, key: str) -> dict:
         return self.api(page, "GET", f"/api/v1/work/{self.ids[key]}", status=200)
 
-    def tasks(self, who: str = "ada", *, phone: bool = False, dark: bool = False, reduced: bool = False) -> Page:
+    def tasks(self, who: str = "ada", *, phone: bool = False, dark: bool = False, reduced: bool = False, quiet_stream: bool = False) -> Page:
         page = self.page(who, phone=phone, dark=dark, reduced=reduced)
+        if quiet_stream:
+            # The live stream is held open and says nothing: the page reads again only when it is told by its own change.
+            page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda socket: None)
         # The phone has both views now (#868); its list tests ask for the List.
         page.goto(f"/projects/{self.ids['project']}/tasks" + ("?view=list" if phone else ""))
         expect(page.locator(".tb-board, .ws-task").first).to_be_visible()
@@ -688,7 +691,9 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             with self.subTest(dark=dark):
                 self.set_status(setup, 'supplier', 'open')
-                page = self.tasks(dark=dark)
+                # The held change below is already stored, so its own event would read the list again over the live stream (#1101)
+                # at a moment of its own, possibly between the two measurements. Without the stream the reorder comes with the answer.
+                page = self.tasks(dark=dark, quiet_stream=True)
                 page.get_by_role('radio', name='List', exact=True).click()
                 pane = page.locator('.tb-root > .pane-scroll')
                 held = []
