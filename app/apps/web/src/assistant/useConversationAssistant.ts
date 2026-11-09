@@ -11,7 +11,7 @@ import { readRunChanges } from './WaitingChanges';
 
 // The person's own agent asked from one place (#68, #842): a conversation of a space, the space's main conversation, a direct message or the
 // agent's private chat. The answer is the asker's alone; Show everyone posts it as their message and Dismiss puts it away. What a place shows is
-// the asker's own runs there (`/assistant-runs?…`) and, for a conversation of a space, what a schedule posted in it (the project's answers and
+// the asker's own runs there (`/assistant-runs?…`) and, for a conversation of a space, the answers posted in it (the project's answers and
 // proposals). The status and the working run come only from the asker's own endpoints and their owner-only progress events.
 
 async function allAnswers(conversationId: string) {
@@ -30,7 +30,7 @@ export const placeKey = (place: AskPlace | null) => !place ? '' : place.kind ===
 
 export interface ConversationAssistant {
   status: PersonalAssistantStatus | null;
-  /** What a schedule posted in this conversation, for everyone who reads it. */
+  /** What was posted in this conversation as an answer, for everyone who reads it (a schedule's result is not: it goes to its agent's chat, #1104). */
   answers: AssistantAnswer[];
   /** The signed-in person's latest run here: in flight, or ended without an answer and not yet dismissed. */
   run: AssistantRun | null;
@@ -43,7 +43,7 @@ export interface ConversationAssistant {
   cancelQueued(): Promise<void>;
   /** The queued request waits behind a background run of the owner: "Finishing your daily check first… [ Stop it ]". */
   stopBehind(): Promise<void>;
-  /** Changes whenever the shared part of the conversation was refreshed: a schedule posted, a run moved, an answer arrived. */
+  /** Changes whenever the shared part of the conversation was refreshed: an answer was posted, a run moved, an answer arrived. */
   tick: number;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
@@ -61,7 +61,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   meId: string;
   /** Where the person asks; null while there is no place to ask in (a stream with no space yet). */
   place: AskPlace | null;
-  /** False while the space's AI is off (F-029, #614): nothing AI is asked for, and only what a schedule posted (history) is read. */
+  /** False while the space's AI is off (F-029, #614): nothing AI is asked for, and only what was posted (history) is read. */
   enabled?: boolean;
   /** An answer was posted as the person's own message (Show everyone), so the pane can show it at once. */
   onShown?: (messageId: string) => void;
@@ -91,7 +91,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
     const here = placeRef.current;
     if (!here) return;
     try {
-      const read = (await listPlaceRuns(here, { limit: 20 })).items.filter((item) => asked(item) && !item.silent);
+      const read = (await listPlaceRuns(here, { limit: 20 })).items.filter((item) => asked(item));
       const now = Date.now();
       see(read.filter(isWorking).map((item) => item.id));
       for (const [id, { at }] of started.current) if (now - at > 10_000 || read.some((item) => item.id === id)) started.current.delete(id);
@@ -101,7 +101,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   }, [see]);
   /** One run of this place, read again: the newest state of a run that moved. */
   const take = useCallback((run: AssistantRun) => {
-    if (runPlaceKey(run) !== placeKey(placeRef.current) || !asked(run) || run.silent) return;
+    if (runPlaceKey(run) !== placeKey(placeRef.current) || !asked(run)) return;
     if (isWorking(run)) see([run.id]);
     const known = started.current.get(run.id);
     if (known) started.current.set(run.id, { ...known, run });
@@ -118,13 +118,13 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   }, [conversationId, refreshRuns]);
 
   useEffect(() => {
-    // F-029 (#614): while the space's AI is off only what a schedule posted (conversation history) and the asker's own answers are read.
+    // F-029 (#614): while the space's AI is off only what was posted (conversation history) and the asker's own answers are read.
     if (enabled && key) refreshStatus();
     void refreshRuns();
     if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
   }, [key, conversationId, enabled, refreshStatus, refreshRuns]);
 
-  // The asker's own run moved (their owner-only event), or a schedule posted here: read again.
+  // The asker's own run moved (their owner-only event), or an answer was posted here: read again.
   useStreamEvents(meId, (event) => {
     if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) { getRun(event.objectId).then(take).catch(() => { void refreshRuns(); }); return; }
     if (!enabled) return;

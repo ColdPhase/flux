@@ -14,7 +14,7 @@ export async function announce(ports: PersonalRunPorts, run: RunRecord): Promise
   await ports.events.record({ kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
   // F-027 AST-6: everyone in the place sees "Ada's assistant is working…". That is one identifier-only event to the project's audience when
   // a run starts working and when it stops; the detail (what it reads, Stop) stays in the owner's events above.
-  // A run for `/ai` or a chat is private (#842): nobody else learns that it exists, not even by name.
+  // A run for `/ai`, a chat or a schedule is private (#842, #1104): nobody else learns that it exists, not even by name.
   if (run.projectId !== null && !isPrivateAnswer(run) && (run.status === 'reading' || !IN_FLIGHT.has(run.status)))
     await ports.events.record({ kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId, { conversationId: run.conversationId });
 }

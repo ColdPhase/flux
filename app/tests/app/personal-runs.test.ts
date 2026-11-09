@@ -64,13 +64,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const ask = (someone: Person, prompt = 'Summarize where we are', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(someone), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
 
-  /** A run of a schedule: the one kind of run that posts its answer in the conversation for everyone (#842). */
-  async function scheduledAsk(prompt: string) {
-    const run = await ask(hubert, prompt);
-    await pool.query(`UPDATE personal_runs SET kind = 'scheduled', authority = 'owner_schedule', background_label = 'Test schedule' WHERE id = $1`, [run.run.id]);
-    return run;
-  }
-
   /** Hubert removed from the space: his assistant loses it with him (F-036 AG-3). */
   async function keepHubertOut() {
     await removeFromSpace(ada, lamp.id, hubert);
@@ -593,7 +586,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
         text: `Fact: Kai proposed the ToF sensor [S1].\n<proposal>${JSON.stringify(claim)}</proposal>` });
-      const claimed = await scheduledAsk('Accept the ToF decision for us');
+      const claimed = await ask(hubert, 'Accept the ToF decision for us');
       assert.equal(await processor.process(claimed.run.id), 'completed');
       assert.deepEqual(await decisionState(), untouched);
       assert.deepEqual(await counts(), before, 'no decision or acceptance was written by the assistant');

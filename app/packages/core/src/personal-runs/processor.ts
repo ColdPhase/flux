@@ -174,9 +174,8 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<Rea
     if (!thought || thought.sketchScope !== 'project' || thought.sketchProjectId !== run.projectId) return null;
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, item: { kind: 'thought', text: thought.text } });
   }
-  // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
   const { projectId, conversationId, dmId, dmThreadRootId } = run;
-  const { messages, leftOut } = run.silent ? { messages: [], leftOut: false } : await latestMessages((limit) => conversationId !== null ? ports.runs.messages(conversationId, limit)
+  const { messages, leftOut } = await latestMessages((limit) => conversationId !== null ? ports.runs.messages(conversationId, limit)
     : projectId !== null ? ports.runs.spaceMessages(projectId, limit) : dmId !== null ? ports.runs.dmMessages(dmId, limit, dmThreadRootId) : Promise.resolve([]));
   for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } });
   // The task a run works on is told whole in its brief, not again among the open tasks.
@@ -352,9 +351,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         ...charge, answerBody: parsed.body || '(No answer text.)',
         answerTruncated: truncated, answerSources: parsed.sources, answerRedacted: redacted.changed, committedAt,
       }));
-      // A silent background run is not announced to the project: its result is the owner's (Recent, the Inbox).
-      // The answer to `/ai` and to a chat is its owner's alone: the space hears nothing until Show everyone (#842).
-      if (!run.silent && !isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
+      // The answer to `/ai`, to a chat and of a schedule is its owner's alone: the space hears nothing until Show everyone (#842, #1104).
+      if (!isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
       await taskFence?.mark();
       return updated.status;
     });

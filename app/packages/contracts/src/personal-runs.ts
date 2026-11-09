@@ -304,8 +304,6 @@ export interface AssistantRun {
   agentId: string;
   kind: AssistantRunKind;
   prompt: string;
-  /** A background run whose answer is not shown in its conversation (a schedule keeps its result in Recent). Absent on older servers. */
-  silent?: boolean;
   target: AssistantRunTarget | null;
   continuesRunId: string | null;
   retryOfRunId: string | null;
@@ -373,9 +371,9 @@ export interface AssistantAnswer {
   runId: string;
   conversationId: string | null;
   projectId: string | null;
-  /** A schedule's answer is the project's; the answer to `/ai` and to a chat is its asker's alone (#842). */
+  /** A task run's answer is the project's; the answer to `/ai`, to a chat and of a schedule is its owner's alone until Show everyone (#842, #1104). */
   audience: { kind: 'project'; projectId: string } | { kind: 'owner' };
-  /** The agent's name for the asker's own answer ("Assistant"); "Jo's assistant" for a schedule's. */
+  /** The agent's name for the asker's own answer ("Assistant"); "Jo's assistant" for one posted in a conversation. */
   assistant: { ownerUserId: string; label: string };
   askedBy: { id: string; name: string };
   request: { kind: AssistantRunKind; prompt: string };

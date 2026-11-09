@@ -26,11 +26,11 @@ type SourceRef =
   | { type: 'thought'; id: string; sketchId: string; revision: number };
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; authority?: RunRow['authority']; backgroundLabel?: string | null;
     resumeAt?: Date | null; endReason?: RunRow['endReason']; planLimitResetsAt?: Date | null };
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
-  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros' | 'shownAt' | 'dismissedAt'> & { answerSources: SourceRef[] }>;
+  | 'stopAcknowledgedAt' | 'answerRedacted' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros' | 'shownAt' | 'dismissedAt'> & { answerSources: SourceRef[] }>;
 
 const e = schema.assistantSettings;
 const ag = schema.agents;
@@ -297,7 +297,7 @@ export function personalRunRows(db: DbExecutor) {
 
     // The report of a run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
     listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought')`)!, 'committed', window),
+      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought', 'scheduled')`)!, 'committed', window),
 
     async names(userIds: string[]) {
       const unique = [...new Set(userIds)];

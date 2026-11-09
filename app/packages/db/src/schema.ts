@@ -1675,7 +1675,6 @@ export const personalRuns = pgTable('personal_runs', {
   authority: text('authority', { enum: ['owner_request', 'owner_schedule'] }).notNull().default('owner_request'),
   backgroundLabel: text('background_label'),
   /** 0109 (F-027 A8): a background run's answer is not shown in its conversation (it is kept in Recent). */
-  silent: boolean('silent').notNull().default(false),
   /** 0022 (#842): the answer is its owner's alone; Show everyone posted it, Dismiss put it away. */
   shownAt: timestamp('shown_at', { withTimezone: true }),
   dismissedAt: timestamp('dismissed_at', { withTimezone: true }),

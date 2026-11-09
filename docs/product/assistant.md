@@ -349,7 +349,8 @@ instruction.
   at 9 summarise what needs me", off until the owner turns it on. It is the only morning summary
   in Flux: the plain, non-AI summary in Notifications (#350) is removed (F-038).
 - A scheduled run acts like its agent in its chat: it reads what its owner can see and changes
-  nothing, and it never makes or changes a schedule.
+  nothing, and it never makes or changes a schedule. Its result goes only to that chat: nothing
+  posts it into a conversation, and the owner shares what they choose with their own message.
 - **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up
   ([coordinator default C-14](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). There is no minimum interval between firings and no pause after failures; a firing that
   fails, or cannot start (for example "Sign in to Claude again"), says so in the conversation (AG-4) and the next firing happens as scheduled.
