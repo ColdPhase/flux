@@ -294,8 +294,8 @@ export interface PersonalRunRepository {
    * (the agent was deleted); older isolated fake repositories may omit it.
    */
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
-  /** The "What it may do" of the owner's first agent in the workspace (F-036 AG-3); null without one. */
-  assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
+  /** The "What it may do" of this agent of the owner (F-036 AG-3: each agent has its own); null when it is gone. */
+  assistantMayDo?(ownerUserId: string, agentId: string): Promise<AgentMayDo | null>;
 }
 
 /** Adapter over the core access policy. It never reveals objects the principal cannot see. */

@@ -1,0 +1,32 @@
+# TEST ONLY (scripts/check_ai_real_model.sh): the AI acceptance with a REAL local model. Layered over the CLI runtime check's files
+# (compose.source.yaml, compose.source.runtime.yaml, compose.test.yaml, compose.cli-runtime.test.yaml) with the `test` and `runtime`
+# profiles. Never deploy it.
+#
+# What differs from compose.cli-runtime.test.yaml, and nothing else:
+# - providermock answers the CLIs' model requests with a REAL model (app/tests/app/support/real-model.ts) at FLUX_AI_MODEL_URL, an
+#   OpenAI-compatible Chat Completions server the script attached to this stack's network (on Hubert's host the `strata` container).
+#   Sign-in, refresh, usage and every other vendor endpoint stay the mock's. Searches are answered from linkmock's Polish corpus.
+# - evil.example, the host of the prompt-injection page's instruction, connects to linkmock, so any read that reaches it is recorded
+#   there (`/__hits`); every other rule of a read is the production rule.
+# - The check's runner writes its evidence to FLUX_AI_EVIDENCE_DIR on the host.
+services:
+  providermock:
+    environment:
+      FLUX_CLI_REAL_MODEL_URL: ${FLUX_AI_MODEL_URL:?Set by scripts/check_ai_real_model.sh}
+      FLUX_CLI_REAL_MODEL_KEY: ${FLUX_AI_MODEL_KEY:-}
+      FLUX_CLI_REAL_SEARCH_URL: http://linkmock:8098/__search
+      FLUX_CLI_REAL_PAGES_URL: http://linkmock:8098
+      FLUX_CLI_REAL_SEED: ${FLUX_AI_SEED:-42}
+      FLUX_CLI_REAL_MAX_OUTPUT: ${FLUX_AI_MAX_OUTPUT:-12000}
+    depends_on:
+      linkmock:
+        condition: service_healthy
+  api:
+    environment:
+      FLUX_TEST_LINK_PREVIEW_HOSTS: public.test=linkmock:8098,other.test=linkmock:8098,evil.example=linkmock:8098
+  test:
+    environment:
+      FLUX_AI_EVIDENCE: /evidence
+      FLUX_AI_ATTEMPTS: ${FLUX_AI_ATTEMPTS:-2}
+    volumes:
+      - ${FLUX_AI_EVIDENCE_DIR:?Set by scripts/check_ai_real_model.sh}:/evidence:z
