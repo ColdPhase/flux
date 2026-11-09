@@ -627,6 +627,17 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(await count('project_decisions', pinned.decisionId), 1);
   });
 
+  test('#868 a task whose creation was undone holds nothing: Undo of the run still removes the decision it waited for', async () => {
+    const run = await liveRun();
+    const proposed = value(await run.call('flux_propose_decision', { decision: { title: 'Use the thermal camera', rationale: 'It sees in the dark' } }));
+    await complete(run.runId);
+    const waiter = await taskFrom(owner, { title: 'Waits for the thermal camera', status: 'blocked', waitingOn: { kind: 'decision', id: proposed.decisionId } });
+    expectStatus(await owner.browser.request('POST', `/api/v1/work/${waiter.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: waiter.version } }), 200);
+    const undone = await undoRun(run.runId);
+    assert.equal(undone.undone, 1, undone.message);
+    assert.equal(await count('project_decisions', proposed.decisionId), 0);
+  });
+
   test('#868 a task the assistant made that another task waits for is in use: Undo of the run refuses it', async () => {
     const run = await liveRun();
     const made = value(await run.call('flux_create_task', { task: { title: 'The prerequisite the agent made' } }));

@@ -227,7 +227,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   it back), stopped (by whom), done, or handed back.
 - **Finishing** follows the agent's "What it may do": with Do it and tell me it marks the task
   Done and tells the owner, with Undo; with Ask me first it hands the task back,
-  "Ready for you to check", and so does Only read ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
+  "Ready for you to check", and so does Only read. **One exception:** a task that is Blocked when
+  the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
+  is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
   review step: the owner checks the task; a separate reviewer is optional, for example a subtask
   for a Reviewer agent ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
@@ -247,7 +249,8 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **Blocked.** A blocked task waits for one thing: a person (who gets it in their Inbox), a
   decision or another task. When that resolves, the task moves back to Doing by itself and its
   owner gets one line, for example "#4 can continue: the decision was accepted". An agent owner
-  resumes its work.
+  resumes its work: it takes the task up again as when it was given it. So does a person who
+  moves its Blocked task to Doing.
 - **Questions with ready answers.** An agent may ask a person a question with two to four
   answers. It is an ordinary message of the agent, with one-tap answers for the person asked and
   an Inbox item for them. An answer never grants the agent anything.
@@ -259,7 +262,7 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   · Open". The same requests also show in the task discussion.
 - **Reports** such as "Done: #4 … · 3 changes · Undo" go to the agent's private conversation and
   onto its message in the task discussion. They never go to the Inbox. The private conversation
-  gets one line when a run on a task ends: "Done: #4 …", or "Stopped by Maja: #4 …" (a limit or AI
+  gets one line when a run on a task ends: "Done: #4 …", "Blocked: #4 …" (the task is waiting and stays with the agent), or "Stopped by Maja: #4 …" (a limit or AI
   turned off is the task's own state line, not a report). The count and Undo are what still stands of
   the run's changes when the line is read. The agent's row in Messages and in the sidebar shows an
   unread dot until its owner opens the chat (#919).

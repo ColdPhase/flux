@@ -184,8 +184,8 @@ export function assistantRemovalRows(db: DbExecutor) {
       if (await cited(decision.id, 'other')) return used(REMOVAL_REASONS.cited);
       if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${decision.id} AND (o.supersedes_id = ${decision.id} OR o.superseded_by_id = ${decision.id})) AS found`))
         return used(REMOVAL_REASONS.cited);
-      // A task that waits for it is a use (#868): taking the proposal back would leave that task waiting for nothing.
-      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${decision.id}) AS found`)) return used(REMOVAL_REASONS.cited);
+      // A task that waits for it is a use (#868): taking the proposal back would leave that task waiting for nothing. One whose creation was undone holds nothing.
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${decision.id} AND creation_reverted_at IS NULL) AS found`)) return used(REMOVAL_REASONS.cited);
       try {
         await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${decision.id}`);
         await db.execute(sql`DELETE FROM project_decisions WHERE id = ${decision.id}`);

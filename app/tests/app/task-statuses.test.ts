@@ -331,6 +331,24 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal(Number(notes.rows[0].n), 0, 'an agent owner is not sent an Inbox note');
     });
 
+    test('a person moving an agent\'s Blocked task to Doing (Resolve) queues the agent like a resolved wait; To do, and a task that was not Blocked, do not', async () => {
+      const agent = expectStatus(await send(kai, 'POST', `/api/v1/workspaces/${ws.id}/agents`, { name: 'St resolver', owner: 'self' }), 201) as { id: string };
+      const held = async (title: string, status: string) => create({ title, owner: { kind: 'agent', id: agent.id }, status, ...(status === 'blocked' ? { blocker: 'Waits for the lens' } : {}) }, kai);
+      const events = async (task: WorkItem) => Number((await pool.query("SELECT count(*)::int AS n FROM agent_task_events WHERE work_id = $1 AND kind = 'assigned'", [task.id])).rows[0].n);
+      const blocked = await held('Blocked with its agent', 'blocked');
+      const before = await events(blocked);
+      await patch(blocked, { status: 'in_progress' }, kai);
+      assert.equal(await events(blocked), before + 1, 'Resolve picks the agent up again');
+      const toDo = await held('Back to To do', 'blocked');
+      const kept = await events(toDo);
+      await patch(toDo, { status: 'open' }, kai);
+      assert.equal(await events(toDo), kept, 'moving it to To do does not start the agent');
+      const doing = await held('Already Doing', 'in_progress');
+      const same = await events(doing);
+      await patch(doing, { status: 'done' }, kai);
+      assert.equal(await events(doing), same, 'a task that was not Blocked is left alone');
+    });
+
     test('the person waited for says they are done: reading the space is enough, and only they can', async () => {
       const task = await create({ title: 'Pick the voltage', owner: human(ada), status: 'blocked', blocker: 'Which voltage?', waitingFor: human(kai) });
       const asked = expectStatus(await send(kai, 'GET', '/api/v1/needs-you'), 200) as NeedsYouResponse;

@@ -66,6 +66,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
     // Nothing waits for a task or a decision in these runs (#868); the real rows are covered by task-statuses.test.ts.
     async waiters() { return []; },
     async waitingTargets() { return new Map(); },
+    async waitsFor() { return false; },
     async updateWork(id: string, changes: Partial<WorkRecord>) {
       log.push('work.update');
       const row = tasks.get(id)!;

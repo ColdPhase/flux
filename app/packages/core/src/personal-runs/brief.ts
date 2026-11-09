@@ -82,7 +82,7 @@ export interface BriefInput {
 const EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 
 /** The UI's words for a task's state (#868). */
-const STATUS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done', not_pursued: 'Done' };
+const STATUS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done' };
 const statusWord = (status: string) => STATUS[status] ?? status;
 
 /** Text inside a tag: it cannot open or close one. `&` stays as written, so a web address is read exactly as a person wrote it (C-30). */

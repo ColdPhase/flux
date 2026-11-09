@@ -229,6 +229,8 @@ export interface WorkRepository extends TaskGraphReader {
   insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
   /** The blocked tasks that wait for this decision or task (#868), ascending by id. Read under the project's graph lock. */
   waiters(target: { kind: 'decision' | 'task'; id: string }): Promise<string[]>;
+  /** Whether `start` waits, however far round, for the task `target` (#868): the chain of waits, followed to its end or to a loop. */
+  waitsFor(start: string, target: string): Promise<boolean>;
   /** What tasks wait for besides a person, by `kind:id` (#868): a decision's title, a task's number and title. A missing one is absent. */
   waitingTargets(refs: readonly { kind: 'decision' | 'task'; id: string }[]): Promise<Map<string, WaitingOn>>;
   /**

@@ -246,15 +246,8 @@ async function requireWaitingOn(ports: WorkPorts, projectId: string, taskId: str
   const task = await ports.work.findWork(on.id);
   if (!task || task.projectId !== projectId || task.creationRevertedAt) throw new RuleViolationError('The task is not part of this space', 'WAITING_ON_NOT_FOUND');
   if (task.status === 'done') throw new RuleViolationError('That task is already done; there is nothing to wait for', 'WAITING_ON_RESOLVED');
-  // Walk what that task waits for in turn, as far as the chain goes: back at this one would leave both blocked for good. A task waits for one
-  // thing, so the chain is a line, and the set of tasks seen ends a loop that was somehow already there.
-  const seen = new Set<string>([task.id]);
-  let next = task.waitingOn;
-  while (taskId && next?.kind === 'task' && !seen.has(next.id)) {
-    if (next.id === taskId) throw new RuleViolationError('That task is waiting for this one', 'WAITING_ON_CYCLE');
-    seen.add(next.id);
-    next = (await ports.work.findWork(next.id))?.waitingOn ?? null;
-  }
+  // What that task waits for in turn, as far as the chain goes: back at this one would leave both blocked for good.
+  if (taskId && await ports.work.waitsFor(task.id, taskId)) throw new RuleViolationError('That task is waiting for this one', 'WAITING_ON_CYCLE');
 }
 
 const waitingForOf = (value: unknown): ActorRef | null => {

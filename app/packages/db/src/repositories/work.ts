@@ -283,6 +283,19 @@ export function workRows(db: DbExecutor) {
         .where(and(eq(w.status, 'blocked'), isNull(w.creationRevertedAt), eq(target.kind === 'decision' ? w.waitingForDecisionId : w.waitingForWorkId, target.id))).orderBy(asc(w.id));
       return rows.map((row) => row.id);
     },
+    /**
+     * Whether `start` waits, however far round, for `target`: the chain of tasks each one waits for (#868), followed in one recursive query that
+     * ends at a loop (`UNION` drops repeats). A task whose creation was undone holds nothing, so it is not part of a chain.
+     */
+    async waitsFor(start: string, target: string) {
+      const result = await db.execute(sql`WITH RECURSIVE chain(id) AS (
+          SELECT waiting_for_work_id FROM project_work_items WHERE id = ${start}::uuid AND waiting_for_work_id IS NOT NULL AND creation_reverted_at IS NULL
+          UNION
+          SELECT w.waiting_for_work_id FROM project_work_items w JOIN chain c ON w.id = c.id
+            WHERE w.waiting_for_work_id IS NOT NULL AND w.creation_reverted_at IS NULL
+        ) SELECT EXISTS (SELECT 1 FROM chain WHERE id = ${target}::uuid) AS found`);
+      return (result.rows[0] as { found: boolean } | undefined)?.found === true;
+    },
     /** What a task or a row names it waits for, by `kind:id`: a decision's title, a task's number and title (#868). */
     async waitingTargets(refs: readonly { kind: 'decision' | 'task'; id: string }[]) {
       const found = new Map<string, { kind: 'decision'; id: string; title: string } | { kind: 'task'; id: string; number: number; title: string }>();
@@ -488,8 +501,10 @@ export function workRows(db: DbExecutor) {
         if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
         if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
       }
-      // What a blocked task waited for is resolved (#868): an agent that holds it picks it up again, as when it was given the task.
-      if (previous && via === 'wait_resolved' && previous.status === 'blocked' && next.owner?.kind === 'agent') await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+      // A blocked task an agent holds goes back to Doing (#868): what it waited for is resolved, or a person resolves it by moving it to Doing.
+      // The agent picks it up again, as when it was given the task. A change of owner has just queued its own event above.
+      if (previous && previous.status === 'blocked' && next.owner?.kind === 'agent' && sameActor(toWorkRecord(previous).owner, next.owner)
+        && (via === 'wait_resolved' || (by.kind === 'human' && next.status === 'in_progress'))) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */
