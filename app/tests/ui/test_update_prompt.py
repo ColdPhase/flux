@@ -93,6 +93,19 @@ class UpdatePromptReach(unittest.TestCase):
         assert response.status == 200, response.text()
         workspace = cls.call(context, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
         cls.project = cls.call(context, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Community garden sensors", "visibility": "restricted"}, 201)
+        # A direct message with a second person: its title is the one phone title that still opens a menu (a space's views are a row, #873).
+        kai_email = f"kai.update+{STAMP}@example.test"
+        kai = cls.browser.new_context(base_url=ORIGIN)
+        response = kai.request.post("/api/auth/sign-up/email", data={"email": kai_email, "password": PASSWORD, "name": "Kai Tanaka"}, headers={"origin": ORIGIN})
+        assert response.status == 200, response.text()
+        kai_id = kai.request.get("/api/v1/me").json()["user"]["id"]
+        kai.close()
+        cls.call(context, "POST", f"/api/v1/workspaces/{workspace['id']}/members", {"email": kai_email, "role": "member"}, 201)
+        opener = context.new_page()
+        opener.goto(f"/dm/new?workspace={workspace['id']}&with={kai_id}")
+        opener.wait_for_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
+        cls.dm_path = opener.url.removeprefix(ORIGIN)
+        opener.close()
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open"), ("Write the volunteer guide", "open")):
             cls.call(context, "POST", f"/api/v1/projects/{cls.project['id']}/work", {"title": title, "status": status}, 201)
         cls.state = context.storage_state()
@@ -273,21 +286,21 @@ class UpdatePromptReach(unittest.TestCase):
                 self.prompt_actions_are_targets(page)
                 shot(page, f"update-prompt-phone-{width_name}-large-text")
 
-    def test_05b_the_view_menu_opens_under_the_header_not_over_it(self) -> None:
-        """The phone's view menu is a card under the header; with the prompt above, it follows the header down."""
+    def test_05b_the_title_menu_opens_under_the_header_not_over_it(self) -> None:
+        """A direct message's title menu is a card under the header; with the prompt above, it follows the header down."""
         page = self.page()
-        page.goto(f"/projects/{self.project['id']}/tasks")
+        page.goto(self.dm_path)
         expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_be_visible()
         self.offer_update(page)
         page.get_by_role("heading", level=1).get_by_role("button").tap(timeout=5000)
-        menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
+        menu = page.get_by_role("dialog", name=re.compile("Kai Tanaka"))
         expect(menu).to_be_visible()
         page.wait_for_function("document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).every((a) => a.playState !== 'running')")
-        header, card = page.locator("header").bounding_box(), menu.bounding_box()
+        header, card = page.locator("header.phead").bounding_box(), menu.bounding_box()
         self.assertIsNotNone(header)
         self.assertIsNotNone(card)
         self.assertGreaterEqual(card["y"], header["y"] + header["height"] - 2, f"the menu card starts under the header: {header} {card}")
-        shot(page, "update-prompt-phone-390-view-menu")
+        shot(page, "update-prompt-phone-390-title-menu")
 
     def test_06_the_computer_shell_is_clear_of_the_prompt(self) -> None:
         for dark in (False, True):

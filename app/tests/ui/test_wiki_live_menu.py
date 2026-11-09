@@ -1,4 +1,4 @@
-"""A phone Wiki page's Together/Join, in the space header (#869: the page's ⋯ holds only its own actions), against the real local SFU; no device is turned on."""
+"""A phone Wiki page's Call/Join, in the space header (#869: the page's ⋯ holds only its own actions), against the real local SFU; no device is turned on."""
 
 import re
 import unittest
@@ -16,7 +16,7 @@ class WikiLiveMenu(LiveBase):
         url = f"/projects/{self.ids['project']}/docs/{self.ids['doc']}"
         before = self.api(reader, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)
         reader.goto(url)
-        reader.locator("header.phead").get_by_role("button", name="Together", exact=True).click()
+        reader.locator("header.phead").get_by_role("button", name="Call", exact=True).click()
         bar = self.bar(reader)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
         expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")

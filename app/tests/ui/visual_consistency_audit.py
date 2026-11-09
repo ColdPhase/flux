@@ -253,8 +253,8 @@ SCREENS = [
     Screen("conversation", "/projects/{p}"),
     Screen("conversation-hover", "/projects/{p}", steps=[("hover", ".project-convo__message >> nth=-2")], only="wide"),
     Screen("thread", "/projects/{p}/conversations/{conv}", needs=("conv",)),
-    Screen("view-menu", "/projects/{p}", steps=[("click", ".phead__menu"), ("wait", "[role='dialog']")], only="phone"),
-    Screen("project-more", "/projects/{p}", steps=[("click", "button[aria-label='More']")], only="wide"),
+    # The space's More menu on every device: the computer's header row, the phone's header (#873; the views are a row there, not a menu).
+    Screen("project-more", "/projects/{p}", steps=[("click", "button[aria-label='More']"), ("wait", "[role='menu']")]),
     Screen("tasks-board", "/projects/{p}/tasks?view=board"),
     Screen("tasks-list", "/projects/{p}/tasks?view=list"),
     Screen("task-panel", "/projects/{p}/tasks?view=board&open=work:{task}", needs=("task",)),

@@ -62,7 +62,8 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
 }) {
   const { actionSlot } = useShellActions();
-  // The header holds it where the panel docks beside the board (a computer); a tablet's panel overlays, so it stays here.
+  // The header holds it where the panel docks beside the board (a computer), in a slot of its own in every view, so it keeps its place when
+  // the panel docks (#763 C4) and nothing moves when Tasks opens (#873); a tablet's panel overlays, so it stays here.
   const docks = !useMediaQuery(MEDIA.panelOverlay);
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);

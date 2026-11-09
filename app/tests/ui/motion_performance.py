@@ -10,11 +10,11 @@ Playwright) issues trusted clicks/taps/keys; the page's own monotonic clock time
 trusted event's timeStamp to a double-requestAnimationFrame following-frame proxy (not a raster
 completion claim). The work-tab, project and key distributions have 30 warm-ups and at least 200 measured
 actions over at least 60 s, per profile: 1280x800 DPR1 with tabs, and 390x844 DPR1 with touch, a mobile
-viewport and CDP 4x CPU throttling (viewport/CPU emulation, not a physical phone) with the phone's title
-menu (#341: the title opens the view menu, choosing a view closes it). API, database and worker are uncapped.
+viewport and CDP 4x CPU throttling (viewport/CPU emulation, not a physical phone) with the phone's views row (#873: the same segmented control as on the
+computer, in the header's second row). API, database and worker are uncapped.
 
-Phone navigation has no traveling highlight, so its three marks are the menu's: feedback is the menu leaving
-(`data-state="closing"`), motion end is the menu gone, committed is the header naming the chosen view.
+The phone's views have the computer's traveling mark, so its three marks are the same: feedback is the mark moving to the chosen
+view, motion end is the mark at rest, committed is the view current.
 
 A layout switch (a window resize or rotation, `Page.set_viewport_size`) runs from the resize event to the
 last frame in which the shell's landmarks (`LANDMARKS`) changed place or size, plus the following frame; they must
@@ -113,32 +113,26 @@ PROBE = r"""(() => {
       }
     }).observe({ type: 'long-animation-frame' });
   } catch (error) { probe.loaf = null; }
-  // One trusted click or tap on a project row, a work tab or (the phone) a view in the title menu: feedback (the
-  // highlight/mark on the chosen item, or the menu leaving, then two following frames), the motion's end, the route
-  // committing that choice, and frame gaps.
+  // One trusted click or tap on a project row or a view (the computer's header row, the phone's views row): feedback (the
+  // highlight/mark on the chosen item, then two following frames), the motion's end, the route committing that choice, and
+  // frame gaps.
   const watchers = {
     tab: (id) => ({
-      mark: () => { const m = document.querySelector('.views .ui-tabs__indicator, .top__views .ui-tabs__indicator'); return m && m.dataset.target === id ? m : null; },
+      mark: () => { const m = document.querySelector('.views .ui-tabs__indicator, .top__views .ui-tabs__indicator, .phead__views .ui-tabs__indicator'); return m && m.dataset.target === id ? m : null; },
       ended: (m) => !m.getAnimations().some((a) => a.playState === 'running'),
-      current: () => document.querySelector(`:is(.views, .top__views) [data-tab="${id}"][aria-current="page"]`),
+      current: () => document.querySelector(`:is(.views, .top__views, .phead__views) [data-tab="${id}"][aria-current="page"]`),
     }),
     project: (id) => ({
       mark: () => { const m = document.querySelector('.side .side__glide'); return m && m.dataset.target === id ? m : null; },
       ended: (m) => !m.getAnimations().some((a) => a.playState === 'running'),
       current: () => document.querySelector(`.side .side__project.is-open[data-glide-id="${id}"]`),
     }),
-    // The title menu has no traveling mark: the menu leaving is the answer, and the header naming the view is the commit.
-    phone: (id) => ({
-      mark: () => document.querySelector('.ui-overlay[data-state="closing"] .phone-menu') || (document.querySelector('.phone-menu') ? null : document.body),
-      ended: () => !document.querySelector('.phone-menu'),
-      current: () => { const sub = document.querySelector('.phead__sub'); return sub && sub.textContent.trim().startsWith(id) ? sub : null; },
-    }),
   };
   document.addEventListener('click', (event) => {
-    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .top__views [data-tab], .side .side__project, .phone-menu__list a.phone-menu__item') : null;
+    const el = event.target instanceof Element ? event.target.closest('.views [data-tab], .top__views [data-tab], .phead__views [data-tab], .side .side__project') : null;
     if (!el || !event.isTrusted) return;
-    const kind = el.matches('.side__project') ? 'project' : el.matches('.phone-menu__item') ? 'phone' : 'tab';
-    const id = kind === 'tab' ? el.dataset.tab : kind === 'phone' ? el.querySelector('.phone-menu__l').textContent.trim() : el.dataset.glideId;
+    const kind = el.matches('.side__project') ? 'project' : 'tab';
+    const id = kind === 'tab' ? el.dataset.tab : el.dataset.glideId;
     const watch = watchers[kind](id);
     const start = event.timeStamp;
     const run = { kind, id, feedback: null, motionEnd: null, committed: null, maxGap: 0 };
@@ -332,8 +326,8 @@ class MotionPerformance(unittest.TestCase):
         if cpu > 1:
             context.new_cdp_session(page).send("Emulation.setCPUThrottlingRate", {"rate": cpu})
         page.goto(path)
-        # A tab bar's mark (computer), the phone's title menu, or a thread opened by its address.
-        page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu, #thread-composer")
+        # A views bar's mark (the computer's row, the phone's second row), or a thread opened by its address.
+        page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__views .ui-tabs__indicator[data-target], #thread-composer")
         page.wait_for_timeout(1000)
         return context, page
 
@@ -393,14 +387,8 @@ class MotionPerformance(unittest.TestCase):
         return round(cdp.send("Runtime.getHeapUsage")["usedSize"] / 1048576, 1)
 
     def phone_view(self, page, name):
-        """The phone's way to a view (#341): the title opens the menu, the view is a row in it; only the row's tap is timed."""
-        def act():
-            page.locator(".phead__menu").first.tap()
-            menu = page.locator(".phone-menu__list")
-            menu.wait_for()
-            page.wait_for_timeout(300)  # the menu has finished entering
-            menu.get_by_role("link", name=re.compile(f"^{name}")).tap()
-        return act
+        """The phone's way to a view (#873): a tap on the view in the segmented row under the title."""
+        return lambda: page.locator(f'.phead__views [data-tab="{name}"]').tap()
 
     def switch(self, page, size, requests):
         """One window resize or rotation, timed in the page from the resize event to the settled layout; `requests` is the
@@ -471,7 +459,7 @@ class MotionPerformance(unittest.TestCase):
                        "note": "maxFrameGap spans click to committed paint, so it includes the chosen view's own render"}
             context, page = self.open("ada", viewport, cpu, f"/projects/{self.projects[0]}", reduced, phone)
             if phone:
-                actions = [self.phone_view(page, "Tasks"), self.phone_view(page, "Conversation")]
+                actions = [self.phone_view(page, "tasks"), self.phone_view(page, "conversation")]
             else:
                 tabs = page.locator(".views, .top__views").first
                 actions = [(lambda name: (lambda: tabs.locator(f'[data-tab="{name}"]').click()))(name) for name in ("tasks", "conversation")]
@@ -492,7 +480,7 @@ class MotionPerformance(unittest.TestCase):
                 grown("navigation", heap_start)
                 # Layout switches run on the project's conversation, the page a person has open most.
                 page.goto(f"/projects/{self.projects[0]}")
-                page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu")
+                page.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__views .ui-tabs__indicator[data-target]")
                 page.wait_for_timeout(1000)
                 heap_start = self.heap_mb(page)
                 profile["distributions"].update(self.layout_distributions(page, viewport, LAYOUT_PAIRS[label], budget))

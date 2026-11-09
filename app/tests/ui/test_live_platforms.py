@@ -342,9 +342,9 @@ class PlatformRows(LiveBase):
         host = self.page("nia")
         self.open_conversation(host, conversation)
         host_bar = self.bar(host)
-        together = host.locator("header.top, header.phead").get_by_role("button", name="Together", exact=True)
+        together = host.locator("header.top, header.phead").get_by_role("button", name="Call", exact=True)
         join = host.locator("header.top, header.phead").get_by_role("button", name="Join", exact=True)
-        # The header shows Together, or Join when a session is already open (left by an earlier failure).
+        # The header shows Call, or Join when a session is already open (left by an earlier failure).
         expect(together.or_(join).or_(host_bar)).to_be_visible()
         if not host_bar.is_visible():
             # Playwright waits for whichever control is there; a header that changes between a visibility

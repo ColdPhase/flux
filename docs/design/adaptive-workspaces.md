@@ -176,7 +176,7 @@ fails it once it stops missing), and
   other agents' Docker suites shared (load average 5 to 32 over the three runs). Device pixel ratio 1, loopback network.
 - **Profiles.** *Desktop*: 1280×800, mouse. *Phone*: 390×844, touch, a mobile viewport and Chromium's 4× CPU
   throttling (`Emulation.setCPUThrottlingRate`), an emulation proxy for a slow phone, not a device. The phone changes view through
-  its title menu (#341). Reduced motion (desktop) uses the desktop budgets.
+  the segmented row under its title (#873). Reduced motion (desktop) uses the desktop budgets.
 - **Method.** The page's own clock times each trusted click, tap or key from the event's `timeStamp` to a
   double-`requestAnimationFrame` following-frame proxy (not a raster claim). 30 warm-ups, then at least 200
   actions over at least 60 s. A layout switch (`set_viewport_size`) runs from the resize event to the frame after

@@ -40,9 +40,9 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 
 | Space | Rule | Kind | Source |
 | --- | --- | --- | --- |
-| ≤ 640 px | Phone composition ([#341](https://github.com/ColdPhase/flux/issues/341)): a 56 px header (Back, the title that opens the view menu, Together, Search), the same in every view; Home, Projects and Inbox in a capsule outside a conversation and none inside one; Details and threads are sheets; the map shows two card columns | viewport | `ui/motion.ts` `MEDIA.phone`, `app/app.css`, `app/PhoneChrome.tsx`, `ui/DetentSheet.tsx` |
+| ≤ 640 px | Phone composition ([#341](https://github.com/ColdPhase/flux/issues/341)): a 56 px header of round controls (Back, the plain title, Call as a handset, Search, More) with the four views as a segmented row under it (#873), the same in every view; under 360 px wide the title would keep about 80 px, so Call is the first row of More instead; Home, Projects and Inbox in a capsule outside a conversation and none inside one; Details and threads are sheets; the map shows two card columns | viewport | `ui/motion.ts` `MEDIA.phone`, `app/app.css`, `app/PhoneChrome.tsx`, `ui/DetentSheet.tsx` |
 | 641–680 px | The work area runs edge to edge; Open navigation opens the 260 px drawer | viewport | `MEDIA.navDrawer`, `app/app.css` |
-| ≤ 900 px | The sidebar is the 64 px rail and its expand control opens the drawer. The project title is the view menu, so the views leave the header | viewport | `MEDIA.tablet`, `app/app.css`, `docs/design/spokoj` "Layout per screen" |
+| ≤ 900 px | The sidebar is the 64 px rail and its expand control opens the drawer. The four views stay one segmented control in the header, the same as on the computer and the phone (#873). From a 704 px header (a 776 px window with the rail) the faces and Call stay in the row; under it, where the name would keep under about 120 px, they move into More. From 1001 px, where the details panel docks, the Tasks view's "+ Task" has its 72 px slot in the header in every view (empty outside Tasks), so it never moves when a task opens, and the people and Call move into More under a 776 px header. The name's slot (220 px) depends only on the header's width, never on what the row holds, so the views never move between views or states: a call elsewhere in the space is the live mark on More (in its name) and a Join row each in it, with where it is and who is in it (an empty room shows nothing). The views are equal slots from a 1120 px header, and as wide as their labels below it | viewport | `MEDIA.tablet`, `app/app.css`, `docs/design/spokoj` "Layout per screen" |
 | ≤ 1000 px | The one panel (Details, a thread) overlays the work from the right: 380 px at 820 | viewport | `MEDIA.panelOverlay`, `ui/ui.css` |
 | > 1000 px | The panel docks beside the work and replaces its content for the next object, never a third column: 380 px up to 1200, 420 px, 480 px from 1920. The conversation is at most 760 px from 1920 | viewport | `ui/tokens.css` `--panel-w`, `app/project-conversation.css` `.project-convo__in` |
 | Board < 700 px | Tasks keeps its four columns (To do, Doing, Blocked, Done) side by side and scrolls them sideways, with no row of status tabs (#868); wider, the four columns fit, with cards in auto-fill tracks inside each column | container | `work/board.css` `@container tasks` |
@@ -67,7 +67,7 @@ controls, and the plane returns when the map is wider again; each layout keeps i
 - **`pointer: coarse`**: every primary action offers a 44 × 44 px target of its own. A target
   is measured from its centre until another element or nothing is hit, so a stretched card link
   counts and an adjacent control does not. The primary actions per surface:
-  - shell: the views (tabs, or the title's menu up to 900 px), Open navigation, Details, Close details;
+  - shell: the views (the segmented control at every width), Open navigation, Details, Close details;
   - Conversation: the message field, Send message, Reply, the reply field, Send reply and Close
     replies;
   - Map: the Sketch tools, Map / List and the zoom controls, plus the list rows;

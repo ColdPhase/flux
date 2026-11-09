@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { LiveSession, ProjectPerson } from '@flux/contracts';
-import { Avatar, Button, Icon, useLoopPause } from '../ui';
+import { Avatar, Button, useLoopPause } from '../ui';
 import { useProjectShell } from '../project/data';
 import { anchorLabel, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
 import { sessionAt, useLive, useLiveHere, useProjectSessions } from './LiveProvider';
@@ -38,7 +38,7 @@ export function audienceOf(people: ProjectPerson[] | null | undefined, meId: str
  * project's people quietly. A running session at this anchor becomes “Join”.
  */
 export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
-  /** `more`: the header's Together as a row of More (⋯), where a narrow header moves it (Spokój rule 3). */
+  /** `more`: the header's Call as a row of More (⋯), where a narrow header moves it (Spokój rule 3). */
   variant?: 'header' | 'inline' | 'more'; anchor?: LiveAnchor | null; onAction?(): void;
 }) {
   const live = useLive();
@@ -53,21 +53,21 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const noteId = useId();
   const nameOf = (id: string) => projectPeople?.find((person) => person.id === id)?.name ?? live.nameOf(id);
 
-  // Spokój rule 7: the header's Together keeps its place in every view. Where there is nothing to work on together
+  // Spokój rule 7: the header's Call keeps its place in every view. Where there is nothing to work on together
   // (nothing open to anchor a session, a session already joined, or still checking) it stays, and a click says why
   // (#763 sweep: a permanently greyed button read as broken).
   const dimmed = (reason: string) => variant === 'more' ? (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-disabled="true" aria-describedby={noteId}>
-      <span>Together</span><span id={noteId} className="ui-vh">{reason}</span>
+      <span>Call</span><span id={noteId} className="ui-vh">{reason}</span>
     </button>
   ) : variant === 'header' ? (
     <span className="lv-entry">
-      <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn lv-entry__btn--why" aria-label="Together" aria-describedby={noteId}
+      <Button ref={buttonRef} variant="quiet" icon="call" className="lv-entry__btn lv-entry__btn--why" aria-label="Call" aria-describedby={noteId}
         aria-expanded={open} aria-haspopup="dialog" onClick={() => setOpen((value) => !value)}>
-        <span className="lv-entry__label">Together</span>
+        <span className="lv-entry__label">Call</span>
       </Button>
       <span id={noteId} className="ui-vh">{reason}</span>
-      <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Together" className="lv-pop--narrow">
+      <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Call" className="lv-pop--narrow">
         <p className="lv-pop__text">{reason}</p>
       </Popover>
     </span>
@@ -77,18 +77,17 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
   const here_ = sessionAt(items, anchor);
-  const others = items.filter((item) => !sameContext(item.context, anchor.context));
   const word = KIND_WORD[anchor.context.type];
   const audience = audienceOf(projectPeople, live.meId);
 
   if (!configured) {
-    // Explained once, behind the header's "Together" (#189): a task does not repeat it.
+    // Explained once, behind the header's "Call" (#189): a task does not repeat it.
     if (variant === 'inline') return null;
     if (variant === 'more') return dimmed('Live sessions are not available on this Flux server.');
     return (
       <span className="lv-entry">
-        <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Together" onClick={() => setOpen((v) => !v)}>
-          <span className="lv-entry__label">Together</span>
+        <Button ref={buttonRef} variant="quiet" icon="call" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Call" onClick={() => setOpen((v) => !v)}>
+          <span className="lv-entry__label">Call</span>
         </Button>
         <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live sessions" className="lv-pop--narrow">
           <p className="lv-pop__title">Live sessions are not available here</p>
@@ -118,7 +117,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
 
   if (variant === 'more') return (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
-      <span>{joinable ? 'Join' : 'Together'}</span><span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}.`}</span>
+      <span>{joinable ? 'Join' : 'Call'}</span><span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}.`}</span>
     </button>
   );
 
@@ -133,49 +132,122 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
 
   return (
     <span className="lv-entry">
-      {others.length && !joinable ? (
-        <>
-          <Button ref={buttonRef} variant="quiet" className="lv-entry__live" aria-expanded={open} aria-haspopup="dialog" aria-label={`Live now, ${others.length} ${others.length === 1 ? 'session' : 'sessions'} in this space`} onClick={() => setOpen((v) => !v)}>
-            <span className="lv-dot" aria-hidden="true" /><span className="lv-entry__label">Live now</span><span className="ui-vh">, {others.length} {others.length === 1 ? 'session' : 'sessions'} in this space</span>
-          </Button>
-          <Popover open={open} onClose={() => setOpen(false)} anchorRef={buttonRef} label="Live in this space">
-            <p className="lv-pop__title">Live in this space</p>
-            <ul className="lv-pop__list">
-              {others.map((item) => <OtherSession key={item.id} session={item} nameOf={nameOf} meId={live.meId} onJoin={(resolved) => { setOpen(false); void live.join(item, resolved); }} />)}
-            </ul>
-            <div className="lv-pop__foot">
-              <Button variant="secondary" icon="together" onClick={() => { setOpen(false); act(); }} data-autofocus>Work on this {word} together</Button>
-              <p className="lv-pop__text">{audience}. Nothing turns on until you choose.</p>
-            </div>
-          </Popover>
-        </>
-      ) : null}
-      <Button variant={joinable ? 'primary' : 'quiet'} icon={joinable ? undefined : 'together'} busy={busy} className={`lv-entry__btn${joinable ? ' lv-entry__btn--join' : ''}`}
+      <Button variant={joinable ? 'primary' : 'quiet'} icon={joinable ? undefined : 'call'} busy={busy} className={`lv-entry__btn${joinable ? ' lv-entry__btn--join' : ''}`}
         onClick={act} data-tip={joinable ? 'Join with microphone and camera off' : `${audience}. Nothing turns on until you choose.`} aria-describedby={noteId}
-        aria-label={joinable ? 'Join' : 'Together'}>
+        aria-label={joinable ? 'Join' : 'Call'}>
         {joinable ? <LiveDot on /> : null}
-        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 3).map((id) => <Avatar key={id} name={live.fullName(id)} size="sm" />)}</span> : null}
-        <span className="lv-entry__label">{joinable ? 'Join' : 'Together'}</span>
+        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 2).map((id) => <Avatar key={id} name={live.fullName(id)} size="sm" />)}</span> : null}
+        <span className="lv-entry__label">{joinable ? 'Join' : 'Call'}</span>
       </Button>
       <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}. Nothing turns on until you choose.`}</span>
     </span>
   );
 }
 
-function OtherSession({ session, nameOf, meId, onJoin }: { session: LiveSession; nameOf: (id: string) => string; meId: string; onJoin: (anchor: LiveAnchor) => void }) {
-  const [label, setLabel] = useState<string | null>(null);
+/** Whether the header has folded Call and Join into More, as the CSS decides it: a phone under 360 px, or a header under 44 rem (48.5 rem from 1001 px). */
+function useCallFolded(): boolean {
+  const measure = () => {
+    const main = document.querySelector('.app__main');
+    if (!main) return false;
+    if (document.querySelector('header.phead')) return window.innerWidth <= 359;
+    const rem = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+    return main.clientWidth / rem <= (window.innerWidth >= 1001 ? 48.5 : 44);
+  };
+  const [folded, setFolded] = useState(measure);
+  useEffect(() => {
+    const main = document.querySelector('.app__main');
+    if (!main) return undefined;
+    const update = () => setFolded(measure());
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(main);
+    return () => observer.disconnect();
+  }, []);
+  return folded;
+}
+
+/**
+ * The sessions of this space that are not at the place the person is (and none while they are in one) and are not empty: a call stays
+ * joinable for a while after everyone left it, and is not "live now" then. Also whether a call is here to join.
+ */
+function useElsewhere() {
+  const live = useLive();
+  const here = useLiveHere();
+  const shell = useProjectShell();
+  const { items } = useProjectSessions(shell?.project.id, live.capability === 'configured');
+  const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
+  const joinable = !inSession && sessionAt(items, here.anchor)?.state === 'available';
+  const others = inSession ? [] : items.filter((item) => !sameContext(item.context, here.anchor?.context) && (item.participants === null || item.participants.length > 0));
+  const people = shell?.people;
+  const nameOf = (id: string) => people?.find((person) => person.id === id)?.name ?? live.nameOf(id);
+  return { live, others, joinable, nameOf };
+}
+
+const placeLabels = new Map<string, string>();
+const labelKey = (session: LiveSession) => `${session.projectId}:${session.context.type}:${session.context.id}`;
+
+/** The place's title, read once and kept: More opens with its rows already named, so none appears above the one focused (#873). */
+function useWarmLabel(session: LiveSession): string | null {
+  const key = labelKey(session);
+  const [label, setLabel] = useState<string | null>(placeLabels.get(key) ?? null);
   useEffect(() => {
     const controller = new AbortController();
-    anchorLabel(session.projectId, session.context, controller.signal).then(setLabel, () => undefined);
+    anchorLabel(session.projectId, session.context, controller.signal).then((title) => { if (title) { placeLabels.set(key, title); setLabel(title); } }, () => undefined);
     return () => controller.abort();
-  }, [session.projectId, session.context]);
-  if (label === null) return null;
-  const present = (session.participants ?? []).map((p) => p.userId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  return label;
+}
+
+/**
+ * A call elsewhere in the space (#873): one row each in More to join it, with where it is and who is in it, so the header's row never grows
+ * when one starts and nothing in it moves. Starting a call here stays Call's one click.
+ */
+export function LiveNowRows() {
+  const { others, nameOf } = useElsewhere();
+  return <>{others.map((session) => <LiveNowRow key={session.id} session={session} nameOf={nameOf} />)}</>;
+}
+
+function LiveNowRow({ session, nameOf }: { session: LiveSession; nameOf: (id: string) => string }) {
+  const live = useLive();
+  const label = useWarmLabel(session);
+  // The row is there from the first frame (the place's title may be a moment behind): it never appears above a row that has focus.
+  const place = label ? `“${label}”` : `the ${KIND_WORD[session.context.type]}`;
+  const who = session.participants === null ? 'presence unknown' : namesLine(session.participants.map((p) => p.userId), nameOf, live.meId);
   return (
-    <li className="lv-pop__item">
-      <span className="lv-pop__what"><Icon name={session.context.type === 'work' ? 'tasks' : session.context.type === 'sketch' ? 'map' : session.context.type === 'doc' ? 'doc' : 'chat'} size={14} />
-        <span><b>{label}</b><span>{session.participants === null ? 'Presence unknown' : namesLine(present, nameOf, meId)}</span></span></span>
-      <Button variant="secondary" onClick={() => onJoin({ projectId: session.projectId, context: session.context, label })}>Join</Button>
-    </li>
+    <button type="button" role="menuitem" className="newmenu__item lv-now" data-more-row
+      onClick={() => void live.join(session, { projectId: session.projectId, context: session.context, label: label ?? KIND_WORD[session.context.type] })}>
+      <LiveDot on /><span className="lv-now__t">Join {place} · {who}</span><span className="ui-vh">, live now in this space</span>
+    </button>
   );
+}
+
+/**
+ * The live mark on More while a call is live in the space and the header has no room for its own Join (#873), and its words, which
+ * More's name carries (`id`): "More live now in this space". They avoid "call" and "join", so a name match on Call or Join in the row
+ * never lands on More. The rows are in More; this warms the places' titles for them.
+ */
+export function LiveCue({ id, buttonId }: { id: string; buttonId: string }) {
+  const { others, joinable } = useElsewhere();
+  const folded = useCallFolded();
+  const shown = others.length > 0 || (joinable && folded);
+  useEffect(() => {
+    const button = document.getElementById(buttonId);
+    if (!shown || !button) return undefined;
+    button.setAttribute('aria-labelledby', `${buttonId} ${id}`);
+    return () => button.removeAttribute('aria-labelledby');
+  }, [shown, buttonId, id]);
+  if (!shown) return null;
+  return (
+    <span className="top__live-cue" id={id}>
+      <LiveDot on />
+      <span className="ui-vh">{others.length ? 'live now in this space' : 'live session here'}</span>
+      {others.map((session) => <LabelWarm key={session.id} session={session} />)}
+    </span>
+  );
+}
+
+function LabelWarm({ session }: { session: LiveSession }) {
+  useWarmLabel(session);
+  return null;
 }

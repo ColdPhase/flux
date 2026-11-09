@@ -51,9 +51,8 @@ COARSE_UP_TO = 1024
 COMMON_PHONES = {(390, 844), (412, 915), (430, 932)}
 # Whole-view captures for visual review: phones, the tablet (820), laptop, the 2560 workspace, 1920, ultrawide and 4K.
 SHOTS_AT = {320, 390, 768, 820, 1440, 1920, 2560, 3440, 3840}
-TABS = ["Conversation", "Map", "Tasks", "Wiki"]
-# The phone menu lists Tasks before Map (#341).
-PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki"]
+# The four views, in this order in every space and at every width (#873).
+TABS = ["Conversation", "Tasks", "Map", "Wiki"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
@@ -409,38 +408,17 @@ class AdaptiveBase(unittest.TestCase):
     def phone(self, page: Page) -> bool:
         return page.viewport_size["width"] <= 640
 
-    def title_menu(self, page: Page) -> bool:
-        """Below 900 px the project title is the view menu: the phone's (#341) and the tablet's (Spokój, #505 AC-2)."""
-        return page.viewport_size["width"] <= 900
-
     def tabs(self, page: Page) -> Locator:
-        """The project's views: the header's segmented control, or below 900 px the menu the title opens."""
-        if self.title_menu(page):
-            return page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
+        """The project's views: one segmented control at every width, in the header's row or, on a phone, the row under the title (#873)."""
         return page.get_by_role("navigation", name="Space views")
 
-    def open_menu(self, page: Page) -> None:
-        if self.title_menu(page) and not self.tabs(page).count():
-            page.get_by_role("heading", level=1).get_by_role("button").click()
-            expect(self.tabs(page)).to_be_visible()
-
     def tab(self, page: Page, name: str) -> None:
-        self.open_menu(page)
         self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
-        if self.title_menu(page):
-            expect(self.tabs(page)).to_have_count(0)
-            self.open_menu(page)
         expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
-        if self.title_menu(page):
-            page.keyboard.press("Escape")
-            expect(self.tabs(page)).to_have_count(0)
 
     def details_button(self, page: Page) -> Locator:
-        """The header's way to Details: More on the computer's one row (#340), the labelled button on the phone."""
-        if self.phone(page):
-            self.open_menu(page)
-            return self.tabs(page).locator(".phone-menu__details")
-        return page.locator("header.top").get_by_role("button", name="More", exact=True)
+        """The header's way to Details: More, on the computer's one row (#340), on the tablet and on the phone's row (#873)."""
+        return page.locator("header.top, header.phead").get_by_role("button", name="More", exact=True)
 
     def card(self, page: Page, title: str) -> Locator:
         return page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True)
@@ -496,21 +474,15 @@ class AdaptiveMatrix(AdaptiveBase):
         # Conversation: the same places, labels and order at every width (ADAPT-3).
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
-        self.open_menu(page)
         expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
         names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
-        self.assertEqual(names, PHONE_TABS if width <= 900 else TABS, f"project views keep their names and order at {size}")
+        self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
         for name in TABS:
             self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
-        if 640 < width <= 900:
-            # The tablet's title menu holds only the views; Details stays in More.
-            page.keyboard.press("Escape")
-            expect(self.tabs(page)).to_have_count(0)
         if width <= 680 and width > 640:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         self.primary(page, self.details_button(page), "Details")
         if width <= 640:
-            page.keyboard.press("Escape")
             # #341: a conversation has no tab bar; the places are Back and, in the other views, the capsule.
             expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
             self.primary(page, page.get_by_role("button", name="Back", exact=True), "Back")

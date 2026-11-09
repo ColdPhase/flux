@@ -64,6 +64,8 @@ const paths = {
   flask: <><path d="M6.5 2.5h3M7 2.5v4L3.5 12.5a1 1 0 00.9 1.5h7.2a1 1 0 00.9-1.5L9 6.5v-4" /><path d="M5 10h6" /></>,
   /** Live sessions (#62): together, microphone, camera, screen, quiet, leave, zoom, show. */
   together: <><circle cx="5.25" cy="6" r="2" /><circle cx="10.75" cy="6" r="2" /><path d="M1.75 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3M7.25 12.75c.4-1.9 1.75-3 3.5-3s3.1 1.1 3.5 3" /></>,
+  /** The header's Call (F-026 §4): a handset, as drawn. */
+  call: <path d="M3.1 2.5h2.2a.9.9 0 01.9.7l.5 2a.9.9 0 01-.25.85L5.4 7.1a8 8 0 003.5 3.5l1.05-1.05a.9.9 0 01.85-.25l2 .5a.9.9 0 01.7.9v2.2a1 1 0 01-1.1 1A10.5 10.5 0 012.1 3.6a1 1 0 011-1.1z" />,
   mic: <><rect x="6" y="2" width="4" height="7.5" rx="2" /><path d="M3.75 8a4.25 4.25 0 008.5 0M8 12.25V14" /></>,
   'mic-off': <><path d="M10 6.5V4a2 2 0 00-3.9-.6M6 6.5V7.5a2 2 0 003.2 1.6" /><path d="M3.75 8a4.25 4.25 0 007 3.25M12.25 8c0 .4-.05.8-.16 1.17M8 12.25V14M2.5 2.5l11 11" /></>,
   video: <><rect x="1.75" y="4.25" width="8.5" height="7.5" rx="1.5" /><path d="M10.25 7l4-2.25v6.5l-4-2.25" /></>,

@@ -1,5 +1,5 @@
 """The final phone shell (#341, F-026 §4 Phone and S2): Home · Projects · Inbox with a round Search, one
-floating "+", the view menu in the title, and conversations without the tab bar.
+floating "+", the views as a segmented row under a plain title, and conversations without the tab bar.
 
 Real authenticated browser and API data with touch emulation, at 390 x 844 and 320 x 568, in light and
 dark. Gestures are real touch taps. FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -262,51 +262,64 @@ class PhoneFinal(unittest.TestCase):
 
     # ------------------------------------------------------------------ AC-3
 
-    def test_05_the_title_is_the_view_menu_with_no_chips(self):
+    def test_05_the_views_are_the_segmented_row_under_a_plain_title_with_no_chips(self):
         for size, dark in self.variants():
             with self.subTest(width=size["width"], dark=dark):
                 page = self.page(size, dark)
                 page.goto(f"/projects/{self.project['id']}/tasks")
-                expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
                 expect(page.locator(".views, .state-row")).to_have_count(0)
                 heading = page.get_by_role("heading", level=1, name=re.compile("Community garden sensors"))
                 expect(heading).to_be_visible()
-                expect(page.locator("header .phead__sub")).to_contain_text("Tasks")
-                title = heading.get_by_role("button")
-                # AC-5: every phone touch target is at least 44 px, the title menu included.
-                self.assertGreaterEqual(self.box(title)["height"], 44)
-                title.click()
-                menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
-                expect(menu).to_be_visible()
-                labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Space details"])
-                expect(menu.get_by_text("Decisions")).to_have_count(0)
-                expect(menu.locator('[aria-current="page"]')).to_have_count(1)
-                expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")
-                for item in menu.locator(".phone-menu__item").all():
+                # The title is the title, not a menu (#873).
+                expect(heading.get_by_role("button")).to_have_count(0)
+                expect(page.locator("header .phead__sub")).to_contain_text(re.compile("person|people"))
+                views = page.get_by_role("navigation", name="Space views")
+                expect(views).to_be_visible()
+                labels = [text.strip().split("\n")[0].split(",")[0] for text in views.get_by_role("link").all_inner_texts()]
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki"])
+                expect(views.locator('[aria-current="page"]')).to_have_count(1)
+                expect(views.locator('[aria-current="page"]')).to_contain_text("Tasks")
+                expect(views.get_by_text("Decisions")).to_have_count(0)
+                # AC-5: every phone touch target is at least 44 px, the views included, and the four are equal slots.
+                widths = []
+                for item in views.get_by_role("link").all():
                     self.assertGreaterEqual(self.box(item)["height"], 44)
-                    self.assertGreaterEqual(float(item.evaluate("el => getComputedStyle(el).fontSize").removesuffix("px")), 15)
+                    widths.append(self.box(item)["width"])
+                # Equal slots; where "Conversation" needs more than a quarter of the row (a 320 px phone) the other three are equal.
+                for width in widths if size["width"] >= 375 else widths[1:]:
+                    self.assertAlmostEqual(width, widths[-1], delta=1, msg=f"the views are equal slots: {widths}")
                 self.assert_no_sideways_scroll(page, size["width"])
-                shot(page, f"341-viewsmenu-{size['width']}-{'dark' if dark else 'light'}")
-                menu.get_by_role("link", name=re.compile("^Map")).click()
+                shot(page, f"341-views-{size['width']}-{'dark' if dark else 'light'}")
+                views.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
-                page.get_by_role("heading", level=1).get_by_role("button").click()
-                page.get_by_role("button", name="Space details").click()
+                # Settings and the space's details are in More, the one place they open from.
+                page.get_by_role("button", name="More", exact=True).click()
+                menu = page.get_by_role("menu", name="More")
+                items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
+                self.assertEqual(items, ["Settings", "Space details"] if size["width"] >= 360 else ["Call", "Settings", "Space details"])
+                menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
                 expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
                 page.keyboard.press("Escape")
 
-    def test_06_the_menu_works_from_the_keyboard(self):
+    def test_06_the_views_work_from_the_keyboard(self):
         page = self.page(SIZES[0])
         page.goto(f"/projects/{self.project['id']}/docs")
-        opener = page.get_by_role("heading", level=1).get_by_role("button")
-        opener.focus()
+        views = page.get_by_role("navigation", name="Space views")
+        conversation = views.get_by_role("link", name=re.compile("^Conversation"))
+        conversation.focus()
         page.keyboard.press("Enter")
-        menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
-        expect(menu.get_by_role("link", name=re.compile("^Conversation"))).to_be_focused()
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
+        expect(views.get_by_role("link", name=re.compile("^Conversation"))).to_have_attribute("aria-current", "page")
+        # More is a menu from the keyboard too: Escape closes it and focus returns to it.
+        more = page.get_by_role("button", name="More", exact=True)
+        more.focus()
+        page.keyboard.press("Enter")
+        menu = page.get_by_role("menu", name="More")
+        expect(menu).to_be_visible()
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
-        expect(opener).to_be_focused()
+        expect(more).to_be_focused()
 
     # ------------------------------------------------------------------ AC-4
 
@@ -330,10 +343,9 @@ class PhoneFinal(unittest.TestCase):
                 back.click()
                 expect(page).to_have_url(f"{ORIGIN}/projects")
                 expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
-                # Back follows the way you came: from Tasks, opened through the title, it returns to the conversation.
+                # Back follows the way you came: from Tasks, opened through the views, it returns to the conversation.
                 page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
-                page.get_by_role("heading", level=1).get_by_role("button").click()
-                page.get_by_role("dialog").get_by_role("link", name=re.compile("^Tasks")).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
                 page.get_by_role("button", name="Back", exact=True).click()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")

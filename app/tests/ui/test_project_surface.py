@@ -20,7 +20,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from create_window import dialog, open_from_tasks, submit_button, title_field
 from message_gestures import open_message_menu
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, phone_menu, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 STAMP = int(time.time() * 1000)
@@ -191,7 +191,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=404)
         tabs = page.get_by_role("navigation", name="Space views")
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
-        self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Map", "Tasks", "Wiki"])
+        self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Tasks", "Map", "Wiki"])
         expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
         # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
@@ -306,15 +306,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(1)
         page.keyboard.press("Escape")
         expect(switcher).to_have_count(0)
-        # At 320px the views are in the title's menu (#341): the current one is marked there.
-        page.get_by_role("heading", level=1).get_by_role("button").click()
-        current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))
+        # At 320px the four views still fit in their row under the title (#873): the current one is marked there.
+        current = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
         assert box
         self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], 320, "the current view is visible in the menu")
-        page.keyboard.press("Escape")
+        self.assertLessEqual(box["x"] + box["width"], 320, "the current view is visible in its row")
+        self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), 320)
 
     # ---------------------------------------------------------------- Details overview
 
@@ -389,10 +388,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.assertNotIn(title, text, f"{title!r} is not in the space's Details")
         self.assertNotIn("Task in progress", text)
 
-        # AC-4: Map, Wiki and Tasks are three rows with counts that open the views.
-        project = panel.get_by_role("region", name="In this space", exact=True)
-        rows = project.get_by_role("link")
-        expect(rows).to_have_text([re.compile(r"^Map\s*1 map"), re.compile(r"^Wiki\s*1 page"), re.compile(r"^Tasks\s*2 open")])
+        # AC-4 (#873): the views are in the header; the panel does not repeat Map, Wiki and Tasks as rows.
+        expect(panel.get_by_role("region", name="In this space", exact=True)).to_have_count(0)
         expect(panel.get_by_role("region", name="Maps", exact=True)).to_have_count(0)
         expect(panel.get_by_role("region", name="Wiki", exact=True)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
@@ -425,13 +422,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}")
         open_details(page)
 
-        # The rows open what they name.
-        rows.filter(has_text="Wiki").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/docs"))
-        page.go_back()
         page.emulate_media(color_scheme="dark")
+        page.reload()
         open_details(page)
-        expect(panel.get_by_role("region", name="In this space", exact=True)).to_be_visible()
+        expect(panel.locator(".ov-head")).to_be_visible()
         shot(page, "project-details-one-look-desktop-1440-dark")
 
         # The phone shows the same look in its sheet, in one column.
@@ -443,7 +437,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             sheet = phone.get_by_role("dialog", name="Details")
             expect(sheet.locator(".ov-head").get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
             expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
-            expect(sheet.get_by_role("region", name="In this space", exact=True).get_by_role("link")).to_have_count(3)
+            expect(sheet.get_by_role("region", name="In this space", exact=True)).to_have_count(0)
             self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
             shot(phone, f"project-details-one-look-phone-390-{scheme}")
 
@@ -505,7 +499,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
         # A title too long for the phone truncates; the people stay in the line under it, and Details lists them.
         page.goto(f"/projects/{self.ids['long_project']}")
-        title = page.locator("header h1 .phead__name")
+        title = page.locator("header h1")
         expect(title).to_have_text(LONG_NAME)
         self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
         expect(page.locator("header .phead__sub")).to_contain_text("2 people")
@@ -610,16 +604,11 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155), in the Create window (#345)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        # On the phone the views are the title menu (#341); its Tasks row is a link like the desktop tab.
-        phone = page.viewport_size["width"] <= 640
-        views = phone_menu(page) if phone else page.get_by_role("navigation", name="Space views")
-        link = views.get_by_role("link", name=re.compile("^Tasks"))
+        # The views are the same segmented control at every width (#873); on a phone it is the row under the title.
+        link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
-        if page.viewport_size["width"] <= 640:
-            link.click()
-        else:
-            view_tab(page, "Tasks")
+        view_tab(page, "Tasks")
         # The List is the computer's view of the same work (#136); the phone has only its drawn list.
         if page.viewport_size["width"] > 640:
             page.get_by_role("radio", name="List", exact=True).click()

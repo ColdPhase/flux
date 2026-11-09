@@ -169,9 +169,9 @@ class LiveBase(unittest.TestCase):
 
     def open_conversation(self, page: Page, url: str | None = None) -> None:
         """Open the seeded conversation. Its URL is a thread: the app opens it in the detail panel, a sheet or an
-        overlay over the header on a phone or tablet (#344, #601). A person closes it to reach Together or Join."""
+        overlay over the header on a phone or tablet (#344, #601). A person closes it to reach Call or Join."""
         page.goto(url or f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        header = page.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Together|Join)$"))
+        header = page.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Call|Join)$"))
         panel_close = page.locator(".ui-panel__close")
         expect(header.or_(panel_close).first).to_be_visible()
         if panel_close.first.is_visible():
@@ -246,10 +246,10 @@ class LiveUnavailable(LiveBase):
         page.goto(self.task_url())
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name=TASK)).to_be_visible()
-        # Explained once, behind the header's Together; the task itself does not repeat it (#189).
+        # Explained once, behind the header's Call; the task itself does not repeat it (#189).
         expect(panel).not_to_contain_text("Live sessions")
         header = page.locator("header.top, header.phead")
-        header.get_by_role("button", name="Together").click()
+        header.get_by_role("button", name="Call").click()
         dialog = page.get_by_role("dialog", name="Live sessions")
         expect(dialog).to_contain_text("no media server configured")
         page.keyboard.press("Escape")
@@ -285,6 +285,136 @@ class LiveUnavailable(LiveBase):
 @unittest.skipUnless(LIVE, "set FLUX_UI_LIVE=1 with the live media profile (scripts/check_live_ui.sh)")
 class LiveJourney(LiveBase):
     """Tests run in name order and share accounts, one project and its sessions."""
+
+    def test_00_a_call_that_can_be_joined_moves_nothing_in_the_computer_header(self) -> None:
+        """#873: the people, Call (or Join) and More have fixed slots on the computer, so someone else's call appears without a shift,
+        and the tablet's row keeps the people and Join. A space of its own: a call is joinable there for a while after everyone has left,
+        and one elsewhere in the space adds a "Live now" button to the row."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Rain barrel monitor", "visibility": "restricted"}, status=201)
+        self.api(ada, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": PEOPLE["nia"]["id"]}, "role": "contributor"}, status=201)
+        thread = self.api(ada, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Which barrel overflows first?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        url = f"/projects/{project['id']}/conversations/{thread['id']}"
+        nia = self.page("nia")
+        self.open_conversation(nia, url)
+        watcher = self.page("ada")
+        self.open_conversation(watcher, url)
+        wide = watcher.locator("header.top")
+        people = wide.get_by_role("button", name=re.compile("who can see this space$"))
+        more = wide.get_by_role("button", name="More", exact=True)
+        expect(wide.get_by_role("button", name=re.compile("^Live now"))).to_have_count(0)
+        before = {"people": people.bounding_box(), "More": more.bounding_box(), "Call": wide.get_by_role("button", name="Call", exact=True).bounding_box()}
+        nia.locator("header.top, header.phead").get_by_role("button", name="Call").click()
+        expect(self.bar(nia)).to_be_visible()
+        join = wide.get_by_role("button", name="Join", exact=True)
+        expect(join).to_be_visible()
+        after = {"people": people.bounding_box(), "More": more.bounding_box(), "Join": join.bounding_box()}
+        for name in ("people", "More"):
+            self.assertAlmostEqual(before[name]["x"], after[name]["x"], delta=1, msg=f"{name} did not move when the call became joinable")
+        self.assertAlmostEqual(before["Call"]["x"] + before["Call"]["width"] / 2, after["Join"]["x"] + after["Join"]["width"] / 2, delta=1, msg="Join sits where Call was")
+        shot(watcher, "live-desktop-1440-join-in-header")
+        # The tablet's row has room for the people and Join too: they stay in the header at 820 px (they are not only in More).
+        tablet = self.page("ada", viewport=TABLET)
+        self.open_conversation(tablet, url)
+        row = tablet.locator("header.top")
+        expect(row.get_by_role("button", name="Join", exact=True)).to_be_visible()
+        expect(row.get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
+        self.assertLessEqual(tablet.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no sideways scroll at 820")
+        shot(tablet, "live-tablet-820-join-in-header")
+        # Under 360 px Call is in More: a call that can be joined is a dot on More, and the row reads Join the moment More opens.
+        small = self.page("ada", viewport={"width": 320, "height": 568})
+        small.goto(f"/projects/{project['id']}")
+        phead = small.locator("header.phead")
+        expect(phead.locator(".top__live-cue")).to_be_visible()
+        expect(phead.get_by_role("button", name="Join", exact=True)).to_be_hidden()
+        # The live mark is part of More's name, so a screen reader hears it, and the first row is Join from the first frame.
+        more_small = phead.get_by_role("button", name=re.compile("^More live session here"))
+        expect(more_small).to_be_visible()
+        more_small.click()
+        menu = small.get_by_role("menu", name="More")
+        expect(menu).to_be_visible()
+        self.assertTrue(menu.locator("[role^=menuitem]:visible").first.inner_text().startswith("Join"), "the first row is Join, not Call, from the first frame")
+        shot(small, "live-phone-320-more-join")
+        small.keyboard.press("Escape")
+        self.bar(nia).get_by_role("button", name="Leave", exact=True).click()
+        expect(self.bar(nia)).to_have_count(0)
+
+    def test_00b_a_call_elsewhere_in_the_space_moves_nothing_in_the_header(self) -> None:
+        """#873: a call started at another place in the space (a Wiki page here) is a dot on More and a Join row in it: the views, the name's
+        slot, the people, Call and More stay where they are at 820, 1024, 1180 and 1440 px, and Join in More joins it, on a phone too."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Tool library", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE["nia"]["id"]}, "role": "contributor"}, status=201)
+        thread = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Who has the soldering iron?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        doc = self.api(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Loan rules", "body": "Two weeks, then back on the shelf."}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        conversation_url = f"/projects/{pid}/conversations/{thread['id']}"
+        watchers = {}
+        for width, height in ((820, 1180), (1024, 768), (1180, 820), (1440, 900)):
+            page = self.page("ada", viewport={"width": width, "height": height})
+            if width == 1024:
+                # A 1024 px window has "+ Task"'s slot in the header and no room for the people and Call: they are in More (no Call to wait for).
+                page.goto(conversation_url)
+                if page.locator(".ui-panel__close").first.is_visible():
+                    page.locator(".ui-panel__close").first.click()
+                expect(page.locator("header.top").get_by_role("button", name=re.compile("^More"))).to_be_visible()
+            else:
+                self.open_conversation(page, conversation_url)
+            watchers[width] = page
+
+        def places(page: Page) -> dict:
+            header = page.locator("header.top")
+            out = {name: header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")).bounding_box()
+                   for name in ("Conversation", "Tasks", "Map", "Wiki")}
+            out["name"] = header.locator(".top__title").bounding_box()
+            for key, locator in (("people", header.get_by_role("button", name=re.compile("who can see this space$"))), ("Call", header.get_by_role("button", name="Call", exact=True))):
+                if locator.count():
+                    out[key] = locator.bounding_box()
+            out["More"] = header.get_by_role("button", name=re.compile("^More")).bounding_box()
+            return out
+
+        before = {width: places(page) for width, page in watchers.items()}
+        nia = self.page("nia")
+        nia.goto(f"/projects/{pid}/docs/{doc['id']}")
+        nia.locator("header.top, header.phead").get_by_role("button", name="Call").click()
+        expect(self.bar(nia)).to_be_visible()
+        for width, page in watchers.items():
+            cue = page.locator("header.top .top__live-cue")
+            expect(cue, f"{width}: a dot on More says a call is live").to_be_visible()
+            after = places(page)
+            for name, box in before[width].items():
+                for key in ("x", "width"):
+                    self.assertAlmostEqual(box[key], after[name][key], delta=1, msg=f"{width}: {name} did not change its {key} when a call started elsewhere")
+            expect(page.locator("header.top").get_by_role("button", name=re.compile("^Live now"))).to_have_count(0)
+            expect(page.locator("header.top").get_by_role("button", name="More live now in this space"), f"{width}: the live mark is in More's name").to_be_visible()
+            shot(page, f"live-desktop-{width}-live-now-in-more")
+        # More holds the way in, and it joins.
+        page = watchers[1440]
+        # Opened from the keyboard, the first row is the Join row (named from the first frame, so nothing appears above the focused row), and it
+        # says where the call is and who is in it.
+        more = page.locator("header.top").get_by_role("button", name=re.compile("^More"))
+        more.focus()
+        page.keyboard.press("Enter")
+        row = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Join “Loan rules” · Nia"))
+        expect(row).to_be_visible()
+        expect(row).to_be_focused()
+        self.assertEqual([text.split("\n")[0] for text in page.get_by_role("menu", name="More").locator("[role^=menuitem]:visible").all_inner_texts()][0][:4], "Join")
+        row.click()
+        expect(self.bar(page)).to_be_visible()
+        # A phone has Call in its row from 360 px and under it in More; the Join row is in More at both.
+        small = self.page("ada", viewport={"width": 320, "height": 568})
+        small.goto(f"/projects/{pid}")
+        expect(small.locator("header.phead .top__live-cue")).to_be_visible()
+        small.locator("header.phead").get_by_role("button", name=re.compile("^More")).click()
+        expect(small.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Join “Loan rules” · "))).to_be_visible()
+        small.keyboard.press("Escape")
+        for leaver in (page, nia):
+            self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
+            expect(self.bar(leaver)).to_have_count(0)
+        # An empty room is not "live now": a call that stays joinable for a while after everyone left shows no mark and no row.
+        expect(watchers[820].locator("header.top .top__live-cue")).to_have_count(0, timeout=40000)
 
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
         self.seed()
@@ -488,7 +618,7 @@ class LiveJourney(LiveBase):
         ada = self.page("ada")
         ada.goto(f"/projects/{self.ids['project']}/docs/{self.ids['doc']}")
         expect(ada.get_by_role("heading", name=DOC, level=2)).to_be_visible()
-        ada.locator("header.top, header.phead").get_by_role("button", name="Together").click()
+        ada.locator("header.top, header.phead").get_by_role("button", name="Call").click()
         expect(self.bar(ada).get_by_role("button", name=re.compile(re.escape(DOC)))).to_be_visible()
 
         pages = {"ada": ada}
@@ -637,7 +767,7 @@ class LiveJourney(LiveBase):
         self.seed()
         nia = self.page("nia")
         self.open_conversation(nia)
-        nia.locator("header.top, header.phead").get_by_role("button", name="Together").click()
+        nia.locator("header.top, header.phead").get_by_role("button", name="Call").click()
         expect(self.bar(nia)).to_be_visible()
         phone = self.page("jonas", phone=True)
         self.open_conversation(phone)
@@ -662,7 +792,7 @@ class LiveJourney(LiveBase):
         shot(phone, "live-phone-390-strip")
         bar.get_by_role("button", name="Session details and more").click()
         sheet = phone.get_by_role("dialog", name="Live session")
-        # Together on the conversation page starts at the newest root when no thread is open (OneConversation);
+        # Call on the conversation page starts at the newest root when no thread is open (OneConversation);
         # test_01 saved a result there, so that is the session's name, with the seeded thread before it.
         expect(sheet.get_by_role("heading", name=re.compile("night camera test|IR-cut filter stays in on rev B"))).to_be_visible()
         shot(phone, "live-phone-390-sheet")

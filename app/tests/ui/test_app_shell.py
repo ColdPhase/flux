@@ -161,19 +161,25 @@ def phone_menu(page: Page, tap: bool = False):
 
 
 def view_tab(page: Page, name: str, tap: bool = False) -> None:
-    """A project view by its name: the header's segmented control, or below 900 px the title's menu (#341, #505)."""
-    if page.viewport_size["width"] <= 900:
-        link = phone_menu(page, tap).get_by_role("link", name=re.compile(f"^{name}"))
-    else:
-        link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}"))
+    """A project view by its name: the segmented control, the same at every width (#873); on a phone it is the row under the title."""
+    close_modal_thread(page, tap)
+    link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}"))
     link.tap() if tap else link.click()
 
 
 def open_details(page: Page, tap: bool = False) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); on the phone a project's title menu ends with
-    "Space details" (#341, #871). Only a space and a direct message have Details."""
+    """Details: More, then Details, in the computer's one-row header (#340); on the phone a space has the same More in
+    its header (#873) and a direct message's title menu ends with "Message info" (#341, #871). Only a space and a direct message
+    have Details (Home has none, #964)."""
     if page.viewport_size["width"] <= 640:
-        page.locator("header .phead__menu").first.wait_for()
+        page.locator("header .phead__menu, header.phead button[aria-label='More']").first.wait_for()
+        more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
+        if more.count():
+            close_modal_thread(page, tap)
+            more.tap() if tap else more.click()
+            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
+            item.tap() if tap else item.click()
+            return
         row = phone_menu(page, tap).locator(".phone-menu__details")
         row.tap() if tap else row.click()
         return
@@ -471,7 +477,7 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Start a space")).to_be_visible()
         expect(sidebar.get_by_role("button", name=re.compile("^New"))).to_have_attribute("aria-keyshortcuts", "C")
         # Home has no views bar (#508); its quiet links lead to the personal pages. Project-header views are covered by
-        # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
+        # test_project_header.py and are Conversation · Tasks · Map · Wiki in every space (#873).
         views = page.get_by_role("navigation", name="Views")
         expect(views).to_have_count(0)
         # #763 FT-1: with no project yet Home is one first step; the waiting rows and the rows to empty pages wait.
@@ -574,13 +580,14 @@ class AppShellJourney(unittest.TestCase):
                 before = header.bounding_box()
                 if device == "phone":
                     expect(header.get_by_role("button", name="Back", exact=True)).to_be_visible()
-                    expect(header.get_by_role("button", name="Together", exact=True)).to_be_visible()
+                    expect(header.get_by_role("button", name="Call", exact=True)).to_be_visible()
                     expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
                     expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
-                    expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
+                    # The phone's More holds Settings and Space details, the one place they open from (#873).
+                    expect(header.get_by_role("button", name="More", exact=True)).to_have_count(1)
                     geometry = page.evaluate("""() => ({header: document.querySelector('header.phead').getBoundingClientRect().height,
                       width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
-                    self.assertAlmostEqual(geometry["header"], 56, delta=1, msg=f"phone keeps its compact header: {geometry}")
+                    self.assertAlmostEqual(geometry["header"], 112, delta=2, msg=f"phone keeps its compact header, a 56 px row and the views: {geometry}")
                     self.assertEqual(geometry["scrollWidth"], geometry["width"], f"phone header has no horizontal overflow: {geometry}")
                     mode = "phone-390x844-dpr3"
                     scheme = "dark" if dark else "light"
@@ -688,8 +695,8 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Details opens a full-screen sheet from a space's title menu (Home has the button only with an encrypted space, #865); Jo's space
-        # is the one test_04aa made, and the title menus of projects are in test_phone_final.
+        # Details opens a full-screen sheet from a space's More (Home has the button only with an encrypted space, #865); Jo's space
+        # is the one test_04aa made, and the views row of projects is in test_phone_final.
         spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
                   for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
         self.assertTrue(spaces, "test_04aa made a space")

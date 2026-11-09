@@ -8,7 +8,7 @@ report (#319).
 
 One person (Bob) navigates a realistic project (three projects, 60 conversation roots and 40 tasks each, a 40-reply thread:
 `motion_performance.build_fixture`) while another (Ada) types in the thread he has open. Bob's page is what is recorded:
-the work tab's and the project's traveling highlight on the computer, the title menu leaving on the phone, and the
+the view's and the project's traveling highlight on the computer, the view's traveling highlight in the phone's views row, and the
 "Ada Kowalska is typing…" line appearing and going. Ada's text is never sent. A trace and a video show what was drawn and
 when; they do not certify interaction or accessibility, which the test modules assert.
 """
@@ -70,18 +70,14 @@ class MotionTrace(unittest.TestCase):
         ada.goto(thread)
         expect(ada.locator("#thread-composer")).to_be_visible()
         bob.goto(project)
-        bob.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__menu")
+        bob.wait_for_selector(".top__views .ui-tabs__indicator[data-target], .views .ui-tabs__indicator[data-target], .phead__views .ui-tabs__indicator[data-target]")
         bob.wait_for_timeout(1000)
         # DOM snapshots (the viewer redraws each action's before and after); the film is the video. Screenshots would be 8 MB.
         bob_context.tracing.start(screenshots=False, snapshots=True, sources=False)
         if phone:
-            for view in ("Tasks", "Conversation"):
-                bob.locator(".phead__menu").first.tap()
-                menu = bob.locator(".phone-menu__list")
-                menu.wait_for()
-                bob.wait_for_timeout(BEAT)
-                menu.get_by_role("link", name=re.compile(f"^{view}")).tap()
-                step(f"phone title menu, {view}")
+            for view in ("tasks", "conversation"):
+                bob.locator(f'.phead__views [data-tab="{view}"]').tap()
+                step(f"phone views row, {view}")
         else:
             tabs = bob.locator(".views, .top__views").first
             for view in ("tasks", "conversation"):

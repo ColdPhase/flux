@@ -7,7 +7,8 @@ import { useShellData, type ProjectSummary } from './data';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
- * round Search beside it, one floating "+" above it, and a header whose title is the view menu.
+ * round Search beside it, one floating "+" above it, and a header of round controls. A space's views are the
+ * segmented control in the header's second row (#873); a direct message's one view is named by its title menu.
  * A conversation gets the whole screen: the dock is not rendered there.
  */
 
@@ -75,15 +76,11 @@ export function PhoneBack({ onBack }: { onBack: () => void }) {
 export interface PhoneMenuItem { id: string; label: string; to: string; icon: IconName; note?: ReactNode; current?: boolean; end?: boolean }
 
 /**
- * The title is the view menu: it names the project (or Home, or the conversation) and the view
- * shown, and opens the places inside it. "Space details" is the last row.
+ * A direct message's title menu: it names the conversation and opens the places inside it. "Message info" is the last row.
+ * (A space's title is plain: its views are the segmented control, #873.)
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Space details', lead, adds = [], metadataSlot }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Message info', lead }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
-  /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
-  adds?: { label: string; run: () => void }[];
-  /** Compact view metadata such as the Wiki page count, placed inline with the phone subtitle. */
-  metadataSlot?: (element: HTMLSpanElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -98,7 +95,7 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             <span className="phead__name">{title}</span><Icon name="chevron-down" size={14} />
           </button>
         </h1>
-        <p className="phead__sub">{subtitle}{metadataSlot ? <span className="phead__meta-slot" ref={metadataSlot} /> : null}</p>
+        <p className="phead__sub">{subtitle}</p>
       </div>
       <Overlay open={open} onClose={() => setOpen(false)} placement="center" labelledBy={`${menuId}-t`} id={menuId} className="phone-menu" initialFocus={firstRef}>
         <h2 className="phone-menu__t" id={`${menuId}-t`}>{title}<span className="ui-vh">, views</span></h2>
@@ -118,11 +115,6 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             <Icon name="panel" size={20} /><span className="phone-menu__l">{detailsLabel}</span>
           </button>
         ) : null}
-        {adds.map((add) => (
-          <button key={add.label} type="button" className="phone-menu__item phone-menu__quiet" onClick={() => { setOpen(false); add.run(); }}>
-            <Icon name="plus" size={20} /><span className="phone-menu__l">{add.label}</span>
-          </button>
-        ))}
       </Overlay>
     </div>
   );

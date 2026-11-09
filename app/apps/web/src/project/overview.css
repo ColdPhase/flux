@@ -29,7 +29,7 @@
 @media (pointer: coarse) {
   .ov-row { min-height: 44px; }
 }
-/* The project's own Details (#512, #865): its head, then In this space, People and Connected, one look. */
+/* The project's own Details (#512, #865, #873): its head, then People and settings and Connected, one look. */
 .ov-head { display: flex; align-items: center; gap: 12px; margin: 2px 0 4px; }
 .ov-head__b { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .ov-head .details__title { margin: 0; overflow-wrap: anywhere; }
