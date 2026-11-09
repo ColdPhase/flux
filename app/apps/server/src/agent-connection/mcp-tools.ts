@@ -90,6 +90,10 @@ function serverFactory(db: Database, cursorSecret: string, github: GithubActionP
   return (claims: VerifiedFluxMcpClaims) => {
     const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
       instructions, supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS], maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
+      // The SDK declares `tools` when the first tool is registered. A run is bound only the tools it may use, and may have none that this
+      // server defines (a direct message's one tool, `flux_read_web`, while reading the web is off): its list is then empty, not an error
+      // (#1155). A client always has tools, and declares them where it always did, between the resource and the prompts.
+      ...(run ? { capabilities: { tools: { listChanged: true } } } : {}),
     });
     // A personal run's server offers tools only (F-022 "Hardening": the CLI must see nothing but the run's exact Flux tools). Its resource
     // and prompts are declared in the manifest, so the list still holds, but never registered, so no resource or prompt capability is

@@ -8,7 +8,7 @@
 # and a subtask, flux_read_web), the CLIs' own texts for an over-long request, a limit and a revoked sign-in, and what Flux records for
 # each; on Claude Code its own WebSearch with result addresses; on Codex the ChatGPT device sign-in through Flux's console against a
 # mock issuer, a token refresh, the usage limit's reset time, and sign-out with revocation; no vendor credential in the database or
-# the logs; on Codex its own web search (#1065: the standalone `web.run`, on the cached index) with result addresses. Assertions are on Flux's side effects, never on model text.
+# the logs; on Codex its own web search (#1065: the standalone `web.run`, on the cached index) with result addresses; on each engine a direct-message ask with reading the web off, whose one tool the server does not define: an empty tool list, which still answers (#1155). Assertions are on Flux's side effects, never on model text.
 # Not covered (needs a real account, see docs/agents/evaluation.md): the Claude plan sign-in and plan-limit texts, real model quality.
 #
 # Needs internet only to build the images and for Flux's own installer to download the pinned Claude Code (downloads.claude.ai,
@@ -156,6 +156,12 @@ check task codex
 step "14. Codex API errors with the CLI's own texts: context window, the usage limit with its reset time (#1129)"
 check error codex context
 check error codex limit
+
+step "14b. An empty tool list (#1155): a direct-message ask with reading the web off, so the server defines no tool for it"
+FLUX_WEB_READS=off $compose up -d --wait api worker
+check empty-tools claude
+check empty-tools codex
+$compose up -d --wait api worker
 
 step "15. Codex with its sign-in revoked at the issuer: the refresh fails; the run and Settings say sign in again"
 check revoked codex
