@@ -61,6 +61,8 @@ compose="docker compose -p $project --profile test --profile runtime"
 installer="flux-agent-runtime-install:$project"
 network="${project}_default"
 model_container="${FLUX_AI_MODEL_CONTAINER-strata}"
+# A given server is used as it is; otherwise the container is reached on the stack's network as `flux-model`.
+if [ -n "${FLUX_AI_MODEL_URL:-}" ]; then model_container=""; else export FLUX_AI_MODEL_URL="http://flux-model:${FLUX_AI_MODEL_PORT:-8080}"; fi
 model_started=""
 model_attached=""
 scenarios="${FLUX_AI_SCENARIOS:-summary task link search injection schedule ask others}"
@@ -98,12 +100,25 @@ trap 'exit 143' TERM
 check() { $compose run --rm --no-deps -T test node_modules/.bin/tsx tests/app/ai-real-model.check.ts "$@"; }
 slot_cid() { $compose ps -q runtime-1; }
 
-step "0. The model"
-if [ -n "${FLUX_AI_MODEL_URL:-}" ]; then
-  model_container=""
+step "1. Images, and the pinned Claude Code installed by Flux's own installer (signature-checked) into a fresh tools volume"
+$compose build migrate test runtime-1
+docker build --quiet --file docker/Dockerfile --target agent-runtime-install --tag "$installer" app >/dev/null
+docker volume create "$FLUX_CLI_TOOLS_VOLUME" >/dev/null
+docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --user 1000:1000 --tmpfs /tmp:rw,size=64m \
+  -e FLUX_AGENT_RUNTIME=claude_code -v "$FLUX_CLI_TOOLS_VOLUME:/opt/flux-tools" "$installer"
+docker run --rm --network none --read-only --user 1000:1000 --tmpfs /tmp:rw,size=64m -e HOME=/tmp -v "$FLUX_CLI_TOOLS_VOLUME:/opt/flux-tools:ro" \
+  --entrypoint sh "flux-agent-runtime-cli-mock:$project" -c 'readlink /opt/flux-tools/claude/bin/claude; /opt/flux-cli-mock/codex --version' | tee "$FLUX_AI_EVIDENCE_DIR/versions.txt"
+scope=$(docker run --rm --network none --entrypoint cat "flux-agent-runtime-cli-mock:$project" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true)
+if [ "$scope" != 1 ] && [ "$scope" != 2 ] && [ "$scope" != 3 ]; then
+  printf 'NOTE: this host has kernel.yama.ptrace_scope=%s; the supervisor starts through the TEST ONLY entry that reads it as 1.\n' "${scope:-none}"
+  export FLUX_CLI_SUPERVISOR_ENTRY=/opt/flux-cli-mock/supervisor-yama0.mjs
+fi
+
+step "2. The model (after the images, so a failed build never starts it)"
+if [ -z "$model_container" ]; then
+  [ "$FLUX_AI_MODEL_URL" != "http://flux-model:${FLUX_AI_MODEL_PORT:-8080}" ] || fail "set FLUX_AI_MODEL_URL or FLUX_AI_MODEL_CONTAINER"
   printf 'Model server: %s (given)\n' "$FLUX_AI_MODEL_URL"
 else
-  [ -n "$model_container" ] || fail "set FLUX_AI_MODEL_URL or FLUX_AI_MODEL_CONTAINER"
   docker inspect "$model_container" >/dev/null 2>&1 || fail "no container $model_container (set FLUX_AI_MODEL_CONTAINER or FLUX_AI_MODEL_URL)"
   if [ "$(docker inspect -f '{{.State.Running}}' "$model_container")" != true ]; then
     available=$(awk '/^MemAvailable:/ { printf "%d", $2 / 1048576 }' /proc/meminfo)
@@ -122,25 +137,10 @@ else
   # The server's own local key (not a vendor credential): never printed.
   FLUX_AI_MODEL_KEY=$(docker exec "$model_container" sh -c "cat '${FLUX_AI_MODEL_KEY_FILE:-/data/state/api-key}'" 2>/dev/null | tr -d '\r\n')
   export FLUX_AI_MODEL_KEY
-  export FLUX_AI_MODEL_URL="http://flux-model:${FLUX_AI_MODEL_PORT:-8080}"
   printf 'Model server: container %s (%s), reached by the stack as %s\n' "$model_container" "$(docker inspect -f '{{.Config.Image}}' "$model_container")" "$FLUX_AI_MODEL_URL"
 fi
 
-step "1. Images, and the pinned Claude Code installed by Flux's own installer (signature-checked) into a fresh tools volume"
-$compose build migrate test runtime-1
-docker build --quiet --file docker/Dockerfile --target agent-runtime-install --tag "$installer" app >/dev/null
-docker volume create "$FLUX_CLI_TOOLS_VOLUME" >/dev/null
-docker run --rm --read-only --cap-drop ALL --security-opt no-new-privileges:true --user 1000:1000 --tmpfs /tmp:rw,size=64m \
-  -e FLUX_AGENT_RUNTIME=claude_code -v "$FLUX_CLI_TOOLS_VOLUME:/opt/flux-tools" "$installer"
-docker run --rm --network none --read-only --user 1000:1000 --tmpfs /tmp:rw,size=64m -e HOME=/tmp -v "$FLUX_CLI_TOOLS_VOLUME:/opt/flux-tools:ro" \
-  --entrypoint sh "flux-agent-runtime-cli-mock:$project" -c 'readlink /opt/flux-tools/claude/bin/claude; /opt/flux-cli-mock/codex --version' | tee "$FLUX_AI_EVIDENCE_DIR/versions.txt"
-scope=$(docker run --rm --network none --entrypoint cat "flux-agent-runtime-cli-mock:$project" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true)
-if [ "$scope" != 1 ] && [ "$scope" != 2 ] && [ "$scope" != 3 ]; then
-  printf 'NOTE: this host has kernel.yama.ptrace_scope=%s; the supervisor starts through the TEST ONLY entry that reads it as 1.\n' "${scope:-none}"
-  export FLUX_CLI_SUPERVISOR_ENTRY=/opt/flux-cli-mock/supervisor-yama0.mjs
-fi
-
-step "2. The stack, and the model on its network"
+step "3. The stack, and the model on its network"
 $compose up -d db migrate
 if [ -n "$model_container" ]; then
   docker network connect --alias flux-model "$network" "$model_container"
@@ -166,12 +166,12 @@ const ask = async (path, body) => { const started = Date.now(); try { const r = 
 })();' | tee "$FLUX_AI_EVIDENCE_DIR/model-probe.json"
 check wait-ready
 
-step "3. Ada and Bogdan, a space with Polish threads, an agent each, a place in the one runtime"
+step "4. Ada and Bogdan, a space with Polish threads, an agent each, a place in the one runtime"
 out=$(check setup); printf '%s\n' "$out"
 ada_binding=$(printf '%s\n' "$out" | sed -n 's/^ADA_BINDING=//p' | tail -n 1)
 [ -n "$ada_binding" ] || fail "no binding for Ada"
 
-step "4. Sign-in: Ada's Claude Code with an API key in her CLI home; Bogdan's Codex by the ChatGPT device sign-in (mock issuer)"
+step "5. Sign-in: Ada's Claude Code with an API key in her CLI home; Bogdan's Codex by the ChatGPT device sign-in (mock issuer)"
 cid=$(slot_cid)
 who=$(docker exec "$cid" stat -c %u:%g "/data/$ada_binding")
 claude_key="sk-ant-mock-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
@@ -179,7 +179,7 @@ docker exec -u "$who" "$cid" sh -c "umask 077; printf '%s' '$claude_key' > /data
 check claude-sign-in
 check codex-sign-in
 
-step "5. Scenarios ($scenarios) on ($engines)"
+step "6. Scenarios ($scenarios) on ($engines)"
 for scenario in $scenarios; do
   for engine in $engines; do
     printf -- '-- %s on %s\n' "$scenario" "$engine"
@@ -187,7 +187,7 @@ for scenario in $scenarios; do
   done
 done
 
-step "6. Results"
+step "7. Results"
 check table | tee "$FLUX_AI_EVIDENCE_DIR/results.md"
 printf '\nEvidence: %s\n' "$FLUX_AI_EVIDENCE_DIR"
 if grep -q '| FAIL |' "$FLUX_AI_EVIDENCE_DIR/results.md"; then fail "a scenario failed (see the table; tell a Flux bug from a model's weakness in the evidence)"; fi

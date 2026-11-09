@@ -416,16 +416,19 @@ const PAGE_ORIGIN = process.env.FLUX_CLI_REAL_PAGES_URL ?? 'http://linkmock:8098
 async function openPage(target: string): Promise<{ url: string; title: string; text: string } | null> {
   const hit = /^turn\d+search(\d+)$/.exec(target);
   const url = hit ? lastHits[Number(hit[1])]?.url : target;
-  if (!url) return null;
-  let parsedUrl: URL;
-  try { parsedUrl = new URL(url); } catch { return null; }
-  if (parsedUrl.hostname !== 'public.test') return null;
+  let parsedUrl: URL | null = null;
+  try { parsedUrl = url ? new URL(url) : null; } catch { /* not an address */ }
   const started = Date.now();
+  // Every open is recorded, also one outside the index: with `external_web_access: false` the address still reaches the vendor (RT-5).
+  if (!parsedUrl || parsedUrl.hostname !== 'public.test') {
+    transcript.push({ n: ++counter, at: started, ms: 0, client: 'codex', kind: 'web_search', request: { open: target }, response: { url: url ?? null, inIndex: false } });
+    return null;
+  }
   const html = await (await fetch(`${PAGE_ORIGIN}${parsedUrl.pathname}`)).text();
-  const title = /<title>([^<]*)<\/title>/i.exec(html)?.[1] ?? url;
+  const title = /<title>([^<]*)<\/title>/i.exec(html)?.[1] ?? parsedUrl.href;
   const text = html.replace(/<(script|style)[^>]*>[\s\S]*?<\/\1>/gi, ' ').replace(/<[^>]+>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/\s+/g, ' ').trim();
-  transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'codex', kind: 'web_search', request: { open: target }, response: { url, title, chars: text.length } });
-  return { url, title, text };
+  transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client: 'codex', kind: 'web_search', request: { open: target }, response: { url: parsedUrl.href, title, chars: text.length, inIndex: true } });
+  return { url: parsedUrl.href, title, text };
 }
 
 /**
