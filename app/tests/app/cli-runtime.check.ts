@@ -353,9 +353,16 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       context: { failed: { code: 'context_length_exceeded', message: 'Your input exceeds the context window of this model.' } },
     };
     await script(client, [steps[kind!]!], client === 'codex' ? { usage: { usedPercent: kind === 'limit' ? 100 : 12, resetsAt } } : {});
+    const from = await lastEntry();
     const run = await askAi(someone, conversationId!, 'What is the camera\'s lux threshold?');
     const row = await runRow(run.id);
     assert.equal(row.answer_body, null, 'nothing is committed');
+    // #1133: Codex's usage read runs with the run's settings (plugins and apps off): the ChatGPT backend is asked for the usage, never for its plugins.
+    if (client === 'codex') {
+      const asked = (await journalSince(from)).filter((entry) => entry.client === 'chatgpt').map((entry) => entry.kind);
+      assert.ok(asked.includes('/wham/usage'), `the usage was read: ${JSON.stringify(asked)}`);
+      assert.deepEqual(asked.filter((kind) => /plugin/i.test(kind)), [], `no plugin endpoint is called: ${JSON.stringify(asked)}`);
+    }
     if (kind === 'context') {
       assert.deepEqual([row.status, row.end_reason], ['input_too_large', null], JSON.stringify(row));
     } else {
@@ -374,7 +381,8 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   /**
    * A dead sign-in (#1129): Claude Code's key was revoked (the script wrote one the mock refuses); Codex's tokens were revoked at the
    * issuer, so its refresh fails. The run ends "sign in again", and Settings says so too, although the CLI's own status still reports a
-   * login; a status check or a new sign-in sets it right.
+   * login. A new sign-in sets it right; so would a status check, but that reads only the CLI's own status, which still reports the revoked
+   * key as a login (#1133), so the next run marks it again.
    */
   async revoked(engine) {
     const { who, client, cli } = ENGINES[engine as Engine];

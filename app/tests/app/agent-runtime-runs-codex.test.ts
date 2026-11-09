@@ -152,6 +152,9 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
     const appServer = recorded.find((entry) => (entry.argv as string[]).includes('app-server')) as { envNames: string[] };
     assert.ok(!appServer.envNames.includes('FLUX_RUN_TOKEN'), 'the preflight never sees the run token');
+    // #1133: the usage read runs with the run's settings too (plugins and apps off), so it never calls ChatGPT's plugin endpoints.
+    const usageRead = recorded.find((entry) => entry.event === 'app_server' && entry.method === 'account/rateLimits/read') as { argv: string[] };
+    for (const key of ['features.plugins=false', 'features.apps=false', 'features.remote_plugin=false', 'web_search="cached"']) assert.ok(usageRead.argv.includes(key), `the usage read has ${key}`);
     assert.deepEqual(await readdir(home()).then((names) => names.filter((name) => ['sessions', 'archived_sessions', 'history.jsonl'].includes(name))), []);
     assert.deepEqual(await readdir(slot.config.tmpDir), []);
   });

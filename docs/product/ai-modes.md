@@ -184,7 +184,11 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
 - **A sign-in that stops working** ([#1129](https://github.com/ColdPhase/flux/issues/1129)): when a
   run's CLI says its login no longer works (a revoked key or token, a refresh the vendor refuses),
   the run ends *Sign in again* and so does that sign-in in Settings, even while the CLI's own status
-  still reports a login. Signing in again, or a status check that finds it working, sets it back.
+  still reports a login. Signing in again sets it back. A status check does too whenever the CLI's own
+  status reports a login, but that is only the CLI's word: a revoked key still passes it, so the next
+  run marks the sign-in again. Only a text that means a real revocation counts (Codex's "Please log out
+  and sign in again", an invalid key or token), never a temporary refresh failure or a refusal from
+  Flux's own `/mcp`.
 - **Before every plan sign-in** Flux says: the server's operator can technically read the runtime's
   storage, so sign in only where you trust the operator; and the vendors recommend API keys for
   products and automation and may restrict this use without notice.

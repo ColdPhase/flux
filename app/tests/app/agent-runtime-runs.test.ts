@@ -301,6 +301,8 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       ['run_broken_stream', 'provider_failed', 'unknown'],
       ['run_max_turns', 'cap_reached', 'max_turns'],
       ['run_model_unavailable', 'unavailable', 'model_unavailable'],
+      // #1133: a 429 on an earlier assistant event, then a message without an error and another failure: the last event decides.
+      ['run_error_cleared', 'provider_failed', 'crashed'],
     ];
     for (const [name, status, reason] of expected) {
       await resetFake();

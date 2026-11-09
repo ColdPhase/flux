@@ -144,8 +144,9 @@ export async function touchRuntimeBinding(db: DbExecutor, bindingId: string): Pr
 }
 
 /**
- * A run whose CLI said its sign-in no longer works (#1129): that sign-in shows *Sign in again* until the owner signs in again, or a status
- * check finds it working. Only a signed-in connection of that CLI changes.
+ * A run whose CLI said its sign-in no longer works (#1129): that sign-in shows *Sign in again* until the owner signs in again. A status check
+ * (`recordSignIn`) sets it back too whenever the CLI's own status reports a login, which a revoked key still does (#1133): the next run
+ * marks it again. Only a signed-in connection of that CLI changes.
  */
 export async function markRuntimeSignInAgain(db: DbExecutor, bindingId: string, client: 'claude_code' | 'codex'): Promise<void> {
   await db.execute(sql`UPDATE agent_runtime_connections SET state = 'sign_in_again', signed_in_at = NULL

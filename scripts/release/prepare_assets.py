@@ -164,11 +164,12 @@ def render_runtime_compose(template: str, *, version: str, source_sha: str, dige
 
 
 def codex_pin(dockerfile: str) -> str:
-    """The Codex release the runtime image pins, read from the Dockerfile (one tag only)."""
-    tags = set(re.findall(r"openai/codex/releases/download/(rust-v[0-9]+\.[0-9]+\.[0-9]+)/", dockerfile))
-    if len(tags) != 1:
-        raise ValueError("docker/Dockerfile must pin exactly one official Codex release")
-    return tags.pop()
+    """The Codex release the runtime image pins: the Dockerfile's one `ARG CODEX_TAG=rust-vX.Y.Z`, which its binaries, host and model
+    catalog all download by (#1133); a download that names a tag of its own would let a bump keep an old one."""
+    tags = re.findall(r"^ARG CODEX_TAG=(rust-v[0-9]+\.[0-9]+\.[0-9]+)\s*$", dockerfile, re.MULTILINE)
+    if len(tags) != 1 or re.search(r"openai/codex/(?:releases/download/)?rust-v", dockerfile):
+        raise ValueError("docker/Dockerfile must pin exactly one official Codex release, as its one ARG CODEX_TAG")
+    return tags[0]
 
 
 def render_compose(template: str, *, version: str, source_sha: str, digest: str) -> str:

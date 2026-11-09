@@ -1,5 +1,8 @@
 # Set by BuildKit for the platform being built; selects the pinned Codex download (agent runtime).
 ARG TARGETARCH
+# The one tag of the pinned Codex (#1133): its binaries, its code-mode host and its model catalog are all fetched by it, each checked against
+# its own sha256, so a bump of this tag cannot keep an old catalog: the catalog's digest then fails until it is updated with the others.
+ARG CODEX_TAG=rust-v0.160.1
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS runtime-hardening-build
 RUN apk add --no-cache gcc musl-dev
 COPY apps/runtime/native/protect.c /native/protect.c
@@ -98,9 +101,11 @@ USER node
 # The pinned official Codex CLI (Apache-2.0), checked against the SHA-256 digests GitHub lists for the
 # rust-v0.160.1 release assets (retrieved 2026-10-05). Codex stays off until T6 records its hosts.
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-amd64
-ADD --checksum=sha256:9226581be592d18f7e7f740a352fdb63aa61e45e39f7eb9b09d3888c84bba33f https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-x86_64-unknown-linux-musl.tar.gz /codex.tar.gz
+ARG CODEX_TAG
+ADD --checksum=sha256:9226581be592d18f7e7f740a352fdb63aa61e45e39f7eb9b09d3888c84bba33f https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64-unknown-linux-musl.tar.gz /codex.tar.gz
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-arm64
-ADD --checksum=sha256:f54dc5852042445bf41da3aa31156f3cb02f52c5a1a04074de73dc5598f7e1f7 https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-aarch64-unknown-linux-musl.tar.gz /codex.tar.gz
+ARG CODEX_TAG
+ADD --checksum=sha256:f54dc5852042445bf41da3aa31156f3cb02f52c5a1a04074de73dc5598f7e1f7 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-aarch64-unknown-linux-musl.tar.gz /codex.tar.gz
 FROM codex-${TARGETARCH} AS codex
 RUN mkdir /tmp/codex && tar -xzf /codex.tar.gz -C /tmp/codex && set -- /tmp/codex/* && [ "$#" -eq 1 ] && install -m 0755 "$1" /codex
 
@@ -110,9 +115,11 @@ RUN mkdir /tmp/codex && tar -xzf /codex.tar.gz -C /tmp/codex && set -- /tmp/code
 # same installer the runtime uses (gpg is only here for that; musl because the release is the musl build). No vendor account or sign-in is involved.
 # Codex 0.160.1 runs MCP tool calls through a separate code-mode host binary (a release asset of the same tag).
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-amd64
-ADD --checksum=sha256:8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2 https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz /host.tar.gz
+ARG CODEX_TAG
+ADD --checksum=sha256:8a69207d97545ac753b6585974e1e67a4c51ae5deacf06517db512bb25e0e3c2 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-x86_64-unknown-linux-musl.tar.gz /host.tar.gz
 FROM node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS codex-host-arm64
-ADD --checksum=sha256:e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741 https://github.com/openai/codex/releases/download/rust-v0.160.1/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz /host.tar.gz
+ARG CODEX_TAG
+ADD --checksum=sha256:e5e027e6689efda2e3570aa600179f0ebb18632803350e152ed6c9b97dcf9741 https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-code-mode-host-aarch64-unknown-linux-musl.tar.gz /host.tar.gz
 FROM codex-host-${TARGETARCH} AS codex-host
 RUN mkdir /tmp/host && tar -xzf /host.tar.gz -C /tmp/host && set -- /tmp/host/* && [ "$#" -eq 1 ] && install -m 0755 "$1" /codex-code-mode-host
 
@@ -126,7 +133,8 @@ ENV PATH="/opt/flux-tools/claude/bin:$PATH"
 # checked 2026-11-09), rewritten with the tool settings Flux reviewed (apps/runtime/src/supervisor/templates.ts CODEX_MODEL_REVIEW, #1127):
 # every Codex run passes it as `model_catalog_json`, so Flux's MCP tools reach the model as plain tools, without code mode or sub-agents.
 FROM build AS codex-catalog
-ADD --checksum=sha256:fd219bd9f061278275f528939f82f54d2eb97df4b25c23b022adbe48813d920b https://raw.githubusercontent.com/openai/codex/rust-v0.160.1/codex-rs/models-manager/models.json /codex-vendor-models.json
+ARG CODEX_TAG
+ADD --checksum=sha256:fd219bd9f061278275f528939f82f54d2eb97df4b25c23b022adbe48813d920b https://raw.githubusercontent.com/openai/codex/${CODEX_TAG}/codex-rs/models-manager/models.json /codex-vendor-models.json
 RUN node apps/runtime/dist/install/codex-catalog.js /codex-vendor-models.json /codex-models.json
 
 FROM agent-runtime-base AS agent-runtime

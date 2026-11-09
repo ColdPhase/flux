@@ -88,15 +88,17 @@ export function stopPersonRuns(config: SupervisorConfig, bindingId: string): voi
 /**
  * Codex's error text in plain categories (codex-rs at rust-v0.160.1, read 2026-10-16): a plan limit is
  * `UsageLimitReachedError` ("You’ve hit your usage limit. … try again at 3:05 PM.") or the API's "Quota
- * exceeded"; an expired login is the auth manager's "… Please log out and sign in again." or a 401. The
- * reset time is NOT parsed from the text (local wording); the app-server read supplies it (step two).
+ * exceeded"; an expired login is the auth manager's "… Please log out and sign in again." (its four permanent refresh failures
+ * end that way) or a 401 from the model API. A text that only mentions a refresh token or a 401 is not one (#1133): Codex's
+ * "Failed to refresh token: <status>" is a temporary failure, and a 401 from Flux's own `/mcp` ("HTTP status client error (401
+ * Unauthorized)") is not the person's sign-in. The reset time is NOT parsed from the text (local wording); the app-server read supplies it.
  */
 export function classifyCodexError(text: string): RunOutcome {
   // #1129 (observed with the pinned CLI, 2026-11-09): "Codex ran out of room in the model's context window. Start a new thread …".
   if (/ran out of room in the model.s context window|context_length_exceeded/i.test(text)) return 'input_too_large';
   // An API rate limit Codex gave up on: "exceeded retry limit, last status: 429 Too Many Requests" (codex-rs codex-api/src/api_bridge.rs).
   if (/hit your usage limit|usage limit reached|quota exceeded|upgrade to plus|last status: 429\b/i.test(text)) return 'plan_limit';
-  if (/sign in again|refresh token|not logged in|unexpected status 401|\b401 unauthorized|token could not be refreshed/i.test(text)) return 'sign_in_again';
+  if (/log out and sign in again|not logged in|unexpected status 401/i.test(text)) return 'sign_in_again';
   if (MODEL_NOT_ACCEPTED.test(text)) return 'model_unavailable';
   if (/usage policy|refus|content policy|safety/i.test(text)) return 'refused';
   return 'crashed';
@@ -225,10 +227,11 @@ async function codexPreflight(config: SupervisorConfig, dir: string, person: Per
  * After a Codex run: `account/rateLimits/read` once, for the plan's remaining usage (#854) and, at a plan limit, its reset
  * time. Unreadable is unknown (null).
  */
-async function codexRateLimits(config: SupervisorConfig, dir: string, person: Person): Promise<{ resetsAt: string | null; usage: UsageReading | null }> {
+async function codexRateLimits(config: SupervisorConfig, dir: string, person: Person, overrides: readonly string[]): Promise<{ resetsAt: string | null; usage: UsageReading | null }> {
   let session;
   try {
-    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, person });
+    // With the run's own settings (#1133): plugins and apps stay off here too, so this read calls the usage endpoint and not ChatGPT's plugin ones.
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides, person });
     const read = await session.request('account/rateLimits/read', {});
     return { resetsAt: readRateLimits(read).resetsAt, usage: readUsage(read) };
   } catch {
@@ -406,8 +409,9 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       }
       if (event.type === 'assistant') {
         turns += 1;
-        // #1129: an API error's category, on the synthetic message the CLI writes for it.
-        if (typeof event.error === 'string' && /^[a-z_]{1,40}$/.test(event.error)) lastError = event.error;
+        // #1129: an API error's category, on the synthetic message the CLI writes for it. The last `assistant` event decides (#1133): a
+        // later message without an error clears it, so an earlier retried 429 does not name a different failure.
+        lastError = typeof event.error === 'string' && /^[a-z_]{1,40}$/.test(event.error) ? event.error : null;
         const content = (event.message as { content?: unknown } | undefined)?.content;
         for (const block of Array.isArray(content) ? content : []) {
           if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'tool_use') continue;
@@ -504,7 +508,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   });
   // Codex, step two: the plan's usage and, at a plan limit, the reset time from the allowlisted app-server, in the same lane.
   if (codex && result.outcome !== 'local_tool' && result.outcome !== 'stopped') {
-    const read = await codexRateLimits(config, dir, person);
+    const read = await codexRateLimits(config, dir, person, codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch));
     if (result.outcome === 'plan_limit') result.resetsAt = read.resetsAt;
     result.usage = read.usage;
   }
