@@ -2,7 +2,8 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { Link, Navigate, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { NavigateWithNote } from '../app/NavigateWithNote';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
@@ -56,7 +57,7 @@ export function DmConversation() {
   const { me } = useShellData();
   // Back to a conversation that was left or closed to this person: the list of conversations, with a line saying so, not a dead end (#592).
   const returning = useReturning();
-  if (!dm) return returning ? <Navigate to="/dm" replace state={{ note: 'That conversation is no longer available to you.' }} /> : <DmUnavailable />;
+  if (!dm) return returning ? <NavigateWithNote to="/dm" note="That conversation is no longer available to you." /> : <DmUnavailable />;
   return <DmContent key={`${me.user.id}:${dm.id}`} initial={dm} />;
 }
 

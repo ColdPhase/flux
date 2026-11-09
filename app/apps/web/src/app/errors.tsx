@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, Navigate, isRouteErrorResponse, useLocation, useRevalidator, useRouteError } from 'react-router';
+import { Link, isRouteErrorResponse, useLocation, useRevalidator, useRouteError } from 'react-router';
 import { ApiError, NetworkError } from '../api/client';
 import { getMe } from '../api/auth';
 import { useThoughtDraft } from '../sketch/createdDraft';
@@ -7,6 +7,7 @@ import { Button, ErrorState, Spinner } from '../ui';
 import { routeLabel } from './routeLabel';
 import { ReloadRecovery } from './ReloadRecovery';
 import { getProject } from '../project/api';
+import { NavigateWithNote } from './NavigateWithNote';
 import { spaceLost, useReturning } from '../place/memory';
 import { isWorkspaceLocked, lockedWorkspaceId } from '../encryption/api';
 import { LockedSpace } from '../encryption/LockedSpace';
@@ -89,8 +90,8 @@ export function RouteErrorPage() {
  * message goes to the list of conversations.
  */
 function NearestAccessible({ pathname }: { pathname: string }) {
-  if (/^\/materials\//.test(pathname)) return <Navigate to="/projects" replace state={{ note: 'That page is no longer available to you.' }} />;
-  if (/^\/dm\//.test(pathname)) return <Navigate to="/dm" replace state={{ note: 'That conversation is no longer available to you.' }} />;
+  if (/^\/materials\//.test(pathname)) return <NavigateWithNote to="/projects" note="That page is no longer available to you." />;
+  if (/^\/dm\//.test(pathname)) return <NavigateWithNote to="/dm" note="That conversation is no longer available to you." />;
   return <NearestProject pathname={pathname} />;
 }
 
@@ -110,7 +111,7 @@ function NearestProject({ pathname }: { pathname: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, inside]);
   const target = inside ? checked : lost;
-  return target ? <Navigate to={target.to} replace state={{ note: target.note }} />
+  return target ? <NavigateWithNote to={target.to} note={target.note} />
     : <main className="page-center booting" aria-busy="true"><p className="booting__msg" role="status"><Spinner /> Opening the nearest place you can open…</p></main>;
 }
 
