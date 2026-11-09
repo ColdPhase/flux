@@ -33,6 +33,8 @@ QUESTION = "Which reading means full on the north barrel?"
 ASK = '<ask>{{"agent": "Fieldbot", "owner": "Jonas", "question": "' + QUESTION + '"}}</ask>'
 FIRST = "I compared the last 40 readings with the sensor log."
 ANSWER = "0.82 V means full."
+# The answering run's brief (personal-runs/brief.ts, #1077): the mock answers it by these words.
+ANSWERING = "Answer this question from another person"
 LAST = "Thanks. The south barrel reads 0.64 V when full, so it is the wiring, not the level."
 
 
@@ -141,7 +143,7 @@ class AgentTaskQuestions(unittest.TestCase):
     def test_02_an_agent_asks_another_and_goes_on_with_its_answer(self) -> None:
         mock("/__script", {"reset": True, "text": FIRST + "\n" + ASK, "rules": [
             {"match": "Continue the task with this answer", "text": LAST},
-            {"match": "Answer the question in the request", "text": ANSWER}]})
+            {"match": ANSWERING, "text": ANSWER}]})
         task = self.given_to_planner("Calibrate the overflow sensor")
         type(self).ids["exchange"] = task["id"]
         ada = self.page("ada")
@@ -154,7 +156,7 @@ class AgentTaskQuestions(unittest.TestCase):
         kinds = [run["kind"] for run in self.api(jonas, "GET", "/api/v1/assistant-runs?limit=20", status=200)["items"]]
         self.assertEqual(kinds, ["task_answer"])
         # The answer only reads: none of the change tools was offered to it, whatever Fieldbot may do.
-        asked = [r for r in mock("/__requests")["requests"] if "Answer the question in the request" in json.dumps(r["body"])]
+        asked = [r for r in mock("/__requests")["requests"] if ANSWERING in json.dumps(r["body"])]
         self.assertTrue(asked, "the mock saw the answering run")
         tools = {tool["name"] for tool in asked[0]["body"].get("tools", [])}
         self.assertFalse({"flux_create_task", "flux_update_task", "flux_create_doc", "flux_update_doc"} & tools, f"an answer reads only: {sorted(tools)}")
@@ -218,7 +220,7 @@ class AgentTaskQuestions(unittest.TestCase):
         back = '<ask>{{"agent": "Planner", "owner": "Ada", "question": "And the south barrel?"}}</ask>'
         mock("/__script", {"reset": True, "text": FIRST + "\n" + ASK, "rules": [
             {"match": "Continue the task with this answer", "text": LAST},
-            {"match": "Answer the question in the request", "text": ANSWER + "\n" + back}]})
+            {"match": ANSWERING, "text": ANSWER + "\n" + back}]})
         jonas, ada = self.page("jonas"), self.page("ada")
         before = len(self.api(jonas, "GET", "/api/v1/assistant-runs?limit=50", status=200)["items"])
         task = self.given_to_planner("Weigh the north barrel again")

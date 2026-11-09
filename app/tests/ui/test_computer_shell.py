@@ -217,7 +217,8 @@ class ComputerShell(unittest.TestCase):
         expect(undo).to_have_attribute("aria-keyshortcuts", re.compile("^[zZ]$"))
         expect(undo).to_have_attribute("title", "Undo (Z)")
         page.keyboard.press("z")
-        expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+        # The state is named as its column is (#868): "#1 back to To do".
+        expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
 
 
 if __name__ == "__main__":

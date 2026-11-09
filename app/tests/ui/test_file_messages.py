@@ -237,7 +237,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         page.wait_for_load_state("networkidle")
         page.goto(path)
 
-    def page(self, who: str = "ada", phone: bool = False, dark: bool = False, path: str | None = None) -> Page:
+    def page(self, who: str = "ada", phone: bool = False, dark: bool = False, path: str | None = None, quiet_stream: bool = False) -> Page:
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who],
                          "color_scheme": "dark" if dark else "light"}
         if phone:
@@ -250,6 +250,9 @@ class FilesReferencesPhotos(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        if quiet_stream:
+            # A tab that has not heard the live stream yet (still reconnecting, say): its stream is held open here and says nothing.
+            page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda socket: None)
         # A surface named by path is entered directly: a second navigation would cancel the first page's reads (WebKit reports them).
         page.goto(path or f"/projects/{self.ids['project']}")
         if path is None:
@@ -976,7 +979,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         expect(page.locator(".project-convo__message", has_text=caption)).to_have_count(1)
 
     def test_a_reader_who_loses_access_cannot_open_the_file_or_preview(self) -> None:
-        page = self.page("jonas")
+        # Two of Jonas's tabs show the conversation. The one that hears the live stream leaves the space as soon as he is removed
+        # (#862, #1036); the other has not heard it yet, and its viewer reads the photo again when it is opened.
+        page = self.page("jonas", quiet_stream=True)
+        live = self.page("jonas")
         two = self.message(page, "two")
         expect(two.locator("img[src^='blob:']")).to_have_count(2)
         owner = self.browser.new_context(base_url=ORIGIN, storage_state=self.states["ada"], service_workers="block")
@@ -988,6 +994,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertEqual(removed.status, 204, removed.text())
         self.addCleanup(lambda: owner.request.post(f"/api/v1/projects/{self.ids['project']}/grants", data={"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, headers={"origin": ORIGIN}))
         self.assertIn(page.request.get(f"/api/v1/files/{photo}").status, (403, 404), "the download refuses")
+        # The tab that heard it lands on the list of spaces with one line, and nothing of the photos stays on its screen.
+        expect(live).to_have_url(re.compile(r"/projects$"))
+        expect(live.get_by_text("That space is no longer available to you.")).to_be_visible()
+        expect(live.locator("img[src^='blob:']")).to_have_count(0)
         # The page still on screen reads the photo again for the viewer: it shows nothing of it.
         two.get_by_role("button", name="Open photo IMG_2041.png, 1 of 2").click()
         viewer = page.get_by_role("dialog")

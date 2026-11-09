@@ -19,6 +19,10 @@ from light_motion_fixture import ready, settled
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 
+# WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
+# recorder that keeps what was written, so the test reads back exactly what the page copied.
+CLIPBOARD_RECORDER = """(() => { let text = ''; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: {
+  writeText: async (value) => { text = String(value); }, readText: async () => text } }); })()"""
 PASSWORD = "moving a thought to the garden"
 TEXTS = {"a": "Rain sensor on the shed roof?", "b": "Solar panel for the probe gateway?", "c": "Bulb planting day with the school"}
 
@@ -81,7 +85,9 @@ class MyMapMove(unittest.TestCase):
             options.update(is_mobile=True, has_touch=True, device_scale_factor=2)
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
-        if permissions:
+        if permissions and UI_BROWSER == "webkit":
+            context.add_init_script(CLIPBOARD_RECORDER)
+        elif permissions:
             context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
         page = context.new_page()
         errors: list[str] = []
@@ -147,6 +153,8 @@ class MyMapMove(unittest.TestCase):
         # Undo brings it back to where it was, with its connection to b.
         toast.get_by_role("button", name="Undo").click()
         expect(page.locator(".sk-node", has_text=TEXTS["a"])).to_be_visible()
+        # The thought comes back first and its connection is made again after it; the map says so once both are done.
+        expect(page.locator(".sk-status")).to_contain_text("Back on My map from Community garden sensors")
         self.assertEqual(self.texts(self.garden_map), ["Probes at two depths"])
         back = self.sketch(mine["id"])
         again = next(thought for thought in back["thoughts"] if thought["text"] == TEXTS["a"])

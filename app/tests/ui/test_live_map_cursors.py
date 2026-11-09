@@ -139,6 +139,9 @@ class LiveCursors(LiveFixture):
             socket.connect_to_server()  # Actual server, automatic unchanged forwarding both ways.
             connections.append(socket)
         await self.pages['kai'].route_web_socket(re.compile(r'.*/api/v1/editing\?kind=map.*'),connect)
+        # Kai's tab has not heard the app's live stream (held open here, it says nothing). With it, the tab leaves the space as soon as
+        # his access ends (#862, #1036), and this would no longer show that the map's own room stops sharing presence with him.
+        await self.pages['kai'].route_web_socket(re.compile(r'.*/api/v1/stream.*'),lambda socket:None)
         await self.create_map(3)
         ada,kai=self.pages['ada'],self.pages['kai']
         first=self.thoughts[0]

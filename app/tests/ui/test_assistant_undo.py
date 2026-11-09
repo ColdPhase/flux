@@ -80,7 +80,7 @@ class AssistantUndo(unittest.TestCase):
     def change(self, **values) -> dict:
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.create", "objectType": "work", "objectId": None, "objectTitle": "Label the sensor cables", "state": "waiting",
-                  "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": None, "forPerson": None, "done": "added task Label the sensor cables",
+                  "waitReason": "ask", "phrase": "add task", "verb": "Add", "line": None, "forPerson": None, "tells": [], "agentName": "Assistant", "via": None, "done": "added task Label the sensor cables",
                   "decidedBy": None, "owner": {"id": "ada", "name": ADA["name"]}, "runState": "done", "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW}
         change.update(values)
         return change

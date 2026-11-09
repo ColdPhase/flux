@@ -293,6 +293,10 @@ class TasksReviewJourney(unittest.TestCase):
         for failure in ("network", "server"):
             with self.subTest(identity_read=failure):
                 page = self.page("ada")
+                # The change's own event reads the whole page again at once over the live stream (#1101), and that read asks for /api/v1/me
+                # too: the one failed read below would fall on whichever asked first. The stream is held open here and says nothing, so
+                # the failure falls on the identity read that the state change makes before it shows its result.
+                page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda socket: None)
                 before = self.open_private_task(page)
                 probes: list[str] = []
                 def blip(route):

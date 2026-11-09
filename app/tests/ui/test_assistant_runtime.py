@@ -152,6 +152,10 @@ class AssistantRuntime(unittest.TestCase):
             route.fulfill(status=202, content_type="application/json", body=json.dumps(self.run_json(
                 id=str(uuid.uuid4()), status="unavailable", endReason="sign_in_again", completedAt="2026-10-16T09:01:00.000Z")))
         page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), ask)
+        # An open tab reads a run again when the live stream says it changed, not on a timer (#862, #1101). The run is stubbed, so the
+        # stream is answered here and never reaches the server: the test sends the event the server records when a run's status changes.
+        streams: list = []
+        page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda route: streams.append(route))
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
         working = page.locator(".assistant-working")
         expect(working).to_contain_text("Working…")
@@ -159,7 +163,14 @@ class AssistantRuntime(unittest.TestCase):
         shot(page, "runtime-1440-light-working")
         # The CLI reported its plan limit and when it resets: the line says so in the reader's clock.
         current["run"] = self.run_json(status="unavailable", endReason="plan_limit", planLimitResetsAt=RESET_ISO, completedAt="2026-10-16T09:01:00.000Z")
-        expect(working).to_contain_text(f"Claude limit reached until {RESUMES.removeprefix('at ')}", timeout=15000)
+        for _ in range(100):
+            if streams:
+                break
+            page.wait_for_timeout(100)
+        self.assertTrue(streams, "the page opened its live stream")
+        streams[-1].send(json.dumps({"type": "event", "cursor": "c1", "id": str(uuid.uuid4()), "kind": "assistant_run.changed.v1", "workspaceId": self.ids["workspace"],
+                                     "objectType": "assistant_run", "objectId": current["run"]["id"], "createdAt": "2026-10-16T09:01:00.000Z"}))
+        expect(working).to_contain_text(f"Claude limit reached until {RESUMES.removeprefix('at ')}")
         expect(working.get_by_role("button", name="Stop")).to_have_count(0)
         shot(page, "runtime-1440-light-plan-limit")
         working.get_by_role("button", name="Dismiss").click()

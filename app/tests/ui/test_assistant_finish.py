@@ -110,7 +110,7 @@ class AssistantFinish(unittest.TestCase):
     def change(self, **values) -> dict:
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.update", "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#3 Calibrate the probes", "state": "applied",
-                  "waitReason": None, "phrase": "rename task", "verb": "Rename", "line": None, "forPerson": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None,
+                  "waitReason": None, "phrase": "rename task", "verb": "Rename", "line": None, "forPerson": None, "tells": [], "agentName": "Assistant", "via": None, "done": "renamed task #3 Calibrate the probes", "decidedBy": None,
                   "owner": {"id": base.ADA["id"], "name": base.ADA["name"]}, "runState": "done", "before": "Probes", "after": "Calibrate the probes", "undoable": True, "version": 1, "createdAt": NOW}
         change.update(values)
         return change

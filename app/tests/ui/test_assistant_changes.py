@@ -78,7 +78,7 @@ class AssistantChanges(unittest.TestCase):
         change = {"id": str(uuid.uuid4()), "runId": self.ids["run"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
                   "operation": "work.update", "objectType": "work", "objectId": str(uuid.uuid4()), "objectTitle": "#8 Calibrate the probes", "state": "waiting",
                   "waitReason": "ask", "phrase": "change task", "verb": "Change", "line": "Waits for your OK: you asked it to check with you first.",
-                  "forPerson": None, "done": "changed task #8 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": ADA["name"]}, "runState": "done",
+                  "forPerson": None, "tells": [], "agentName": "Assistant", "via": None, "done": "changed task #8 Calibrate the probes", "decidedBy": None, "owner": {"id": "ada", "name": ADA["name"]}, "runState": "done",
                   "before": None, "after": None, "undoable": False, "version": 1, "createdAt": NOW}
         change.update(values)
         return change
