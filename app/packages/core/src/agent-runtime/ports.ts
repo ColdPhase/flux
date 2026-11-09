@@ -50,6 +50,11 @@ export interface RuntimeBindingRow {
   state: AgentRuntimeBindingState;
   createdAt: Date;
   lastUsedAt: Date | null;
+  /**
+   * Where the idle window starts: the later of the last use (or the making of the binding) and the owner's last role change in the company,
+   * so a guest back as a member has the whole window and is not released at once (C-50, #1095).
+   */
+  idleSince: Date;
   releaseReason: AgentRuntimeReleaseReason | null;
 }
 

@@ -21,13 +21,12 @@ import {
 const DAY = 86_400_000;
 
 function bindingView(binding: RuntimeBindingRow, idleDays: number | null) {
-  const since = binding.lastUsedAt ?? binding.createdAt;
   return {
     state: binding.state,
     ...(binding.releaseReason === 'auth_recovery' ? { recovery: true as const } : {}),
     boundAt: binding.createdAt.toISOString(),
     lastUsedAt: binding.lastUsedAt?.toISOString() ?? null,
-    idleReleaseAt: idleDays && binding.state === 'active' ? new Date(since.getTime() + idleDays * DAY).toISOString() : null,
+    idleReleaseAt: idleDays && binding.state === 'active' ? new Date(binding.idleSince.getTime() + idleDays * DAY).toISOString() : null,
   };
 }
 

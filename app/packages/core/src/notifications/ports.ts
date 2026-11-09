@@ -32,6 +32,8 @@ export interface ProjectMessageFacts {
   conversationCreatedBy: { kind: 'human' | 'agent'; id: string };
   author: { kind: 'human' | 'agent'; id: string };
   authorName: string | null;
+  /** The name of the local client or assistant that posted for its author (LC-2, AG-4 Show everyone): the author stays the person, and the notice says so. */
+  via?: string | null;
   body: string;
   sequence: number;
   /** People who wrote in the conversation before this message. */
@@ -53,6 +55,8 @@ export interface DmMessageFacts {
   kind: 'pair' | 'group';
   title: string | null;
   authorId: string;
+  /** The assistant whose answer the author posted with Show everyone (#842). */
+  via?: string | null;
   body: string;
   participantIds: string[];
 }

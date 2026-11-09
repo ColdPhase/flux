@@ -53,3 +53,30 @@ test('an agent suggestion reaches its owner in Needs you, can be answered, and h
   expectStatus(await owner.browser.request('DELETE', `/api/v1/needs-you/${encodeURIComponent(key)}`), 204);
   assert.equal((await list()).items.some((entry) => entry.key === key), true, 'Undo brings it back');
 });
+
+test('C-50, #1095: what a guest\'s own agent suggested is kept and hidden from Needs you while they are a guest, and is back as a member', async () => {
+  const owner = await person('ny-prop-guest');
+  const company = (await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company')).rows[0]!.id;
+  await pool.query('INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, $3, $2)', [company, owner.id, 'member']);
+  const ws = expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Guest suggestions' } }), 201) as Workspace;
+  const project = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Sensors', visibility: 'restricted' } }), 201) as Project;
+  const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Desk agent', owner: 'self' } }), 201) as { id: string };
+  const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
+    { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
+  const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as { id: string };
+  const proposal = await store.create({ connectionId: connection.id, ownerUserId: owner.id, agentId: agent.id, computeSource: 'user_operated_claude_code' as const },
+    { projectId: project.id, source: { materialId: material.materialId, version: 1 }, clientCommandId: randomUUID(),
+      fact: 'Sensor A failed in dim scenes', interpretation: 'Exposure may be too short', suggestedAction: 'Compare sensor B' });
+  const key = `proposal:${proposal.id}`;
+  const listed = async () => ((expectStatus(await owner.browser.request('GET', '/api/v1/needs-you'), 200) as NeedsYouResponse).items.some((entry) => entry.key === key));
+  const becomes = (role: 'guest' | 'member') => pool.query('UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2', [company, owner.id, role]);
+  try {
+    assert.equal(await listed(), true, 'a member is asked');
+    await becomes('guest');
+    assert.equal(await listed(), false, 'a guest is not: their agent\'s suggestion is hidden');
+    expectStatus(await owner.browser.request('POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { body: { action: 'done' } }), 404);
+    assert.equal((await pool.query(`SELECT status FROM agent_proposals WHERE id = $1`, [proposal.id])).rows[0].status, 'proposed', 'it is kept as it was');
+    await becomes('member');
+    assert.equal(await listed(), true, 'and it is back for a member');
+  } finally { await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [company, owner.id]); }
+});

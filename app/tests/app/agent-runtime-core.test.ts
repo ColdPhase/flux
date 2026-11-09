@@ -97,7 +97,7 @@ function memoryStore() {
       if (existing) return { kind: 'existing', binding: existing };
       const ready = [...slots.values()].filter((s) => s.state === 'ready').sort((a, b) => live().filter((x) => x.slot === a.slot).length - live().filter((x) => x.slot === b.slot).length)[0];
       if (!ready) return { kind: 'starting' };
-      const binding = { id, ownerUserId: owner, slot: ready.slot, state: 'binding' as const, createdAt: new Date(), lastUsedAt: null, releaseReason: null, releasedAt: null };
+      const binding = { id, ownerUserId: owner, slot: ready.slot, state: 'binding' as const, createdAt: new Date(), lastUsedAt: null, idleSince: new Date(), releaseReason: null, releasedAt: null };
       bindings.push(binding);
       return { kind: 'reserved', binding };
     },

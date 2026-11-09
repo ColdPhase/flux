@@ -48,7 +48,9 @@ export interface NativeActions {
   /** The map's change checkpoint as this transaction leaves it: the produced post-state of a map change. */
   mapCheckpoint(mapId: string): Promise<Extract<AgentPostcondition, { kind: 'map_checkpoint' }>>;
 }
-export type Produced<T> = { value: T; postconditions: AgentPostcondition[] };
+export type Produced<T> = { value: T; postconditions: AgentPostcondition[];
+  /** The effect wrote its words as the connection's owner, marked with the client's name (a local client's post in a space's conversation, LC-2, #1091). */
+  asOwner?: true };
 type Execute<I> = <T extends { [key: string]: AgentJsonValue }>(input: I, operation: AgentOperation, objectId: string | null,
   payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) => Promise<T & { replayed: boolean }>;
 

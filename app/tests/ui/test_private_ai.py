@@ -338,6 +338,73 @@ class PrivateAiJourney(unittest.TestCase):
         thread = self.api(kai, "GET", f"/api/v1/dms/{self.ids['dm']}/threads/{root['id']}", status=200)
         self.assertEqual([(message["authorId"], message.get("via")) for message in thread["replies"] if message.get("via")], [(JO["id"], "Assistant")])
 
+    # ---------------------------------------------------------------- Show everyone right after the asker's own message (review of #1105)
+
+    def overlap(self, a: dict, b: dict) -> bool:
+        return not (a["x"] + a["width"] <= b["x"] or b["x"] + b["width"] <= a["x"] or a["y"] + a["height"] <= b["y"] or b["y"] + b["height"] <= a["y"])
+
+    def test_04c_in_a_direct_message_an_answer_after_the_askers_own_message_keeps_its_mark_on_both_devices(self) -> None:
+        for phone, size in ((False, "1440"), (True, "390")):
+            with self.subTest(size=size):
+                words = f"the soil probes need calibrating on Monday ({size})"
+                mock("/__script", {"reset": True, "text": f"Fact: {words} [S1]"})
+                jo, kai = self.dm("jo", phone=phone), self.dm("kai", phone=phone)
+                jo.locator("#dm-composer").fill("/ai when do we calibrate?")
+                jo.get_by_role("button", name="Ask your agent").click()
+                card = self.private_card(jo)
+                expect(card).to_be_visible(timeout=20000)
+                # Jo's own message comes after the "used AI here" line and before the answer is shown: the answer would follow it as one run.
+                self.api(jo, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": f"One moment, asking my assistant ({size})", "clientMessageId": str(uuid.uuid4())}, status=201)
+                expect(kai.locator(".dm-msg").filter(has_text=f"asking my assistant ({size})")).to_be_visible(timeout=15000)
+                card.get_by_role("button", name="Show everyone").click()
+                expect(card).to_have_count(0)
+                posted = kai.locator(".dm-msg").filter(has_text=words)
+                expect(posted).to_be_visible(timeout=15000)
+                expect(posted).not_to_have_class(re.compile(r"dm-msg--cont"))
+                expect(posted.locator(".dm-msg__meta")).to_contain_text("Jo Weber")
+                expect(posted.locator(".dm-msg__via")).to_have_text("via Assistant")
+                shot(kai, f"private-ai-{size}-dm-answer-after-own-message")
+                mine = jo.locator(".dm-msg.is-mine").filter(has_text=words)
+                expect(mine.locator(".dm-msg__via")).to_have_text("via Assistant")
+                if phone:
+                    self.assertFalse(self.overlap(mine.locator(".dm-msg__via").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
+                    shot(jo, f"private-ai-{size}-dm-answer-after-own-message-jo")
+                # The list names the mark before the words: it is an answer, not something Jo typed.
+                kai.goto("/dm")
+                expect(kai.locator(".dm-index__text").first).to_contain_text(f"via Assistant: Fact: {words}")
+
+    def test_04d_in_a_direct_messages_thread_an_answer_after_the_askers_own_reply_keeps_its_mark_on_both_devices(self) -> None:
+        for phone, size in ((False, "1440"), (True, "390")):
+            with self.subTest(size=size):
+                words = f"the thread agreed on a Monday run ({size})"
+                mock("/__script", {"reset": True, "text": f"Fact: {words} [S1]"})
+                kai_api = self.page("kai")
+                root = self.api(kai_api, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": f"Calibration day ({size}): Monday?", "clientMessageId": str(uuid.uuid4())}, status=201)
+                jo, kai = self.page("jo", phone=phone), self.page("kai", phone=phone)
+                for page in (jo, kai):
+                    page.goto(f"/dm/{self.ids['dm']}?thread={root['id']}")
+                    expect(page.locator("#dm-thread-composer")).to_be_visible()
+                jo.locator("#dm-thread-composer").fill("/ai what did we settle?")
+                jo.locator(".dm-thread__composer").get_by_role("button", name="Ask your agent").click()
+                card = jo.locator(".dm-thread .assistant-private")
+                expect(card).to_be_visible(timeout=20000)
+                # Jo's own reply, then the answer shown: no "used AI here" line stands between them in a thread.
+                self.api(jo, "POST", f"/api/v1/dms/{self.ids['dm']}/threads/{root['id']}/replies", {"body": f"Let me check ({size})", "clientMessageId": str(uuid.uuid4())}, status=201)
+                expect(kai.locator(".dm-thread .dm-msg").filter(has_text=f"Let me check ({size})")).to_be_visible(timeout=15000)
+                card.get_by_role("button", name="Show everyone").click()
+                expect(card).to_have_count(0)
+                posted = kai.locator(".dm-thread .dm-msg").filter(has_text=words)
+                expect(posted).to_be_visible(timeout=15000)
+                expect(posted).not_to_have_class(re.compile(r"dm-msg--cont"))
+                expect(posted.locator(".dm-msg__meta")).to_contain_text("Jo Weber")
+                expect(posted.locator(".dm-msg__via")).to_have_text("via Assistant")
+                shot(kai, f"private-ai-{size}-dm-thread-answer-after-own-reply")
+                mine = jo.locator(".dm-thread .dm-msg.is-mine").filter(has_text=words)
+                expect(mine.locator(".dm-msg__via")).to_have_text("via Assistant")
+                if phone:
+                    self.assertFalse(self.overlap(mine.locator(".dm-msg__via").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
+                    shot(jo, f"private-ai-{size}-dm-thread-answer-after-own-reply-jo")
+
     # ---------------------------------------------------------------- the task's thread
 
     def test_05_in_a_tasks_thread_the_answer_shows_in_the_task_and_posts_into_its_discussion(self) -> None:

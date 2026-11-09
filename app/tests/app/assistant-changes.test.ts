@@ -4,7 +4,7 @@ import { before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
-  NEEDS_YOU_PATH, personalRunTokenPath,
+  NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
@@ -25,6 +25,7 @@ import { agentConnection, approveWaiting, waits } from './support/mcp-actions.js
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
+import { waitFor } from './support/wait.js';
 
 // F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and "What it may do". An assistant run's change tool goes
 // through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for "Ask me first", through the
@@ -475,13 +476,11 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   // ------------------------------------------------------------------------------------------------------------------
   // #68 closeout (founder direction 2026-10-29): the Undo of what no person can remove. The assistant takes back its own map and
   // proposed decision in the same run Undo, only while nobody has used it. A run posts no message (#1063); a posted
-  // message an agent takes back is a local client's (LC-2), through the same change path and the same Undo, one change at a time (C-18).
+  // line an agent takes back is a local client's in a task's discussion (LC-2, C-51); its post in a space's conversation is its owner's own message (#1091).
 
   const value = (response: { message: Message }) => JSON.parse(text(response.message)) as Record<string, string>;
   const undoOne = async (changeId: string, who: Person = owner) =>
     expectStatus(await who.browser.request('POST', assistantChangeActionPath(changeId, 'undo'), { body: {} }), 200) as { message: string | null };
-  const reply = async (who: Person, conversationId: string, body: string) =>
-    expectStatus(await who.browser.request('POST', `/api/v1/conversations/${conversationId}/messages`, { body: { body, clientMessageId: randomUUID() } }), 201) as { id: string };
   const stateOf = async (id: string) => (await pool.query(`SELECT state, decided_by, receipt FROM assistant_changes WHERE id = $1`, [id])).rows[0] as { state: string; decided_by: string | null; receipt: Record<string, unknown> };
   const count = async (table: string, id: string) => Number((await pool.query(`SELECT count(*) FROM ${table} WHERE id = $1`, [id])).rows[0].count);
   const taskFrom = async (who: Person, body: Record<string, unknown>) =>
@@ -505,54 +504,63 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     return { messageId, conversationId, change: change! };
   };
 
-  test('#68 message: Undo takes a local client\'s reply back to a tombstone, attributed, with an ids-only event; it keeps its place', async () => {
+  test('#1091 message: a local client\'s post in a space\'s conversation is its owner\'s own message, marked via the client; it has no change line or Undo, and its owner deletes it as theirs', async () => {
     const posted = await post('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'Here is the summary of the sensor work' } });
-    const change = posted.change;
-    assert.equal(change.state, 'applied');
-    const listed = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change.id);
-    assert.equal(listed?.undoable, true, 'the message offers its owner Undo');
-    const peerView = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change.id);
-    assert.equal(peerView?.undoable, false, 'someone else who may edit sees it done, with no Undo of their own');
-    assert.equal((await undoOne(change.id)).message, null);
-    const row = (await pool.query(`SELECT body, removed_at, sequence, author_agent_id FROM project_messages WHERE id = $1`, [posted.messageId])).rows[0];
-    assert.equal(row.body, '[Removed with Undo]');
-    assert.ok(row.removed_at, 'the row stays, marked');
-    assert.equal(row.author_agent_id, change.agent_id, 'still the agent\'s message');
+    const row = (await pool.query(`SELECT author_id, author_agent_id, via, conversation_id FROM project_messages WHERE id = $1`, [posted.messageId])).rows[0];
+    assert.deepEqual([row.author_id, row.author_agent_id, row.via, row.conversation_id], [owner.id, null, 'Test client', thread.id], 'the person\'s message, with the client\'s name');
     const seen = expectStatus(await peer.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
     const shown = seen.messages.find((message) => message.id === posted.messageId)!;
-    assert.deepEqual([shown.body, typeof shown.removedAt], ['[Removed with Undo]', 'string'], 'readers get the marker and the time');
-    const after = await stateOf(change.id);
-    assert.deepEqual([after.state, after.decided_by], ['undone', owner.id], 'attributed to the person who undid it');
-    const removed = (after.receipt.undone as { removed: Record<string, unknown> }).removed;
-    assert.deepEqual(Object.keys(removed).sort(), ['bodyHash', 'bodyLength', 'conversationId', 'sequence'], 'the audit keeps a hash and a length, never the text');
-    assert.equal(JSON.stringify(after.receipt).includes('summary of the sensor work'), false, 'the receipt holds no text');
-    const events = (await pool.query(`SELECT data FROM events WHERE kind = 'project.assistant_change_undone.v1' AND data->>'objectId' = $1`, [posted.messageId])).rows;
-    assert.equal(events.length, 1);
-    assert.deepEqual(Object.keys(events[0].data).sort(), ['changeId', 'objectId', 'objectType'], 'ids only');
-    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM search_documents WHERE body ILIKE '%summary of the sensor work%'`)).rows[0].n, 0, 'no longer found by search');
+    assert.deepEqual([shown.authorId, shown.via, 'author' in shown], [owner.id, 'Test client', false], 'readers see "Ada · via Test client", not an agent');
+    // The change is logged for its owner with its connection, but it has no line under the message and no Undo (their own message is theirs to delete).
+    const change = (await pool.query(`SELECT state, conversation_id, receipt->'undo' AS undo FROM assistant_changes WHERE id = $1`, [posted.change.id])).rows[0];
+    assert.deepEqual([change.state, change.conversation_id, change.undo], ['applied', null, null]);
+    for (const who of [owner, peer]) {
+      const listed = (expectStatus(await who.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items;
+      assert.ok(!listed.some((item) => item.id === posted.change.id), 'no change line in the conversation');
+    }
+    assert.match(String((expectStatus(await owner.browser.request('POST', assistantChangeActionPath(posted.change.id, 'undo'), { body: {} }), 200) as { message: string | null }).message), /can.t be undone/, 'Undo has nothing to take back');
+    assert.equal((await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [posted.messageId])).rows[0].removed_at, null);
+    // The person edits or deletes it like any message of theirs; no one else can.
+    expectStatus(await peer.browser.request('DELETE', `/api/v1/conversations/${thread.id}/messages/${posted.messageId}`), 403);
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/conversations/${thread.id}/messages/${posted.messageId}`), 200);
+    assert.ok((await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [posted.messageId])).rows[0].removed_at, 'the message is taken back, keeping its place');
   });
 
-  test('#68 message: refused once anyone replied since or cited it, with the reason, and nothing changes', async () => {
-    const first = await post('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'First point about the probes' } });
-    await reply(peer, thread.id, 'Thanks, that helps');
-    assert.equal((await undoOne(first.change.id)).message, 'Replies since. Open it');
-    assert.equal((await stateOf(first.change.id)).state, 'applied');
-    assert.equal((await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [first.messageId])).rows[0].removed_at, null);
-    // Cited: a task started from it, with no later message in the thread (a conversation of its own).
+  test('#1091 message: a client\'s start opens the owner\'s conversation; it says "via" the client; another client\'s name is its own, and a reply into a task\'s discussion stays the agent\'s line', async () => {
     const started = await post('flux_start_conversation', { message: { body: 'A new question about the lamp driver' } });
-    await taskFrom(peer, { title: 'Follow the lamp driver question', sources: [{ type: 'message', id: started.messageId }] });
-    assert.equal((await undoOne(started.change.id)).message, 'Used since. Open it');
-    assert.equal((await stateOf(started.change.id)).state, 'applied');
-  });
-
-  test('#68 message: each of a client\'s messages is its own Undo, and its own later reply is taken back first (C-18)', async () => {
-    const a = await post('flux_start_conversation', { message: { body: 'Opening question from the laptop' } });
-    const b = await post('flux_reply_in_conversation', { conversationId: a.conversationId, message: { body: 'My own follow-up' } });
-    assert.equal((await undoOne(a.change.id)).message, 'Replies since. Open it', 'its own later reply counts until that is taken back first');
-    assert.equal((await undoOne(b.change.id)).message, null);
-    assert.equal((await undoOne(a.change.id)).message, null);
-    const rows = (await pool.query(`SELECT id, removed_at FROM project_messages WHERE id = ANY($1)`, [[a.messageId, b.messageId]])).rows as { removed_at: Date | null }[];
-    assert.ok(rows.every((message) => message.removed_at));
+    const row = (await pool.query(`SELECT m.author_id, m.author_agent_id, m.via, c.created_by, c.created_by_agent_id FROM project_messages m JOIN project_conversations c ON c.id = m.conversation_id WHERE m.id = $1`,
+      [started.messageId])).rows[0];
+    assert.deepEqual([row.author_id, row.author_agent_id, row.via, row.created_by, row.created_by_agent_id], [owner.id, null, 'Test client', owner.id, null]);
+    const mine = await post('flux_reply_in_conversation', { conversationId: started.conversationId, message: { body: 'My own follow-up' } });
+    assert.deepEqual((await pool.query(`SELECT author_id, via FROM project_messages WHERE id = $1`, [mine.messageId])).rows[0], { author_id: owner.id, via: 'Test client' });
+    // The mark goes with the message everywhere it is named (the review of #1105): the person it mentions is told "Ada · via Test client mentioned
+    // you" (the Inbox item and the push have that title), flagged as AI-origin; search, "While you were away" and the export name it the same way.
+    const mentioning = await post('flux_reply_in_conversation', { conversationId: started.conversationId, message: { body: '@ac-jonas the probes are calibrated zebrafish' } });
+    const told = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; title: string; reason: string; url: string | null }[] }).items
+      .find((item) => item.url?.endsWith(mentioning.messageId))), 'Jonas\'s mention');
+    assert.deepEqual([told.title, told.reason], ['ac-ada · via Test client mentioned you in Lamp sensor', 'mention']);
+    assert.equal((await pool.query(`SELECT ai_origin FROM notifications WHERE id = $1`, [told.id])).rows[0].ai_origin, true, 'the notice is AI-origin, so it is hidden while AI is off in the space');
+    const found = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', `/api/v1/search?q=zebrafish`), 200) as { items: { id: string; author: string | null }[] }).items
+      .find((item) => item.id.endsWith(mentioning.messageId))), 'the search result');
+    assert.equal(found.author, 'ac-ada · via Test client');
+    const summary = await waitFor(async () => {
+      const read = expectStatus(await peer.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as { items: { actor: string | null; text: string }[]; nextStep: { text: string } | null };
+      return read.items.some((item) => item.text.includes('zebrafish')) ? read : null;
+    }, 'the "While you were away" item');
+    const away = summary.items.find((item) => item.text.includes('zebrafish'))!;
+    assert.deepEqual([away.actor, away.text.startsWith('ac-ada · via Test client asked you: ')], ['ac-ada · via Test client', true]);
+    assert.equal(summary.nextStep?.text, 'Answer ac-ada\'s question, posted via Test client', 'the next step names the mark too');
+    const exported = expectStatus(await owner.browser.request('GET', projectExportPath(place.id)), 200) as { conversations: { messages: { id: string; via?: string; author: { kind: string } }[] }[] };
+    const exportedMessage = exported.conversations.flatMap((conversation) => conversation.messages).find((message) => message.id === mentioning.messageId)!;
+    assert.deepEqual([exportedMessage.author.kind, exportedMessage.via], ['human', 'Test client'], 'the export keeps who it was posted through');
+    // A task's discussion is the agents' own talk: the line is the agent's, with its change line and its owner's unconditional delete (C-51, TA-3).
+    const item = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Talk about the lamp driver' } }), 201) as { id: string };
+    const root = expectStatus(await owner.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Who looks at it?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };
+    const line = await post('flux_reply_in_conversation', { conversationId: root.conversationId, message: { body: 'The laptop looks at it' } });
+    const stored = (await pool.query(`SELECT author_id, author_agent_id, via FROM project_messages WHERE id = $1`, [line.messageId])).rows[0];
+    assert.deepEqual([stored.author_id, stored.author_agent_id === line.change.agent_id, stored.via], [null, true, null]);
+    const listed = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(root.conversationId)), 200) as { items: AssistantChange[] }).items.find((entry) => entry.id === line.change.id);
+    assert.equal(listed?.undoable, true, 'the agent\'s line in a task\'s discussion keeps its owner\'s delete');
   });
 
   test('#68 map: Undo removes an untouched map the assistant made and refuses once renamed, filled or cited', async () => {
@@ -900,15 +908,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         const gone = (await count('sketches', made.mapId)) === 0;
         const links = Number((await pool.query(`SELECT count(*) FROM project_object_links WHERE to_id = $1`, [made.mapId])).rows[0].count);
         assert.ok(!(gone && links > 0), `map removed but cited: undo ${undone.status}, citation ${cited.status}`);
-      }],
-      ['a local client\'s message sourced by a task', async (offset, swap) => {
-        const made = await post('flux_start_conversation', { message: { body: `Race question ${offset}` } });
-        const [undone, cited] = await race(undoRequest(made.change.id), () => peer.browser.request('POST', `/api/v1/projects/${place.id}/work`,
-          { body: { title: `Sourced from ${offset}`, sources: [{ type: 'message', id: made.messageId }] } }), offset, swap);
-        noServerError('message source', undone.status, cited.status);
-        const removed = (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [made.messageId])).rows[0].removed_at !== null;
-        const links = Number((await pool.query(`SELECT count(*) FROM project_object_links WHERE to_id = $1`, [made.messageId])).rows[0].count);
-        assert.ok(!(removed && links > 0), `message taken back but cited: undo ${undone.status}, citation ${cited.status}`);
       }],
     ];
     for (const [name, trial] of trials) for (const offset of [0, 3, 8]) for (const swap of [false, true]) {

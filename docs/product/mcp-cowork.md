@@ -45,18 +45,18 @@ complicated or different").
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
   anything and other people's things wait for the person's OK, and the never-list holds (AG-3),
   except posting: a local client is its person's own tool, so it may post in a space's conversations
-  as the person, marked "via Claude Code" or "via Codex" (Hubert, 2026-11-08, [#1089](https://github.com/ColdPhase/flux/issues/1089)).
+  as the person, marked "via Claude Code" or "via Codex" (Hubert, 2026-11-08, [#1089](https://github.com/ColdPhase/flux/issues/1089); how it is stored and shown is below).
   For the same reason a change of its that would notify another person does not wait (AG-3 "Telling
   another person" holds server agents only).
-  Its changes can be taken back (Undo), but only its messages show the change line and Undo in the
-  app today; a task, page or map change has none yet, and #868 tracks showing them.
+  Its changes can be taken back (Undo), but only its lines in a task's discussion show the change line and
+  Undo in the app today; a task, page or map change has none yet, and #868 tracks showing them.
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
   accepting a decision come only from the person in a signed-in Flux session. The client's grant
   has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
 - **What waits.** A local client's changes wait exactly as an agent's do (AG-3), and what waits is one Inbox item per client:
   "Claude Code on Ada's laptop · 3 things wait for you · Approve all · Open". Its answer to the client is plain words that the
-  change waits; the client does not retry it. What it made carries one change line with Undo on its message in the conversation
-  it posted to, and an Undo takes back that change and never the client's earlier work
+  change waits; the client does not retry it. What it made carries one change line with Undo where the app shows one (above), and an Undo takes back that change
+  and never the client's earlier work
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   Taking a task, claiming or releasing it, asking a question, writing in the task's discussion and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
@@ -68,7 +68,19 @@ complicated or different").
   claim the client holds).
 - Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
   client, and nothing polls a model while it is idle (F-032).
-- Its messages and changes are labelled "Ada · via Claude Code".
+- **Its posts are the person's, marked "via".** What it posts in a space's conversation, a new conversation or a reply, is stored
+  as the person's own message with the client's name as its mark ("Claude Code", "Codex", or another client's name), and everyone reads
+  "Ada · via Claude Code", the same mark as an answer posted with Show everyone (#1091, Hubert, 2026-11-08). The person is the author
+  for everything that follows: they edit or delete it like any message of theirs (and an edit makes the words theirs, so the mark goes),
+  an assistant's brief does not take it for their own words (the mark is the same). The mark goes with the message everywhere it is
+  named: a person it mentions is told "Ada · via Claude Code mentioned you in …" (the Inbox item, the push and the notice are marked as
+  AI-origin, so they are hidden while AI is off in the space), a search result and the "While you were away" summary (its item and
+  its next step, "Answer Ada's question, posted via Claude Code") name it the same way, and the project export keeps it as the
+  message's `via`. An answer posted with Show everyone is named the same way, also in a direct message and its thread, where it
+  starts its own author run after the person's own message, and the direct messages list names it before the words ("via Assistant: …")
+  (#1091, review of #1105). It has no change line and no Undo of its own, since the person's own Delete takes it back (the change is
+  still in the log). In a task's discussion the client stays an agent: its line there is its agent's own, counted by the
+  five-in-a-row limit (C-51) and its owner's to delete (TA-3), so a client cannot reset the guard by posting as the person.
 
 ## LC-3 — "Work on #4"
 

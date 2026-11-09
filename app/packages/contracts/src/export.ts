@@ -62,6 +62,8 @@ export interface ProjectExportMessage {
   sequence: number;
   author: ExportActor;
   body: string;
+  /** Present only when the author posted through a local client or an assistant (LC-2, #842): its name, shown as "Ada · via Claude Code". */
+  via?: string;
   /** The cited material or doc version, if any. */
   source: { materialId: string; version: number } | null;
   /** Present only for a saved blocker, a "what came of it" line or a public handoff (#154). */
@@ -301,6 +303,7 @@ const baseExportSchema = {
       required: ['id', 'sequence', 'author', 'body', 'source', 'createdAt'],
       properties: { id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time,
         files: list(object({ id, name: text, size: { type: 'integer', minimum: 1 } })),
+        via: text,
         contribution: object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }) },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),

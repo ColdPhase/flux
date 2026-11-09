@@ -66,7 +66,8 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     url: `http://127.0.0.1:${port}`,
     async close() {
       await new Promise<void>((done) => server.close(() => done()));
-      await rm(root, { recursive: true, force: true });
+      // A CLI the test just killed may still be writing into its binding while the tree goes (ENOTEMPTY): retry the removal (#1061).
+      await rm(root, { recursive: true, force: true, maxRetries: 20, retryDelay: 100 });
     },
   };
 }

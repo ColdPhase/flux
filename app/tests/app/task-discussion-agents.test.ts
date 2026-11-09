@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { assistantChangeActionPath, conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision, type TaskDiscussion, type WorkItem } from '@flux/contracts';
+import { agentConnectionPath, assistantChangeActionPath, conversationAssistantChangesPath, type AssistantChange, type AssistantChangeDecision, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
-import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
+import { actionScene, agentConnection, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
 import { db, pool } from './support/db.js';
 
@@ -141,6 +141,54 @@ test('C-51: two agents taking turns, with any tools, share the five messages; a 
   for (const step of [b.reply, a.discuss]) toolValue(await step('Counted'));
   assert.equal(toolFailure(await b.discuss('The sixth')).code, 'AGENT_TURN_LIMIT');
   assert.deepEqual((await pool.query(`SELECT by_flux FROM project_messages WHERE conversation_id = $1 ORDER BY sequence`, [conversationId])).rows.filter((row) => row.by_flux).length, 3);
+});
+
+test('C-51, #1094: a blocker and a hand-off count toward the five agent lines, so the sixth line is refused after them', async () => {
+  const f = await actionScene(pool), item = await task(f);
+  const conversationId = String(toolValue(await discuss(f, item.id, 'Step 1')).conversationId);
+  toolValue(await discuss(f, item.id, 'Step 2'));
+  toolValue(await discuss(f, item.id, 'Step 3'));
+  // The agent's blocker is a line of the discussion, and so is an explicit hand-off.
+  toolValue(await f.tool('flux_update_task', { ...envelope(f, f), workId: item.id, expectedVersion: item.version, changes: { status: 'blocked', blocker: 'Waits for the lens' } }));
+  const handoff = await taskDiscussionUseCases(db).contribute({ kind: 'agent', id: f.agentId }, item.id, { body: 'Over to the reviewing agent.', kind: 'handoff', clientMessageId: randomUUID() });
+  assert.deepEqual((await discussion(f, item.id)).messages.map((message) => [message.contribution?.kind ?? 'text', message.sequence]),
+    [['text', 1], ['text', 2], ['text', 3], ['blocker', 4], ['handoff', 5]]);
+  assert.equal(handoff.sequence, 5);
+  // The five are used: every way of writing is refused, the blocker's own change included, and nothing more is written.
+  assert.equal(toolFailure(await discuss(f, item.id, 'A sixth line')).code, 'AGENT_TURN_LIMIT');
+  assert.equal(toolFailure(await writes(f, f, item.id, conversationId).reply('A sixth reply')).code, 'AGENT_TURN_LIMIT');
+  const refusedBlocker = toolFailure(await f.tool('flux_update_task', { ...envelope(f, f), workId: item.id, expectedVersion: item.version + 1, changes: { blocker: 'Waits for the hinge' } }));
+  assert.equal(refusedBlocker.code, 'AGENT_TURN_LIMIT');
+  await assert.rejects(taskDiscussionUseCases(db).contribute({ kind: 'agent', id: f.agentId }, item.id, { body: 'Another hand-off.', kind: 'handoff', clientMessageId: randomUUID() }),
+    (error: unknown) => (error as { code?: string }).code === 'AGENT_TURN_LIMIT');
+  assert.equal((await discussion(f, item.id)).messages.length, 5);
+  await personWrites(f, item.id);
+  toolValue(await discuss(f, item.id, 'After the person'));
+});
+
+test('C-51, #1094: at five agent lines a change that waited for the owner\'s OK is made on Approve, which gives no agent more turns', async () => {
+  const f = await actionScene(pool), item = await task(f);
+  const conversationId = String(toolValue(await discuss(f, item.id, 'Step 1')).conversationId);
+  for (let i = 2; i <= 5; i++) toolValue(await discuss(f, item.id, `Step ${i}`));
+  const by = writes(f, f, item.id, conversationId);
+  expect(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo: 'ask' } }), 200);
+  // Under Ask me first a reply and a blocker wait; each is the sixth and seventh line in a row if the owner approves it.
+  assert.ok(waits(await by.reply('Approved reply')), 'the reply waits');
+  assert.ok(waits(await f.tool('flux_update_task', { ...envelope(f, f), workId: item.id, expectedVersion: item.version, changes: { status: 'blocked', blocker: 'Approved blocker' } })), 'the blocker waits');
+  assert.equal((await discussion(f, item.id)).messages.length, 5, 'nothing was written while they wait');
+  await approveWaiting(pool, f.owner, f.connectionId, 'conversation.reply');
+  await approveWaiting(pool, f.owner, f.connectionId, 'work.update');
+  const lines = (await discussion(f, item.id)).messages;
+  assert.deepEqual(lines.slice(5).map((message) => [message.sequence, message.contribution?.kind ?? 'text']), [[6, 'text'], [7, 'blocker']]);
+  assert.equal(lines[5]!.body, 'Approved reply');
+  assert.ok(lines[6]!.body.includes('Approved blocker'));
+  assert.equal((await pool.query(`SELECT count(*)::int AS n FROM assistant_changes WHERE connection_id = $1 AND state = 'applied_after_wait'`, [f.connectionId])).rows[0].n, 2, 'each Approve was made, none refused');
+  // The Approve was the owner's decision, not a person's message: the agent still has no turn of its own until a person writes.
+  assert.equal(toolFailure(await discuss(f, item.id, 'Step 6')).code, 'AGENT_TURN_LIMIT');
+  expect(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo: 'act' } }), 200);
+  assert.equal(toolFailure(await by.reply('Straight after')).code, 'AGENT_TURN_LIMIT', 'the same line made at once is still refused');
+  await personWrites(f, item.id);
+  toolValue(await by.reply('After the person'));
 });
 
 test('#961, C-51: a line written with flux_discuss_task is its owner\'s to delete, as one written with flux_reply_in_conversation', async () => {

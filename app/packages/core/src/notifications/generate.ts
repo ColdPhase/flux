@@ -103,7 +103,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const people = [...audience].filter((userId) => userId !== authorId && reachable(userId)
         && (typeof message.onlyNotifies !== 'string' || userId === message.onlyNotifies));
       const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
-      const author = authorId ? names.get(authorId) ?? 'Someone' : `${message.authorName ?? 'Agent'} (agent)`;
+      // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code".
+      const author = authorId ? `${names.get(authorId) ?? 'Someone'}${message.via ? ` · via ${message.via}` : ''}` : `${message.authorName ?? 'Agent'} (agent)`;
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       const result: Candidate[] = [];
@@ -120,7 +121,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
-          aiOrigin: message.author.kind === 'agent', who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent' });
+          aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent' });
       }
       return result;
     }
@@ -131,10 +132,11 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const people = message.participantIds.filter((userId) => userId !== message.authorId && reachable(userId));
       const names = await facts.names([message.authorId]);
       const author = names.get(message.authorId) ?? 'Someone';
-      const title = message.kind === 'pair' ? `${author} sent you a message` : `${author} in ${message.title ? quote(message.title) : 'a group message'}`;
+      const marked = message.via ? `${author} · via ${message.via}` : author;
+      const title = message.kind === 'pair' ? `${marked} sent you a message` : `${marked} in ${message.title ? quote(message.title) : 'a group message'}`;
       return people.map((userId) => ({
         userId, reason: 'dm' as const, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
-        url: `/dm/${message.dmId}#message-${message.id}`, who: author,
+        url: `/dm/${message.dmId}#message-${message.id}`, who: author, ...(message.via ? { aiOrigin: true } : {}),
       }));
     }
     case 'project.work_created.v1':

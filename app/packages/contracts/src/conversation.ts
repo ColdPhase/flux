@@ -39,8 +39,9 @@ export interface ConversationMessageFields {
   /** Present only when the author changed the words after sending them (#1006): when they last did. The earlier words are not kept. */
   editedAt?: string;
   /**
-   * Present only when the author posted an agent's answer with Show everyone (#842, F-036 AG-4): the agent's name at that time,
-   * shown as "Ada · via Assistant". The person stays the author.
+   * Present only when the author posted an agent's answer with Show everyone (#842, F-036 AG-4), or when a local client posted for them in a
+   * space's conversation (LC-2, #1091): the agent's or the client's name at that time, shown as "Ada · via Assistant" or "Ada · via Claude Code".
+   * The person stays the author.
    */
   via?: string;
   /** Present only for a saved blocker, a "what came of it" line or an explicit public handoff. */

@@ -106,6 +106,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
     participants: record.participants, counterpart: counterpartOf(record, self), audience: { kind: 'dm', participantIds: record.participants.map((p) => p.id) },
     createdBy: record.createdBy, version: record.version, createdAt: record.createdAt.toISOString(),
     lastMessageAt: iso(record.lastMessageAt), lastMessageBody: record.lastMessageBody,
+    ...(record.lastMessageVia ? { lastMessageVia: record.lastMessageVia } : {}),
   };
 }
 

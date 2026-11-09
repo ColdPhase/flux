@@ -19,6 +19,8 @@ export interface DmRecord {
   createdAt: Date;
   lastMessageAt: Date | null;
   lastMessageBody: string | null;
+  /** The assistant whose answer the last message was posted with Show everyone, for the list's preview ("via Assistant: …"). */
+  lastMessageVia?: string | null;
   /** Current participants, ordered by when they joined, then by name. */
   participants: DmPerson[];
   /** For a 1:1 DM, both people of the pair (from its pair key), whether or not they still take part. */

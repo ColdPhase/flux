@@ -96,7 +96,10 @@ test('live native delete Undo retains human project provenance and edit Undo ret
   try {
     const conversation=expectStatus(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/conversations`,{body:{body:'Human-authored source',clientMessageId:randomUUID()}}),201) as {id:string;messages:{id:string}[]};
 
-    const agentMessage=toolValue(await f.tool('flux_reply_in_conversation',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,peerRequestClass:'execute',clientCommandId:randomUUID(),conversationId:conversation.id,message:{body:'Agent-authored source'}})) as {messageId:string};
+    // A local client's post in a space's conversation is its owner's own message (LC-2, #1091); the agent's own line is one in a task's discussion.
+    const task=expectStatus(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title:'Agent source task'}}),201) as {id:string};
+    const taskTalk=expectStatus(await f.owner.request('POST',`/api/v1/work/${task.id}/discussion`,{body:{body:'Who writes the source?',clientMessageId:randomUUID()}}),201) as {conversationId:string};
+    const agentMessage=toolValue(await f.tool('flux_reply_in_conversation',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,peerRequestClass:'execute',clientCommandId:randomUUID(),conversationId:taskTalk.conversationId,message:{body:'Agent-authored source'}})) as {messageId:string};
     const sketch=expectStatus(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/sketches`,{body:{title:'Source Undo',scope:'project',projectId:f.projectId}}),201) as Sketch;
     const head=await bootstrap(backend,ownerSession,sketch.id);assert.equal(head.sequence,0);
     const add=async(sourceProjectMessageId:string,text:string,x:number)=>{
@@ -123,7 +126,8 @@ test('live native delete Undo retains human project provenance and edit Undo ret
     const agentUndo=randomUUID();const restoredAgent=await app.inject({method:'POST',url:`/api/v1/sketches/${sketch.id}/live/undo`,headers:{'idempotency-key':agentUndo},
       payload:{clientCommandId:agentUndo,originalCommandIds:[editCommand]}});assert.equal(restoredAgent.statusCode,200,restoredAgent.body);
     saved=(await bootstrap(backend,ownerSession,sketch.id)).sketch.thoughts.find(thought=>thought.id===agent.thought.id)!;
-    const sourceMessage=conversationAfter.messages.find(message=>message.id===agentMessage.messageId);assert.ok(sourceMessage);
+    const taskAfter=expectStatus(await f.owner.request('GET',`/api/v1/conversations/${taskTalk.conversationId}`),200) as typeof conversationAfter;
+    const sourceMessage=taskAfter.messages.find(message=>message.id===agentMessage.messageId);assert.ok(sourceMessage);
     assert.equal(sourceMessage.authorId,null);assert.ok(sourceMessage.author);
     assert.deepEqual(saved.source?.author,{kind:sourceMessage.author.kind,id:sourceMessage.author.id,name:sourceMessage.author.name});
     assert.equal(saved.source?.projectMessageId,agentMessage.messageId);assert.equal(saved.source?.sentAt,sourceMessage.createdAt);assert.equal(saved.text,'Agent source thought');

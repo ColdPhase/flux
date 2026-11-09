@@ -213,7 +213,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   }
 
   const root = thread?.root ?? null;
-  const lines = [...shown.map((message) => ({ message, authorId: message.authorId, at: message.createdAt })),
+  const lines = [...shown.map((message) => ({ message, authorId: message.authorId, via: message.via ?? null, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines);
   // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).

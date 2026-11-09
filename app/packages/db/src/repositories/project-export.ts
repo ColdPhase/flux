@@ -65,6 +65,7 @@ export function projectExportRows(db: DbExecutor) {
         messages: (messages.get(row.id) ?? []).map((message) => ({
           ...(files.get(message.id)?.length ? { files: files.get(message.id) } : {}),
           id: message.id, sequence: message.sequence, author: creator(message.authorId, message.authorAgentId), body: message.body,
+          ...(message.via ? { via: message.via } : {}),
           source: message.sourceMaterialId && message.sourceMaterialVersion ? { materialId: message.sourceMaterialId, version: message.sourceMaterialVersion } : null,
           // Only an explicit native effect carries a marker, so every ordinary message exports exactly as before.
           ...(message.contributionKind !== 'text' ? { contribution: { kind: message.contributionKind } } : {}),

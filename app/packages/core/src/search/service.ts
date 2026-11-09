@@ -152,7 +152,7 @@ function toResult(row: SearchRow): SearchResult {
     snippet: source.textIsTitle ? null : row.snippet,
     ...(task ? { task } : {}),
     place: searchPlaceOf(row),
-    author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.authorName,
+    author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.via && row.authorName ? `${row.authorName} · via ${row.via}` : row.authorName,
     at: row.at.toISOString(),
     target: source.target(row),
   };

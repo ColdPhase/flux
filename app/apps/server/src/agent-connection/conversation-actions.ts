@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type SendMessageCommand } from '@flux/contracts';
-import { derivedUuid } from '@flux/core';
-import type { Database } from '@flux/db';
+import { derivedUuid, type Principal } from '@flux/core';
+import { assistantChangeRows, taskDiscussionRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { taskDiscussionInEventSession } from '../work/task-discussions.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, coordinationExecutor, coordinationInput,
   nativeActionExecutor } from './action-execution.js';
@@ -29,6 +29,15 @@ function send(connectionId: string, clientCommandId: string, { body, cite }: Age
 }
 
 /**
+ * The mark a local client's post carries: the client it came through, as its owner sees it ("Claude Code", "Codex", or the name of
+ * another client), the same as the "via" of an answer posted with Show everyone.
+ */
+async function clientMark(tx: Transaction, connectionId: string): Promise<string> {
+  const connection = await assistantChangeRows(tx as DbExecutor).connection(connectionId);
+  return (connection?.label ?? 'Agent client').replace(/ on this computer$/i, '').slice(0, 80);
+}
+
+/**
  * Contributions to the project's conversations through the canonical start and reply commands
  * (#36/#154), in the same one-transaction executor as the work and map actions. The audience is always the
  * project: a direct message, a private note or another project's conversation is never a target.
@@ -38,30 +47,43 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
   const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   const note = 'The message is attributed to this connection\'s agent, acting for its owner.';
+  const asOwner = 'The message is posted as your owner, marked "via" this client; it is theirs to edit or delete.';
 
   register('conversation.create').registerTool('flux_start_conversation', {
     title: 'Start a project conversation',
-    description: `Start one new conversation in the project with its first message. ${note}`,
+    description: `Start one new conversation in the project with its first message. ${asOwner}`,
     inputSchema: z.strictObject({ ...execution, message }), annotations,
   }, ({ message: posted, ...input }) => run(() => execute(input, 'conversation.create', null, posted as unknown as AgentJsonValue,
-    async ({ conversations, agent, runtime }) => {
-      const started = await conversations.createConversation(agent, input.projectId, send(runtime.connectionId, input.clientCommandId, posted));
+    async ({ conversations, transaction, runtime }) => {
+      // As the owner, marked with the client (LC-2, #1091): a person's own message, so the database accepts its `via`.
+      const owner: Principal = { kind: 'human', id: runtime.ownerUserId };
+      const started = await conversations.createConversation(owner, input.projectId, send(runtime.connectionId, input.clientCommandId, posted),
+        await clientMark(transaction, runtime.connectionId));
       const first = started.messages[0]!;
       return { value: { conversationId: started.id, messageId: first.id, sequence: first.sequence },
-        postconditions: [{ kind: 'message', id: first.id }] };
+        postconditions: [{ kind: 'message', id: first.id }], asOwner: true };
     })));
 
   register('conversation.reply').registerTool('flux_reply_in_conversation', {
     title: 'Reply in a project conversation',
     description: 'Add one reply to an existing conversation of the project, including a task\'s discussion thread. '
-      + 'In a task\'s discussion at most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT). ' + note,
+      + 'In a space\'s conversation the message is posted as your owner, marked "via" this client, and is theirs to edit or delete. '
+      + 'In a task\'s discussion the line is this connection\'s agent\'s own, acting for its owner, and at most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT).',
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'), message }), annotations,
   }, ({ conversationId, message: posted, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
-    posted as unknown as AgentJsonValue, async ({ conversations, agent, runtime }) => {
-      const sent = await conversations.sendMessage(agent, conversationId, send(runtime.connectionId, input.clientCommandId, posted));
+    posted as unknown as AgentJsonValue, async ({ conversations, transaction, agent, runtime }) => {
+      // A task's discussion is the agents' own talk about the task (C-51, TA-3): the line stays the agent's, counted and its owner's to delete.
+      // Any other conversation is people's: the post is the owner's own message, marked with the client (LC-2, #1091).
+      if (await taskDiscussionRows(transaction as DbExecutor).taskOf(conversationId) !== null) {
+        const sent = await conversations.sendMessage(agent, conversationId, send(runtime.connectionId, input.clientCommandId, posted));
+        return { value: { conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence }, postconditions: [{ kind: 'message', id: sent.id }] };
+      }
+      const owner: Principal = { kind: 'human', id: runtime.ownerUserId };
+      const sent = await conversations.sendMessage(owner, conversationId, send(runtime.connectionId, input.clientCommandId, posted),
+        await clientMark(transaction, runtime.connectionId));
       return { value: { conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
-        postconditions: [{ kind: 'message', id: sent.id }] };
+        postconditions: [{ kind: 'message', id: sent.id }], asOwner: true };
     })));
 
   // The task's one discussion (#868): the strict command is the reply operation's; the server selects the task target, so a client cannot

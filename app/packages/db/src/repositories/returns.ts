@@ -137,10 +137,10 @@ export function returnRows(db: DbExecutor) {
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
       const m = schema.projectMessages;
-      const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
+      const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt, via: m.via })
         .from(m).where(and(inArray(m.id, ids), isNull(m.removedAt))));
-      return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt }) =>
-        ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, author: actor(authorId, authorAgentId) })));
+      return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via }) =>
+        ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via, author: actor(authorId, authorAgentId) })));
     },
 
     async conversations(ids: string[]) {

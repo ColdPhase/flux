@@ -307,7 +307,7 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   // Stored messages, then the ones being sent, grouped by day and author as one list.
-  const lines = [...shown.map((message) => ({ message, item: null, authorId: message.notice ? `~${message.id}` : message.authorId, at: message.createdAt })),
+  const lines = [...shown.map((message) => ({ message, item: null, authorId: message.notice ? `~${message.id}` : message.authorId, via: message.via ?? null, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
   const rows = groupRows(lines);
   // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
