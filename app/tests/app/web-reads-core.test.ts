@@ -582,6 +582,11 @@ describe('a run\'s answer, and S3\'s path-style buckets (#1143, #1144)', () => {
       'https://s3.amazonaws.com/acme/plans/AKIAEXAMPLEKEY12/0f1e2d3c4b5a69788796a5b4c3d2e1f0', 'https://s3.amazonaws.com/other-bucket/public/readme.txt',
       'https://storage.googleapis.com/acme-gcs/reports/9a8b7c6d5e4f30211203f4e5d6c7b8a9'])
       assert.equal(await privateFragmentIn(open, index), null, open);
+    // A host is the agent's to choose: the bucket rule reads it with no pattern that could backtrack (CodeQL on #1147).
+    const started = Date.now();
+    for (const host of [`s3-${'-'.repeat(2_000)}x`, `s3${'.-'.repeat(900)}`, `s3.${'a-'.repeat(900)}.amazonaws.com`])
+      await privateFragmentIn(`https://${host}/acme/0f1e2d3c4b5a69788796a5b4c3d2e1f0`, index).catch(() => null);
+    assert.ok(Date.now() - started < 200, `${Date.now() - started} ms`);
   });
 });
 
