@@ -79,9 +79,11 @@ interface ToolConfiguration<I extends z.ZodType> {
   annotations?: ToolAnnotations;
 }
 /**
- * The one request a tool callback serves. A tool is defined once for the whole process, before any request exists, so this is all it is
- * given of the request: the verified bearer (its principal, its run if any, its binding) and the request's dispatch. A tool cannot keep
- * a principal, a run or a dispatch of one request for the next, because it is never in scope where the tool is defined.
+ * The one request a tool callback serves. A tool is defined once for the whole process, before any request exists, and is not given a
+ * request then, so this is all it is given of the request: the verified bearer (its principal, its run if any, its binding) and the
+ * request's dispatch. That is what the types enforce: there is no principal, run or dispatch to read where a tool is defined. They do
+ * not stop a callback from keeping what it is handed in a variable of its `register*` function or of its module; no tool does, and
+ * `mcp-tool-catalog.test.ts` interleaves principals and runs on the same definitions to catch one that did.
  */
 export interface ToolCall { readonly claims: FluxMcpClaims }
 export type ToolHandler<I extends z.ZodType> = (input: z.output<I>, call: ToolCall) => CallToolResult | Promise<CallToolResult>;

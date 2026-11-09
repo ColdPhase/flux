@@ -2,17 +2,20 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { AGENT_TOOLS, agentConnectionPath, personalRunTokenPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
-import type { Principal } from '@flux/core';
+import type { PersonalRunTokenIssuer, Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
 import { createMcpDispatch } from '../../apps/server/src/agent-connection/mcp-dispatch.js';
+import { createFluxMcpHandler } from '../../apps/server/src/agent-connection/mcp-protocol.js';
 import { createFluxMcpTools } from '../../apps/server/src/agent-connection/mcp-tools.js';
 import { ASSISTANT_UNIT_CREATE_INPUT } from '../../apps/server/src/agent-connection/tool-registry.js';
 import { convertedOnce } from '../../apps/server/src/agent-connection/tool-schema.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { webReader } from '../../apps/server/src/web-reads/reader.js';
+import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
-import { mcp, toolValue } from './support/mcp.js';
+import { inLegacyEra, mcp, toolValue } from './support/mcp.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -109,12 +112,88 @@ describe('the tool definitions are built once and every server shares them (#114
   });
 });
 
+/** The worker's own client of /mcp (`mcpToolHost`), once as it is (2026-07-28) and once as a client of the 2025-06-18 protocol would send it. */
+const ERAS = [{ era: '2026-07-28', through: (send: typeof fetch) => send }, { era: '2025-06-18', through: inLegacyEra }] as const;
+const A_MINUTE = () => new Date(Date.now() + 60_000).toISOString();
+/** The worker opens a session for a run, as its processor does; null would mean the run could not be listed or had no token. */
+async function openSession(host: ReturnType<typeof mcpToolHost>, runId: string) {
+  const session = await host({ id: runId } as never, {} as never);
+  assert.ok(session, 'a session is opened');
+  return session;
+}
+
+describe('a run with none of its tools on the server is listed none, not an error, in both eras (#1155)', () => {
+  const dmRun = { id: randomUUID(), jti: randomUUID(), projectId: null, conversationId: null, dmId: randomUUID(), tools: ['flux_read_web'] };
+  const claims = () => ({ ownerUserId: randomUUID(), connectionId: randomUUID(), clientId: null, grantReferenceId: null, dispatch: createMcpDispatch(), run: dmRun });
+  /** What the route does with a verified run token: one handler and one server for the request, and a call outside the run's tools refused. */
+  const route = (tools: ReturnType<typeof createFluxMcpTools>) => (request: Request) =>
+    createFluxMcpHandler(() => tools.server(claims()), { refuseTool: (name) => !dmRun.tools.includes(name) }).fetch(request);
+  const asFetch = (serve: (request: Request) => Promise<Response>) => ((input: string, init?: RequestInit) => serve(new Request(input, init))) as unknown as typeof fetch;
+  const issuer = (granted: string[]): PersonalRunTokenIssuer & { closed: string[] } => {
+    const closed: string[] = [];
+    return { closed, async issue() { return { token: 'a-run-token', tools: granted, expiresAt: A_MINUTE() }; }, async close(runId) { closed.push(runId); } };
+  };
+  const rpc = (era: (typeof ERAS)[number], serve: (request: Request) => Promise<Response>, method: string, params: Record<string, unknown> = {}) =>
+    era.through(asFetch(serve))('http://api.test/mcp', { method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json', 'mcp-protocol-version': '2026-07-28',
+      'mcp-method': method }, body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params: { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+      'io.modelcontextprotocol/clientInfo': { name: 'x', version: '1' }, 'io.modelcontextprotocol/clientCapabilities': {} } } }) })
+      .then(async (response) => {
+        const raw = await response.text();
+        const data = raw.split('\n').find((line) => line.startsWith('data: '));
+        return { status: response.status, body: JSON.parse(data ? data.slice(6) : raw) as { result?: Record<string, unknown>; error?: { message?: string } } };
+      });
+
+  test('a direct-message run is minted flux_read_web only; with reading the web off the server defines no tool for it, and its session still opens', async () => {
+    const tools = createFluxMcpTools(db, SECRET, null, webReader({ enabled: false }));
+    for (const era of ERAS) {
+      const answered = await rpc(era, route(tools), 'tools/list');
+      assert.equal(answered.status, 200, `${era.era}: tools/list is answered`);
+      assert.deepEqual(answered.body.result?.tools, [], `${era.era}: an empty list, not "Method not found"`);
+      const granted = issuer(['flux_read_web']);
+      const session = await openSession(mcpToolHost(granted, 'http://api.test/mcp', era.through(asFetch(route(tools)))), dmRun.id);
+      assert.deepEqual(session.tools, [], `${era.era}: the worker's session has no tool, and the run goes on without tools`);
+      assert.deepEqual(granted.closed, [], 'the token is held for the run, not closed as for a run that could not list');
+      await session.close();
+      assert.deepEqual(granted.closed, [dmRun.id]);
+    }
+  });
+
+  test('with reading the web on, the same run is listed its tool: the server defines it, so the empty list is the only difference', async () => {
+    const tools = createFluxMcpTools(db, SECRET, null, webReader({ enabled: true }));
+    for (const era of ERAS) {
+      const session = await openSession(mcpToolHost(issuer(['flux_read_web']), 'http://api.test/mcp', era.through(asFetch(route(tools)))), dmRun.id);
+      assert.deepEqual(session.tools.map((tool) => tool.name), ['flux_read_web'], era.era);
+    }
+  });
+
+  test('a run whose tools are none declares the tools capability in both eras, and a run that lists tools declares the same', async () => {
+    const off = createFluxMcpTools(db, SECRET, null, webReader({ enabled: false }));
+    for (const era of ERAS) {
+      const answered = era.era === '2025-06-18'
+        ? await rpc(era, route(off), 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } })
+        : await rpc(era, route(off), 'server/discover');
+      assert.equal(answered.status, 200, era.era);
+      assert.deepEqual(answered.body.result?.capabilities, { tools: { listChanged: true } }, `${era.era}: tools only, as for any run`);
+    }
+    // A run with tools is told the same, and a client keeps resources, tools and prompts, in the order it always had.
+    const withTools = createFluxMcpTools(db, SECRET, null, null);
+    const listed = await rpc(ERAS[1], (request) => createFluxMcpHandler(() => withTools.server({ ...claims(), run: { ...dmRun, tools: ['flux_list_contexts'] } })).fetch(request),
+      'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
+    assert.deepEqual(listed.body.result?.capabilities, { tools: { listChanged: true } });
+    const client = await rpc(ERAS[1], (request) => createFluxMcpHandler(() => withTools.server({ ownerUserId: randomUUID(), connectionId: randomUUID(), clientId: null, grantReferenceId: null,
+      dispatch: createMcpDispatch() })).fetch(request), 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
+    assert.deepEqual(Object.keys(client.body.result?.capabilities as object), ['resources', 'tools', 'prompts']);
+  });
+});
+
 describe('two principals, two runs and a client on one set of definitions, interleaved (#1144)', () => {
   interface Client { owner: Person; ws: Workspace; place: Project; agentId: string; taskTitle: string; connection: Awaited<ReturnType<typeof agentConnection>> }
   const connections = new FakeConnections();
   const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections, providerEnabled: true });
   const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
   let ada: Client; let jonas: Client;
+  /** Marks this run's own tasks, so a second run of this file on one database counts only its own. */
+  const stamp = `tc-${randomBytes(4).toString('hex')}`;
 
   /** A person with a space, a task of their own and a local client signed in as their agent. */
   async function client(label: string): Promise<Client> {
@@ -127,7 +206,7 @@ describe('two principals, two runs and a client on one set of definitions, inter
     return { owner, ws, place, agentId, taskTitle, connection: await agentConnection(pool, owner.browser, agentId, [place.id]) };
   }
 
-  interface Run { owner: Person; place: Project; token: string; tools: string[]; call(name: string, args?: Record<string, unknown>): ReturnType<typeof mcp>; list(): ReturnType<typeof mcp> }
+  interface Run { runId: string; owner: Person; place: Project; token: string; tools: string[]; call(name: string, args?: Record<string, unknown>): ReturnType<typeof mcp>; list(): ReturnType<typeof mcp> }
   /** A person's assistant, turned on with the given "What it may do", and one of its runs in flight with its token minted. */
   async function assistant(label: string, mayDo: 'act' | 'read'): Promise<Run> {
     const owner = await person(label);
@@ -148,7 +227,7 @@ describe('two principals, two runs and a client on one set of definitions, inter
     assert.equal(minted.status, 200);
     const { token, tools } = await minted.json() as { token: string; tools: string[] };
     let id = 0;
-    return { owner, place, token, tools,
+    return { runId: started.run.id, owner, place, token, tools,
       call: (name, args = {}) => mcp(token, ++id, 'tools/call', { name, arguments: args }),
       list: () => mcp(token, ++id, 'tools/list') };
   }
@@ -194,12 +273,14 @@ describe('two principals, two runs and a client on one set of definitions, inter
   });
 
   test('"What it may do" and the capabilities are each principal\'s own: Ada\'s agent acts while Jonas\'s only reads, in the same breath', async () => {
-    const made = (who: Client, index: number) => who.connection.tool('flux_create_task', { projectId: who.place.id, clientCommandId: randomUUID(), task: { title: `tc-made-${index}` } });
+    const made = (who: Client, index: number) => who.connection.tool('flux_create_task', { projectId: who.place.id, clientCommandId: randomUUID(), task: { title: `${stamp}-made-${index}` } });
     const [mineOk, theirsRefused, mineOk2, theirsRefused2] = await Promise.all([made(ada, 1), made(jonas, 1), made(ada, 2), made(jonas, 2)]);
     assert.ok(JSON.parse(text(mineOk)).workId && JSON.parse(text(mineOk2)).workId, 'Ada\'s agent made its tasks');
     assert.equal(refusalCode(theirsRefused), 'AGENT_ONLY_READS');
     assert.equal(refusalCode(theirsRefused2), 'AGENT_ONLY_READS');
-    const made1 = (await pool.query(`SELECT project_id FROM project_work_items WHERE title LIKE 'tc-made-%' ORDER BY title, created_at`)).rows as { project_id: string }[];
+    // Only this run's own tasks: the titles carry this run's stamp, and the database may hold an earlier run of this file's (another era's).
+    const made1 = (await pool.query(`SELECT project_id FROM project_work_items WHERE project_id = ANY($1) AND title LIKE $2 ORDER BY title, created_at`,
+      [[ada.place.id, jonas.place.id], `${stamp}-made-%`])).rows as { project_id: string }[];
     assert.deepEqual(made1.map((row) => row.project_id), [ada.place.id, ada.place.id], 'only in the space of the principal that asked');
     const capabilities = async (who: Client) => toolValue((await who.connection.tool('flux_bootstrap', { projectId: who.place.id, clientSessionId: randomUUID() }))).capabilities as { name: string; available: boolean }[];
     const [adaCaps, jonasCaps] = await Promise.all([capabilities(ada), capabilities(jonas)]);
@@ -230,7 +311,7 @@ describe('two principals, two runs and a client on one set of definitions, inter
   test('two runs changing things at once each change their own place (no project is named: it is the run\'s), and a read-only run is refused', async () => {
     const titles = [0, 1, 2, 3].map((index) => ({ one: `tc-one-${index}-${randomBytes(3).toString('hex')}`, two: `tc-two-${index}-${randomBytes(3).toString('hex')}` }));
     const answers = await Promise.all(titles.flatMap((title) => [acting.call('flux_create_task', { clientCommandId: randomUUID(), task: { title: title.one } }),
-      secondActing.call('flux_create_task', { clientCommandId: randomUUID(), task: { title: title.two } }), reading.call('flux_create_task', { clientCommandId: randomUUID(), task: { title: 'tc-never' } })]));
+      secondActing.call('flux_create_task', { clientCommandId: randomUUID(), task: { title: title.two } }), reading.call('flux_create_task', { clientCommandId: randomUUID(), task: { title: `${stamp}-never` } })]));
     answers.forEach((answer, index) => {
       if (index % 3 === 2) assert.equal(refusalCode(answer.message), 'MCP_ENTRY_UNAVAILABLE', 'a tool outside the run\'s own list is refused before anything runs');
       else assert.ok(JSON.parse(text(answer.message)).workId, `change ${index} applied`);
@@ -240,7 +321,7 @@ describe('two principals, two runs and a client on one set of definitions, inter
       assert.deepEqual(await placeOf(title.one), [acting.place.id], 'the first run\'s task is in the first run\'s place');
       assert.deepEqual(await placeOf(title.two), [secondActing.place.id], 'the second run\'s is in the second\'s');
     }
-    assert.deepEqual(await placeOf('tc-never'), [], 'a read-only run made nothing');
+    assert.deepEqual(await placeOf(`${stamp}-never`), [], 'a read-only run made nothing');
   });
 
   test('a run sees a client\'s resources and prompts never, a client always, whatever was asked before', async () => {
@@ -256,5 +337,20 @@ describe('two principals, two runs and a client on one set of definitions, inter
     // And a client's failure is its own: Jonas's refused write did not turn into a refusal for anyone else.
     assert.equal(toolFailure((await jonas.connection.tool('flux_create_task', { projectId: jonas.place.id, clientCommandId: randomUUID(), task: { title: 'tc-no' } }))).code, 'AGENT_ONLY_READS');
     assert.ok(JSON.parse(text(await ada.connection.tool('flux_create_task', { projectId: ada.place.id, clientCommandId: randomUUID(), task: { title: 'tc-yes' } }))).workId);
+  });
+
+  test('a run whose minted tools the server has none of (#1155) is listed none through the real route, and the worker\'s client opens its session, in both eras', async () => {
+    const lone = await assistant('tc-run-none', 'act');
+    // What the route lists is the run's stored tools that it defines: none, as for a direct-message run with reading the web off.
+    await pool.query(`UPDATE personal_runs SET run_tools = '{}' WHERE id = $1`, [lone.runId]);
+    const [listedAlone, listedBeside] = await Promise.all([lone.list(), acting.list()]);
+    assert.equal(listedAlone.status, 200);
+    assert.deepEqual(listed(listedAlone.message), [], 'an empty list, not "Method not found"');
+    assert.deepEqual(listed(listedBeside.message).map((tool) => tool.name).sort(), acting.tools, 'and the run beside it is listed its own');
+    for (const { era, through } of ERAS) {
+      const issuer: PersonalRunTokenIssuer = { async issue() { return { token: lone.token, tools: [], expiresAt: A_MINUTE() }; }, async close() { /* the run's own token stays */ } };
+      const session = await openSession(mcpToolHost(issuer, `${apiUrl}/mcp`, through(fetch)), lone.runId);
+      assert.deepEqual(session.tools, [], `${era}: a session with no tools, not a thrown "tools could not be listed"`);
+    }
   });
 });

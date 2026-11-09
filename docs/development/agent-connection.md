@@ -737,10 +737,15 @@ as the search cursor key.
   every schema.
 - **The rule for a tool:** a `register*` function in `agent-connection/` runs once, before any request exists, so it has no claims. A
   callback gets the request's as its second argument (`(input, { claims }) => …`), and everything per request (the principal, the run, the
-  dispatch that records what the call touched, the executor made from them) comes from there. A tool that kept anything of one request
-  at its definition would hand it to the next request, so the definitions never see one: `mcp-tool-catalog.test.ts` runs two
-  principals, two runs and a client against the same definitions at once. A saved change's Approve (`assistant/changes.ts`) calls the same
+  dispatch that records what the call touched, the executor made from them) comes from there. That is all the types enforce: a tool
+  cannot read a request's principal or run where it is defined, because it is not given one. Nothing in the compiler or the lint stops a
+  callback from keeping what it is handed in a variable of its `register*` function or of its module, which would hand one request's
+  principal or run to the next. No tool does; review holds the rule, and `mcp-tool-catalog.test.ts` runs two principals, two runs and a
+  client against the same definitions at once to catch a tool that does. A saved change's Approve (`assistant/changes.ts`) calls the same
   callbacks with the approval's claims.
+- **A run with no tool here:** a run is bound only the tools it may use, and may have none that this server defines (a direct message's
+  one tool, `flux_read_web`, while the operator has reading the web off). Its server still declares the `tools` capability, so its list is
+  `[]`, not "Method not found" (#1155): the worker's `mcpToolHost` treats a failed list as a lost run.
 
 ## Verification boundary
 

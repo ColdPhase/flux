@@ -121,6 +121,23 @@ export async function mcp(accessToken: string, id: number, method: string, param
   return { status: response.status, message, headers: response.headers };
 }
 
+/**
+ * A caller's `fetch` as a client of the 2025-06-18 protocol sends what it was given for 2026-07-28 (the worker's `mcpToolHost` speaks only
+ * the latter): no envelope in the body, no `Mcp-Method` or `Mcp-Name`, and an Accept for both forms of answer. The era of the route's
+ * answer is then the legacy one (a request with no session, as `mcp()` sends it under `FLUX_TEST_MCP_PROTOCOL=2025-06-18`).
+ */
+export function inLegacyEra(fetchImpl: typeof fetch = fetch): typeof fetch {
+  return ((input: string | URL | Request, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    headers.delete('mcp-method'); headers.delete('mcp-name');
+    headers.set('mcp-protocol-version', '2025-06-18');
+    headers.set('accept', 'application/json, text/event-stream');
+    const body = JSON.parse(String(init?.body)) as { params?: Record<string, unknown> };
+    if (body.params) delete body.params._meta;
+    return fetchImpl(input, { ...init, headers, body: JSON.stringify(body) });
+  }) as typeof fetch;
+}
+
 export function toolValue(message: Record<string, unknown> | null) {
   assert.ok(message && !message.error, 'MCP returned a tool result');
   const result = message.result as { isError?: boolean; content?: { type: string; text?: string }[] };
