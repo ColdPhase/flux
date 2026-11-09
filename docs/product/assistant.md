@@ -139,7 +139,7 @@ work there too.
   created directly.
 - **Telling another person.** A server agent's change that would notify someone other than its
   owner waits too: a task made to wait for them, new words (title or blocker) on a task that waits
-  for them, or a decision or result about their task. Flux would send them its words, and a server
+  for them, or a decision about their task. Flux would send them its words, and a server
   agent sends no message to another person by itself (AG-4,
   [#1089](https://github.com/ColdPhase/flux/issues/1089)). The owner's OK card shows those words and
   everyone they would reach before Approve. Flux's own notice when what a task waited for is resolved ("#5 can

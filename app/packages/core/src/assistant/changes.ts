@@ -15,7 +15,7 @@ export interface AssistantChangeFacts {
   /** A task created for another person (its owner is someone else, or someone else's agent). */
   forOther: boolean;
   /**
-   * A run's change would tell a person other than the owner something (#1089): a task that waits for them, or a decision or result about
+   * A run's change would tell a person other than the owner something (#1089): a task that waits for them, or a decision about
    * their task, which notifies them with its words. An agent sends no message to another person by itself (AG-3, AG-4).
    */
   tells?: boolean;

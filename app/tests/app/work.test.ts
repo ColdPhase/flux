@@ -13,7 +13,7 @@ import { StreamClient } from './support/stream.js';
 // people and outsiders, supersede history (no task is moved by a decision), If-Match conflicts, idempotent
 // retries, events for the stream, and the agent rule (propose, never accept).
 
-const KINDS = ['project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1', 'project.result_recorded.v1', 'project.link_created.v1'];
+const KINDS = ['project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1', 'project.link_created.v1'];
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
 const get = (someone: Person, path: string) => someone.browser.request('GET', path);

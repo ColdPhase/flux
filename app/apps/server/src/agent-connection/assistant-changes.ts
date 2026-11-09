@@ -323,9 +323,9 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
 /**
  * The person other than the owner whom a run's change would notify (#1089; F-036 AG-3, AG-4: an agent sends no message to another person
  * by itself): the one a task is made to wait for, the one a task goes on waiting for when its title or blocker changes (their Needs-you
- * item shows them), or the owner of a task a decision or result is about. These are the notifications of `project.work_created`/
- * `work_updated` (`waitingFor`) and of `project.decision_proposed`/`result_recorded` (the linked tasks' owners), and they carry the agent's
- * words. A line the agent writes in a task's discussion (a blocker, a result) notifies nobody but its owner (`onlyNotifies`). Null when it
+ * item shows them), or the owner of a task a decision is about. These are the notifications of `project.work_created`/
+ * `work_updated` (`waitingFor`) and of `project.decision_proposed` (the linked tasks' owners), and they carry the agent's
+ * words. A line the agent writes in a task's discussion (a blocker, what came of it) notifies nobody but its owner (`onlyNotifies`). Null when it
  * tells nobody else. A local client is its person's own tool and may tell people (LC-2), so only a run's change waits for this.
  */
 async function toldPerson(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>, owner: string): Promise<string | null> {
@@ -348,8 +348,8 @@ async function toldPerson(tx: Transaction, operation: string, objectId: string |
       const reworded = (typeof changes.title === 'string' && changes.title !== work?.title) || (typeof changes.blocker === 'string' && changes.blocker !== work?.blocker);
       return still && still !== owner && reworded ? still : null;
     }
-    case 'result.record': case 'decision.propose': {
-      const linked = operation === 'decision.propose' ? payload.affects : [...(Array.isArray(payload.work) ? payload.work : []), (payload.finishes as { id?: unknown } | undefined)?.id];
+    case 'decision.propose': {
+      const linked = payload.affects;
       for (const id of new Set((Array.isArray(linked) ? linked : []).filter((value): value is string => typeof value === 'string'))) {
         const work = await rows.work(id);
         if (work?.ownerUserId && work.ownerUserId !== owner) return work.ownerUserId;
