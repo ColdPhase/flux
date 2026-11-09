@@ -9,8 +9,7 @@ import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { conversationStore } from '../conversation/store.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { actionAnnotations as annotations, actionId as id, coordinationExecutor, coordinationInput } from './action-execution.js';
-import type { FluxMcpClaims } from './context.js';
-import type { AgentToolRegistry } from './tool-registry.js';
+import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
 type Post = AgentQuestionPorts['postMessage'];
@@ -74,8 +73,8 @@ const execution = coordinationInput();
  * `flux_ask_question` (#347 S14): a question with two to four ready answers, posted as the agent's message in a project
  * conversation. It is the agent's own question, not a change to a person's things, so it does not wait. Only the asked person's answer ends it.
  */
-export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const execute = coordinationExecutor(db, claims);
+export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Database) {
+  const execute = ({ claims }: ToolCall) => coordinationExecutor(db, claims);
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   tools.forAccess('write', { operation: 'conversation.reply', classes: AGENT_OPERATION_CLASSES['conversation.reply'] }).registerTool('flux_ask_question', {
     title: 'Ask a person a question with ready answers',
@@ -90,7 +89,7 @@ export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Datab
       options: z.array(z.string().min(1).max(AGENT_QUESTION_LIMITS.option)).min(AGENT_QUESTION_LIMITS.options.min).max(AGENT_QUESTION_LIMITS.options.max)
         .describe('Two to four short, different ready answers.'),
       askUserId: z.string().min(1).max(200).optional().describe('The person to ask; by default the owner of this connection. They must read the project.') }), annotations,
-  }, ({ conversationId, question, options, askUserId, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
+  }, ({ conversationId, question, options, askUserId, ...input }, call) => run(() => execute(call)(input, 'conversation.reply', conversationId,
     { question, options, ...(askUserId ? { askUserId } : {}) } as unknown as AgentJsonValue, async ({ transaction, events, conversations, agent, runtime }) => {
       const ports = questionPorts(transaction,
         async (principal: Principal, target, message) => { const sent = await conversations.sendMessage(principal, target, message); return { id: sent.id }; },

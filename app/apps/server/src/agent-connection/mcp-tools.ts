@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { agentProposalRepository, accessReader, type Database } from '@flux/db';
 import { agentProposalUseCases, coworkServerInstructions, enforce, evaluateProject, recordEvent } from '@flux/core';
 import { registerAgentPlaybook } from './playbook.js';
-import { agentToolRegistry } from './tool-registry.js';
+import { agentToolRegistry, type AgentToolRegistry } from './tool-registry.js';
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
@@ -16,12 +16,10 @@ import { registerAgentGithubActions } from './github-actions.js';
 import { registerAgentWebReads } from './web-reads.js';
 import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
-import { refusedPrivateAddress } from './run-private-text.js';
-import { boundRunResult } from './run-token.js';
 import { eventPorts } from '../events.js';
-import type { McpDispatch } from './mcp-dispatch.js';
+import { createMcpManifest } from './mcp-dispatch.js';
 import { MCP_MAX_TOOL_INPUT_ELEMENTS, FLUX_MCP_PROTOCOL_VERSIONS } from './mcp-protocol.js';
 
 export type { FluxMcpClaims } from './context.js';
@@ -32,41 +30,8 @@ export const RUN_SERVER_INSTRUCTIONS = 'These are the Flux tools of one agent ru
   + 'Some changes wait for your owner instead of applying; the result then says so in plain words. Do not retry them. '
   + 'No tool posts a message in a conversation: Flux puts your answer where it belongs.';
 
-/**
- * A personal run's server offers tools only (F-022 "Hardening": the CLI must see nothing but the run's
- * exact Flux tools). Its resources and prompts are declared, so the manifest still holds, but never
- * registered, so no resource or prompt capability is advertised to it.
- */
-function toolsOnly(server: McpServer): McpServer {
-  const ignored = { enable() { /* never registered */ }, disable() { /* never registered */ }, remove() { /* never registered */ }, update() { /* never registered */ } };
-  return new Proxy(server, { get(target, key, receiver) {
-    if (key === 'registerResource' || key === 'registerPrompt') return () => ignored;
-    return Reflect.get(target, key, receiver) as unknown;
-  } });
-}
-
-/** A fresh server is bound to one verified bearer; each tool rechecks inside its transaction. */
-/** `github` is the read-only GitHub App provider of this installation, or null when it has none (#160 AC-3); `webReader` reads web pages for flux_read_web (#918), or null when the install has none. */
-export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { dispatch: McpDispatch }, cursorSecret: string, github: GithubActionProvider | null = null,
-  webReader: WebReader | null = null): McpServer {
-  const run = claims.run;
-  const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
-    instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
-    maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
-  });
-  const tools = agentToolRegistry(server, claims.dispatch, run ? (result, tool) => boundRunResult(db, run.id, result as { content?: unknown }, tool) : undefined,
-    run ? { projectId: run.projectId, written: (args) => refusedPrivateAddress(db, run.id, args) } : undefined);
-  registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);
-  registerAgentDomainReads(tools.forAccess('read'), db, claims, cursorSecret);
-  registerAgentBootstrap(tools, db, claims);
-  registerAgentWorkActions(tools, db, claims);
-  registerAgentMapActions(tools, db, claims);
-  registerAgentDocActions(tools, db, claims);
-  registerAgentConversationActions(tools, db, claims);
-  registerAgentQuestionActions(tools, db, claims);
-  registerAgentCoworkActions(tools, db, claims);
-  registerAgentGithubActions(tools, db, claims, github);
-  registerAgentWebReads(tools, db, claims, webReader);
+/** The only tool of this file: a human-reviewable suggestion from a project material (it is not one of the groups above). */
+function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
   tools.forAccess('write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
     description: 'Submit a human-reviewable suggestion based on the current version of a project material.',
@@ -76,7 +41,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
       suggestedAction: z.string().min(1).max(10_000),
     }),
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
-  }, async ({ projectId, materialId, version, clientCommandId, fact, interpretation, suggestedAction }) => {
+  }, async ({ projectId, materialId, version, clientCommandId, fact, interpretation, suggestedAction }, { claims }) => {
     try {
       const proposal = await withAgentConnection(db, claims, 'write', projectId, async ({ tx, connection }) => {
         const proposals = agentProposalUseCases(agentProposalRepository(tx, {
@@ -96,9 +61,63 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
       return toolResult(proposal);
     } catch (error) { return toolError(error); }
   });
+}
+
+/**
+ * The server of every request of one kind of caller, with the tool definitions built once (`run`: a personal run's token, otherwise a
+ * local client's bearer). Building them is the cost this exists to pay once: every tool's zod schema, its JSON Schema, the playbook's
+ * digest, the search cursor key and the check that the registrations are exactly the tool list. A request then gets a new server (the SDK
+ * binds one to its transport and to nothing else) and the tools it may use, bound to its verified claims: see `AgentToolRegistry.bind`.
+ */
+function serverFactory(db: Database, cursorSecret: string, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean) {
+  const manifest = createMcpManifest();
+  const tools = agentToolRegistry(manifest, db, run);
+  const playbook = registerAgentPlaybook(tools, db);
+  registerAgentDomainReads(tools.forAccess('read'), db, cursorSecret);
+  registerAgentBootstrap(tools, db);
+  registerAgentWorkActions(tools, db);
+  registerAgentMapActions(tools, db);
+  registerAgentDocActions(tools, db);
+  registerAgentConversationActions(tools, db);
+  registerAgentQuestionActions(tools, db);
+  registerAgentCoworkActions(tools, db);
+  registerAgentGithubActions(tools, db, github);
+  registerAgentWebReads(tools, db, webReader);
+  registerAgentProposal(tools, db);
   tools.verifyManifest();
-  claims.dispatch.verifyRegistrations();
-  // A run token lists and calls exactly the run's tools (F-022 "Agent connection and permissions").
-  if (run) tools.restrictTo(new Set(run.tools));
-  return server;
+  manifest.verifyRegistrations();
+  const instructions = run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions();
+  return (claims: VerifiedFluxMcpClaims) => {
+    const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
+      instructions, supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS], maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
+    });
+    // A personal run's server offers tools only (F-022 "Hardening": the CLI must see nothing but the run's exact Flux tools). Its resource
+    // and prompts are declared in the manifest, so the list still holds, but never registered, so no resource or prompt capability is
+    // advertised to it.
+    if (!run) playbook.resource(server, claims);
+    // A run token lists and calls exactly the run's tools (F-022 "Agent connection and permissions").
+    tools.bind(server, claims);
+    if (!run) playbook.prompts(server, claims);
+    return server;
+  };
+}
+
+export interface FluxMcpTools {
+  /** A new server for one verified request, bound to its claims: its tools reach that request's principal, run and binding only. */
+  server(claims: VerifiedFluxMcpClaims): McpServer;
+}
+
+/**
+ * The MCP tools of one API process. `github` is the read-only GitHub App provider of this installation, or null when it has none
+ * (#160 AC-3); `webReader` reads web pages for flux_read_web (#918), or null when the install has none. Each kind of caller's
+ * definitions are built when the first request of that kind arrives, and then serve every request.
+ */
+export function createFluxMcpTools(db: Database, cursorSecret: string, github: GithubActionProvider | null = null, webReader: WebReader | null = null): FluxMcpTools {
+  let client: ReturnType<typeof serverFactory> | undefined;
+  let run: ReturnType<typeof serverFactory> | undefined;
+  return { server(claims) {
+    // A fresh server is bound to one verified bearer; each tool rechecks inside its transaction.
+    if (claims.run) return (run ??= serverFactory(db, cursorSecret, github, webReader, true))(claims);
+    return (client ??= serverFactory(db, cursorSecret, github, webReader, false))(claims);
+  } };
 }

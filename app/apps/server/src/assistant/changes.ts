@@ -34,17 +34,17 @@ const LOST_SPACE = 'You no longer have access to this space, so this wasn’t ma
 const CLAIM_ENDED = 'The claim this was made under has ended, so it can\'t be made now. Ask again with a live claim';
 const CLAIM_ENDED_CODES = new Set(['COWORK_CLAIM_LOST', 'AGENT_EXECUTION_UNAVAILABLE', 'RUNTIME_UNAVAILABLE']);
 type ToolOutput = { content?: { text?: string }[]; isError?: boolean };
-type SavedTool = (args: Record<string, unknown>, extra: unknown) => Promise<ToolOutput>;
+type SavedTool = (args: Record<string, unknown>, call: { claims: FluxMcpClaims }) => Promise<ToolOutput>;
 
-/** The change tools' own callbacks, bound to a server-owned approval context, for re-executing one saved call. */
-function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool> {
+/** The change tools' own callbacks, which take a server-owned approval context as the call they serve, for re-executing one saved call. */
+function savedTools(db: Database): Map<string, SavedTool> {
   const callbacks = new Map<string, SavedTool>();
   const registry = { forAccess: () => ({ registerTool: (name: string, _config: unknown, callback: SavedTool) => { callbacks.set(name, callback); } }) };
   for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions])
-    register(registry as unknown as AgentToolRegistry, db, claims);
+    register(registry as unknown as AgentToolRegistry, db);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
   // (Its recovery-cursor secret serves tools a saved change never calls; the registration only needs a well-formed one.)
-  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db, claims);
+  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db);
   return callbacks;
 }
 
@@ -60,13 +60,13 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
   const bearer = !change.runId ? call.bearer : undefined;
   const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!,
     clientId: bearer?.clientId ?? null, grantReferenceId: bearer?.grantReferenceId ?? null, approval };
-  const tool = savedTools(db, claims).get(call.tool);
+  const tool = savedTools(db).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
   // and nothing is rebuilt from guessed fields or a bootstrap (R2).
   if (change.runId && call.tool === 'flux_create_unit' && (call.view !== ASSISTANT_UNIT_CREATE_VIEW || !ASSISTANT_UNIT_CREATE_INPUT.safeParse(call.args).success))
     return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This hand-off can no longer be applied. Ask again' };
-  const output = await tool({ ...call.args, assistantCall: call }, {});
+  const output = await tool({ ...call.args, assistantCall: call }, { claims });
   if (!output.isError) return { ok: true };
   try {
     const parsed = JSON.parse(output.content?.[0]?.text ?? '{}') as { code?: string; error?: string };

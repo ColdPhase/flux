@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
 import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, getProject } from '@flux/core';
 import { accessPorts, agentExecutionRows, agentOrientationRows, agentPlaybookRows, coworkUnitRows, type Database } from '@flux/db';
-import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -15,7 +15,7 @@ export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
 ]);
 
 /** Registered read tools use the same verified bearer/current policy boundary as canonical content readers. */
-export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
+export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database) {
   const read = tools.forAccess('read');
   read.registerTool('flux_bootstrap', { title: 'Recover authenticated project context',
     description: 'Recover the original server runtime, current project, tool catalog and the trusted co-work playbook version. Your authority is your owner\'s rights at each call, not what this lists. Missing coordination and repository providers are explicit setup gaps; this does not prove instruction loading.',
@@ -23,7 +23,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
       includeWorkRecovery: z.boolean().optional().describe('Recover this connection’s own open units for Start/Resume; also needs project.work.read.'),
       workLimit: page.limit.optional(), workOffset: page.offset.optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId,
-      includeWorkRecovery, workLimit, workOffset }) => {
+      includeWorkRecovery, workLimit, workOffset }, { claims }) => {
     try {
       const value = await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, mayDo }) => {
         const project = await getProject(principal, projectId, tx, accessPorts);
@@ -57,7 +57,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
   read.registerTool('flux_project_orientation', { title: 'Index project sources',
     description: 'A page of IDs, labels and exact versions or checkpoints for one source kind. No bodies, private maps, DMs or drafts, and no guessed goal or plan classes.',
     inputSchema: z.strictObject({ projectId: z.uuid(), kind: z.enum(AGENT_SOURCE_KINDS), ...page }), annotations: { readOnlyHint: true } },
-  async ({ projectId, kind, ...query }) => {
+  async ({ projectId, kind, ...query }, { claims }) => {
     try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).list(connection, { workspaceId, projectId }, kind, query);
@@ -66,7 +66,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
   read.registerTool('flux_changes_since', { title: 'Compare recorded source checkpoints',
     description: 'Compare up to 50 recorded checkpoints under current authorization: changed metadata, unchanged identities and content-free unavailable outcomes. It does not discover new or removed objects; use project orientation for that.',
     inputSchema: z.strictObject({ projectId: z.uuid(), known: z.array(agentSourceCheckpointSchema).max(50) }), annotations: { readOnlyHint: true } },
-  async ({ projectId, known }) => {
+  async ({ projectId, known }, { claims }) => {
     try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).changes(connection, { workspaceId, projectId }, known as AgentSourceCheckpoint[]);

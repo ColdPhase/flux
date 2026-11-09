@@ -3,8 +3,7 @@ import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValu
   type CreateWorkCommand, type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources, nativeActionExecutor } from './action-execution.js';
-import type { FluxMcpClaims } from './context.js';
-import type { AgentToolRegistry } from './tool-registry.js';
+import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { InvalidInputError } from '@flux/core';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -25,8 +24,8 @@ function waitingOnOf(decision: string | null | undefined, task: string | null | 
 }
 const waitingForUserId = z.string().min(1).max(200).describe('Optional: the one person a blocked task waits for, by user id. They get an Inbox item. Blocked tasks only.');
 
-export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const execute = nativeActionExecutor(db, claims);
+export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database) {
+  const execute = ({ claims }: ToolCall) => nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
 
   register('work.create').registerTool('flux_create_task', {
@@ -46,14 +45,14 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
     }) }),
     annotations,
-  }, async ({ task: { waitingForUserId: waiting, waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, ownerUserId, sourceMessageId, parentTaskId, ...task }, ...input }) => {
+  }, async ({ task: { waitingForUserId: waiting, waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, ownerUserId, sourceMessageId, parentTaskId, ...task }, ...input }, call) => {
     try {
       const waitingOn = waitingOnOf(onDecision, onTask);
       // #844: a task made from a message keeps it as its source, for people and agents alike (the message must be in this project).
       const sources = [...(materialSources(input).sources ?? []), ...(sourceMessageId ? [{ type: 'message' as const, id: sourceMessageId }] : [])];
       const created: CreateWorkCommand = { ...task, ...(ownerUserId ? { owner: { kind: 'human', id: ownerUserId } } : {}),
         ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...(waitingOn ? { waitingOn } : {}), ...(sources.length ? { sources } : {}), ...(parentTaskId ? { parentId: parentTaskId } : {}) };
-      return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
+      return toolResult(await execute(call)(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
       }));
@@ -76,13 +75,13 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
     }) }),
     annotations,
-  }, async ({ workId, expectedVersion, changes, ...input }) => {
+  }, async ({ workId, expectedVersion, changes, ...input }, call) => {
     try {
       const { waitingForUserId: waiting, waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, ...rest } = changes;
       const waitingOn = waitingOnOf(onDecision, onTask);
       const update: UpdateWorkCommand = { ...rest, ...(waiting === undefined ? {} : { waitingFor: waiting === null ? null : { kind: 'human', id: waiting } }),
         ...(waitingOn === undefined ? {} : { waitingOn }) };
-      return toolResult(await execute(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
+      return toolResult(await execute(call)(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
         async ({ work: native, agent }) => {
           const work = await native.updateWork(agent, workId, update, expectedVersion);
           return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
@@ -97,9 +96,9 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       + 'The task remains as read-only history with a creation-undone notice; repeating the same command returns its receipt.',
     inputSchema: z.strictObject({ ...execution(), workId: id, expectedVersion: version }),
     annotations: { ...annotations, destructiveHint: true },
-  }, async ({ workId, expectedVersion, ...input }) => {
+  }, async ({ workId, expectedVersion, ...input }, call) => {
     try {
-      return toolResult(await execute(input, 'work.creation.revert', workId, { expectedVersion }, async ({ work: native, agent }) => {
+      return toolResult(await execute(call)(input, 'work.creation.revert', workId, { expectedVersion }, async ({ work: native, agent }) => {
         const reverted = await native.undoTaskCreation(agent, workId, { clientCommandId: input.clientCommandId, expectedVersion });
         return { value: { workId, number: reverted.work.number, noticeId: reverted.noticeId, clientCommandId: reverted.clientCommandId, version: reverted.work.version },
           postconditions: [{ kind: 'work', id: workId, version: reverted.work.version }] };
@@ -117,10 +116,10 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       supersedes: id.optional(), affects: ids.optional(),
     }) }),
     annotations,
-  }, async ({ decision, ...input }) => {
+  }, async ({ decision, ...input }, call) => {
     try {
       const proposed: ProposeDecisionCommand = { ...decision, ...materialSources(input) };
-      return toolResult(await execute(input, 'decision.propose', null, proposed as unknown as AgentJsonValue, async ({ work: native, agent }) => {
+      return toolResult(await execute(call)(input, 'decision.propose', null, proposed as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const created = await native.proposeDecision(agent, input.projectId, proposed);
         return { value: { decisionId: created.id, version: created.version },
           postconditions: [{ kind: 'decision', id: created.id, version: created.version }] };

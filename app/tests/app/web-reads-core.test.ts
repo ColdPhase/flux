@@ -591,20 +591,20 @@ describe('a run\'s answer, and S3\'s path-style buckets (#1143, #1144)', () => {
 });
 
 describe('the tool is offered only where it can work (#953)', () => {
-  const registered = (reader: Parameters<typeof registerAgentWebReads>[3], claims: Record<string, unknown>) => {
+  const registered = (reader: Parameters<typeof registerAgentWebReads>[2], run: boolean) => {
     const names: string[] = [];
     const omitted: string[] = [];
-    registerAgentWebReads({ forAccess: () => ({ registerTool: (name: string) => { names.push(name); } }), omit: (name: string) => { omitted.push(name); } } as never,
-      {} as never, claims as never, reader);
+    registerAgentWebReads({ run, forAccess: () => ({ registerTool: (name: string) => { names.push(name); } }), omit: (name: string) => { omitted.push(name); } } as never,
+      {} as never, reader);
     // Whatever is not offered is accounted for as omitted, so the tool list still adds up.
     assert.deepEqual(omitted, names.length ? [] : ['flux_read_web']);
     return names;
   };
   const on = webReader({ enabled: true });
   test('registered for a run when the operator turned reading on; not when it is off, and not for a client with no run', () => {
-    assert.deepEqual(registered(on, { run: { id: 'r', projectId: 'p' } }), ['flux_read_web']);
-    assert.deepEqual(registered(webReader({ enabled: false }), { run: { id: 'r', projectId: 'p' } }), [], 'off: not offered, so not listed to the model');
-    assert.deepEqual(registered(null, { run: { id: 'r', projectId: 'p' } }), []);
-    assert.deepEqual(registered(on, {}), [], 'a local client reads the web with its own tools');
+    assert.deepEqual(registered(on, true), ['flux_read_web']);
+    assert.deepEqual(registered(webReader({ enabled: false }), true), [], 'off: not offered, so not listed to the model');
+    assert.deepEqual(registered(null, true), []);
+    assert.deepEqual(registered(on, false), [], 'a local client reads the web with its own tools');
   });
 });

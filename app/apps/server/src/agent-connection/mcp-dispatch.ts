@@ -10,13 +10,16 @@ export interface McpDeliveryDependencies {
   protectedOutput: boolean;
 }
 
-/** One verified request owns this context; nothing is a module-global identity cache. */
-export function createMcpDispatch() {
+const entryOf = (kind: AgentToolEntry['kind'], name: string) => AGENT_TOOLS.find((candidate) => candidate.kind === kind && candidate.name === name);
+
+/**
+ * What the process registers (the tools, the resource and the prompts of one kind of caller), accounted for against the tool list: every
+ * registration needs its exact entry, none twice, and together they are every entry. It is built once with the definitions; no request
+ * has one.
+ */
+export function createMcpManifest() {
   const registered = new Set<string>();
-  const dependencies: McpDeliveryDependencies = { projects: new Map(), objects: new Map(), protectedOutput: false };
-  const entryOf = (kind: AgentToolEntry['kind'], name: string) => AGENT_TOOLS.find((candidate) => candidate.kind === kind && candidate.name === name);
   return {
-    dependencies,
     declare(kind: AgentToolEntry['kind'], name: string) {
       const entry = entryOf(kind, name);
       if (!entry || registered.has(entry.id)) throw new Error('Every MCP registration needs one exact entry in the tool list');
@@ -26,6 +29,15 @@ export function createMcpDispatch() {
       if (registered.size !== AGENT_TOOLS.length || AGENT_TOOLS.some((entry) => !registered.has(entry.id)))
         throw new Error('The MCP tool list must match every actual tool, resource and prompt');
     },
+  };
+}
+export type McpManifest = ReturnType<typeof createMcpManifest>;
+
+/** One verified request owns this context; nothing is a module-global identity cache. */
+export function createMcpDispatch() {
+  const dependencies: McpDeliveryDependencies = { projects: new Map(), objects: new Map(), protectedOutput: false };
+  return {
+    dependencies,
     run<T>(kind: AgentToolEntry['kind'], name: string, callback: () => T): T {
       if (!entryOf(kind, name)) throw new Error('This tool is not in the tool list');
       dependencies.protectedOutput = true;

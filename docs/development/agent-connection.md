@@ -720,6 +720,28 @@ HTTP, all under `/api/v1`, `Idempotency-Key` accepted on the POSTs:
   nobody else; an answer records `project.question_answered.v1` and posts the person's reply with a client message ID
   derived from the question, so it exists once.
 
+## How the route builds its tools (#1144)
+
+The route builds the tool definitions once per API process, when the first request of a kind arrives, and a request only gets its own
+server (the SDK binds a server to one transport) with the tools it may use, bound to its verified claims. There are two kinds of
+definitions: a local client's, and a personal run's (its change tools take a different input and description, and `flux_read_web` is
+only a run's). `createFluxMcpTools` in `mcp-tools.ts` owns them, and `mcp-route.ts` creates it once per route, with the auth secret
+as the search cursor key.
+
+- **What is built once:** each tool's zod schema, its JSON Schema (`tool-schema.ts` converts it the first time the SDK asks and hands out
+  the same frozen result after; zod still validates every call), the playbook's digest, the search cursor key, and the check that the
+  registrations are exactly the tool list (`createMcpManifest`).
+- **What a request does:** `new McpServer`, the playbook's resource and prompts for a client, and `AgentToolRegistry.bind`, which
+  registers each tool the caller may use (all of them for a client, exactly the run's for a run) on that server. This still grows with the
+  tools the caller may use, by one registration of an already built definition each (well under a microsecond), where it used to build
+  every schema.
+- **The rule for a tool:** a `register*` function in `agent-connection/` runs once, before any request exists, so it has no claims. A
+  callback gets the request's as its second argument (`(input, { claims }) => …`), and everything per request (the principal, the run, the
+  dispatch that records what the call touched, the executor made from them) comes from there. A tool that kept anything of one request
+  at its definition would hand it to the next request, so the definitions never see one: `mcp-tool-catalog.test.ts` runs two
+  principals, two runs and a client against the same definitions at once. A saved change's Approve (`assistant/changes.ts`) calls the same
+  callbacks with the approval's claims.
+
 ## Verification boundary
 
 Docker integration covers two people, separate restricted projects and private

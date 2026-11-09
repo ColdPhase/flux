@@ -4,7 +4,7 @@ import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } fro
 import { agentConnectionWorkspaceId, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
-import { createFluxMcpServer } from './mcp-tools.js';
+import { createFluxMcpTools, type FluxMcpTools } from './mcp-tools.js';
 import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { signInAgainMessage, type IdpStanding } from '../identity/standing.js';
@@ -28,10 +28,15 @@ async function aiBlockedResponse(request: Request): Promise<Response> {
     data: { code: 'SPACE_AI_OFF' } }, id }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
-/** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
+/**
+ * The only remote MCP entry point. A new server is bound to each verified bearer request; the tool definitions it offers are built once
+ * for the process, when the first request needs them (the cursor key is the auth secret, which is read once its context is ready).
+ */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
   standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider',
   github: GithubActionProvider | null = null, webReader: WebReader | null = null) {
+  let mcpTools: Promise<FluxMcpTools> | undefined;
+  const tools = () => mcpTools ??= auth.$context.then((context) => createFluxMcpTools(db, context.secret, github, webReader));
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
@@ -94,13 +99,13 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         status: 403, headers: { 'content-type': 'application/json' },
       });
     }
-    const cursorSecret = (await auth.$context).secret;
-    const handler = createFluxMcpHandler(() => createFluxMcpServer(db, { ownerUserId, connectionId, dispatch,
+    const mcp = await tools();
+    const handler = createFluxMcpHandler(() => mcp.server({ ownerUserId, connectionId, dispatch,
       clientId: typeof token.client_id === 'string' ? token.client_id : null,
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
       ...(boundProjectId ? { boundProjectId } : {}),
       ...(run ? { run } : {}),
-    }, cursorSecret, github, webReader), run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {});
+    }), run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {});
     // Protected bytes are handed to the transport only while the connection and the owner's access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {
