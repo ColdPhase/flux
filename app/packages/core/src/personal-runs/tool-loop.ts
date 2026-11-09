@@ -198,8 +198,11 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
       }
     }
     const calls = result.stopReason === 'tool_use' ? result.toolCalls ?? [] : [];
-    // A `tool_use` stop without a call (an adapter never sets it so) is the model's last answer.
-    if (!calls.length) return { end: { kind: 'answer', result: result.stopReason === 'tool_use' ? { ...result, stopReason: 'end_turn' } : result }, account, turns: turn };
+    // The provider paused a long turn of its own search (#1116): its answer goes back as it is, with no tool to run, and the model goes on.
+    // It is one more request like any other, so the same limits apply to it; a pause is never the answer.
+    const paused = result.stopReason === 'pause_turn' && result.replay !== undefined;
+    // A `tool_use` stop without a call (an adapter never sets it so) is the model's last answer, and so is a pause with nothing to send back.
+    if (!calls.length && !paused) return { end: { kind: 'answer', result: result.stopReason === 'tool_use' || result.stopReason === 'pause_turn' ? { ...result, stopReason: 'end_turn' } : result }, account, turns: turn };
 
     // The model wants more turns: every limit is checked before anything it asked for is run.
     if (turn >= maxTurns) return { end: { kind: 'limit', limit: 'turns' }, account, turns: turn };

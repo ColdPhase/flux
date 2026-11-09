@@ -35,6 +35,8 @@ function checkTools(request: PersonalComputeRequest) {
   }
   if ((turns?.length ?? 0) > PERSONAL_RUN_LIMITS.maxTurns - 1) throw new Error('Too many turns');
   for (const turn of turns ?? []) {
+    // A turn the provider paused (#1116) has no call and no result: only its own answer, sent back to go on.
+    if (!turn.calls.length && !turn.results.length && Array.isArray(turn.replay) && turn.replay.length) continue;
     const called = new Set(turn.calls.map((call) => call.id));
     const answered = new Set(turn.results.map((result) => result.callId));
     if (!turn.calls.length || called.size !== turn.calls.length || called.size !== answered.size || turn.results.length !== answered.size

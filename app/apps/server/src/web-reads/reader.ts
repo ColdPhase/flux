@@ -9,8 +9,10 @@ import { readablePage, type ReadablePage } from './readable.js';
 /** Reading a page may take longer than a card and returns more of it, but it is still bounded in time and in bytes. */
 export const WEB_READ_LIMITS = { connectMs: 3_000, totalMs: 8_000, maxBytes: 512 * 1024, maxRedirects: 3 } as const;
 export const WEB_READ_KIND: FetchKind = { accept: 'text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.1', types: /^(text\/html|application\/xhtml\+xml|text\/plain)\b/ };
-/** Pages one owner's agents may start per minute, and pages the server reads at once. */
-export const READS_PER_MINUTE = 20;
+/**
+ * Pages the server reads at once: the one guard of the fetcher. There is no limit per minute (founder direction 2026-11-09, #1116): a
+ * research run reads as many pages as its question needs, one after another, and what stops it is the key's budget.
+ */
 export const READS_AT_ONCE = 6;
 
 export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'not_given';
@@ -28,7 +30,6 @@ export interface WebReaderOptions {
   rules?: FetchRules;
   /** TEST ONLY: where a named host connects (config `testHosts`). */
   connectTo?: (host: string) => { host: string; port: number } | null;
-  now?: () => number;
   /** TEST ONLY: replaces the network fetch. */
   fetch?: (address: string) => Promise<FetchResult>;
 }
@@ -51,35 +52,25 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
 export function webReader(options: WebReaderOptions) {
   const base = options.rules ?? PRODUCTION_RULES;
   const rules: FetchRules = { ...base, limits: { ...FETCH_LIMITS, ...WEB_READ_LIMITS } };
-  const now = options.now ?? Date.now;
-  const started = new Map<string, number[]>();
   let running = 0;
 
-  /** Whether this owner may start one more read now; records it when so. */
-  function allow(ownerUserId: string): boolean {
-    if (running >= READS_AT_ONCE) return false;
-    const since = now() - 60_000;
-    const recent = (started.get(ownerUserId) ?? []).filter((at) => at > since);
-    if (recent.length >= READS_PER_MINUTE) { started.set(ownerUserId, recent); return false; }
-    started.set(ownerUserId, [...recent, now()]);
-    if (started.size > 10_000) for (const [id, times] of started) if (times.every((at) => at <= since)) started.delete(id);
-    return true;
-  }
+  /** Whether the server may start one more read now. */
+  const allow = () => running < READS_AT_ONCE;
 
   return {
     get enabled() { return options.enabled; },
     /**
-     * Reads one page for an owner's agent. Never throws, except what the caller's `beforeRequest` throws: it runs with each address just
+     * Reads one page for an agent. Never throws, except what the caller's `beforeRequest` throws: it runs with each address just
      * before its request is sent (the first and every redirect hop) and a throw ends the read before that request.
      */
-    async read(ownerUserId: string, address: string, hooks: FetchHooks = {}): Promise<WebReadResult> {
+    async read(address: string, hooks: FetchHooks = {}): Promise<WebReadResult> {
       if (!options.enabled) return { ok: false, reason: 'off', requested: [] };
-      // Refused from the address alone (not a web address, scheme, port, credentials, local name, IP literal): no network, so no rate is spent.
+      // Refused from the address alone (not a web address, scheme, port, credentials, local name, IP literal): no network, so no read is spent.
       let url: URL;
       try { url = new URL(address); } catch { return { ok: false, reason: 'invalid', requested: [] }; }
       url.hash = ''; // never sent, and no part of the address that is recorded
       if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked', requested: [] };
-      if (!allow(ownerUserId)) return { ok: false, reason: 'busy', requested: [] };
+      if (!allow()) return { ok: false, reason: 'busy', requested: [] };
       running++;
       try {
         let page: FetchResult;

@@ -37,7 +37,7 @@ export const anthropicTools = (tools: readonly PersonalTool[]): Wire[] =>
 
 /**
  * The conversation: the request, then for each turn the assistant's content blocks and one user
- * message whose `tool_result` blocks come first, one per `tool_use`, in call order.
+ * message whose `tool_result` blocks come first, one per `tool_use`, in call order. A paused turn (#1116) has the assistant's blocks only.
  */
 export function anthropicMessages(input: string, turns: readonly PersonalTurn[] = []): Wire[] {
   const messages: Wire[] = [{ role: 'user', content: input }];
@@ -47,6 +47,8 @@ export function anthropicMessages(input: string, turns: readonly PersonalTurn[] 
       ...turn.calls.map((call) => ({ type: 'tool_use', id: call.id, name: call.name, input: call.input })),
     ];
     messages.push({ role: 'assistant', content: Array.isArray(turn.replay) && turn.replay.length ? turn.replay : rebuilt });
+    // A turn the provider paused (#1116) has no call: the request goes on from its answer, which is the last message.
+    if (!turn.calls.length) continue;
     messages.push({ role: 'user', content: resultsInCallOrder(turn).map((result) => ({
       type: 'tool_result', tool_use_id: result.callId, content: result.content, ...(result.isError ? { is_error: true } : {}),
     })) });

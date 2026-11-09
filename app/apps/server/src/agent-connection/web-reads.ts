@@ -57,7 +57,7 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, cl
       const ids: string[] = [];
       let read: Awaited<ReturnType<WebReader['read']>>;
       try {
-        read = await reader.read(claims.ownerUserId, url, { beforeRequest: (address) => withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
+        read = await reader.read(url, { beforeRequest: (address) => withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
           ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked', seen: [] }));
         }) });
       } catch (error) {

@@ -17,7 +17,7 @@ import http from 'node:http';
  * Modes: `success`, `truncated`, `refusal`, `status` (HTTP `status`, with an error body that echoes
  * the received key, to prove adapters never surface error bodies), `hang` (never answers),
  * `malformed` (2xx that is not JSON), `no_usage`, `redirect` (302 to /__redirected, which records a
- * hit), `oversized` (2 MB body).
+ * hit), `oversized` (2 MB body), `paused` (Anthropic: the answer stops with `pause_turn`, the server's own search loop limit, #1116).
  *
  * `search` (#954): the answer also carries the provider's own web search in its wire format: `{ query, results: [url…], cite: url }`
  * becomes a `server_tool_use` and a `web_search_tool_result` block and a text block citing `cite` (`web_search_result_location`), with
@@ -26,7 +26,7 @@ import http from 'node:http';
  */
 
 type Wire = 'anthropic' | 'openai';
-type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized';
+type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused';
 interface Search { query: string; results: string[]; cite: string }
 interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null }
 export interface RecordedProviderRequest {
@@ -45,7 +45,7 @@ function json(response: http.ServerResponse, status: number, body: unknown, head
 }
 
 function anthropicAnswer(script: Script, body: { model?: string }) {
-  const stop = script.mode === 'truncated' ? 'max_tokens' : script.mode === 'refusal' ? 'refusal' : 'end_turn';
+  const stop = script.mode === 'truncated' ? 'max_tokens' : script.mode === 'refusal' ? 'refusal' : script.mode === 'paused' ? 'pause_turn' : 'end_turn';
   const search = script.search;
   // The documented shape of a search (docs.claude.com web search tool, read 2026-11-08): the query, the results with their encrypted
   // content, then the answer split around the cited sentence.

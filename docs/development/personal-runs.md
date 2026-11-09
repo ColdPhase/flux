@@ -201,8 +201,11 @@ pages, founder direction 2026-11-09, #1113).
   turn carries Anthropic's own blocks unchanged (it needs the results' `encrypted_content`); on OpenAI it is the
   model's words and its function calls without item ids (`responsesReplay`): no reasoning is carried between
   turns and no encrypted reasoning is asked for.
-  A `pause_turn` is not continued: the text so far is the answer. Without `max_uses` a request that searches ten times in one turn can reach the
-  server's own loop limit and pause (unverified without a real key; a follow-up if it does).
+  A `pause_turn` (#1116) is continued: without `max_uses` a request that searches ten times in one turn reaches the server's own loop limit and
+  pauses, and the adapter returns it as `stopReason: 'pause_turn'` with the paused blocks as `replay`. The tool loop sends them back as the
+  last message (a turn with no call and no result, so no user message follows) and the model goes on. It is one more request like any other,
+  reconciled by itself and held to the turn cap, the money, the clock and the input bound; a pause is never the run's answer. Unverified
+  without a real key: the Docker mock only has the documented shape.
 - **Before the calls.** The loop awaits `onWebSearch` for every response that searched or cites, before
   any call of that response runs; the processor writes `personal_run_web_searches` (`boundedWebSearch`:
   normalized web addresses only, each once, at most 1,000 results and 1,000 cited, 100 queries of 300
@@ -210,8 +213,8 @@ pages, founder direction 2026-11-09, #1113).
   addresses; a run has as many responses as it makes requests). `flux_read_web` then allows the run's `given` texts, the addresses on pages it read, and the
   run's own search `results` (`found`), exactly; another run never sees them. A cited address is listed only
   when the run's search returned it, and gives nothing more. How many addresses a run reads is not limited: the exact match and the key's budget
-  are. The tool's own refusals stay: an address nothing gave (`WEB_READ_NOT_GIVEN`) and the server's throttle of one owner's agents
-  (`READS_PER_MINUTE` 20 page fetches a minute, `READS_AT_ONCE` 6; `WEB_READ_BUSY`), which protects the fetcher and is not a limit of a question.
+  are. The tool's own refusals stay: an address nothing gave (`WEB_READ_NOT_GIVEN`) and the fetcher's guard of 6 pages read at once across the
+  server (`READS_AT_ONCE`; `WEB_READ_BUSY`). There is no limit per minute (#1116): a run reads its pages one after another, as many as its question needs.
 - **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
   byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
   it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input
