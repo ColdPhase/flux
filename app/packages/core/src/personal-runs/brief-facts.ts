@@ -1,3 +1,4 @@
+import { authorLabel, FORMER_MEMBER } from '../agent-tasks/ask.js';
 import type { BriefPlace, TaskFacts } from './brief.js';
 import type { AgentBrief, MessageSource, PersonalRunPorts, RunRecord } from './ports.js';
 
@@ -41,4 +42,18 @@ export async function readBriefFacts(ports: PersonalRunPorts, run: RunRecord, br
 export async function latestMessages(read: (limit: number) => Promise<MessageSource[]>): Promise<{ messages: MessageSource[]; leftOut: boolean }> {
   const rows = await read(MESSAGE_WINDOW + 1);
   return rows.length > MESSAGE_WINDOW ? { messages: rows.slice(rows.length - MESSAGE_WINDOW), leftOut: true } : { messages: rows, leftOut: false };
+}
+
+/**
+ * A space's messages with their authors as people see them (#1160, `authorLabel`): a person by name and an agent with whose it is, "Fieldbot
+ * (Jonas's agent)", but only someone who can read the space now is named, which everyone who reads the space sees in its People list (so an
+ * answer posted with Show everyone names nobody its readers could not see). Anyone else is a former member, an agent's owner too.
+ */
+export async function namedAuthors(ports: PersonalRunPorts, projectId: string, messages: readonly MessageSource[]): Promise<MessageSource[]> {
+  const people = new Set(messages.flatMap((message) => message.author.kind === 'human' ? [message.author.id] : message.author.ownerUserId ? [message.author.ownerUserId] : []));
+  const readers = new Set<string>();
+  for (const id of people) if (await ports.access.canUseProject({ kind: 'human', id }, 'read', projectId)) readers.add(id);
+  const owners = await ports.runs.names(messages.flatMap((message) => message.author.kind === 'agent' && message.author.ownerUserId && readers.has(message.author.ownerUserId) ? [message.author.ownerUserId] : []));
+  return messages.map((message) => ({ ...message, authorName: message.author.kind === 'human' ? (readers.has(message.author.id) ? message.authorName : FORMER_MEMBER)
+    : authorLabel({ kind: 'agent', name: message.authorName, ownerName: owners.get(message.author.ownerUserId ?? '') ?? null }) }));
 }

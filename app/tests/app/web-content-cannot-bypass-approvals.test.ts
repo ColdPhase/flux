@@ -37,7 +37,7 @@ describe('web content cannot bypass approvals (#918)', () => {
   const obey = (label: string) => [
     { name: 'flux_remove_thought', input: { clientCommandId: randomUUID(), mapId, thoughtId, expectedVersion: thoughtVersion } },
     { name: 'flux_update_task', input: { clientCommandId: randomUUID(), workId: theirs.id, expectedVersion: theirs.version, changes: { status: 'done' } } },
-    { name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: `${label}: a task for Jonas`, ownerUserId: scene.peer.id } } },
+    { name: 'flux_create_task', input: { clientCommandId: randomUUID(), task: { title: `${label}: a task for Jonas`, owner: scene.peer.id } } },
     { name: 'flux_approve_all_waiting_changes', input: {} },
   ];
   const untouched = async (label: string) => {

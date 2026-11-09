@@ -68,6 +68,19 @@ export function resolveAsked(ask: AgentQuestion, candidates: readonly Askable[])
 /** "Fieldbot (Jonas's agent)": how an agent is named wherever two people's agents can be mistaken for each other. */
 export const agentLabel = (agent: { name: string; ownerName: string }) => `${agent.name} (${first(agent.ownerName)}'s agent)`;
 
+/** A person who wrote in a space and can no longer read it (#763 XC-2): named the same way everywhere, never by name. */
+export const FORMER_MEMBER = 'Former member';
+/**
+ * Who wrote a message, as people see it, for an agent that reads a space (#1160; the API-key engine's `from`, the Flux tools' `author.name`):
+ * a person by name, an agent with whose it is ("Fieldbot (Jonas's agent)"), and an answer a person posted with Show everyone as that
+ * person's, with the agent it came from ("Jonas Berg · via Assistant"). A name is null when that person cannot read the space now (they left
+ * the company or the space): a person is then a former member, and an agent's owner too. The caller decides that, never this text.
+ */
+export function authorLabel(author: { kind: 'human'; name: string | null; via?: string | null } | { kind: 'agent'; name: string; ownerName: string | null }): string {
+  if (author.kind === 'agent') return author.ownerName ? agentLabel({ name: author.name, ownerName: author.ownerName }) : `${author.name} (a former member's agent)`;
+  return `${author.name ?? FORMER_MEMBER}${author.via ? ` · via ${author.via}` : ''}`;
+}
+
 /** The agents a run may ask, in its request: names and whose they are, nothing else about them. */
 export function askableLines(others: readonly { name: string; owner: string }[]): string {
   if (!others.length) return '';

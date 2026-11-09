@@ -24,7 +24,7 @@ import {
   centsToMicros, connectionCallsTools, parseOutput, runChargeMicros, runReservationMicros, runTokensWithinLimits, type SuppliedSource,
 } from './validation.js';
 import { briefPrivateText, buildBrief, type BriefInput } from './brief.js';
-import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
+import { CHAT_TURNS, latestMessages, namedAuthors, readBriefFacts, type BriefFacts } from './brief-facts.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -176,8 +176,11 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<Rea
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, item: { kind: 'thought', text: thought.text } });
   }
   const { projectId, conversationId, dmId, dmThreadRootId } = run;
-  const { messages, leftOut } = await latestMessages((limit) => conversationId !== null ? ports.runs.messages(conversationId, limit)
+  const latest = await latestMessages((limit) => conversationId !== null ? ports.runs.messages(conversationId, limit)
     : projectId !== null ? ports.runs.spaceMessages(projectId, limit) : dmId !== null ? ports.runs.dmMessages(dmId, limit, dmThreadRootId) : Promise.resolve([]));
+  const { leftOut } = latest;
+  // A space's authors are named as its readers see them (#1160); a direct message's are its people.
+  const messages = projectId !== null ? await namedAuthors(ports, projectId, latest.messages) : latest.messages;
   for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } });
   // The task a run works on is told whole in its brief, not again among the open tasks.
   if (projectId !== null) for (const work of (await ports.runs.openWork(projectId, WORK_WINDOW)).filter((item) => item.id !== run.workId))

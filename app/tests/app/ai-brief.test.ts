@@ -28,7 +28,8 @@ const message = (label: string, fields: Partial<MessageSource> & Pick<MessageSou
 });
 const MESSAGES: SuppliedSource[] = [
   message('S1', { body: 'The camera fails below 5 lux.', authorName: OWNER, createdAt: new Date('2026-11-06T08:14:00Z') }),
-  message('S2', { body: 'Logged 4.8 lux at 06:10 on the north barrel.', authorName: 'Fieldbot', author: { kind: 'agent', id: 'a-1' }, contribution: { kind: 'came_of_it' }, createdAt: new Date('2026-11-06T08:20:00Z') }),
+  // An agent is named with whose it is (#1160), as `namedAuthors` names it for the run.
+  message('S2', { body: 'Logged 4.8 lux at 06:10 on the north barrel.', authorName: 'Fieldbot (Jonas\'s agent)', author: { kind: 'agent', id: 'a-1', ownerUserId: 'u-jonas' }, contribution: { kind: 'came_of_it' }, createdAt: new Date('2026-11-06T08:20:00Z') }),
   message('S3', { body: 'Then the ToF sensor is next. Notes: https://example.com/tof?a=1&b=2', authorName: 'Jonas Berg', via: 'Assistant', edited: true,
     files: [{ id: 'f-1', name: 'north.csv', size: 2048 } as MessageFile], createdAt: new Date('2026-11-07T15:02:00Z') }),
   message('S4', { body: INJECTION, authorName: 'Kai Weber', createdAt: new Date('2026-11-07T15:30:00Z') }),
@@ -137,8 +138,9 @@ describe('the brief of every run (#1064)', () => {
   test('every message carries its author and its time in the owner\'s zone; the request comes last, with who asked and when', () => {
     const { request } = buildBrief(base);
     assert.ok(request.includes('<message ref="S1" from="Ada Nowak" at="2026-11-06 09:14">The camera fails below 5 lux.</message>'));
-    assert.ok(request.includes('<message ref="S2" from="Fieldbot (agent)" at="2026-11-06 09:20" kind="came_of_it">'));
-    assert.ok(request.includes('from="Jonas Berg" at="2026-11-07 16:02" via="Assistant" edited="yes">'));
+    assert.ok(request.includes('<message ref="S2" from="Fieldbot (Jonas\'s agent)" at="2026-11-06 09:20" kind="came_of_it">'));
+    // #1160: an answer Jonas posted with Show everyone is his, with the agent it came from, in the words the Flux tools use too.
+    assert.ok(request.includes('from="Jonas Berg · via Assistant" at="2026-11-07 16:02" edited="yes">'));
     assert.ok(request.includes('<attachment name="north.csv" bytes="2048"/>'));
     assert.ok(request.endsWith('<request from="Ada Nowak" at="2026-11-08 10:01">Co ustaliliśmy w sprawie kamery?</request>'));
     assert.ok(request.indexOf('<conversation>') < request.indexOf('<request'), 'the long content first, the request last');
@@ -191,10 +193,16 @@ describe('the brief of every run (#1064)', () => {
       assert.match(system, /So, of Flux, use only /);
       assert.ok(system.includes('Ada Nowak may post your answer as their own message, so write it as they could send it: no "You asked…" and no lead-in such as "Here is a reply:". When asked to draft, post or send a message, give only the text to send: Ada Nowak posts it with Show everyone.'));
       assert.ok(system.includes('A message you draft for someone else is in the language Ada Nowak asks for, else in the language that person writes in.'));
-      assert.ok(system.includes('In <conversation>, via="…" marks an AI answer its author chose to post, not their own words;'));
+      assert.ok(system.includes('"Person · via Name" for an answer of that person\'s agent that they chose to post: their message, not their own words and not yours.'));
     }
     assert.match(buildBrief(chat).system, /<chat> holds your earlier exchanges with Ada Nowak, as context for this message\./);
-    assert.ok(!buildBrief(CASES['runtime-space-thread']!).system.includes('via="…"'), 'no legend where no conversation is given');
+    // #1160: the owner's CLI reads a space with the tools, which name each message's author the same way; every run that can meet its own
+    // messages is told its label, so another person's agent of the same name is never taken for itself.
+    const runtime = buildBrief(CASES['runtime-space-thread']!).system;
+    assert.ok(!runtime.includes('<conversation>') && runtime.includes('In what the Flux tools return, author.name names who wrote each message as people see them'));
+    for (const name of ['space-thread', 'runtime-space-thread', 'runtime-task', 'task', 'chat', 'runtime-scheduled'])
+      assert.ok(buildBrief(CASES[name]!).system.includes('Your own messages are those of "Assistant (Ada\'s agent)".'), name);
+    assert.ok(!buildBrief(dm).system.includes('Your own messages'), 'no agent writes in a direct message');
     const main = buildBrief(CASES['space-main-conversation']!).request;
     assert.equal(main.match(/<message ref="S\d+" thread="/g)?.length, 2, 'a thread is named when it changes, not on every message');
     // Delta review of #1077 (P3-1): the thread changes by its conversation, not its words; a deleted opening still names a new thread.

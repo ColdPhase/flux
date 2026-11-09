@@ -109,7 +109,7 @@ interface Target {
 }
 
 /** The task fields an Undo can put back (the names of `UpdateWorkCommand`, with waiting-for by user id). */
-const WORK_FIELDS = ['title', 'outcome', 'status', 'blocker', 'waitingFor', 'waitingOn', 'dropped', 'cameOfIt', 'criteria', 'dependencyIds'];
+const WORK_FIELDS = ['title', 'outcome', 'status', 'blocker', 'waitingFor', 'waitingOn', 'dropped', 'cameOfIt', 'dueOn', 'criteria', 'dependencyIds'];
 type WorkView = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['work']>>>;
 /** One task field as Undo compares it: the stored value, waiting-for as the person's id, prerequisites sorted. */
 const workField = (work: WorkView, key: string): unknown =>

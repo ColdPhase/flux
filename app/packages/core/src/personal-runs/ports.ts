@@ -145,7 +145,14 @@ export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | '
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
 export interface MessageSource {
-  contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string };
+  contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string;
+  /**
+   * Who wrote it, as people see it (#1160, `authorLabel`): a person's name, or an agent with whose it is, "Fieldbot (Jonas's agent)". The
+   * repository gives the stored names; the run names only who can read the space now (`namedAuthors`).
+   */
+  authorName: string;
+  /** `ownerUserId`: an agent's owner, whom the run names only while they can read the space. */
+  author: { kind: 'human' | 'agent'; id: string; ownerUserId?: string };
   /** #1064: when it was written; whether its author changed the words since; the agent whose answer its author posted with Show everyone. */
   createdAt: Date; edited?: boolean; via?: string | null;
   /**

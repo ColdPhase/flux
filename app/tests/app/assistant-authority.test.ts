@@ -188,7 +188,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     await live.call('flux_update_task', { workId: edited.id, expectedVersion: edited.version, changes: { criteria: ['Wired and tested'] } });
     await live.call('flux_update_task', { workId: dependent.id, expectedVersion: dependent.version, changes: { dependencyIds: [prerequisite.id] } });
     await live.call('flux_update_task', { workId: blockedTask.id, expectedVersion: blockedTask.version,
-      changes: { status: 'blocked', blocker: 'Lens is late', waitingForUserId: scene.peer.id } });
+      changes: { status: 'blocked', blocker: 'Lens is late', waitingFor: scene.peer.id } });
     await live.call('flux_update_task', { workId: unblock.id, expectedVersion: unblockNow.version, changes: { status: 'in_progress' } });
     await live.call('flux_rename_map', { mapId: map.id, expectedVersion: map.version, title: 'Sensor rig map' });
     await scene.complete(live.runId);

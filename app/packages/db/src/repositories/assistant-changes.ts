@@ -166,7 +166,7 @@ export function assistantChangeRows(db: DbExecutor) {
       const w = schema.projectWorkItems;
       const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, outcome: w.outcome, status: w.status,
         blocker: w.blocker, version: w.version, ownerUserId: w.ownerUserId, criteria: w.criteria, waitingForUserId: w.waitingForUserId,
-        waitingForDecisionId: w.waitingForDecisionId, waitingForWorkId: w.waitingForWorkId, dropped: w.dropped, cameOfIt: w.cameOfIt,
+        waitingForDecisionId: w.waitingForDecisionId, waitingForWorkId: w.waitingForWorkId, dropped: w.dropped, cameOfIt: w.cameOfIt, dueOn: w.dueOn,
         ownerAgentId: w.ownerAgentId, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(eq(w.id, id));
       if (!row) return null;
       const d = schema.projectTaskDependencies;
