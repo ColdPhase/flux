@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantChange, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantChange, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import {
-  acceptProposal, askAssistant, dismissAnswer, dismissProposal, getAssistantStatus, getRun, listAnswers, listPlaceRuns, listProposals, retryRun, showAnswer, stopRun,
+  askAssistant, dismissAnswer, getAssistantStatus, getRun, listAnswers, listPlaceRuns, retryRun, showAnswer, stopRun,
   type AskPlace,
 } from './api';
 import { isWorking } from './format';
@@ -32,7 +32,6 @@ export interface ConversationAssistant {
   status: PersonalAssistantStatus | null;
   /** What a schedule posted in this conversation, for everyone who reads it. */
   answers: AssistantAnswer[];
-  proposals: Map<string, AssistantProposal>;
   /** The signed-in person's latest run here: in flight, or ended without an answer and not yet dismissed. */
   run: AssistantRun | null;
   /** The next request, waiting for the working one to end (AST-6 queue): "Next: '…'. It starts when this one ends · Cancel". */
@@ -55,7 +54,6 @@ export interface ConversationAssistant {
   dismissPrivate(run: AssistantRun): Promise<void>;
   /** Posts an answer as the person's own message; resolves with the id of that message. */
   show(run: AssistantRun): Promise<string>;
-  decide(proposal: AssistantProposal, decision: 'accept' | 'dismiss'): Promise<AssistantProposal>;
   refreshStatus(): void;
 }
 
@@ -70,7 +68,6 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
 }): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
-  const [proposals, setProposals] = useState(new Map<string, AssistantProposal>());
   const [mine, setMine] = useState<AssistantRun[]>([]);
   /** When the runs were last read: a run that ended without an answer shows its line for an hour. */
   const [readAt, setReadAt] = useState(0);
@@ -116,21 +113,16 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
     void refreshRuns();
     if (!conversationId) return;
     try {
-      const [items, drafted] = await Promise.all([allAnswers(conversationId), enabled && projectId ? listProposals(projectId) : null]);
-      setAnswers(items);
-      if (drafted) setProposals(new Map(drafted.items.map((item) => [item.id, item])));
+      setAnswers(await allAnswers(conversationId));
     } catch { /* the conversation itself reports lost access */ }
-  }, [conversationId, projectId, enabled, refreshRuns]);
+  }, [conversationId, refreshRuns]);
 
   useEffect(() => {
     // F-029 (#614): while the space's AI is off only what a schedule posted (conversation history) and the asker's own answers are read.
     if (enabled && key) refreshStatus();
     void refreshRuns();
-    if (conversationId) {
-      allAnswers(conversationId).then(setAnswers).catch(() => undefined);
-      if (enabled && projectId) listProposals(projectId).then((drafted) => setProposals(new Map(drafted.items.map((item) => [item.id, item])))).catch(() => undefined);
-    }
-  }, [key, conversationId, projectId, enabled, refreshStatus, refreshRuns]);
+    if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
+  }, [key, conversationId, enabled, refreshStatus, refreshRuns]);
 
   // The asker's own run moved (their owner-only event), or a schedule posted here: read again.
   useStreamEvents(meId, (event) => {
@@ -171,7 +163,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
 
   return {
     // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
-    status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(),
+    status: enabled ? status : null, answers,
     run, queued: enabled ? waiting : null, privateAnswers, changesOf: (runId: string) => changed[runId] ?? [], tick, refreshStatus,
     async cancelQueued() {
       if (!waiting) return;
@@ -219,11 +211,6 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
       setMine((items) => items.map((item) => (item.id === answered.id ? result.run : item)));
       onShown?.(result.messageId);
       return result.messageId;
-    },
-    async decide(proposal, decision) {
-      const decided = await (decision === 'accept' ? acceptProposal(proposal) : dismissProposal(proposal));
-      setProposals((items) => new Map(items).set(decided.id, decided));
-      return decided;
     },
   };
 }

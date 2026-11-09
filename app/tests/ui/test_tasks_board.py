@@ -46,7 +46,6 @@ PETG = "Print a diffuser sample in white PETG"
 SAMPLE = "Print three diffuser samples for the reading corner"
 PROPOSAL = "Prefer the ToF sensor for the next prototype"
 RULE = "Keep every sensor reading on the lamp itself"
-RESULT = "The camera caught 38% of gestures at 5 lux"
 
 
 class TasksBoardJourney(unittest.TestCase):
@@ -177,7 +176,6 @@ class TasksBoardJourney(unittest.TestCase):
         self.api(kai, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "It works in the dark and stores no images."}, status=201)
         rule = self.api(ada, "POST", f"/api/v1/projects/{pid}/decisions", {"title": RULE, "rationale": "Nothing about a bedroom leaves the lamp."}, status=201)
         self.api(ada, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
-        self.api(kai, "POST", f"/api/v1/projects/{pid}/results", {"title": RESULT, "finding": "negative", "evidence": "20 gestures per light level"}, status=201)
         # A second project with one task and two empty columns.
         study = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Diffuser study", "visibility": "restricted"}, status=201)
         made["sample"] = self.api(ada, "POST", f"/api/v1/projects/{study['id']}/work", {"title": SAMPLE, "owner": human(ADA)}, status=201)

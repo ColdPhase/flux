@@ -84,25 +84,23 @@ period also means "since you left"; `24h` and `7d` are unchanged.
 | Kind | Text (examples) | Needs you |
 | --- | --- | --- |
 | decision | "Decision changed: …" with "Previously: …"; "New decision: …"; "Proposed decision: …"; "Decision replaced: …". A decision made and replaced in the same absence is told once, by its replacement. | A proposal by someone else in a project you can write. |
-| result | "Ari recorded a result: …", "It did not work out, about “…”". | It is about work you own or created. |
 | work | "Ari added a task for you: …", "Ari gave you a task: …" (handed to you in the period, #763 H11-5; a work item carries the task's `dueOn`), "Blocked: …", "Done: …", "Dropped: …", "In progress: …". | Unfinished work you own. |
 | question | "Ari asked you: “…”" when a message addresses you (`@Name`, or starts with "Name," / "Name:"), or asks a question in a conversation you started or posted in. | Until you post in that conversation after it. |
-| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker, a published result or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the result or blocked-work item it came from. | Never. |
+| message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the blocked-work item it came from. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
 | sketch | "Ari started a sketch: …", "Sketch changed: …" (project sketches; private ones reach only their author). | Never. |
 | doc | "Ari started a doc: …" (with its reason), "Doc updated: …" with "Version N by Ari · latest: <reason>" or "2 new versions by …" ([#112](docs-wiki.md)). The source opens the doc, or its history comparing the last version before these changes with the current one. | Never. |
 
-A missing explanation is said plainly: "No reason was recorded." for a rule or a blocker, and
-"No evidence was recorded." for a result. Every item has a `source`: a message, material version,
-doc (with `since`, the version before the changes), sketch, or a work item, decision or result, which the client opens in Details on its project.
+A missing explanation is said plainly: "No reason was recorded." for a rule or a blocker.
+Every item has a `source`: a message, material version,
+doc (with `since`, the version before the changes), sketch, or a work item or decision, which the client opens in Details on its project.
 
 **Next step.** One step is derived from the items that need you, in this order: a question
-addressed to you, a question in your conversation, a result about your work, a task that became
+addressed to you, a question in your conversation, a task that became
 yours in the period (made for you or handed to you by someone else, #763 H11-5), a rule waiting for
 a person, blocked work of yours, and other work of yours. A step about a task carries its `dueOn`,
 which the client says as "Due 4 Nov 2026" on Home's card, in What matters and in its list. Examples: "Answer Ari's question"
-(reason: "Ari asked you in “…”."), "Review the result Ari attached" (reason: "It reports on
-“…”, which is yours."). When nothing needs you, there is no step.
+(reason: "Ari asked you in “…”."), "Decide on the proposed decision" (reason: "Ari proposed “…”. You can accept it."). When nothing needs you, there is no step.
 
 ## What matters: the private project recap (#133), removed
 

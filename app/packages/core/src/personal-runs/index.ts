@@ -3,7 +3,6 @@ export * from './service.js';
 export * from './processor.js';
 export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
 export { reportTaskRun } from './task-report.js';
-export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros } from './validation.js';
 export { buildBrief, NO_POSTING_LINE, NO_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';

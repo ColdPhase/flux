@@ -7,13 +7,13 @@ import { sealedSearchRows } from '../sealed-search.js';
 /** Structural counterpart of core's normalized selector; DB never imports the core layer. */
 export type NativeWorkViewSelector =
   | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q: string }
-  | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions'; q: string }
+  | { purpose: 'choices'; choice: 'open_work'; q: string; selected?: string }
   | { purpose: 'choices'; choice: 'doc_refs'; q: string; kind: WorkObjectType };
 export type NativeWorkReadKey = { kind: WorkObjectType; id: string; rank: number; createdAt: string };
 export interface NativeWorkKeyPage { items: NativeWorkReadKey[]; total: number; before: number; hasBefore: boolean; hasAfter: boolean; searchUnavailable?: true }
 
-const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
+const w = schema.projectWorkItems, d = schema.projectDecisions;
 const unfinished = sql`${w.status} IN ('open', 'in_progress', 'blocked')`;
 /** A task whose creation was undone (#238) is history: never in a task group, count or chooser. */
 const active = sql`${w.creationRevertedAt} IS NULL`;
@@ -41,21 +41,15 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
         : sql`${w.ownerUserId} IS NULL AND ${w.ownerAgentId} = ${actor.id}::uuid`;
       parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, ${workRank} AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${owner})`);
     }
-    // `workOnly`: the Tasks tab lists tasks; decisions wait in the Inbox and results show in their task (#342).
+    // `workOnly`: the Tasks tab lists tasks; decisions wait in the Inbox (#342).
     if (!selection.workOnly && (group === 'all' || group === 'needs' || group === 'rules')) {
       const predicate = group === 'needs' ? sql`${d.status} = 'proposed'` : group === 'rules' ? sql`${d.status} IN ('accepted', 'superseded')` : sql`true`;
       const mine = selection.mine ? sql`${d.status} = 'proposed'` : sql`true`;
       parts.push(sql`SELECT 'decision'::text AS kind, ${d.id} AS id, ${d.createdAt} AS created_at, ${decisionRank} AS rank FROM ${d} WHERE ${d.projectId} = ${projectId}::uuid AND (${predicate}) AND (${mine})`);
     }
-    if (!selection.workOnly && (group === 'all' || group === 'results')) {
-      const mine = selection.mine ? sql`${r.createdByKind} = ${actor.kind} AND ${r.createdById} = ${actor.id}` : sql`true`;
-      parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 7 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${mine})`);
-    }
   } else if (selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision')) {
     const predicate = selection.choice === 'accepted_decisions' ? sql`${d.status} = 'accepted'` : sql`true`;
     parts.push(sql`SELECT 'decision'::text AS kind, ${d.id} AS id, ${d.createdAt} AS created_at, 0 AS rank FROM ${d} WHERE ${d.projectId} = ${projectId}::uuid AND (${predicate}) AND (${literalTitle(sql`${d.title}`, selection.q, sql`${d.id}`, matching)})`);
-  } else if (selection.choice === 'doc_refs' && selection.kind === 'result') {
-    parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 0 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${literalTitle(sql`${r.title}`, selection.q, sql`${r.id}`, matching)})`);
   } else {
     const predicate = selection.choice === 'doc_refs' ? sql`true` : unfinished;
     parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, 0 AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${literalTitle(sql`${w.title}`, selection.q, sql`${w.id}`, matching)})`);
@@ -121,8 +115,7 @@ async function sealedMatches(db: DbExecutor, projectId: string, selection: Nativ
   if (selection.purpose !== 'choices' || !selection.q) return undefined;
   const [project] = (await db.execute<{ workspace_id: string }>(sql`SELECT workspace_id FROM projects WHERE id = ${projectId}::uuid`)).rows;
   if (!project) return undefined;
-  const kind = selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision') ? 'decision'
-    : selection.choice === 'doc_refs' && selection.kind === 'result' ? 'result' : 'work';
+  const kind = selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision') ? 'decision' : 'work';
   return (await sealedSearchRows(db).titleMatches(project.workspace_id, projectId, kind, selection.q)) ?? undefined;
 }
 

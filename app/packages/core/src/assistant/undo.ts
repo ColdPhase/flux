@@ -12,11 +12,10 @@ export type UndoPlan =
   /** The assistant made this object; Undo removes it (a page moves to the owner's drafts). */
   | { kind: 'created' }
   /**
-   * The assistant made a map, a result, a decision or a message that no person can remove (#68 closeout): Undo takes it back
-   * only while nobody has used it. `title` is what a map was called when made; `version` what a decision's version was;
-   * `finishes` the task a result finished, as it was before.
+   * The assistant made a map, a decision or a message that no person can remove (#68 closeout): Undo takes it back
+   * only while nobody has used it. `title` is what a map was called when made; `version` what a decision's version was.
    */
-  | { kind: 'removal'; title?: string; version?: number; finishes?: { workId: string; status: string; blocker: string | null };
+  | { kind: 'removal'; title?: string; version?: number;
     /** A line a run put in a task's thread (#923, #938): its agent's owner can always delete it (TA-3), whoever answered it since. */
     thread?: boolean }
   /** A hand-off to the owner's agent: Undo cancels exactly this unit while it is untouched and was never claimed. */

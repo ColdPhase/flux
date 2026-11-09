@@ -18,7 +18,7 @@ export interface UndoResult { done: boolean; message: string | null }
 export const CHANGED_SINCE = 'Changed since. Open it';
 export const NOT_UNDOABLE = 'This one can’t be undone';
 /** The changes whose Undo removes something no person can remove (#68), or a page (#1021, which a person deletes after an OK): they follow the space's AI switch (AG-10), as the assistant's work does. */
-export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['doc.create', 'map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
+export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['doc.create', 'map.create', 'decision.propose', 'conversation.create', 'conversation.reply']);
 export const requireAiOn = (db: Database, projectId: string) => db.transaction(async (tx) => { await requireSpaceAi(accessReader(tx as DbExecutor), projectId); });
 class Since extends Error { constructor(readonly message: string = CHANGED_SINCE) { super(message); } }
 
@@ -159,30 +159,23 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           removal = { ok: true, snapshot: { projectId: row.projectId, version: page.version } };
           break;
         }
-        case 'map.create': case 'decision.propose': case 'result.record': case 'conversation.create': case 'conversation.reply': {
-          // The four things no person can remove (#68 closeout): taken back only if the assistant made it in this run and nobody has used it.
+        case 'map.create': case 'decision.propose': case 'conversation.create': case 'conversation.reply': {
+          // The things no person can remove (#68 closeout): taken back only if the assistant made it in this run and nobody has used it.
           if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
           // AG-10 and F-030: with AI off in the space (every encrypted one) nothing of the assistant's is touched; the policy row is held while it happens.
           await requireSpaceAi(accessReader(tx as DbExecutor), row.projectId, { lock: true });
           // A map's row before the graph, as every writer of its thoughts takes them (a thought written while this waits for the graph lock would
           // otherwise cross it); everything else takes the graph first.
           if (row.operation === 'map.create') await assistantRemovalRows(tx as DbExecutor).lockMap(id);
-          // The project's task graph first, as every work path takes it (a reply in a task's discussion, a task or result being written, a
+          // The project's task graph first, as every work path takes it (a reply in a task's discussion, a task being written, a
           // decision being accepted): then the object, its thread and the task are locked in their order, never the reverse, and what a
           // person cites at the same moment is either already committed when "used since" is read or waits for this Undo.
           await taskGraphRows(tx as DbExecutor).lockTaskGraphs([row.projectId]);
           const removals = assistantRemovalRows(tx as DbExecutor);
           const taken: Removal = row.operation === 'map.create' ? await removals.removeMap({ mapId: id, agentId: row.agentId, title: plan.title ?? '' })
             : row.operation === 'decision.propose' ? await removals.removeDecision({ decisionId: id, agentId: row.agentId, version: plan.version ?? null })
-            : row.operation === 'result.record' ? await removals.removeResult({ resultId: id, agentId: row.agentId })
             : await removals.removeMessage({ messageId: id, agentId: row.agentId, byOwner: plan.thread === true });
           if (!taken.ok) throw new Since(taken.why === 'foreign' ? NOT_UNDOABLE : taken.reason);
-          // A result that finished a task: the task goes back to how it was, if it is still as the result left it.
-          if (row.operation === 'result.record' && plan.finishes) {
-            const task = await rows.work(plan.finishes.workId);
-            if (!task || task.status !== 'done') throw new Since(REMOVAL_REASONS.taskChanged);
-            await work.updateWork(owner, plan.finishes.workId, { status: plan.finishes.status, blocker: plan.finishes.blocker, restore: true } as UpdateWorkCommand, task.version);
-          }
           await session.record(by, row.workspaceId, 'project.assistant_change_undone.v1', row.projectId,
             { changeId: row.id, objectType: row.objectType, objectId: id });
           removal = taken;

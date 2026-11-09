@@ -283,7 +283,7 @@ uses. The owner can:
 - **Narrow** a current grant: fewer uses left and/or an earlier end.
 - **Revoke** a grant after a confirmation.
 
-Only operations with a Flux MCP tool are offered: tasks, results, decisions,
+Only operations with a Flux MCP tool are offered: tasks, decisions,
 maps, wiki docs and conversations. Co-work operations (#153) are granted with
 their units through the API; the page lists and revokes them with a fallback
 label, so operations added later need no page change. A connection without
@@ -295,7 +295,7 @@ does not load grants.
 connections' grants. When none can change the task, step 2 says what is missing and its button becomes
 "Allow and hand off": it creates, through the route above, execute-class grants for `work.update` and
 `cowork.unit.create` on that task and `cowork.claim`, `cowork.renew`, `cowork.release`,
-`cowork.unit.complete`, `result.record`, `conversation.reply` and `doc.create` in the project, 100 uses each,
+`cowork.unit.complete`, `conversation.reply` and `doc.create` in the project, 100 uses each,
 ending in 7 days, then hands the task off. A connection without `flux.action.execute` is named as such, with the
 way to sign in again. The consent page starts with exactly the scopes the client asked for ticked.
 
@@ -315,7 +315,6 @@ runtime from `flux_bootstrap`, a connection can make these native project change
 | `flux_update_task` | `work.update` | execute, plan | One task at the exact version last read; same fields, but the plan intent never changes; both accept an optional `waitingForUserId` (a project member, blocked tasks only) |
 | `flux_link_pull_request` | `work.update` | execute, plan | Link the pull request the agent produced to the task it holds, by its URL, on a repository a person already connected to the project (#160 AC-3, below). It uses the task-change grant; it adds no GitHub permission |
 | `flux_undo_task_creation` | `work.creation.revert` | execute, plan | Undo the creation of a task this agent created natively, at its exact version, while it is unchanged and unused (#238); the task stays as read-only history and a retry returns the same receipt. A `work.update` grant does not authorize it |
-| `flux_record_result` | `result.record` | execute | One positive or negative finding with evidence, linked to tasks and decisions; it can finish one of those tasks at its read version |
 | `flux_propose_decision` | `decision.propose` | execute, plan | One proposed decision with rationale, affected tasks and an optional accepted decision it would replace. An agent never accepts or rejects; a person decides |
 
 The executor is `nativeActionExecutor` in `app/apps/server/src/agent-connection/action-execution.ts`.
@@ -360,7 +359,7 @@ MCP-specific:
 2. The canonical native work command makes the change as the agent, with the same
    validation, graph lock, prerequisite, plan-intent and decision rules as the
    browser and the HTTP API.
-3. The port checks the produced post-state (task or decision version, result
+3. The port checks the produced post-state (task or decision version, message
    identity), debits the grant once and stores the receipt.
 4. Only then is the single final event batch flushed.
 
@@ -447,7 +446,7 @@ A task has one discussion (#868), where people and agents talk about it:
 - At most five agent messages in a row until a person writes; the sixth is refused with `AGENT_TURN_LIMIT` and nothing is written or
   debited. Only a person's message gives an agent more. A retry with the same `clientCommandId` replays. The limit holds for every
   agent write into the discussion, not only this tool: `flux_reply_in_conversation` and `flux_ask_question` with the discussion's
-  conversation, and a blocker, result or hand-off contribution, count and are refused the same way, for every agent of every person
+  conversation, and a blocker, "what came of it" or hand-off contribution, count and are refused the same way, for every agent of every person
   ([task discussions](task-discussions.md), C-51). Lines Flux writes for an in-app agent's run on a task are not counted.
 - The line is recorded as the applied `conversation.reply` change that `flux_reply_in_conversation` records in a task's discussion
   (`plan.thread`), in the same transaction: it shows with its change and its owner deletes it with no condition (#961).
@@ -490,7 +489,7 @@ Audience and privacy:
 - There is no private-to-project publication path. The doc text is exactly what the
   agent sends, and `flux:` references outside the project render as not available.
   A draft doc is a state visible to the project audience, not a private note.
-- Messages are plain text. Blocker, result and handoff contributions still come from
+- Messages are plain text. Blocker, "what came of it" and handoff contributions still come from
   their own commands.
 
 Versions, post-state and replay:
@@ -507,8 +506,8 @@ Versions, post-state and replay:
 
 Not yet agent tools:
 
-- "Add to docs" sections and docs started from a result or decision.
-- A task's first discussion contribution and explicit blocker, result or handoff
+- "Add to docs" references and docs started from a decision.
+- A task's first discussion contribution and explicit blocker, "what came of it" or handoff
   contributions. Once a task thread exists, a reply joins it.
 
 Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
@@ -549,12 +548,12 @@ module; `mcp-playbook.test.ts` pins both directions against `tools/list` and the
 bootstrap catalog. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
 that step as unavailable rather than simulate it. Since 1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
-conversation, map and result reads, and execute/checkpoint the doc, conversation and
+conversation and map reads (and a result read until #1054), and execute/checkpoint the doc, conversation and
 map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06,
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
 claims, renews, releases and completes the unit; the block/transfer module
 transfers it. Versions 1.5.0 to 1.13.0 also named the request tools and the inbox;
-1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work. 1.17.0 (#868) adds `flux_discuss_task` and `flux_get_task_discussion` and drops the agents' thread.
+1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work. 1.17.0 (#868) adds `flux_discuss_task` and `flux_get_task_discussion` and drops the agents' thread; #1054 drops the result tools from the text in place, without a new version (founder, 2026-11-09).
 
 Every authenticated MCP connection delivers it in three ways:
 
@@ -639,12 +638,12 @@ test Flux instance with **no vendor account, key or spend**. Per client the test
 
 - five personal connections of two owners: each owner has Codex and Claude Code; the first owner also has a second
   independent Codex connection for the same agent. Each has its own OAuth grant and selected projects;
-- each client offers the same shared domain tool set (bootstrap, reads, task, result, decision, doc, map and
+- each client offers the same shared domain tool set (bootstrap, reads, task, decision, doc, map and
   conversation and co-work unit/request/inbox tools) and `flux_list_contexts` returns only that connection's projects;
 - the first connection creates a task under an owner standing grant after `flux_bootstrap`; the bootstrap envelope the
   real client received carries the capability and playbook digest; the task is attributed to the connection's agent
   and the other four connections read it through `flux_list_work`;
-- every connection creates, claims, quietly renews, checkpoints, reconnects and completes its own unit with a recorded result;
+- every connection creates, claims, quietly renews, checkpoints, reconnects and completes its own unit with a recorded outcome;
 - Codex addresses a review to the other owner's Claude while Claude holds another task. Its inbox read and explicit
   `busy` / `after_step` deferral preserve that task's exact live lease and version. The third, unaddressed Codex
   connection sees no recipient inbox. At the boundary Claude records the observation and parks its busy unit before

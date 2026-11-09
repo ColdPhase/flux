@@ -48,8 +48,7 @@ export function ThreadFeed(props: Props) {
       const groupLast = !sameMessageAuthor(message, nextMessage);
       // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
       withDay(entry.at, dayKey, [<ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
-        project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable}
-        onOpenResult={(resultId) => props.openDetails({ kind: 'result', id: resultId })} onDenied={props.hideIfDenied}
+        project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable} onDenied={props.hideIfDenied}
         observed={message.authorId !== me.user.id} seenBy={(seen.get(message.id) ?? []).map((person) => person.name)} />]);
     }
   });

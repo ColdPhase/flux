@@ -1,4 +1,4 @@
-/* Work items, decisions and results (#101), 1px rules, one inverted mark for "needs you",
+/* Work items and decisions (#101), 1px rules, one inverted mark for "needs you",
    status as a small dot with text, framed objects only for things attached to a message. */
 
 .ws-need { color: var(--t1); font-weight: 500; }
@@ -97,13 +97,11 @@ button.ws-task__glyph:active { background: var(--hov); }
 .wd-rows.wd-decision-rows { margin-top: var(--s-3); }
 .wd-eyebrow { display: flex; align-items: center; gap: 6px; }
 .wd-eyebrow.wd-need { color: var(--t1); }
-.wd-finding--negative svg { color: var(--t2); }
-.wd-finding--positive svg { color: var(--t1); }
 .wd-was { color: var(--t3); text-decoration: line-through; text-decoration-color: var(--line2); }
 .wd-form .ui-select { width: 100%; min-height: var(--ctl); padding: 0 8px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-md); box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-blocker-form { grid-column: 1 / -1; display: flex; align-items: flex-end; gap: 8px; }
 
-/* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Results, Activity ---------- */
+/* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Activity ---------- */
 .wd .wd-title { margin: 6px 0 12px; }
 .wd-title__text, .wd-title__field {
   display: block; width: calc(100% + 16px); margin: 0 -8px; padding: 2px 8px; border-radius: var(--r-sm);
@@ -191,7 +189,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-pick__keys { margin: 0; }
 .wd-error { margin-top: 10px; font-size: var(--fs-sm); color: var(--t1); }
 .wd-ids { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t3); }
-.wd-evidence { white-space: pre-wrap; }
 .wd-source { margin: 4px 0 16px; padding: 8px 12px; border-left: 2px solid var(--line2); font-size: var(--fs-md); color: var(--t2); white-space: pre-wrap; overflow-wrap: anywhere; }
 .wd-source span { display: block; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .wd-form { display: grid; gap: 8px; min-width: 0; margin: 0; padding: 0; border: 0; }
@@ -253,7 +250,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="decision"]::before { content: "Decision"; }
-.message-bubble .ws-attach > .ws-chip[data-work-kind="result"]::before { content: "Result"; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num { grid-column: 2; grid-row: 2; color: var(--t1); font-weight: 600; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__t { grid-column: 2 / 4; grid-row: 2; white-space: nowrap; font-weight: 600; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num + .ws-chip__t { grid-column: 3; }
@@ -383,7 +379,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-decide__foot { padding-top: var(--s-3); }
 .wd-need-chip { margin-left: auto; }
 .wd-decide .wd-error { margin-top: var(--s-2); }
-/* CW-6: done-when criteria read as an unchecked list: Flux and a result never check one off. */
+/* CW-6: done-when criteria read as an unchecked list: Flux never checks one off. */
 .wd-checks { margin: 0 0 6px; padding: 0; list-style: none; font-size: var(--fs-md); line-height: 1.5; }
 .wd-checks li { display: flex; gap: 8px; align-items: flex-start; padding: 2px 0; overflow-wrap: anywhere; }
 .wd-check { flex: none; width: 14px; height: 14px; margin-top: 4px; border: 1.5px solid var(--t3); border-radius: 4px; }

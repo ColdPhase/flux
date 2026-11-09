@@ -1,7 +1,7 @@
 import type { MessageFile } from './files.js';
 import type { ProjectAccess, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from './access.js';
 import type { MessageContribution } from './conversation.js';
-import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, WorkStatus } from './work.js';
+import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, WorkStatus } from './work.js';
 
 /**
  * Project export (issue #123, foundation 8.16). An open JSON document of one project, plus a
@@ -10,7 +10,7 @@ import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding,
  *
  * It holds exactly what the project's own audience can read in the project: its conversations,
  * materials and docs with every version, project sketches with thoughts and links, work,
- * decisions and results with their typed links, members and roles, and who made what. It never
+ * decisions with their typed links, members and roles, and who made what. It never
  * holds other projects, direct messages, private sketches, sessions,
  * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of format version 1.
  */
@@ -64,7 +64,7 @@ export interface ProjectExportMessage {
   body: string;
   /** The cited material or doc version, if any. */
   source: { materialId: string; version: number } | null;
-  /** Present only for a saved blocker, a published result (naming that exported result) or a public handoff (#154). */
+  /** Present only for a saved blocker, a "what came of it" line or a public handoff (#154). */
   contribution?: MessageContribution;
   createdAt: string;
 }
@@ -176,15 +176,6 @@ export interface ProjectExportDecision {
   updatedAt: string;
 }
 
-export interface ProjectExportResult {
-  id: string;
-  title: string;
-  finding: ResultFinding;
-  evidence: string;
-  createdBy: ExportActor;
-  createdAt: string;
-}
-
 export interface ProjectExportLink {
   id: string;
   role: LinkRole;
@@ -254,7 +245,6 @@ export interface ProjectExport {
   sketches: ProjectExportSketch[];
   work: ProjectExportWork[];
   decisions: ProjectExportDecision[];
-  results: ProjectExportResult[];
   /** Typed links between exported objects. */
   links: ProjectExportLink[];
 }
@@ -290,7 +280,7 @@ const actor = object({ kind: { enum: ['human', 'agent'] }, id });
 const namedActor = object({ kind: { enum: ['human', 'agent'] }, id, name: text });
 const objectRef = {
   oneOf: [
-    object({ type: { enum: ['message', 'thought', 'doc', 'sketch', 'work', 'decision', 'result'] }, id }),
+    object({ type: { enum: ['message', 'thought', 'doc', 'sketch', 'work', 'decision'] }, id }),
     object({ type: { const: 'material' }, id, version: count }),
   ],
 } as const;
@@ -311,7 +301,7 @@ const baseExportSchema = {
       required: ['id', 'sequence', 'author', 'body', 'source', 'createdAt'],
       properties: { id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time,
         files: list(object({ id, name: text, size: { type: 'integer', minimum: 1 } })),
-        contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
+        contribution: object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }) },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
@@ -338,10 +328,9 @@ const baseExportSchema = {
       id, title: text, rationale: text, status: { enum: ['proposed', 'accepted', 'superseded'] }, proposedBy: ref('actor'), decidedBy: nullable(ref('actor')),
       decidedAt: nullable(time), supersedesId: nullable(id), supersededById: nullable(id), version: count, createdAt: time, updatedAt: time,
     }),
-    result: object({ id, title: text, finding: { enum: ['positive', 'negative'] }, evidence: text, createdBy: ref('actor'), createdAt: time }),
     link: object({
-      id, role: { enum: ['source', 'affects', 'about', 'related', 'mentions', 'part_of'] },
-      from: object({ type: { enum: ['work', 'decision', 'result', 'doc'] }, id }), to: ref('objectRef'), createdBy: ref('actor'), createdAt: time,
+      id, role: { enum: ['source', 'affects', 'related', 'mentions', 'part_of'] },
+      from: object({ type: { enum: ['work', 'decision', 'doc'] }, id }), to: ref('objectRef'), createdBy: ref('actor'), createdAt: time,
     }),
   },
   ...object({
@@ -366,7 +355,6 @@ const baseExportSchema = {
     sketches: list(ref('sketch')),
     work: list(ref('work')),
     decisions: list(ref('decision')),
-    results: list(ref('result')),
     links: list(ref('link')),
   }),
 } as const;

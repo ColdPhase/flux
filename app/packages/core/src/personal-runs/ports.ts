@@ -1,7 +1,7 @@
 import type { AgentChatMessage, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution } from '@flux/contracts';
 import type {
-  AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
-  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant, ResultFinding,
+  AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantRunCostState, AssistantRunEndReason,
+  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant,
 } from '@flux/contracts';
 import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
@@ -143,31 +143,6 @@ export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | '
   | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'
   | 'shownAt' | 'dismissedAt'>>;
 
-export interface ProposalRecord {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  runId: string;
-  ownerUserId: string;
-  fact: string;
-  interpretation: string;
-  resultTitle: string;
-  resultFinding: ResultFinding;
-  resultEvidence: string;
-  finishesWorkId: string | null;
-  status: AssistantProposalStatus;
-  decidedBy: string | null;
-  decidedAt: Date | null;
-  resultId: string | null;
-  version: number;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
-export type NewProposal = Pick<ProposalRecord, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
-  | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
-export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
-
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
 export interface MessageSource {
   contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string };
@@ -307,12 +282,6 @@ export interface PersonalRunRepository {
   locateDm(dmId: string): Promise<{ workspaceId: string } | null>;
   openWork(projectId: string, limit: number): Promise<WorkSource[]>;
   thought(sketchId: string, thoughtId: string): Promise<ThoughtSource | null>;
-  insertProposal(proposal: NewProposal): Promise<ProposalRecord>;
-  findProposal(id: string, options?: { lock?: boolean }): Promise<ProposalRecord | null>;
-  proposalOfRun(runId: string): Promise<ProposalRecord | null>;
-  /** Applies the changes and increments the version; the caller holds the row lock. */
-  updateProposal(id: string, changes: ProposalChanges): Promise<ProposalRecord>;
-  listProposals(projectId: string, page: PageWindow): Promise<Paged<ProposalRecord>>;
   /**
    * Whether the agent's rights connection (F-027 AST-3) is live. Runs that hold a run token end `revoked` once it is revoked
    * (the agent was deleted); older isolated fake repositories may omit it.
@@ -359,10 +328,8 @@ export type PersonalRunEventKind =
   | 'project.assistant_answer_committed.v1'
   /** An assistant started or stopped working in a conversation: the project's audience, identifiers only (F-027 AST-6). */
   | 'project.assistant_working.v1'
-  | 'project.assistant_proposal_created.v1'
   /** The line "used AI here" joined a direct message: its participants read it again (#842). */
-  | 'dm.changed.v1'
-  | 'project.assistant_proposal_decided.v1';
+  | 'dm.changed.v1';
 
 /**
  * Records a versioned event in the unit of work (identifiers only, never content). `objectId` is
@@ -581,25 +548,6 @@ export interface PersonalToolSession {
  * without the tools it was started with.
  */
 export type PersonalToolHost = (run: RunRecord, connection: PersonalConnection) => Promise<PersonalToolSession | null>;
-
-/**
- * The work use cases a proposal accept goes through, in the accept's transaction: the result is
- * recorded exactly as a person would record it, by the accepting person.
- */
-export interface ProposalResultPort {
-  findWork(workId: string, options?: { lock?: boolean }): Promise<{ id: string; projectId: string; version: number; ownerUserId: string | null } | null>;
-  recordResult(principal: Principal, projectId: string, command: {
-    title: string; finding: ResultFinding; evidence: string; work: string[]; finishes?: { id: string; expectedVersion: number };
-  }): Promise<{ id: string }>;
-}
-
-export interface ProposalPorts extends PersonalRunPorts {
-  results: ProposalResultPort;
-}
-
-export interface ProposalUnitOfWork {
-  run<T>(work: (ports: ProposalPorts) => Promise<T>): Promise<T>;
-}
 
 /**
  * A run's MCP token (F-027 A2), minted by the API (Flux's authorization server) for the worker. `issue`

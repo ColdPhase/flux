@@ -189,7 +189,7 @@ mkdir -p "$work/export"
 tar -xzf "$work/export.tar.gz" -C "$work/export"
 bundle=$(ls -d "$work"/export/flux-project-*)
 [ -f "$bundle/project.json" ] && [ -f "$bundle/manifest.json" ] && [ -f "$bundle/schema/project-export.v1.schema.json" ] || fail "bundle files missing"
-for word in BACKUP-message BACKUP-reply BACKUP-thought BACKUP-work BACKUP-decision BACKUP-result BACKUP-doc-v1 BACKUP-doc-v2 'Moisture first'; do
+for word in BACKUP-message BACKUP-reply BACKUP-thought BACKUP-work BACKUP-decision BACKUP-came-of-it BACKUP-doc-v1 BACKUP-doc-v2 'Moisture first'; do
   grep -q "$word" "$bundle/project.json" || fail "export lacks $word"
 done
 if grep -rq -e "BACKUP-private" -e "BACKUP-dm" -e 'Before Thursday' -e 'Quick one before Thursday' "$bundle"; then fail "export leaks a private note or a DM"; fi

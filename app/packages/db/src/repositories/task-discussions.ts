@@ -20,7 +20,7 @@ function conversation(row: ConversationRow) { return { ...row, createdBy: actor(
 function message(row: MessageRow, files: MessageFile[] = []) {
   return { ...row, author: actor(row.authorId, row.authorAgentId), source: row.sourceMaterialId && row.sourceMaterialVersion
     ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-  kind: row.contributionKind, resultId: row.resultId, ...(files.length ? { files } : {}) };
+  kind: row.contributionKind, ...(files.length ? { files } : {}) };
 }
 
 /** Canonical conversation rows; policy and command decisions live behind core ports. */
@@ -95,7 +95,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     /** Called in a transaction after current access and the shared command lock. */
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
-        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[]; via?: string | null; byFlux?: boolean }, preparedMessageId?: string) {
+        kind?: MessageRow['contributionKind']; files?: MessageFile[]; via?: string | null; byFlux?: boolean }, preparedMessageId?: string) {
       const workId = await boundTask(conversation.id);
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
@@ -105,7 +105,7 @@ export function taskDiscussionRows(db: DbExecutor) {
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
         sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null, via: input.via ?? null,
+        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', via: input.via ?? null,
         byFlux: author.kind === 'agent' && input.byFlux === true })).returning();
       // F-030: the stored row may be sealed; the caller gets what it wrote.
       const row = stored && { ...stored, body: input.body, requestFingerprint: input.fingerprint };

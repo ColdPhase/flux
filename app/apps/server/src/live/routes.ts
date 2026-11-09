@@ -17,7 +17,7 @@ const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
   properties: { type: { type: 'string', enum: ['conversation', 'work', 'sketch', 'doc'] }, id } } as const;
 const presentation = { type: 'object', required: ['type', 'id', 'version'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['message', 'material', 'work', 'result', 'sketch'] }, id,
+  properties: { type: { type: 'string', enum: ['message', 'material', 'work', 'sketch'] }, id,
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;
 
 /** API policy runs before transport grants; the browser starts with all devices off. */

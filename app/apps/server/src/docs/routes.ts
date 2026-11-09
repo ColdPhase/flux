@@ -32,7 +32,7 @@ const cause = { type: 'object', required: ['kind'], additionalProperties: false,
   kind: { type: 'string', enum: ['import', 'restore', 'keep_mine', 'page_left'] }, version: { type: 'integer', minimum: 1 },
   fileName: { type: 'string', minLength: 1, maxLength: DOC_LIMITS.fileName } } } as const;
 const source = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['result', 'decision'] }, id: { type: 'string' } } } as const;
+  properties: { type: { type: 'string', enum: ['decision'] }, id: { type: 'string' } } } as const;
 const version = { type: 'integer', minimum: 1 } as const;
 
 const createDoc = { type: 'object', required: ['title'], additionalProperties: false, properties: { title, body, cause, from: source } } as const;

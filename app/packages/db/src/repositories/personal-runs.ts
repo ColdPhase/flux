@@ -13,14 +13,13 @@ import { companyGuestSql, isCompanyGuest } from './access.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
- * agents, runs with their reservation and usage, and assistant proposals. They satisfy the
+ * agents, runs with their reservation and usage. They satisfy the
  * `PersonalRunRepository` port of `packages/core/src/personal-runs/ports.ts` structurally and make
  * no access decisions: the core use cases ask the access policy before reading any source.
  */
 
 type Window = { limit: number; offset: number };
 type RunRow = typeof schema.personalRuns.$inferSelect;
-type ProposalRow = typeof schema.assistantProposals.$inferSelect;
 type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
@@ -32,15 +31,11 @@ type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId'
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
   | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros' | 'shownAt' | 'dismissedAt'> & { answerSources: SourceRef[] }>;
-type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
-  | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
-type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
 
 const e = schema.assistantSettings;
 const ag = schema.agents;
 const r = schema.personalRuns;
 const k = schema.agentConnections;
-const p = schema.assistantProposals;
 /** The same words as `nothingToChange` in core (a posting schedule never posts them). */
 const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
@@ -323,16 +318,15 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages of one project conversation, oldest first. A message its author deleted (#1006) is not one a model reads. */
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind,
         createdAt: m.createdAt, editedAt: m.editedAt, via: m.via,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(and(eq(m.conversationId, conversationId), isNull(m.removedAt))).orderBy(desc(m.sequence)).limit(limit);
       const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
-      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, editedAt, ...row }) => ({ ...row, edited: editedAt !== null,
-        ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
-          : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, editedAt, ...row }) => ({ ...row, edited: editedAt !== null,
+        ...(contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
         ...(files.get(row.id)?.length ? { files: files.get(row.id) } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
@@ -341,7 +335,7 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages written in the people's conversations of a space, oldest first: what its main conversation says (#842). */
     async spaceMessages(projectId: string, limit: number) {
       const m = schema.projectMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind,
         createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, conversationId: m.conversationId,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
@@ -355,10 +349,9 @@ export function personalRunRows(db: DbExecutor) {
       const openings = conversations.length ? await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, conversationId: m.conversationId, body: m.body })
         .from(m).where(and(inArray(m.conversationId, conversations), eq(m.sequence, 1), isNull(m.removedAt)))) : [];
       const opening = new Map(openings.map((row) => [row.conversationId, row.body.slice(0, 120)]));
-      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, editedAt, ...row }, index) => ({ ...row, sequence: index + 1, edited: editedAt !== null,
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, editedAt, ...row }, index) => ({ ...row, sequence: index + 1, edited: editedAt !== null,
         thread: opening.get(row.conversationId) ?? null,
-        ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
-          : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
+        ...(contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
     },
@@ -484,27 +477,6 @@ export function personalRunRows(db: DbExecutor) {
       return row ?? null;
     },
 
-    async insertProposal(proposal: NewProposal) {
-      const [row] = await db.insert(p).values({ ...proposal, changeType: 'result' }).returning();
-      return row!;
-    },
-
-    async findProposal(id: string, options: { lock?: boolean } = {}) {
-      const query = db.select().from(p).where(eq(p.id, id));
-      const [row] = options.lock ? await query.for('update') : await query;
-      return row ?? null;
-    },
-
-    async proposalOfRun(runId: string) {
-      const [row] = await db.select().from(p).where(eq(p.runId, runId));
-      return row ?? null;
-    },
-
-    async updateProposal(id: string, changes: ProposalChanges) {
-      const [row] = await db.update(p).set({ ...changes, version: sql`${p.version} + 1`, updatedAt: new Date() }).where(eq(p.id, id)).returning();
-      return row!;
-    },
-
     /** The agent's rights connection is live (not revoked with a deleted agent). */
     async assistantConnectionLive(ownerUserId: string, agentId: string) {
       const [row] = await db.select({ id: k.id }).from(e).innerJoin(k, eq(k.id, e.connectionId)).innerJoin(ag, eq(ag.id, e.agentId))
@@ -527,12 +499,6 @@ export function personalRunRows(db: DbExecutor) {
       const memory = await db.select({ body: schema.agentMemoryItems.body }).from(schema.agentMemoryItems).where(eq(schema.agentMemoryItems.agentId, agentId))
         .orderBy(asc(schema.agentMemoryItems.createdAt), asc(schema.agentMemoryItems.id));
       return { name: row.name, instructions: row.instructions, memory: memory.map((item) => item.body) };
-    },
-
-    async listProposals(projectId: string, window: Window) {
-      const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(p).where(eq(p.projectId, projectId));
-      const rows = await db.select().from(p).where(eq(p.projectId, projectId)).orderBy(desc(p.createdAt), desc(p.id)).limit(window.limit).offset(window.offset);
-      return { items: rows, total: counted?.total ?? 0 };
     },
   };
 }

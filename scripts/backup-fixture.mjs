@@ -217,7 +217,7 @@ async function seed() {
   const work = await ada.expect('POST', `/api/v1/projects/${projectId}/work`, { title: token('BACKUP-work'), owner: { kind: 'human', id: jonasId }, sources: [{ type: 'thought', id: root.thought.id }] });
   const decision = await jonas.expect('POST', `/api/v1/projects/${projectId}/decisions`, { title: token('BACKUP-decision'), affects: [work.id] });
   await ada.expect('POST', `/api/v1/decisions/${decision.id}/accept`, {}, [200], { 'if-match': `"${decision.version}"` });
-  await jonas.expect('POST', `/api/v1/projects/${projectId}/results`, { title: token('BACKUP-result'), finding: 'positive', work: [work.id], finishes: { id: work.id, expectedVersion: work.version } });
+  await jonas.expect('PATCH', `/api/v1/work/${work.id}`, { status: 'done', cameOfIt: token('BACKUP-came-of-it') }, [200], { 'if-match': `"${work.version}"` });
   const doc = await ada.expect('POST', `/api/v1/projects/${projectId}/docs`, { title: token('BACKUP-doc'), body: token('BACKUP-doc-v1') }, [201], { 'idempotency-key': ids() });
   await jonas.expect('PATCH', `/api/v1/docs/${doc.id}`, { body: `${token('BACKUP-doc-v2')} [work](flux:work/${work.id})` }, [200], { 'if-match': `"${doc.version}"` });
   const note = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/sketches`, { title: token('BACKUP-private-note'), scope: 'private' });
@@ -304,7 +304,7 @@ async function verify() {
   const actual = await snapshot(ada, jonas, state);
   assert.deepEqual(actual, state.expected, 'the restored data equals the data before the backup');
   const text = JSON.stringify(actual.exported);
-  for (const word of ['BACKUP-message', 'BACKUP-thought', 'BACKUP-work', 'BACKUP-decision', 'BACKUP-result', 'BACKUP-doc-v1', 'BACKUP-doc-v2']) {
+  for (const word of ['BACKUP-message', 'BACKUP-thought', 'BACKUP-work', 'BACKUP-decision', 'BACKUP-came-of-it', 'BACKUP-doc-v1', 'BACKUP-doc-v2']) {
     assert.ok(text.includes(`${word}-${state.tag}`), `restored export has ${word}`);
   }
   assert.ok(!text.includes('BACKUP-private') && !text.includes('BACKUP-dm'), 'the export still leaves out the private map and the DM');

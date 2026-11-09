@@ -18,12 +18,11 @@ const personWrites = async (f: Scene, taskId: string, body = 'Go on.') =>
   expect(await f.owner.request('POST', `/api/v1/work/${taskId}/discussion`, { body: { body, clientMessageId: randomUUID() } }), 201);
 type Client = { tool: Scene['tool']; runtimeSessionId: string };
 const envelope = (f: Scene, client: Client) => ({ projectId: f.projectId, runtimeSessionId: client.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [] });
-/** Every way an agent's words reach a task's discussion: its own tool, a reply or a question in its conversation, and a result about the task. */
+/** Every way an agent's words reach a task's discussion: its own tool, and a reply or a question in its conversation. */
 const writes = (f: Scene, client: Client, taskId: string, conversationId: string) => ({
   discuss: (body: string) => client.tool('flux_discuss_task', { ...envelope(f, client), taskId, body }),
   reply: (body: string) => client.tool('flux_reply_in_conversation', { ...envelope(f, client), conversationId, message: { body } }),
   ask: (body: string) => client.tool('flux_ask_question', { ...envelope(f, client), conversationId, question: body, options: ['Yes', 'No'] }),
-  result: (body: string) => client.tool('flux_record_result', { ...envelope(f, client), result: { title: body, finding: 'positive', evidence: 'Measured twice', workIds: [taskId] } }),
 });
 
 test('an agent writes in the task\'s one discussion and reads it; people read the same messages there, and a replay adds nothing', async () => {
@@ -114,12 +113,11 @@ test('C-51: after five agent messages in a row every way of writing in the discu
   for (const [path, write] of Object.entries(by))
     assert.equal(toolFailure(await write(`A sixth line by ${path}`)).code, 'AGENT_TURN_LIMIT', `${path} is refused`);
   assert.deepEqual((await discussion(f, item.id)).messages.map((message) => message.body), ['Step 1', 'Step 2', 'Step 3', 'Step 4', 'Step 5']);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id = $1', [f.projectId])).rows[0].n, 0, 'the refused result is not recorded');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_questions WHERE conversation_id = $1', [conversationId])).rows[0].n, 0, 'nor the question');
   // A person's message gives the agents their turns back, on every path.
   await personWrites(f, item.id);
   for (const write of Object.values(by)) toolValue(await write('After the person'));
-  assert.equal((await discussion(f, item.id)).messages.length, 10);
+  assert.equal((await discussion(f, item.id)).messages.length, 9);
 });
 
 test('C-51: two agents taking turns, with any tools, share the five messages; a line Flux writes for an agent is neither counted nor refused', async () => {

@@ -3,7 +3,7 @@ import type { ConversationMessage, ObjectRef, WorkStatus } from '@flux/contracts
 
 /** A project object shown in the Details panel (#101). */
 export interface ObjectView {
-  kind: 'work' | 'decision' | 'result'; id: string; projectId?: string;
+  kind: 'work' | 'decision'; id: string; projectId?: string;
   /** The title of the task, when the opener has it (its row or card): the panel's loading state shows it in its own place at once (#863 rule 6). */
   title?: string;
 }
@@ -17,18 +17,18 @@ export interface WorkFormView {
   workId?: string;
 }
 
-/** "Add to docs" for a result or decision (#112); `inDocs` are the docs that already have it. */
+/** "Add to docs" for a decision (#112); `inDocs` are the docs that already have it. */
 export interface AddToDocView {
   kind: 'add-to-doc';
   projectId: string;
-  from: { type: 'result' | 'decision'; id: string; title: string };
+  from: { type: 'decision'; id: string; title: string };
   inDocs: string[];
   /** False when IDs describe one bounded relation page, rather than every linked doc. */
   inDocsComplete?: boolean;
 }
 
 /**
- * The project's overview in Details (#117): linked work, decisions, results, sources and
+ * The project's overview in Details (#117): linked work, decisions, sources and
  * sketches of the open conversation, or of one message when `messageId` is set.
  */
 export interface OverviewView {

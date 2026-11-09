@@ -4,7 +4,7 @@ Runs with the other tests/ui journeys through scripts/check_ui.sh against the ru
 application. Two people share one space. One writes a page where it is read, with a link to a
 decision, and the version saves by itself; the other writes at the same time and nothing is lost
 (with live editing both see each other's text; without it the later save meets the earlier one and
-the person chooses); both read the history with a diff; a result is added to the page from its
+the person chooses); both read the history with a diff; a decision is added to the page from its
 details; the phone writes and compares. Every step is checked against the API, so the test proves
 persisted behaviour rather than local state.
 """
@@ -61,7 +61,7 @@ class DocsJourney(unittest.TestCase):
     browser: Browser
     states: dict[str, dict] = {}
     project_id: str = ""
-    result_id: str = ""
+    finding_id: str = ""
     decision_id: str = ""
     doc_id: str = ""
 
@@ -161,8 +161,9 @@ class DocsJourney(unittest.TestCase):
         base = f"/api/v1/projects/{project['id']}"
         self.api(owner, "POST", f"{base}/conversations", {"body": "Camera or distance sensor? Let us test both in the dark.", "clientMessageId": str(uuid.uuid4())}, status=201)
         partner = self.page("partner")
-        result = self.api(partner, "POST", f"{base}/results", {"title": FINDING, "finding": "negative", "evidence": "38% of 20 gestures at 5 lux over two evenings."}, status=201)
-        type(self).result_id = result["id"]
+        finding = self.api(partner, "POST", f"{base}/decisions", {"title": FINDING, "rationale": "38% of 20 gestures at 5 lux over two evenings."}, status=201)
+        self.api(owner, "POST", f"/api/v1/decisions/{finding['id']}/accept", {}, status=200, headers={"if-match": '"1"'})
+        type(self).finding_id = finding["id"]
         rule = self.api(owner, "POST", f"{base}/decisions", {"title": RULE, "rationale": "It works in the dark and draws a sixth of the power."}, status=201)
         self.api(owner, "POST", f"/api/v1/decisions/{rule['id']}/accept", {}, status=200, headers={"if-match": '"1"'})
         type(self).decision_id = rule["id"]
@@ -185,9 +186,9 @@ class DocsJourney(unittest.TestCase):
         # The link picker: keyboard only, filtered to objects of this space.
         page.keyboard.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this space")
-        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill("ToF distance")
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True).fill("ToF distance")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
-        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).press("Enter")
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True).press("Enter")
         has_text(text, f"[{RULE}](flux:decision/{self.decision_id})")
         expect(text).to_be_focused()
         shot(page, "docs-writing-desktop-1440")
@@ -322,33 +323,30 @@ class DocsJourney(unittest.TestCase):
         expect(page.locator(".wiki-body")).not_to_contain_text("Open questions")
         shot(page, "docs-reader-earlier-desktop-1280")
 
-    # ---------------------------------------------------------------- from a result
+    # ---------------------------------------------------------------- from a decision
 
-    def test_05_add_a_result_to_the_doc(self) -> None:
+    def test_05_add_a_decision_to_the_doc(self) -> None:
         page = self.page("partner")
         before = self.doc(page)["version"]
-        # Results have no list in Tasks (#342): the result opens by its own link, as from its task's details.
-        results = page.request.get(f"/api/v1/projects/{self.project_id}/results?limit=100").json()["items"]
-        result = next(item for item in results if item["title"].startswith(FINDING))
-        page.goto(f"/projects/{self.project_id}/tasks?open=result:{result['id']}")
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
         panel = page.locator("#details")
-        expect(panel).not_to_contain_text("Shown on the Wiki page")  # a result on no page says nothing about the Wiki (#871)
+        expect(panel).not_to_contain_text("Shown on the Wiki page")  # a decision on no page says nothing about the Wiki (#871)
         panel.get_by_role("button", name="Add to a Wiki page").click()
         expect_value(panel.get_by_label("Wiki page", exact=True), self.doc_id)
-        shot(page, "docs-add-from-result-desktop-1440")
-        panel.get_by_role("button", name="Add or update section").click()
-        # The form closes back to the result with one toast; Open leads to the page (#763 D4).
+        shot(page, "docs-add-from-decision-desktop-1440")
+        panel.get_by_role("button", name="Add the card").click()
+        # The form closes back to the decision with one toast; Open leads to the page (#763 D4).
         expect(page.get_by_text(f"Added to “{TITLE}”")).to_be_visible()
         page.get_by_role("button", name="Open", exact=True).click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
-        expect(page.locator(".wiki-editor .cm-md-h", has_text=f"Result: {FINDING}")).to_be_visible()
         doc = self.doc(page)
-        self.assertEqual((doc["version"], doc["reason"]), (before + 1, f"Added the result “{FINDING}”"))
-        self.assertTrue(any(link["role"] == "source" and link["to"]["id"] == self.result_id for link in doc["links"]))
-        result = self.api(page, "GET", f"/api/v1/results/{self.result_id}", status=200)
-        self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in result["links"]))
-        # The result now shows the doc it is in.
-        page.goto(f"/projects/{self.project_id}/tasks?open=result:{self.result_id}")
+        self.assertEqual((doc["version"], doc["reason"]), (before + 1, f"Added the decision “{FINDING}”"))
+        self.assertIn(f"[{FINDING}](flux:decision/{self.finding_id})", doc["body"])
+        self.assertTrue(any(link["role"] == "source" and link["to"]["id"] == self.finding_id for link in doc["links"]))
+        decision = self.api(page, "GET", f"/api/v1/decisions/{self.finding_id}", status=200)
+        self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in decision["links"]))
+        # The decision now shows the doc it is in.
+        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.finding_id}")
         expect(page.locator("#details").get_by_role("link", name=re.compile(TITLE))).to_be_visible()
 
     # ---------------------------------------------------------------- phone

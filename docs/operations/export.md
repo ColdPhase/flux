@@ -67,14 +67,14 @@ names.
 | `people` | Everyone who can read the project now, with `access` (`manager` or `contributor`; format 1's schema still lists `viewer`, which a space no longer has) and `workspaceRole`, decided by the access policy. |
 | `grants` | Explicit project grants (`manager` or `contributor`; format 1's schema still lists `viewer` and `denied`, which no grant has any more). |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
-| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
+| `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, the "what came of it" line or a public handoff also has `contribution` (`{ "kind": "blocker" \| "handoff" \| "came_of_it" }`); ordinary messages omit it. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, `state` (always `published` since v0.2: a page has no Draft, and format 1 keeps the field because removing it needs a new `formatVersion`), reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
-| `work`, `decisions`, `results` | All fields: status, blocker, whether it was dropped and what came of it, owner, who proposed and who accepted, supersession, finding, evidence. |
+| `work`, `decisions` | All fields: status, blocker, whether it was dropped and what came of it, owner, who proposed and who accepted, supersession. |
 | `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
-| `links` | Typed links (`source`, `affects`, `about`, `related`, `mentions`) whose two ends are both in the export. |
+| `links` | Typed links (`source`, `affects`, `related`, `mentions`, `part_of`) whose two ends are both in the export. |
 
 ## What is never exported
 
@@ -108,6 +108,9 @@ file, or changing the manifest identification needs a new `formatVersion`. The J
 keys so that a change to the format cannot go unnoticed in the tests, and
 `app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
 `app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
+Before the first release nothing reads an export yet, so a removal is edited into format 1 in place (founder direction, 2026-11-09, no
+backward compatibility): `results`, the `result` object, the `result` contribution and the link role `about` went with the Result
+object (#1054), and `project-export.v1.json` was edited to match.
 
 Task creation Undo keeps every task in the export. Each task carries `lifecycle` (active, or creation
 reverted with the notice, time and actor) and `creationHistory` (trusted origin, immutable baseline, first persisted

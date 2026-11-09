@@ -34,12 +34,12 @@ class DecisionTrace(unittest.TestCase):
         # The query is bound to one project and never reads another project's rows.
         repo = source("app/packages/db/src/repositories/work.ts")
         body = repo[repo.index("async listObjectNotices"):repo.index("async updateWork")]
-        self.assertEqual(body.count("project_id = ${projectId}"), 3, "every branch of the union is bound to the project")
+        self.assertEqual(body.count("project_id = ${projectId}"), 2, "every branch of the union is bound to the project")
         self.assertNotIn("workspace_id =", body)
 
     def test_live_events_carry_identifiers_only(self) -> None:
         service = source("app/packages/core/src/work/service.ts")
-        for kind, key in (("project.decision_proposed.v1", "decisionId"), ("project.decision_accepted.v1", "decisionId"), ("project.result_recorded.v1", "resultId")):
+        for kind, key in (("project.decision_proposed.v1", "decisionId"), ("project.decision_accepted.v1", "decisionId")):
             calls = re.findall(rf"events\.record\([^;]*?'{re.escape(kind)}'[^;]*?\{{([^}}]*)\}}\)", service)
             self.assertTrue(calls, f"{kind} is recorded")
             for payload in calls:
@@ -48,7 +48,7 @@ class DecisionTrace(unittest.TestCase):
         one = source("app/apps/web/src/app/OneConversation.tsx")
         handler = one[one.index("useStreamEvents(me.user.id"):]
         handler = handler[:handler.index("});")]
-        for kind in ("decision_(proposed|accepted)", "result_recorded", "work_created"):
+        for kind in ("decision_(proposed|accepted)", "work_created"):
             self.assertIn(kind, handler)
         self.assertIn("revalidator.revalidate()", handler)
         self.assertNotRegex(handler, r"event\.(title|body|data|text)")
@@ -56,7 +56,7 @@ class DecisionTrace(unittest.TestCase):
     def test_the_design_allows_the_lines_and_the_thread_commands_carry_their_source(self) -> None:
         design = source("docs/design/final/README.md")
         rule = next(line for line in design.splitlines() if line.startswith("| P5 |"))
-        for words in ("#694", "decision", "result", "card", "thread"):
+        for words in ("#694", "decision", "card", "thread"):
             self.assertIn(words, rule)
         conversation = source("app/apps/web/src/conversations/useComposerSend.ts")
         self.assertRegex(conversation, r"fromThread = conversation && rootMessageId \?")
@@ -66,7 +66,6 @@ class DecisionTrace(unittest.TestCase):
     def test_a_card_never_decides_or_changes_anything(self) -> None:
         component = source("app/apps/web/src/app/ObjectNotices.tsx")
         # One button, and it only opens the object in Details; the line has no reply, accept or other action of its own.
-        # A task's discussion is no root of the stream (#868), so a result that opened one has no task link ("on #9") here.
         self.assertEqual(len(re.findall(r"<button", component)), 3, "the source link, the thread link and the card")
         code = re.sub(r"/\*.*?\*/", "", component, flags=re.S)
         self.assertNotRegex(code, r"accept|propose|fetch\(|request\(")

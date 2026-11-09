@@ -143,7 +143,7 @@ describe('F-030 registry against the live catalog', () => {
       flux_guard_task_creation_history: 'compares only (IS DISTINCT FROM): no value leaves the row',
       search_index_decision: 'search_put stores a placeholder without title or body for a sealed workspace (0120)',
       search_index_dm_message: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
-      search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision', search_index_result: 'as search_index_decision',
+      search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision',
       search_index_sketch: 'as search_index_decision', search_index_thought: 'as search_index_decision', search_index_work: 'as search_index_decision',
     };
     const found = new Set<string>();
@@ -325,7 +325,6 @@ const HANDLED_SQL: Readonly<Record<string, string>> = {
   'packages/db/src/repositories/work-read-associations.ts: WHEN \'message\' THEN (SELECT left(split_part(btrim(o.body)': 'edges(): for a sealed workspace the titles are replaced by opened ones (workRows.titles)',
   'packages/db/src/repositories/work-read-associations.ts: WHEN \'thought\' THEN (SELECT left(split_part(btrim(t.text)': 'edges(): for a sealed workspace the titles are replaced by opened ones (workRows.titles)',
   'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'decision\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
-  'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'result\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
   'packages/db/src/repositories/work-read-keys.ts: parts.push(sql`SELECT \'work\'::text AS kind': 'task text filter: for a sealed workspace the opened rows are filtered in the application',
   'packages/db/src/repositories/work.ts: const [row] = await db.select({ matches: sql<boolean>`${w.creationBaseline} = jsonb_build_object(': 'creationBaselineMatches: a sealed row is compared after openRow (baselineMatches)',
   'packages/db/src/repositories/work.ts: baselineMatches: sql<boolean>`COALESCE(${w.creationBaseline} = jsonb_build_object(': 'creationUndoFacts: a sealed row is recomputed after openRow (baselineMatches)',

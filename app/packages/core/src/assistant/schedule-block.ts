@@ -1,7 +1,7 @@
 import type { AssistantJobSchedule } from '@flux/contracts';
 
 // "Set up by asking" (F-027 AST-7): in the owner's own request, "every weekday at 9 tell me what's blocked here" makes the
-// assistant prepare a schedule that stays off. The model says so the way it proposes a result: one block at the end of its
+// assistant prepare a schedule that stays off. The model says so with one block at the end of its
 // answer. Flux takes the block out of the words that are posted and prepares the schedule; only the owner's tap turns it on.
 // A background run's block is dropped without effect: no run can prepare, change or turn on a schedule (AST-7.5).
 

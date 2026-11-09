@@ -81,8 +81,8 @@ export function causeSentence(given: DocChangeCause, theirs: string | null): str
 export function sectionSource(value: unknown): DocSectionSource {
   const raw = value as { type?: unknown; id?: unknown } | null | undefined;
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!raw || typeof raw !== 'object' || (raw.type !== 'result' && raw.type !== 'decision') || typeof raw.id !== 'string' || !UUID.test(raw.id))
-    throw new InvalidInputError('from must be { type: "result" | "decision", id }');
+  if (!raw || typeof raw !== 'object' || raw.type !== 'decision' || typeof raw.id !== 'string' || !UUID.test(raw.id))
+    throw new InvalidInputError('from must be { type: "decision", id }');
   return { type: raw.type, id: raw.id.toLowerCase() };
 }
 
@@ -101,83 +101,7 @@ export function literal(text: string): string {
   return text.replace(/\s+/g, ' ').trim().replace(/([\\`*_{}[\]()#+!<>|~])/g, '\\$1');
 }
 
-const day = new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-export const dateLine = (date: Date) => day.format(date);
-
-/** The line that marks a section as the one for `source`; kept when the section is rewritten. */
-export function sourceLine(source: DocSectionSource, label: string) {
-  return `Source: [${literal(label)}](${docRef(source.type, source.id)})`;
-}
-
-const HEADING = /^(#{1,6})[ \t]+\S/;
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
-
-/**
- * Heading lines outside fenced code, with their level. As in CommonMark, a fence closes only on a fence of the
- * same character that is at least as long as the one that opened it, so a four-backtick block can hold a
- * three-backtick block.
- */
-function headings(lines: string[]) {
-  const found: { index: number; level: number }[] = [];
-  let fence: string | null = null;
-  lines.forEach((line, index) => {
-    const run = FENCE.exec(line)?.[1];
-    if (run) {
-      if (!fence) fence = run;
-      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
-      return;
-    }
-    const heading = fence ? null : HEADING.exec(line);
-    if (heading) found.push({ index, level: heading[1]!.length });
-  });
-  return found;
-}
-
-const CARD_LINE = /^\[(?:\\.|[^\]\\])*\]\(flux:decision\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\)\s*$/i;
-
-/**
- * F-034: a decision card (a decision reference standing on its own line, outside fenced code) after a section's
- * `Source:` line is never part of that section, so rewriting the section keeps the cards that follow it.
- */
-function cardAfter(lines: string[], from: number, end: number) {
-  let fence: string | null = null;
-  for (let at = from + 1; at < end; at++) {
-    const run = FENCE.exec(lines[at]!)?.[1];
-    if (run) {
-      if (!fence) fence = run;
-      else if (run[0] === fence[0] && run.length >= fence.length) fence = null;
-    } else if (!fence && CARD_LINE.test(lines[at]!)) return at;
-  }
-  return end;
-}
-
-/**
- * Adds the section of a result or decision to a doc text, or rewrites the section that already
- * cites it (its `Source:` line names the same reference). Earlier text stays in the earlier
- * version; the rest of the doc is untouched. Returns the new text and whether a section existed.
- */
-export function upsertSection(text: string, source: DocSectionSource, section: string): { body: string; replaced: boolean } {
-  const lines = text.split('\n');
-  const marker = `](${docRef(source.type, source.id)})`;
-  const markerAt = lines.findIndex((line) => line.startsWith('Source: [') && line.trimEnd().endsWith(marker));
-  const all = headings(lines);
-  const start = markerAt < 0 ? undefined : [...all].reverse().find((heading) => heading.index < markerAt);
-  const sectionLines = section.replace(/\n+$/, '').split('\n');
-  if (!start) {
-    const kept = text.replace(/\s+$/, '');
-    return { body: kept ? `${kept}\n\n${sectionLines.join('\n')}\n` : `${sectionLines.join('\n')}\n`, replaced: false };
-  }
-  const next = all.find((heading) => heading.index > start.index && heading.level <= start.level)?.index ?? lines.length;
-  const end = cardAfter(lines, markerAt, next);
-  const before = lines.slice(0, start.index);
-  const after = lines.slice(end);
-  // Only the section's own lines change; everything around it is kept byte for byte.
-  const joined = [...before, ...sectionLines, ...(after.length ? ['', ...after] : [''])].join('\n');
-  return { body: joined, replaced: true };
-}
-
-/** Escapes headings inside quoted text so a section keeps its shape. */
-export const quotedBlock = (markdown: string) => markdown.trim().split('\n').map((line) => (/^\s{0,3}#{1,6}\s/.test(line) ? `\\${line.trimStart()}` : line)).join('\n');
 
 /**
  * F-034: the one line a decision is in a page, a reference standing alone, which the reader shows as the live

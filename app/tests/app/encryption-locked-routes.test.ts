@@ -23,7 +23,7 @@ interface Schema { type?: string | string[]; properties?: Record<string, Schema>
  * GitHub (refused), and the person's own account rows. A route reached only through them is not a route "for A's objects".
  */
 const NOT_A_WORKSPACE_OBJECT: Readonly<Record<string, string>> = {
-  connectionId: 'agent and background-compute connections (AI)', runId: 'assistant runs (AI)', proposalId: 'assistant proposals (AI)',
+  connectionId: 'agent and background-compute connections (AI)', runId: 'assistant runs (AI)',
   changeId: 'assistant changes (AI)', jobId: 'assistant schedules (AI)', requestId: 'assistant join and coordination requests (AI)',
   agentId: 'agents (AI)', questionId: 'agent questions (AI)',
   commandId: 'live Wiki receipts (refused until S2b)', bindingId: 'GitHub (refused)', installationId: 'GitHub (refused)',
@@ -63,7 +63,6 @@ before(async () => {
   const dm = await post(ada, `/api/v1/workspaces/${A}/dms`, { participantIds: [ben.id], title: null }, 201);
   const dmMessage = await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: `${canary} dm`, clientMessageId: randomUUID() }, 201);
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: `${canary} decision`, rationale: 'why' }, 201);
-  const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: `${canary} result`, finding: 'positive', evidence: 'seen' }, 201);
   const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: `${canary} task`, outcome: 'done', criteria: ['one'] }, 201);
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: `${canary} doc`, body: 'body' }, 201);
   const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: `${canary} material`, body: 'b', url: 'https://example.test/m' }, 201);
@@ -84,7 +83,7 @@ before(async () => {
   Object.assign(objects, {
     workspaceId: A, workspace: A, projectId: project.id, conversationId: String(conversation.id), dmId: String(dm.id),
     rootId: String((dmMessage as { id?: string }).id ?? (dmMessage.message as { id: string }).id), messageId: String((conversation.messages as { id: string }[])[0]!.id),
-    decisionId: String(decision.id), resultId: String(result.id), workId: String(task.id), taskId: String(task.id),
+    decisionId: String(decision.id), workId: String(task.id), taskId: String(task.id),
     docId: String(doc.id), materialId: String(material.materialId ?? material.id), sketchId: String(sketch.id), thoughtId: String((one.thought as { id: string }).id),
     linkId: String((link.link as { id?: string } | undefined)?.id ?? link.id), fileId: file.id, userId: ben.id, version: '1', kind: 'decision',
     notification, grantId: randomUUID(), key: `note:${notification}`,

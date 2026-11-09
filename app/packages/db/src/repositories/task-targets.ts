@@ -25,14 +25,14 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
     const rows = await tx.select({ id: schema.githubTaskLinks.taskId }).from(schema.githubTaskLinks).where(inArray(schema.githubTaskLinks.id, pullLinks));
     rows.forEach((row) => ids.add(row.id));
   }
-  const owners = refs.filter((ref) => ref.type === 'result' || ref.type === 'decision');
+  const owners = refs.filter((ref) => ref.type === 'decision');
   if (owners.length) {
     const l = schema.projectObjectLinks;
     const rows = await tx.select({ id: l.toId }).from(l).where(and(eq(l.toType, 'work'),
-      or(...owners.map((ref) => and(eq(l.fromType, ref.type as 'result' | 'decision'), eq(l.fromId, ref.id))))));
+      or(...owners.map((ref) => and(eq(l.fromType, 'decision'), eq(l.fromId, ref.id))))));
     rows.forEach((row) => ids.add(row.id));
     // Incoming work links can be that task's immutable initial provenance. Retaining those
-    // after Undo must not poison a later unrelated use of the original result/decision.
+    // after Undo must not poison a later unrelated use of the original decision.
   }
   return [...ids].sort();
 }
@@ -41,7 +41,7 @@ export async function referencedTaskIds(tx: DbExecutor, refs: readonly Reference
 export async function referencedProjectIds(tx: DbExecutor, refs: readonly Reference[]): Promise<string[]> {
   const projects = new Set<string>();
   const groups = [
-    ['work', schema.projectWorkItems], ['result', schema.projectResults], ['decision', schema.projectDecisions],
+    ['work', schema.projectWorkItems], ['decision', schema.projectDecisions],
     ['conversation', schema.projectConversations], ['message', schema.projectMessages],
     ['material', schema.projectMaterials], ['doc', schema.projectMaterials], ['github_pr', schema.githubTaskLinks],
   ] as const;

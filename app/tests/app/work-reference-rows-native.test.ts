@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase, sql } from '@flux/db';
 import { createBoundedWorkReads, DomainError, type WorkReadUnitOfWork } from '@flux/core';
-import type { Agent, Decision, WorkItem, WorkReferenceRows, WorkResult } from '@flux/contracts';
+import type { Agent, Decision, WorkItem, WorkReferenceRows } from '@flux/contracts';
 import { nativeWorkReadFinalFence, nativeWorkReadUnitOfWork } from '../../apps/server/src/work-read/adapters.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
@@ -21,7 +21,7 @@ const key = (ref: { kind: string; id: string }) => `${ref.kind}:${ref.id}`;
 describe('selected native reference rows with exact sessions and current membership fences', () => {
   let owner: Person, writer: Person, viewer: Person, outsider: Person;
   let workspaceId: string, projectId: string, foreignId: string;
-  let work: WorkItem, foreign: WorkItem, decision: Decision, result: WorkResult;
+  let work: WorkItem, foreign: WorkItem, decision: Decision;
   const post = async <T>(who: Person, path: string, body: unknown) => expectStatus(await who.browser.request('POST', path,
     { body, headers: { 'idempotency-key': randomUUID() } }), 201) as T;
   const path = (objects: string, id = projectId) => `/api/v1/projects/${id}/work-reference-rows?objects=${objects}`;
@@ -49,14 +49,13 @@ describe('selected native reference rows with exact sessions and current members
     work = await createWork('Current native cited work', projectId, { outcome: 'Long own outcome must not escape', criteria: ['Own full criterion'], owner: { kind: 'human', id: writer.id } });
     foreign = await createWork('Foreign title must not escape', foreignId, { owner: { kind: 'human', id: owner.id } });
     decision = await post<Decision>(owner, `/api/v1/projects/${projectId}/decisions`, { title: 'Selected native decision', rationale: 'Long private-to-detail rationale' });
-    result = await post<WorkResult>(owner, `/api/v1/projects/${projectId}/results`, { title: 'Selected native result', finding: 'positive', evidence: 'Long own evidence', work: [work.id] });
   });
 
   test('mixed historical identities isolate opaque markers and preserve exact native rows, owners and versions', async () => {
     const missing = randomUUID();
-    const observation = await read(`work:${foreign.id},work:${work.id},result:${result.id},decision:${decision.id},work:${missing},work:${work.id}`, viewer);
+    const observation = await read(`work:${foreign.id},work:${work.id},decision:${decision.id},work:${missing},work:${work.id}`, viewer);
     assert.equal(observation.projectId, projectId); assert.equal(observation.access, 'contributor'); assert.match(observation.observedAt, /\.\d{6}Z$/);
-    assert.deepEqual(observation.items.map(key), [`decision:${decision.id}`, `result:${result.id}`, `work:${work.id}`]);
+    assert.deepEqual(observation.items.map(key), [`decision:${decision.id}`, `work:${work.id}`]);
     assert.deepEqual(observation.unavailable, [foreign.id, missing].sort().map((id) => ({ kind: 'work', id })));
     const row = observation.items.find(({ kind }) => kind === 'work'); assert.ok(row?.kind === 'work');
     assert.deepEqual(row.owner, { kind: 'human', id: writer.id, name: 'reference-writer' }); assert.equal(row.version, work.version);

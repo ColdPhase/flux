@@ -98,7 +98,7 @@ export function liveUseCases(ports: LivePorts) {
       const session = await current(principal, sessionId);
       if (session.state !== 'available') throw new RuleViolationError('This session has ended', 'LIVE_SESSION_ENDED');
       uuid(clientEventId, 'clientEventId');
-      if (!ref || !['message', 'material', 'work', 'result', 'sketch'].includes(ref.type) || !Number.isInteger(ref.version) || ref.version < 1)
+      if (!ref || !['message', 'material', 'work', 'sketch'].includes(ref.type) || !Number.isInteger(ref.version) || ref.version < 1)
         throw new InvalidInputError('ref must name a versioned Flux object');
       uuid(ref.id, 'ref.id');
       if (ref.type === 'sketch' && (ref.selectedThoughtIds?.length ?? 0) > 100)

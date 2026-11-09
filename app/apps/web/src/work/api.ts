@@ -1,7 +1,7 @@
 import {
-  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
+  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
   type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
-  type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
+  type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client.js';
 import { readAssignedAcross } from './assigned.js';
@@ -18,7 +18,6 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 
 export const getWork = (id: string, signal?: AbortSignal) => request<WorkItem>(workItemPath(id), { signal });
-export const getResult = (id: string, signal?: AbortSignal) => request<WorkResult>(resultPath(id), { signal });
 /** Create commands carry an Idempotency-Key that the caller reuses when retrying the same submission. */
 export const createWork = (projectId: string, command: CreateWorkCommand, idempotencyKey: string) =>
   request<WorkItem>(projectWorkPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection } from '@flux/contracts';
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -86,8 +86,8 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
 
 /**
  * Details for a project (#117, direction C "overview"): what the open conversation — or one of
- * its messages — is connected to, each one step away: the current state, linked work, decisions
- * and results, sources, sketches and docs, and exactly who can see it. Nothing here is a
+ * its messages — is connected to, each one step away: the current state, linked work, decisions,
+ * sources, sketches and docs, and exactly who can see it. Nothing here is a
  * permanent panel; it opens with Details, the state line or a message's Details action.
  */
 export function ProjectOverview({ messageId, selection, onBack }: { messageId?: string; selection?: OverviewView['selection']; onBack: () => void }) {
@@ -126,11 +126,9 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const rows = read.page?.items ?? [];
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
-  const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([statusPhrase(item), item.owner ? byline(item.owner) : null]), open: { kind: 'work', id: item.id } });
   const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
-  const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
-  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)];
+  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow)];
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
 
@@ -160,7 +158,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   // Docs that include or mention what is linked here, then the project's latest docs.
   const docRows = new Map<string, Row>();
   for (const link of relationItems) {
-    if (link.from.type !== 'doc' || (link.to.type !== 'decision' && link.to.type !== 'result')) continue;
+    if (link.from.type !== 'doc' || link.to.type !== 'decision') continue;
     const object = byRef.get(`${link.to.type}:${link.to.id}`);
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Wiki page · includes it' : 'Wiki page · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
@@ -201,7 +199,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
           {/* One page is not paginated (#512, AC-6). */}
           {multiPage(read.page) ? <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} /> : null}
         </> : undefined}
-        empty={read.page?.total === 0 ? 'Nothing linked yet. Any message can become a task, a decision or a result.' : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
+        empty={read.page?.total === 0 ? 'Nothing linked yet. Any message can become a task or a decision.' : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
       {rows.length ? <div className="ov-relations">
         <p className="ov-note">Sources, thoughts and Wiki pages linked to the {rows.length} shown {rows.length === 1 ? 'object' : 'objects'}.</p>
         {read.relations.phase === 'unavailable' ? <p className="wd-error" role="alert">Object links could not be loaded. <button type="button" className="ui-link" onClick={read.refreshRelations}>Refresh object links</button></p> : null}

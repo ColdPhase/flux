@@ -1,11 +1,11 @@
-import { WORK_LIMITS, WORK_STATUSES, type ObjectRef, type PageQuery, type PrincipalRef, type ResultFinding, type TaskPlanIntent, type WorkObjectType, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type ObjectRef, type PageQuery, type PrincipalRef, type TaskPlanIntent, type WorkObjectType, type WorkStatus } from '@flux/contracts';
 import { InvalidInputError, PreconditionRequiredError } from '../access/errors.js';
 import type { PageWindow } from './ports.js';
 
 // Input rules shared by every entry point of the work use cases (#101). Pure functions.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const OBJECT_TYPES: readonly WorkObjectType[] = ['work', 'decision', 'result'];
+const OBJECT_TYPES: readonly WorkObjectType[] = ['work', 'decision'];
 export const SOURCE_TYPES: readonly ObjectRef['type'][] = ['message', 'thought', 'material'];
 /** Anything in the project a link can reach: sources, work objects, docs (#112) and project sketches. */
 export const ANY_TYPES: readonly ObjectRef['type'][] = [...SOURCE_TYPES, ...OBJECT_TYPES, 'doc', 'sketch'];
@@ -53,11 +53,6 @@ export function status(value: unknown): WorkStatus {
   if (typeof value !== 'string' || !(WORK_STATUSES as readonly string[]).includes(value))
     throw new InvalidInputError(`status must be one of ${WORK_STATUSES.join(', ')}`);
   return value as WorkStatus;
-}
-
-export function finding(value: unknown): ResultFinding {
-  if (value !== 'positive' && value !== 'negative') throw new InvalidInputError('finding must be positive or negative');
-  return value;
 }
 
 export function owner(value: unknown): PrincipalRef | null {

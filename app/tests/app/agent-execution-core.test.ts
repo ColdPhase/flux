@@ -30,7 +30,7 @@ test('canonical postcondition registry rejects missing, duplicate, malformed or 
   const checkpoint = { kind: 'map_checkpoint', id, updatedAt: new Date().toISOString() };
   validateAgentPostconditions('map.positions.update', [checkpoint]);
   for (const value of [null, [], [null], [{ kind: 'work', id, version: 0 }], [{ kind: 'work', id, version: 2, arbitrary: true }],
-    [{ kind: 'result', id }], [{ kind: 'work', id, version: 2 }, { kind: 'work', id, version: 2 }]])
+    [{ kind: 'message', id }], [{ kind: 'work', id, version: 2 }, { kind: 'work', id, version: 2 }]])
     assert.throws(() => validateAgentPostconditions('work.update', value), (error: unknown) => error instanceof DomainError && error.code === 'COMMAND_POSTSTATE_INVALID');
   assert.throws(() => validateAgentPostconditions('map.thought.update', [checkpoint]), { code: 'COMMAND_POSTSTATE_INVALID' });
 });
@@ -57,7 +57,7 @@ test('every operation has a registered postcondition entry; an incomplete sample
   const samples: Record<AgentOperation, AgentPostcondition[]> = {
     'work.create': [{ kind: 'work', id: uuid(), version: 1 }], 'work.update': [{ kind: 'work', id: uuid(), version: 2 }],
     'work.creation.revert': [{ kind: 'work', id: uuid(), version: 2 }],
-    'result.record': [{ kind: 'result', id: uuid() }], 'decision.propose': [{ kind: 'decision', id: uuid(), version: 1 }],
+    'decision.propose': [{ kind: 'decision', id: uuid(), version: 1 }],
     'map.create': [{ kind: 'map', id: uuid(), version: 1 }], 'map.rename': [{ kind: 'map', id: uuid(), version: 2 }],
     'map.thought.create': [{ kind: 'thought', id: uuid(), version: 1 }, { kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
     'map.thought.update': [{ kind: 'thought', id: uuid(), version: 2 }, { kind: 'map_checkpoint', id: uuid(), updatedAt: at }],

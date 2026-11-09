@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef, ResultRowProjection, WorkDetailObject, WorkRowProjection } from '@flux/contracts';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef, WorkDetailObject, WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
@@ -8,12 +8,11 @@ import { taskGraphRows } from './task-graph.js';
 import { nativePrerequisiteCounts } from './work-read-task-plans.js';
 import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read-visibility.js';
 
-const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
-const base = (table: typeof w | typeof d | typeof r) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
+const w = schema.projectWorkItems, d = schema.projectDecisions;
+const base = (table: typeof w | typeof d) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
 const workFields = { ...base(w), number: w.number, status: w.status, blocker: w.blocker, waitingForUserId: w.waitingForUserId, waitingForDecisionId: w.waitingForDecisionId, waitingForWorkId: w.waitingForWorkId, dropped: w.dropped, cameOfIt: w.cameOfIt, dueOn: w.dueOn, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, version: w.version, updatedAt: w.updatedAt,
   revertedAt: w.creationRevertedAt, revertedByKind: w.creationRevertedByKind, revertedById: w.creationRevertedById, reversionNoticeId: w.creationReversionNoticeId };
 const decisionFields = { ...base(d), rationale: d.rationale, status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
-const resultFields = { ...base(r), finding: r.finding, createdByKind: r.createdByKind, createdById: r.createdById };
 const iso = (date: Date) => date.toISOString();
 const audience = (record: { projectId: string; createdAt: Date }) => ({ audience: { kind: 'project' as const, projectId: record.projectId }, createdAt: iso(record.createdAt) });
 const actorKey = (ref: PrincipalRef) => `${ref.kind}:${ref.id}`;
@@ -50,10 +49,9 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     // Snapshot the ordered input before any asynchronous operation.
     const requested = objects.map((object) => ({ ...object }));
     const ids = (kind: NativeWorkReadObject['kind']) => requested.filter((ref) => ref.kind === kind).map((ref) => ref.id);
-    const workIds = ids('work'), decisionIds = ids('decision'), resultIds = ids('result');
+    const workIds = ids('work'), decisionIds = ids('decision');
     const works = workIds.length ? await openRows(db, 'project_work_items', await db.select(workFields).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, workIds)))) : [];
     const decisions = decisionIds.length ? await openRows(db, 'project_decisions', await db.select(decisionFields).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, decisionIds)))) : [];
-    const results = resultIds.length ? await openRows(db, 'project_results', await db.select(resultFields).from(r).where(and(eq(r.projectId, projectId), inArray(r.id, resultIds)))) : [];
     const prerequisites = await nativePrerequisiteCounts(db, projectId, workIds);
     const actors: PrincipalRef[] = [];
     for (const work of works) {
@@ -66,7 +64,6 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       actors.push({ kind: decision.proposedByKind, id: decision.proposedById });
       if (decision.decidedBy) actors.push({ kind: 'human', id: decision.decidedBy });
     }
-    for (const result of results) actors.push({ kind: result.createdByKind, id: result.createdById });
     const named = await names(actors);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
     const waitingOn = await workRows(db).waitingTargets(works.flatMap((work): { kind: 'decision' | 'task'; id: string }[] => work.waitingForDecisionId ? [{ kind: 'decision' as const, id: work.waitingForDecisionId }]
@@ -75,7 +72,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     const counts = (kind: NativeWorkReadObject['kind'], id: string) => {
       const fact = facts.get(`${kind}:${id}`);
       if (!fact) throw new Error('Missing native relation aggregates');
-      return { edges: fact.edges, sourceMessages: fact.sourceMessages, sourceMaterials: fact.sourceMaterials, decisions: fact.decisions, results: fact.results };
+      return { edges: fact.edges, sourceMessages: fact.sourceMessages, sourceMaterials: fact.sourceMaterials, decisions: fact.decisions };
     };
     for (const work of works) {
       const projected: WorkRowProjection = { kind: 'work', id: work.id, number: work.number, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
@@ -96,11 +93,6 @@ export function nativeWorkObjectRows(db: DbExecutor) {
         decidedAt: decision.decidedAt ? iso(decision.decidedAt) : null, supersedes: decision.supersedesId, supersededBy: decision.supersededById, supersededAt: decision.supersededAt ? iso(decision.supersededAt) : null,
         version: decision.version, updatedAt: iso(decision.updatedAt) };
       byId.set(`decision:${decision.id}`, projected);
-    }
-    for (const result of results) {
-      const projected: ResultRowProjection = { kind: 'result', id: result.id, projectId: result.projectId, workspaceId: result.workspaceId, title: result.title, ...audience(result), relations: counts('result', result.id),
-        finding: result.finding, createdBy: named({ kind: result.createdByKind, id: result.createdById }) };
-      byId.set(`result:${result.id}`, projected);
     }
     return requested.map((ref) => {
       const row = byId.get(`${ref.kind}:${ref.id}`);
@@ -125,7 +117,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     /** Full own fields for exactly one native object. No links are implicitly loaded. */
     async detail(projectId: string, object: NativeWorkReadObject): Promise<NativeWorkDetailObject | null> {
       const requested = { ...object };
-      const table = requested.kind === 'work' ? w : requested.kind === 'decision' ? d : r;
+      const table = requested.kind === 'work' ? w : d;
       const exists = await db.select({ id: table.id }).from(table).where(and(eq(table.projectId, projectId), eq(table.id, requested.id)));
       if (!exists.length) return null;
       const row = (await rows(projectId, [requested]))[0]!;
@@ -143,18 +135,11 @@ export function nativeWorkObjectRows(db: DbExecutor) {
           dependencyIds: prerequisites.map(({ id }) => id), prerequisites, subtasks: await subtasks(projectId, row.id), planIntent: plan.planIntent,
           createdBy: named({ kind: own.createdByKind, id: own.createdById }) };
       }
-      if (row.kind === 'decision') {
-        const [own] = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, rationale: d.rationale }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, row.id))));
-        if (!own) throw new Error('Missing native decision detail');
-        const { relations: _relations, ...decision } = row;
-        void _relations;
-        return { ...decision, kind: 'decision', rationale: own.rationale };
-      }
-      const [own] = await openRows(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, evidence: r.evidence }).from(r).where(and(eq(r.projectId, projectId), eq(r.id, row.id))));
-      if (!own) throw new Error('Missing native result detail');
-      const { relations: _relations, ...result } = row;
+      const [own] = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, rationale: d.rationale }).from(d).where(and(eq(d.projectId, projectId), eq(d.id, row.id))));
+      if (!own) throw new Error('Missing native decision detail');
+      const { relations: _relations, ...decision } = row;
       void _relations;
-      return { ...result, kind: 'result', evidence: own.evidence };
+      return { ...decision, kind: 'decision', rationale: own.rationale };
     },
   };
 }

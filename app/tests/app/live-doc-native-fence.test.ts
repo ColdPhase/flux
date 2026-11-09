@@ -3,7 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { createDocUseCases, DomainError } from '@flux/core';
 import { EDITING_CHANNEL } from '@flux/db';
-import type { Doc, MaterialVersion, Page, DocVersionSummary, WorkResult, WorkItem } from '@flux/contracts';
+import type { Doc, MaterialVersion, Page, DocVersionSummary, Decision, WorkItem } from '@flux/contracts';
 import { docPorts, docUnitOfWork, docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { withTaskUseErrors } from '../../apps/server/src/work/task-use-errors.js';
@@ -84,15 +84,15 @@ function heldDocUseCases(held: ReturnType<typeof barrier<number>>, release: Retu
 test('dirty shared text fences HTTP body, no-op, metadata and section writers before native mutations', async () => {
   const f = await scene(); const target = await f.create('Cited only by unsaved text', 'Target body.');
   await installHead(f.doc, `Saved statement.\n[Concurrent work](flux:doc/${target.id})`, 1);
-  const finding = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/results`,
-    { body: { title: 'Found together', finding: 'positive' } }), 201) as WorkResult;
+  const decision = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/decisions`,
+    { body: { title: 'Decided together' } }), 201) as Decision;
   const before = await unchangedState(f.doc.id);
   for (const change of [{ body: 'External replacement' }, { body: f.doc.body }, { title: f.doc.title }, { title: 'External title' }]) {
     const response = await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: change, headers: { 'if-match': '"1"' } });
     assert.equal(response.status, 409); assert.equal(code(response.json), 'DOC_LIVE_WORKING_COPY_CHANGED');
   }
   const section = await f.owner.browser.request('POST', `/api/v1/docs/${f.doc.id}/sections`,
-    { body: { from: { type: 'result', id: finding.id } }, headers: { 'if-match': '"1"' } });
+    { body: { from: { type: 'decision', id: decision.id } }, headers: { 'if-match': '"1"' } });
   assert.equal(section.status, 409); assert.equal(code(section.json), 'DOC_LIVE_WORKING_COPY_CHANGED');
   assert.deepEqual(await unchangedState(f.doc.id), before, 'no source link, mention, version, event or shared state changed');
   const current = expectStatus(await f.partner.browser.request('GET', `/api/v1/docs/${f.doc.id}`), 200) as Doc;

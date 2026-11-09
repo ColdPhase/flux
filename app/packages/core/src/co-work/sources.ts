@@ -25,7 +25,7 @@ export function normalizeCoWorkSource(value: unknown): CoWorkSourceRef {
       throw new InvalidInputError('The exact verified GitHub head is required');
     return { type, bindingId: id(ref.bindingId), linkId: id(ref.linkId), headSha: ref.headSha.toLowerCase() };
   }
-  if (type === 'message' || type === 'result') {
+  if (type === 'message') {
     const ref = object(value, ['type', 'id']);
     return { type, id: id(ref.id) };
   }

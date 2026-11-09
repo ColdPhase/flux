@@ -1,13 +1,12 @@
 import type { ReactNode } from 'react';
 import type { Conversation } from '@flux/contracts';
-import { AnswerItem, ProposalCard, type SourceLookups } from '../assistant/ConversationParts';
+import { AnswerItem, type SourceLookups } from '../assistant/ConversationParts';
 import { ScheduleFold } from '../assistant/ScheduleFold';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { WaitingChanges, type useAssistantChanges } from '../assistant/WaitingChanges';
 import { clock, when } from '../app/messageParts';
 import type { useReferenceWork } from '../work/useReferenceWork';
 import type { FeedEntry } from './feed';
-import { proposalAuthority } from './proposalAuthority';
 
 export interface AnswerContext {
   meId: string; projectId: string; writable: boolean; messages: Conversation['messages'];
@@ -19,8 +18,6 @@ export interface AnswerContext {
   lookups: SourceLookups;
   /** "Ask about this" opens the ask mode in this pane's field; null where it cannot. */
   onAskAbout: (() => void) | null;
-  /** A proposal was accepted or dismissed: the route reads again. */
-  onDecided: () => void;
 }
 type AnswerEntry = Extract<FeedEntry, { type: 'answer' }>;
 const applied = (state: string) => state === 'applied' || state === 'applied_after_wait';
@@ -40,15 +37,9 @@ export function answerElements(entry: AnswerEntry, index: number, entries: FeedE
   const lookups = { projectId: context.projectId, messages: context.messages, work: referenceWork.rows, author: context.author };
   const answerItem = (item: AnswerEntry) => {
     const answer = item.answer;
-    const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) ?? null : null;
-    const workTitle = proposal?.change.finishes ? referenceWork.rows.get(`work:${proposal.change.finishes.workId}`)?.title ?? 'a work item' : null;
     const runChanges = changes.byRun.get(answer.runId);
     return <AnswerItem key={item.key} answer={answer} mine={answer.assistant.ownerUserId === meId} lookups={lookups} when={when} clock={clock}
-      proposal={proposal} resultInMessage={!!runChanges?.some((change) => applied(change.state))} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={meId} /> : null}
-      proposalControls={proposal ? <ProposalCard proposal={proposal} workTitle={workTitle} {...proposalAuthority(proposal.change.finishes, { writable: context.writable, meId, referenceWork })} onRefreshTarget={referenceWork.refresh} meId={meId}
-        onDecide={async (decision) => {
-          try { await assistant.decide(proposal, decision); } finally { context.onDecided(); }
-        }} /> : null}
+      resultInMessage={!!runChanges?.some((change) => applied(change.state))} changes={runChanges ? <WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={meId} /> : null}
       onRetry={() => assistant.retry(answer.runId)}
       onContinue={async () => { await assistant.ask('Continue', { continuesRunId: answer.runId }); }}
       onAskAbout={context.onAskAbout} />;

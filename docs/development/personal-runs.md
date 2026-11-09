@@ -5,8 +5,8 @@ decision [O-008](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab1492
 [interaction design](../design/personal-ai/README.md). A person enables their own
 assistant, invokes it in a project conversation, and gets an answer that the
 conversation's audience reads as "Jo's assistant · asked by Jo". A consequential
-change becomes an assistant proposal. Only a person with authority over its target
-can accept it.
+change waits for its owner's Approve (the change line of F-036). The assistant proposals of this
+history, which could only record a result, went with the Result object (#1054).
 
 **Since v0.2 (#842, F-036 AG-4) the answer to `/ai` is private, and a run has a place.** The text
 above is the history of #68; read [Places and private answers](#places-and-private-answers-842)
@@ -34,7 +34,7 @@ connection lookup is still `noPersonalConnections`.
 | Path | Role |
 | --- | --- |
 | `app/packages/contracts/src/personal-runs.ts` | Paths, wire types, the consent versions (`o-008-2026-10-02` for new consents; `o-008-2026-09-28` stays valid for Anthropic) and the O-008 limits (`PERSONAL_RUN_LIMITS`), the same for every provider. |
-| `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), the worker processor (`processor.ts`) and assistant proposals (`proposals.ts`). |
+| `app/packages/core/src/personal-runs/` | Ports, input and output rules, use cases (`service.ts`), and the worker processor (`processor.ts`). |
 | `app/packages/core/src/access/personal-run-access.ts` | The access policy as the `PersonalRunAccess` port. |
 | `app/packages/core/src/access/policy.ts` | New agent action `agent.invoke`: only the person who owns the unrevoked agent. A workspace role never grants it. |
 | `app/packages/db/migrations/0001_v0_1_baseline.sql`, `app/packages/db/src/repositories/personal-runs.ts` | Tables and rows. |
@@ -43,7 +43,7 @@ connection lookup is still `noPersonalConnections`.
 | `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
 | `app/packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
 | `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (`@anthropic-ai/sdk` 0.129.0, pinned; fetch clients for OpenAI's Responses API and for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. |
-| `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, proposals, settings. |
+| `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, settings. |
 | `app/packages/core/src/personal-runs/test-fixture.ts`, `app/tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
 
 ## Ports
@@ -63,7 +63,6 @@ connection lookup is still `noPersonalConnections`.
   `unavailablePersonalCompute`; the adapters are described below.
 - `PersonalRunUnitOfWork` bundles, in one transaction, the access port, the rows,
   the queue (the job is sent in the same transaction) and the event log.
-  `ProposalUnitOfWork` adds the #101 work use case that records an accepted result.
 
 **Price and model (F-020).** The model and its price belong to the owner's connection
 (see [AI providers](ai-providers.md#prices-reservations-and-the-input-bound)); there is no
@@ -421,7 +420,7 @@ else edited. Nothing that waits ever expires.
   message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
-  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed. **A created map, a recorded result, a proposed decision and a posted message** (founder direction
+  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed. **A created map, a proposed decision and a posted message** (founder direction
   2026-10-29, #68 closeout) are taken back by `assistantRemovalRows` (`packages/db/src/repositories/assistant-removals.ts`), reachable only
   from this Undo, only for the assistant's owner, only for what this agent made and only while nobody used it (edited, decided,
   replied to, cited; the reason comes back in words).
@@ -429,7 +428,7 @@ else edited. Nothing that waits ever expires.
   of its thoughts do), and every work path that cites one of them re-checks its targets right after taking the same lock. (A message reference once held the cited message `FOR SHARE` through
   `lockCitable`; messages are no longer citable, #867.) A citation and the
   Undo serialize and the loser is refused (race tests in `assistant-changes.test.ts`). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with
-  Undo]"); a result also tombstones its contribution messages and puts the task it finished back; a map, a decision and a result
+  Undo]"); a map and a decision
   are deleted with the links and notices only they owned. The change row keeps who and when, a hash and length for a message, and
   the event `project.assistant_change_undone.v1` carries ids only. Refused while the workspace's AI is off (F-029, F-030).
   **A page the assistant started** (#1021) is the one exception: it is taken back by the page delete of #941 (`docs.deleteDoc`), as the owner,
@@ -555,10 +554,6 @@ tokens:
   Committed answers renumber the model's `[S<n>]` labels to `[1]…` in the order of `sources`.
   Provenance names the provider and model; no cost. The owner gets Retry (and Continue when
   truncated); others with write access get *Ask my assistant about this*.
-- **Proposal.** "Proposal · not saved yet", fact, interpretation and the effect. Accept and
-  Dismiss only for people with authority (write access; the work owner or a manager when it
-  finishes owned work); others read "… drafted this. It waits for someone who can decide it."
-  After a decision: "Recorded by … · drafted by …'s assistant" with *Open result*.
 - **Settings** at `/settings/assistant` (Settings → AI, and Details → *Connect your AI*): the
   model picker grouped by connection (Connect AI's default first), the assistant per workspace
   (create one there) and *Turn on*; then state, Pause/Resume, the connection's line (the plan's
@@ -587,14 +582,9 @@ tokens:
   status, reservation (`reserved_micros`), `cost_state`, observed usage and
   charge. It stores the committed answer only after the final recheck. A partial
   unique index enforces one run in flight per owner.
-- `assistant_proposals` stores a drafted result (fact, interpretation, title,
-  finding, evidence, optional work item it finishes), the decision and the
-  recorded `result_id`.
 
-The #52 `agent_proposals` table is not reused. It is fixed to the
-user-operated Claude Code source, requires a pinned material version as its only
-source, and has no accept. The assistant proposal keeps the same fact,
-interpretation and proposal shape, and adds the accept path AC-7 needs.
+There is no table of assistant proposals: migration 0044 (#1054) dropped `assistant_proposals`, which stored a drafted result
+for a person to accept, with the Result object. The #52 `agent_proposals` table (an MCP client's `flux_create_proposal`) is a separate thing and stays.
 
 ## Money
 
@@ -649,8 +639,6 @@ the current owner's lifetime and rechecks canonical state. It sends no automatic
 Stop or other write. Genuine subsequent own-run progress and cancelled-navigation
 recovery require actual browser checks; errors and existing race guards remain.
 | `GET /api/v1/conversations/:id/assistant-answers` | project readers | Committed answers with label, request, body, provenance (provider and model) and cited sources. No cost, cap, connection or hidden source. |
-| `GET /api/v1/projects/:id/assistant-proposals`, `GET /api/v1/assistant-proposals/:id` | project readers | Proposals with "drafted by" and the decision. |
-| `POST /api/v1/assistant-proposals/:id/accept`, `…/dismiss` | a person with authority | `If-Match` or `expectedVersion`. The caller needs project write access. For a result that finishes an owned work item, they must be its owner or a project manager. Accepting a result linked to a work item also contributes it to that task's conversation, authored by the accepting person with the exact result id (#154); the assistant and its owner never author it, and a rolled-back acceptance leaves no contribution. |
 
 The invoke checks run in this order. A body that names another `ownerId`,
 `agentId` or `connectionId` gets `403 PERSONAL_RUN_NOT_OWNER`. A conversation the
@@ -694,23 +682,20 @@ oldest messages until the conservative Flux estimate (raised, never lowered, by 
 provider count where the wire format has one) fits 16 000 tokens (32 000 for a run
 with tools), or ends the run as `input_too_large`.
 
-At commit, citations `[S<n>]` count only for supplied sources. A
-`<proposal>{…}</proposal>` block becomes a proposal only when it is well formed.
-It may finish only a supplied open work item. A `max_tokens` answer is committed as
-`truncated` and never proposes. The commit records
-`project.assistant_answer_committed.v1` (and `project.assistant_proposal_created.v1`)
-for the project's audience.
+At commit, citations `[S<n>]` count only for supplied sources. A `max_tokens` answer is committed as
+`truncated`. The commit records `project.assistant_answer_committed.v1` for the project's audience.
+A `<proposal>` block in a model's text is plain text: nothing asks for it or reads it any more (#1054).
 
 ## Tests
 
-`app/tests/app/personal-runs.test.ts` covers #68 AC-1 to AC-7 with two or more
+`app/tests/app/personal-runs.test.ts` covers #68 AC-1 to AC-6 with two or more
 people, plus owner-only progress events (audience rows and live streams of the owner,
 a project member and the workspace owner) and a failed preflight count. It sends HTTP
 requests to the API container's production composition and drives dispatch in-process
 with the fakes. `app/tests/app/personal-runs-core.test.ts` checks the pure output and cost
 rules. `app/tests/app/ai-brief.test.ts` pins the brief of every place and engine and checks the asker's name, time, zone, language
 rule, message authors and times, the fences and the note about older messages; `app/tests/app/ai-brief-replay.test.ts` sends it through the
-real adapters of both wire formats to the provider mock and checks what Flux makes of a scripted answer (marks, a made-up mark, a proposal,
+real adapters of both wire formats to the provider mock and checks what Flux makes of a scripted answer (marks, a made-up mark,
 a secret, Show everyone). `app/tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
 HTTP server (request shape, key, retries off, abort, timeout, counting, usage, error
 mapping, limits, environment isolation) and the composition guards. Run them through
@@ -719,11 +704,10 @@ mapping, limits, environment isolation) and the composition guards. Run them thr
 `app/tests/ui/test_personal_assistant.py` (through `./scripts/check_ui.sh`, with the
 test-only switch) covers the UI with three people: not set up, consent and caps,
 the manager grant, the working line only for the owner, the attributed answer and its
-citations for peers, Stop, a provider failure, a proposal accepted only by
-the work's owner, paused, capped, and phone width. The production fail-closed states
+citations for peers, Stop, a provider failure, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
 The keyboard and modal-focus checks of AC-8 (08b to 08d, 10b) use Tab and Enter only: ask with `/ai`, reach Stop, Retry
-and Dismiss, reach Accept and *Open result*, and open the assistant's panel and the Details sheet, whose focus
+and Dismiss, and open the assistant's panel and the Details sheet, whose focus
 must stay inside until Esc returns it to the opener. They found, and the code now fixes, a Stop, Retry, Accept, Apply or Undo
 that dropped focus to the page when its button went away, a `/a` left in the reply box by typing `/ai` key by key, and a
 result opened from a thread button that did not take focus. `FLUX_UI_BROWSER=webkit` runs the same files in WebKit.
@@ -745,8 +729,8 @@ counted as a provider pass (model billing, provider compatibility and real-devic
 | 4 No fallback | "AC-4" (production composition fails closed, explicit state) and `test_personal_assistant.py` test_02, test_03, test_09 (provider off, no key, paused, capped; human work continues). |
 | 5 Context boundary | "AC-5": seeded DM and private-capture tokens never reach the provider request or the output; every cited source opens for the audience. |
 | 6 Revocation mid-run | Two "AC-6" tests: grant revoked or member removed between read and commit commits nothing and withholds the partial output. |
-| 7 Proposal authority | "AC-7" and "#250 AC-3": only someone with authority accepts; the result records "drafted by X's assistant". Typed suggestions: `assistant-changes.test.ts` "A5 all typed kinds". |
-| 8 Browser check | `test_personal_assistant.py` (ask by `/ai`, working line and Stop, attributed answer, citations, proposal, paused, capped; computer and phone), `test_assistant_undo.py` and `test_assistant_changes.py` (the run's message, Undo, waiting changes), and the keyboard and modal-focus tests 08b to 08d and 10b. Each runs in Chromium and WebKit (`FLUX_UI_BROWSER`). |
+| 7 Proposal authority | Went with the assistant's proposals (#1054). Typed suggestions: `assistant-changes.test.ts` "A5 all typed kinds". |
+| 8 Browser check | `test_personal_assistant.py` (ask by `/ai`, working line and Stop, attributed answer, citations, paused, capped; computer and phone), `test_assistant_undo.py` and `test_assistant_changes.py` (the run's message, Undo, waiting changes), and the keyboard and modal-focus tests 08b to 08d and 10b. Each runs in Chromium and WebKit (`FLUX_UI_BROWSER`). |
 
 The workspace AI lock ([F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md)) and encrypted workspaces ([F-030](../product/encrypted-workspaces.md))
 come first: `space-ai-runs.test.ts` (invoke, Retry and Continue refused while AI is off, a queued run ends `ai_off`),

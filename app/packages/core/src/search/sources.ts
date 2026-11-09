@@ -71,11 +71,6 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     filter: 'decision', audience: 'project', textIsTitle: false, label: (row) => DECISION_STATUS[row.status ?? ''] ?? 'Decision',
     target: (row) => ({ type: 'decision', projectId: inProject(row), id: row.objectId }),
   },
-  result: {
-    filter: 'result', audience: 'project', textIsTitle: false,
-    label: (row) => (row.status === 'negative' ? 'Negative result' : 'Positive result'),
-    target: (row) => ({ type: 'result', projectId: inProject(row), id: row.objectId }),
-  },
   sketch: {
     filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'My map' : 'Map'),
     target: (row) => ({ type: 'sketch', sketchId: row.objectId }),

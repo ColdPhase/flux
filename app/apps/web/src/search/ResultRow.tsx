@@ -7,7 +7,7 @@ import { plainSnippet } from './plain';
 // words marked, and one line of where it lives, who wrote it and when. The results are grouped by kind, in this order.
 
 const GROUPS: { label: string; kinds: SearchKind[] }[] = [
-  { label: 'Tasks', kinds: ['work', 'decision', 'result'] },
+  { label: 'Tasks', kinds: ['work', 'decision'] },
   { label: 'Messages', kinds: ['message', 'dm_message'] },
   { label: 'Wiki', kinds: ['doc'] },
   { label: 'Files', kinds: ['material'] },
@@ -25,7 +25,7 @@ export function groupResults(items: SearchResult[]): { label: string; items: Sea
 }
 
 const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message'>, IconName> = {
-  work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', result: 'result', sketch: 'map', thought: 'map', person: 'people',
+  work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', sketch: 'map', thought: 'map', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });

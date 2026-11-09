@@ -28,7 +28,7 @@ OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
 COUNTS = {"Needs you": 1, "In progress": 300, "Blocked": 150, "Open": 500,
           "Finished": 50, "Decisions": 2, "Results": 10}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
-COLLECTION = re.compile(r"/api/v1/projects/[^/]+/(work|decisions|results|summary)$")
+COLLECTION = re.compile(r"/api/v1/projects/[^/]+/(work|decisions|summary)$")
 CONTINUITY = ("resizePreservesDraft", "resizePreservesFocusSelection", "onlyMinePreservesDraft",
               "onlyMineCountsVerified", "viewPreservesDraft", "detailsPreservesDraft",
               "deepNativeTitleVerified", "sourceRoundTripPreservesDraft", "sourceRoundTripNativeRouteVerified")
@@ -195,12 +195,6 @@ def fixture(browser):
     api(owner,"POST",f"/api/v1/decisions/{current['id']}/accept",{"expectedVersion":1})
     api(contexts[1],"POST",root+"/decisions",{"title":"Keep a manual off switch on the base",
         "rationale":"Children should be able to turn the lamp off without a gesture."},201)
-    for index in range(10):
-        api(contexts[index%2],"POST",root+"/results",{
-            "title":f"Range trial {index+1}: {'stable' if index%2 == 0 else 'unreliable'} at low light",
-            "finding":"positive" if index%2 == 0 else "negative",
-            "evidence":"20 gestures at 5 lux; compare detection with the manual switch available.",
-            "work":[work[950+index]["id"]],"decisions":[current["id"]]},201)
     per_account = []
     for context in contexts:
         observed = []
@@ -219,10 +213,8 @@ def fixture(browser):
             actual = api(context,"GET",f"/api/v1/work/{item['id']}")
             assert actual["id"] == item["id"] and actual["title"] == item["title"]
         decisions = api(context,"GET",root+"/decisions?limit=100&offset=0")
-        results = api(context,"GET",root+"/results?limit=100&offset=0")
         assert decisions["total"] == 3 and Counter(d["status"] for d in decisions["items"]) == {"accepted":1,"proposed":1,"superseded":1}
-        assert results["total"] == 10 and Counter(r["finding"] for r in results["items"]) == {"positive":5,"negative":5}
-        per_account.append({"uniqueWork":1000,"status":{"open":500,"in_progress":300,"blocked":150,"done":50},"ownedWork":500,"decisions":3,"results":10})
+        per_account.append({"uniqueWork":1000,"status":{"open":500,"in_progress":300,"blocked":150,"done":50},"ownedWork":500,"decisions":3})
         digest = work_digest(observed)
     states = [c.storage_state() for c in contexts]
     for context in contexts: context.close()

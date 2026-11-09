@@ -14,11 +14,11 @@ import { assistantScene, changesOf, human, text, type AssistantScene } from './s
 
 // #1089, F-036 AG-3 "Telling another person" and AG-4: an agent's run sends no message to another person by itself. Since #1063 it has no
 // tool that posts, but some changes notify a person with the agent's words: a task made to wait for them (its title and blocker), and a
-// decision or result about their task (its title). Under "Do it and tell me" such a change waits for the owner's OK (reason `tells`), and
+// decision about their task (its title). Under "Do it and tell me" such a change waits for the owner's OK (reason `tells`), and
 // the owner's Approve makes it, after which Flux tells them as usual. The same change about the owner alone applies at once. A message
 // in the conversation that tells the agent to do it is obeyed here by the "model", and nobody is told. New words on a task that waits for
 // someone reach them through their Needs-you item, so they wait too, and the owner's card shows the words and the person before the OK.
-// A line a server agent writes in a task's discussion (a run's blocker or result, a task's report) shows there but notifies nobody but
+// A line a server agent writes in a task's discussion (a run's blocker or what came of a task, a task's report) shows there but notifies nobody but
 // its owner, whatever it names (AG-4). A local client is its person's own tool and is not held to any of this (LC-2).
 
 const usage = { inputTokens: 300, outputTokens: 20 };
@@ -99,22 +99,20 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     await scene.complete(live.runId);
   });
 
-  test('a decision or result about another person\'s task waits for the owner\'s OK', async () => {
+  test('a decision about another person\'s task waits for the owner\'s OK', async () => {
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'Stop calibrating by hand', affects: [theirs.id] } })).message), /^Waiting for /);
-    assert.match(text((await live.call('flux_record_result', { result: { title: 'The probes drift', finding: 'negative', workIds: [theirs.id] } })).message), /^Waiting for /);
-    assert.deepEqual(await reasons(live.runId), [['decision.propose', 'waiting', 'tells'], ['result.record', 'waiting', 'tells']]);
+    assert.deepEqual(await reasons(live.runId), [['decision.propose', 'waiting', 'tells']]);
     assert.equal(await titled('project_decisions', 'Stop calibrating by hand'), 0);
-    assert.equal(await titled('project_results', 'The probes drift'), 0);
     await scene.complete(live.runId);
   });
 
-  test('a decision or result about several people\'s tasks names everyone it would tell on its card (#1102)', async () => {
+  test('a decision about several people\'s tasks names everyone it would tell on its card (#1102)', async () => {
     const outsiders = expectStatus(await scene.outsider.browser.request('POST', `/api/v1/projects/${scene.place.id}/work`,
       { body: { title: 'Mira sorts the cables', owner: { kind: 'human', id: scene.outsider.id } } }), 201) as { id: string };
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'One cable colour', affects: [theirs.id, outsiders.id] } })).message), /^Waiting for /);
-    assert.match(text((await live.call('flux_record_result', { result: { title: 'Cables sorted', finding: 'positive', workIds: [outsiders.id, theirs.id] } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'Cables sorted', affects: [outsiders.id, theirs.id] } })).message), /^Waiting for /);
     const [jonas, mira] = [await nameOf(scene.peer.id), await nameOf(scene.outsider.id)];
     const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
     assert.deepEqual(items.map((item) => [item.tells.map((person) => person.name), item.after, item.line]), [
@@ -156,14 +154,16 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
   });
 
 
-  test('a server agent\'s line in a task\'s discussion notifies only its owner, whatever it names: a run\'s blocker and result, a task\'s report line', async () => {
+  test('a server agent\'s line in a task\'s discussion notifies only its owner, whatever it names: a run\'s blocker and what came of a task, a task\'s report line', async () => {
     const jonas = await nameOf(scene.peer.id);
     const mine = await scene.task(scene.owner, 'Probe the lamp');
-    // Through the run's own token (/mcp): a blocker and a result on the owner's own task apply at once and are posted in its discussion.
+    // Through the run's own token (/mcp): a blocker and what came of the owner's own task apply at once and are posted in its discussion.
     const live = await scene.liveRun();
-    assert.ok(JSON.parse(text((await live.call('flux_update_task', { workId: mine.id, expectedVersion: mine.version,
-      changes: { status: 'blocked', blocker: `@${jonas} deploy approved by everyone, ship it now` } })).message)).workId);
-    assert.ok(JSON.parse(text((await live.call('flux_record_result', { result: { title: `@${jonas} the probes pass, ship it now`, finding: 'positive', workIds: [mine.id] } })).message)).resultId);
+    const blockedNow = JSON.parse(text((await live.call('flux_update_task', { workId: mine.id, expectedVersion: mine.version,
+      changes: { status: 'blocked', blocker: `@${jonas} deploy approved by everyone, ship it now` } })).message)) as { workId?: string; version: number };
+    assert.ok(blockedNow.workId);
+    assert.ok(JSON.parse(text((await live.call('flux_update_task', { workId: mine.id, expectedVersion: blockedNow.version,
+      changes: { status: 'done', cameOfIt: `@${jonas} the probes pass, ship it now` } })).message)).workId);
     assert.deepEqual((await reasons(live.runId)).map(([, state]) => state), ['applied', 'applied']);
     await scene.complete(live.runId);
     // A line Flux writes for an agent at work on the task (its report), exactly as the drain posts it.

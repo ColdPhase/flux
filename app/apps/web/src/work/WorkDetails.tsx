@@ -18,9 +18,8 @@ import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, proposeDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
 import { ownTaskAgents } from '../agents/taskAgents';
-import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, statusPhrase, taskNumber } from './format';
+import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
-import { getDoc } from '../docs/api';
 import { useAgentOwners } from '../agents/owners';
 import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
@@ -36,7 +35,7 @@ import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
 
-// The Details panel for work items, decisions and results, and the two forms that start from a
+// The Details panel for work items and decisions, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
 // the panel says so. Changes send If-Match and an Idempotency-Key that retries reuse.
 
@@ -77,7 +76,6 @@ function readable(error: unknown) {
 
 type OwnWork = Extract<WorkDetailObject, { kind: 'work' }>;
 type OwnDecision = Extract<WorkDetailObject, { kind: 'decision' }>;
-type OwnResult = Extract<WorkDetailObject, { kind: 'result' }>;
 interface PanelDraft { busy: boolean; error: string; attempt: string; blocker?: string }
 interface PanelCommands {
   state: PanelDraft;
@@ -111,7 +109,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   // A change to this project's work by anyone (for example an Undo of a task's creation, #238, or the owner deleting an agent's line in
   // the thread, #961) re-reads the open object, so no other tab or account keeps acting on what it showed before. Private drafts are kept.
   useStreamEvents(accountId, (event) => {
-    if (event.objectType === 'project' && event.objectId === projectId && /^project\.((work|decision|result|link)_|assistant_change_undone\.)/.test(event.kind)) setTick((value) => value + 1);
+    if (event.objectType === 'project' && event.objectId === projectId && /^project\.((work|decision|link)_|assistant_change_undone\.)/.test(event.kind)) setTick((value) => value + 1);
   }, () => setTick((value) => value + 1));
   const load = useCallback((signal: AbortSignal) => loadContext(projectId, signal), [projectId]);
   const contextRead = useWorkRead(projectId ? { accountId, projectId, selector: 'detail-context' } : null, load, tick, revalidator.state === 'idle');
@@ -134,8 +132,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;
   if (object.kind === 'work') return <WorkPanel key={key} item={object} context={currentContext} detail={detail} relations={relations} reload={reload} commands={commands} />;
-  if (object.kind === 'decision') return <DecisionPanel key={key} decision={object} context={currentContext} detail={detail} relations={relations} reload={reload} revision={tick} commands={commands} />;
-  return <ResultPanel key={key} result={object} context={currentContext} relations={relations} />;
+  return <DecisionPanel key={key} decision={object} context={currentContext} detail={detail} relations={relations} reload={reload} revision={tick} commands={commands} />;
 }
 
 function RelationPages({ relations }: { relations: DetailRelations }) {
@@ -208,7 +205,7 @@ function Sources({ links, id, project, of }: { links: ObjectLink[]; id: string; 
 /** Wiki pages that include or mention this result or decision (#112), and "Add to a Wiki page" (#763 D6: the view is the Wiki). */
 /** Every native role has a reachable destination, including links outside the named sections. */
 /** One word per object (CW-7, journeys-and-vocabulary.md). */
-const OBJECT_WORD: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', doc: 'Wiki page', message: 'Message', material: 'File', thought: 'Thought', sketch: 'Map' };
+const OBJECT_WORD: Record<string, string> = { work: 'Task', decision: 'Decision', doc: 'Wiki page', message: 'Message', material: 'File', thought: 'Thought', sketch: 'Map' };
 
 function OtherRelationships({ object, relations, project }: { object: WorkDetailObject; relations: DetailRelations; project: Project }) {
   const { openDetails } = useShellActions();
@@ -220,13 +217,12 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     if (outgoing && link.role === 'source' && ['message', 'material', 'thought'].includes(other.type)) return [];
     // A subtask is listed in its parent's Subtasks (#841); the other way round it is one line, "Part of".
     if (link.role === 'part_of' && !outgoing) return [];
-    if (object.kind === 'work' && ['decision', 'result'].includes(other.type)) return [];
+    if (object.kind === 'work' && other.type === 'decision') return [];
     // Thoughts a task is linked to are listed in its own "Linked thoughts" section.
     if (object.kind === 'work' && other.type === 'thought') return [];
     if (object.kind === 'decision' && other.type === 'work' && ['affects'].includes(link.role)) return [];
-    if (object.kind === 'result' && ['work', 'decision'].includes(other.type) && link.role === 'about') return [];
     const body = <><span>{OBJECT_WORD[other.type] ?? other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
-    if (other.type === 'work' || other.type === 'decision' || other.type === 'result') {
+    if (other.type === 'work' || other.type === 'decision') {
       const kind = other.type, id = other.id;
       return [<li key={link.id}><button type="button" className="wd-link" onClick={() => openDetails({ kind, id, projectId: project.id })}>{body}</button></li>];
     }
@@ -239,49 +235,10 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
   return items.length ? <section className="details__sec" aria-label="Also linked"><h4>Also linked</h4><ul className="wd-links">{items}</ul></section> : null;
 }
 
-const UUID_IN_TEXT = /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
-
-/**
- * #763 FT-6: the Wiki pages a result's text names by id (an agent writes "created doc <id>"). Each id is read as a doc of this
- * project; ids that are not readable docs here stay plain text. At most five are read.
- */
-function useNamedDocs(text: string | null | undefined, projectId: string) {
-  const ids = useMemo(() => [...new Set((text ?? '').match(UUID_IN_TEXT)?.map((id) => id.toLowerCase()) ?? [])].slice(0, 5), [text]);
-  const key = `${projectId}:${ids.join(',')}`;
-  const [found, setFound] = useState<{ key: string; docs: Map<string, string> } | null>(null);
-  useEffect(() => {
-    if (!ids.length) return undefined;
-    const controller = new AbortController();
-    Promise.all(ids.map((id) => getDoc(id, controller.signal).then((doc) => doc.audience.projectId === projectId ? [id, doc.title] as const : null, () => null)))
-      .then((rows) => { if (!controller.signal.aborted) setFound({ key, docs: new Map(rows.filter((entry): entry is readonly [string, string] => !!entry)) }); });
-    return () => controller.abort();
-  }, [ids, projectId, key]);
-  return useMemo(() => (found?.key === key ? found.docs : new Map<string, string>()), [found, key]);
-}
-
-/** A result's text with every named Wiki page as a link by its title instead of a raw id (#763 FT-6). */
-function TextWithDocs({ text, docs, projectId }: { text: string; docs: Map<string, string>; projectId: string }) {
-  if (!docs.size) return <>{text}</>;
-  const parts: ReactNode[] = [];
-  let at = 0;
-  for (const match of text.matchAll(UUID_IN_TEXT)) {
-    const title = docs.get(match[0].toLowerCase());
-    if (!title) continue;
-    parts.push(text.slice(at, match.index));
-    parts.push(<RefLink key={`${match.index}`} className="ui-link" to={`/projects/${projectId}/docs/${match[0].toLowerCase()}`}>{title}</RefLink>);
-    at = match.index! + match[0].length;
-  }
-  parts.push(text.slice(at));
-  return <>{parts}</>;
-}
-
 /** "Shown on the Wiki page Sensor network." A sentence only when the object is on a page; the action to add it stays (#871). */
-function InDocs({ object, kind, project, relations, notYet, named }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'result' | 'decision'; project: Project; notYet?: string; named?: Map<string, string> }) {
+function InDocs({ object, kind, project, relations, notYet }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'decision'; project: Project; notYet?: string }) {
   const { openDetails } = useShellActions();
-  const linkedDocs = docsLinking(relations.links, object.id);
-  // A page the result's own text names (it wrote it) is listed too, as "named here" (#763 FT-6).
-  const docs = [...linkedDocs, ...[...(named ?? new Map<string, string>())].filter(([id]) => !linkedDocs.some((doc) => doc.id === id))
-    .map(([id, title]) => ({ id, title, role: 'named' as const }))];
+  const docs = docsLinking(relations.links, object.id);
   const pages = docs.map((doc, index) => (
     <Fragment key={doc.id}>{index === 0 ? '' : index === docs.length - 1 ? ' and ' : ', '}<RefLink className="wd-inline" to={`/projects/${project.id}/docs/${doc.id}`}>{doc.title}</RefLink></Fragment>
   ));
@@ -323,7 +280,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   }, [editingBlocker]);
   const owners = useAgentOwners(context.project);
   const decisions = linked(relations.links, item.id, 'decision');
-  const results = linked(relations.links, item.id, 'result');
   const docs = docsLinking(relations.links, item.id);
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
@@ -443,7 +399,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
   const choosingWait = editingBlocker && writable;
   const decisionChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'doc_refs', kind: 'decision' } : null, choosingWait);
-  const taskChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'result_work' } : null, choosingWait);
+  const taskChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'open_work' } : null, choosingWait);
   const waitingValue = item.waitingFor ? `human:${item.waitingFor.id}` : item.waitingOn ? `${item.waitingOn.kind}:${item.waitingOn.id}` : '';
   const waitOptions = [
     ...(decisionChoices.page?.items ?? []).flatMap((row) => row.kind === 'decision' && row.status === 'proposed' ? [{ value: `decision:${row.id}`, label: row.title, group: 'Decisions to make' }] : []),
@@ -580,12 +536,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         <RelationPages relations={relations} />
 
-        {results.length ? (
-          <section className="details__sec" aria-labelledby="wd-results">
-            <h4 id="wd-results">Results</h4>
-            <Linked items={results.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'result', id: entry.id, projectId: context.project.id }, { back: 'push' }) }))} />
-          </section>
-        ) : null}
         {decisions.length ? (
           <section className="details__sec" aria-labelledby="wd-decisions">
             <h4 id="wd-decisions">Decisions</h4>
@@ -844,61 +794,6 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
       <IdsLine>Version {decision.version}</IdsLine>
     </div>
-  );
-}
-
-function ResultPanel({ result, context, relations }: { result: OwnResult; context: Context; relations: DetailRelations }) {
-  const { openDetails } = useShellActions();
-  useRegisterLiveHere(null, { ref: { type: 'result', id: result.id, version: 1 }, label: result.title, what: 'result' });
-  const about = [...linked(relations.links, result.id, 'work', ['about']), ...linked(relations.links, result.id, 'decision', ['about'])];
-  const related = relations.links.filter((link) => link.role === 'related');
-  const named = useNamedDocs(result.evidence, context.project.id);
-  const aboutTask = linked(relations.links, result.id, 'work', ['about'])[0] ?? null;
-  return (
-    <div className="details wd" data-detail-kind="result" data-detail-id={result.id}>
-      <p className={`details__eyebrow wd-eyebrow wd-finding--${result.finding}`}><Icon name="result" size={13} />{resultLine(result)} · {shortDate(result.createdAt)}</p>
-      <h3 className="details__title">{result.title}</h3>
-      {result.evidence ? <p className="details__lead wd-evidence"><TextWithDocs text={result.evidence} docs={named} projectId={context.project.id} /></p> : null}
-      {aboutTask ? <ResultCriteria projectId={context.project.id} taskId={aboutTask.id} title={aboutTask.title} /> : null}
-      <RelationPages relations={relations} />
-      {/* Empty sections are not drawn (#763 D2): the evidence text is the lead above, its sources are listed here. */}
-      {relations.links.some((link) => link.from.id === result.id && link.role === 'source') ? (
-        <section className="details__sec" aria-labelledby="wd-evidence">
-          <h4 id="wd-evidence">Evidence</h4>
-          <Sources links={relations.links} id={result.id} project={context.project} />
-        </section>
-      ) : null}
-      {about.length || related.length ? (
-        <section className="details__sec" aria-labelledby="wd-about">
-          <h4 id="wd-about">Reports on</h4>
-          <Linked items={about.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.to.type === 'decision' ? 'decision' : 'task', open: () => openDetails({ kind: entry.link.to.type as 'work' | 'decision', id: entry.id, projectId: context.project.id }) }))} />
-          {related.length ? <p className="wd-muted">{related.length} more {related.length === 1 ? 'link' : 'links'}</p> : null}
-        </section>
-      ) : null}
-      <OtherRelationships object={result} relations={relations} project={context.project} />
-      <InDocs object={result} kind="result" project={context.project} relations={relations} named={named} />
-    </div>
-  );
-}
-
-/**
- * CW-6: the done-when criteria of the task a result reports on, under its evidence, so the two are read side by side. Flux
- * never checks a criterion off, and a result does not either: each one shows unchecked until a person says it is met in
- * the evidence, so "Positive" never reads as "every criterion met".
- */
-function ResultCriteria({ projectId, taskId, title }: { projectId: string; taskId: string; title: string }) {
-  const { me } = useShellData();
-  const task = useNativeOwn(me.user.id, projectId, 'work', taskId);
-  const item = task.value?.object.kind === 'work' ? task.value.object : null;
-  if (!item?.criteria.length) return null;
-  return (
-    <section className="details__sec" aria-labelledby={`wd-result-criteria-${taskId}`}>
-      <h4 id={`wd-result-criteria-${taskId}`}>Done when · {taskNumber(item)} {title}</h4>
-      <ul className="wd-checks">{item.criteria.map((criterion) => (
-        <li key={criterion}><span className="wd-check" role="img" aria-label="Not checked off" /><span>{criterion}</span></li>
-      ))}</ul>
-      <p className="wd-muted">Not checked off. Compare each one with the evidence above; Flux does not check them off.</p>
-    </section>
   );
 }
 

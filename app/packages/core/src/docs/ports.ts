@@ -102,7 +102,7 @@ export interface DocPorts {
   access: WorkAccess;
   docs: DocRepository;
   live: DocLiveVersions;
-  /** The #101 rows: typed links, titles, names, and the results and decisions added to docs. */
+  /** The #101 rows: typed links, titles, names, and the decisions added to docs. */
   work: WorkRepository;
   events: DocEventLog;
   renderer: DocRenderer;

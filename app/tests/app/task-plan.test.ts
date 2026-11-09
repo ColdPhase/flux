@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
-import type { Agent, AgentConnection, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
+import type { Agent, AgentConnection, Material, Page, WorkItem } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
@@ -206,18 +206,15 @@ test('starting or finishing a task needs every prerequisite done; an active task
   assert.equal(regressed.status, 'open');
   await f.patchFails(f.owner, await f.read(finished.id), { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');
 
-  // A recorded result that finishes a task is a done transition too.
-  const gated = await f.create(f.owner, { title: 'Finished by a result', dependencyIds: [open.id] });
-  const resultsBefore = (await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.place.id])).rows[0].n;
-  const refused = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/results`, { body: {
-    title: 'A finding', finding: 'negative', work: [gated.id], finishes: { id: gated.id, expectedVersion: gated.version } } }), 409) as ApiFailure;
-  assert.equal(refused.code, 'TASK_PREREQUISITES_UNMET');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.place.id])).rows[0].n, resultsBefore, 'no result is left behind');
+  // Finishing a task with a line of what came of it is a done transition too.
+  const gated = await f.create(f.owner, { title: 'Finished with a line', dependencyIds: [open.id] });
+  const messagesBefore = (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n;
+  await f.patchFails(f.owner, gated, { status: 'done', cameOfIt: 'A finding' }, 409, 'TASK_PREREQUISITES_UNMET');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1', [f.place.id])).rows[0].n, messagesBefore, 'no line is left behind');
   assert.equal((await f.read(gated.id)).status, 'open');
   await f.patch(f.owner, await f.read(open.id), { status: 'done' });
-  const accepted = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/results`, { body: {
-    title: 'A finding', finding: 'positive', work: [gated.id], finishes: { id: gated.id, expectedVersion: gated.version } } }), 201) as WorkResult;
-  assert.ok(accepted.id);
+  const accepted = await f.patch(f.owner, gated, { status: 'done', cameOfIt: 'A finding' }) as WorkItem;
+  assert.equal(accepted.cameOfIt, 'A finding');
   assert.equal((await f.read(gated.id)).status, 'done');
 });
 

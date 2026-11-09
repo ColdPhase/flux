@@ -22,7 +22,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
+const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'cameOfIt', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
   'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
@@ -31,7 +31,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; task: string; doc: string; material: string; sketch: string; thought: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; finished: string; task: string; doc: string; material: string; sketch: string; thought: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -51,7 +51,10 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: c.dmMessage, clientMessageId: randomUUID() }, 201);
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: c.decision, rationale: c.rationale }, 201);
   await post(ada, `/api/v1/decisions/${decision.id}/accept`, {}, 200, { 'if-match': `"${decision.version}"` });
-  const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: c.result, finding: 'positive', evidence: c.evidence }, 201);
+  // #868: the line at Done is sealed in the task row and in its discussion. A second task is finished with it, so the first stays open for the chooser below.
+  const finished = await post(ada, `/api/v1/projects/${project.id}/work`, { title: 'Finished task' }, 201);
+  expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${finished.id}`, { body: { status: 'done', cameOfIt: c.cameOfIt },
+    headers: { ...key(), 'if-match': `"${finished.version}"` } }), 200, 'task done');
   // S2a-2: a task with every text field, a rename (activity), a move into Blocked with its reason (an update), all by PATCH with a key.
   const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: c.task, outcome: c.outcome, criteria: [c.criterion] }, 201);
   const renamed = expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { title: c.taskRename },
@@ -67,7 +70,7 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
     url: `https://example.test/${c.materialUrl}` }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: (one.thought as { id: string }).id, toId: (two.thought as { id: string }).id, label: c.linkLabel.slice(0, 60) }, 201);
-  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id),
+  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), finished: String(finished.id),
     task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id), thought: String((one.thought as { id: string }).id) };
 }
 
@@ -137,7 +140,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const decision = expectStatus(await ben.browser.request('GET', `/api/v1/decisions/${id.decision}`), 200) as { title: string; rationale: string; status: string };
       assert.deepEqual({ ...decision, status: decision.status }, { ...decision, title: c.decision, rationale: c.rationale, status: 'accepted' }, side);
       const notices = expectStatus(await ben.browser.request('GET', projectObjectNoticesPath(id.project)), 200) as { items: { title: string }[] };
-      assert.deepEqual(new Set(notices.items.map((item) => item.title)), new Set([c.decision, c.result]), `${side}: object notices (#696) open their titles`);
+      assert.deepEqual(new Set(notices.items.map((item) => item.title)), new Set([c.decision]), `${side}: object notices (#696) open their titles`);
       const task = expectStatus(await ben.browser.request('GET', `/api/v1/work/${id.task}`), 200) as { title: string; outcome: string; criteria: string[]; blocker: string | null; status: string };
       assert.deepEqual({ title: task.title, outcome: task.outcome, criteria: task.criteria, blocker: task.blocker, status: task.status },
         { title: c.taskRename, outcome: c.outcome, criteria: [c.criterion], blocker: c.blocker, status: 'blocked' }, `${side}: task`);
@@ -419,7 +422,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const needs = (await ben.browser.request('GET', '/api/v1/needs-you')).json as { items: unknown[]; count: number };
       assert.equal(needs.count, needs.items.length, 'the Needs you count leaves A out');
       // #717 review P2-1/P2-2: no trace of A's places anywhere in an answer (a mention's url, Return's digest, next step).
-      const traces = [A, ids.A.project, ids.A.conversation, ids.A.dm, ids.A.decision, ids.A.result, ids.A.task];
+      const traces = [A, ids.A.project, ids.A.conversation, ids.A.dm, ids.A.decision, ids.A.finished, ids.A.task];
       for (const path of ['/api/v1/needs-you', '/api/v1/inbox', '/api/v1/return?place=home']) {
         const text = (await ben.browser.request('GET', path)).text;
         const found = traces.filter((id) => text.replace(`"id":"${A}"`, '').includes(id));
@@ -480,7 +483,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     for (const side of ['A', 'B'] as const) {
       const json = await ada.browser.request('GET', `/api/v1/projects/${ids[side].project}/export`);
       assert.equal(json.status, 200, json.text.slice(0, 200));
-      for (const kind of ['project', 'message', 'decision', 'rationale', 'result', 'evidence', 'task', 'docTitle', 'materialTitle', 'mapTitle', 'thought'] as const) {
+      for (const kind of ['project', 'message', 'decision', 'rationale', 'cameOfIt', 'task', 'docTitle', 'materialTitle', 'mapTitle', 'thought'] as const) {
         assert.ok(json.text.includes(canaries[side][kind].slice(0, 60)), `${side}: the export holds ${kind}`);
       }
       assert.equal(/fx1\.[1-9]/.test(json.text), false, `${side}: no envelope in the export`);
@@ -495,10 +498,12 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
       const sealed = side === 'A';
       const row = await one(`SELECT flux_is_sealed(p.name) AS name, flux_is_sealed(d.title) AS decision,
-          flux_is_sealed(d.rationale) AS rationale, flux_is_sealed(r.title) AS result, flux_is_sealed(r.evidence) AS evidence
-        FROM projects p JOIN project_decisions d ON d.project_id = p.id JOIN project_results r ON r.project_id = p.id
+          flux_is_sealed(d.rationale) AS rationale
+        FROM projects p JOIN project_decisions d ON d.project_id = p.id
         WHERE p.workspace_id = $1`, [ws]);
-      assert.deepEqual(row, { name: sealed, decision: sealed, rationale: sealed, result: sealed, evidence: sealed }, side);
+      assert.deepEqual(row, { name: sealed, decision: sealed, rationale: sealed }, side);
+      const line = await one(`SELECT flux_is_sealed(came_of_it) AS "cameOfIt" FROM project_work_items WHERE id = $1`, [ids[side].finished]);
+      assert.deepEqual(line, { cameOfIt: sealed }, `${side}: what came of a task`);
       const messages = (await pool.query(`SELECT bool_and(flux_is_sealed(body)) AS body, bool_and(flux_is_sealed(request_fingerprint)) AS fingerprint
         FROM project_messages WHERE workspace_id = $1`, [ws])).rows[0];
       assert.deepEqual(messages, { body: sealed, fingerprint: sealed }, side);

@@ -54,7 +54,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             + 'Read the current plan and relevant wiki, decisions, conversations and existing tasks first. '
             + 'Create exactly one task for the plan with source-linked criteria and a stable plan intent; do not duplicate it on Resume. '
             + 'Within your owner’s rights, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
-            + 'Leave the task open for a later result. On Resume compare source versions, reread any changed plan, and record a native result explaining the current plan. '
+            + 'Leave the task open for later. On Resume compare source versions, reread any changed plan, and write a new Wiki page (a doc) explaining the current plan. '
             + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 201);
         expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
           { body: { title: 'Audience', body: 'This workspace is for people recording small experiments; use familiar everyday language.' } }), 201);
@@ -217,13 +217,14 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         await invoke('resume');
         const counts = (await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1 AND creation_reverted_at IS NULL', [projectId])).rows;
         assert.equal(counts[0].n, 1, `${client}: Resume uses existing work instead of duplicating the task`);
-        const results = (await pool.query('SELECT evidence FROM project_results WHERE project_id=$1', [projectId])).rows;
-        assert.ok(results.some(row => /Experiment/i.test(row.evidence)), `${client}: Resume records evidence of the changed plan`);
+        const pages = (await pool.query(`SELECT v.body FROM project_material_versions v JOIN project_materials m ON m.id=v.material_id
+          WHERE m.project_id=$1 AND m.kind='doc' AND v.title<>'Audience'`, [projectId])).rows;
+        assert.ok(pages.some(row => /Experiment/i.test(row.body)), `${client}: Resume writes a Wiki page about the changed plan`);
         const acks = (await pool.query(`SELECT a.version FROM agent_playbook_acknowledgments a
           JOIN agent_runtime_sessions r ON r.id=a.runtime_session_id WHERE r.connection_id=$1`, [connection.id])).rows;
         assert.ok(acks.length >= 1, `${client}: real model acknowledged the supplied bundle`);
         console.log('LIVE_NATIVE_WORKFLOW_RESULT', JSON.stringify({ client, elapsedMs: Date.now() - startedAt,
-          tasks: 1, durableOrientation: true, changedPlanResult: true, projectId, connectionId: connection.id }));
+          tasks: 1, durableOrientation: true, changedPlanDoc: true, projectId, connectionId: connection.id }));
         });
       }
     } finally { await browser.close(); await proxy.close(); await pool.end(); }

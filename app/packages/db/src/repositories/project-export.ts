@@ -25,7 +25,6 @@ const t = schema.sketchThoughts;
 const sl = schema.sketchLinks;
 const w = schema.projectWorkItems;
 const d = schema.projectDecisions;
-const r = schema.projectResults;
 const l = schema.projectObjectLinks;
 
 function groupBy<T, K>(rows: T[], keyOf: (row: T) => K) {
@@ -68,8 +67,7 @@ export function projectExportRows(db: DbExecutor) {
           id: message.id, sequence: message.sequence, author: creator(message.authorId, message.authorAgentId), body: message.body,
           source: message.sourceMaterialId && message.sourceMaterialVersion ? { materialId: message.sourceMaterialId, version: message.sourceMaterialVersion } : null,
           // Only an explicit native effect carries a marker, so every ordinary message exports exactly as before.
-          ...(message.contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: message.resultId! } }
-            : message.contributionKind !== 'text' ? { contribution: { kind: message.contributionKind } } : {}),
+          ...(message.contributionKind !== 'text' ? { contribution: { kind: message.contributionKind } } : {}),
           createdAt: iso(message.createdAt),
         })),
       }));
@@ -173,11 +171,6 @@ export function projectExportRows(db: DbExecutor) {
         decidedBy: row.decidedBy ? human(row.decidedBy) : null, decidedAt: row.decidedAt ? iso(row.decidedAt) : null,
         supersedesId: row.supersedesId, supersededById: row.supersededById, version: row.version, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
       }));
-    },
-
-    async results(projectId: string) {
-      const rows = await openRows(db, 'project_results', await db.select().from(r).where(eq(r.projectId, projectId)).orderBy(asc(r.createdAt), asc(r.id)));
-      return rows.map((row) => ({ id: row.id, title: row.title, finding: row.finding, evidence: row.evidence, createdBy: { kind: row.createdByKind, id: row.createdById }, createdAt: iso(row.createdAt) }));
     },
 
     async githubSources(projectId: string) {

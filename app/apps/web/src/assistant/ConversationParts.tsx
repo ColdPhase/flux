@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
+import { type AssistantAnswer, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
@@ -16,8 +16,7 @@ import { RefLink } from '../place/origin';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
-// an assistant and never as the person; the working line and its Stop are the owner's alone; a
-// proposal is the one framed object and only a person with authority sees Accept.
+// an assistant and never as the person; the working line and its Stop are the owner's alone.
 
 /** The assistant's face: Kreska, never a person's initials (F-026 P3). Its expression follows the run. */
 export function AssistantAvatar({ expression = 'idle' }: { expression?: KreskaExpression }) {
@@ -178,7 +177,7 @@ export function sourceSummary(count: number, from = 'this project') {
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
 
-export function AnswerItem({ answer, mine, lookups, when, clock, proposal, proposalControls, changes = null, resultInMessage = false, onRetry, onContinue, onAskAbout }: {
+export function AnswerItem({ answer, mine, lookups, when, clock, changes = null, resultInMessage = false, onRetry, onContinue, onAskAbout }: {
   answer: AssistantAnswer;
   /** The owner's waiting changes of this run (F-027 A3); only ever the owner's own. */
   changes?: ReactNode;
@@ -188,8 +187,6 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
   lookups: SourceLookups;
   when: (iso: string) => string;
   clock: (iso: string) => string;
-  proposal: AssistantProposal | null;
-  proposalControls: ReactNode;
   onRetry: () => Promise<void>;
   onContinue: () => Promise<void>;
   onAskAbout: (() => void) | null;
@@ -214,7 +211,6 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       <p className="assistant-answer__request">“{answer.request.prompt}”</p>
       {resultInMessage && /^done\b[^\n]{0,160}$/i.test(answer.body.trim()) ? null : <AnswerBody answer={answer} lookups={lookups} />}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
-      {proposal ? proposalControls : null}
       {changes}
       {mine && answer.projectId ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
@@ -228,65 +224,5 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={firstName(answer.askedBy.name)} provider={answer.provenance.provider}
         onMessage={onAskAbout} />
     </li>
-  );
-}
-
-/** The one framed object an assistant adds: a result drafted for a person with authority. */
-export function ProposalCard({ proposal, workTitle, canAccept, canDismiss, targetState, onRefreshTarget, meId, onDecide }: {
-  proposal: AssistantProposal;
-  workTitle: string | null;
-  canAccept: boolean;
-  canDismiss: boolean;
-  targetState: 'ready' | 'checking' | 'unavailable' | 'failed';
-  onRefreshTarget: () => void;
-  meId: string;
-  onDecide: (decision: 'accept' | 'dismiss') => Promise<void>;
-}) {
-  const { openDetails } = useShellActions();
-  const [busy, setBusy] = useState<'' | 'accept' | 'dismiss'>('');
-  const [failed, setFailed] = useState('');
-  // Accept and Dismiss go away once decided; the card keeps the keyboard user's place (AC-8).
-  const { ref: home, keep } = useKeepFocus<HTMLElement>();
-  const decide = (decision: 'accept' | 'dismiss') => keep(async () => {
-    setBusy(decision); setFailed('');
-    try { await onDecide(decision); }
-    catch (error) {
-      setFailed(error instanceof ApiError && error.status === 403 ? 'Only someone who can decide this can accept it.'
-        : error instanceof ApiError && error.status === 409 ? 'This proposal changed. It has been refreshed.' : 'Couldn’t save. Try again.');
-    } finally { setBusy(''); }
-  });
-  const decidedBy = proposal.decidedBy ? (proposal.decidedBy.id === meId ? 'you' : proposal.decidedBy.name) : '';
-  const drafted = proposal.draftedBy.ownerUserId === meId ? 'your assistant' : proposal.draftedBy.label;
-  return (
-    <section ref={home} tabIndex={-1} className={`assistant-proposal is-${proposal.status}`} aria-label={`Proposal: ${proposal.change.title}`} data-native-ref={proposal.change.finishes ? `work:${proposal.change.finishes.workId}` : undefined} data-proposal-target="">
-      <p className="assistant-proposal__label">
-        <span className="assistant-proposal__ring" aria-hidden="true" />
-        {proposal.status === 'proposed' ? 'Proposal · not saved yet' : proposal.status === 'accepted' ? 'Result recorded' : 'Proposal dismissed'}
-      </p>
-      <h4 className="assistant-proposal__title">{proposal.change.title}</h4>
-      <dl className="assistant-proposal__claims">
-        <div><dt>Fact</dt><dd>{proposal.fact}</dd></div>
-        <div><dt>Interpretation</dt><dd>{proposal.interpretation}</dd></div>
-      </dl>
-      {proposal.status === 'proposed' ? <>
-        <p className="assistant-proposal__effect">
-          Accept records the {proposal.change.finding === 'negative' ? 'negative ' : ''}result{workTitle ? <> and finishes <b>{workTitle}</b></> : null}. Nothing is saved until then.
-        </p>
-        {targetState !== 'ready' ? <p className="assistant-proposal__wait" role={targetState === 'failed' ? 'alert' : undefined}>
-          {targetState === 'checking' ? 'Checking the current task and who can decide…' : targetState === 'unavailable' ? 'The linked task is unavailable. This proposal can’t finish it.' : 'Couldn’t check the linked task. Your reply is kept.'}
-          {targetState !== 'checking' ? <> <button type="button" className="ui-link" onClick={onRefreshTarget}>Refresh linked task</button></> : null}
-        </p> : null}
-        {canAccept || canDismiss ? <div className="assistant-proposal__actions">
-          {canAccept ? <Button variant="primary" busy={busy === 'accept'} disabled={!!busy && busy !== 'accept'} onClick={() => void decide('accept')}>Accept</Button> : null}
-          {canDismiss ? <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy && busy !== 'dismiss'} onClick={() => void decide('dismiss')}>Dismiss</Button> : null}
-        </div> : targetState === 'ready' ? <p className="assistant-proposal__wait">{proposal.draftedBy.label} drafted this. It waits for someone who can decide it.</p> : null}
-      </> : proposal.status === 'accepted' ? (
-        <p className="assistant-proposal__done">
-          <Icon name="check" size={13} />Recorded by {decidedBy} · drafted by {drafted}
-          {proposal.resultId ? <button type="button" className="ui-link" onClick={() => openDetails({ kind: 'result', id: proposal.resultId! })}>Open result</button> : null}
-        </p>
-      ) : <p className="assistant-proposal__done">Dismissed by {decidedBy} · nothing was saved</p>}
-      {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
-    </section>
   );
 }

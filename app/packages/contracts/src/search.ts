@@ -2,7 +2,7 @@
  * Search across Flux (issue #114, foundation 8.12).
  *
  * One query over project names, project and direct messages, docs and materials and every version of them, work,
- * decisions, results, sketches and their thoughts and people. Every result, snippet and the `next`
+ * decisions, sketches and their thoughts and people. Every result, snippet and the `next`
  * cursor come only from objects the caller may read at the moment of the request: the server
  * applies the access policy inside the SQL before ranking, limiting and highlighting.
  */
@@ -13,11 +13,11 @@ import type { LockedWorkspaceRef } from './encryption.js';
 export const SEARCH_PATH = '/api/v1/search';
 
 /** What a result is. `dm_message` results belong to the `message` filter and `thought` results to `sketch`. */
-export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'person';
+export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 
 /** Filter values of `type`: one kind, with project and direct messages together and sketches with their thoughts. */
-export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'work' | 'decision' | 'result' | 'sketch' | 'person';
-export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'work', 'decision', 'result', 'sketch', 'person'];
+export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'work' | 'decision' | 'sketch' | 'person';
+export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'work', 'decision', 'sketch', 'person'];
 
 export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50 } as const;
 
@@ -61,7 +61,7 @@ export type SearchTarget =
   | { type: 'material'; projectId: string; materialId: string; version: number }
   /** A doc (#112) at the version that matched. */
   | { type: 'doc'; projectId: string; docId: string; version: number }
-  | { type: 'work' | 'decision' | 'result'; projectId: string; id: string }
+  | { type: 'work' | 'decision'; projectId: string; id: string }
   | { type: 'sketch'; sketchId: string }
   | { type: 'thought'; sketchId: string; thoughtId: string }
   | { type: 'person'; userId: string; workspaceId: string };

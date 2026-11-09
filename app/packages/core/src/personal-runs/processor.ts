@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { aiModelSearchesWeb, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError, SpaceAiOffError } from '../access/errors.js';
@@ -316,10 +315,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
       const initial = await recheck(ports, connections, compute, located, 'before_commit', true).catch((error: unknown) => { if (isAccessDenial(error)) return { refusal: 'denied' as const }; throw error; });
-      const preview = result?.kind === 'completed' ? parseOutput(redactSecrets(result.text).text, sources, result.stopReason !== 'max_tokens' && !isPrivateAnswer(located)) : null;
-      const refs = [...sources.map((source) => source.ref), ...(preview?.proposal?.finishesWorkId ? [{ type: 'work', id: preview.proposal.finishesWorkId }] : [])];
-      const taskFence = !('refusal' in initial) && preview
-        ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, refs) : null;
+      const taskFence = !('refusal' in initial) && result?.kind === 'completed'
+        ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, sources.map((source) => source.ref)) : null;
       const run = await ports.runs.findRun(runId, { lock: true });
       if (!run || run.status !== 'dispatching') return 'skipped';
       const { charge, withhold } = settle(run);
@@ -347,22 +344,14 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const truncated = result.stopReason === 'max_tokens';
       // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
       const redacted = redactSecrets(result.text);
-      const parsed = parseOutput(redacted.text, sources, !truncated && !isPrivateAnswer(run));
+      const parsed = parseOutput(redacted.text, sources);
       parsed.body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, parsed.body));
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
-        ...charge, answerBody: parsed.body || (parsed.proposal ? 'Drafted a proposal.' : '(No answer text.)'),
+        ...charge, answerBody: parsed.body || '(No answer text.)',
         answerTruncated: truncated, answerSources: parsed.sources, answerRedacted: redacted.changed, committedAt,
       }));
-      if (parsed.proposal) {
-        const proposal = await ports.runs.insertProposal({
-          id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId!, runId: run.id, ownerUserId: run.ownerUserId,
-          fact: parsed.proposal.fact, interpretation: parsed.proposal.interpretation, resultTitle: parsed.proposal.title,
-          resultFinding: parsed.proposal.finding, resultEvidence: parsed.proposal.evidence, finishesWorkId: parsed.proposal.finishesWorkId,
-        });
-        await ports.events.record(agent, run.workspaceId, 'project.assistant_proposal_created.v1', run.projectId!, { runId: run.id, proposalId: proposal.id });
-      }
       // A silent background run is not announced to the project: its result is the owner's (Recent, the Inbox).
       // The answer to `/ai` and to a chat is its owner's alone: the space hears nothing until Show everyone (#842).
       if (!run.silent && !isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });

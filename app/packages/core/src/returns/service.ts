@@ -33,7 +33,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const RELEVANT = new Set([
   'project.conversation_created.v1', 'project.message_sent.v1', 'project.material_created.v1', 'project.material_updated.v1',
   'project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1',
-  'project.result_recorded.v1', 'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
+  'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
 ]);
 const MESSAGE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1']);
 
@@ -208,7 +208,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
       switch (event.kind) {
         case 'project.work_created.v1': case 'project.work_updated.v1': { const work = id('workId'); if (work) add(`work:${work}`, 'work', event); break; }
         case 'project.decision_proposed.v1': case 'project.decision_accepted.v1': { const decision = id('decisionId'); if (decision) add(`decision:${decision}`, 'decision', event); break; }
-        case 'project.result_recorded.v1': { const result = id('resultId'); if (result) add(`result:${result}`, 'result', event); break; }
         case 'project.material_created.v1': case 'project.material_updated.v1': { const material = id('materialId'); if (material) add(`material:${material}`, 'material', event); break; }
         case 'sketch.created.v1': case 'sketch.changed.v1': add(`sketch:${event.objectId}`, 'sketch', event); break;
         case 'project.doc_created.v1': case 'project.doc_updated.v1': { const doc = id('docId'); if (doc) add(`doc:${doc}`, 'doc', event); break; }
@@ -222,12 +221,10 @@ export function createReturnUseCases(ports: ReturnPorts) {
       }
     }
     const ids = (prefix: string) => [...groups.keys()].filter((item) => item.startsWith(`${prefix}:`)).map((item) => item.slice(prefix.length + 1));
-    const [work, decisions, results, resultWork, messages, materials, sketches, docs] = await Promise.all([
-      returns.work(ids('work')), returns.decisions(ids('decision')), returns.results(ids('result')), returns.resultWork(ids('result')),
+    const [work, decisions, messages, materials, sketches, docs] = await Promise.all([
+      returns.work(ids('work')), returns.decisions(ids('decision')),
       returns.messages(messageIds), returns.materials(ids('material')), returns.sketches(ids('sketch')), returns.docs(ids('doc')),
     ]);
-    const extraWork = [...resultWork.values()].flat().filter((id) => !work.has(id));
-    for (const [id, item] of await returns.work(extraWork)) work.set(id, item);
     const extraDecisions = [...decisions.values()].map((item) => item.supersedesId ?? item.supersededById)
       .filter((id): id is string => !!id && !decisions.has(id));
     const related = await returns.decisions(extraDecisions);
@@ -242,7 +239,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
     for (const item of decisions.values()) actorKeys.add(item.proposedByKey);
     for (const message of messages.values()) actorKeys.add(`${message.author.kind}:${message.author.id}`);
     const names = await returns.names([...actorKeys]);
-    // People by first name, as in conversation ("Nia's result"); agents by their full name.
+    // People by first name, as in conversation ("Nia's task"); agents by their full name.
     const nameOf = (actorKey: string | null) => {
       if (!actorKey) return null;
       const name = names.get(actorKey)?.trim();
@@ -303,7 +300,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         } else { text = `Changed: ${item.title}`; }
         const needsYou = mine && !finished;
         // A task that became yours while you were away comes before decisions waiting for a person (#763 H11-5): it is
-        // the work you now hold. Questions to you and results about your work come first.
+        // the work you now hold. Questions to you come first.
         const step = !needsYou ? undefined : item.status === 'blocked'
           ? { priority: newForYou ? 3.5 : 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}`, ...due }
           : { priority: newForYou ? 3.5 : 6, text: `Pick up ${quote(item.title)}`, ...due,
@@ -339,24 +336,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const step = needsYou ? { priority: 4, text: 'Decide on the proposed decision',
           reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. You can accept it.` } : undefined;
         items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step });
-        continue;
-      }
-
-      if (group.kind === 'result') {
-        const item = results.get(objectId);
-        if (!item || !inProject(item.projectId)) continue;
-        const about = (resultWork.get(item.id) ?? []).map((id) => work.get(id)).filter((entry) => !!entry && entry.projectId === item.projectId);
-        const yours = about.find((entry) => entry!.ownerKey === me) ?? about.find((entry) => entry!.createdByKey === me);
-        const detail = [
-          item.finding === 'negative' ? 'It did not work out' : 'It worked',
-          about[0] ? `about ${quote(about[0].title)}` : null,
-        ].filter(Boolean).join(', ') + (item.evidence.trim() ? '' : ' · No evidence was recorded.');
-        const author = nameOf(item.createdByKey) ?? actor ?? 'Someone';
-        const needsYou = !!yours && item.createdByKey !== me;
-        const step = needsYou ? { priority: 3, text: `Review the result ${author} attached`,
-          reason: `It reports on ${quote(yours!.title)}, which ${yours!.ownerKey === me ? 'is yours' : 'you created'}.` } : undefined;
-        items.push({ ...base, kind: 'result', text: `${author} recorded a result: ${item.title}`, detail,
-          needsYou, source: { type: 'result', id: item.id, projectId: item.projectId }, step });
         continue;
       }
 
@@ -450,7 +429,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
 
   /**
    * One next step from real state, with its reason: a question addressed to you first, then a
-   * result about your work, a decision waiting for a person, and work that is yours. Nothing else is
+   * decision waiting for a person, and work that is yours. Nothing else is
    * urgent, and no next step is fine.
    */
   function nextStep(items: Built[]): ReturnNextStep | null {

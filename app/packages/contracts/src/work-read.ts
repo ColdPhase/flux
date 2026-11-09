@@ -1,5 +1,5 @@
 import type { ProjectAccess } from './access.js';
-import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WaitingOn, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
+import type { Decision, NamedPrincipal, ObjectLink, TaskLifecycle, WaitingOn, WorkItem, WorkObjectType, WorkStatus } from './work.js';
 
 /** Bounded native reads (#155/#151/#136). These projections are NOT full WorkItem DTOs. */
 export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/${projectId}/work-summary`;
@@ -11,7 +11,7 @@ export const projectWorkThoughtTasksPath = (projectId: string) => `/api/v1/proje
 export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, id: string) =>
   `/api/v1/projects/${projectId}/work-objects/${kind}/${id}`;
 
-export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules', 'results'] as const;
+export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules'] as const;
 export type WorkGroup = typeof WORK_GROUPS[number];
 export type WorkCounts = Record<WorkGroup, number>;
 export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512 } as const;
@@ -27,8 +27,8 @@ export interface WorkReadQuery {
 export type ProjectWorkViewQuery = WorkReadQuery & (
   /** `kinds: 'work'` lists only tasks: the Tasks tab shows tasks, decisions wait in the Inbox (#342). */
   | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean; kinds?: 'work' }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q?: string }
-  | { purpose: 'choices'; choice: 'result_work'; q?: string; selected?: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions'; q?: string }
+  | { purpose: 'choices'; choice: 'open_work'; q?: string; selected?: string }
   | { purpose: 'choices'; choice: 'doc_refs'; kind: WorkObjectType; q?: string }
 );
 
@@ -42,7 +42,7 @@ export type WorkAssociationQuery = WorkReadQuery & {
   | { conversationId: string; messageIds?: never; sourceCursor?: string }
 );
 
-/** objects is a comma-separated set of native work:<id>,decision:<id>,result:<id> refs. */
+/** objects is a comma-separated set of native work:<id>,decision:<id> refs. */
 export interface WorkRelationQuery extends WorkReadQuery {
   objects: string;
   /** Default all; a specific role selects that complete native relation subset. */
@@ -56,7 +56,6 @@ export interface WorkRelationCounts {
   sourceMessages: number;
   sourceMaterials: number;
   decisions: number;
-  results: number;
 }
 
 interface NativeRowBase {
@@ -110,12 +109,7 @@ export interface DecisionRowProjection extends NativeRowBase {
   updatedAt: string;
 }
 
-export interface ResultRowProjection extends NativeRowBase {
-  kind: 'result';
-  finding: ResultFinding;
-  createdBy: NamedPrincipal;
-}
-export type NativeWorkRow = WorkRowProjection | DecisionRowProjection | ResultRowProjection;
+export type NativeWorkRow = WorkRowProjection | DecisionRowProjection;
 
 /** One exact selected-identity observation; rows + opaque markers total <=100.
  * Missing and foreign identities are indistinguishable. This is not a collection API.
@@ -175,7 +169,7 @@ export interface WorkPage<T> {
 export interface ProjectWorkView extends WorkPage<NativeWorkRow> {
   /** Atomic combined page + summary from the same native read transaction. */
   summary: ProjectWorkSummary;
-  /** result_work only: explicit deep selection, outside eligible total/page, at most 1 additional row. */
+  /** open_work only: explicit deep selection, outside eligible total/page, at most 1 additional row. */
   selected: NativeWorkRow | null;
   /**
    * F-030: a chooser search in an encrypted workspace uses the in-memory search index of the workspace. Present (true) when
@@ -189,7 +183,6 @@ export interface SourceAssociationCounts {
   /** Distinct native object identities; relation edge counts are separate. */
   work: number;
   decisions: number;
-  results: number;
   edges: number;
 }
 
@@ -216,8 +209,7 @@ export interface WorkRelations extends WorkPage<ObjectLink> { observedAt: string
 
 export type WorkDetailObject =
   | ({ kind: 'work' } & Omit<WorkItem, 'links'>)
-  | ({ kind: 'decision' } & Omit<Decision, 'links'>)
-  | ({ kind: 'result' } & Omit<WorkResult, 'links'>);
+  | ({ kind: 'decision' } & Omit<Decision, 'links'>);
 
 export interface WorkDetailProjection {
   observedAt: string;

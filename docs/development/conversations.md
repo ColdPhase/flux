@@ -24,8 +24,8 @@ reused for a retry of the same send. Reusing it for different content returns 40
 Messages carry a sequence, author and the project audience. An agent starts or replies only under
 its owner's standing grant over MCP (#152, [agent connection](agent-connection.md#project-wiki-docs-and-conversations));
 its messages carry `authorId: null` and `author: { kind: 'agent', … }`. A message made by an explicit task
-effect (a saved blocker, a published result or a public handoff, #154) also carries `contribution`
-(`{ kind: 'blocker' | 'handoff' }` or `{ kind: 'result', resultId }`); ordinary text omits it. All reads and writes
+effect (a saved blocker, the "what came of it" line or a public handoff, #154) also carries `contribution`
+(`{ kind: 'blocker' | 'handoff' | 'came_of_it' }`); ordinary text omits it. All reads and writes
 recheck the current project access policy; writes do so under a transaction lock.
 
 **Agent owner display in preserved history (#339, 2026-10-08).** Revoking an agent's
@@ -211,7 +211,7 @@ keeps the words. Migration `0029` adds `project_messages.edited_at`.
   `403 MESSAGE_NOT_YOURS` for anyone who can read it: another member, the company's owner or admin, and the owner of an agent for the
   agent's line (that line has the owner's own Delete, #960/#970). The message is looked up inside the conversation named in the
   address, so the access check made for one conversation cannot be used for another's message (`404`). A task's agents thread and a
-  saved blocker, a published result or a public hand-off (`contribution_kind` other than `text`) are refused
+  saved blocker, the "what came of it" line or a public hand-off (`contribution_kind` other than `text`) are refused
   (`404` / `409 MESSAGE_NOT_CHANGEABLE`): the work's own record is taken back through its own commands.
 - **Edit.** There is no time window. The words are trimmed and are 1–100000 characters (a message with files may be emptied). The
   earlier words are not kept. The message keeps its id, place and sequence and carries `editedAt`. Search follows in the same

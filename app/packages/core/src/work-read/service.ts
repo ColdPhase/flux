@@ -129,14 +129,14 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         rowFacts(page.items, projectId, workspaceId);
         const summary = await rows.summary(projectId, actor);
         summaryFacts(summary, projectId, observedAt);
-        const selectedId = input.selection.purpose === 'choices' && input.selection.choice === 'result_work' ? input.selection.selected : undefined;
+        const selectedId = input.selection.purpose === 'choices' && input.selection.choice === 'open_work' ? input.selection.selected : undefined;
         const selected = selectedId ? await rows.selectedWork(projectId, selectedId) : null;
         if (selected) {
           requireFact(selected.kind === 'work' && selected.id === selectedId);
           rowFacts([selected], projectId, workspaceId);
         }
         return { ...page, summary, selected, ...(slice.searchUnavailable ? { searchUnavailable: true as const } : {}) };
-      }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'result_work' && input.selection.selected
+      }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'open_work' && input.selection.selected
         ? { objects: [{ kind: 'work', id: input.selection.selected }] } : undefined);
       return { ...response.value, summary: { ...response.value.summary, access: response.access } };
     },
@@ -157,7 +157,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
         const edges = presentWorkReadPage(await rows.associationEdges(projectId, input.selection, objects, input.limit, edgeCursor), input.limit, edgeScope, edgeCursor);
         const sources = presentWorkReadPage(await rows.associationSources(projectId, input.selection, sourceCursor), WORK_READ_LIMITS.sourceIds, sourceScope, sourceCursor);
         requireFact(new Set(sources.items.map((source) => source.messageId)).size === sources.items.length);
-        for (const source of sources.items) requireFact([source.work, source.decisions, source.results, source.edges].every(count));
+        for (const source of sources.items) requireFact([source.work, source.decisions, source.edges].every(count));
         if ('messageIds' in input.selection) requireFact(sources.total === input.selection.messageIds.length && sources.before === 0 && !sources.nextCursor && !sources.previousCursor && sources.items.length === input.selection.messageIds.length && sources.items.every((source) => 'messageIds' in input.selection && input.selection.messageIds.includes(source.messageId)));
         const edgeTotal = await rows.associationEdgeTotal(projectId, input.selection);
         requireFact(count(edgeTotal) && edges.total <= edgeTotal);

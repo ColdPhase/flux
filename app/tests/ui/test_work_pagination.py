@@ -57,8 +57,7 @@ class WorkPaginationJourney(unittest.TestCase):
         current = api(owner, "POST", cls.root + "/decisions", {"title": "Use the distance sensor", "supersedes": previous["id"]}, 201)
         api(owner, "POST", f"/api/v1/decisions/{current['id']}/accept", {"expectedVersion": 1, "stillApplies": [], "park": []})
         proposal = api(owner, "POST", cls.root + "/decisions", {"title": "Keep a manual off switch"}, 201)
-        result = api(owner, "POST", cls.root + "/results", {"title": "Noise is lower after the shield", "finding": "positive", "evidence": "Twenty real fixture measurements"}, 201)
-        # The Tasks list holds tasks only (#342): decisions wait in the Inbox and a result shows in its task.
+        # The Tasks list holds tasks only (#342): decisions wait in the Inbox.
         cls.objects = {("work", item["id"]) for item in cls.work}
         cls.states = [context.storage_state() for context in cls.contexts]
         cls.before = cls.native_digest()

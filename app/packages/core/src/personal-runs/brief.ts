@@ -275,11 +275,6 @@ const SCHEDULE_BLOCK = (owner: string) => ['Schedules',
   '<schedule>{"title": "short name", "text": "what to do each time", "when": {"kind": "weekdays", "at": "09:00"}}</schedule>',
   `"when" is {"kind": "daily" | "weekdays", "at": "HH:MM"}, {"kind": "weekly", "at": "HH:MM", "weekday": 1-7 from Monday} or {"kind": "hourly", "from": "HH:MM", "to": "HH:MM"}, in ${owner}'s time zone. It only prepares the schedule: it stays off until ${owner} turns it on.`];
 
-const PROPOSAL_BLOCK = ['Results',
-  'If, and only if, the instruction asks to record a result, end your reply with exactly one block:',
-  '<proposal>{"fact": "...", "interpretation": "...", "title": "...", "finding": "positive" | "negative", "evidence": "...", "finishes": "S<n> of an open task" | null}</proposal>',
-  'It is only a proposal: a person with authority decides whether it is saved.'];
-
 /** The tags of the request whose content other people wrote. */
 function dataTags(input: Placed): string[] {
   if (input.place.kind === 'chat') return ['<chat>'];
@@ -292,7 +287,7 @@ function dataTags(input: Placed): string[] {
 }
 
 /** How to read a message's marks (#1064): an AI answer a person posted is not their own words (C-30 counts it as the agent's). */
-const LEGEND = 'In <conversation>, via="…" marks an AI answer its author chose to post, not their own words; kind="result" or kind="blocker" a recorded result or blocker; edited="yes" words changed after they were sent; "(agent)" after a name an agent\'s own message.';
+const LEGEND = 'In <conversation>, via="…" marks an AI answer its author chose to post, not their own words; kind="blocker", kind="came_of_it" or kind="handoff" a saved blocker, what came of a finished task or a handoff; edited="yes" words changed after they were sent; "(agent)" after a name an agent\'s own message.';
 
 /** The injection rule (AG-2, AG-8): content is data, and who instructs. */
 function dataRules(input: Placed): string[] {
@@ -326,7 +321,6 @@ function ownerGave(input: Placed): string[] {
 function system(input: Placed): string {
   const sections: string[][] = [header(input), readers(input), answerRules(input), toolRules(input)];
   if (input.place.kind === 'space' && input.kind === 'ask') sections.push(SCHEDULE_BLOCK(input.ownerName));
-  if (input.kind === 'scheduled' && input.engine === 'server') sections.push(PROPOSAL_BLOCK);
   sections.push(dataRules(input), ownerGave(input));
   return sections.filter((lines) => lines.length).map((lines) => lines.join('\n')).join('\n\n');
 }

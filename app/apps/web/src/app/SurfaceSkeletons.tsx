@@ -13,7 +13,7 @@ import './surface-skeletons.css';
  * The Details panel while its reads arrive. It draws only layout it knows. A task whose title the opener knew (`title`, from the row or card
  * that was pressed) gets the real title in the real title box, however many lines it takes, and below it four property rows, an action
  * row and a section, whose heights do not depend on anything unknown: nothing in it moves when the content takes its place. Every other
- * opening (a task opened from a link, a decision, a result, any other view) shows a title bar and some quiet lines: the heights below a
+ * opening (a task opened from a link, a decision, any other view) shows a title bar and some quiet lines: the heights below a
  * title that wraps, or a decision's lead of unknown length, are not known, so no rows or sections are drawn at guessed places.
  */
 export function DetailsSkeleton({ title }: { title?: string }) {

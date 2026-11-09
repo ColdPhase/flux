@@ -12,7 +12,6 @@ const ACTION = 76;
 const LOCK = 8;
 
 function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
-  const results = item.relations.results;
   const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
   const owner = item.owner;
   // An agent keeps its Agent tag and the person it works for in every state; a person with the same name does not get them.
@@ -26,7 +25,6 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,
-    results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,
   ].filter(Boolean);
   // The word for the state is part of the line, so the glyph is never alone (guide: a word always accompanies it).
   return (

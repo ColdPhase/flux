@@ -39,7 +39,7 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
 
 /**
  * The groups of the Tasks tab, in reading order. `status` in the URL shows one of them. Decisions wait in
- * the Inbox, not here (F-026 S1), and a result shows in its task's details (#342); the old `needs`, `rules`
+ * the Inbox, not here (F-026 S1); the old `needs`, `rules`
  * and `results` views are not groups any more and their links lead to the Inbox or to All.
  */
 const GROUPS = ['in_progress', 'blocked', 'open', 'finished'] as const;

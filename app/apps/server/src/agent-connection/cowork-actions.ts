@@ -33,7 +33,7 @@ const unitFence = {
 const checkpointText = (maximum: number) => z.string().min(1).max(maximum);
 /** One exact native reference; GitHub outcomes wait for the #74 recipient adapter. */
 const outcomeRef = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.enum(['result', 'message']), id }),
+  z.strictObject({ type: z.literal('message'), id }),
   z.strictObject({ type: z.enum(['material', 'doc', 'work', 'thought']), id, version }),
 ]);
 type Source = { materialId: string; version: number };
@@ -149,7 +149,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   register('cowork.unit.complete').registerTool('flux_complete_unit', {
     title: 'Complete your co-work unit with its outcome',
     description: 'Finish your own unit under your live claim, naming its outcome: one exact native record that exists now (a '
-      + 'result or message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
+      + 'message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
       + 'the task or approve anything. '
       + 'Needs the runtime from flux_bootstrap. '
       + 'unit\'s role.',

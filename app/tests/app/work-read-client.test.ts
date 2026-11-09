@@ -16,7 +16,7 @@ function held<T>() {
   return { promise, resolve, reject };
 }
 function summary(open = 0): ProjectWorkSummary {
-  const counts = { needs: 0, in_progress: 0, blocked: 0, open, finished: 0, rules: 0, results: 0 };
+  const counts = { needs: 0, in_progress: 0, blocked: 0, open, finished: 0, rules: 0 };
   return {
     projectId: scope.projectId, observedAt: `2026-10-01T00:00:${String(open).padStart(2, '0')}.000000Z`, access: 'contributor',
     all: { ...counts }, mine: { ...counts }, workTotal: open, unfinishedTotal: open,
@@ -219,11 +219,11 @@ test('releasing a page drops its observation, fences held refresh, and permits a
 
 test('canonical query builders preserve typed selectors, literal search, independent continuations and raw set bounds', () => {
   assert.equal(workViewReadUrl('project', {}), workViewReadUrl('project', { purpose: 'tasks', group: 'all', mine: false, limit: 50 }));
-  const view = new URL(workViewReadUrl('project', { purpose: 'choices', choice: 'result_work', q: '  %_ & title  ', selected: 'chosen', cursor: 'opaque+/=' }), 'http://local');
-  assert.deepEqual(Object.fromEntries(view.searchParams), { purpose: 'choices', choice: 'result_work', q: '%_ & title', limit: '50', cursor: 'opaque+/=', selected: 'chosen' });
+  const view = new URL(workViewReadUrl('project', { purpose: 'choices', choice: 'open_work', q: '  %_ & title  ', selected: 'chosen', cursor: 'opaque+/=' }), 'http://local');
+  assert.deepEqual(Object.fromEntries(view.searchParams), { purpose: 'choices', choice: 'open_work', q: '%_ & title', limit: '50', cursor: 'opaque+/=', selected: 'chosen' });
   for (const query of [
     { purpose: 'choices', choice: 'accepted_decisions' }, { purpose: 'choices', choice: 'open_work' },
-    { purpose: 'choices', choice: 'doc_refs', kind: 'result' },
+    { purpose: 'choices', choice: 'doc_refs', kind: 'decision' },
   ] as const) assert.equal(new URL(workViewReadUrl('project', query), 'http://local').searchParams.get('choice'), query.choice);
   const batch = new URL(workAssociationReadUrl('project', { messageIds: 'b,a,b', cursor: 'objects', edgeCursor: 'edges' }), 'http://local');
   assert.deepEqual(Object.fromEntries(batch.searchParams), { relation: 'source', limit: '50', cursor: 'objects', edgeCursor: 'edges', messageIds: 'a,b' });

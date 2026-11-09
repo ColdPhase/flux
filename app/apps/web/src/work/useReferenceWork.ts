@@ -27,14 +27,8 @@ export function useReferenceWork(accountId: string, projectId: string, available
         return row.bottom > bounds.top && row.top < bounds.bottom;
       });
       const focused = elements.find((element) => element.contains(document.activeElement))?.dataset.nativeRef;
-      // A proposal's authority (Accept/Dismiss) does not depend on where the reader has scrolled
-      // while the loaded window has at most 98 proposal targets; beyond that the nearest are read
-      // first (see selectReferenceWindow). Citation labels stay limited to what is visible.
-      const proposals = elements.filter((element) => element.dataset.proposalTarget !== undefined && element.dataset.nativeRef).map((element) => {
-        const row = element.getBoundingClientRect();
-        return { ref: element.dataset.nativeRef!, distance: row.bottom < bounds.top ? bounds.top - row.bottom : row.top > bounds.bottom ? row.top - bounds.bottom : 0 };
-      });
-      const refs = selectReferenceWindow({ focused, interacted, proposals, visible: visible.map((element) => element.dataset.nativeRef!) }, allowed).join(',');
+      // Citation labels stay limited to what is visible (see selectReferenceWindow).
+      const refs = selectReferenceWindow({ focused, interacted, visible: visible.map((element) => element.dataset.nativeRef!) }, allowed).join(',');
       setSelected((previous) => previous === refs ? previous : refs);
     };
     const schedule = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); };

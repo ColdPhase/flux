@@ -30,15 +30,11 @@ export function useThreadReading({ me, project, conversation }: PaneCore, { mess
   // The thread shows its root whole at the top (with what was made from it), then the replies: one bounded
   // association read covers the root and the replies around the viewport (#155).
   const sourceIds = useMemo(() => [...(rootMessageId ? [rootMessageId] : []), ...messages.filter((message) => message.sequence > 1 && message.id !== rootMessageId).map((message) => message.id)], [messages, rootMessageId]);
-  // Bounded native reads (#155): the visible replies' chips, and the tasks that answers, proposals and the
+  // Bounded native reads (#155): the visible replies' chips, and the tasks that answers and the
   // discussed task refer to. Neither is the project's work collection.
   const discussedTask = conversation?.task?.workId ?? null;
-  const referenceIds = useMemo(() => [...new Set([...(discussedTask ? [`work:${discussedTask}`] : []), ...assistant.answers.flatMap((answer) => {
-    const refs = answer.sources.filter((source) => source.type === 'work').map((source) => `work:${source.id}`);
-    const proposal = answer.proposalId ? assistant.proposals.get(answer.proposalId) : null;
-    if (proposal?.change.finishes) refs.push(`work:${proposal.change.finishes.workId}`);
-    return refs;
-  })])].sort(), [assistant.answers, assistant.proposals, discussedTask]);
+  const referenceIds = useMemo(() => [...new Set([...(discussedTask ? [`work:${discussedTask}`] : []), ...assistant.answers.flatMap((answer) =>
+    answer.sources.filter((source) => source.type === 'work').map((source) => `work:${source.id}`))])].sort(), [assistant.answers, discussedTask]);
   const referenceWork = useReferenceWork(me.user.id, project.id, referenceIds, feedNode, !accessLost);
   // Coming back to an entry with this thread open, or back to the thread from an object that covered it in the panel (it was
   // unmounted meanwhile): its replies return to where they were left (#592). A reload opens the thread as it always opens.

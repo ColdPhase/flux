@@ -1,21 +1,19 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { createAssistantProposalUseCases, createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
-import type { Transaction } from '@flux/db';
+import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
 import {
-  type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
-  type Project, type TaskDiscussion, type WorkItem, type WorkResult, type Workspace,
+  type AssistantAnswer, type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
+  type Project, type WorkItem, type Workspace,
 } from '@flux/contracts';
-import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
+import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
-import { echo, FakeCompute, FakeConnections, FakeQueue, type Responder } from './support/personal-runs.js';
+import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
-import { guardFinalEventPhase } from './support/final-events.js';
 
 // Owner-invoked personal assistant runs (#68, decision O-008), first slice. HTTP routes run
 // against the API container's production composition, where nobody has a key connection yet
@@ -29,7 +27,6 @@ const compute = new FakeCompute();
 const queue = new FakeQueue();
 const hooks: PersonalRunHooks = {};
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-const proposals = assistantProposalUseCases(db, queue.factory);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20, hooks });
 
 const TOKENS = {
@@ -57,7 +54,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   let ada: Person; let hubert: Person; let maurycy: Person; let kai: Person; let viewer: Person; let lee: Person; let outsider: Person;
   let ws: Workspace; let lamp: Project; let other: Project;
   let thread: Conversation;
-  let work: WorkItem;
   const agents: Record<string, string> = {};
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
@@ -68,7 +64,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const ask = (someone: Person, prompt = 'Summarize where we are', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(someone), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
 
-  /** A proposal is an object of the whole conversation, so only a run that posts there can draft one (#842): the run of a schedule. */
+  /** A run of a schedule: the one kind of run that posts its answer in the conversation for everyone (#842). */
   async function scheduledAsk(prompt: string) {
     const run = await ask(hubert, prompt);
     await pool.query(`UPDATE personal_runs SET kind = 'scheduled', authority = 'owner_schedule', background_label = 'Test schedule' WHERE id = $1`, [run.run.id]);
@@ -101,7 +97,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     thread = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() });
     await post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: 'The ToF sensor kept working with swipe + hold', clientMessageId: randomUUID() });
-    work = await post<WorkItem>(kai, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera in low light', owner: { kind: 'human', id: kai.id } });
+    await post<WorkItem>(kai, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera in low light', owner: { kind: 'human', id: kai.id } });
 
     // Material the owner can open but a project run must never read.
     const payroll = await post<Conversation>(ada, `/api/v1/projects/${other.id}/conversations`, { body: `Salaries ${TOKENS.otherProject}`, clientMessageId: randomUUID() });
@@ -476,77 +472,13 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(compute.dispatched.length, dispatched);
   });
 
-  test('AC-7: only a person with authority accepts an assistant proposal; the result records who drafted it', async () => {
-    compute.respond = async (request) => {
-      const label = /<task ref="(S\d+)" number="\d+" status="[^"]+" title="Camera in low light"/.exec(request.input)![1];
-      return { kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
-        text: `Fact: the camera failed below 5 lux [S1].\n<proposal>${JSON.stringify({ fact: 'Camera fails below 5 lux', interpretation: 'Exposure is too short',
-          title: 'Camera fails in low light', finding: 'negative', evidence: 'Low-light test, 20 gestures', finishes: label })}</proposal>` };
-    };
-    const drafting = await scheduledAsk('Record the low-light result');
-    assert.equal(await processor.process(drafting.run.id), 'completed');
-    const run = await runs.get(human(hubert), drafting.run.id);
-    const proposalId = run.answer!.proposalId!;
-    assert.ok(proposalId);
-    const listed = expectStatus(await viewer.browser.request('GET', `/api/v1/projects/${lamp.id}/assistant-proposals`), 200) as Page<AssistantProposal>;
-    const proposal = listed.items.find((item) => item.id === proposalId)!;
-    assert.deepEqual([proposal.status, proposal.draftedBy.label, proposal.change.finishes?.workId], ['proposed', 'pr-hubert\'s assistant', work.id]);
-
-    const accept = (someone: Person) => someone.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: 1 } });
-    for (const [someone, status] of [[maurycy, 403], [hubert, 403], [viewer, 403], [outsider, 404]] as const) {
-      const refused = await accept(someone);
-      assert.equal(refused.status, status, `${someone.email}: ${refused.text}`);
-    }
-    await assert.rejects(proposals.accept(human(hubert), proposalId, {}, 1), { code: 'PROPOSAL_AUTHORITY_REQUIRED' });
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id = $1', [lamp.id])).rows[0].n, 0);
-
-    // The actual result and proposal decision roll back together after the domain save.
-    const unit = proposalUnitOfWork(db, queue.factory);
-    const failing = createAssistantProposalUseCases({ run: (action) => unit.run((ports) => action({ ...ports,
-      runs: { ...ports.runs, async updateProposal(id, changes) {
-        await ports.runs.updateProposal(id, changes);
-        throw new Error('after actual proposal decision');
-      } } })) });
-    const eventCount = (await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n;
-    await assert.rejects(failing.accept(human(kai), proposalId, {}, 1), /after actual proposal decision/);
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [lamp.id])).rows[0]!.n, 0);
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM events WHERE object_id=$1', [lamp.id])).rows[0]!.n, eventCount);
-    assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_task_discussions WHERE work_id=$1', [work.id])).rows[0]!.n, 0,
-      'the rolled back acceptance left no task thread or contribution');
-
-    // Instrument real SQL: no nested native transaction or domain read/write after first event.
-    let eventPhaseStarted = false;
-    const checkedDb = new Proxy(db, { get(target, property) {
-      if (property === 'transaction') return (action: (tx: Transaction) => Promise<unknown>) => target.transaction(async (tx) => {
-        const guarded = guardFinalEventPhase(tx);
-        const result = await action(guarded.tx);
-        eventPhaseStarted = guarded.started;
-        return result;
-      });
-      const value: unknown = Reflect.get(target, property);
-      return typeof value === 'function' ? value.bind(target) : value;
-    } });
-    const accepted = await assistantProposalUseCases(checkedDb, queue.factory).accept(human(kai), proposalId, {}, 1);
-    assert.equal(eventPhaseStarted, true);
-    assert.deepEqual([accepted.status, accepted.decidedBy?.id, accepted.draftedBy.label], ['accepted', kai.id, 'pr-hubert\'s assistant']);
-    const result = expectStatus(await viewer.browser.request('GET', `/api/v1/results/${accepted.resultId}`), 200) as WorkResult;
-    assert.deepEqual([result.title, result.createdBy.id], ['Camera fails in low light', kai.id]);
-    assert.equal((expectStatus(await kai.browser.request('GET', `/api/v1/work/${work.id}`), 200) as WorkItem).status, 'done');
-    // The accepted result also contributes to the finished task's canonical thread, authored by the accepting
-    // person with the exact result id (#154); the helper owner and the helper agent never author it.
-    const contributed = expectStatus(await viewer.browser.request('GET', `/api/v1/work/${work.id}/discussion`), 200) as TaskDiscussion;
-    assert.deepEqual([contributed.root?.body, contributed.root?.contribution, contributed.root?.authorId, contributed.messages.length],
-      ['Camera fails in low light', { kind: 'result', resultId: accepted.resultId }, kai.id, 1]);
-    assert.equal((await accept(kai)).status, 409, 'a decided proposal cannot be accepted again');
-
-    // A truncated answer is shown as truncated and never becomes a proposal.
+  test('a truncated answer is shown as truncated, and continuing it is a new, separately charged run', async () => {
     compute.respond = async () => ({ kind: 'completed', stopReason: 'max_tokens', usage: { inputTokens: 700, outputTokens: 1_500 },
-      text: `Fact: cut off [S1]\n<proposal>${JSON.stringify({ fact: 'f', interpretation: 'i', title: 'Should not be proposed', finding: 'negative', evidence: '', finishes: null })}</proposal>` });
+      text: 'Fact: cut off [S1]' });
     const truncated = await ask(hubert, 'Record it again');
     assert.equal(await processor.process(truncated.run.id), 'truncated');
     const view = await runs.get(human(hubert), truncated.run.id);
-    assert.deepEqual([view.answer?.truncated, view.answer?.proposalId], [true, null]);
+    assert.equal(view.answer?.truncated, true);
     compute.respond = echo;
     // Continuing it is the owner's new, separately charged run with the earlier answer as input.
     const continued = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Continue', continuesRunId: truncated.run.id });
@@ -643,9 +575,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     }
   });
 
-  test('#250 AC-3: an assistant proposal never accepts a decision; only a person with authority decides either', async () => {
-    // O-009 DA-1/DA-4: the assistant writes no decision rows. A proposal block shaped like a decision, or one that
-    // claims it is already accepted, never makes a rule current, and the drafted result waits for a person.
+  test('#250 AC-3: nothing an assistant writes accepts a decision; only a person with authority decides', async () => {
+    // O-009 DA-1/DA-4: the assistant writes no decision rows. A block shaped like a decision, or one that
+    // claims it is already accepted, is only text: it never makes a rule current.
     const pending = await post<Decision>(kai, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use the ToF sensor', rationale: 'It works in the dark' });
     const decisionState = async () => {
       const current = expectStatus(await viewer.browser.request('GET', `/api/v1/decisions/${pending.id}`), 200) as Decision;
@@ -654,49 +586,26 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     };
     const untouched = ['proposed', pending.version, null, 0];
     const counts = async () => (await pool.query(`SELECT (SELECT count(*)::int FROM project_decisions WHERE project_id = $1) AS decisions,
-      (SELECT count(*)::int FROM project_decisions WHERE project_id = $1 AND status <> 'proposed') AS decided,
-      (SELECT count(*)::int FROM project_results WHERE project_id = $1) AS results`, [lamp.id])).rows[0] as { decisions: number; decided: number; results: number };
+      (SELECT count(*)::int FROM project_decisions WHERE project_id = $1 AND status <> 'proposed') AS decided`, [lamp.id])).rows[0] as { decisions: number; decided: number };
     const before = await counts();
-    const answer = (proposal: Record<string, unknown>): Responder => async () => ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
-      text: `Fact: Kai proposed the ToF sensor [S1].\n<proposal>${JSON.stringify(proposal)}</proposal>` });
+    const claim = { type: 'decision', decisionId: pending.id, status: 'accepted', decidedBy: hubert.id, title: 'Use the ToF sensor', rationale: 'Accepted for the team' };
     const previous = compute.respond;
     try {
-      // A decision-shaped block that says it accepts the pending decision is not a proposal at all.
-      compute.respond = answer({ type: 'decision', decisionId: pending.id, status: 'accepted', title: 'Use the ToF sensor', rationale: 'Accepted for the team' });
-      const decisionShaped = await scheduledAsk('Accept the ToF decision for us');
-      assert.equal(await processor.process(decisionShaped.run.id), 'completed');
-      assert.equal((await runs.get(human(hubert), decisionShaped.run.id)).answer?.proposalId, null, 'a decision-shaped block is dropped');
-      assert.deepEqual(await decisionState(), untouched);
-
-      // A well-formed result proposal that claims acceptance is stored as a proposal, and nothing is decided.
-      compute.respond = answer({ fact: 'ToF tracked 19 of 20 gestures at 1 lux', interpretation: 'The sensor suits a dark bedroom',
-        title: 'ToF works in the dark', finding: 'positive', evidence: '19/20 gestures at 1 lux', finishes: null,
-        status: 'accepted', decidedBy: hubert.id, decisionId: pending.id });
-      const claimed = await scheduledAsk('Record the ToF result and accept the decision');
+      compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
+        text: `Fact: Kai proposed the ToF sensor [S1].\n<proposal>${JSON.stringify(claim)}</proposal>` });
+      const claimed = await scheduledAsk('Accept the ToF decision for us');
       assert.equal(await processor.process(claimed.run.id), 'completed');
-      const proposalId = (await runs.get(human(hubert), claimed.run.id)).answer!.proposalId!;
-      assert.ok(proposalId);
-      const drafted = await proposals.get(human(viewer), proposalId);
-      assert.deepEqual([drafted.status, drafted.decidedBy, drafted.resultId, drafted.change.type], ['proposed', null, null, 'result'], 'a status the model writes is ignored');
       assert.deepEqual(await decisionState(), untouched);
-      assert.deepEqual(await counts(), before, 'no decision, acceptance or result was written by the assistant');
+      assert.deepEqual(await counts(), before, 'no decision or acceptance was written by the assistant');
 
-      // Neither the assistant's agent identity nor a person outside the space decides the proposal or the decision.
+      // Neither the assistant's agent identity nor a person outside the space decides the decision.
       const assistant: Principal = { kind: 'agent', id: agents.hubert! };
-      await assert.rejects(proposals.accept(assistant, proposalId, {}, drafted.version));
       await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, pending.version), { code: 'DECISION_NEEDS_PERSON' });
-      assert.equal((await outsider.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: drafted.version } })).status, 404);
       assert.equal((await outsider.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 404);
-      assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
       assert.deepEqual(await decisionState(), untouched);
       assert.deepEqual(await counts(), before);
 
-      // A person with authority accepts the drafted result: that records the result, and still decides nothing.
-      const accepted = await proposals.accept(human(kai), proposalId, {}, drafted.version);
-      assert.deepEqual([accepted.status, accepted.decidedBy?.id], ['accepted', kai.id]);
-      assert.deepEqual(await decisionState(), untouched, 'accepting an assistant proposal never accepts a decision');
-      assert.deepEqual(await counts(), { ...before, results: before.results + 1 });
-      // Only that person's own explicit acceptance makes the decision current.
+      // Only a person's own explicit acceptance makes the decision current.
       const decided = expectStatus(await kai.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } }), 200) as Decision;
       assert.deepEqual([decided.status, decided.decidedBy?.id, decided.proposedBy.id], ['accepted', kai.id, kai.id]);
     } finally { compute.respond = previous; }

@@ -133,7 +133,7 @@ class MessageAlignment(unittest.TestCase):
                 "title": "Raised beds by the fence: the volunteers need a readable blocked task card",
                 "sources": [{"type": "message", "id": reply["id"]}], "clientCommandId": str(uuid.uuid4()),
             })
-        # #665: a thread whose messages carry a task, a decision and a result with realistic titles (40 to 60
+        # #665: a thread whose messages carry a task and a decision with realistic titles (40 to 60
         # characters) and long state lines, so the narrow thread panel and sheet are judged on what they show of each.
         # It has a project of its own, so the other tests' streams are unchanged.
         cls.cards_project = cls.post(owner, f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Gesture lamp", "visibility": "workspace"})["id"]
@@ -144,12 +144,10 @@ class MessageAlignment(unittest.TestCase):
             "body": body, "clientMessageId": str(uuid.uuid4()),
         }) for key, body in (("ada", "Then let us measure soil moisture first."), ("jonas", "The hedge blocks the far beds, so I walked the range again."))]
         cls.card_titles = {"work": "Put two boards on the far beds to test the LoRa range",
-                           "decision": "Measure soil moisture first; frost warnings later",
-                           "result": "The far beds do not reach the gateway through the hedge"}
-        # The conversation column shows roots only: one more root each for a decision and a result, beside the task's root.
+                           "decision": "Measure soil moisture first; frost warnings later"}
+        # The conversation column shows roots only: one more root for a decision, beside the task's root.
         cls.stream_titles = {"work": cls.card_titles["work"],
-                             "decision": "Use the capacitive probe on every raised bed this season",
-                             "result": "The probes drift by less than two percent over six hours"}
+                             "decision": "Use the capacitive probe on every raised bed this season"}
         cls.post(owner, f"/api/v1/projects/{cls.cards_project}/work", {
             "title": cls.card_titles["work"], "status": "in_progress", "owner": {"kind": "human", "id": cls.ids["jonas"]},
             "sources": [{"type": "message", "id": card_sources[0]["id"]}], "clientCommandId": str(uuid.uuid4()),
@@ -158,9 +156,6 @@ class MessageAlignment(unittest.TestCase):
             "title": cls.card_titles["decision"], "sources": [{"type": "message", "id": card_sources[1]["id"]}],
         })
         cls.post(owner, f"/api/v1/decisions/{decision['id']}/accept", {"expectedVersion": 1})
-        cls.post(owner, f"/api/v1/projects/{cls.cards_project}/results", {
-            "title": cls.card_titles["result"], "finding": "negative", "sources": [{"type": "message", "id": card_sources[2]["id"]}],
-        })
         stream_decision_root = cls.post(contexts["jonas"], f"/api/v1/projects/{cls.cards_project}/conversations", {
             "body": "The capacitive probes survived the rain.", "clientMessageId": str(uuid.uuid4()),
         })
@@ -168,12 +163,6 @@ class MessageAlignment(unittest.TestCase):
             "title": cls.stream_titles["decision"], "sources": [{"type": "message", "id": stream_decision_root["messages"][0]["id"]}],
         })
         cls.post(owner, f"/api/v1/decisions/{stream_decision['id']}/accept", {"expectedVersion": 1})
-        stream_result_root = cls.post(contexts["jonas"], f"/api/v1/projects/{cls.cards_project}/conversations", {
-            "body": "Six hours on the bench, two probes side by side.", "clientMessageId": str(uuid.uuid4()),
-        })
-        cls.post(owner, f"/api/v1/projects/{cls.cards_project}/results", {
-            "title": cls.stream_titles["result"], "finding": "negative", "sources": [{"type": "message", "id": stream_result_root["messages"][0]["id"]}],
-        })
         cls.dm_root = cls.dm_messages[0]["id"]
         for key, body in (("jonas", LONG), ("jonas", "A second one straight after."), ("ada", LONG), ("ada", "Short from me."), ("jonas", "Thanks!")):
             cls.post(contexts[key], f"/api/v1/dms/{cls.dm['id']}/threads/{cls.dm_root}/replies", {"body": body, "clientMessageId": str(uuid.uuid4())})
@@ -410,15 +399,15 @@ class MessageAlignment(unittest.TestCase):
       return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1,
         label: getComputedStyle(card, '::before').display, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
     }"""
-    STATE_WORD = {"work": "Doing", "decision": "accepted", "result": "Negative result"}
+    STATE_WORD = {"work": "Doing", "decision": "accepted"}
 
     def assert_cards(self, page, scope, titles, narrow, where, name):
-        """Three cards (a task, a decision, a result) in `scope`: the title keeps its start, the state is whole and at the right
+        """Two cards (a task, a decision) in `scope`: the title keeps its start, the state is whole and at the right
         edge, and the form is the one-row card of the narrow places (A08, A09) or the drawn card of the wide column."""
         cards = page.locator(f"{scope} .message-bubble .ws-chip")
-        expect(cards).to_have_count(3)
+        expect(cards).to_have_count(2)
         seen = set()
-        for index in range(3):
+        for index in range(2):
             card = cards.nth(index)
             card.scroll_into_view_if_needed()
             measured = card.evaluate(self.CARD_PROBE)
@@ -444,9 +433,9 @@ class MessageAlignment(unittest.TestCase):
                 self.assertNotEqual(measured["label"], "none", f"{label}: the wide column keeps the kind over the title")
                 above, below = measured["stateBox"]["top"] - measured["cardBox"]["top"], measured["cardBox"]["bottom"] - measured["stateBox"]["bottom"]
                 self.assertAlmostEqual(above, below, delta=3, msg=f"{label}: the state is centred across the two lines")
-        self.assertEqual(seen, {"work", "decision", "result"})
+        self.assertEqual(seen, {"work", "decision"})
 
-    def test_03b_task_decision_and_result_cards_keep_their_title_and_their_whole_state(self):
+    def test_03b_task_and_decision_cards_keep_their_title_and_their_whole_state(self):
         # #665: a card's title shows more than its first characters and its state stays whole (#501), in the thread panel
         # (1440 px) and sheet (390 px) as in the conversation column.
         for width, height, phone in ((1440, 900, False), (390, 844, True)):

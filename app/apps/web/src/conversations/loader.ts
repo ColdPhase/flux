@@ -12,7 +12,7 @@ export interface ProjectData {
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
   const project = await getProject(projectId, request.signal);
-  // Work, decisions and results come with the project (#117 parent route).
+  // Work and decisions come with the project (#117 parent route).
   const [roots, notices, objectNotices, materials, members] = await Promise.all([
     listConversationRoots(projectId, {}, request.signal),
     // Announcements add to the stream; a failure that is not about access leaves the stream readable without them.
@@ -20,7 +20,7 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
       if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
       return { items: [], total: 0, limit: 100, offset: 0 };
     }),
-    // The same for the decisions and results the stream announces (#694).
+    // The same for the decisions the stream announces (#694).
     listObjectNotices(projectId, {}, request.signal).catch((error: unknown) => {
       if (error instanceof ApiError && [401, 403, 404].includes(error.status)) throw error;
       return { items: [], total: 0, limit: 100, offset: 0 };

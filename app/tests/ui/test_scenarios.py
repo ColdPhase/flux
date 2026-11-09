@@ -12,9 +12,9 @@ people in them would, in the browser:
    thread with no audience checkbox. Mia and Lee, who share Marketplace, see none of it.
 2. Thinking and execution inform each other (test_2): a person proposes and accepts the first rule; one
    experiment is created from several thoughts on the map; Jonas posts the low-light run with an
-   attachment; Ada records a negative result that finishes the experiment, reaches the same thread from
+   attachment; Ada finishes the experiment with one line of what came of it, reaches the same thread from
    the task and from the map, adds the sensor alternative as a new thought, and writes a wiki page that
-   cites the result and the experiment. A task created first is linked to the map later; a removed map
+   cites the experiment. A task created first is linked to the map later; a removed map
    placement keeps its task; Tasks shows only committed work.
 3. An agent proposes a replacing decision as its owner and a person accepts it (test_3; O-009): Ada connects
    her MCP connection; the agent (a real OAuth bearer) proposes
@@ -25,7 +25,7 @@ people in them would, in the browser:
 5. Inbox, search and the wiki (test_5): the inbox and Search find the items; the wiki
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
-   the work, both rules, the result, the page and their links, and nothing private. A member reads the
+   the work with what came of the experiment, both rules, the page and their links, and nothing private. A member reads the
    project but not Ada's private thought or the DM and cannot export it; a non-member gets 404.
 
 Where the product cannot do a step yet, that step is its own small method marked
@@ -93,8 +93,7 @@ ORDER_TASK = "Order a VL53L1X breakout board"
 RUN_ROOT = "Low-light run done: at 5 lux the camera recognised 7 of 20 gestures. Readings attached."
 RUN_REPLY = "That settles it for the camera at night."
 CSV = b"lux,gesture,recognised\n5,swipe,no\n5,hold,yes\n5,wave,no\n50,swipe,yes\n50,hold,yes\n"
-RESULT = "Camera misses 13 of 20 gestures at 5 lux"
-EVIDENCE = "20 gestures at 60 cm in a dark bedroom; readings in lux-readings.csv"
+CAME_OF_IT = "Camera misses 13 of 20 gestures at 5 lux"
 DOC_TITLE = "How the lamp senses hands"
 DOC_BODY = "We started with a camera. The low-light run showed why it fails at night: "
 MARKET_THOUGHT = "Ask market visitors what they think about privacy"
@@ -413,7 +412,7 @@ class ScenarioJourney:
         page.keyboard.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this space")
         choose(picker.get_by_label("Reference type"), kind)
-        query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
+        query = picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)
         query.fill(title[:40])
         option = picker.get_by_role("listbox", name="Matches").get_by_role("option").first
         expect(option).to_contain_text(title[:40])
@@ -673,26 +672,18 @@ class ScenarioJourney:
         self.api("ada", "POST", f"/api/v1/conversations/{run['conversationId']}/messages", {"body": RUN_REPLY, "clientMessageId": str(uuid.uuid4())}, status=201)
         s.update(file=file_id, c2=run["conversationId"])
 
-        # A negative result finishes the experiment. A person does not record a result in the panel (#868: what came of a task is one
-        # line at Done); an agent's tool does, through the same API, and the result opens in the panel like any object.
+        # The experiment is finished with what came of it: one line at Done (#868), which also stays in the task's discussion.
         current = self.api("ada", "GET", f"/api/v1/work/{experiment['id']}", status=200)
-        result = self.api("ada", "POST", f"/api/v1/projects/{lamp}/results", {"title": RESULT, "finding": "negative", "evidence": EVIDENCE, "work": [experiment["id"]],
-                                                                              "finishes": {"id": experiment["id"], "expectedVersion": current["version"]},
-                                                                              "clientCommandId": str(uuid.uuid4())}, status=201)
-        page.goto(f"/projects/{lamp}/tasks?open=result:{result['id']}")
-        expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text(RESULT)
-        self.assertEqual(result["finding"], "negative")
-        self.assertEqual(self.api("ada", "GET", f"/api/v1/work/{experiment['id']}", status=200)["status"], "done", "a negative finding finished the experiment")
-        s["result"] = result["id"]
-        self.close_details(page)
+        finished = self.api("ada", "PATCH", f"/api/v1/work/{experiment['id']}", {"status": "done", "cameOfIt": CAME_OF_IT, "expectedVersion": current["version"]}, status=200)
+        self.assertEqual((finished["status"], finished["cameOfIt"]), ("done", CAME_OF_IT))
 
         # The same task thread from the task and from the map.
         page.goto(f"/projects/{lamp}/tasks?open=work:{experiment['id']}")
         discussion = page.get_by_role("region", name="Activity")
-        expect(discussion).to_contain_text(RESULT)
+        expect(discussion).to_contain_text(CAME_OF_IT)
         self.tap(discussion.get_by_role("link", name=re.compile("Open in Conversation")))
         thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
-        expect(thread).to_contain_text(RESULT)
+        expect(thread).to_contain_text(CAME_OF_IT)
         task_thread = self.api("ada", "GET", f"/api/v1/work/{experiment['id']}/discussion", status=200)
         expect(page).to_have_url(re.compile(rf"/conversations/{task_thread['conversationId']}"))
         self.open_map(page)
@@ -715,7 +706,7 @@ class ScenarioJourney:
         self.assertEqual(sorted(t["text"] for t in after["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT, VARIANT_B]))
         self.shot(page, "2-map")
 
-        # The wiki page cites the result and the experiment.
+        # The wiki page cites the experiment.
         page.goto(f"/projects/{lamp}/docs")
         expect(page.get_by_role("heading", name="No pages yet")).to_be_visible()
         self.tap(page.get_by_role("button", name="New page"))
@@ -727,16 +718,13 @@ class ScenarioJourney:
         wait_until_shared(page)
         expect(text).to_be_focused()
         page.keyboard.insert_text(DOC_BODY)
-        self.link_in_doc(page, text, "result", result["id"], RESULT)
-        page.keyboard.press("Control+End")
-        page.keyboard.insert_text(" The experiment: ")
         self.link_in_doc(page, text, "work", experiment["id"], stored["title"])
         docs = self.api("ada", "GET", f"/api/v1/projects/{lamp}/docs?limit=100", status=200)["items"]
         doc = self.wait_for("the page's saved version with both links", lambda: (lambda d: d if f"flux:work/{experiment['id']}" in d["body"] else None)(
             self.api("ada", "GET", f"/api/v1/docs/{docs[0]['id']}", status=200)))
         self.assertEqual((doc["title"], doc["reason"]), (DOC_TITLE, "Edited the text"))
         mentions = {(link["to"]["type"], link["to"]["id"]) for link in doc["links"] if link["role"] == "mentions"}
-        self.assertEqual(mentions, {("result", result["id"]), ("work", experiment["id"])})
+        self.assertEqual(mentions, {("work", experiment["id"])})
         s["doc"] = doc["id"]
         s["doc_v1"] = doc["body"]
         s["doc_v1_version"] = doc["version"]
@@ -944,7 +932,7 @@ class ScenarioJourney:
         self.assertNotIn("parked", camera, "a task has no parked state (#1039), and Flux moves no task when a decision is replaced (#871)")
         self.assertNotEqual(camera["status"], "done")
         self.assertFalse(any(link["role"] == "still_applies" for link in accepted["links"]))
-        self.assertEqual(self.api("jonas", "GET", f"/api/v1/results/{s['result']}", status=200)["finding"], "negative", "the result survives the replacement")
+        self.assertEqual(self.api("jonas", "GET", f"/api/v1/work/{s['experiment']}", status=200)["cameOfIt"], CAME_OF_IT, "what came of the experiment survives the replacement")
         self.close_details(jonas)
 
         # Jonas asks Ada to pick up the sensor work while she is away.
@@ -979,7 +967,7 @@ class ScenarioJourney:
         expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
         self.close_details(page)
 
-        # The work stays where work is listed, as it was; the earlier decision and the result are in their own details (#342).
+        # The work stays where work is listed, as it was; the earlier decision and the finished experiment are in their own details (#342).
         page.goto(f"/projects/{lamp}/tasks?view=list")
         expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
         expect(page.get_by_text(CAMERA_TASK).first).to_be_visible()
@@ -989,8 +977,8 @@ class ScenarioJourney:
         expect(self.details(page)).to_contain_text("Decision · replaced")
         expect(self.details(page)).to_contain_text(D1)
         self.close_details(page)
-        page.goto(f"/projects/{lamp}/tasks?open=result:{s['result']}")
-        expect(self.details(page)).to_contain_text(RESULT)
+        page.goto(f"/projects/{lamp}/tasks?open=work:{s['experiment']}")
+        expect(self.details(page).get_by_role("region", name="Activity")).to_contain_text(CAME_OF_IT)
         self.close_details(page)
         page.goto(f"/projects/{lamp}/tasks?view=list")
         summary = self.api("ada", "GET", f"/api/v1/return?place=project&id={lamp}", status=200)
@@ -1013,7 +1001,7 @@ class ScenarioJourney:
     # ---------------------------------------------------------------- inbox, search and the wiki
 
     def test_5_inbox_search_and_the_wiki_find_the_work(self) -> None:
-        self.need("pivoted", "doc", "result")
+        self.need("pivoted", "doc", "experiment")
         s, lamp = self.s, self.s["lamp"]
         # Inbox: Ada has Jonas's DM and the agent's proposal for review; Jonas has the reply and his task.
         expected = {"ada": ["Jonas Berg sent you a message", f"Decision proposed: {D2}", f"Jonas Berg asked you in {LAMP}"],
@@ -1032,7 +1020,7 @@ class ScenarioJourney:
         page.goto(f"/inbox/{note['id']}")
         expect(page).to_have_url(re.compile(rf"/dm/{s['dm']}#message-"))
 
-        # Search finds the run, the result, the page and the map, in groups by kind (#870).
+        # Search finds the run, the experiment, the page and the map, in groups by kind (#870).
         page.goto(f"/projects/{lamp}")
         if self.phone:
             page.get_by_role("button", name="Search", exact=True).tap()
@@ -1041,7 +1029,7 @@ class ScenarioJourney:
             page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Search", exact=True)
         dialog.get_by_role("combobox", name="Search", exact=True).fill("lux")
-        expect(dialog.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
+        expect(dialog.get_by_role("listbox", name="Results")).to_contain_text(s["experiment_title"])
         # One tool on both devices: the sheet and the dialog are the whole answer, with no "See all results" and no chips.
         expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
         self.assertEqual(dialog.get_by_role("group").count(), 0)
@@ -1049,7 +1037,7 @@ class ScenarioJourney:
             self.assertIn(group, dialog.locator(".jump__sh").all_inner_texts())
         self.shot(page, "5-search")
         kinds = lambda q: {item["kind"] for item in self.api("ada", "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]}  # noqa: E731
-        self.assertTrue({"message", "result", "doc", "thought"} <= kinds("lux"), kinds("lux"))
+        self.assertTrue({"message", "work", "doc", "thought"} <= kinds("lux"), kinds("lux"))
         self.assertTrue({"work", "thought"} <= kinds("VL53L1X"), kinds("VL53L1X"))
         self.assertIn("dm_message", kinds("wave of the hand"))
         self.assertIn("decision", kinds("ToF distance sensor"))
@@ -1067,7 +1055,6 @@ class ScenarioJourney:
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))
         first = self.api("ada", "GET", f"/api/v1/docs/{s['doc']}/versions/{s['doc_v1_version']}", status=200)
         self.assertEqual(first["body"], s["doc_v1"], "the first version is not rewritten")
-        self.api("ada", "GET", f"/api/v1/results/{s['result']}", status=200)
         s["wiki_v2"] = True
 
     # ---------------------------------------------------------------- export and audience
@@ -1100,7 +1087,7 @@ class ScenarioJourney:
         member.goto(f"/projects/{lamp}")
         expect(member.locator(f"#message-{s['m1']}")).to_contain_text(JONAS_ROOT)
         self.shot(member, "6-member")
-        for path in (f"/api/v1/conversations/{s['c1']}", f"/api/v1/docs/{s['doc']}", f"/api/v1/results/{s['result']}", f"/api/v1/files/{s['file']}"):
+        for path in (f"/api/v1/conversations/{s['c1']}", f"/api/v1/docs/{s['doc']}", f"/api/v1/files/{s['file']}"):
             self.assertEqual(self.status("mia", path), 200, f"the member reads {path}")
         for path in (f"/api/v1/sketches/{draft_id}", f"/api/v1/dms/{s['dm']}"):
             self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
@@ -1110,14 +1097,14 @@ class ScenarioJourney:
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")
 
         # Lee shares only Marketplace: every lamp address is 404 for him.
-        for path in (f"/api/v1/projects/{lamp}", f"/api/v1/conversations/{s['c1']}", f"/api/v1/decisions/{s['d2']}", f"/api/v1/results/{s['result']}",
+        for path in (f"/api/v1/projects/{lamp}", f"/api/v1/conversations/{s['c1']}", f"/api/v1/decisions/{s['d2']}",
                      f"/api/v1/docs/{s['doc']}", f"/api/v1/files/{s['file']}", f"/api/v1/sketches/{s['map']}", f"/api/v1/work/{s['experiment']}",
                      f"/api/v1/projects/{lamp}/export"):
             self.assertEqual(self.status("lee", path), 404, f"lee {path}")
         self.assertEqual(self.fetch("lee", "POST", f"/api/v1/decisions/{d3['id']}/accept", {"expectedVersion": 1}).status, 404)
         lee_found = json.dumps(self.api("lee", "GET", "/api/v1/search?q=lux", status=200))
         self.assertNotIn(lamp, lee_found)
-        self.assertNotIn(RESULT, lee_found)
+        self.assertNotIn(CAME_OF_IT, lee_found)
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
@@ -1137,7 +1124,7 @@ class ScenarioJourney:
             attachment = bundle.extractfile(f"{root}/files/{s['file']}").read()
             page_text = bundle.extractfile(f"{root}/docs/{s['doc']}.md").read().decode("utf-8")
         self.assertEqual(attachment, CSV, "the attachment's exact bytes")
-        self.assertIn(f"flux:result/{s['result']}", page_text)
+        self.assertIn(f"flux:work/{s['experiment']}", page_text)
         if s.get("wiki_v2"):
             self.assertIn(f"flux:decision/{s['d2']}", page_text)
         bodies = [m["body"] for c in exported["conversations"] for m in c["messages"]]
@@ -1146,15 +1133,15 @@ class ScenarioJourney:
         self.assertEqual([f["name"] for f in exported["files"]], ["lux-readings.csv"])
         self.assertEqual(sorted(t["text"] for t in exported["sketches"][0]["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT, VARIANT_B]))
         work = {w["title"]: w for w in exported["work"]}
-        self.assertEqual(work[self.s["experiment_title"]]["status"], "done")
+        self.assertEqual((work[self.s["experiment_title"]]["status"], work[self.s["experiment_title"]]["cameOfIt"]), ("done", CAME_OF_IT))
         self.assertNotIn("parked", work[CAMERA_TASK], "a task has no parked state (#1039)")
         decisions = {d["title"]: d for d in exported["decisions"]}
         self.assertEqual((decisions[D1]["status"], decisions[D2]["status"], decisions[D3]["status"]), ("superseded", "accepted", "proposed"))
         self.assertEqual((decisions[D2]["proposedBy"]["kind"], decisions[D2]["decidedBy"]["id"]), ("agent", self.ids["jonas"]))
-        self.assertEqual([(r["title"], r["finding"]) for r in exported["results"]], [(RESULT, "negative")])
+        self.assertNotIn("results", exported)
         self.assertEqual([len(d["versions"]) for d in exported["docs"]], [self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)["version"]])
         roles = {(link["role"], link["from"]["type"], link["to"]["type"]) for link in exported["links"]}
-        for expected in (("source", "work", "thought"), ("mentions", "doc", "result"), ("about", "result", "work")):
+        for expected in (("source", "work", "thought"), ("mentions", "doc", "work")):
             self.assertIn(expected, roles)
         raw = json.dumps(exported)
         for hidden in (LEFT_OUT, DM[0][1], DRAFT, MARKET_NOTE, MARKET, self.emails["ada"], s["dm"]):

@@ -1,11 +1,11 @@
 import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH,
-  assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
-  conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
+  assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
+  conversationAssistantAnswersPath, conversationAssistantRunsPath,
   agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
   assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, dmThreadAssistantRunsPath, projectAssistantRunsPath,
   type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
-  type AssistantAnswer, type AssistantPlace, type AssistantProposal, type AssistantRun, type InvokeAssistantRunCommand,
+  type AssistantAnswer, type AssistantPlace, type AssistantRun, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type ShowAnswerResult,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -42,12 +42,6 @@ export const retryRun = (runId: string, clientRunId: string) => request<Assistan
 
 export const listAnswers = (conversationId: string, offset = 0, signal?: AbortSignal) =>
   request<Page<AssistantAnswer>>(`${conversationAssistantAnswersPath(conversationId)}?limit=100&offset=${offset}`, { signal });
-export const listProposals = (projectId: string, signal?: AbortSignal) =>
-  request<Page<AssistantProposal>>(`${projectAssistantProposalsPath(projectId)}?limit=100`, { signal });
-export const acceptProposal = (proposal: AssistantProposal) =>
-  request<AssistantProposal>(assistantProposalAcceptPath(proposal.id), { method: 'POST', body: { expectedVersion: proposal.version } });
-export const dismissProposal = (proposal: AssistantProposal) =>
-  request<AssistantProposal>(assistantProposalDismissPath(proposal.id), { method: 'POST', body: { expectedVersion: proposal.version } });
 
 // An agent's changes (F-036 AG-3): the change line and Undo on its message, and what waits. Only their owner, in their own
 // signed-in session, approves, edits or skips a waiting change.

@@ -8,10 +8,10 @@ import { actionScene, toolFailure } from './support/mcp-actions.js';
 test('a standing work.create grant creates one planned native task through MCP; retries and repeated intents never duplicate it', async () => {
   const f = await actionScene(pool);
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
-  assert.deepEqual(capabilities.filter((item) => item.operation !== null && /^(work|result|decision)\./.test(item.operation)).map(({ name, operation, available }) => ({ name, operation, available })),
+  assert.deepEqual(capabilities.filter((item) => item.operation !== null && /^(work|decision)\./.test(item.operation)).map(({ name, operation, available }) => ({ name, operation, available })),
     [{ name: 'flux_create_task', operation: 'work.create', available: true }, { name: 'flux_update_task', operation: 'work.update', available: true },
       { name: 'flux_undo_task_creation', operation: 'work.creation.revert', available: true },
-      { name: 'flux_record_result', operation: 'result.record', available: true }, { name: 'flux_propose_decision', operation: 'decision.propose', available: true },
+      { name: 'flux_propose_decision', operation: 'decision.propose', available: true },
       { name: 'flux_link_pull_request', operation: 'work.update', available: true }]);
   const command = (clientCommandId: string, title = 'Compare against the baseline') => ({ projectId: f.projectId,
     runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass: 'plan', sources: [f.source],
@@ -87,24 +87,21 @@ test('a standing work.update grant changes a task at its read version and keeps 
   assert.equal((rejected?.result as { isError?: boolean } | undefined)?.isError ?? !!rejected?.error, true);
 });
 
-test('standing result and decision grants record a finding that finishes a task and propose a decision, never accept it', async () => {
+test('standing work.update and decision grants finish a task with a line and propose a decision, never accept it', async () => {
   const f = await actionScene(pool);
   const prerequisite = await f.read(f.prerequisiteId);
   const base = (peerRequestClass: string, clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
     runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass, sources: [f.source] });
-  const finding = (clientCommandId?: string) => ({ ...base('execute', clientCommandId), result: { title: 'Baseline measured',
-    finding: 'negative', evidence: 'Runtime stayed at four hours', workIds: [f.prerequisiteId],
-    finishes: { workId: f.prerequisiteId, expectedVersion: Number(prerequisite.version) } } });
+  const finish = (clientCommandId?: string) => ({ ...base('execute', clientCommandId), workId: f.prerequisiteId, expectedVersion: Number(prerequisite.version),
+    changes: { status: 'done', cameOfIt: 'Runtime stayed at four hours' } });
   const first = randomUUID();
-  const recorded = toolValue(await f.tool('flux_record_result', finding(first)));
-  assert.equal(recorded.replayed, false);
-  const result = expect(await f.owner.request('GET', `/api/v1/results/${recorded.resultId}`), 200);
-  assert.deepEqual([result.title, result.finding, (result.createdBy as { id: string }).id], ['Baseline measured', 'negative', f.agentId]);
-  assert.equal((await f.read(f.prerequisiteId)).status, 'done', 'the result finished the task it names');
-  assert.deepEqual(toolValue(await f.tool('flux_record_result', finding(first))), { ...recorded, replayed: true });
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.projectId])).rows[0].n, 1);
-  const planClass = await f.tool('flux_record_result', { ...finding(), peerRequestClass: 'plan' });
-  assert.ok(planClass?.error || (planClass?.result as { isError?: boolean } | undefined)?.isError, 'a result needs an execute-class grant');
+  const finished = toolValue(await f.tool('flux_update_task', finish(first)));
+  assert.equal(finished.replayed, false);
+  const after = await f.read(f.prerequisiteId);
+  assert.deepEqual([after.status, after.cameOfIt], ['done', 'Runtime stayed at four hours'], 'the task is done and says what came of it');
+  assert.deepEqual(toolValue(await f.tool('flux_update_task', finish(first))), { ...finished, replayed: true });
+  const told = (await pool.query(`SELECT contribution_kind, author_agent_id FROM project_messages WHERE project_id=$1 AND contribution_kind='came_of_it'`, [f.projectId])).rows;
+  assert.deepEqual(told, [{ contribution_kind: 'came_of_it', author_agent_id: f.agentId }], 'the line is in the task discussion once, written by the agent');
 
   const proposal = { ...base('plan'), decision: { title: 'Keep the four-hour baseline', rationale: 'The measured runtime holds',
     affects: [f.prerequisiteId] } };
@@ -112,5 +109,4 @@ test('standing result and decision grants record a finding that finishes a task 
   const decision = expect(await f.owner.request('GET', `/api/v1/decisions/${proposed.decisionId}`), 200);
   assert.deepEqual([decision.status, (decision.proposedBy as { id: string }).id, decision.decidedBy], ['proposed', f.agentId, null],
     'an agent proposal stays proposed for a person to decide');
-  // A decision.propose grant authorizes nothing else: it cannot record a result.
 });

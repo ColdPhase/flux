@@ -158,16 +158,17 @@ test('one MCP bearer takes a task, claims, renews and completes its unit with an
   assert.ok(Date.parse(renewed.lease!.expiresAt) >= Date.parse(claimed.lease!.expiresAt), 'renewal extends the lease from now');
 
   // The outcome is a native record the agent publishes under its own grant; completion only references it.
-  const recorded = toolValue(await codex.tool('flux_record_result', { ...codex.base('execute'), sources: [],
-    result: { title: 'Outcome A observed', finding: 'positive', evidence: 'The bounded check ran and passed.', workIds: [a.id] } }));
+  const recorded = toolValue(await codex.tool('flux_create_doc', { ...codex.base('execute'), sources: [],
+    doc: { title: 'Outcome A observed', body: 'The bounded check ran and passed.' } }));
+  const outcome = { type: 'doc', id: recorded.docId, version: recorded.version };
   const taskBefore = await f.taskRow(a.id);
-  const complete = { ...codex.base('execute'), ...fenceOf(renewed), outcome: { type: 'result', id: recorded.resultId } };
+  const complete = { ...codex.base('execute'), ...fenceOf(renewed), outcome };
   const completed = toolValue(await codex.tool('flux_complete_unit', complete));
   assert.deepEqual(completed, { unitId: root.unitId, taskId: a.id, role: 'execute', assignmentConnectionId: codex.connectionId,
-    version: 4, state: 'completed', outcomeRef: { type: 'result', id: recorded.resultId } });
+    version: 4, state: 'completed', outcomeRef: outcome });
   const done = await f.unit(root.unitId);
   assert.deepEqual([done.state, done.lease_id, done.lease_session_id, done.lease_expires_at, done.outcome_ref],
-    ['completed', null, null, null, { type: 'result', id: recorded.resultId }]);
+    ['completed', null, null, null, outcome]);
   assert.deepEqual(await f.taskRow(a.id), taskBefore, 'completion does not change the task');
   assert.deepEqual(toolValue(await codex.tool('flux_complete_unit', complete)), completed, 'a retry replays the completion');
 

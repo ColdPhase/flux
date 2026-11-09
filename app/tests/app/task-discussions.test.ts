@@ -436,7 +436,7 @@ test('two genuine contributions defer every audience until final state and take 
   assert.deepEqual(await f.counts(), { bindings: 1, messages: 2, conversations: 1, events: before.events + 2 });
 });
 
-test('native work, canonical result and a genuine agent root share the caller transaction and one final audience batch', async () => {
+test('native work, the finishing line and a genuine agent root share the caller transaction and one final audience batch', async () => {
   const f = await scene();
   const { principal } = await agentIn(f);
   const owner = { kind: 'human' as const, id: f.owner.id };
@@ -447,14 +447,12 @@ test('native work, canonical result and a genuine agent root share the caller tr
     assert.throws(() => session.flushEvents(), /Await all native commands/);
     const work = await creating;
     const root = await session.contribute(principal, work.id, { body: 'The real agent records the measurement.', clientMessageId: randomUUID() });
-    const result = await session.createResult(owner, f.place.id, { title: 'Measurement preserved', finding: 'positive',
-      evidence: 'A recorded actual result', work: [work.id] });
-    await session.updateWork(owner, work.id, { outcome: 'Final state before receipt and events' }, work.version);
+    // Finishing with a line contributes one message to the task's existing thread, after the task change's event.
+    await session.updateWork(owner, work.id, { outcome: 'Final state before receipt and events', status: 'done', cameOfIt: 'A recorded actual result' }, work.version);
     assert.equal((await session.getWork(owner, work.id)).outcome, 'Final state before receipt and events');
     assert.equal((await session.getDiscussion(owner, work.id)).rootMessageId, root.id);
-    // The result reports on the task, so it also contributes one message to the task's existing thread.
     assert.deepEqual(session.eventIntents.map((item) => item.kind), ['project.work_created.v1',
-      'project.conversation_created.v1', 'project.result_recorded.v1', 'project.message_sent.v1', 'project.work_updated.v1']);
+      'project.conversation_created.v1', 'project.work_updated.v1', 'project.message_sent.v1']);
     const state = await tx.execute(sql`SELECT EXISTS(SELECT 1 FROM pg_locks
       WHERE locktype='advisory' AND pid=pg_backend_pid()
         AND classid=((hashtext('flux.events.seq')::bigint >> 32) & 4294967295)::oid
@@ -468,16 +466,16 @@ test('native work, canonical result and a genuine agent root share the caller tr
     assert.equal(guarded.started, true);
     await assert.rejects(session.getWork(owner, work.id), /session is closed/);
     await assert.rejects(session.contribute(principal, work.id, { body: 'Too late', clientMessageId: randomUUID() }), /session is closed/);
-    return { work, root, result, events };
+    return { work, root, events };
   });
-  assert.equal(committed.events.length, 5);
+  assert.equal(committed.events.length, 4);
   const rows = (await pool.query('SELECT event_id,recipient FROM event_audience WHERE event_id=ANY($1::uuid[])', [committed.events])).rows;
   for (const event of committed.events) {
     assert.ok(rows.some((row) => row.event_id === event && row.recipient === `human:${f.owner.id}`));
     assert.equal(rows.some((row) => row.event_id === event && row.recipient === `human:${f.reader.id}`), false);
   }
-  assert.deepEqual((await pool.query('SELECT created_by_kind,created_by_id FROM project_results WHERE id=$1', [committed.result.id])).rows[0],
-    { created_by_kind: 'human', created_by_id: f.owner.id });
+  assert.deepEqual((await taskDiscussionUseCases(db).getDiscussion(owner, committed.work.id)).messages.map((row) => [row.body, row.contribution ?? null]),
+    [['The real agent records the measurement.', null], ['A recorded actual result', { kind: 'came_of_it' }]]);
   assert.equal((await taskDiscussionUseCases(db).getDiscussion(owner, committed.work.id)).rootMessageId, committed.root.id);
   await db.transaction(async (tx) => {
     const session = nativeWorkInTransaction(tx);
@@ -495,7 +493,6 @@ test('native preparation and final events roll back together before or after flu
   const counts = async () => (await pool.query(`SELECT
     (SELECT count(*)::int FROM project_work_items WHERE project_id=$1) AS work,
     (SELECT count(*)::int FROM project_task_notices WHERE project_id=$1) AS notices,
-    (SELECT count(*)::int FROM project_results WHERE project_id=$1) AS results,
     (SELECT count(*)::int FROM project_object_links WHERE project_id=$1) AS links,
     (SELECT count(*)::int FROM search_documents WHERE project_id=$1) AS search,
     (SELECT count(*)::int FROM outbox o JOIN events e ON e.id=o.event_id WHERE e.object_id=$1) AS outbox`, [f.place.id])).rows[0];
@@ -507,7 +504,7 @@ test('native preparation and final events roll back together before or after flu
       const session = nativeWorkInTransaction(tx);
       const work = await session.createWork(owner, f.place.id, creation);
       await session.contribute(principal, work.id, { body: 'Actual agent text', clientMessageId: randomUUID() });
-      await session.createResult(owner, f.place.id, { title: 'Atomic finding', finding: 'negative', work: [work.id] });
+      await session.updateWork(owner, work.id, { status: 'done', cameOfIt: 'Atomic finding' }, work.version);
       await session.updateWork(owner, f.task.id, { outcome: 'Final domain marker' }, f.task.version);
       if (phase === 'after') await session.flushEvents();
       throw new Error(`outer native failure ${phase} events`);

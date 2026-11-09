@@ -377,25 +377,6 @@
                   "properties": {
                     "kind": {
                       "type": "string",
-                      "const": "result"
-                    },
-                    "id": {
-                      "type": "string",
-                      "format": "uuid",
-                      "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "kind"
-                  ],
-                  "additionalProperties": false
-                },
-                {
-                  "type": "object",
-                  "properties": {
-                    "kind": {
-                      "type": "string",
                       "const": "conversation"
                     },
                     "id": {
@@ -589,10 +570,7 @@
                 "properties": {
                   "type": {
                     "type": "string",
-                    "enum": [
-                      "result",
-                      "message"
-                    ]
+                    "const": "message"
                   },
                   "id": {
                     "type": "string",
@@ -1511,35 +1489,6 @@
       }
     },
     {
-      "name": "flux_get_result",
-      "title": "Read a project result",
-      "operation": null,
-      "classes": [],
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "type": "object",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "properties": {
-          "projectId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "id": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          }
-        },
-        "required": [
-          "id",
-          "projectId"
-        ]
-      }
-    },
-    {
       "name": "flux_get_task_discussion",
       "title": "Read a task's discussion",
       "operation": null,
@@ -1936,41 +1885,6 @@
       }
     },
     {
-      "name": "flux_list_results",
-      "title": "List project results",
-      "operation": null,
-      "classes": [],
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "type": "object",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "properties": {
-          "projectId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "limit": {
-            "default": 20,
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 50
-          },
-          "offset": {
-            "default": 0,
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10000
-          }
-        },
-        "required": [
-          "projectId"
-        ]
-      }
-    },
-    {
       "name": "flux_list_work",
       "title": "List native project tasks",
       "operation": null,
@@ -2133,7 +2047,6 @@
               "material",
               "work",
               "decision",
-              "result",
               "conversation",
               "map"
             ]
@@ -2292,130 +2205,6 @@
       }
     },
     {
-      "name": "flux_record_result",
-      "title": "Record a project result",
-      "operation": "result.record",
-      "classes": [
-        "execute"
-      ],
-      "annotations": {
-        "readOnlyHint": false,
-        "destructiveHint": false,
-        "idempotentHint": true
-      },
-      "inputSchema": {
-        "type": "object",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "properties": {
-          "projectId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "clientCommandId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "sources": {
-            "default": [],
-            "maxItems": 50,
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "materialId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
-                "version": {
-                  "type": "integer",
-                  "minimum": 1,
-                  "maximum": 2147483647
-                }
-              },
-              "required": [
-                "materialId",
-                "version"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "result": {
-            "type": "object",
-            "properties": {
-              "title": {
-                "type": "string",
-                "minLength": 1,
-                "maxLength": 200
-              },
-              "finding": {
-                "type": "string",
-                "enum": [
-                  "positive",
-                  "negative"
-                ]
-              },
-              "evidence": {
-                "type": "string",
-                "maxLength": 20000
-              },
-              "workIds": {
-                "maxItems": 50,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                }
-              },
-              "decisionIds": {
-                "maxItems": 50,
-                "type": "array",
-                "items": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                }
-              },
-              "finishes": {
-                "type": "object",
-                "properties": {
-                  "workId": {
-                    "type": "string",
-                    "format": "uuid",
-                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                  },
-                  "expectedVersion": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 2147483647
-                  }
-                },
-                "required": [
-                  "expectedVersion",
-                  "workId"
-                ],
-                "additionalProperties": false
-              }
-            },
-            "required": [
-              "finding",
-              "title"
-            ],
-            "additionalProperties": false
-          }
-        },
-        "required": [
-          "clientCommandId",
-          "projectId",
-          "result"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "flux_release_unit",
       "title": "Pause your co-work unit with a checkpoint",
       "operation": "cowork.release",
@@ -2536,25 +2325,6 @@
                             "id",
                             "kind",
                             "version"
-                          ],
-                          "additionalProperties": false
-                        },
-                        {
-                          "type": "object",
-                          "properties": {
-                            "kind": {
-                              "type": "string",
-                              "const": "result"
-                            },
-                            "id": {
-                              "type": "string",
-                              "format": "uuid",
-                              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                            }
-                          },
-                          "required": [
-                            "id",
-                            "kind"
                           ],
                           "additionalProperties": false
                         },
@@ -3043,7 +2813,6 @@
               "material",
               "work",
               "decision",
-              "result",
               "sketch"
             ]
           },

@@ -232,8 +232,6 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
   'POST /api/v1/assistant-runs/:runId/stop': AI_ONLY,
   'POST /api/v1/assistant-runs/:runId/retry': AI_ONLY,
   'POST /api/v1/agent-questions/:questionId/answer': AI_ONLY,
-  'POST /api/v1/assistant-proposals/:proposalId/accept': AI_ONLY,
-  'POST /api/v1/assistant-proposals/:proposalId/dismiss': AI_ONLY,
 };
 
 /** An encrypted workspace that is locked here, as cross-workspace reads name it (F-030 `lockedWorkspaces`). */
@@ -246,11 +244,11 @@ export interface LockedWorkspaceRef { id: string; name: string }
  * exactly this list, and `tests/app/encryption-registry.test.ts` compares the two. No free word passes.
  */
 export const EVENT_DATA_TOKENS = [
-  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation',
+  'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation',
   'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
   'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'manager', 'map', 'material', 'member', 'mention', 'mentions', 'message',
   'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
-  'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source',
+  'related', 'renamed', 'reply', 'restart', 'restricted', 'review', 'self', 'sketch', 'source',
   'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'wiki', 'work',
   'workspace',
 ] as const;
@@ -271,9 +269,9 @@ export const EVENT_DATA_KEYS = [
   'kind', 'level', 'lifecycle', 'limit', 'link', 'linkId', 'linkIds', 'lock', 'materialId', 'maxLength', 'message',
   'messageId', 'messageIds', 'messagePage', 'messages', 'myName', 'name', 'nextBeforeSequence', 'noticeId',
   'objectId', 'observed', 'ok', 'op', 'operation', 'outcome', 'owner', 'ownerUserId', 'pairKey', 'participantIds',
-  'password', 'postconditions', 'principal', 'project', 'projectId', 'prompt', 'proposalId', 'provider', 'query',
+  'password', 'postconditions', 'principal', 'project', 'projectId', 'prompt', 'provider', 'query',
   'questionId', 'queue', 'reason', 'recipientId', 'recipients', 'record', 'recoveryCode', 'replayed', 'requestId',
-  'requestedQuestion', 'required', 'resultId', 'results', 'resume', 'resumedFor', 'retained', 'retryDelay', 'retryLimit',
+  'requestedQuestion', 'required', 'results', 'resume', 'resumedFor', 'retained', 'retryDelay', 'retryLimit',
   'retryable', 'reviewerConnectionId', 'reviewerOwnerId', 'revision', 'role', 'rootId', 'rootMessageId', 'row',
   'runId', 'runToken', 'runtime', 'sampleId', 'scope', 'session', 'sessionId', 'sketch', 'sketchId', 'source',
   'sources', 'stage', 'state', 'status', 'step', 'stop', 'stopId', 'stopped', 'sweep', 'task', 'taskId', 'taskIds',

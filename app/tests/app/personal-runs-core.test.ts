@@ -14,36 +14,21 @@ const sources: Pick<SuppliedSource, 'label' | 'ref'>[] = [
 
 describe('personal run output rules', () => {
   test('citations count only for supplied sources', () => {
-    const parsed = parseOutput('Fact: A [S1]. Fact: B [S9]. Fact: C [S1].', sources, true);
+    const parsed = parseOutput('Fact: A [S1]. Fact: B [S9]. Fact: C [S1].', sources);
     assert.deepEqual(parsed.sources, [sources[0]!.ref]);
-    assert.equal(parsed.proposal, null);
     assert.equal(parsed.body, 'Fact: A [1]. Fact: B. Fact: C [1].', 'renumbered for the reader; an unsupplied label is removed');
-    const both = parseOutput('Work [S2] then talk [S1] and work again [S2].', sources, true);
+    const both = parseOutput('Work [S2] then talk [S1] and work again [S2].', sources);
     assert.deepEqual(both.sources, [sources[1]!.ref, sources[0]!.ref]);
     assert.equal(both.body, 'Work [1] then talk [2] and work again [1].');
   });
 
-  test('a proposal block is found by position: an unclosed one stays text, and many openings stay fast (#1064, CodeQL)', () => {
-    const unclosed = parseOutput('Answer [S1] <proposal>{"fact": "f"', sources, true);
-    assert.deepEqual([unclosed.proposal, unclosed.body], [null, 'Answer [1] <proposal>{"fact": "f"']);
-    const first = parseOutput('A <proposal>x</proposal> B <proposal>y</proposal>', sources, false);
-    assert.equal(first.body, 'A  B <proposal>y</proposal>', 'only the first block is taken out, as before');
+  test('a <proposal> block in the text is ordinary text, and a model\'s text cannot make parsing slow (#1064, CodeQL)', () => {
+    const block = parseOutput('Answer [S1] <proposal>{"fact": "f"}</proposal>', sources);
+    assert.equal(block.body, 'Answer [1] <proposal>{"fact": "f"}</proposal>', 'no block is taken out of an answer');
+    assert.deepEqual(block.sources, [sources[0]!.ref]);
     const started = Date.now();
-    parseOutput('<proposal>a'.repeat(50_000), sources, true);
+    parseOutput('<proposal>a'.repeat(50_000), sources);
     assert.ok(Date.now() - started < 2_000, 'no slow pattern over the model\'s text');
-  });
-
-  test('a proposal may finish only a supplied work item and is dropped when malformed', () => {
-    const block = (value: unknown) => `Answer [S2]\n<proposal>${JSON.stringify(value)}</proposal>`;
-    const valid = { fact: 'f', interpretation: 'i', title: 'Result', finding: 'negative', evidence: 'e', finishes: 'S2' };
-    const parsed = parseOutput(block(valid), sources, true);
-    assert.equal(parsed.body, 'Answer [1]');
-    assert.deepEqual(parsed.proposal, { fact: 'f', interpretation: 'i', title: 'Result', finding: 'negative', evidence: 'e', finishesWorkId: workId });
-    assert.equal(parseOutput(block({ ...valid, finishes: 'S1' }), sources, true).proposal, null, 'a message is not a work item');
-    assert.equal(parseOutput(block({ ...valid, finishes: 'S7' }), sources, true).proposal, null, 'an unsupplied label');
-    assert.equal(parseOutput(block({ ...valid, finding: 'maybe' }), sources, true).proposal, null);
-    assert.equal(parseOutput('x <proposal>{not json</proposal>', sources, true).proposal, null);
-    assert.equal(parseOutput(block(valid), sources, false).proposal, null, 'a truncated answer never proposes');
   });
 
   test('cost uses the connection price, and a run reserves its largest request (F-020 PROV-3)', () => {
@@ -67,7 +52,7 @@ describe('personal run output rules', () => {
     assert.equal(withoutCitationMarks('[1]', 1), '[1]', 'an answer that is only a mark is kept whole');
     // A mark right after text, or at the start of a line, goes too, and the line break stays.
     assert.equal(withoutCitationMarks('Fact: the beds use LoRa.[1] Then Wi-Fi drops;[2] and more.\n[1] Next line.', 2), 'Fact: the beds use LoRa. Then Wi-Fi drops; and more.\nNext line.');
-    const parsed = parseOutput('Fact: the beds use LoRa.\n[S1] And the hedge is wet [S1].', sources.slice(0, 1), false);
+    const parsed = parseOutput('Fact: the beds use LoRa.\n[S1] And the hedge is wet [S1].', sources.slice(0, 1));
     assert.equal(parsed.body, 'Fact: the beds use LoRa.\n[1] And the hedge is wet [1].', 'the line break before a mark at the start of a line is kept');
     assert.equal(withoutCitationMarks(parsed.body, 1), 'Fact: the beds use LoRa.\nAnd the hedge is wet.');
   });

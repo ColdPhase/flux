@@ -15,7 +15,7 @@ export const projectDocPreviewPath = (projectId: string) => `/api/v1/projects/${
 export const docPath = (docId: string) => `/api/v1/docs/${docId}`;
 export const docVersionsPath = (docId: string) => `${docPath(docId)}/versions`;
 export const docVersionPath = (docId: string, version: number) => `${docVersionsPath(docId)}/${version}`;
-/** Adds or updates the section for a result or decision ("Add to docs"). */
+/** Adds or updates the section for a decision ("Add to docs"). */
 export const docSectionsPath = (docId: string) => `${docPath(docId)}/sections`;
 
 export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200, fileName: 200 } as const;
@@ -39,7 +39,7 @@ export type DocChangeCause =
   | { kind: 'page_left'; version: number };
 
 /** Object types a doc text can refer to with `[label](flux:<type>/<id>)`. */
-export const DOC_REF_TYPES = ['doc', 'work', 'decision', 'result', 'message', 'thought', 'sketch'] as const;
+export const DOC_REF_TYPES = ['doc', 'work', 'decision', 'message', 'thought', 'sketch'] as const;
 export type DocRefType = (typeof DOC_REF_TYPES)[number];
 /** The link target a doc text uses for an object of its project. */
 export const docRef = (type: DocRefType, id: string) => `flux:${type}/${id}`;
@@ -100,14 +100,14 @@ export interface Doc extends DocVersion {
   startedAt: string;
   /**
    * Links from and to this doc, oldest first: `mentions` from its current text, `source` for
-   * results and decisions added to it, and backlinks (other docs and work objects linking here).
+   * decisions added to it, and backlinks (other docs and work objects linking here).
    */
   links: ObjectLink[];
 }
 
-/** A result or decision whose section "Add to docs" writes. */
+/** A decision whose section "Add to docs" writes. */
 export interface DocSectionSource {
-  type: 'result' | 'decision';
+  type: 'decision';
   id: string;
 }
 
@@ -116,7 +116,7 @@ export interface CreateDocCommand {
   body?: string;
   /** Only `import`. */
   cause?: DocChangeCause;
-  /** Starts the doc with the section for this result or decision and links it as the source. */
+  /** Starts the doc with the section for this decision and links it as the source. */
   from?: DocSectionSource;
 }
 

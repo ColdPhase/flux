@@ -1,5 +1,5 @@
 import { messagePreview } from '@flux/contracts';
-import { and, asc, desc, eq, gt, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openAliased, openRows } from '../sealing.js';
@@ -132,30 +132,6 @@ export function returnRows(db: DbExecutor) {
         id: row.id, projectId: row.projectId, title: row.title, rationale: row.rationale, status: row.status,
         proposedByKey: actorKey(row.proposedByKind, row.proposedById), supersedesId: row.supersedesId, supersededById: row.supersededById,
       })));
-    },
-
-    async results(ids: string[]) {
-      if (!ids.length) return new Map();
-      const r = schema.projectResults;
-      const rows = await openRows(db, 'project_results', await db.select().from(r).where(inArray(r.id, ids)));
-      return byId(rows.map((row) => ({
-        id: row.id, projectId: row.projectId, title: row.title, finding: row.finding as 'positive' | 'negative', evidence: row.evidence,
-        createdByKey: actorKey(row.createdByKind, row.createdById),
-      })));
-    },
-
-    /** Work linked from a result (any role), kept inside the result's project. */
-    async resultWork(resultIds: string[]) {
-      const map = new Map<string, string[]>();
-      if (!resultIds.length) return map;
-      const l = schema.projectObjectLinks;
-      const r = schema.projectResults;
-      const rows = await db.select({ resultId: l.fromId, workId: l.toId }).from(l)
-        .innerJoin(r, and(eq(r.id, l.fromId), eq(r.projectId, l.projectId)))
-        .where(and(eq(l.fromType, 'result'), eq(l.toType, 'work'), inArray(l.fromId, resultIds)))
-        .orderBy(asc(l.createdAt));
-      for (const row of rows) map.set(row.resultId, [...(map.get(row.resultId) ?? []), row.workId]);
-      return map;
     },
 
     async messages(ids: string[]) {

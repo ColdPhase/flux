@@ -3,14 +3,14 @@
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by
 FLUX_UI_BROWSER (run it with chromium and with webkit). Ola owns "Meal box pickup": a brainstorm message
 about a 4-digit SMS code, a map "Pickup ideas" whose thought came from that message, two accepted
-decisions, task #1 with three done-when criteria and a positive result, and the Wiki page "How pickup
+decisions, task #1 with three done-when criteria, and the Wiki page "How pickup
 works". Lena joins afterwards as a contributor. On a computer (1440 x 900) and a phone (390 x 844, touch):
 
 * CW-1: the phone's long press puts a message on the map, source kept; `/map` does it from the composer.
 * CW-2: the thought's "Open message" opens the message in its thread; the message shows an "On the map" chip.
 * CW-4: the Wiki editor shows a reference's kind, never `flux:decision/<id>`.
 * CW-5: a toast never lies over a sheet's buttons on the phone.
-* CW-6: a result lists its task's done-when criteria, each unchecked.
+* CW-6: a task lists its done-when criteria, each unchecked.
 * CW-7: one word per object; a decision opens with its kind and state.
 * CW-9: "Add to a Wiki page" puts a card under the heading the person picks.
 * CW-14 / CW-16: a Wiki thought link selects the thought; a decision card names the message it came from.
@@ -42,7 +42,6 @@ D_SMS = "Pickup with a 4-digit SMS code"
 D_SAT = "Pickup window: Saturday 10:00–13:00"
 TASK = "Send the pickup codes"
 CRITERIA = ["Every household gets its code", "Codes are logged with the box number", "Warns the coordinator when the gateway is down"]
-RESULT = "Gateway sends pickup codes"
 PAGE = "How pickup works"
 
 
@@ -95,8 +94,6 @@ class ConnectedFlow(unittest.TestCase):
             call("ola", "POST", f"/api/v1/decisions/{decision['id']}/accept", {}, {"if-match": "\"1\""})
             decisions.append(decision["id"])
         task = call("ola", "POST", f"/api/v1/projects/{pid}/work", {"title": TASK, "criteria": CRITERIA})
-        result = call("ola", "POST", f"/api/v1/projects/{pid}/results", {"title": RESULT, "finding": "positive",
-                      "evidence": "Codes arrive within a minute. Not tested: what happens when the gateway is down.", "work": [task["id"]]})
         body = "\n".join([f"From the [Pickup ideas](flux:sketch/{sketch['id']}) map and its [SMS thought](flux:thought/{thought['id']}).", "",
                           "## Pickup", "", f"[{D_SMS}](flux:decision/{decisions[0]})", "", "Codes go out the evening before.", "",
                           "## Still open", "", "Lockers?", ""])
@@ -106,7 +103,7 @@ class ConnectedFlow(unittest.TestCase):
         for context in contexts.values():
             context.close()
         cls.ids.update(project=pid, workspace=ws["id"], conversation=talk["id"], message=message, lockers=lockers["messages"][0]["id"],
-                       sketch=sketch["id"], thought=thought["id"], d_sms=decisions[0], d_sat=decisions[1], task=task["id"], result=result["id"], doc=doc["id"])
+                       sketch=sketch["id"], thought=thought["id"], d_sms=decisions[0], d_sat=decisions[1], task=task["id"], doc=doc["id"])
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -217,20 +214,20 @@ class ConnectedFlow(unittest.TestCase):
                 self.assertFalse(overlap, f"the new thought overlaps a thought at {box}")
         draft.get_by_role("button", name="Cancel").click()
 
-    # ---------------------------------------------------------------- CW-6: a result and its criteria
+    # ---------------------------------------------------------------- CW-6: a task and its criteria
 
-    def test_06_a_result_lists_its_tasks_criteria_unchecked(self) -> None:
+    def test_06_a_task_lists_its_criteria_unchecked(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
-                page.goto(f"/projects/{self.ids['project']}/tasks?open=result:{self.ids['result']}")
-                panel = page.locator("[data-detail-kind='result']")
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                panel = page.locator("[data-detail-kind='work']")
                 expect(panel).to_be_visible()
                 criteria = panel.get_by_role("region", name=re.compile("^Done when"))
                 expect(criteria.locator("li")).to_have_text(CRITERIA)
                 expect(criteria.get_by_role("img", name="Not checked off")).to_have_count(3)
-                expect(criteria).to_contain_text("Not checked off")
-                shot(page, f"cw6-result-criteria-{'phone' if phone else 'desktop'}")
+                expect(criteria).to_contain_text("Flux does not check them off")
+                shot(page, f"cw6-task-criteria-{'phone' if phone else 'desktop'}")
 
     # ---------------------------------------------------------------- CW-7: one word per object
 

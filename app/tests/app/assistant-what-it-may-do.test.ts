@@ -425,7 +425,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     const talk = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${vault.id}/conversations`, { body: { body: SECRET, clientMessageId: randomUUID() } }), 201) as Conversation;
     const here = await scene.map(scene.owner, 'Map of this place');
     const elsewhere = { projectId: vault.id };
-    const finishes = { result: { title: 'Outside the place', finding: 'positive', workIds: [task.id], finishes: { workId: task.id, expectedVersion: task.version } } };
     const moved = [{ id: from.id, x: 5, y: 5, expectedVersion: from.version }];
     const changes: [string, Record<string, unknown>][] = [
       // What the run names by its id, in another space.
@@ -440,7 +439,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       ['flux_link_thoughts', { mapId: map.id, fromId: to.id, toId: from.id }],
       ['flux_unlink_thoughts', { mapId: map.id, linkId: link.id }],
       ['flux_create_unit', { taskId: task.id, unitKey: 'outside', expectedTaskVersion: task.version, assignmentConnectionId: await scene.assistantConnectionId(), parent: null, peerRequestClass: 'execute' }],
-      ['flux_record_result', finishes],
       // Something of another space named through this place's own map.
       ['flux_update_thought', { mapId: here.id, thoughtId: from.id, expectedVersion: from.version, changes: { text: 'Changed from outside' } }],
       ['flux_remove_thought', { mapId: here.id, thoughtId: from.id, expectedVersion: from.version }],
@@ -452,7 +450,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       ['flux_create_doc', { ...elsewhere, doc: { title: 'Outside the place' } }],
       ['flux_create_map', { ...elsewhere, title: 'Outside the place' }],
       ['flux_propose_decision', { ...elsewhere, decision: { title: 'Outside the place' } }],
-      ['flux_record_result', { ...elsewhere, ...finishes }],
     ];
     assert.deepEqual([...new Set(changes.map(([name]) => name))].sort(), [...ASSISTANT_RUN_EFFECT_TOOLS].sort(), 'every change kind is covered');
     for (const mode of ['act', 'ask'] as const) {

@@ -88,13 +88,13 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
 }
 /** "Jonas", "Jonas and Maja", "Jonas, Maja and Lea". */
 const joinedNames = (names: readonly string[]) => names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-/** What a waiting `tells` change would send its person (#1089): the task's title and blocker, or the decision's or result's title. */
+/** What a waiting `tells` change would send its person (#1089): the task's title and blocker, or the decision's title. */
 function toldWords(row: AssistantChangeRow): string | null {
   const args = (row.preparedCommand as { args?: Record<string, Record<string, unknown> | undefined> } | null)?.args ?? {};
   const quoted = (value: unknown) => typeof value === 'string' && value.trim() ? `“${value.trim()}”` : null;
   const parts = row.tool === 'flux_create_task' ? [quoted(args.task?.title), args.task?.blocker]
     : row.tool === 'flux_update_task' ? [quoted(args.changes?.title) ?? row.objectTitle, args.changes?.blocker]
-      : row.tool === 'flux_propose_decision' ? [quoted(args.decision?.title)] : row.tool === 'flux_record_result' ? [quoted(args.result?.title)] : [];
+      : row.tool === 'flux_propose_decision' ? [quoted(args.decision?.title)] : [];
   return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '').join(' · ') || null;
 }
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
@@ -139,12 +139,12 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         || (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed));
     }
     // Taking back a task's creation is the creating agent's owner's alone (#238, the work domain's own rule), so it is no one else's Undo.
-    // Likewise the map, result, decision and message no person can remove (#68): only the person whose agent made them takes them back.
+    // Likewise the map, decision and message no person can remove (#68): only the person whose agent made them takes them back.
     return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || row.ownerUserId === principal.id)
       && (!REMOVAL_OPERATIONS.has(row.operation) || principal.id === row.ownerUserId) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
   /**
-   * Everyone each waiting change would notify (#1089, #1102): the person it keeps (`told_user_id`), and for a decision or result every other
+   * Everyone each waiting change would notify (#1089, #1102): the person it keeps (`told_user_id`), and for a decision every other
    * owner of a task it is about, as the notification would reach them after the OK. Read now, so a task given to someone since counts.
    */
   async function everyoneTold(list: AssistantChangeRow[]): Promise<Map<string, string[]>> {
@@ -152,9 +152,8 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     for (const row of list) {
       if (row.state !== 'waiting' || !row.toldUserId) continue;
       const ids = [row.toldUserId];
-      const args = (row.preparedCommand?.args ?? {}) as { decision?: { affects?: unknown }; result?: { workIds?: unknown; finishes?: { workId?: unknown } } };
-      const linked = row.operation === 'decision.propose' ? args.decision?.affects
-        : row.operation === 'result.record' ? [...(Array.isArray(args.result?.workIds) ? args.result.workIds : []), args.result?.finishes?.workId] : [];
+      const args = (row.preparedCommand?.args ?? {}) as { decision?: { affects?: unknown } };
+      const linked = row.operation === 'decision.propose' ? args.decision?.affects : [];
       for (const workId of new Set((Array.isArray(linked) ? linked : []).filter((value): value is string => typeof value === 'string'))) {
         const owner = (await rows().work(workId))?.ownerUserId;
         if (owner && owner !== row.ownerUserId && owner !== row.otherUserId && !ids.includes(owner)) ids.push(owner);

@@ -23,7 +23,6 @@ export type LivePresentationRef =
   | { type: 'message'; id: string; version: number }
   | { type: 'material'; id: string; version: number }
   | { type: 'work'; id: string; version: number }
-  | { type: 'result'; id: string; version: number }
   | { type: 'sketch'; id: string; version: number; selectedThoughtIds?: string[] };
 
 export interface StartLiveSessionCommand {

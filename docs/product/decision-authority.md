@@ -18,8 +18,8 @@ and an expiry. This decision answers both for v0.1.
 a person, or an agent through its own project grant, including an MCP connection with
 a live `decision.propose` standing grant. A proposal changes no current rule, not even
 one that names a decision it would replace. In v0.1 the assistant in Flux (personal
-runs, O-008/F-020) does not propose decisions. Its only consequential output is an
-assistant proposal for a *result*, and a person with authority over the result decides it.
+runs, O-008/F-020) does not propose decisions, and it has no proposal of its own to decide: its changes are the change line
+of [F-036](assistant.md) (Approve, Skip, Undo).
 
 **DA-2 — Accepting.** One signed-in person accepts. At the moment of acceptance,
 that person's project access level must be contributor or manager (a space has only those two roles since #903), as the
@@ -39,7 +39,7 @@ decided.
 | --- | --- |
 | A person with no access, who was removed from the space, or who left the workspace | `404`, the same as a missing decision |
 | An agent, whatever its grant or owner (a person-owned agent of a manager, or a workspace-owned agent) | `403 DECISION_NEEDS_PERSON` |
-| The assistant in Flux | No path. It writes no decision rows, and a decision-shaped proposal block in its output is dropped. |
+| The assistant in Flux | No path. It writes no decision rows, and a decision-shaped block in its output is plain text. |
 | An MCP connection | No tool and no agent operation accepts; a standing grant cannot name acceptance (`400`). |
 
 **DA-3 — Superseding.** A decision is superseded only when a person with DA-2
@@ -57,7 +57,7 @@ Nothing else can set the status or the decider:
 - a REST create or accept body (the API ignores fields it does not define, so a
   `status` or `decidedBy` in the body has no effect);
 - an MCP tool argument (the tool schemas are strict and refuse such a field);
-- model output, an assistant proposal or a standing rule;
+- model output or a standing rule;
 - a notification or an idempotent replay.
 
 A refused attempt leaves the status, version and decider unchanged and records no
@@ -111,7 +111,6 @@ the question is about Flux's own role model.
 | The database ties the status to a decider (`(status = 'proposed') = (decided_by IS NULL)`), and the decider is an `auth_users` row. | `app/packages/db/migrations/0001_v0_1_baseline.sql` |
 | The REST API resolves only browser session cookies, and only to `kind: 'human'`. MCP bearers resolve to `kind: 'agent'`. | `app/apps/server/src/identity/session.ts`, `app/apps/server/src/agent-connection/context.ts` |
 | MCP decision tools are `flux_list_decisions`, `flux_get_decision` and `flux_propose_decision`. `AGENT_OPERATIONS` has `decision.propose` and nothing else for decisions, and the standing-grant route validates against that list. | `app/apps/server/src/agent-connection/{domain-reads,work-actions,routes}.ts`, `app/packages/contracts/src/agent-execution.ts` |
-| Assistant proposals carry only a result (`change.type: 'result'`). Accepting one records a result as the accepting person and never touches decisions. | `app/packages/core/src/personal-runs/{proposals,validation}.ts` |
 | The Details panel once showed Accept only when `project.access !== 'viewer'`, and told a viewer who decides (#250); the viewer role and that note went with #903. | `app/apps/web/src/work/WorkDetails.tsx` |
 | The #14 journey and the #16 specification describe Jo delegating "bounded project decision authority" to Ari, with "scope and expiry enforced". The coverage ledger lists §8.6 as a gap that includes delegation. | [journeys](journeys-and-vocabulary.md), [specification](application-specification.md), [ledger](foundation-coverage.md) |
 

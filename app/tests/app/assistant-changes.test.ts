@@ -473,8 +473,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
 
 
   // ------------------------------------------------------------------------------------------------------------------
-  // #68 closeout (founder direction 2026-10-29): the Undo of what no person can remove. The assistant takes back its own map,
-  // recorded result and proposed decision in the same run Undo, only while nobody has used it. A run posts no message (#1063); a posted
+  // #68 closeout (founder direction 2026-10-29): the Undo of what no person can remove. The assistant takes back its own map and
+  // proposed decision in the same run Undo, only while nobody has used it. A run posts no message (#1063); a posted
   // message an agent takes back is a local client's (LC-2), through the same change path and the same Undo, one change at a time (C-18).
 
   const value = (response: { message: Message }) => JSON.parse(text(response.message)) as Record<string, string>;
@@ -650,49 +650,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.ok(refused.message, 'refused, in words');
     assert.notEqual((await stateOf(row!.id)).state, 'undone', 'the task stays: something waits for it');
     assert.equal((await pool.query('SELECT creation_reverted_at FROM project_work_items WHERE id = $1', [made.workId])).rows[0].creation_reverted_at, null);
-  });
-
-  test('#68 result: Undo removes the result, tombstones what it told the task and puts the finished task back; refused once replied to or the task changed', async () => {
-    const target = await task(owner, 'Test the camera in low light');
-    const run = await liveRun();
-    const recorded = value(await run.call('flux_record_result', { result: { title: 'Camera fails below 5 lux', finding: 'negative', evidence: '20 gestures',
-      workIds: [target.id], finishes: { workId: target.id, expectedVersion: target.version } } }));
-    await complete(run.runId);
-    const [change] = await changesOf(run.runId);
-    assert.equal((await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [target.id])).rows[0].status, 'done', 'the result finished the task');
-    const told = (await pool.query(`SELECT id, conversation_id FROM project_messages WHERE result_id = $1`, [recorded.resultId])).rows as { id: string }[];
-    assert.equal(told.length, 1, 'it told the task\'s discussion');
-    assert.equal((await listRun(run.runId))[0]!.undoable, true);
-    const undone = await undoRun(run.runId);
-    assert.equal(undone.undone, 1, undone.message);
-    assert.equal(await count('project_results', recorded.resultId), 0);
-    assert.equal((await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [target.id])).rows[0].status, 'open', 'the task is as it was');
-    const message = (await pool.query(`SELECT body, removed_at, contribution_kind, result_id FROM project_messages WHERE id = $1`, [told[0]!.id])).rows[0];
-    assert.deepEqual([message.body, message.contribution_kind, message.result_id], ['[Removed with Undo]', 'text', null]);
-    assert.ok(message.removed_at);
-    assert.equal((await stateOf(change!.id)).state, 'undone');
-
-    // A person replied in the task's discussion since.
-    const replied = await task(owner, 'Test the ToF sensor');
-    const second = await liveRun();
-    const keptA = value(await second.call('flux_record_result', { result: { title: 'ToF works in the dark', finding: 'positive', workIds: [replied.id], finishes: { workId: replied.id, expectedVersion: replied.version } } }));
-    await complete(second.runId);
-    expectStatus(await peer.browser.request('POST', `/api/v1/work/${replied.id}/discussion`, { body: { body: 'Great, thanks', clientMessageId: randomUUID() } }), 201);
-    const [repliedRow] = await changesOf(second.runId);
-    assert.equal((await undoOne(repliedRow!.id)).message, 'Replies since. Open it');
-    assert.equal(await count('project_results', keptA.resultId), 1);
-    assert.equal((await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [replied.id])).rows[0].status, 'done', 'nothing was half undone');
-
-    // The finished task was changed since.
-    const moved = await task(owner, 'Test the lidar');
-    const third = await liveRun();
-    const keptB = value(await third.call('flux_record_result', { result: { title: 'Lidar is too slow', finding: 'negative', workIds: [moved.id], finishes: { workId: moved.id, expectedVersion: moved.version } } }));
-    await complete(third.runId);
-    const current = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [moved.id])).rows[0].version as number;
-    await patchWork(peer, moved.id, current, { status: 'in_progress' });
-    const [movedRow] = await changesOf(third.runId);
-    assert.equal((await undoOne(movedRow!.id)).message, 'The task changed since. Open it');
-    assert.equal(await count('project_results', keptB.resultId), 1, 'the result stays with its task');
   });
 
   test('#68 Undo of these four follow the AI switch of their space: refused while AI is off, with nothing changed, and works again after', async () => {
@@ -903,22 +860,17 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(await count(), before, `${label}: the database detected a deadlock`);
   };
 
-  test('#68 races: Undo of a result against a reply in the task\'s discussion never deadlocks (staggered, both orders)', async () => withoutDeadlock('result and reply', async () => {
+  test('#68 races: Undo of a local client\'s reply against a person\'s reply in the same thread never deadlocks (staggered, both orders)', async () => withoutDeadlock('client reply and reply', async () => {
     const seen: string[] = [];
     for (const offset of [0, 2, 5, 10]) for (const swap of [false, true]) {
-      const target = await task(owner, `Race task ${offset}${swap}`);
-      const run = await liveRun();
-      const rec = value(await run.call('flux_record_result', { result: { title: `Race result ${offset}`, finding: 'positive', workIds: [target.id], finishes: { workId: target.id, expectedVersion: target.version } } }));
-      await complete(run.runId);
-      const [change] = await changesOf(run.runId);
-      const [undone, human] = await race(undoRequest(change!.id),
-        () => peer.browser.request('POST', `/api/v1/work/${target.id}/discussion`, { body: { body: `Concurrent ${offset}`, clientMessageId: randomUUID() } }), offset, swap);
+      const started = await post('flux_start_conversation', { message: { body: `Race question ${offset}${swap}` } });
+      const [undone, human] = await race(undoRequest(started.change.id),
+        () => peer.browser.request('POST', `/api/v1/conversations/${started.conversationId}/messages`, { body: { body: `Concurrent ${offset}`, clientMessageId: randomUUID() } }), offset, swap);
       noServerError(`offset ${offset} swap ${swap}`, undone.status, human.status);
       seen.push(`${undone.status}/${human.status}`);
-      // Never half done: the result and the finished task agree.
-      const removed = (await count('project_results', rec.resultId)) === 0;
-      const status = (await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [target.id])).rows[0].status;
-      assert.equal(status, removed ? 'open' : 'done', `offset ${offset}: result removed ${removed}, task ${status}`);
+      // Never half done: the message is taken back exactly when its Undo said so.
+      const removed = (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [started.messageId])).rows[0].removed_at !== null;
+      assert.equal(removed, (undone.json as { message?: string | null }).message === null, `offset ${offset}: removed ${removed}, undo ${JSON.stringify(undone.json)}`);
     }
     assert.ok(seen.length === 8);
   }));
@@ -997,23 +949,19 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     }
   }));
 
-  test('#68 races: a page started from the assistant\'s decision or result, or mentioning it, while its Undo runs leaves no link to a removed object', async () => withoutDeadlock('docs and Undo', async () => {
+  test('#68 races: a page started from the assistant\'s decision, or mentioning it or its map, while its Undo runs leaves no link to a removed object', async () => withoutDeadlock('docs and Undo', async () => {
     for (let i = 0; i < 12; i++) {
-      const kind = (['from-decision', 'mention-decision', 'from-result', 'mention-map'] as const)[i % 4]!;
+      const kind = (['from-decision', 'mention-decision', 'mention-map'] as const)[i % 3]!;
       const run = await liveRun();
-      const target = await task(owner, `Doc race task ${i}`);
       let objectId = ''; let table = '';
       if (kind === 'from-decision' || kind === 'mention-decision') {
         objectId = value(await run.call('flux_propose_decision', { decision: { title: `Doc race decision ${i}`, rationale: 'x' } })).decisionId; table = 'project_decisions';
-      } else if (kind === 'from-result') {
-        objectId = value(await run.call('flux_record_result', { result: { title: `Doc race result ${i}`, finding: 'positive', workIds: [target.id] } })).resultId; table = 'project_results';
       } else {
         objectId = value(await run.call('flux_create_map', { title: `Doc race map ${i}` })).mapId; table = 'sketches';
       }
       await complete(run.runId);
       const [change] = await changesOf(run.runId);
       const body = kind === 'from-decision' ? { title: `Doc ${i}`, body: 'First', from: { type: 'decision', id: objectId } }
-        : kind === 'from-result' ? { title: `Doc ${i}`, body: 'First', from: { type: 'result', id: objectId } }
         : { title: `Doc ${i}`, body: `See [it](flux:${kind === 'mention-map' ? 'sketch' : 'decision'}/${objectId})` };
       const offset = [0, 3, 8][i % 3]!; const swap = i % 2 === 1;
       const [undone, page] = await race(undoRequest(change!.id), () => peer.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body }), offset, swap);

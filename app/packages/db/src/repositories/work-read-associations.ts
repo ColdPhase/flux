@@ -14,7 +14,7 @@ export function nativeWorkSourceMessages(projectId: string, sources: NativeWorkS
 }
 function matching(projectId: string, selection: NativeWorkAssociationSelector) {
   return sql`WITH visible AS (${nativeVisibleWorkEdges(projectId)}), messages AS (${nativeWorkSourceMessages(projectId, selection)})
-    SELECT e.* FROM visible e WHERE e.from_type IN ('work', 'decision', 'result') AND e.to_type = 'message'
+    SELECT e.* FROM visible e WHERE e.from_type IN ('work', 'decision') AND e.to_type = 'message'
       AND e.to_id IN (SELECT id FROM messages) AND (${selection.relation === 'source' ? sql`e.role = 'source'` : sql`true`})`;
 }
 function objectPredicate(objects: readonly NativeWorkReadObject[], both: boolean) {
@@ -24,7 +24,6 @@ function title(projectId: string, kind: ReturnType<typeof sql>, id: ReturnType<t
   return sql`CASE ${kind}
     WHEN 'work' THEN (SELECT o.title FROM project_work_items o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'decision' THEN (SELECT o.title FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
-    WHEN 'result' THEN (SELECT o.title FROM project_results o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'message' THEN (SELECT left(split_part(btrim(o.body), E'\n', 1), 120) FROM project_messages o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'material' THEN (SELECT o.title FROM project_material_versions o WHERE o.project_id = ${projectId}::uuid AND o.material_id = ${id} AND o.version = ${version})
     WHEN 'doc' THEN (SELECT v.title FROM project_materials o JOIN project_material_versions v ON v.material_id = o.id AND v.version = o.current_version WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.kind = 'doc')
@@ -53,8 +52,7 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
     objectKeys(projectId: string, selection: NativeWorkAssociationSelector, limit: number, cursor?: WorkReadCursor) {
       const selected = sql`WITH matched AS (${matching(projectId, selection)})
         SELECT 'work'::text AS kind, o.id, o.created_at, 0 AS rank FROM project_work_items o WHERE o.project_id = ${projectId}::uuid AND EXISTS(SELECT 1 FROM matched e WHERE e.from_type = 'work' AND e.from_id = o.id)
-        UNION ALL SELECT 'decision'::text AS kind, o.id, o.created_at, 1 AS rank FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND EXISTS(SELECT 1 FROM matched e WHERE e.from_type = 'decision' AND e.from_id = o.id)
-        UNION ALL SELECT 'result'::text AS kind, o.id, o.created_at, 2 AS rank FROM project_results o WHERE o.project_id = ${projectId}::uuid AND EXISTS(SELECT 1 FROM matched e WHERE e.from_type = 'result' AND e.from_id = o.id)`;
+        UNION ALL SELECT 'decision'::text AS kind, o.id, o.created_at, 1 AS rank FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND EXISTS(SELECT 1 FROM matched e WHERE e.from_type = 'decision' AND e.from_id = o.id)`;
       return nativeReadKeyWindow<WorkObjectType>(db, selected, limit, cursor);
     },
     async sourceCounts(projectId: string, selection: NativeWorkAssociationSelector, cursor?: WorkReadCursor) {
@@ -62,10 +60,9 @@ export function nativeWorkAssociationRows(db: DbExecutor) {
       const keys = await nativeReadKeyWindow<'message'>(db, sql`SELECT 'message'::text AS kind, id, created_at, 0 AS rank FROM (${nativeWorkSourceMessages(projectId, selection)}) m`, 100, cursor, true);
       if (!keys.items.length) return { ...keys, items: [] };
       const ids = sql.join(keys.items.map((key) => sql`${key.id}::uuid`), sql`, `);
-      const result = await db.execute<{ messageId: string; work: number; decisions: number; results: number; edges: number }>(sql`WITH matched AS (${matched})
+      const result = await db.execute<{ messageId: string; work: number; decisions: number; edges: number }>(sql`WITH matched AS (${matched})
         SELECT m.id AS "messageId", count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'work')::int AS work,
-          count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'decision')::int AS decisions,
-          count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'result')::int AS results, count(e.id)::int AS edges
+          count(DISTINCT e.from_id) FILTER(WHERE e.from_type = 'decision')::int AS decisions, count(e.id)::int AS edges
         FROM project_messages m LEFT JOIN matched e ON e.to_id = m.id WHERE m.project_id = ${projectId}::uuid AND m.id IN (${ids}) GROUP BY m.id`);
       const byId = new Map<string, SourceAssociationCounts>(result.rows.map((row) => [row.messageId, row]));
       return { ...keys, items: keys.items.map((key) => {

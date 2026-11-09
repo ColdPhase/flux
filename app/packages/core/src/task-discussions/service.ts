@@ -30,7 +30,7 @@ export async function appendMessage<C extends { id: string }, I extends { byFlux
   return discussion.append(conversation, author, input);
 }
 const wire = (row: DiscussionMessage, names: Map<string, string>, owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage => {
-  const contribution = messageContribution(row.kind, row.resultId);
+  const contribution = messageContribution(row.kind);
   return { id: row.id, conversationId: row.conversationId,
     ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
@@ -233,7 +233,6 @@ export function createWorkContributions(ports: TaskDiscussionPorts): WorkContrib
       const items: PreparedItem[] = drafts.map((draft) => {
         const workId = id(draft.workId, 'workId');
         if (!draft.body.trim() || draft.body.length > 100_000) throw new InvalidInputError('A contribution needs 1–100000 characters');
-        if ((draft.kind === 'result') !== (draft.resultId !== undefined)) throw new Error('A result contribution names its canonical result; nothing else does');
         const normalized = { ...draft, workId };
         return { draft: normalized, ...contributionIdentity(anchor, normalized) };
       }).sort((a, b) => (a.draft.workId < b.draft.workId ? -1 : a.draft.workId > b.draft.workId ? 1 : 0));
@@ -261,7 +260,7 @@ export function createWorkContributions(ports: TaskDiscussionPorts): WorkContrib
         try {
           const { message } = await appendToTask(ports, { workspaceId: task.workspaceId, projectId: prepared.projectId }, prepared.author, task.id,
             { body: item.draft.body, clientMessageId: item.clientMessageId, fingerprint: item.fingerprint, source: null,
-              kind: item.draft.kind, resultId: item.draft.resultId ?? null });
+              kind: item.draft.kind });
           ids.push(message.id);
         } catch (error) {
           // The line at Done is also the task's own field (#868): five agent messages in a row (C-51) refuse a message, never the Done that carries it.

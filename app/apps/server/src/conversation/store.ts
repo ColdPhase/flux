@@ -56,7 +56,7 @@ function creator(row: ConversationRow, names: Map<string, string>) {
     createdByActor: { kind: 'agent' as const, id: row.createdByAgentId!, name: names.get(`agent:${row.createdByAgentId}`) ?? 'Agent' } };
 }
 function message(row: MessageRow & { files?: import('@flux/contracts').MessageFile[]; references?: MessageReferenceCard[] }, names: Map<string, string> = new Map(), owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage {
-  const contribution = messageContribution(row.contributionKind, row.resultId);
+  const contribution = messageContribution(row.contributionKind);
   return { id: row.id, conversationId: row.conversationId, ...(row.authorId !== null ? { authorId: row.authorId } : { authorId: null,
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
@@ -250,8 +250,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const found = await rows.lockProject(conversation.id, messageId.toLowerCase());
       if (!found) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
       if (found.authorId !== authorId) throw new ForbiddenError('Only the person who wrote a message can change or delete it', 'MESSAGE_NOT_YOURS');
-      // A saved blocker, a published result and a public hand-off are the work's own record; they are taken back through their own commands.
-      if (found.contributionKind !== 'text' || found.resultId !== null) throw new ConflictError('This message is part of a task’s record, so it cannot be changed here', 'MESSAGE_NOT_CHANGEABLE');
+      // A saved blocker, the "what came of it" line and a public hand-off are the work's own record; they are taken back through their own commands.
+      if (found.contributionKind !== 'text') throw new ConflictError('This message is part of a task’s record, so it cannot be changed here', 'MESSAGE_NOT_CHANGEABLE');
       const op = await change(rows, found);
       const [row] = await openRows(tx as unknown as DbExecutor, 'project_messages', await tx.select().from(schema.projectMessages).where(eq(schema.projectMessages.id, found.id)));
       const files = await fileRows(tx).messageFiles([found.id]);

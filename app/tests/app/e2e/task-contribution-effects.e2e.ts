@@ -6,10 +6,10 @@ import net from 'node:net';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
-import type { ConversationMessage, TaskDiscussion, WorkItem, WorkResult } from '@flux/contracts';
+import type { ConversationMessage, TaskDiscussion, WorkItem } from '@flux/contracts';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
 
-// A saved blocker, a published result and an explicit handoff reach the task's canonical conversation (#154).
+// A saved blocker, the line saved at Done (what came of it) and an explicit handoff reach the task's canonical conversation (#154).
 // Real authenticated Chromium drives the Tasks panel; this does not certify an external MCP client.
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const origin = new URL(process.env.FLUX_PUBLIC_ORIGIN!);
@@ -57,7 +57,7 @@ async function signedIn(who: Person, width: number) {
   return context;
 }
 
-test('a saved blocker, a published result and a handoff appear as marked messages in the task conversation',
+test('a saved blocker, what came of a finished task and a handoff appear as marked messages in the task conversation',
   { timeout: 120_000 }, async () => {
     const [owner, writer, reader] = await Promise.all(['Casey Owner', 'Jonas Writer', 'Lee Reader'].map(person));
     const ws = await workspace(owner, 'Task effects');
@@ -99,20 +99,24 @@ test('a saved blocker, a published result and a handoff appear as marked message
       ['Waiting for the replacement hinge', { kind: 'blocker' }, writer.id]);
     const path = `/projects/${place.id}/conversations/${afterBlocker.conversationId}`;
 
-    // 2. The result is published from the task and appears in the same conversation, linking the exact result.
-    await page.getByRole('button', { name: 'Attach a result' }).click();
-    await page.getByRole('textbox', { name: 'Finding' }).fill('The new hinge holds at 40 N');
-    await page.getByRole('radio', { name: 'Positive' }).check();
-    const published = page.waitForResponse((response) => response.request().method() === 'POST' && new URL(response.url()).pathname === `/api/v1/projects/${place.id}/results`);
-    await page.getByRole('button', { name: 'Attach result' }).click();
-    const publishedResponse = await published;
-    assert.equal(publishedResponse.status(), 201, await publishedResponse.text());
-    const made = await publishedResponse.json() as WorkResult;
-    assert.match((JSON.parse(publishedResponse.request().postData() ?? '{}') as { clientCommandId?: string }).clientCommandId ?? '', /^[0-9a-f-]{36}$/);
+    // 2. The line saved at Done ("What came of it") appears in the same conversation, once, with exactly the saved text.
+    const finishedStatus = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
+    await status.click();
+    await page.getByRole('menuitemradio', { name: 'Done' }).click();
+    assert.equal((await finishedStatus).status(), 200);
+    assert.equal((await discussion()).messages.length, 1, 'finishing alone adds no line');
+    await page.getByRole('button', { name: 'What came of it, add a line' }).click();
+    await page.getByRole('textbox', { name: 'What came of it' }).fill('The new hinge holds at 40 N');
+    const lineSaved = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
+    await page.getByRole('textbox', { name: 'What came of it' }).press('Enter');
+    const lineResponse = await lineSaved;
+    assert.equal(lineResponse.status(), 200, await lineResponse.text());
+    const lineCommand = JSON.parse(lineResponse.request().postData() ?? '{}') as { cameOfIt?: string; clientCommandId?: string };
+    assert.equal(lineCommand.cameOfIt, 'The new hinge holds at 40 N');
+    assert.match(lineCommand.clientCommandId ?? '', /^[0-9a-f-]{36}$/);
     const afterResult = await discussion();
     assert.deepEqual(afterResult.messages.map((message) => [message.sequence, message.contribution?.kind, message.authorId]),
-      [[1, 'blocker', writer.id], [2, 'result', writer.id]]);
-    assert.deepEqual(afterResult.messages[1]!.contribution, { kind: 'result', resultId: made.id });
+      [[1, 'blocker', writer.id], [2, 'came_of_it', writer.id]]);
 
     // 3. An explicit public handoff is a contribution of its own kind (no UI composer exists for it yet).
     const handoff = expectStatus(await owner.browser.request('POST', `/api/v1/work/${task.id}/discussion`, {
@@ -130,21 +134,16 @@ test('a saved blocker, a published result and a handoff appear as marked message
       assert.match(await blocker.innerText(), /Jonas Writer/);
       assert.match(await blocker.innerText(), /Waiting for the replacement hinge/);
       assert.equal(await blocker.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
-      const result = readerPage.locator(`#message-${afterResult.messages[1]!.id}`);
-      // The result is a reply: the thread beside the stream stays hidden until its own first reads settle
-      // (#155, up to 1 s), and innerText omits hidden text (#271). Read it once its finding is shown.
-      await result.getByText('The new hinge holds at 40 N').first().waitFor();
-      assert.match(await result.innerText(), /The new hinge holds at 40 N/);
-      const open = result.locator('[data-contribution="result"]');
-      assert.match(await open.innerText(), /Result/);
+      const line = readerPage.locator(`#message-${afterResult.messages[1]!.id}`);
+      // The line is a reply: the thread beside the stream stays hidden until its own first reads settle
+      // (#155, up to 1 s), and innerText omits hidden text (#271). Read it once its text is shown.
+      await line.getByText('The new hinge holds at 40 N').first().waitFor();
+      assert.match(await line.innerText(), /The new hinge holds at 40 N/);
+      assert.equal(await line.locator('[data-contribution="came_of_it"]').innerText(), 'What came of it');
       assert.equal(await readerPage.locator(`#message-${handoff.id} [data-contribution="handoff"]`).innerText(), 'Handoff instruction');
       assert.equal(await readerPage.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0, 'a reader has no composer');
       assert.ok(await readerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no horizontal overflow at ${width}px`);
       if (evidence) { mkdirSync(evidence, { recursive: true }); await readerPage.screenshot({ path: join(evidence, `task-effects-reader-${width}.png`), fullPage: true }); }
-      // The result marker opens that exact canonical result.
-      await open.click();
-      await readerPage.getByRole('heading', { name: 'The new hinge holds at 40 N' }).first().waitFor();
-      if (evidence) await readerPage.screenshot({ path: join(evidence, `task-effects-result-details-${width}.png`), fullPage: true });
     }
     // The ordinary messages and DM links of other people keep working beside the markers.
     const plain = expectStatus(await writer.browser.request('POST', `/api/v1/conversations/${afterBlocker.conversationId}/messages`, {

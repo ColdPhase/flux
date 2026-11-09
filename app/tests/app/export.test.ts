@@ -17,7 +17,6 @@ import {
   type ProjectExportManifest,
   type Project,
   type WorkItem,
-  type WorkResult,
   type Workspace,
 } from '@flux/contracts';
 import { pool as connectionPool } from './support/db.js';
@@ -27,7 +26,7 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 
 // Project export (issue #123): only a manager exports; the document and bundle hold the
 // project's conversation, materials and docs with versions, project sketches with thoughts and
-// links, work, decisions and results with links, members and provenance, and never another
+// links, work, decisions with links, members and provenance, and never another
 // project, a DM or a private sketch (checked with distinctive tokens).
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
@@ -89,7 +88,6 @@ describe('project export', () => {
   let thoughtIds: string[];
   let work: WorkItem;
   let decision: Decision;
-  let result: WorkResult;
   let materialMutationId: string;
   let agentId: string;
   let connectionId: string;
@@ -136,9 +134,10 @@ describe('project export', () => {
     }), 201, 'work');
     decision = json<Decision>(await post(partner, `/api/v1/projects/${lamp.id}/decisions`, { title: token('DECISION-title'), rationale: token('DECISION-rationale'), affects: [work.id] }), 201, 'decision');
     decision = json<Decision>(await post(owner, `/api/v1/decisions/${decision.id}/accept`, {}, { 'if-match': `"${decision.version}"` }), 200, 'accept');
-    result = json<WorkResult>(await post(partner, `/api/v1/projects/${lamp.id}/results`, {
-      title: token('RESULT-title'), finding: 'negative', evidence: token('RESULT-evidence'), work: [work.id], decisions: [decision.id],
-    }), 201, 'result');
+    // The task is finished with the one line of what came of it (#868): the line opens the task's own thread (#154).
+    work = json<WorkItem>(await partner.browser.request('PATCH', `/api/v1/work/${work.id}`, {
+      body: { status: 'done', cameOfIt: token('CAMEOFIT-line'), clientCommandId: randomUUID() }, headers: { 'if-match': `"${work.version}"` },
+    }), 200, 'finish');
 
     doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: token('DOC-title'), body: token('DOC-v1') }), 201, 'doc');
     doc = json<Doc>(await partner.browser.request('PATCH', `/api/v1/docs/${doc.id}`, {
@@ -192,14 +191,14 @@ describe('project export', () => {
     assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'contributor']].sort());
     assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'manager', workspaceRole: null }, 'the agent has its owner\'s level (F-036 AG-3)');
 
-    // The ordinary thread, and the work item's own thread that the result linked to it (#154) created.
+    // The ordinary thread, and the work item's own thread that the finishing line (#154) created.
     assert.equal(data.conversations.length, 2);
     assert.deepEqual(data.conversations[0]!.messages.map((message) => [message.sequence, message.body, message.author.id]),
       [[1, token('MESSAGE-one'), owner.id], [2, token('MESSAGE-two'), partner.id]]);
     assert.deepEqual(data.conversations[0]!.messages[1]!.source, { materialId, version: 1 });
     assert.equal(data.conversations[0]!.messages.some((message) => Object.hasOwn(message, 'contribution')), false, 'ordinary messages carry no marker');
     assert.deepEqual(data.conversations[1]!.messages.map((message) => [message.sequence, message.body, message.author.id, message.contribution]),
-      [[1, token('RESULT-title'), partner.id, { kind: 'result', resultId: result.id }]]);
+      [[1, token('CAMEOFIT-line'), partner.id, { kind: 'came_of_it' }]]);
 
     assert.equal(data.materials.length, 1);
     assert.deepEqual(data.materials[0]!.versions.map((version) => [version.version, version.body]), [[1, token('MATERIAL-body')], [2, token('MATERIAL-body-v2')]]);
@@ -216,10 +215,10 @@ describe('project export', () => {
 
     assert.deepEqual(data.work.map((item) => [item.id, item.owner?.id]), [[work.id, partner.id]]);
     assert.deepEqual(data.decisions.map((item) => [item.id, item.status, item.decidedBy?.id]), [[decision.id, 'accepted', owner.id]]);
-    assert.deepEqual(data.results.map((item) => [item.id, item.finding, item.evidence]), [[result.id, 'negative', token('RESULT-evidence')]]);
+    assert.equal(Object.hasOwn(data, 'results'), false, 'a project has no results');
     const links = data.links.map((link) => `${link.from.type}:${link.role}:${link.to.type}:${link.to.id}`);
     for (const expected of [
-      `work:source:thought:${thoughtIds[0]}`, `decision:affects:work:${work.id}`, `result:about:work:${work.id}`, `result:about:decision:${decision.id}`,
+      `work:source:thought:${thoughtIds[0]}`, `decision:affects:work:${work.id}`,
       `doc:mentions:thought:${thoughtIds[0]}`, `doc:mentions:work:${work.id}`,
     ]) assert.ok(links.includes(expected), `missing link ${expected} in ${links.join(', ')}`);
     assert.ok(data.links.some((link) => link.from.type === 'work' && link.role === 'source' && link.to.type === 'message'));

@@ -29,7 +29,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
   await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.run.id]);
   const job = expectStatus(await owner.browser.request('POST', assistantJobsPath(ws.id, owner.id),
     { body: { projectId: place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } }), 201) as { id: string };
-  const ids = { change: randomUUID(), proposal: randomUUID(), question: randomUUID(), job: job.id };
+  const ids = { change: randomUUID(), question: randomUUID(), job: job.id };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -38,14 +38,12 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
     await client.query(`INSERT INTO assistant_changes (id, workspace_id, project_id, run_id, owner_user_id, agent_id, client_command_id, fingerprint, tool, operation,
       object_type, state) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'skipped')`,
     [ids.change, ws.id, place.id, run.run.id, owner.id, agentId, randomUUID(), createHash('sha256').update(ids.change).digest('hex')]);
-    await client.query(`INSERT INTO assistant_proposals (id, workspace_id, project_id, run_id, owner_user_id, fact, interpretation, change_type, result_title, result_finding)
-      VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [ids.proposal, ws.id, place.id, randomUUID(), owner.id]);
     await client.query(`INSERT INTO agent_questions (id, workspace_id, project_id, conversation_id, message_id, agent_id, asked_user_id, question, options)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Which probe?', '["A","B"]')`, [ids.question, ws.id, place.id, thread.id, randomUUID(), agentId, owner.id]);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   return { project: place.id, conversation: thread.id, work: work.id,
-    run: run.run.id, assistant_proposal: ids.proposal, assistant_change: ids.change, agent_question: ids.question, assistant_job: ids.job };
+    run: run.run.id, assistant_change: ids.change, agent_question: ids.question, assistant_job: ids.job };
 }
 
 /** The request a gated route answers to: its scope object in the path or body, the owner wherever an owner is named. */
@@ -73,7 +71,7 @@ describe('space AI switch: HTTP routes', () => {
   after(async () => { await ensureSpaceAiAllowed(blocked.place.id); });
 
   test('every gated route refuses while AI is off and writes nothing; AI on and outsiders are unaffected', async () => {
-    assert.ok(gatedRoutes.length >= 24, `the manifest gates the AI routes (${gatedRoutes.length})`);
+    assert.ok(gatedRoutes.length >= 17, `the manifest gates the AI routes (${gatedRoutes.length})`);
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
       (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs,

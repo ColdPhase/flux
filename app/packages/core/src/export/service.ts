@@ -40,7 +40,7 @@ function readme(data: ProjectExport) {
     '- `manifest.json`: size and SHA-256 of every other file.',
     '',
     `Contents: ${data.conversations.length} people conversations, ${data.materials.length} materials, ${data.docs.length} docs, ${data.sketches.length} sketches, `
-      + `${data.work.length} work items, ${data.decisions.length} decisions, ${data.results.length} results, ${data.links.length} links, ${data.people.length} people.`,
+      + `${data.work.length} work items, ${data.decisions.length} decisions, ${data.links.length} links, ${data.people.length} people.`,
     ...(data.githubSources ? ['', `GitHub: ${data.githubSources.rules.length} task rules are listed dormant in \`githubSources\`, all disabled. Repository bindings are not exported; connect and authorize repositories again to use them.`] : []),
     '',
     'Not included:',
@@ -66,7 +66,7 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       await access.requireManage(principal, projectId);
       const project = await rows.project(projectId);
       if (!project) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
-      const [audience, grants, roles, conversations, materials, docs, sketches, work, decisions, results, links] = await Promise.all([
+      const [audience, grants, roles, conversations, materials, docs, sketches, work, decisions, links] = await Promise.all([
         access.audience(principal, projectId),
         rows.grants(projectId),
         rows.workspaceRoles(project.workspace.id),
@@ -76,7 +76,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         rows.sketches(projectId),
         rows.work(projectId),
         rows.decisions(projectId),
-        rows.results(projectId),
         rows.links(projectId),
       ]);
 
@@ -103,7 +102,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
       for (const sketch of sketches) { add('sketch', sketch.id); for (const thought of sketch.thoughts) add('thought', thought.id); }
       for (const item of work) add('work', item.id);
       for (const item of decisions) add('decision', item.id);
-      for (const item of results) add('result', item.id);
       const contains = (type: string, id: string, version?: number) => ids.get(type)?.has(version === undefined ? id : `${id}@${version}`) ?? false;
 
       const exportedLinks = containedLinks(links, contains);
@@ -122,7 +120,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         ...sketches.flatMap((sketch) => [sketch.createdBy, ...sketch.thoughts.map((thought) => thought.createdBy)]),
         ...work.flatMap((item) => [item.createdBy, ...(item.owner ? [item.owner] : [])]),
         ...decisions.flatMap((item) => [item.proposedBy, ...(item.decidedBy ? [item.decidedBy] : [])]),
-        ...results.map((item) => item.createdBy),
         ...exportedLinks.map((link) => link.createdBy),
       ];
       const unique = [...new Map(referenced.map((actor) => [key(actor), { kind: actor.kind, id: actor.id }])).values()];
@@ -150,7 +147,6 @@ export function createProjectExportUseCases(uow: ProjectExportUnitOfWork, contex
         sketches,
         work,
         decisions,
-        results,
         links: exportedLinks,
       };
       return { data, storage: files };

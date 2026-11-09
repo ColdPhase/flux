@@ -1,10 +1,10 @@
 # Project docs and wiki (issue #112)
 
-Foundation 8.7 and the #44 rule "results inform knowledge without rewriting historical
+Foundation 8.7 and the #44 rule "what was learned informs knowledge without rewriting historical
 statements". A project has many docs. Each doc has a title, a Markdown text and **immutable
 versions**, each with its author, time and reason (the server's words; nobody types it). A page has no
 Draft / Published state (#942). Docs link
-to work, decisions, results, messages, sketches and other docs, and every linked object shows the
+to work, decisions, messages, sketches and other docs, and every linked object shows the
 docs that link to it. Everything is visible exactly to the principals with current read access to
 the project.
 
@@ -38,7 +38,7 @@ version table.
 | `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, cause? }` (`cause`: `restore`, `keep_mine` or `page_left`) needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
 | `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
 | `DELETE /api/v1/docs/:docId` | Deletes the page for everyone with access (#941, [below](#deleting-a-page-941)). Needs `If-Match: "<version>"` like an edit: 428 without, `409 VERSION_CONFLICT` with the latest doc when stale. `204`. A page that is gone, or that the caller cannot see, is `404 DOC_NOT_FOUND`; so a retry after the answer was lost is 404. |
-| `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
+| `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'decision', id } }`, with `If-Match`. |
 
 Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
 `app/apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with
@@ -86,7 +86,7 @@ in the browser and asserts that no dialog opens and no image, script or hostile 
 ## Links and backlinks
 
 A doc refers to an object of its project with `[label](flux:<type>/<id>)`, where `type` is
-`doc`, `work`, `decision`, `result`, `message`, `thought` or `sketch`. The editor's **Link**
+`doc`, `work`, `decision`, `message`, `thought` or `sketch`. The editor's **Link**
 picker (⌘/Ctrl K) inserts them. On each save the server parses the new text (only real links,
 not code) and rewrites the doc's `mentions` links in the #101 `project_object_links` table: the
 table accepts `doc` as a source and `doc` and `sketch` as targets (migration 0013). A reference to
@@ -96,22 +96,17 @@ Earlier versions keep their own text, so their references remain readable in his
 
 Backlinks are the incoming links: other docs that mention a doc, and work objects linked to it
 (`POST /api/v1/projects/:id/links` now accepts `{ type: 'doc' }` and `{ type: 'sketch' }`
-targets). Work items, decisions and results show "In docs" in their Details. Rendered references
+targets). Work items and decisions show "In docs" in their Details. Rendered references
 open in the app: docs, messages and sketches by route, work objects in the Details panel
 (`/projects/:id/tasks?open=decision:<id>` opens it from a new tab).
 
 ## Add to docs
 
-On a result or decision, **Add to docs** (Details panel) starts a doc from it or adds it to an
+On a decision, **Add to docs** (Details panel) starts a doc from it or adds it to an
 existing doc as a new version. The doc also gets a `source` link to the object, which is kept
 across later edits.
 
-A **result** is written as a section: a `## Result: …` heading with the finding, its evidence and a
-`Source: [title](flux:result/<id>)` line. Adding the same result again rewrites **only its
-section** (found by its `Source:` line; other text is kept byte for byte) with the current state,
-as the next version with the reason "Updated the result “…”". The earlier statement stays in the
-earlier version. Nothing to change makes no version. Headings inside quoted evidence are escaped so
-a section keeps its shape.
+There is no result to add (#1054): what came of a task is its one line, and what matters is written on a page by editing it.
 
 ### Decisions in the Wiki (F-034)
 
@@ -148,7 +143,7 @@ one transaction with the page's row and its shared text locked, and removes the 
 | What named the page | Rule |
 | --- | --- |
 | Its versions, shared working copy, receipts and archives | Deleted with the row (`ON DELETE CASCADE`). Nothing of the page can be read: its address, versions, shared text and `GET /api/v1/materials/:id/versions/:n` are 404. |
-| Its links, from and to it (mentions, sources, backlinks) | Deleted, including a task's, decision's or result's source that named one of its versions; the creation notice of a task made from it drops that entry (so a project export holds no id of a deleted page). A page that names it still reads the name as missing. The tasks it mentioned stay, and keep the evidence that the page used them. |
+| Its links, from and to it (mentions, sources, backlinks) | Deleted, including a task's or decision's source that named one of its versions; the creation notice of a task made from it drops that entry (so a project export holds no id of a deleted page). A page that names it still reads the name as missing. The tasks it mentioned stay, and keep the evidence that the page used them. |
 | Its search rows | Deleted by the version trigger that wrote them. |
 | A message that cited one of its versions | Keeps its text. `project_messages.source_material_*` are cleared and `source_deleted` is set (the database refuses a row that is both); the API sends `source: null` and `sourceDeleted: true`, and the message shows a **Page deleted** card with nothing to open. |
 | An agent suggestion about it (`agent_proposals`) | Cleared (deleted): it can no longer be acted on. |
@@ -236,7 +231,7 @@ draws it since #869: two columns only, the sidebar and the page.
 - **Copy link** copies the page's address, with the exact link selected on the page when the
   browser refuses the clipboard.
 
-A task, decision or result opened from a page opens over it, never as a column beside it. On a phone
+A task or decision opened from a page opens over it, never as a column beside it. On a phone
 the same page has the same row and menus within its column; targets are 44 px on touch.
 
 ## Tests and evidence
@@ -244,13 +239,13 @@ the same page has the same row and menus within its column; targets are 44 px on
 `app/tests/app/docs.test.ts` (API, two people, an outsider and an agent principal:
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
-Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
+Add to docs with decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
 (doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the text rules and an encrypted workspace) and, in the browser,
 `app/tests/ui/test_wiki_final.py` (the page as drawn: two columns, the switcher, Contents, ⋯, the
 title row in one place with one page or many, tables, the phone), `test_wiki_panes.py` (the journey:
 writing and automatic versions, New page, Import with its refusals, History, Restore, Rename,
 exports compared byte for byte, Copy link, phone 390 and 320, tablet 820, contrast),
-`test_docs.py` (a page with a reference, two people at once, history and diff, add from a result,
+`test_docs.py` (a page with a reference, two people at once, history and diff, add from a decision,
 the phone, hostile text), `test_wiki_panes.py` also covers Delete page (`test_12` and `test_13`, the computer and the phone; `test_14`, a page deleted while it is open),
 `app/tests/app/docs-delete.test.ts` (#941: the version it needs, everything the delete
 removes, a citing message, suggestions and plan items, a live room, the event, access, a write that waits for a delete, an encrypted space), `live-doc-anchor.test.ts` (a live room stays in its page's space), `test_doc_references.py` (the link picker), `test_wiki_decision_cards.py`

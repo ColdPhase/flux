@@ -237,14 +237,9 @@ class DecisionTrace(unittest.TestCase):
         expect(line.locator(".convo-object__state")).to_have_text("Proposed")
         expect(thread.locator(".convo-object", has_text=SOURCELESS)).to_have_count(0)
         self.assertEqual([(l["conversationId"], l["sources"]) for l in self.notices(ada) if l["title"] == SOURCELESS], [(None, [])])
-        # A negative result is announced the same way.
-        result = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/results", {"title": "The camera fails below 10 lux", "finding": "negative"}, status=201)
-        found = stream.locator('.convo-object[data-object-kind="result.recorded"]')
-        expect(found).to_have_count(1)
-        expect(found.locator(".convo-notice__meta")).to_contain_text("recorded a negative result")
-        expect(found.locator(".convo-object__state")).to_have_text("Negative")
-        found.get_by_role("button", name=re.compile("^Open result")).click()
-        expect(self.details(jonas, False).get_by_role("heading", name=result["title"])).to_be_visible()
+        # Its card opens the decision in Details.
+        line.get_by_role("button", name=re.compile("^Open decision")).click()
+        expect(self.details(jonas, False).get_by_role("heading", name=SOURCELESS)).to_be_visible()
         self.assertEqual(made["status"], "proposed")
 
     def test_04_someone_with_no_access_to_the_project_reads_nothing_of_it(self) -> None:

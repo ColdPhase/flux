@@ -2,7 +2,7 @@
 
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by
 FLUX_UI_BROWSER (run it with chromium and with webkit). One person owns a project with a message, a
-decision proposed from that message, a decision with no source, an accepted rule and a result. It checks
+decision proposed from that message, a decision with no source, an accepted rule. It checks
 what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844, touch):
 
 * D1: a proposed decision's panel is its Inbox card first: "Needs you", Accept / Not now / Discuss and
@@ -42,7 +42,6 @@ CLAUSE = "The resistive probes in bed 5 read 92 % today"
 FROM_MESSAGE = "Replace the resistive probes with capacitive ones"
 NO_SOURCE = "Water the beds before eight in the morning"
 RULE = "Log moisture every ten minutes"
-RESULT = "Capacitive probes hold steady for three weeks"
 PAGE = "Decisions and why"
 PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Edit", "Delete"]  # the viewer wrote the message (#1006)
 
@@ -105,7 +104,7 @@ class DecisionFlows(unittest.TestCase):
 
     # ---------------------------------------------------------------- fixture
 
-    def test_00_a_project_with_a_message_two_proposals_a_rule_and_a_result(self) -> None:
+    def test_00_a_project_with_a_message_two_proposals_and_a_rule(self) -> None:
         page = self.context(signed_in=False).new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill(ADA["name"])
@@ -124,12 +123,11 @@ class DecisionFlows(unittest.TestCase):
         sourced = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": FROM_MESSAGE, "rationale": "Capacitive probes do not corrode",
                                                                                  "sources": [{"type": "message", "id": message}]}, status=201)
         bare = self.api(page, "POST", f"/api/v1/projects/{pid}/decisions", {"title": NO_SOURCE, "rationale": "Less evaporation"}, status=201)
-        result = self.api(page, "POST", f"/api/v1/projects/{pid}/results", {"title": RESULT, "finding": "positive", "evidence": "Readings within 2 % for 21 days"}, status=201)
         # The proposal without a source is also in a Wiki page: that link to it is not what it is based on (D2). A page mentions
         # it in a sentence; "Add to a Wiki page" itself refuses a proposal (F-034).
         self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": "Watering", "body": f"We may water at dawn: [{NO_SOURCE}](flux:decision/{bare['id']})."}, status=201)
         wiki = self.api(page, "POST", f"/api/v1/projects/{pid}/docs", {"title": PAGE, "body": "Why the garden runs as it does."}, status=201)
-        type(self).ids = {"page": wiki["id"], "project": pid, "conversation": root["id"], "message": message, "rule": rule["id"], "sourced": sourced["id"], "bare": bare["id"], "result": result["id"]}
+        type(self).ids = {"page": wiki["id"], "project": pid, "conversation": root["id"], "message": message, "rule": rule["id"], "sourced": sourced["id"], "bare": bare["id"]}
 
     # ---------------------------------------------------------------- D1, D2
 
@@ -190,13 +188,6 @@ class DecisionFlows(unittest.TestCase):
         expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="At this pivot")).to_have_count(0)
         expect(panel).not_to_contain_text("No rows on this page")
-        page.goto(f"/projects/{pid}/tasks?open=result:{self.ids['result']}")
-        panel = self.panel(page)
-        expect(panel.locator(".details__lead")).to_contain_text("Readings within 2 %")
-        expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
-        expect(panel.get_by_role("heading", name="Evidence")).to_have_count(0)
-        expect(panel.get_by_role("heading", name="Reports on")).to_have_count(0)
-        expect(panel).not_to_contain_text("No evidence linked")
 
     # ---------------------------------------------------------------- D3
 
@@ -237,9 +228,9 @@ class DecisionFlows(unittest.TestCase):
     def test_07_add_to_a_wiki_page_closes_back_with_one_calm_confirmation(self) -> None:
         page = self.page()
         pid = self.ids["project"]
-        page.goto(f"/projects/{pid}?open=result:{self.ids['result']}")
+        page.goto(f"/projects/{pid}?open=decision:{self.ids['rule']}")
         panel = self.panel(page)
-        # A result on no page says nothing about the Wiki; the way to add it is the button (#871).
+        # A decision on no page says nothing about the Wiki; the way to add it is the button (#871).
         expect(panel).not_to_contain_text("Shown on the Wiki page")
         expect(panel).not_to_contain_text("In the Wiki")
         panel.get_by_role("button", name="Add to a Wiki page", exact=True).click()
@@ -247,11 +238,11 @@ class DecisionFlows(unittest.TestCase):
         page_select = form.get_by_label("Wiki page", exact=True)
         expect(page_select).to_be_visible()
         choose(page_select, value=self.ids["page"])
-        form.get_by_role("button", name="Add or update section", exact=True).click()
-        # The form closes back to the result, which now lists the page; the conversation stays where it was.
+        form.get_by_role("button", name="Add the card", exact=True).click()
+        # The form closes back to the decision, which now lists the page; the conversation stays where it was.
         expect(form).to_have_count(0)
         panel = self.panel(page)
-        expect(panel.get_by_role("heading", level=3, name=RESULT)).to_be_visible()
+        expect(panel.get_by_role("heading", level=3, name=RULE)).to_be_visible()
         expect(panel.get_by_role("link", name=re.compile(PAGE))).to_be_visible()
         expect(page).to_have_url(re.compile(f"/projects/{pid}/?(\\?.*)?$"))
         toast = page.get_by_text(f"Added to “{PAGE}”")
@@ -273,7 +264,7 @@ class DecisionFlows(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Reply in thread")).to_have_count(0)
         self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text", "Edit", "Delete"], "the viewer wrote it (#1006)")
-        for gone in ("Record a result", "Propose a decision", "Hand off to an agent", "Cite", "Details"):
+        for gone in ("Propose a decision", "Hand off to an agent", "Cite", "Details"):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
 

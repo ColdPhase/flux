@@ -3,7 +3,7 @@
 // people choose one level, whether email comes too, mute places and set quiet hours.
 
 /**
- * Why a notification exists. `review` covers a proposed decision or a recorded result that is
+ * Why a notification exists. `review` covers a proposed decision that is
  * about work you own, or that your agent produced. `invitation` is someone asking you to join
  * them live at a task, map, doc or conversation (#62): one quiet signal per invitation.
  */
@@ -11,7 +11,7 @@ export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assi
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
 /**
- * The reasons that "need you" (F-026 S22): decisions and results about your work, questions and
+ * The reasons that "need you" (F-026 S22): decisions about your work, questions and
  * mentions, direct messages, work assigned to you and invitations. Replies in conversations you
  * joined are the rest of "Everything".
  */

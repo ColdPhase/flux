@@ -157,7 +157,7 @@ class ReturnFixes(unittest.TestCase):
         # Another page closes it, with no "‹ back" trail left in the panel.
         self.inbox(page)
         expect(owner).to_have_count(0)
-        expect(panel.get_by_role("button", name=re.compile("^(Task|Decision|Result|Back)$"))).to_have_count(0)
+        expect(panel.get_by_role("button", name=re.compile("^(Task|Decision|Back)$"))).to_have_count(0)
         # Back returns to the page where the task was open, with its panel (#592).
         page.go_back()
         expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/tasks"))

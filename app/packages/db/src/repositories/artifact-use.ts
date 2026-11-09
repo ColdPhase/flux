@@ -4,12 +4,12 @@ import { canonicalArtifactTaskIds, type ArtifactScope, type CanonicalArtifact } 
 import { TaskUseRefusal } from './task-use.js';
 import { fileRows } from './files.js';
 
-export interface ArtifactBoundary { kind:'doc'|'material'|'result'|'decision'|'thought'|'github_pr'|'file';id:string;revision:string;contentIdentity?:string }
+export interface ArtifactBoundary { kind:'doc'|'material'|'decision'|'thought'|'github_pr'|'file';id:string;revision:string;contentIdentity?:string }
 type Retained={readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>};
 /** A content edit to a linked doc, material or thought is not use of the task (#553, #238 AC-U2). */
 const isContentEdit=(kind:ArtifactBoundary['kind'])=>kind==='doc'||kind==='material'||kind==='thought';
 /**
- * A result, decision, pull request or published file that is about a task counts as use of it, which ends the Undo of an unused task
+ * A decision, pull request or published file that is about a task counts as use of it, which ends the Undo of an unused task
  * (#394, #238); an edit of a doc, material or thought it cites does not (#553). Private canonical mutation hook only. No flag, authority,
  * transactions, content store or public entry. The tasks must already be in the caller's fence.
  */

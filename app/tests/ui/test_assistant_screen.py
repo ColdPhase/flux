@@ -134,7 +134,7 @@ class AssistantScreen(unittest.TestCase):
         return {"runId": str(uuid.uuid4()), "conversationId": self.ids["conversation"], "projectId": self.ids["project"], "audience": {"kind": "project", "projectId": self.ids["project"]},
                 "assistant": {"ownerUserId": owner, "label": label}, "askedBy": {"id": owner, "name": owner_name},
                 "request": {"kind": "ask", "prompt": "What do the notes say about the sensor?"}, "body": "The notes favour the ToF sensor.", "truncated": False,
-                "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "proposalId": None, "committedAt": NOW}
+                "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "committedAt": NOW}
 
     def stub_thread(self, page: Page, answers: list[dict]) -> None:
         page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": len(answers), "limit": 100, "offset": 0}))

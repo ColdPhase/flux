@@ -4,8 +4,8 @@ import { InvalidInputError } from '../access/errors.js';
 /** Normalized read selectors owned by core; transport CSV/query strings never reach SQL. */
 export type WorkViewSelection =
   | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q: string }
-  | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions'; q: string }
+  | { purpose: 'choices'; choice: 'open_work'; q: string; selected?: string }
   | { purpose: 'choices'; choice: 'doc_refs'; q: string; kind: WorkObjectType };
 export interface WorkReadWindow { limit: number; cursor?: string }
 export interface WorkViewRead extends WorkReadWindow { selection: WorkViewSelection }
@@ -16,15 +16,15 @@ export interface WorkRelationRead extends WorkReadWindow { selection: { objects:
 
 export const workReadInvalid = (message: string): never => { throw new InvalidInputError(message, 'INVALID_WORK_READ'); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const KINDS: readonly WorkObjectType[] = ['work', 'decision', 'result'];
-const ROLES: readonly LinkRole[] = ['source', 'affects', 'about', 'related', 'mentions', 'part_of'];
+const KINDS: readonly WorkObjectType[] = ['work', 'decision'];
+const ROLES: readonly LinkRole[] = ['source', 'affects', 'related', 'mentions', 'part_of'];
 
 export function workReadId(value: string | null | undefined): string {
   if (!value || !UUID.test(value)) return workReadInvalid('A native UUID is required');
   return value.toLowerCase();
 }
 export function workReadKind(value: string | null | undefined): WorkObjectType {
-  if (!KINDS.includes(value as WorkObjectType)) return workReadInvalid('A native work, decision or result kind is required');
+  if (!KINDS.includes(value as WorkObjectType)) return workReadInvalid('A native work or decision kind is required');
   return value as WorkObjectType;
 }
 
@@ -77,11 +77,11 @@ export function parseWorkViewRead(query: URLSearchParams): WorkViewRead {
   if (purpose !== 'choices') return workReadInvalid('Unknown read purpose');
   const choice = query.get('choice');
   const base = ['purpose', 'choice', 'q', 'limit', 'cursor'];
-  if (choice === 'accepted_decisions' || choice === 'open_work') {
+  if (choice === 'accepted_decisions') {
     closed(query, base);
     return { ...window(query), selection: { purpose, choice, q: search(query) } };
   }
-  if (choice === 'result_work') {
+  if (choice === 'open_work') {
     closed(query, [...base, 'selected']);
     return { ...window(query), selection: { purpose, choice, q: search(query), ...(query.has('selected') ? { selected: optionalId(query, 'selected') } : {}) } };
   }

@@ -10,7 +10,7 @@ import type { AgentMayDo } from './agent-proposals.js';
  * (`RUN_NEVER_POSTS`, #1063).
  */
 export const ASSISTANT_RUN_EFFECT_TOOLS = [
-  'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision', 'flux_create_unit',
+  'flux_create_task', 'flux_update_task', 'flux_propose_decision', 'flux_create_unit',
   'flux_create_doc', 'flux_update_doc', 'flux_delete_doc',
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
@@ -52,7 +52,7 @@ export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' 
  * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
 export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
-export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'result' | 'decision';
+export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
 export interface AssistantChange {
@@ -126,7 +126,6 @@ export const assistantChangeActionPath = (changeId: string, action: 'apply' | 's
 const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = {
   'work.create': { phrase: 'add', verb: 'Add', noun: 'task' },
   'work.update': { phrase: 'change', verb: 'Change', noun: 'task' },
-  'result.record': { phrase: 'record', verb: 'Record', noun: 'result' },
   'decision.propose': { phrase: 'propose', verb: 'Propose', noun: 'decision' },
   'doc.create': { phrase: 'add', verb: 'Add', noun: 'page' },
   'doc.update': { phrase: 'edit', verb: 'Edit', noun: 'page' },
@@ -195,7 +194,7 @@ export function assistantPastPhrase(phrase: string): string {
 
 const STATUS_WORDS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done' };
 const DONE_NOUNS: Record<string, string> = { work: 'task', doc: 'the Wiki page', map: 'the map', thought: 'the thought', link: 'a link', message: 'a message',
-  result: 'the result', decision: 'the decision' };
+  decision: 'the decision' };
 /**
  * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to Doing",
  * "added task #7 Order sensors". `status` is a task change's new status, when it changed one.

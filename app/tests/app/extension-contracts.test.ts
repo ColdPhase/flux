@@ -328,7 +328,7 @@ describe('public extension contracts (O-010)', () => {
     const reworked = { ...snapshot, tools: [tool('flux_get_work', 'work.update'), tool('flux_list_work')] };
     assert.deepEqual(compareMcp(snapshot, reworked).map((change) => `${change.kind} ${change.path}`), ['breaking tools.flux_get_work.operation']);
 
-    const added = { ...snapshot, tools: [...snapshot.tools, tool('flux_get_result')] };
+    const added = { ...snapshot, tools: [...snapshot.tools, tool('flux_get_widget')] };
     assert.match(contractReport('mcp-tools', 1, snapshot, added, compareMcp(snapshot, added))!, /^Additive change to mcp-tools version 1\. Replace /);
     assert.equal(contractReport('mcp-tools', 1, snapshot, structuredClone(snapshot), []), null, 'an equal contract passes');
     assert.match(contractReport('mcp-tools', 2, null, snapshot, [])!, /^No snapshot tests\/app\/contracts\/mcp-tools\.v2\.json/);

@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { DbExecutor } from './push.js';
 
 /**
- * What the assistant's Undo may take back of the things it can create that no person can remove: a map, a recorded result,
+ * What the assistant's Undo may take back of the things it can create that no person can remove: a map,
  * a proposed decision and a posted message (F-027 AST-6, #68 closeout, founder direction 2026-10-29), and a page it started (#1021). Each function runs inside
  * the Undo's transaction, locks the object, and removes it only if the assistant made it and nobody has used it since. No person
  * has a delete for any of them: this is reachable only through the Undo of a change-log row.
@@ -13,8 +13,8 @@ import type { DbExecutor } from './push.js';
  * The caller holds the project's task-graph lock first (a map's own row before that, see `lockMap`), and every work path that cites one of
  * these re-checks its targets after taking the same lock. So a citation is either committed before the checks below or finds the object gone.
  * (A message could once be cited by another message, with its own lock; that citation went with the Cite action, #867.)
- * A message keeps its row as a tombstone (its place in the conversation, its sequence and the ids events carry stay); a map, a
- * result and a decision leave with the objects that only they owned (their links and the notices about them).
+ * A message keeps its row as a tombstone (its place in the conversation, its sequence and the ids events carry stay); a map and a
+ * decision leave with the objects that only they owned (their links and the notices about them).
  * A page is the exception in two ways: a person can delete one (#941), and its Undo goes through that delete, so `untouchedDoc` only
  * checks, under the page's row lock, and the graph lock is taken by the delete after the page, never before it.
  */
@@ -45,7 +45,6 @@ export const REMOVAL_REASONS = {
   renamed: 'Renamed since. Open it',
   filled: 'It has thoughts now. Open it',
   open: 'Someone has it open. Open it',
-  taskChanged: 'The task changed since. Open it',
 } as const;
 
 const first = async <T>(db: DbExecutor, query: ReturnType<typeof sql>) => ((await db.execute(query)).rows[0] as T | undefined) ?? null;
@@ -89,7 +88,7 @@ export function assistantRemovalRows(db: DbExecutor) {
     }
     await db.execute(sql`DELETE FROM message_references WHERE project_message_id = ${message.id}`);
     await db.execute(sql`UPDATE project_messages SET body = ${byOwner ? REMOVED_BY_OWNER_BODY : REMOVED_MESSAGE_BODY}, removed_at = now(),
-      contribution_kind = 'text', result_id = NULL, source_material_id = NULL, source_material_version = NULL WHERE id = ${message.id}`);
+      contribution_kind = 'text', source_material_id = NULL, source_material_version = NULL WHERE id = ${message.id}`);
     await forgetNotices(message.projectId, message.id);
     return { ok: true, projectId: message.projectId, snapshot: { conversationId: message.conversationId, sequence: message.sequence, bodyHash: message.hash, bodyLength: message.length } };
   }
@@ -192,30 +191,6 @@ export function assistantRemovalRows(db: DbExecutor) {
       } catch (error) { if (inUse(error)) return used(REMOVAL_REASONS.cited); throw error; }
       await forgetNotices(decision.projectId, decision.id);
       return { ok: true, snapshot: { projectId: decision.projectId, version: decision.version } };
-    },
-
-    /**
-     * A result the assistant recorded: not cited by anything, and the messages that told each task about it (its contribution to the
-     * task's discussion) unanswered, uncited and last in their threads. Those messages become tombstones; the task it finished is the
-     * server's to put back, in the same transaction.
-     */
-    async removeResult(input: { resultId: string; agentId: string }): Promise<Removal> {
-      const result = await first<{ id: string; projectId: string; byKind: string; byId: string }>(db, sql`
-        SELECT id, project_id AS "projectId", created_by_kind AS "byKind", created_by_id AS "byId" FROM project_results WHERE id = ${input.resultId} FOR UPDATE`);
-      if (!result) return gone();
-      if (result.byKind !== 'agent' || result.byId !== input.agentId) return foreign();
-      if (await cited(result.id, 'other')) return used(REMOVAL_REASONS.cited);
-      const contributions = (await db.execute(sql`SELECT id FROM project_messages WHERE result_id = ${result.id} ORDER BY id FOR UPDATE`)).rows as { id: string }[];
-      for (const message of contributions) {
-        const taken = await tombstone(message.id, null);
-        if (!taken.ok) return taken.why === 'used' ? taken : used(REMOVAL_REASONS.changed);
-      }
-      try {
-        await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${result.id}`);
-        await db.execute(sql`DELETE FROM project_results WHERE id = ${result.id}`);
-      } catch (error) { if (inUse(error)) return used(REMOVAL_REASONS.cited); throw error; }
-      await forgetNotices(result.projectId, result.id);
-      return { ok: true, snapshot: { projectId: result.projectId, messages: contributions.length } };
     },
   };
 }

@@ -33,12 +33,11 @@ async function candidates(projectId: string, workspaceId: string, selfId: string
   ];
 }
 
-const TYPES = ['all', 'doc', 'decision', 'result', 'work', 'sketch', 'message'] as const;
+const TYPES = ['all', 'doc', 'decision', 'work', 'sketch', 'message'] as const;
 type ReferenceType = typeof TYPES[number];
 function nativeCandidate(item: NativeWorkRow): Candidate {
   return { type: item.kind, id: item.id, title: item.title,
-    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision'
-      : item.kind === 'result' ? item.finding === 'negative' ? 'Negative result' : 'Positive result' : 'Task' };
+    hint: item.kind === 'decision' ? item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision' : 'Task' };
 }
 
 export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: {
@@ -58,9 +57,8 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
   const selection = (kind: WorkObjectType) => ({ purpose: 'choices' as const, choice: 'doc_refs' as const, kind,
     q: needle && kindLabel(kind).toLowerCase().startsWith(needle) ? '' : query.trim() });
   const decisions = useWorkChoices(me.user.id, projectId, selection('decision'), type === 'all' || type === 'decision');
-  const results = useWorkChoices(me.user.id, projectId, selection('result'), type === 'all' || type === 'result');
   const work = useWorkChoices(me.user.id, projectId, selection('work'), type === 'all' || type === 'work');
-  const nativeReads = [decisions, results, work].filter((_, index) => type === 'all' || type === ['decision', 'result', 'work'][index]);
+  const nativeReads = [decisions, work].filter((_, index) => type === 'all' || type === ['decision', 'work'][index]);
   const loadOther = useCallback((signal: AbortSignal) => candidates(projectId, workspaceId, selfId, signal), [projectId, workspaceId, selfId]);
   const otherNeeded = type === 'all' || type === 'doc' || type === 'sketch' || type === 'message';
   const other = useWorkRead(otherNeeded ? { accountId: me.user.id, projectId, selector: `doc-refs:other:${workspaceId}:${selfId ?? ''}` } : null,
@@ -71,11 +69,11 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
     if (failed || busy) return [];
     const external = other.phase === 'ready' ? other.value : [];
     const all = [...external.filter((item) => type === 'all' || item.type === type),
-      ...(decisions.page?.items ?? []).map(nativeCandidate), ...(results.page?.items ?? []).map(nativeCandidate), ...(work.page?.items ?? []).map(nativeCandidate)];
+      ...(decisions.page?.items ?? []).map(nativeCandidate), ...(work.page?.items ?? []).map(nativeCandidate)];
     const found = all.filter((item) => !needle || item.title.toLowerCase().includes(needle) || kindLabel(item.type).toLowerCase().startsWith(needle));
     return type === 'all' ? found.slice(0, 40) : found;
-  }, [failed, busy, other, type, decisions.page, results.page, work.page, needle]);
-  const native = type === 'decision' ? decisions : type === 'result' ? results : type === 'work' ? work : null;
+  }, [failed, busy, other, type, decisions.page, work.page, needle]);
+  const native = type === 'decision' ? decisions : type === 'work' ? work : null;
   const activeKey = JSON.stringify([me.user.id, projectId, workspaceId, selfId, type, query, ...nativeReads.map(({ page }) => page?.summary.observedAt)]);
   const active = position.key === activeKey ? Math.max(0, Math.min(position.index, shown.length - 1)) : 0;
   const setActive = (next: number | ((index: number) => number)) => setPosition((previous) => ({ key: activeKey,
@@ -103,7 +101,7 @@ export function LinkPicker({ projectId, workspaceId, selfId, onPick, onClose }: 
       <div className="doc-picker__search">
         <Icon name="search" size={14} />
         <input ref={inputRef} role="combobox" aria-expanded="true" aria-controls={listId} aria-activedescendant={shown[active] ? `${listId}-${active}` : undefined}
-          maxLength={200} aria-label="Find a Wiki page, decision, result, task, map or message" placeholder={type === 'all' ? 'Find space objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
+          maxLength={200} aria-label="Find a Wiki page, decision, task, map or message" placeholder={type === 'all' ? 'Find space objects…' : `Find ${kindLabel(type).toLowerCase()}…`} value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKey} />
       </div>
       <div className="doc-picker__type"><label htmlFor={`${listId}-type`}>Type</label><Select id={`${listId}-type`} aria-label="Reference type" value={type} onChange={(next) => setType(next as ReferenceType)}>

@@ -60,9 +60,6 @@ export interface ReturnDecision {
   id: string; projectId: string; title: string; rationale: string; status: string;
   proposedByKey: string; supersedesId: string | null; supersededById: string | null;
 }
-export interface ReturnResult {
-  id: string; projectId: string; title: string; finding: 'positive' | 'negative'; evidence: string; createdByKey: string;
-}
 export interface ReturnMessage {
   attachmentCount?: number;
   id: string; projectId: string; conversationId: string; author: ActorRef; body: string; sequence: number; createdAt: Date;
@@ -89,9 +86,6 @@ export interface ReturnRepository {
   projects(ids: string[]): Promise<Map<string, { id: string; name: string }>>;
   work(ids: string[]): Promise<Map<string, ReturnWork>>;
   decisions(ids: string[]): Promise<Map<string, ReturnDecision>>;
-  results(ids: string[]): Promise<Map<string, ReturnResult>>;
-  /** Work items a result is linked to (any role), in the result's project. */
-  resultWork(resultIds: string[]): Promise<Map<string, string[]>>;
   messages(ids: string[]): Promise<Map<string, ReturnMessage>>;
   conversations(ids: string[]): Promise<Map<string, ReturnConversation>>;
   /** The time of the user's latest message per conversation (participation and replies). */

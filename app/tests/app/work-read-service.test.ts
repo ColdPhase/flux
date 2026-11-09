@@ -16,13 +16,13 @@ const messageId = '00000000-0000-0000-0000-000000000005';
 const at = '2026-10-01T06:00:00.123456Z';
 const actor = { kind: 'human' as const, id: 'native-user' };
 const fingerprint = 'a'.repeat(64);
-const relations = { edges: 0, sourceMessages: 0, sourceMaterials: 0, decisions: 0, results: 0 };
+const relations = { edges: 0, sourceMessages: 0, sourceMaterials: 0, decisions: 0 };
 const row = (rowId = id): WorkRowProjection => ({ kind: 'work', id: rowId, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Native work', createdAt: at,
   relations, prerequisiteCounts: { total: 0, unmet: 0 }, status: 'open', owner: null, blocker: null, waitingFor: null, waitingOn: null, dropped: false, cameOfIt: null, dueOn: null, rule: null, version: 1, updatedAt: at });
 const slice = <T>(items: T[], total = items.length, before = 0): WorkReadSlice<T> => ({ items: items.map((value, i) => ({ value, key: { rank: 0, createdAt: at, id: i ? otherId : id } })), total, before, hasBefore: before > 0, hasAfter: before + items.length < total });
 const summary = (): WorkSummaryObservation => ({ projectId, observedAt: at,
-  all: { needs: 0, in_progress: 0, blocked: 0, open: 2, finished: 0, rules: 0, results: 0 },
-  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, finished: 0, rules: 0, results: 0 }, workTotal: 2, unfinishedTotal: 2 });
+  all: { needs: 0, in_progress: 0, blocked: 0, open: 2, finished: 0, rules: 0 },
+  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, finished: 0, rules: 0 }, workTotal: 2, unfinishedTotal: 2 });
 
 function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFinalFence) {
   const calls: string[] = [];
@@ -57,11 +57,11 @@ test('combined view and summary share one observation and use access checked aft
   assert.deepEqual(calls, ['tx-start', 'project-policy', 'observation', 'visibility', 'view', 'summary', 'tx-end', 'final-fence']);
 });
 
-test('caller and query are captured before asynchronous work; result deep selection never changes its eligible page', async () => {
+test('caller and query are captured before asynchronous work; a chosen task’s deep selection never changes its eligible page', async () => {
   const principal: Principal = { ...actor };
-  const query = new URLSearchParams(`purpose=choices&choice=result_work&selected=${otherId}&limit=1`);
+  const query = new URLSearchParams(`purpose=choices&choice=open_work&selected=${otherId}&limit=1`);
   const { reads } = harness({
-    view: async (_pid, caller, selection, limit) => { assert.deepEqual(caller, actor); assert.equal(limit, 1); assert.deepEqual(selection, { purpose: 'choices', choice: 'result_work', q: '', selected: otherId }); return slice([row()], 2); },
+    view: async (_pid, caller, selection, limit) => { assert.deepEqual(caller, actor); assert.equal(limit, 1); assert.deepEqual(selection, { purpose: 'choices', choice: 'open_work', q: '', selected: otherId }); return slice([row()], 2); },
     selectedWork: async (_pid, selectedId) => { assert.equal(selectedId, otherId); return { ...row(otherId), status: 'done' }; },
   });
   const pending = reads.view(principal, projectId, query);
@@ -113,7 +113,7 @@ test('required final-fence failures become unavailable; native session and scope
 
 test('association rows, all-source counts and global edges keep independent bounded scopes', async () => {
   const edge: ObjectLink = { id: otherId, projectId, role: 'source', from: { type: 'work', id }, to: { type: 'message', id: messageId }, fromTitle: 'Native work', toTitle: 'Source', conversationId: otherId, sketchId: null, createdAt: at };
-  const sources: SourceAssociationCounts[] = [{ messageId, work: 2, decisions: 0, results: 0, edges: 3 }, { messageId: otherId, work: 0, decisions: 0, results: 0, edges: 0 }];
+  const sources: SourceAssociationCounts[] = [{ messageId, work: 2, decisions: 0, edges: 3 }, { messageId: otherId, work: 0, decisions: 0, edges: 0 }];
   const { reads, calls } = harness({
     requireSources: async () => { calls.push('source-policy'); },
     associationObjects: async (_pid, _selection, limit) => { calls.push('objects'); assert.equal(limit, 1); return slice([row()], 2); },
@@ -141,14 +141,14 @@ test('all required selectors reach the outside fence as the original normalized 
     selectedWork: async () => row(otherId),
     requireSources: async () => {},
     associationObjects: async () => slice<WorkRowProjection>([]),
-    associationSources: async () => ({ ...slice([{ messageId, work: 0, decisions: 0, results: 0, edges: 0 }]), items: [{ key: { rank: 0, createdAt: at, id: messageId }, value: { messageId, work: 0, decisions: 0, results: 0, edges: 0 } }] }),
+    associationSources: async () => ({ ...slice([{ messageId, work: 0, decisions: 0, edges: 0 }]), items: [{ key: { rank: 0, createdAt: at, id: messageId }, value: { messageId, work: 0, decisions: 0, edges: 0 } }] }),
     associationEdges: async () => slice<ObjectLink>([]), associationEdgeTotal: async () => 0,
     relations: async () => ({ page: slice<ObjectLink>([]), observedAt: at }),
     detail: async () => ({ object: { kind: 'work', id, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, waitingFor: null, waitingOn: null, dropped: false, cameOfIt: null, dueOn: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' }, githubRule: null }, observedAt: at, relations, context: [] }),
   }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'contributor'; } });
   await reads.detail(actor, projectId, 'work', id);
   await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));
-  await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=result_work&selected=${otherId}`));
+  await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=open_work&selected=${otherId}`));
   await reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}`));
   assert.deepEqual(captured, [{ objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id: otherId }] }, { sources: { relation: 'source', messageIds: [messageId] } }]);
 });

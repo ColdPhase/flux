@@ -8,7 +8,6 @@ import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { ContributionMark, clock, day, when } from '../app/messageParts';
 import { useShellData } from '../app/data';
-import { useShellActions } from '../app/shellContext';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
@@ -214,7 +213,6 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
 }) {
   const owners = useAgentOwners(project);
   const makeWork = useCreateWorkFromMessage(project);
-  const { openDetails } = useShellActions();
   const headingId = useId();
   const { discussion } = state;
   const people = useProjectShell()?.people ?? null;
@@ -273,7 +271,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                     body={message.body ? <div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} linked={false} /></div> : null}>
                       <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
                     </MessageContent>
-                    {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId, projectId: project.id }, { back: 'push' })} /> : null}
+                    {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
                   </div>
                   {agent && posted.get(message.id) ? <PostedLine change={posted.get(message.id)!} onChanged={() => { void posts.refresh(); state.reload(); }} /> : null}
                 </div>

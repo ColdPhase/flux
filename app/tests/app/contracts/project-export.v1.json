@@ -281,7 +281,6 @@
                 "enum": [
                   "work",
                   "decision",
-                  "result",
                   "doc"
                 ]
               }
@@ -300,7 +299,6 @@
             "enum": [
               "source",
               "affects",
-              "about",
               "related",
               "mentions",
               "part_of"
@@ -406,41 +404,20 @@
             "type": "string"
           },
           "contribution": {
-            "oneOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "enum": [
-                      "blocker",
-                      "handoff",
-                      "came_of_it"
-                    ]
-                  }
-                },
-                "required": [
-                  "kind"
-                ],
-                "type": "object"
-              },
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "kind": {
-                    "const": "result"
-                  },
-                  "resultId": {
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "kind",
-                  "resultId"
-                ],
-                "type": "object"
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "enum": [
+                  "blocker",
+                  "handoff",
+                  "came_of_it"
+                ]
               }
-            ]
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
           },
           "createdAt": {
             "format": "date-time",
@@ -555,8 +532,7 @@
                   "doc",
                   "sketch",
                   "work",
-                  "decision",
-                  "result"
+                  "decision"
                 ]
               }
             },
@@ -589,43 +565,6 @@
             "type": "object"
           }
         ]
-      },
-      "result": {
-        "additionalProperties": false,
-        "properties": {
-          "createdAt": {
-            "format": "date-time",
-            "type": "string"
-          },
-          "createdBy": {
-            "$ref": "#/definitions/actor"
-          },
-          "evidence": {
-            "type": "string"
-          },
-          "finding": {
-            "enum": [
-              "positive",
-              "negative"
-            ]
-          },
-          "id": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "createdAt",
-          "createdBy",
-          "evidence",
-          "finding",
-          "id",
-          "title"
-        ],
-        "type": "object"
       },
       "sketch": {
         "additionalProperties": false,
@@ -1333,12 +1272,6 @@
         ],
         "type": "object"
       },
-      "results": {
-        "items": {
-          "$ref": "#/definitions/result"
-        },
-        "type": "array"
-      },
       "sketches": {
         "items": {
           "$ref": "#/definitions/sketch"
@@ -1368,7 +1301,6 @@
       "people",
       "project",
       "provenance",
-      "results",
       "sketches",
       "work"
     ],

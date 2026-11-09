@@ -10,7 +10,6 @@ export function nativeWorkEndpointVisible(projectId: string, kind: SQL, id: SQL,
   return sql`CASE ${kind}
     WHEN 'work' THEN EXISTS(SELECT 1 FROM project_work_items o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'decision' THEN EXISTS(SELECT 1 FROM project_decisions o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
-    WHEN 'result' THEN EXISTS(SELECT 1 FROM project_results o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'message' THEN EXISTS(SELECT 1 FROM project_messages o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id})
     WHEN 'material' THEN EXISTS(SELECT 1 FROM project_material_versions o WHERE o.project_id = ${projectId}::uuid AND o.material_id = ${id} AND o.version = ${version})
     WHEN 'doc' THEN EXISTS(SELECT 1 FROM project_materials o WHERE o.project_id = ${projectId}::uuid AND o.id = ${id} AND o.kind = 'doc')
@@ -27,7 +26,7 @@ export function nativeVisibleWorkEdges(projectId: string): SQL {
 }
 export type NativeWorkReadObject = { kind: WorkObjectType; id: string };
 export type NativeWorkSourceScope = { messageIds: string[] } | { conversationId: string };
-export type NativeWorkRelationFacts = NativeWorkReadObject & { edges: number; sourceMessages: number; sourceMaterials: number; decisions: number; results: number; rule: WorkReadRef | null };
+export type NativeWorkRelationFacts = NativeWorkReadObject & { edges: number; sourceMessages: number; sourceMaterials: number; decisions: number; rule: WorkReadRef | null };
 
 export function nativeWorkVisibilityRows(db: DbExecutor) {
   return {
@@ -66,8 +65,6 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
           count(DISTINCT (e.to_id, e.to_version)) FILTER (WHERE e.from_type = g.kind AND e.from_id = g.id AND e.role = 'source' AND e.to_type = 'material')::int AS "sourceMaterials",
           count(DISTINCT CASE WHEN e.from_type = 'decision' AND NOT(g.kind = 'decision' AND g.id = e.from_id) THEN e.from_id
             WHEN e.to_type = 'decision' AND NOT(g.kind = 'decision' AND g.id = e.to_id) THEN e.to_id END)::int AS decisions,
-          count(DISTINCT CASE WHEN e.from_type = 'result' AND NOT(g.kind = 'result' AND g.id = e.from_id) THEN e.from_id
-            WHEN e.to_type = 'result' AND NOT(g.kind = 'result' AND g.id = e.to_id) THEN e.to_id END)::int AS results,
           (SELECT json_build_object('kind', 'decision', 'id', d.id, 'title', d.title)
             FROM visible v JOIN project_decisions d ON d.project_id = ${projectId}::uuid AND ((v.from_type = 'decision' AND d.id = v.from_id) OR (v.to_type = 'decision' AND d.id = v.to_id))
             WHERE g.kind = 'work' AND ((v.from_type = g.kind AND v.from_id = g.id) OR (v.to_type = g.kind AND v.to_id = g.id))

@@ -11,7 +11,7 @@ import { expect, toolValue } from './support/mcp.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 import { upload } from './support/project-erasure-scene.js';
 
-// What counts as use of a task for the Undo of an unused AI-created task (#394, #238): a result or a decision about it does, an edit of a doc
+// What counts as use of a task for the Undo of an unused AI-created task (#394, #238): a decision about it, a pull request or a published file does, an edit of a doc
 // or a thought it cites does not (#553). The turn limit of an agent in the task's discussion does not depend on any of this (#868).
 type Scene = Awaited<ReturnType<typeof actionScene>>;
 
@@ -30,15 +30,15 @@ const state = async (f: Scene, item: { id: string }) => ({
 const eligible = { used: null, undo: { eligible: true, reason: 'eligible' } };
 const undoRequest = (f: Scene, item: { id: string; version: number }) =>
   f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } });
-const record = (f: Scene, item: { id: string }) => f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
-  { body: { title: 'Real result', finding: 'positive', evidence: 'Observed behavior', work: [item.id], clientCommandId: randomUUID() } });
+const decide = (f: Scene, item: { id: string }) => f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
+  { body: { title: 'Real decision', rationale: 'Observed behavior', affects: [item.id] } });
 async function bounded<T>(promise: Promise<T>) {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try { return await Promise.race([promise, new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Artifact race exceeded 10s')), 10_000); })]); }
   finally { clearTimeout(timer); }
 }
 
-test('editing a doc an unused AI-created task links to keeps Undo; a result about the task still ends it (#553)', async () => {
+test('editing a doc an unused AI-created task links to keeps Undo; a decision about the task still ends it (#553)', async () => {
   const f = await actionScene(pool);
   let doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Measured work', body: 'Baseline content' } }), 201) as unknown as Doc;
   const item = await unusedAiTask(f, { title: 'Unused linked task' });
@@ -51,15 +51,15 @@ test('editing a doc an unused AI-created task links to keeps Undo; a result abou
       { body: { body }, headers: { 'if-match': `"${doc.version}"`, 'idempotency-key': randomUUID() } }), 200) as unknown as Doc;
     assert.deepEqual(await state(f, item), eligible, 'a linked doc edit is not use of the task');
   }
-  expect(await record(f, item), 201);
+  expect(await decide(f, item), 201);
   const used = await state(f, item);
-  assert.ok(used.used, 'a result about the task is a task-targeted use');
+  assert.ok(used.used, 'a decision about the task is a task-targeted use');
   assert.equal(used.undo?.eligible, false);
   assert.equal(used.undo?.reason, 'task_used');
   assert.equal((await undoRequest(f, item)).status, 409);
 });
 
-test('editing a thought an unused AI-created task links to keeps Undo; a result about the task still ends it (#553)', async () => {
+test('editing a thought an unused AI-created task links to keeps Undo; a decision about the task still ends it (#553)', async () => {
   const f = await actionScene(pool);
   const map = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,
     { body: { title: 'Canonical source map', scope: 'project', projectId: f.projectId } }), 201) as unknown as Sketch;
@@ -73,7 +73,7 @@ test('editing a thought an unused AI-created task links to keeps Undo; a result 
   toolValue(await f.tool('flux_update_thought', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute',
     sources: [], mapId: map.id, thoughtId: thought.id, expectedVersion: thought.version, changes: { text: 'Native content progress' } }));
   assert.deepEqual(await state(f, item), eligible);
-  expect(await record(f, item), 201);
+  expect(await decide(f, item), 201);
   const used = await state(f, item);
   assert.ok(used.used);
   assert.equal(used.undo?.reason, 'task_used');
@@ -135,18 +135,18 @@ test('a decision that affects an unused AI-created task is use of it, and so is 
   assert.equal((await undoRequest(f, item)).status, 409);
 });
 
-test('a result about an unused AI-created task and the Undo of that task have both forced orders, with one winner and no partial effect', { timeout: 60_000 }, async () => {
-  for (const winner of ['result', 'undo'] as const) {
+test('a decision about an unused AI-created task and the Undo of that task have both forced orders, with one winner and no partial effect', { timeout: 60_000 }, async () => {
+  for (const winner of ['decision', 'undo'] as const) {
     const f = await actionScene(pool);
     const saved = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(),
       peerRequestClass: 'execute', sources: [], task: { title: 'Unused artifact target' } }));
     const item = await f.read(String(saved.workId)) as unknown as WorkItem;
     const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200).user as { id: string }).id;
-    const command = { title: 'Real result', finding: 'positive' as const, evidence: 'Observed behavior', work: [item.id], clientCommandId: randomUUID() };
+    const command = { title: 'Real decision', rationale: 'Observed behavior', affects: [item.id] };
     const held = barrier<number>(), release = barrier();
     let other: Promise<unknown> | undefined;
     const first = db.transaction(async (tx) => {
-      if (winner === 'result') await workUseCases(tx).createResult({ kind: 'human', id: ownerId }, f.projectId, command);
+      if (winner === 'decision') await workUseCases(tx).proposeDecision({ kind: 'human', id: ownerId }, f.projectId, command);
       else await workUseCases(tx).undoTaskCreation({ kind: 'human', id: ownerId }, item.id, { clientCommandId: randomUUID(), expectedVersion: item.version });
       held.resolve(await backendPid(tx));
       await bounded(release.promise);
@@ -154,14 +154,14 @@ test('a result about an unused AI-created task and the Undo of that task have bo
     void first.catch(() => undefined);
     try {
       const pid = await bounded(held.promise);
-      other = winner === 'result' ? undoRequest(f, item) : f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`, { body: command });
+      other = winner === 'decision' ? undoRequest(f, item) : f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`, { body: command });
       void other.catch(() => undefined);
       await waitUntilBlockedBy(pool, pid);
       release.resolve();
       await bounded(first);
       assert.equal((await bounded(other) as { status: number }).status, 409, 'the loser is refused');
-      const results = (await pool.query("SELECT count(*)::int n FROM project_object_links WHERE to_id=$1 AND to_type='work' AND role='about'", [item.id])).rows[0].n;
-      assert.equal(results, winner === 'result' ? 1 : 0);
+      const decisions = (await pool.query("SELECT count(*)::int n FROM project_object_links WHERE to_id=$1 AND to_type='work' AND role='affects'", [item.id])).rows[0].n;
+      assert.equal(decisions, winner === 'decision' ? 1 : 0);
       const reverted = (await pool.query('SELECT creation_reverted_at FROM project_work_items WHERE id=$1', [item.id])).rows[0].creation_reverted_at;
       assert.equal(reverted !== null, winner === 'undo');
     } finally { release.resolve(); await bounded(Promise.all([first.catch(() => undefined), other?.catch(() => undefined)])); }

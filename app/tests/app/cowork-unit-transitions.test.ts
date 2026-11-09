@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, Project, WorkItem,
-  WorkResult } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, Conversation, Project, WorkItem } from '@flux/contracts';
 import { createConnection } from './support/mcp-actions.js';
 import { createDatabase } from '@flux/db';
 import { DomainError, type CoWorkUnitPolicy } from '@flux/core';
@@ -55,9 +54,10 @@ async function world() {
   };
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
-  const result = async (title: string, inProject: Project = p) => expectStatus(await hubert.browser.request('POST',
-    `/api/v1/projects/${inProject.id}/results`, { body: { title, finding: 'positive' } }), 201) as WorkResult;
-  return { hubert, marek, ws, p, other, task, connection, connect, material, result };
+  /** A message of a project's conversation: an outcome a unit can name. */
+  const message = async (body: string, inProject: Project = p) => (expectStatus(await hubert.browser.request('POST',
+    `/api/v1/projects/${inProject.id}/conversations`, { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation).messages[0]!;
+  return { hubert, marek, ws, p, other, task, connection, connect, material, message };
 }
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
@@ -150,16 +150,16 @@ async function reviewScene() {
 test('the holder completes its claimed unit with an outcome: terminal, task untouched, replay observes, every later attempt is fenced', async () => {
   const f = await setup();
   const { w } = f;
-  const result = await w.result('Measured baseline');
+  const said = await w.message('Measured baseline');
   const before = await effects(w, [f.codex]);
-  const first = f.own.finish({ ...f.fence, outcome: { type: 'result', id: result.id } });
+  const first = f.own.finish({ ...f.fence, outcome: { type: 'message', id: said.id } });
   const done = await f.own.run(first);
   assert.deepEqual(done, { unitId: f.root.unitId, taskId: f.a.id, role: 'execute', assignmentConnectionId: f.codex.connection.id,
-    version: f.claim.version + 1, state: 'completed', outcomeRef: { type: 'result', id: result.id } });
+    version: f.claim.version + 1, state: 'completed', outcomeRef: { type: 'message', id: said.id } });
   const row = await unitRow(f.root.unitId);
   assert.deepEqual([row.state, row.generation, row.version, row.lease_id, row.lease_session_id, row.lease_expires_at, row.checkpoint_id,
     row.outcome_ref, row.assignment_connection_id, row.run_id], ['completed', f.claim.generation + 1, f.claim.version + 1, null, null, null,
-    null, { type: 'result', id: result.id }, f.codex.connection.id, f.root.runId]);
+    null, { type: 'message', id: said.id }, f.codex.connection.id, f.root.runId]);
   // One debit and one receipt with the canonical post-state; the task row, its status and human assignee are unchanged.
   assert.deepEqual((await receiptsOf(f.codex, 'cowork.unit.complete')).map((x) => x.postconditions), [[{ kind: 'cowork.unit_state',
     workspaceId: w.ws.id, projectId: w.p.id, unitId: f.root.unitId, taskId: f.a.id, lineageTaskId: f.a.id, runId: f.root.runId,
@@ -169,12 +169,12 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
   // Exact replay is an observation: no second change, debit or receipt. A changed payload under that ID conflicts.
   assert.deepEqual(await f.own.run(first), done);
   assert.equal((await receiptsOf(f.codex, 'cowork.unit.complete')).length, 1);
-  await rejects(f.own.run({ ...first, payload: { ...f.fence, outcome: { type: 'result', id: randomUUID() } } }), 'IDEMPOTENCY_CONFLICT');
+  await rejects(f.own.run({ ...first, payload: { ...f.fence, outcome: { type: 'message', id: randomUUID() } } }), 'IDEMPOTENCY_CONFLICT');
   // Completion is terminal: another completion, a transfer or a new claim of the unit are refused without effects.
   const later = { expectedVersion: done.version, generation: f.claim.generation + 1, leaseId: f.claim.lease!.id };
-  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...f.fence, outcome: { type: 'result', id: result.id } })),
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...f.fence, outcome: { type: 'message', id: said.id } })),
     'COWORK_VERSION_CONFLICT');
-  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...later, outcome: { type: 'result', id: result.id } })),
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...later, outcome: { type: 'message', id: said.id } })),
     'COWORK_CLAIM_LOST');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.handOver({ ...later,
     assignmentConnectionId: f.marekClaude.connection.id })), 'COWORK_CLAIM_LOST');
@@ -186,14 +186,14 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
 test('a versioned outcome must be readable now: an unknown, foreign, stale or GitHub outcome is refused; a replay rechecks it', async () => {
   const f = await setup();
   const { w } = f;
-  const foreign = await w.result('Elsewhere', w.other);
+  const foreign = await w.message('Elsewhere', w.other);
   const refuse = (outcome: unknown, code: string) => refusedWithoutEffects(w, [f.codex],
     () => f.own.run(f.own.finish({ ...f.fence, outcome })), code);
-  await refuse({ type: 'result', id: randomUUID() }, 'COWORK_OUTCOME_UNAVAILABLE');
-  await refuse({ type: 'result', id: foreign.id }, 'COWORK_OUTCOME_UNAVAILABLE');
+  await refuse({ type: 'message', id: randomUUID() }, 'COWORK_OUTCOME_UNAVAILABLE');
+  await refuse({ type: 'message', id: foreign.id }, 'COWORK_OUTCOME_UNAVAILABLE');
   await refuse({ type: 'material', id: w.material.materialId, version: 2 }, 'COWORK_OUTCOME_UNAVAILABLE');
   await refuse({ type: 'github_pr', bindingId: randomUUID(), linkId: randomUUID(), headSha: 'a'.repeat(40) }, 'COWORK_OUTCOME_UNAVAILABLE');
-  for (const outcome of [null, 'done', { type: 'result' }, { type: 'material', id: w.material.materialId }, { type: 'result', id: randomUUID(), title: 'x' }])
+  for (const outcome of [null, 'done', { type: 'message' }, { type: 'material', id: w.material.materialId }, { type: 'message', id: randomUUID(), title: 'x' }])
     await refuse(outcome, 'INVALID_INPUT');
   // The current revision is readable; once the material moves on, replaying the completion is no longer observable.
   const first = f.own.finish({ ...f.fence, outcome: { type: 'material', id: w.material.materialId, version: 1 } });
@@ -209,8 +209,8 @@ test('holder fence negative controls: only the current holder under its live cla
   const { w } = f;
   const claude = await w.connect(w.hubert, 'Hubert Claude');
   const all = [f.codex, f.marekClaude, claude];
-  const result = await w.result('Observed');
-  const outcome = { type: 'result', id: result.id };
+  const said = await w.message('Observed');
+  const outcome = { type: 'message', id: said.id };
   const refuse = (input: AgentExecutionCommand, code: string, run = f.own.run) => refusedWithoutEffects(w, all, () => run(input), code);
   const to = { assignmentConnectionId: f.marekClaude.connection.id };
   for (const [name, build] of [['complete', (fence: object) => f.own.finish({ ...fence, outcome })],
@@ -277,9 +277,9 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   // claim receipt no longer locates its unit.
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkClaimInTransaction(tx, f.codex.claims,
     command(w, f.codex, 'cowork.claim', f.root.unitId, 'execute', { expectedVersion: moved.version }), CLAIMS)), 'COWORK_UNIT_NOT_FOUND');
-  const result = await w.result('Late result');
+  const said = await w.message('Late result');
   const lateFence = { expectedVersion: moved.version, generation: f.claim.generation + 1, leaseId: f.claim.lease!.id };
-  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...lateFence, outcome: { type: 'result', id: result.id } })),
+  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...lateFence, outcome: { type: 'message', id: said.id } })),
     'COWORK_UNIT_NOT_FOUND');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.handOver({ ...lateFence,
     assignmentConnectionId: f.codex.connection.id })), 'COWORK_UNIT_NOT_FOUND');
@@ -291,7 +291,7 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   await rejects(f.own.run(first), 'COMMAND_POSTSTATE_STALE');
   // The new holder can finish it.
   const marekHolder = await holder(w, f.marekClaude, f.root.unitId, 'execute');
-  const done = await marekHolder.run(marekHolder.finish({ ...fenceOf(marekClaim), outcome: { type: 'result', id: result.id } }));
+  const done = await marekHolder.run(marekHolder.finish({ ...fenceOf(marekClaim), outcome: { type: 'message', id: said.id } }));
   assert.deepEqual([done.state, done.assignmentConnectionId], ['completed', f.marekClaude.connection.id]);
 });
 
@@ -408,11 +408,11 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
 test('race: two transitions of one unit by its holder serialize; exactly one wins and the other is fenced', async () => {
   const f = await setup();
   const { w } = f;
-  const result = await w.result('Observed');
+  const said = await w.message('Observed');
   const ready = barrier<number>(), release = barrier();
   const holding = db.transaction(async (tx) => {
     const outcome = await coWorkUnitTransitionInTransaction(tx, f.codex.claims,
-      f.own.finish({ ...f.fence, outcome: { type: 'result', id: result.id } }));
+      f.own.finish({ ...f.fence, outcome: { type: 'message', id: said.id } }));
     ready.resolve(await backendPid(tx)); await release.promise; return outcome;
   });
   holding.catch(() => ready.resolve(-1));

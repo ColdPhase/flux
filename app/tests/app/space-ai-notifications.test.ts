@@ -105,7 +105,7 @@ async function generate(event: Omit<GeneratorEvent, 'seq' | 'workspaceId'>, reci
   const rows = notificationGeneratorRows(db);
   const all: NotificationFacts = {
     audience: async () => [recipient.id], projectMessage: async () => null, dmMessage: async () => null, work: async () => null,
-    decision: async () => null, result: async () => null, liveInvitation: async () => null,
+    decision: async () => null, liveInvitation: async () => null,
     names: async (ids) => new Map(ids.map((id) => [id, id === recipient.id ? 'Ada' : 'Someone'])), ...facts,
   };
   const generated: GeneratorEvent = { ...event, seq: 1, workspaceId: ws.id };
@@ -156,14 +156,11 @@ describe('space AI switch: notifications by AI origin (#642)', () => {
     await assertGated('agent question', owner, scene.place.id, id!, { needsYou: true });
   });
 
-  test('a decision proposed by an agent and a result recorded by an agent (the event\'s actor is a person)', async () => {
+  test('a decision proposed by an agent (the event\'s actor is a person)', async () => {
     const { owner } = scene;
     const [decision] = await generate({ id: randomUUID(), kind: 'project.decision_proposed.v1', objectId: scene.place.id, actorId: `human:${scene.peer.id}`, data: { decisionId: randomUUID() } }, owner, {
       decision: async () => review({}) });
     await assertGated('agent decision', owner, scene.place.id, decision!);
-    const [result] = await generate({ id: randomUUID(), kind: 'project.result_recorded.v1', objectId: scene.place.id, actorId: `human:${scene.peer.id}`, data: { resultId: randomUUID() } }, owner, {
-      result: async () => review({ title: 'Bench result' }) });
-    await assertGated('agent result', owner, scene.place.id, result!);
   });
 
   test('work assigned by an agent (the actor is the agent)', async () => {

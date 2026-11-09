@@ -4,7 +4,6 @@ import {
   aiModelCallsTools,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
-  WORK_LIMITS,
   WEB_SEARCHES_PER_REQUEST,
   type AiConnectionRef,
   type AiPrice,
@@ -13,11 +12,10 @@ import {
   type AssistantSourceRef,
   type CreateMyAgentCommand,
   type InvokeAssistantRunCommand,
-  type ResultFinding,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
-import { id, isId } from '../work/validation.js';
+import { id } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
 import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
 import type { SuppliedSource } from './brief.js';
@@ -185,42 +183,13 @@ export const centsToMicros = (value: number) => value * 10_000;
 
 export type { SuppliedSource } from './brief.js';
 
-export interface ParsedProposal {
-  fact: string;
-  interpretation: string;
-  title: string;
-  finding: ResultFinding;
-  evidence: string;
-  finishesWorkId: string | null;
-}
-
 /**
- * The first `<proposal>…</proposal>` block of a model's text, found by position rather than by a pattern: the text is a model's, and a
- * lazy pattern over it can be made slow (CodeQL js/polynomial-redos). The same block as `/<proposal>([\s\S]*?)<\/proposal>/` finds.
+ * Splits model output into the answer body and the cited sources.
+ * Citations count only for supplied labels and are renumbered `[1]`… in the order of `sources`.
  */
-function proposalBlock(text: string): { start: number; end: number; json: string } | null {
-  const open = '<proposal>';
-  const start = text.indexOf(open);
-  if (start < 0) return null;
-  const close = text.indexOf('</proposal>', start + open.length);
-  return close < 0 ? null : { start, end: close + '</proposal>'.length, json: text.slice(start + open.length, close) };
-}
-
-function bounded(value: unknown, maximum: number): string | null {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return trimmed && trimmed.length <= maximum ? trimmed : null;
-}
-
-/**
- * Splits model output into the answer body, the cited sources and at most one proposal.
- * Citations count only for supplied labels and are renumbered `[1]`… in the order of `sources`; a proposal may finish only a supplied open work item.
- * A malformed proposal is dropped, never guessed.
- */
-export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[], allowProposal: boolean) {
+export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[]) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
-  const match = proposalBlock(text);
-  const raw = (match ? text.slice(0, match.start) + text.slice(match.end) : text).trim().slice(0, 100_000);
+  const raw = text.trim().slice(0, 100_000);
   // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
   // reader can open exactly the cited object. Labels of sources that were not supplied are
   // removed: they point at nothing the audience could open.
@@ -233,22 +202,5 @@ export function parseOutput(text: string, sources: readonly Pick<SuppliedSource,
     if (!cited.has(label)) cited.set(label, source.ref);
     return `${marker.startsWith(' ') ? ' ' : before}[${[...cited.keys()].indexOf(label) + 1}]`;
   }).trim();
-  let proposal: ParsedProposal | null = null;
-  if (match && allowProposal) {
-    try {
-      const raw = JSON.parse(match.json) as Record<string, unknown>;
-      const fact = bounded(raw.fact, 2000);
-      const interpretation = bounded(raw.interpretation, 2000);
-      const title = bounded(raw.title, WORK_LIMITS.title);
-      const finding = raw.finding === 'positive' || raw.finding === 'negative' ? raw.finding : null;
-      const evidence = typeof raw.evidence === 'string' && raw.evidence.length <= WORK_LIMITS.evidence ? raw.evidence.trim() : null;
-      const finishes = raw.finishes === null || raw.finishes === undefined ? null : byLabel.get(String(raw.finishes));
-      const finishesValid = raw.finishes === null || raw.finishes === undefined || (finishes?.ref.type === 'work' && isId(finishes.ref.id));
-      if (fact && interpretation && title && finding && evidence !== null && finishesValid)
-        proposal = { fact, interpretation, title, finding, evidence, finishesWorkId: finishes ? finishes.ref.id : null };
-    } catch {
-      proposal = null;
-    }
-  }
-  return { body, sources: [...cited.values()], proposal };
+  return { body, sources: [...cited.values()] };
 }

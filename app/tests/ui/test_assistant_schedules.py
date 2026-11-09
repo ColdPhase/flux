@@ -399,7 +399,7 @@ class AssistantSchedules(unittest.TestCase):
                     return {"runId": run, "conversationId": self.ids["conversation"], "projectId": self.ids["project"], "audience": {"kind": "project", "projectId": self.ids["project"]},
                             "assistant": {"ownerUserId": owner, "label": f"{name}'s assistant"}, "askedBy": {"id": owner, "name": name},
                             "request": {"kind": "ask", "prompt": "Every Friday at 16:00 list what we finished this week"}, "body": body,
-                            "truncated": False, "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "proposalId": None, "committedAt": "2026-10-17T09:00:00.000Z"}
+                            "truncated": False, "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "committedAt": "2026-10-17T09:00:00.000Z"}
                 answers = [answer(ADA["id"], "Ada", run_id), answer(str(uuid.uuid4()), "Jonas", other_run)]
                 page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": 2, "limit": 100, "offset": 0}))
 
@@ -475,7 +475,7 @@ class AssistantSchedules(unittest.TestCase):
                     return {"runId": run, "conversationId": self.ids["conversation"], "projectId": self.ids["project"], "audience": {"kind": "project", "projectId": self.ids["project"]},
                             "assistant": {"ownerUserId": ADA["id"], "label": "Ada's assistant"}, "askedBy": {"id": ADA["id"], "name": "Ada"},
                             "request": {"kind": "scheduled", "prompt": "Tidy the sensor tasks"}, "body": f"Renamed the probe task ({run[:4]}).", "truncated": False,
-                            "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "proposalId": None, "committedAt": at, "schedule": schedule}
+                            "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "committedAt": at, "schedule": schedule}
                 answers = [answer(runs[0], "2026-01-01T09:00:00.000Z"), answer(runs[1], "2026-01-01T10:00:00.000Z"), answer(runs[2], "2099-01-01T09:00:00.000Z")]
                 page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": 3, "limit": 100, "offset": 0}))
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
