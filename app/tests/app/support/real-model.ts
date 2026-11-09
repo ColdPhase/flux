@@ -41,6 +41,8 @@ export interface TranscriptEntry {
   request: unknown;
   /** What the model answered (or the search results), before it went back to the CLI in the vendor's format. */
   response: unknown;
+  /** What the CLI asked for that the conversion does not carry (Claude Code's model, thinking and output limit). */
+  vendor?: unknown;
 }
 const transcript: TranscriptEntry[] = [];
 let counter = 0;
@@ -65,7 +67,65 @@ function served(): Promise<string> {
   return modelName;
 }
 
-async function chat(client: 'claude' | 'codex', kind: 'main' | 'side', body: { messages: ChatMessage[]; tools: ChatTool[]; maxTokens: number; toolChoice?: unknown }): Promise<ChatAnswer> {
+/** The model's reasoning or words as they arrive, for a CLI that shows them while the model works. */
+type Delta = (part: 'reasoning' | 'content', text: string) => void;
+
+/**
+ * Reads a Chat Completions event stream into one message, telling `onDelta` the reasoning and the words as they come. Words that begin
+ * with `<think>` (a server that leaves the thinking in the content) are not passed on: they are sorted out when the message is whole.
+ */
+async function readStream(response: Response, onDelta: Delta | undefined): Promise<Json> {
+  if (!(response.headers.get('content-type') ?? '').includes('event-stream')) return (await response.json()) as Json;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let content = '';
+  let reasoning = '';
+  let finish = 'stop';
+  let usage: Json = {};
+  let timings: Json = {};
+  let plain: boolean | null = null;
+  let passed = 0;
+  const calls: { id: string; name: string; arguments: string }[] = [];
+  const take = (event: Json) => {
+    const choice = ((event.choices as Json[] | undefined) ?? [])[0];
+    if (event.usage) usage = event.usage as Json;
+    if (event.timings) timings = event.timings as Json;
+    if (!choice) return;
+    if (choice.finish_reason) finish = String(choice.finish_reason);
+    const delta = (choice.delta ?? {}) as Json;
+    if (typeof delta.reasoning_content === 'string' && delta.reasoning_content) { reasoning += delta.reasoning_content; onDelta?.('reasoning', delta.reasoning_content); }
+    if (typeof delta.content === 'string' && delta.content) {
+      content += delta.content;
+      const opening = content.trimStart();
+      if (plain === null && (opening.length >= 7 || (opening.length > 0 && !'<think>'.startsWith(opening)))) plain = !opening.startsWith('<think>');
+      if (plain) { onDelta?.('content', content.slice(passed)); passed = content.length; }
+    }
+    for (const call of (delta.tool_calls as Json[] | undefined) ?? []) {
+      const index = Number(call.index ?? calls.length);
+      const fn = (call.function ?? {}) as Json;
+      calls[index] ??= { id: '', name: '', arguments: '' };
+      if (typeof call.id === 'string' && call.id) calls[index].id = call.id;
+      if (typeof fn.name === 'string') calls[index].name += fn.name;
+      if (typeof fn.arguments === 'string') calls[index].arguments += fn.arguments;
+    }
+  };
+  for await (const chunk of response.body as unknown as AsyncIterable<Uint8Array>) {
+    buffer += decoder.decode(chunk, { stream: true });
+    let end: number;
+    while ((end = buffer.indexOf('\n')) >= 0) {
+      const line = buffer.slice(0, end).trim();
+      buffer = buffer.slice(end + 1);
+      if (!line.startsWith('data:')) continue;
+      const data = line.slice(5).trim();
+      if (data && data !== '[DONE]') { try { take(JSON.parse(data) as Json); } catch { /* a keepalive or a comment */ } }
+    }
+  }
+  return { choices: [{ index: 0, finish_reason: finish, message: { role: 'assistant', content, reasoning_content: reasoning,
+    tool_calls: calls.filter(Boolean).map((call) => ({ id: call.id, type: 'function', function: { name: call.name, arguments: call.arguments } })) } }], usage, timings };
+}
+
+async function chat(client: 'claude' | 'codex', kind: 'main' | 'side', body: { messages: ChatMessage[]; tools: ChatTool[]; maxTokens: number; toolChoice?: unknown },
+  onDelta?: Delta, vendor?: Json): Promise<ChatAnswer> {
   // A CLI's history without the reasoning of its earlier tool calls gets it back from what this shim saw.
   for (const message of body.messages) {
     if (message.role === 'assistant' && !message.reasoning_content && message.tool_calls?.length) {
@@ -74,16 +134,19 @@ async function chat(client: 'claude' | 'codex', kind: 'main' | 'side', body: { m
     }
   }
   const request: Json = {
-    model: await served(), messages: body.messages, stream: false, temperature: 0, seed: SEED, max_tokens: Math.min(body.maxTokens || MAX_OUTPUT, MAX_OUTPUT),
+    model: await served(), messages: body.messages, stream: true, stream_options: { include_usage: true }, temperature: 0, seed: SEED,
+    max_tokens: Math.min(body.maxTokens || MAX_OUTPUT, MAX_OUTPUT),
     ...(body.tools.length ? { tools: body.tools, tool_choice: body.toolChoice ?? 'auto', parallel_tool_calls: false } : {}),
   };
   const started = Date.now();
   const response = await fetch(`${MODEL_URL}/v1/chat/completions`, { method: 'POST', headers: { 'content-type': 'application/json', ...auth() }, body: JSON.stringify(request) });
-  const raw = await response.text();
   let answer: Json;
-  try { answer = JSON.parse(raw) as Json; } catch { answer = { error: { message: raw } }; }
-  transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client, kind: response.ok ? kind : 'error', request, response: answer });
-  if (!response.ok) throw Object.assign(new Error(String((answer.error as Json | undefined)?.message ?? raw)), { status: response.status });
+  if (!response.ok) {
+    const raw = await response.text();
+    try { answer = JSON.parse(raw) as Json; } catch { answer = { error: { message: raw } }; }
+  } else answer = await readStream(response, onDelta);
+  transcript.push({ n: ++counter, at: started, ms: Date.now() - started, client, kind: response.ok ? kind : 'error', request, response: answer, ...(vendor ? { vendor } : {}) });
+  if (!response.ok) throw Object.assign(new Error(String((answer.error as Json | undefined)?.message ?? JSON.stringify(answer))), { status: response.status });
   const choice = ((answer.choices as Json[] | undefined) ?? [])[0] ?? {};
   const message = (choice.message ?? {}) as Json;
   const calls = ((message.tool_calls as ChatCall[] | undefined) ?? []).map((call) => ({ id: call.id || id('call'), type: 'function' as const,
@@ -159,24 +222,49 @@ const usageOf = (answer: ChatAnswer) => ({ input_tokens: answer.usage.input, out
 const messageStart = (model: string) => ({ type: 'message_start', message: { id: id('msg'), type: 'message', role: 'assistant', content: [], model,
   stop_reason: null, stop_sequence: null, usage: { input_tokens: 0, output_tokens: 1, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 } } });
 
-/** The answer's blocks after `message_start`, which went out when the request came in. */
-function anthropicEvents(answer: ChatAnswer, thinking: boolean): [string, unknown][] {
-  const events: [string, unknown][] = [];
-  let index = 0;
-  const block = (start: Json, deltas: Json[]) => {
-    events.push(['content_block_start', { type: 'content_block_start', index, content_block: start }]);
-    for (const delta of deltas) events.push(['content_block_delta', { type: 'content_block_delta', index, delta }]);
-    events.push(['content_block_stop', { type: 'content_block_stop', index }]);
-    index += 1;
-  };
-  if (thinking && answer.reasoning) block({ type: 'thinking', thinking: '', signature: '' }, [{ type: 'thinking_delta', thinking: answer.reasoning }, { type: 'signature_delta', signature: 'local-model' }]);
-  if (answer.content.trim()) block({ type: 'text', text: '' }, [{ type: 'text_delta', text: answer.content }]);
-  for (const call of answer.calls) block({ type: 'tool_use', id: call.id, name: call.function.name, input: {} }, [{ type: 'input_json_delta', partial_json: call.function.arguments }]);
-  if (index === 0) block({ type: 'text', text: '' }, [{ type: 'text_delta', text: '' }]);
-  const stop = answer.calls.length ? 'tool_use' : answer.finish === 'length' ? 'max_tokens' : 'end_turn';
-  events.push(['message_delta', { type: 'message_delta', delta: { stop_reason: stop, stop_sequence: null }, usage: usageOf(answer) }]);
-  events.push(['message_stop', { type: 'message_stop' }]);
-  return events;
+/**
+ * An Anthropic message's content blocks, written as the model's output arrives: its thinking (when the request asked for thinking) and its
+ * words stream as deltas, as the API's do; the rest of the answer, and the tool calls, come when the model is done.
+ */
+class Blocks {
+  private index = 0;
+  private open: 'thinking' | 'text' | null = null;
+  private said = { thinking: '', text: '' };
+  constructor(private readonly stream: Stream, private readonly thinking: boolean) {}
+  private start(block: Json) { this.stream.event('content_block_start', { type: 'content_block_start', index: this.index, content_block: block }); }
+  private delta(delta: Json) { this.stream.event('content_block_delta', { type: 'content_block_delta', index: this.index, delta }); }
+  private close() {
+    if (!this.open) return;
+    if (this.open === 'thinking') this.delta({ type: 'signature_delta', signature: 'local-model' });
+    this.stream.event('content_block_stop', { type: 'content_block_stop', index: this.index });
+    this.index += 1;
+    this.open = null;
+  }
+  /** Part of the model's reasoning or words. */
+  add(part: 'reasoning' | 'content', text: string) {
+    if (!text) return;
+    const kind = part === 'reasoning' ? 'thinking' : 'text';
+    if (kind === 'thinking' && (!this.thinking || this.said.text)) return;
+    if (this.open !== kind) { this.close(); this.start(kind === 'thinking' ? { type: 'thinking', thinking: '', signature: '' } : { type: 'text', text: '' }); this.open = kind; }
+    this.delta(kind === 'thinking' ? { type: 'thinking_delta', thinking: text } : { type: 'text_delta', text });
+    this.said[kind] += text;
+  }
+  /** The whole answer: what did not stream yet, the tool calls, and the end of the message. */
+  finish(answer: ChatAnswer) {
+    if (answer.reasoning.startsWith(this.said.thinking)) this.add('reasoning', answer.reasoning.slice(this.said.thinking.length));
+    if (answer.content.startsWith(this.said.text)) this.add('content', answer.content.slice(this.said.text.length));
+    this.close();
+    for (const call of answer.calls) {
+      this.start({ type: 'tool_use', id: call.id, name: call.function.name, input: {} });
+      this.delta({ type: 'input_json_delta', partial_json: call.function.arguments });
+      this.stream.event('content_block_stop', { type: 'content_block_stop', index: this.index });
+      this.index += 1;
+    }
+    if (this.index === 0) { this.start({ type: 'text', text: '' }); this.stream.event('content_block_stop', { type: 'content_block_stop', index: 0 }); }
+    const stop = answer.calls.length ? 'tool_use' : answer.finish === 'length' ? 'max_tokens' : 'end_turn';
+    this.stream.event('message_delta', { type: 'message_delta', delta: { stop_reason: stop, stop_sequence: null }, usage: usageOf(answer) });
+    this.stream.event('message_stop', { type: 'message_stop' });
+  }
 }
 
 /** Claude Code's `WebSearch` runs as a sub-request with Anthropic's `web_search` server tool: Anthropic searches, here the corpus does. */
@@ -223,9 +311,11 @@ export async function claudeReal(response: http.ServerResponse, body: Json): Pro
     const side = !chatTools.some((tool) => tool.function.name.startsWith('mcp__flux__') || tool.function.name === 'WebSearch');
     const choice = body.tool_choice as Json | undefined;
     const toolChoice = choice?.type === 'any' ? 'required' : choice?.type === 'tool' ? { type: 'function', function: { name: choice.name } } : 'auto';
-    const answer = await chat('claude', side ? 'side' : 'main', { messages, tools: chatTools, maxTokens: Number(body.max_tokens ?? MAX_OUTPUT), toolChoice });
     const thinking = typeof body.thinking === 'object' && body.thinking !== null && (body.thinking as Json).type !== 'disabled';
-    for (const [name, data] of anthropicEvents(answer, thinking)) stream.event(name, data);
+    const blocks = new Blocks(stream, thinking);
+    const answer = await chat('claude', side ? 'side' : 'main', { messages, tools: chatTools, maxTokens: Number(body.max_tokens ?? MAX_OUTPUT), toolChoice },
+      (part, text) => blocks.add(part, text), { model: body.model ?? null, thinking: body.thinking ?? null, max_tokens: body.max_tokens ?? null });
+    blocks.finish(answer);
     stream.end();
   } catch (error) {
     failed(stream, 'claude', error, '');
@@ -294,7 +384,8 @@ export async function codexReal(response: http.ServerResponse, body: Json): Prom
   try {
     const { tools, names } = codexTools(body);
     // Codex's `reasoning.effort` names an OpenAI model's setting; the local model thinks as its own chat template says.
-    const answer = await chat('codex', 'main', { messages: responsesToChat(body), tools, maxTokens: Number(body.max_output_tokens ?? MAX_OUTPUT) });
+    const answer = await chat('codex', 'main', { messages: responsesToChat(body), tools, maxTokens: Number(body.max_output_tokens ?? MAX_OUTPUT) }, undefined,
+      { model: body.model ?? null, reasoning: body.reasoning ?? null, max_output_tokens: body.max_output_tokens ?? null });
     const items: Json[] = [];
     if (answer.reasoning) items.push({ type: 'reasoning', id: id('rs'), summary: [{ type: 'summary_text', text: answer.reasoning }], content: [{ type: 'reasoning_text', text: answer.reasoning }], encrypted_content: null });
     if (answer.content.trim()) items.push({ type: 'message', role: 'assistant', id: id('msg'), status: 'completed', content: [{ type: 'output_text', text: answer.content, annotations: [] }] });
