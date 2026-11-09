@@ -66,7 +66,7 @@ class ReleaseAssetsTest(unittest.TestCase):
             "runtime.sh": "#!/bin/sh\necho runtime\n",
             "compose.live.yaml": LIVE,
             "compose.live.turn.yaml": TURN,
-            "Dockerfile": "ADD https://github.com/openai/codex/releases/download/rust-v0.9.1/codex-x86_64.tar.gz /c.tgz\n",
+            "Dockerfile": "ARG CODEX_TAG=rust-v0.9.1\nADD https://github.com/openai/codex/releases/download/${CODEX_TAG}/codex-x86_64.tar.gz /c.tgz\n",
             "sbom-agent-runtime.spdx.json": '{"packages":[{"name":"node","versionInfo":"24","licenseDeclared":"MIT"}]}\n',
             "sbom.spdx.json": '{"packages":[{"name":"postgres","versionInfo":"18.1","licenseDeclared":"PostgreSQL"}]}\n',
         }.items():
@@ -205,9 +205,14 @@ class ReleaseAssetsTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "socket"):
             self.build()
         self.sources["runtime.sh"].write_text("echo ok\n")
+        self.sources["Dockerfile"].write_text("ARG CODEX_TAG=rust-v0.9.1\nARG CODEX_TAG=rust-v0.9.2\n")
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            self.build()
+        # A download that names its own tag (the catalog kept at an old one) is refused too (#1133).
         self.sources["Dockerfile"].write_text(
-            "ADD https://github.com/openai/codex/releases/download/rust-v0.9.1/a.tgz /a\n"
-            "ADD https://github.com/openai/codex/releases/download/rust-v0.9.2/b.tgz /b\n")
+            "ARG CODEX_TAG=rust-v0.9.1\n"
+            "ADD https://github.com/openai/codex/releases/download/${CODEX_TAG}/a.tgz /a\n"
+            "ADD https://raw.githubusercontent.com/openai/codex/rust-v0.9.0/codex-rs/models-manager/models.json /m\n")
         with self.assertRaisesRegex(ValueError, "exactly one"):
             self.build()
 
