@@ -104,33 +104,35 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     every public host, which a TLS tunnel could not hold to read-only. Nothing is posted or submitted.
     **Claude Code's own web search is on with the web** (#1065, C-29): its `WebSearch` tool runs at
     Anthropic through the Messages API on `api.anthropic.com`, which the egress allows already, so the
-    egress does not change. Its `WebFetch`, which would open pages from the runtime, stays off. Codex's
-    search stays off ([RT-5](#rt-5--tools-only-flux-tools-claude-codes-web-search-and-reading-the-web)).
+    egress does not change. Its `WebFetch`, which would open pages from the runtime, stays off.
+    **Codex's own search is on with the web too** (#1065): it runs at OpenAI on its cached index
+    (`web_search="cached"`: no live page request), through the host the CLI already uses, so the egress
+    does not change either ([RT-5](#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)).
 - The egress's request parser is size-bounded, minimal and fuzz-tested.
 
-## RT-5 — Tools: only Flux tools, Claude Code's web search and reading the web
+## RT-5 — Tools: only Flux tools, the CLI's own web search and reading the web
 
 - A server agent has no shell, files, code execution, images, apps, sub-agents or other MCP
   servers. Its tools are the run's exact Flux MCP tools, which include `flux_read_web`, the Flux
-  server's read-only page reading (RT-4), and on Claude Code its own web search. No CLI tool opens a
-  page.
+  server's read-only page reading (RT-4), which opens any public address but one that carries private
+  Flux text the run read (C-30), and the CLI's own web search, which runs at its vendor. No CLI tool
+  opens a page from the runtime.
 - **Claude Code** runs with every built-in tool removed but `WebSearch` while the web is on
   (`--tools WebSearch`; `--tools ''` with `FLUX_WEB_READS=off`, C-29; never `WebFetch`), Flux as
   the only MCP server (`--strict-mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`), the exact Flux
   tools (and `WebSearch`) in `--allowedTools`, `dontAsk` with no permission prompts, and no session
   persistence. The first `system/init` event is read back; any other tool or MCP server stops the
   run with nothing committed.
-- **A Claude Code search is recorded before its results can be read** (#1065, C-30). The slot
-  reports a `WebSearch` call when the CLI starts it (its query) and again when its result comes
-  back (the addresses of the result entries of the event's structured `tool_use_result`; never an
-  address from the result's text, which carries the CLI's own summary, and none for an error). The
-  worker handles the run's events in the order the CLI wrote them: the first is written as a search
-  in progress (`personal_run_web_searches`), the second fills in its results. A `flux_read_web` call
-  for an address the run cannot read yet waits while the run has a search in progress, at most 30
-  seconds, then decides. The search is in progress from its start, seconds before the CLI can show
-  the model a result, so a call that names a result waits until the result is recorded.
-  The run lists the queries and the addresses its answer names that a search returned, as an
-  API-key run lists its searches and citations.
+- **A CLI's searches are recorded and listed** (#1065, C-30). The slot reports a search when the CLI
+  starts it and again when its result comes back: Claude Code's `WebSearch` with its query, then the
+  addresses of the result entries of the `user` event's structured `tool_use_result` (never an address
+  from the result's text, which carries the CLI's own summary, and none for an error); Codex's
+  `web_search` item, then its queries and, when the item carries structured `results`, the addresses
+  of its search result entries (never an `open_page` or `find_in_page` address, which the model chose).
+  The worker writes them in the order the CLI wrote them (`personal_run_web_searches`). The run lists
+  the queries and the addresses its answer names that a search returned, as an API-key run lists its
+  searches and citations. Since any address opens (founder direction 2026-11-09), nothing waits for a
+  search to be recorded.
 - **Codex** runs with `--ignore-user-config`, every reviewed default-on feature switched off by
   `-c` (shell, apps, hooks, goals, plugins, memories and the rest of the reviewed list), Flux as
   the only, required MCP server with exactly the run's tools, and no persistence. **Its model
@@ -141,13 +143,17 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   the vendor's. Flux's tools need no approval in Codex (Flux decides what waits for the owner,
   AG-3, as with Claude Code's `dontAsk`), and Codex's `request_user_input` is off. A preflight reads
   the effective configuration, and the run's own JSONL is the authoritative check: any item other
-  than a message, reasoning or an allowed Flux tool call stops the CLI with nothing committed (a
-  call to Codex's own MCP resource readers, which stay offered, is such an item).
-  **Codex's `web_search` stays disabled** (decided for #1065, 2026-11-09): its `web_search` item
-  (codex-rs `exec_events.rs` at the pinned rust-v0.160.1) carries the query and the action (a search,
-  or a page the model chose to open), never the result addresses, so Flux could neither make them the
-  run's readable addresses (C-30) nor list them as sources. A Codex run's brief says it has no web
-  search; it still reads pages with `flux_read_web`.
+  than a message, reasoning, an allowed Flux tool call or, with the web on, a `web_search` item stops
+  the CLI with nothing committed (a call to Codex's own MCP resource readers, which stay offered, is
+  such an item). **With the web on, Codex searches** (#1065, founder 2026-11-09):
+  `-c web_search="cached"` (OpenAI's cached index, `external_web_access` false); with
+  `FLUX_WEB_READS=off` it is `web_search="disabled"`, and the preflight requires the one or the other.
+  The pinned `codex exec --json` (rust-v0.160.1) carries a `results` field on the `web_search` item
+  (openai/codex #32898 of 2026-07-13 and #46319 of 2026-09-17, both in that tag; GitHub compare API,
+  2026-11-09), filled only by Codex's standalone web search (`features.standalone_web_search`, still
+  under development and off by default there); Flux does not turn that feature on, so a Codex run
+  normally records its queries and no result addresses. Its answer names its sources itself, and it
+  opens any page it found with `flux_read_web` like any other address.
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
 - Transcripts are not kept. An agent's memory is only what its owner told it (AG-1).
