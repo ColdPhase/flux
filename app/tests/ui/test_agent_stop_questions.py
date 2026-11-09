@@ -212,10 +212,10 @@ class StopAndQuestions(unittest.TestCase):
         # On a phone the thread opens as a sheet over the stream: the card to use is the sheet's.
         card = phone.locator("#thread .qcard")
         expect(card).to_be_visible()
-        # AC-3/4: an open project conversation is a focused phone surface, not the persistent
-        # Main places capsule or the project-view chips shown on project lists/views.
+        # AC-3/4: an open project conversation is a focused phone surface, not the persistent Main places capsule or a row of chips: the
+        # views are the segmented row in the header (#873).
         expect(phone.get_by_role("navigation", name="Main places")).to_have_count(0)
-        expect(phone.get_by_role("navigation", name="Space views")).to_have_count(0)
+        expect(phone.locator("header.phead").get_by_role("navigation", name="Space views")).to_be_visible()
         expect(phone.locator(".views--project")).to_have_count(0)
         overflow = phone.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth")
         self.assertLessEqual(overflow, 0, "no horizontal page scroll at 390px")

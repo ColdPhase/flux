@@ -21,11 +21,10 @@ import { arrivalEntry, entryOf, noteSpaceLost, onFlush, recall, remember as keep
 import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
-import { viewIndex } from './views';
 import { SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
-import { LiveEntry } from '../live/LiveEntry';
+import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
 import { CreateHost } from '../create/CreateWindow';
@@ -38,7 +37,7 @@ import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
-import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
+import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -50,17 +49,6 @@ const lastTasksSearch = (userId: string, projectId: string) => remembered('tasks
 function lastMapPath(userId: string, projectId: string, sketches: { items: { id: string }[]; total: number } | null | undefined) {
   const only = sketches?.total === 1 ? sketches.items[0] : undefined;
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
-}
-
-const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki'];
-
-/** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki. */
-function viewOrder(pathname: string) {
-  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
-  if (inProject) return ['conversation', 'map', 'tasks', 'docs'].indexOf(inProject[1] ?? 'conversation');
-  // A direct message has the one view.
-  if (/^\/dm\/(?!new$)[^/]+/.test(pathname)) return 0;
-  return viewIndex(pathname);
 }
 
 const SIDEBAR_KEY = 'flux.sidebar';
@@ -535,12 +523,12 @@ function AppLayoutContent() {
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const workSummary = useProjectWorkSummary();
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
-  // Conversation · Map · Tasks · Wiki in the final design's order (#117); quiet tabs without
+  // Conversation · Tasks · Map · Wiki, every space from the start (#873); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
-    { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
+    { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const places = phonePlaces(location.pathname, inboxUnread);
@@ -641,7 +629,6 @@ function AppLayoutContent() {
       : notFound
         ? { crumb: null, title: 'Page not found', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', noDetails: true };
-  // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
@@ -661,20 +648,19 @@ function AppLayoutContent() {
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Space views' }
       : null;
-  const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
   const moreItems: MoreItem[] = [
-    // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
+    // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
     ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
-    ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
+    ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
-  // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
-  // title as the view menu with the view and who is here beneath it. The dock owns Search whenever
+  // The phone's header (F-026 §4 Phone): inside a space the round Back, the space's plain title with who is here beneath it,
+  // Call, Search and More, and the views as the segmented control in the row under it (#873). The dock owns Search whenever
   // it is present; a conversation keeps header Search because it hides the dock.
   // An entry behind this one in the tab's history that Flux made (the router's index), not merely a non-initial key: opening
   // a `?open=` link replaces the first entry, so its key changes while there is still nothing of Flux behind it (#763 P2-2).
@@ -712,15 +698,13 @@ function AppLayoutContent() {
     const agents = includeAgents ? people.length - humans : 0;
     return `${humans} ${humans === 1 ? 'person' : 'people'}${agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}`;
   };
-  const currentProjectView = ['conversation', 'map', 'tasks', 'docs'][Math.max(0, viewOrder(location.pathname))];
-  const projectMenu: PhoneMenuItem[] = projectViews ? ([
-    ['conversation', 'chat', undefined], ['tasks', 'tasks', openWork ? `${openWork} open` : undefined], ['map', 'edit', undefined], ['docs', 'doc', undefined],
-  ] as const).flatMap(([id, icon, note]) => {
-    // A view the project has not added yet (#351) is not in the menu; "Add …" rows offer it.
-    const view = projectViews.find((item) => item.id === id);
-    return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
-  }) : [];
-  const tabletMenu = tablet && !phone && !!activeProject && projectMenu.length > 0;
+  // The phone's More holds the space's Settings and its details, the one place they open from (#873). On a phone under 360 px wide the
+  // header has no room for Call as well, so it moves here, as the computer's narrow header moves it (Spokój rule 3); wider, the row keeps it.
+  const phoneMoreItems: MoreItem[] = projectId ? [
+    ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
+    { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
+    ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
+  ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || dmId === 'new' || homePage;
@@ -730,10 +714,12 @@ function AppLayoutContent() {
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
+        // The title is the title, not a menu: the views are the same segmented control as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
-          <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
-            metadataSlot={onWiki ? setMetadataSlot : undefined}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people)}</span> : null}</>} /></>
+          <div className="phead__id"><div className="phead__title">
+            <h1 title={place.title}>{place.title}</h1>
+            <p className="phead__sub">{peopleLine(project?.people ?? null)}{onWiki ? <span className="phead__meta-slot" ref={setMetadataSlot} /> : null}</p>
+          </div></div></>
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
@@ -754,10 +740,12 @@ function AppLayoutContent() {
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
-        {/* The same two controls in every space view and direct message (Spokój #507); Together is dimmed where it is unavailable. */}
+        {/* The same two controls in every space view and direct message (Spokój #507); Call is dimmed where it is unavailable. */}
         {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
+        {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={20} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
       </div>
+      {activeProject && projectViews && !backOnly ? <Tabs variant="segmented" className="phead__views" label="Space views" items={projectViews} /> : null}
     </header>
   );
 
@@ -794,23 +782,18 @@ function AppLayoutContent() {
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
           ) : null}
           {routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--header" /> : null}
-          {tabletMenu ? (
-            // A tablet's project title is the view menu, as on the phone (Spokój layout per screen).
-            <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={null} subtitle={viewName} />
-          ) : (
-            <div className="top__title">
-              {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
-              <h1 title={place.title}>{place.title}</h1>
-              {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
-            </div>
-          )}
-          {rowViews && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          <div className="top__title">
+            {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
+            <h1 title={place.title}>{place.title}</h1>
+            {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
+          </div>
+          {rowViews ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
             {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
             {activeProject ? <LiveEntry /> : null}
-            <MoreMenu items={moreItems} />
+            <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} />
           </div>
         </header>
         )}

@@ -24,7 +24,7 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
 
 /**
  * `narrow`: offered here only when the header has no room for it (Spokój rule 3). `node` is a row that keeps its own
- * state (the header's Together); a click on its enabled `[data-more-row]` closes the menu.
+ * state (the header's Call); a click on its enabled `[data-more-row]` closes the menu.
  */
 export type MoreItem = { label: string; run: () => void; keys?: string; checked?: boolean; narrow?: boolean }
   | { label: string; node: ReactNode };
@@ -32,12 +32,14 @@ export type MoreItem = { label: string; run: () => void; keys?: string; checked?
 /** The menu's rows that are shown: rows a wide header keeps in its own row are in the menu but hidden, and the keys skip them. */
 const shownRows = (menu: HTMLElement | null) => [...(menu?.querySelectorAll<HTMLElement>('[role^="menuitem"]') ?? [])].filter((el) => el.getClientRects().length > 0);
 
-/** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). */
-export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus' }) {
+/** More (⋯): the place's quieter actions, each with its key shown (F-026 §4, S18). `cue` is a small mark on the button (a call is live). */
+export function MoreMenu({ items, label = 'More', icon = 'more', className, size, cue }: { items: MoreItem[]; label?: string; icon?: 'more' | 'plus'; className?: string; size?: number; cue?: (id: string, buttonId: string) => ReactNode }) {
   const [open, setOpen] = useState(false);
   const button = useRef<HTMLButtonElement>(null);
   const menu = useRef<HTMLDivElement>(null);
   const id = useId();
+  const buttonId = useId();
+  const cueId = useId();
   const pop = usePop(open);
   useEffect(() => {
     if (!open) return undefined;
@@ -59,8 +61,10 @@ export function MoreMenu({ items, label = 'More', icon = 'more' }: { items: More
   };
   return (
     <span className="top__more">
-      <IconButton ref={button} icon={icon} label={label} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
+      {/* A mark on the button (a call is live) adds its words to the button's name: "More, a call is live in this space". */}
+      <IconButton ref={button} id={buttonId} icon={icon} label={label} size={size} className={className} aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined}
         onClick={() => setOpen((value) => !value)} />
+      {cue ? cue(cueId, buttonId) : null}
       {pop.mounted ? (
         <div {...pop.props} ref={menu} id={id} className="newmenu__menu top__more-menu" role="menu" aria-label={label} onKeyDown={onKeyDown}
           onClick={(event) => { if ((event.target as Element).closest('[data-more-row]:not([aria-disabled="true"])')) close(); }}>

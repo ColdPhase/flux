@@ -96,7 +96,7 @@ class ProjectHeader(unittest.TestCase):
             header = self.header(page)
             expect(header.get_by_role("heading", level=1, name=PROJECT)).to_be_visible()
             views = header.get_by_role("navigation", name="Space views")
-            self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Map", "Tasks", "Wiki"])
+            self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Tasks", "Map", "Wiki"])
             expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
             # One row: the views sit beside the name, and no second toolbar row follows the header.
             name_box = header.get_by_role("heading", level=1).bounding_box()

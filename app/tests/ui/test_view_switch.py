@@ -1,6 +1,6 @@
 """A switch of project view shows the new screen at once (#863, docs/design/motion.md rule 2; supersedes #719's held picture).
 
-Every ordered pair of Conversation, Map, Tasks and Wiki is switched, light and dark, on a computer and on a phone, and a recorder
+Every ordered pair of the four views (Conversation, Tasks, Map and Wiki, in that order in the header) is switched, light and dark, on a computer and on a phone, and a recorder
 that runs on every animation frame (in the page itself, so it is the same in Chromium and WebKit) writes down what the content
 area is made of on each one. From those frames:
 
@@ -129,7 +129,7 @@ class ViewSwitch(unittest.TestCase):
             self.assertTrue(frame["ink"], f"no blank frame: {where}")
             self.assertFalse(frame["empty"], f"a feed hidden for its first reads always has its loading rows up: {where}")
         # What the page asked the browser to run: the new view fades in once, over at most --dur-1, opacity only, on --ease-out, no travel.
-        # (The phone's title menu is a surface of its own: it enters and leaves on the surface vocabulary, not on the view's.)
+        # (A surface such as a menu or sheet enters and leaves on the surface vocabulary, not on the view's.)
         views_only = [entry for entry in recorded(page) if entry["kind"] == "script" and not re.search(r"ui-overlay|ui-scrim|ui-pop|ui-toast", entry["target"])]
         fades = [entry for entry in views_only if (entry["from"] or {}).get("opacity") == 0 and (entry["to"] or {}).get("opacity") == 1]
         self.assertTrue(fades, f"{label}: the new view fades in: {recorded(page)}")

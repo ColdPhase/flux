@@ -8,14 +8,13 @@
 .lv-entry { position: relative; display: inline-flex; align-items: center; gap: 2px; }
 .lv-entry__btn { gap: 6px; padding: 0 10px; }
 .lv-entry__btn--join { padding: 0 12px 0 10px; }
-.lv-entry__live { gap: 6px; padding: 0 10px; color: var(--t2); }
 .lv-faces { display: inline-flex; align-items: center; }
 .lv-faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
 .lv-faces > * + * { margin-left: -6px; }
 .ui-btn--primary .lv-faces .ui-avatar { box-shadow: 0 0 0 2px var(--t1); }
 
 .lv-dot { position: relative; width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--t3); display: inline-block; }
-.lv-dot--on, .lv-entry__live .lv-dot { background: var(--t1); }
+.lv-dot--on { background: var(--t1); }
 .lv-dot--on::after {
   content: ""; position: absolute; inset: -4px; border-radius: 50%; border: 1.5px solid var(--t1);
   opacity: 0; animation: lv-breathe calc(var(--dur-loop) * 1.5) var(--ease-out) infinite;
@@ -25,6 +24,14 @@
 .lv-dot--share { background: var(--t1); }
 @keyframes lv-breathe { 0% { opacity: .55; transform: scale(.6); } 70%, 100% { opacity: 0; transform: scale(1.35); } }
 @media (prefers-reduced-motion: reduce) { .lv-dot--on::after { display: none; } }
+
+/* A call elsewhere in the space (#873): the live mark on More and one row each in it, so nothing in the header's row changes width. A call you
+   can join here has it only where the header has no room for its own Join (the cue is not rendered otherwise). It is the live dot (its ring
+   breathes while seen), not the unread dot of the sidebar. */
+.top__live-cue { position: absolute; top: -3px; right: -3px; display: grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; background: var(--bg); pointer-events: none; }
+.phead__right .top__live-cue { top: 3px; right: 3px; background: var(--el); }
+.lv-now { min-width: 0; }
+.lv-now__t { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Popovers ---------- */
 .lv-pop {
@@ -229,7 +236,7 @@
 /* ---------- Phone: one compact row that never covers the composer ---------- */
 @media (max-width: 640px) {
   .lv-entry__label { display: none; }
-  .lv-entry__btn, .lv-entry__live { padding: 0 12px; min-width: 44px; }
+  .lv-entry__btn { padding: 0 12px; min-width: 44px; }
   /* Beside the phone header's round Back and Search (20 px icons): one icon size in that row (#763 sweep). */
   .phead__right .lv-entry__btn svg { width: 20px; height: 20px; }
   .lv-row { gap: 6px; min-height: 52px; padding: 4px 6px 4px 12px; }

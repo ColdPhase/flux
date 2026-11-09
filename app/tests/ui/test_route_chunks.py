@@ -412,7 +412,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page.get_by_label("Write a message", exact=True)).to_have_value("Private work remains editable")
 
     def test_02b_phone_held_route_keeps_the_conversation_draft_and_cancellation(self):
-        """The phone's own path to a lazy route (#341): a project conversation's title menu opens Tasks while its code is
+        """The phone's own path to a lazy route (#341): a project conversation's views row opens Tasks while its code is
         held. The phone shell stays, the message draft stays the same editable element, and Cancel stays where it was."""
         page = self.page("webkit", phone=True)
         held = self.hold(page, "ProjectTasks")
@@ -448,7 +448,7 @@ class RouteChunksJourney(unittest.TestCase):
         self.assertTrue(field.evaluate("el => window.__routeDraftElement === el"))
 
     def test_02c_tablet_held_route_moves_nothing(self):
-        """The same on a tablet, where the header is the title menu and the sidebar is a rail."""
+        """The same on a tablet, where the sidebar is a rail."""
         page = self.page("webkit", tablet=True)
         held = self.hold(page, "ProjectTasks")
         page.goto(f"/projects/{self.project_id}")

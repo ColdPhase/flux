@@ -4,7 +4,7 @@ Run once with FLUX_UI_BROWSER=chromium and once with webkit. Each test measures 
 - the task row's state glyph is not clipped by its row on a computer (1440);
 - the Tasks board's cards hold their owner inside them on a tablet (820, touch; no ⋯ since #868);
 - the project views stay inside the header at 1024 px;
-- the header's Together, with nothing open to work on together, explains why on a click instead of looking disabled;
+- the header's Call, with nothing open to work on together, explains why on a click instead of looking disabled;
 - icon buttons in the sidebar and the composer take the 32 px control token, with one icon size in the composer;
 - a field without the shared input style (the new-message people search) has the --t3 placeholder, not the engine grey.
 """
@@ -142,12 +142,12 @@ class VisualCleanup763(unittest.TestCase):
     def test_04_together_says_why_instead_of_looking_disabled(self) -> None:
         page = self.page(DESKTOP)
         page.goto(f"/projects/{self.project}/tasks")
-        together = page.locator("header.top").get_by_role("button", name="Together", exact=True)
+        together = page.locator("header.top").get_by_role("button", name="Call", exact=True)
         expect(together).to_be_visible()
         expect(together).not_to_have_attribute("aria-disabled", "true")
         self.assertEqual(together.evaluate("(el) => getComputedStyle(el).opacity"), "1", "not greyed out")
         together.click()
-        dialog = page.get_by_role("dialog", name="Together")
+        dialog = page.get_by_role("dialog", name="Call")
         expect(dialog).to_contain_text("Open a conversation, task, map or page to work on it together.")
         page.keyboard.press("Escape")
         expect(dialog).to_have_count(0)

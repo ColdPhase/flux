@@ -157,7 +157,7 @@ class NewProject(unittest.TestCase):
         self.assertEqual(project["access"], "manager")
         self.assertNotIn("goal", project)
         expect(page.locator("header.top").get_by_role("heading", level=1, name=HERB)).to_be_visible()
-        self.assertEqual(self.view_names(page)[:4], ["Conversation", "Map", "Tasks", "Wiki"])
+        self.assertEqual(self.view_names(page)[:4], ["Conversation", "Tasks", "Map", "Wiki"])
         # A space made through the API starts the same way.
         other = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Cargo bike co-op"})
         self.assertNotIn("views", other)
@@ -178,10 +178,9 @@ class NewProject(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         page.goto(f"/projects/{pid}")
-        # On the phone the views live in the title's menu (#341).
-        page.get_by_role("heading", level=1).get_by_role("button").tap()
-        views = page.get_by_role("dialog").filter(has=page.locator(".phone-menu__list"))
-        for name in ("Tasks", "Map", "Wiki"):
+        # On the phone the four views are the segmented row under the title (#873).
+        views = page.get_by_role("navigation", name="Space views")
+        for name in ("Conversation", "Tasks", "Map", "Wiki"):
             expect(views.get_by_role("link", name=re.compile(f"^{name}"))).to_be_visible()
         shot(page, "874-phone-views-390")
 

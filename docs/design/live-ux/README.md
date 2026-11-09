@@ -12,10 +12,10 @@ palette, demo data and single-file script were not copied.
 
 - **Where the work is.** An open task in Details shows **Work on this together** under its
   blocker, with who can join ("Ada, Jonas and Kai can join · nothing turns on until you
-  choose"). The project header has a quiet **Together** button for the current place: the
+  choose"). The project header has a quiet **Call** button (formerly Together) for the current place: the
   open task, map, doc or conversation. When a session already runs there, the button becomes
-  **Join** with the faces of the people in it. Sessions at other places in the project
-  appear under **Live now**. There is no wizard, no ringing, no answer/reject takeover and
+  **Join** with the faces of up to two people in it (a header too narrow for them shows the live dot and the word). Call and Join share one slot, so a call that can be joined moves nothing in the header. Sessions at other places in the project
+  are the live mark on ⋯ (it is in ⋯'s name) and one **Join** row each in it, "Join “Sensor log” · Nia": where it is and who is in it, as the actual participants (an empty room shows nothing). The header's row never grows, so nothing in it moves. There is no wizard, no ringing, no answer/reject takeover and
   no missed-call state.
 - **Invitations.** Inviting someone creates one ordinary inbox item ("Nia Okafor invited
   you to work together · On “…” in Gesture lamp"). Opening it goes to the work itself, where

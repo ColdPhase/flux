@@ -130,7 +130,7 @@ class ReachabilityRows(LiveBase):
         host = self.page("nia")
         self.open_conversation(host, self.conversation_url())
         host_bar = self.bar(host)
-        together = host.locator("header.top, header.phead").get_by_role("button", name="Together", exact=True)
+        together = host.locator("header.top, header.phead").get_by_role("button", name="Call", exact=True)
         join = host.locator("header.top, header.phead").get_by_role("button", name="Join", exact=True)
         expect(together.or_(join).or_(host_bar)).to_be_visible()
         if together.is_visible():

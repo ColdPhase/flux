@@ -5,7 +5,6 @@ import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { decisionLine, statusPhrase } from '../work/format';
-import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
@@ -97,7 +96,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const { me } = useShellData();
   const { closePanel } = useShellActions();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
-  const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
   const encrypted = !!useWorkspaceEncryption(shell?.project.workspaceId);
   if (!shell) return null;
@@ -173,12 +171,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0
     || read.page.total === rows.length && read.links?.total === 0);
 
-  const count = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : undefined);
-  const inProject: Row[] = projectMode ? [
-    { key: 'in-map', icon: 'map', kind: '', title: 'Map', end: count(sketches?.total, 'map', 'maps'), to: `${base}/map` },
-    { key: 'in-wiki', icon: 'doc', kind: '', title: 'Wiki', end: count(docs?.length, 'page', 'pages'), to: `${base}/docs` },
-    { key: 'in-tasks', icon: 'tasks', kind: '', title: 'Tasks', end: current.summary?.unfinishedTotal ? `${current.summary.unfinishedTotal} open` : undefined, to: `${base}/tasks` },
-  ] : [];
   const connected: Row[] = projectMode && project.access === 'manager' ? [{ key: 'github', icon: 'link', kind: '', title: 'GitHub repositories', to: `${base}/github` }] : [];
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
@@ -216,7 +208,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         {multiPage(read.links) ? <WorkPagination page={read.links} busy={read.relationBusy} label="Overview relation pages" noun="links" onCursor={read.moveRelations} onRefresh={read.refreshRelations} /> : null}
       </div> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
-      {projectMode ? <Rows label="In this space" rows={inProject} /> : <>
+      {projectMode ? null : <>
         <Rows label={messageMode ? 'On a map' : 'Maps'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No maps yet. <Link to={`${base}/map`}>Open the Map</Link> to think out loud together.</> : undefined} />
         {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} maps</Link></p> : null}
         <Rows label="Wiki" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No Wiki pages yet. <Link to={`${base}/docs`}>Open the Wiki</Link> to keep what you learn.</> : undefined} />

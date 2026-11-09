@@ -496,19 +496,24 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
  * Live sessions running in one project, for the header's quiet "live now" cue. The server
  * rechecks each session's anchor for this reader; presence can be unknown.
  */
+const sessionsSeen = new Map<string, LiveSession[]>();
+
 export function useProjectSessions(projectId: string | undefined, enabled: boolean): { items: LiveSession[]; refresh(): void } {
-  const [loaded, setLoaded] = useState<{ projectId: string; items: LiveSession[] } | null>(null);
+  const { phase, meId } = useLive();
+  const key = projectId ? `${meId}:${projectId}` : null;
+  const [loaded, setLoaded] = useState<{ key: string; items: LiveSession[] } | null>(null);
   const [tick, setTick] = useState(0);
-  const { phase } = useLive();
   useEffect(() => {
-    if (!projectId || !enabled) return;
+    if (!projectId || !key || !enabled) return;
     const controller = new AbortController();
-    const load = () => discoverSessions(projectId, controller.signal).then((page) => setLoaded({ projectId, items: page.items }), () => undefined);
+    const load = () => discoverSessions(projectId, controller.signal).then((page) => { sessionsSeen.set(key, page.items); setLoaded({ key, items: page.items }); }, () => undefined);
     void load();
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 12_000);
     return () => { controller.abort(); window.clearInterval(timer); };
-  }, [projectId, enabled, tick, phase]);
-  const items = enabled && loaded && loaded.projectId === projectId ? loaded.items : [];
+  }, [projectId, key, enabled, tick, phase]);
+  // What the header already read is there when a row of More mounts with its menu, so a call in the space is never missed
+  // while that read is on its way (#873: the narrow phone's Join row).
+  const items = !enabled || !key ? [] : loaded && loaded.key === key ? loaded.items : sessionsSeen.get(key) ?? [];
   return { items, refresh: () => setTick((n) => n + 1) };
 }
 

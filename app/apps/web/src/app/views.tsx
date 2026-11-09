@@ -4,18 +4,6 @@ import { EmptyState } from '../ui';
 import { useShellData } from './data';
 import { useReadingPosition } from '../drafts/store';
 
-/** Home's places, for the direction a switch between them slides: the overview first, then the Map and Tasks. */
-export const VIEWS = [
-  { id: 'conversation', label: 'Overview', path: '/' },
-  { id: 'map', label: 'Map', path: '/map' },
-  { id: 'tasks', label: 'Tasks', path: '/tasks' },
-] as const;
-
-export function viewIndex(pathname: string): number {
-  const index = VIEWS.findIndex((view) => view.path !== '/' && pathname.startsWith(view.path));
-  return index < 0 ? 0 : index;
-}
-
 /** A view's scroll area. Its reading position is kept per account and view across switches and reloads. */
 function Pane({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
