@@ -123,17 +123,29 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
       body: { body: 'Please re-run the load test on the new hinge.', clientMessageId: randomUUID(), kind: 'handoff' },
     }), 201) as ConversationMessage;
 
-    // 4. Every contribution is shown in the conversation, marked by its kind, for a person who can only read.
+    // 4. Every contribution is shown in the task's discussion, for another member of the space, and the lines of an effect carry their kind.
+    // The discussion is read in the task's Details (#868, #1048); a link to one of its messages opens it as a thread beside the stream,
+    // whose opening message is the blocker. That opening message draws no marker (its kind is asserted on the wire above).
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     for (const width of [1280, 390]) {
       const readerPage = await (await signedIn(reader, width)).newPage();
       readerPage.on('pageerror', (error) => errors.push(error.message));
+      await readerPage.goto(`/projects/${place.id}/tasks?open=work:${task.id}`);
+      const activity = readerPage.getByRole('list', { name: 'Task activity' });
+      const cameOfItLine = activity.locator(`[data-message-id="${afterResult.messages[1]!.id}"]`);
+      await cameOfItLine.waitFor();
+      assert.match(await cameOfItLine.innerText(), /The new hinge holds at 40 N/);
+      assert.equal(await cameOfItLine.locator('[data-contribution="came_of_it"]').innerText(), 'What came of it');
+      assert.equal(await activity.locator(`[data-message-id="${handoff.id}"] [data-contribution="handoff"]`).innerText(), 'Handoff instruction');
+      assert.ok(await readerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no horizontal overflow in the task at ${width}px`);
+      if (evidence) { mkdirSync(evidence, { recursive: true }); await readerPage.screenshot({ path: join(evidence, `task-effects-reader-details-${width}.png`), fullPage: true }); }
+
       await readerPage.goto(path);
-      const blocker = readerPage.locator(`#message-${afterBlocker.rootMessageId}`);
-      await blocker.waitFor();
-      assert.match(await blocker.innerText(), /Jonas Writer/);
-      assert.match(await blocker.innerText(), /Waiting for the replacement hinge/);
-      assert.equal(await blocker.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
+      const opening = readerPage.locator(`#thread-root-${afterBlocker.rootMessageId}`);
+      await opening.waitFor();
+      assert.equal(await readerPage.locator(`#message-${afterBlocker.rootMessageId}`).count(), 0, 'the discussion\'s root is not a row of the stream');
+      assert.match(await opening.innerText(), /Jonas Writer/);
+      assert.match(await opening.innerText(), /Waiting for the replacement hinge/);
       const line = readerPage.locator(`#message-${afterResult.messages[1]!.id}`);
       // The line is a reply: the thread beside the stream stays hidden until its own first reads settle
       // (#155, up to 1 s), and innerText omits hidden text (#271). Read it once its text is shown.
@@ -141,7 +153,8 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
       assert.match(await line.innerText(), /The new hinge holds at 40 N/);
       assert.equal(await line.locator('[data-contribution="came_of_it"]').innerText(), 'What came of it');
       assert.equal(await readerPage.locator(`#message-${handoff.id} [data-contribution="handoff"]`).innerText(), 'Handoff instruction');
-      assert.equal(await readerPage.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0, 'a reader has no composer');
+      // A space has no read-only reader since #903 (Member and Admin): the person added to it can answer in the thread.
+      await readerPage.getByRole('textbox', { name: 'Reply', exact: true }).waitFor();
       assert.ok(await readerPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `no horizontal overflow at ${width}px`);
       if (evidence) { mkdirSync(evidence, { recursive: true }); await readerPage.screenshot({ path: join(evidence, `task-effects-reader-${width}.png`), fullPage: true }); }
     }

@@ -135,7 +135,7 @@ async function assertAuthorColumn(row: Locator, width: number) {
  */
 async function captureVisibleAuthor(page: Page, row: Locator, name: string, evidence: string | undefined,
   disturb?: () => Promise<unknown>) {
-  const meta = row.locator('.project-convo__message-meta, .convo-notice__meta');
+  const meta = row.locator('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta');
   await meta.scrollIntoViewIfNeeded();
   if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) await meta.hover();
   await page.evaluate(() => document.fonts.ready);
@@ -143,8 +143,8 @@ async function captureVisibleAuthor(page: Page, row: Locator, name: string, evid
     animation.effect?.getTiming().iterations === Infinity || (!animation.pending && animation.playState !== 'running')));
   const inspect = () => row.evaluate((element) => {
     const label = element.querySelector<HTMLElement>('.agent-for, .convo-notice__meta strong')!;
-    const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .convo-notice__meta')!;
-    const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face)')!;
+    const meta = element.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta')!;
+    const face = element.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
     const parts = [];
     const authorName = meta.querySelector<HTMLElement>('.agent-id__name, :scope > strong')!;
     const tag = meta.querySelector<HTMLElement>('.agent-tag');
@@ -224,14 +224,17 @@ test('agent root renders without a human DM link, real human reply persists, and
     page.on('pageerror', (error) => errors.push(error.message));
     const path = `/projects/${place.id}/conversations/${root.conversationId}`;
     await page.goto(path);
-    const row = page.locator(`#message-${root.id}`);
+    // A task's discussion is no root of the space's conversation (#868, #1048): its link opens the thread at once, and the
+    // agent's first line is the thread's opening message, not a row of the stream.
+    const row = page.locator(`#thread-root-${root.id}`);
     await row.waitFor();
+    assert.equal(await page.locator(`#message-${root.id}`).count(), 0, 'the discussion\'s root is not a row of the stream');
     await assertAuthorColumn(row, 1280);
     assert.match(await row.innerText(), /Trial analyst\s*Agent/);
     assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.message-time time').getAttribute('datetime'), root.createdAt);
-    // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
+    // One project conversation (UI116-1): the thread opens beside the stream, with the root, its replies and the reply box.
     // The thread's audience is the space's, the default, so its composer says nothing about it (#871).
     await page.getByRole('textbox', { name: 'Reply', exact: true }).waitFor();
     assert.equal(await page.locator('#thread .project-convo__composer .composer__audience').count(), 0);
@@ -265,10 +268,10 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.deepEqual(await taskDiscussionUseCases(db).contribute(actor, task.id, command), root);
     await page.reload();
     await row.waitFor();
-    assert.equal(await page.locator(`#message-${root.id}`).count(), 1);
-    const opening = page.locator(`#thread-root-${root.id}`);
-    await assertAuthorColumn(opening, 1280);
-    await opening.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
+    assert.equal(await page.locator(`#thread-root-${root.id}`).count(), 1);
+    assert.equal(await page.locator(`#message-${root.id}`).count(), 0);
+    await assertAuthorColumn(row, 1280);
+    await row.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
     const notice = page.locator(`.convo-notice[data-work-id="${task.id}"]`);
     await assertAuthorColumn(notice, 1280);
     assert.equal(await notice.locator('.convo-notice__meta strong').innerText(), 'Casey Human · you');
@@ -280,8 +283,9 @@ test('agent root renders without a human DM link, real human reply persists, and
       const view = await readerContext.newPage();
       view.on('pageerror', (error) => errors.push(error.message));
       await view.goto(path);
-      const agentRow = view.locator(`#message-${root.id}`);
+      const agentRow = view.locator(`#thread-root-${root.id}`);
       await agentRow.waitFor();
+      assert.equal(await view.locator(`#message-${root.id}`).count(), 0, 'the reader\'s stream has no row for the discussion\'s root');
       await assertAuthorColumn(agentRow, width);
       await agentRow.locator('.agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
       assert.match(await agentRow.innerText(), /Trial analyst\s*Agent/);
@@ -291,35 +295,20 @@ test('agent root renders without a human DM link, real human reply persists, and
       await assertAuthorColumn(humanRow, width);
       assert.equal(await humanRow.locator(`a[href$="with=${owner.id}"]`).count(), 1);
       const thread = view.locator('#thread');
-      await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
-      await thread.locator('.thread__root .agent-for').filter({ hasText: 'for Casey Human' }).waitFor();
-      await thread.getByText('You have read access to this space.', { exact: true }).waitFor();
-      assert.equal(await view.getByRole('textbox', { name: 'Reply', exact: true }).count(), 0);
-      assert.equal(await view.getByRole('button', { name: 'Send reply', exact: true }).count(), 0);
-      const sources = thread.getByRole('button', { name: 'Sources', exact: true });
-      await sources.focus();
-      await sources.press('Enter');
-      await view.getByRole('heading', { name: `Sources · saved for ${place.name}`, exact: true }).waitFor();
-      assert.equal(await view.getByRole('button', { name: 'Add material', exact: true }).count(), 0);
-      await view.getByRole('button', { name: 'Close sources', exact: true }).click();
-      expectStatus(await reader.browser.request('POST', `/api/v1/conversations/${root.conversationId}/messages`, {
-        body: { body: 'This viewer cannot publish.', clientMessageId: randomUUID() },
-      }), 403);
-      expectStatus(await reader.browser.request('POST', taskDiscussionPath(task.id), {
-        body: { body: 'This viewer cannot publish to the canonical task.', clientMessageId: randomUUID(), kind: 'text' },
-      }), 403);
+      // A space has no read-only reader since #903 (Member and Admin): the person added to it writes in the thread beside the history.
+      await thread.getByRole('textbox', { name: 'Reply', exact: true }).waitFor();
+      assert.equal(await view.getByText('You have read access to this space.').count(), 0);
       if (evidence) await view.screenshot({ path: join(evidence, `mixed-authors-reader-${width}.png`), fullPage: true });
       if (width === 390) {
         await view.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
         await assertAuthorColumn(humanRow, width);
-        await assertAuthorColumn(thread.locator(`#thread-root-${root.id}`), width);
+        await assertAuthorColumn(agentRow, width);
         assert.equal(await view.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0,
           'full author names and faces fit the phone at enlarged text');
         if (evidence) await view.screenshot({ path: join(evidence, 'mixed-authors-reader-390-text200.png'), fullPage: true });
+        await captureVisibleAuthor(view, agentRow, 'agent-owner-reader-390-text200', evidence);
         await view.getByRole('button', { name: 'Close replies', exact: true }).click();
         await view.locator('#thread').waitFor({ state: 'detached' });
-        await assertAuthorColumn(agentRow, width);
-        await captureVisibleAuthor(view, agentRow, 'agent-owner-reader-390-text200', evidence);
         const event = view.locator(`.convo-notice[data-work-id="${task.id}"]`);
         await assertAuthorColumn(event, width);
         assert.equal(await event.locator('.convo-notice__meta strong').innerText(), 'Casey Human');
@@ -344,6 +333,14 @@ test('agent root renders without a human DM link, real human reply persists, and
       assert.equal(await workspaceView.evaluate(() => matchMedia('(pointer: coarse)').matches), touch,
         'both the actual narrow mouse window and touch-emulated phone are exercised');
       await workspaceView.evaluate(() => { document.documentElement.style.fontSize = '200%'; });
+      // The workspace agent's first line is the opening message of the thread its link opens; the stream has one line for the event.
+      const workspaceRow = workspaceView.locator(`#thread-root-${workspaceRoot.id}`);
+      await assertAuthorColumn(workspaceRow, 390);
+      await workspaceRow.locator('.agent-for').waitFor();
+      assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
+      assert.equal(await workspaceView.locator(`#message-${workspaceRoot.id}`).count(), 0);
+      assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
+      await captureVisibleAuthor(workspaceView, workspaceRow, `workspace-agent-author-390-dark-text200${touch ? '-touch' : ''}`, evidence);
       await workspaceView.getByRole('button', { name: 'Close replies', exact: true }).click();
       await workspaceView.locator('#thread').waitFor({ state: 'detached' });
       const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
@@ -351,12 +348,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       await workspaceEvent.locator('.agent-for').waitFor();
       assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
       await captureVisibleAuthor(workspaceView, workspaceEvent, `workspace-agent-event-390-dark-text200${touch ? '-touch' : ''}`, evidence);
-      const workspaceRow = workspaceView.locator(`#message-${workspaceRoot.id}`);
-      await assertAuthorColumn(workspaceRow, 390);
-      await workspaceRow.locator('.agent-for').waitFor();
-      assert.equal(await workspaceRow.locator('a[href*="/dm/new"]').count(), 0);
       assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
-      await captureVisibleAuthor(workspaceView, workspaceRow, `workspace-agent-author-390-dark-text200${touch ? '-touch' : ''}`, evidence);
       if (touch) {
         // Negative control (#367): a late line above the author, as when a task chip used to gain its number
         // after the reference read answered, moves the identity about 39px between frames and must fail.
@@ -383,18 +375,19 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await grant(owner, place.id, casey, 'contributor');
     await grant(owner, place.id, guest, 'contributor');
     // Casey's agent has Casey's rights (F-036 AG-3): the manager watching this page changes them by changing Casey's access.
+    // A task goes to a person's own agent only through that person (AG-5, #904), so Casey gives it, not the manager.
     const agent = expectStatus(await casey.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
       body: { name: 'Scoped analyst', owner: 'self' },
     }), 201) as { id: string };
     const work = workUseCases(db);
     const actor = { kind: 'agent' as const, id: agent.id };
-    const task = await work.createWork({ kind: 'human', id: owner.id }, place.id, { title: 'Scoped owner task', owner: actor });
+    const task = await work.createWork({ kind: 'human', id: casey.id }, place.id, { title: 'Scoped owner task', owner: actor });
     const proposal = await work.proposeDecision(actor, place.id, { title: 'Scoped agent decision', rationale: 'Measured by an actual authorized actor' });
     await taskDiscussionUseCases(db).contribute(actor, task.id, { body: 'Current scoped agent reply', clientMessageId: randomUUID() });
     const elsewhere = await project(owner, ws.id, 'Other owner scope', 'restricted');
     await grant(owner, elsewhere.id, guest, 'contributor');
     await grant(owner, elsewhere.id, casey, 'contributor');
-    const otherTask = await work.createWork({ kind: 'human', id: owner.id }, elsewhere.id, { title: 'Other scoped task', owner: actor });
+    const otherTask = await work.createWork({ kind: 'human', id: casey.id }, elsewhere.id, { title: 'Other scoped task', owner: actor });
     await removeFromSpace(owner, elsewhere.id, casey);
     const context = await signedIn(owner, 1440);
     const page = await context.newPage();
@@ -486,12 +479,13 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await row.locator('.agent-for').waitFor();
     // The same workspace has a second project with different agent rights. A workspace-keyed
     // owner cache would wrongly reuse the first project's authorized name here.
-    await page.getByRole('link', { name: 'Other owner scope', exact: true }).click();
+    // Casey made the task there, so the rail reads "Other owner scope, new activity" for the manager.
+    await page.getByRole('link', { name: /^Other owner scope/ }).click();
     await page.locator(`a[data-tab="tasks"][href^="/projects/${elsewhere.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'Board', exact: true }).click();
     await page.locator(`[data-card-id="${otherTask.id}"]`).waitFor();
     assert.equal(await page.locator(`[data-card-id="${otherTask.id}"] .agent-for`).count(), 0);
-    await page.getByRole('link', { name: 'Owner scope', exact: true }).click();
+    await page.getByRole('link', { name: /^Owner scope/ }).first().click();
     await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();
