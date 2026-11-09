@@ -360,7 +360,7 @@ class LiveJourney(LiveBase):
         # AC-2: navigation keeps one connection; showing a doc does not move anybody.
         tabs = nia.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
-        nia.get_by_role("link", name=re.compile(DOC)).click()
+        # The Wiki opens its first page itself; with one page there is no list to click (#869).
         expect(nia.get_by_role("heading", name=DOC, level=2)).to_be_visible()
         expect(self.bar(nia)).to_be_visible()
         self.assertEqual(nia.evaluate("window.__live.sockets"), 1, "one media connection across routes")

@@ -1047,8 +1047,8 @@ class LiveEditingJourney(LiveFixture):
         self.assertLess(observed, 8, f"{observed} element observations for {previews} previews of a 40-thought map")
         self.assertLessEqual(rendered, 3 * previews, f"{rendered} thought renders for {previews} previews of a 40-thought map")
 
-        # A stationary live preview still receives both people's real presence
-        # heartbeats. They must not recreate or render the moved Thought body.
+        # A stationary live preview still receives a real presence heartbeat.
+        # It must not recreate or render the moved Thought body.
         # This pause stays inside the unchanged five-second movement lease.
         # The first drag has already committed above; start another real preview.
         bounds = await node.bounding_box()
@@ -1062,10 +1062,13 @@ class LiveEditingJourney(LiveFixture):
         presence_before = sum(row['direction'] == 'received' and row['header'].get('type') == 'map-presence'
                               for row in self.frames['kai'])
         quiet_before = await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})")
-        await kai.wait_for_timeout(2100)
+        # A stationary person's heartbeat goes every other second when it says nothing new (#850, the tick is one second, so a period is
+        # two to three), and the server does not announce a renewal that changed nothing. 3.2 s therefore always holds one heartbeat's
+        # frame, and still ends inside the five-second movement lease.
+        await kai.wait_for_timeout(3200)
         presence_after = sum(row['direction'] == 'received' and row['header'].get('type') == 'map-presence'
                              for row in self.frames['kai'])
-        self.assertGreaterEqual(presence_after - presence_before, 2, 'Actual presence frames arrived during the stationary preview')
+        self.assertGreaterEqual(presence_after - presence_before, 1, 'An actual presence frame arrived during the stationary preview')
         self.assertEqual(await kai.evaluate("({observed: window.__observed, rendered: window.__rendered})"), quiet_before,
                          'Presence-only updates do not render thought bodies or reobserve nodes')
         await ada.mouse.up()

@@ -1,9 +1,10 @@
 import type { FastifyInstance } from 'fastify';
-import { WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand } from '@flux/contracts';
+import { ME_PROBE_HEADER, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listRemovedPeople, listWorkspaces, removeMember, renameWorkspace, restoreMember } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
 import { nameSchema } from '../http/schemas.js';
+import { UnauthenticatedError } from '../identity/index.js';
 import type { AccessContext } from './context.js';
 
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
@@ -14,7 +15,15 @@ const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest']
  */
 export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers, readOptions }: AccessContext,
   options: { testDeployment?: boolean } = {}) {
-  app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db, accessPorts, readOptions()));
+  app.get(WORKSPACES_PATH, async (request, reply) => {
+    try {
+      return await listWorkspaces(await principal(request), db, accessPorts, readOptions());
+    } catch (error) {
+      // The shell asks for the company beside the session check (#862). Asked as a probe, a signed-out page gets a 200 `null`, not a 401 the console logs (#546).
+      if (error instanceof UnauthenticatedError && request.headers[ME_PROBE_HEADER] === '1') return reply.type('application/json').send('null');
+      throw error;
+    }
+  });
   if (options.testDeployment) {
     app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
       schema: { body: { type: 'object', required: ['name'], additionalProperties: false, properties: { name: nameSchema } } },

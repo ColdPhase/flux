@@ -603,6 +603,16 @@ class OneConversationJourney(unittest.TestCase):
         thread = self.thread(page)
         expect(thread).to_be_visible()
         page.wait_for_timeout(400)
+        # A thread opens at half height like every sheet, the conversation still in view above it; full is dragged up (guide §4, #868).
+        detent = page.locator("[data-detent-sheet]")
+        expect(detent).to_have_attribute("data-height", "half")
+        half = thread.bounding_box()
+        assert half
+        self.assertAlmostEqual(half["y"] + half["height"], page.viewport_size["height"], delta=1, msg="the half sheet sits on the bottom edge")
+        self.assertGreater(half["y"], page.viewport_size["height"] / 4, "the conversation stays visible above the half sheet")
+        thread.get_by_role("button", name="Show full height").evaluate("el => el.click()")
+        expect(detent).to_have_attribute("data-height", "full")
+        page.wait_for_timeout(400)
         sheet, header, pane = thread.bounding_box(), page.locator("header").bounding_box(), page.locator(".app__pane").bounding_box()
         assert sheet and header and pane
         self.assertEqual((round(sheet["x"]), round(sheet["width"])), (0, PHONE["width"]), "a full-width sheet")
