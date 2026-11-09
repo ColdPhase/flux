@@ -147,7 +147,7 @@ export function PhoneCreate({ open, onClose, projects, projectId }: {
   const rows: Row[] = [
     { id: 'task', label: 'Task', icon: 'tasks', run: chosen ? create({ kind: 'task', projectId: chosen.id }) : null, hint: 'needs a space' },
     { id: 'thought', label: 'Thought', icon: 'chat', run: create({ kind: 'thought' }) },
-    { id: 'decision', label: 'Decision', icon: 'goal', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
+    { id: 'decision', label: 'Decision', icon: 'flag', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
     { id: 'page', label: 'Page', icon: 'doc', run: chosen ? create({ kind: 'page', projectId: chosen.id }) : null, hint: 'needs a space' },
     { id: 'space', label: 'Space', icon: 'grid', run: workspace?.role === 'guest' ? null : create({ kind: 'space' }), hint: 'not for guests' },
   ];
