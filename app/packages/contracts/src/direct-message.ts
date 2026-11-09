@@ -55,6 +55,8 @@ export interface DmSummary {
   createdAt: string;
   lastMessageAt: string | null;
   lastMessageBody: string | null;
+  /** Present only when the last message was an answer posted with Show everyone (#842): the list names it ("via Assistant: …"). */
+  lastMessageVia?: string;
 }
 
 /**

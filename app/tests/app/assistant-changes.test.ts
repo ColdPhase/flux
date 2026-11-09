@@ -543,9 +543,13 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const found = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', `/api/v1/search?q=zebrafish`), 200) as { items: { id: string; author: string | null }[] }).items
       .find((item) => item.id.endsWith(mentioning.messageId))), 'the search result');
     assert.equal(found.author, 'ac-ada · via Test client');
-    const away = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as { items: { actor: string | null; text: string }[] }).items
-      .find((item) => item.text.includes('zebrafish'))), 'the "While you were away" item');
+    const summary = await waitFor(async () => {
+      const read = expectStatus(await peer.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as { items: { actor: string | null; text: string }[]; nextStep: { text: string } | null };
+      return read.items.some((item) => item.text.includes('zebrafish')) ? read : null;
+    }, 'the "While you were away" item');
+    const away = summary.items.find((item) => item.text.includes('zebrafish'))!;
     assert.deepEqual([away.actor, away.text.startsWith('ac-ada · via Test client asked you: ')], ['ac-ada · via Test client', true]);
+    assert.equal(summary.nextStep?.text, 'Answer ac-ada\'s question, posted via Test client', 'the next step names the mark too');
     const exported = expectStatus(await owner.browser.request('GET', projectExportPath(place.id)), 200) as { conversations: { messages: { id: string; via?: string; author: { kind: string } }[] }[] };
     const exportedMessage = exported.conversations.flatMap((conversation) => conversation.messages).find((message) => message.id === mentioning.messageId)!;
     assert.deepEqual([exportedMessage.author.kind, exportedMessage.via], ['human', 'Test client'], 'the export keeps who it was posted through');

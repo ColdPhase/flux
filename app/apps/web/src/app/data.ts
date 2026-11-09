@@ -106,7 +106,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
-    audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
+    audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody && dm.lastMessageVia ? `via ${dm.lastMessageVia}: ${dm.lastMessageBody}` : dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
   return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents };
 }

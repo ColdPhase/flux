@@ -74,8 +74,10 @@ complicated or different").
   for everything that follows: they edit or delete it like any message of theirs (and an edit makes the words theirs, so the mark goes),
   an assistant's brief does not take it for their own words (the mark is the same). The mark goes with the message everywhere it is
   named: a person it mentions is told "Ada · via Claude Code mentioned you in …" (the Inbox item, the push and the notice are marked as
-  AI-origin, so they are hidden while AI is off in the space), a search result and the "While you were away" summary name it the
-  same way, and the project export keeps it as the message's `via`. An answer posted with Show everyone is named the same way
+  AI-origin, so they are hidden while AI is off in the space), a search result and the "While you were away" summary (its item and
+  its next step, "Answer Ada's question, posted via Claude Code") name it the same way, and the project export keeps it as the
+  message's `via`. An answer posted with Show everyone is named the same way, also in a direct message and its thread, where it
+  starts its own author run after the person's own message, and the direct messages list names it before the words ("via Assistant: …")
   (#1091, review of #1105). It has no change line and no Undo of its own, since the person's own Delete takes it back (the change is
   still in the log). In a task's discussion the client stays an agent: its line there is its agent's own, counted by the
   five-in-a-row limit (C-51) and its owner's to delete (TA-3), so a client cannot reset the guard by posting as the person.

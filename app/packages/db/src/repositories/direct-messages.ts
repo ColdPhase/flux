@@ -22,6 +22,7 @@ const activity = sql`coalesce(${d.lastMessageAt}, ${d.createdAt})`;
 // Qualified by hand: Drizzle leaves columns of a single-table select unqualified, and an unqualified
 // `id` inside this subquery would name dm_messages.id.
 const lastBody = sql<string | null>`(SELECT lm.body FROM dm_messages lm WHERE lm.dm_id = "dms"."id" AND lm.kind = 'text' ORDER BY lm.sequence DESC LIMIT 1)`;
+const lastVia = sql<string | null>`(SELECT lm.via FROM dm_messages lm WHERE lm.dm_id = "dms"."id" AND lm.kind = 'text' ORDER BY lm.sequence DESC LIMIT 1)`;
 const lastId = sql<string | null>`(SELECT lm.id FROM dm_messages lm WHERE lm.dm_id = "dms"."id" AND lm.kind = 'text' ORDER BY lm.sequence DESC LIMIT 1)`;
 
 export interface NewDmRow {
@@ -49,12 +50,12 @@ export function dmRows(db: DbExecutor) {
     for (const row of rows) byDm.set(row.dmId, [...(byDm.get(row.dmId) ?? []), { id: row.id, name: row.name }]);
     return byDm;
   }
-  async function records(read: { row: DmRow; lastMessageId: string | null; lastMessageBody: string | null }[]) {
+  async function records(read: { row: DmRow; lastMessageId: string | null; lastMessageBody: string | null; lastMessageVia: string | null }[]) {
     // F-030: a DM's title and its last message are sealed in an encrypted workspace; opened here, never in SQL.
     const seals = await sealsOf(db, read.map(({ row }) => row.workspaceId), { write: false });
-    const rows = read.map(({ row, lastMessageId, lastMessageBody }) => {
+    const rows = read.map(({ row, lastMessageId, lastMessageBody, lastMessageVia }) => {
       const seal = seals.get(row.workspaceId)!;
-      return { row: { ...row, title: openField('dms', 'title', [row.id], row.title, seal) ?? null },
+      return { row: { ...row, title: openField('dms', 'title', [row.id], row.title, seal) ?? null }, lastMessageVia,
         lastMessageBody: lastMessageId ? openField('dm_messages', 'body', [lastMessageId], lastMessageBody, seal) ?? null : lastMessageBody };
     });
     const people = await participants(rows.map(({ row }) => row.id));
@@ -62,10 +63,10 @@ export function dmRows(db: DbExecutor) {
     const pairNames = new Map(pairIds.length
       ? (await db.select({ id: users.id, name: users.name }).from(users).where(inArray(users.id, pairIds))).map((u) => [u.id, u.name])
       : []);
-    return rows.map(({ row, lastMessageBody }) => ({
+    return rows.map(({ row, lastMessageBody, lastMessageVia }) => ({
       pair: row.pairKey ? row.pairKey.split(':').map((id) => ({ id, name: pairNames.get(id) ?? '' })) : null,
       id: row.id, workspaceId: row.workspaceId, kind: row.kind, title: row.title, createdBy: row.createdBy, version: row.version,
-      createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, participants: people.get(row.id) ?? [],
+      createdAt: row.createdAt, lastMessageAt: row.lastMessageAt, lastMessageBody, lastMessageVia, participants: people.get(row.id) ?? [],
     }));
   }
   async function replyCounts(rootIds: string[]) {
@@ -75,7 +76,7 @@ export function dmRows(db: DbExecutor) {
     for (const row of rows) if (row.rootId) counts.set(row.rootId, row.n);
     return counts;
   }
-  const select = () => db.select({ row: d, lastMessageId: lastId, lastMessageBody: lastBody }).from(d);
+  const select = () => db.select({ row: d, lastMessageId: lastId, lastMessageBody: lastBody, lastMessageVia: lastVia }).from(d);
   const open = (rows: MessageRow[]) => openRows(db, 'dm_messages', rows);
   const find = async (id: string) => (await records(await select().where(eq(d.id, id))))[0] ?? null;
 

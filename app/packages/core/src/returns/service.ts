@@ -400,7 +400,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           text: addressed ? `${author} asked you: ${quote(excerpt(message.body))}` : `${author} asked: ${quote(excerpt(message.body))}`,
           detail: `In ${quote(excerpt(conversation.opening, 60))}`, needsYou: true,
           source: { type: 'message', projectId: message.projectId, conversationId: conversation.id, messageId: message.id },
-          step: { priority: addressed ? 1 : 2, text: `Answer ${name}'s question`,
+          step: { priority: addressed ? 1 : 2, text: `Answer ${name}'s question${message.via ? `, posted via ${message.via}` : ''}`,
             // The request itself comes first and is not cut short; where it was asked follows briefly.
             reason: addressed ? `${quote(excerpt(message.body, 200))} ${author} asked you in ${quote(excerpt(conversation.opening, 40))}.`
               : `${quote(excerpt(message.body, 200))} ${author} asked in ${quote(excerpt(conversation.opening, 40))}, a conversation you are part of.` } });
