@@ -36,7 +36,7 @@ export interface PaneProps {
   rootHeader?: (objects: { preview: MessageWorkPreview | null; taskRow: NativeWorkRow | null; firstDay: string | null }) => ReactNode;
   /** thread: the root's message id, which the stream shows and arrives at. */
   rootMessageId?: string | null;
-  /** thread: the decisions and results the project's conversation announces (#694); the thread shows the ones made from it. */
+  /** thread: the decisions the project's conversation announces (#694); the thread shows the ones made from it. */
   objects?: ObjectNotice[];
   /** stream: a root the person just started. */
   onPosted?: (conversation: Conversation) => void;
@@ -90,10 +90,10 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   const objects = useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied);
-  // Another member proposes or accepts a decision, records a result or makes a task (#694): the stream and an open thread
+  // Another member proposes or accepts a decision or makes a task (#694): the stream and an open thread
   // read it now instead of at the next poll. The events carry ids only; what is shown is read through the API.
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|result_recorded|work_created|assistant_change_undone)\.v1$/.test(event.kind)) revalidator.revalidate();
+    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|work_created|assistant_change_undone)\.v1$/.test(event.kind)) revalidator.revalidate();
   });
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);

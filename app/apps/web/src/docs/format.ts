@@ -30,6 +30,6 @@ export const FORMER_MEMBER = 'Former member';
 export const authorLabel = (who: NamedPrincipal) => (who.kind === 'agent' ? agentAuthorLabel(who) : who.name);
 
 const KIND: Record<string, string> = {
-  doc: 'Wiki page', work: 'Task', decision: 'Decision', result: 'Result', message: 'Message', thought: 'Thought', sketch: 'Map', material: 'Material',
+  doc: 'Wiki page', work: 'Task', decision: 'Decision', message: 'Message', thought: 'Thought', sketch: 'Map', material: 'Material',
 };
 export const kindLabel = (type: string) => KIND[type] ?? type;

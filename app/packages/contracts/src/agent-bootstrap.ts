@@ -1,10 +1,9 @@
 import type { AgentOperation, AgentPeerRequestClass, AuthenticatedAgentRuntime } from './agent-execution.js';
 
-export const AGENT_SOURCE_KINDS = ['doc', 'material', 'work', 'decision', 'result', 'conversation', 'map'] as const;
+export const AGENT_SOURCE_KINDS = ['doc', 'material', 'work', 'decision', 'conversation', 'map'] as const;
 export type AgentSourceKind = typeof AGENT_SOURCE_KINDS[number];
 export type AgentSourceCheckpoint =
   | { kind: 'doc' | 'material' | 'work' | 'decision'; id: string; version: number }
-  | { kind: 'result'; id: string }
   | { kind: 'conversation'; id: string; sequence: number }
   | { kind: 'map'; id: string; version: number; updatedAt: string };
 export interface AgentSourceReference {

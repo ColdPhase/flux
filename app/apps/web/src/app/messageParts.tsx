@@ -91,13 +91,10 @@ export function openOnWholeMessages(feed: HTMLElement, column: HTMLElement, sele
 }
 
 /**
- * What an explicit native effect contributed to a task thread: a saved blocker, a published result (a link to
- * that exact canonical result) or an explicit public handoff. Ordinary replies show no marker.
+ * What an explicit native effect contributed to a task thread: a saved blocker, the line of what came of a finished task or an
+ * explicit public handoff. Ordinary replies show no marker.
  */
-export function ContributionMark({ contribution, onOpenResult }: { contribution: NonNullable<ConversationMessage['contribution']>; onOpenResult: (resultId: string) => void }) {
-  if (contribution.kind === 'result') {
-    return <button type="button" className="project-convo__source project-convo__contribution" data-contribution="result" onClick={() => onOpenResult(contribution.resultId)}><Icon name="result" size={13} />Result · open details</button>;
-  }
+export function ContributionMark({ contribution }: { contribution: NonNullable<ConversationMessage['contribution']> }) {
   return <span className="project-convo__source project-convo__contribution" data-contribution={contribution.kind}>{contribution.kind === 'blocker' ? 'Saved as the task blocker' : contribution.kind === 'came_of_it' ? 'What came of it' : 'Handoff instruction'}</span>;
 }
 

@@ -17,7 +17,7 @@ test('orientation rejects malformed project ids and malformed/duplicate checkpoi
     await assert.rejects(reads.changes(context, { workspaceId, projectId }, known as Parameters<typeof reads.changes>[2]));
   }
   const id = randomUUID();
-  await assert.rejects(reads.changes(context, { workspaceId, projectId }, [{ kind: 'result', id }, { kind: 'result', id: id.toUpperCase() }]));
+  await assert.rejects(reads.changes(context, { workspaceId, projectId }, [{ kind: 'decision', id, version: 1 }, { kind: 'decision', id: id.toUpperCase(), version: 1 }]));
   assert.equal(queried, false);
   assert.throws(() => normalizeAgentCheckpoint({ kind: 'result', id, version: 1 } as never));
 });

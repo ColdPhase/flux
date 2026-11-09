@@ -762,7 +762,6 @@ its own [error-path rule](#error-paths).
 | `project_task_plan_intents` | — | `creation_fingerprint` | `intent_key` (client-chosen opaque key; the web client sends random UUIDs) |
 | `task_creation_undo_receipts`, `native_command_receipts` | — | `request_fingerprint` | operation names |
 | `project_decisions` | `title`, `rationale` | — | `status` |
-| `project_results` | `title`, `evidence` | — | `finding` (positive or negative) |
 | `project_object_links` | — | — | `role`, types |
 | `drafts` | `title`, `body` | — | `visibility` |
 | `draft_versions` (migration 0006, filled by `preserve_draft_version`) | `title`, `body` (written by the application for a sealed workspace) | — | `visibility` |
@@ -819,8 +818,7 @@ This is stated plainly for the review and for the operations guide. Someone with
   files exist, with their ids, authors, times, sizes and value lengths;
 - the structure: which message is in which conversation and task, reply order, attachment counts,
   DM participants, task dependencies and links between objects;
-- **tasks: number, status, owner, waiting-for person and due date**; decisions' status; results'
-  positive or negative finding; doc contributors;
+- **tasks: number, status, owner, waiting-for person and due date**; decisions' status; doc contributors;
 - maps: thought positions, sizes, shapes and link endpoints (not their text or labels);
 - which thought a message cites (`message_references`, #469: a kind and a target id, never the cited title or text,
   which are opened per reader through the seal); and for a file the numbers read from its bytes at upload, its page count (PDF),
@@ -1119,7 +1117,7 @@ route must be classified.
 ## Behaviour while unlocked
 
 Everything except AI works as in any workspace: conversations, DMs, tasks and task discussions,
-decisions, results, goals, drafts, maps, the live Wiki, files, search, live sessions and export.
+decisions, goals, drafts, maps, the live Wiki, files, search, live sessions and export.
 
 ### Search
 
@@ -1190,7 +1188,7 @@ an **encrypted index at rest, decrypted into RAM**:
   is lost; it is found at the next search after that transaction ends). Another API replica learns of a Lock the first time it handles a
   request or frame for that workspace (every operation checks the unlock rows, and `sealFor` drops the keys, the index and the rooms
   there); until then it keeps the plaintext index in its memory, as it keeps the cached keys (S1).
-- **The chooser.** A chooser search with text (a task, decision or result of one project) uses the same index for its case-insensitive
+- **The chooser.** A chooser search with text (a task or decision of one project) uses the same index for its case-insensitive
   title filter. It replaces the S2a-2a scan of the newest 2000 objects and its `searchLimited` marker, and its test switch.
 - **Test support.** The explain route of a test deployment adds `sealed: { postings, terms, documents }` (what the index read), the
   workspaces with an index in the process with the estimated heap of each, and the number of full builds, so the tests prove that matches
@@ -1459,7 +1457,7 @@ route.
 | AC-5 | S2a | Registry, read from the **live catalog** after all migrations: every table is in `TABLE_CLASSES`, and every text or jsonb column of a content table is in `SEALED_COLUMNS` or `VISIBLE_COLUMNS` (default-deny; `draft_versions` and `search_documents` included). Each sealed table has its backstop trigger. `pg_trigger` and `pg_proc` show no SQL copy of a sealed column except the allowed pair, and `preserve_draft_version` writes nothing for A. An insert of plaintext into each sealed column of A is refused, while B is unchanged. The notification backstop refuses a body or a title outside the templates; the events backstop refuses a free-text string. Every command declares a resolvable scope or an `'account'` operation in the list; the `idempotency_keys` backstop refuses an unscoped row and an unsealed row of A. The SQL source scan finds no unhandled computation over a sealed column. | `tests/app/encryption-registry.test.ts` |
 | AC-6 | S2a | Locked routes: every registered route gives `423` for A's objects or is in `LOCKED_ALLOWED_ROUTES`, with no `500` and no content. Cross-workspace lists return B's items plus `lockedWorkspaces: [A]`. Live Wiki, live map (routes and room upgrades, `423`) and search requests for A answer `423` or leave A out of the answer while it is locked, and write nothing. | `tests/app/encryption-locked-routes.test.ts` |
 | AC-7 | S2a, S2b | **A stolen dump contains no plaintext and no key.** **Writes:** random canaries go into every content type of A through the real API and live sockets, and **every mutating request carries an Idempotency-Key**: project name, message, task discussion reply, DM and group title, task title, outcome, blocker and criteria, a task title change, a doc `PATCH` and an added section, a decision accepted, result, goal, draft and a draft edit (so `draft_versions` gets a row), map title, thought text and link label (live map), Wiki text typed live and saved, material URL, file name and file bytes, a mention notification, a search for a canary, the unlock passwords and the recovery code. **Large canaries:** for each text kind, one value over 8 KiB of repetitive text, so PostgreSQL TOASTs and pglz-compresses it. **Error paths:** a canary in a request that fails validation, one that hits a constraint violation, one that causes an injected 500 (`FLUX_TEST_FAILURE_INJECTION`), a notification generation that fails, an e-mail send that fails (Mailpit refusing), a failing pg-boss job, and a write raced by Lock now mid-request. **Keys:** a fixture-only hook (`FLUX_FIXTURE_TOKEN` and `FLUX_TEST_FAILURE_INJECTION` both set) returns the DEK, `K_seal`, `K_file`, one KEK and the boot key, which become canaries too. **Scan:** the test then **stops the whole stack** and scans `pg_dump` output (the pg-boss schema included; it decompresses TOAST), the raw PostgreSQL volume including `pg_wal`, the files volume, the writable layer of every container (`docker diff` lists the changed paths and `docker export` provides them), every container's log, and the whole PostgreSQL log. Each canary is searched raw, in JSON-escaped form, in hex and in base64 (standard and URL alphabets, at all three offsets; Yjs update bytes are stored as base64 text). **Positive control:** the same canaries in B, including a large compressed one, must be found in the dump. In the raw volume only the uncompressed ones are expected; that is why the dump is scanned too. A must give zero hits, and every AI-class table must have zero rows for A. **PostgreSQL logs, two passes.** Pass 1 runs the whole journey with the production logging settings (`log_statement = none`, the default) and scans the whole PostgreSQL log for **every** canary. Pass 2 repeats it with `log_statement = all` and scans for every canary **except query text**: the search query and the task filter text are sent to PostgreSQL as bind parameters for the plain workspaces' half of a merged search, and PostgreSQL 13 and later log bind parameters in full under `log_statement` (`log_parameter_max_length` defaults to -1). They are transient there and are never written under the default setting. **Digests:** every scan also looks for the SHA-256 hex of each canary and of each request body sent, which would reveal an unkeyed digest. **Per slice:** S2a covers every canary except live Wiki and map typing and search; S2b adds those. Each PR states the canaries it covers, and the S3 PR names the S2 head SHA on which the full AC-7 passed. | `app/tests/app/encryption-dump-scan.check.ts`, `scripts/check_encryption_scan.sh` |
-| AC-8 | S2b | Features in A match B: messages, DMs, tasks and filters, decisions, results, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
+| AC-8 | S2b | Features in A match B: messages, DMs, tasks and filters, decisions, docs and versions, drafts, maps, live Wiki and maps across two APIs, files (upload, download, tampered object refused), export bundle content and digests, and notifications content-free on push (mock) and e-mail (Mailpit). Search covers every kind, labels, typo tolerance, prefix, web syntax, access before ranking (no candidates from hidden audiences; a work counter that does not grow with hidden matches), an edit searchable at once on the other API, merged paging with B, and rebuild after lock and unlock. | `tests/app/encryption-features.test.ts`, `encryption-search.test.ts` |
 | AC-9 | S2a | Locked jobs wait: a message posted, then Lock before the generator runs, gives no notification; after unlock, exactly one. A draft summary is deferred and resumed. Push and e-mail of earlier rows still go out with no content. | `tests/app/encryption-worker.test.ts` |
 | AC-10 | S2a | Backup and restore: the backup holds no canary (the AC-7 scanner on the archive). After restore A is locked and opens with the password valid at backup time; a password set after the backup does not open it. `./flux export` of A exits non-zero with the message. | `scripts/check_backup.sh` case |
 | AC-11 | S3 | Chromium and WebKit, on desktop and phone viewports: create an encrypted space (the copy is present; the button label changes; the repeat mismatch shows an error in place), the recovery code step (Done is disabled until the box is checked; nothing in `localStorage` or `sessionStorage`), the People panel encryption and AI rows in fixed places, the project's Details line, zero `[data-ai-surface]` in A. Restart the stack: Cy sees "Waiting to be unlocked" in the sidebar and at a deep link; Ada gets the wrong-password message, then unlocks, and Cy's open tab updates without a reload. Ben sets his password. Lock now with the inline confirm, and focus returns. Keyboard only. Then a visual review under a neutral brief. | `tests/ui/test_encrypted_workspaces.py` (`./scripts/check_ui.sh`) |
@@ -1504,9 +1502,9 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     `search_changes`, `preserve_draft_version` writing nothing for A, the repository seal resolver
     (`configureSeals`/`sealOf`/`sealRow`/`openRow` in `packages/db/src/sealing.ts`, installed with core's
     `sealFor` in the API and the worker), and sealing in the repositories of projects, goals, project
-    messages and task discussion replies, DMs and DM messages, decisions, results, drafts with their
+    messages and task discussion replies, DMs and DM messages, decisions, drafts with their
     versions, and scoped idempotency rows. It also fixes the agent-thread witness triggers, which made a
-    decision, result, doc version, thought or published file in A fail with `WORKSPACE_ENCRYPTED_AI_OFF`
+    decision, doc version, thought or published file in A fail with `WORKSPACE_ENCRYPTED_AI_OFF`
     (they now skip a sealed workspace), and hashes an AAD over 1024 bytes into the HKDF `info`
     (`[flux seal long v1, SHA-256(AAD)]`; the AAD itself is unchanged), so no identity can make sealing throw.
   - **S2a-2a** (migration 0121): tasks with their activity, blocked/unblocked reasons, plan intents and the
@@ -1536,7 +1534,7 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     truncated object is unavailable, never served. Thumbnails are made in the browser, so nothing else is stored. The
     file detail of #704 (`page_count`, `row_count`, `duration_ms`) stays visible metadata, like `size`.
   - **S2a-2c-1** (migration 0124): content-free notifications. The generator opens a sealed workspace's message, task,
-    decision or result only in RAM to decide who is told and why, then stores the template title ("Ada mentioned you
+    decision only in RAM to decide who is told and why, then stores the template title ("Ada mentioned you
     in Garden club", one per reason) with an empty body; `flux_notification_content_free` refuses any other title or
     a body for a sealed workspace (`NOTIFICATION_CONTENT_REFUSED`; the "who" must be an existing account name,
     `Someone` or `An agent`). Needs-you's proposed decisions and the muted list's project and DM names are opened, and

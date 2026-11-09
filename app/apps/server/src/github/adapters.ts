@@ -1,6 +1,6 @@
 import { artifactUseRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader, type Database, type Transaction } from '@flux/db';
 import {
-  directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, ServiceUnavailableError, sortedIds,
+  directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, resumeWaiting, ServiceUnavailableError, sortedIds,
   unmetPrerequisites, type GithubPorts, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type WorkRecord,
 } from '@flux/core';
 import { workRepository } from '../work/adapters.js';
@@ -21,7 +21,13 @@ function githubTasks(tx: Transaction, events: TransactionEventSession, retained:
   return {
     async find(taskId, lock = false) { const record = await work.findWork(taskId, { lock }); return record ? state(record) : null; },
     async lockForRules(workspaceId, projectId, taskIds) {
-      const wanted=()=>directPrerequisiteIds(work,workspaceId,taskIds).then(prior=>sortedIds([...taskIds,...prior],'taskIds'));
+      // The tasks themselves, their direct prerequisites and the blocked tasks that wait for them (#1055): one of these may finish now, and
+      // the ones waiting for it go back to Doing in the same transaction. Found again after the graph lock, so a new waiter is a refusal.
+      const wanted=async()=>{
+        const prior=await directPrerequisiteIds(work,workspaceId,taskIds);
+        const waiting=(await Promise.all(taskIds.map(id=>work.waiters({kind:'task',id})))).flat();
+        return sortedIds([...taskIds,...prior,...waiting],'taskIds');
+      };
       if(retained.scope&&(retained.scope.workspaceId!==workspaceId||retained.scope.projectId!==projectId))throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
       if(!retained.fence){
         retained.scope={workspaceId,projectId};
@@ -35,7 +41,18 @@ function githubTasks(tx: Transaction, events: TransactionEventSession, retained:
       }
       return tasks;
     },
-    async move(taskId, change, by) { return state(await work.updateWork(taskId, change, by, 'github_rule')); },
+    async move(taskId, change, by) {
+      const before = await work.findWork(taskId);
+      const record = await work.updateWork(taskId, change, by, 'github_rule');
+      // A task the rule finishes lets the tasks that wait for it continue, as when a person finishes it (#868, #1055).
+      if (record.status === 'done' && before && before.status !== 'done') {
+        const waiters = await work.waiters({ kind: 'task', id: taskId });
+        if (waiters.some((id) => !retained.fence?.ids.includes(id))) throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
+        await resumeWaiting({ work, events }, by, by, waiters, (task) => task.waitingOn?.kind === 'task' && task.waitingOn.id === taskId,
+          { said: `#${record.number} is done`, token: 'work', taskId });
+      }
+      return state(record);
+    },
     async updated(principal, task, automated = false) {
       if(!retained.fence||!retained.fence.ids.includes(task.id))throw new TaskUseRefusal('TASK_TARGET_SET_CHANGED');
       await retained.fence.mark([task.id]);

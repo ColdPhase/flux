@@ -95,7 +95,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   assert.equal(toolFailure(await f.tool('flux_create_task', command)).code, 'COMMAND_POSTSTATE_STALE');
   assert.equal((await f.owner.request('PATCH', `/api/v1/work/${item.id}`, { body: { title: 'Revive' }, headers: { 'if-match': `"${reverted.work.version}"` } })).status, 409);
   assert.equal((await f.owner.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { clientMessageId: randomUUID(), body: 'New use' } })).status, 409);
-  assert.equal((await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`, { body: { title: 'New result', finding: 'positive', work: [item.id] } })).status, 409);
+  assert.equal((await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`, { body: { title: 'New decision', affects: [item.id] } })).status, 409);
   const active = expect(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/work`), 200);
   assert.equal((active.items as WorkItem[]).some((work) => work.id === item.id), false);
   const historical = (await projectExportRows(db).work(f.projectId)).find((work) => work.id === item.id)!;
@@ -200,25 +200,26 @@ test('rollback removes lifecycle, notices, receipts and first-use latch together
 
 test('an exact existing creation-provenance link is an observation and leaves Undo available', async () => {
   const f = await scene();
-  const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
-    { body: { title: 'Initial context', finding: 'positive' } }), 201);
+  const context = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
+    { body: { title: 'Initial context', rationale: 'Known before the task' } }), 201);
+  expect(await f.owner.request('POST', `/api/v1/decisions/${context.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
   // The public MCP task schema deliberately has no related field. Exercise the admitted
   // trusted native creation port using this scene's real agent, then the public link command.
   const item = await db.transaction(async (tx) => {
     const native = nativeWorkInTransaction(tx);
     const created = await native.createWork({ kind: 'agent', id: f.agentId }, f.projectId,
-      { title: 'Initial related context', related: [{ type: 'result', id: String(result.id) }] });
+      { title: 'Initial related context', related: [{ type: 'decision', id: String(context.id) }] });
     await native.flushEvents();
     return created;
   });
   const before = await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id]);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/links`,
-    { body: { from: { type: 'work', id: item.id }, to: { type: 'result', id: result.id } } }), 201);
+    { body: { from: { type: 'work', id: item.id }, to: { type: 'decision', id: context.id } } }), 201);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_object_links WHERE from_id=$1', [item.id])).rows[0].n, before.rows[0].n);
   assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
   expect(await f.undo(item), 200);
   const doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
-    { body: { title: 'Original result remains useful', from: { type: 'result', id: result.id } } }), 201);
+    { body: { title: 'Original context remains useful', from: { type: 'decision', id: context.id } } }), 201);
   assert.equal(typeof doc.id, 'string');
 });
 

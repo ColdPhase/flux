@@ -34,7 +34,7 @@ const specs: Spec[] = [
 ];
 // Names every personal connection must offer: the shared domain tools of the same owner-visible project data.
 const sharedTools = ['flux_bootstrap', 'flux_list_contexts', 'flux_list_materials', 'flux_read_material', 'flux_create_proposal',
-  'flux_list_work', 'flux_get_work', 'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision',
+  'flux_list_work', 'flux_get_work', 'flux_create_task', 'flux_update_task', 'flux_propose_decision',
   'flux_list_docs', 'flux_create_doc', 'flux_list_maps', 'flux_create_map', 'flux_list_conversations', 'flux_start_conversation',
   'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit'];
 
@@ -215,13 +215,13 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.equal(resumed.checkpointId, parked.checkpointId);
       assert.equal((resumed.checkpoint as { summary: string }).summary, checkpoint.summary, 'the new native process receives actual checkpoint content');
       assert.equal((resumed.lease as { runtimeSessionId: string }).runtimeSessionId, nextSession);
-      const recorded = await native(spec, 'flux_record_result', { ...base( nextSession), sources: [],
-        result: { title: `${spec.label}: observation comparison`, finding: 'positive', evidence: 'Two bounded fixture observations compared.', workIds: [task.workId] } });
-      const completed = await native(spec, 'flux_complete_unit', { ...base( nextSession), ...fence(resumed),
-        outcome: { type: 'result', id: recorded.resultId } });
+      const recorded = await native(spec, 'flux_create_doc', { ...base( nextSession), sources: [],
+        doc: { title: `${spec.label}: observation comparison`, body: 'Two bounded fixture observations compared.' } });
+      const outcome = { type: 'doc', id: recorded.docId, version: recorded.version };
+      const completed = await native(spec, 'flux_complete_unit', { ...base( nextSession), ...fence(resumed), outcome });
       assert.equal(completed.state, 'completed');
       const persisted = (await pool.query('SELECT state, outcome_ref FROM cowork_units WHERE id=$1', [unitId])).rows[0];
-      assert.deepEqual(persisted, { state: 'completed', outcome_ref: { type: 'result', id: recorded.resultId } });
+      assert.deepEqual(persisted, { state: 'completed', outcome_ref: outcome });
     });
 
     await t.test('revoking one connection stops that client and leaves the others working', async () => {

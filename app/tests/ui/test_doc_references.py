@@ -28,17 +28,11 @@ class DocReferenceJourney(unittest.TestCase):
         cls.workspace = ws["id"]
         cls.project = api(cls.ctx, "POST", f"/api/v1/workspaces/{cls.workspace}/projects", {"name": "Library lighting", "visibility": "restricted"}, 201)["id"]
         cls.foreign = api(cls.ctx, "POST", f"/api/v1/workspaces/{cls.workspace}/projects", {"name": "Other library", "visibility": "restricted"}, 201)["id"]
-        cls.native = {"work": [], "decision": [], "result": []}
-        for kind, path in (("work", "work"), ("decision", "decisions"), ("result", "results")):
+        cls.native = {"work": [], "decision": []}
+        for kind, path in (("work", "work"), ("decision", "decisions")):
             for i in range(105):
-                body = {"title": f"Native {kind} reference {i:03d}"}
-                if kind == "result":
-                    body.update(finding="positive", evidence="Saved native reference evidence")
-                cls.native[kind].append(api(cls.ctx, "POST", f"/api/v1/projects/{cls.project}/{path}", body, 201))
-            foreign_body = {"title": "Foreign reference must remain elsewhere"}
-            if kind == "result":
-                foreign_body.update(finding="positive", evidence="Other project's evidence")
-            api(cls.ctx, "POST", f"/api/v1/projects/{cls.foreign}/{path}", foreign_body, 201)
+                cls.native[kind].append(api(cls.ctx, "POST", f"/api/v1/projects/{cls.project}/{path}", {"title": f"Native {kind} reference {i:03d}"}, 201))
+            api(cls.ctx, "POST", f"/api/v1/projects/{cls.foreign}/{path}", {"title": "Foreign reference must remain elsewhere"}, 201)
         cls.doc = cls.create_doc("Sensor measurements")
         cls.self_doc = cls.create_doc("Reference draft itself")
         cls.sketch = api(cls.ctx, "POST", f"/api/v1/workspaces/{cls.workspace}/sketches", {"title": "Sensor wiring map", "scope": "project", "projectId": cls.project}, 201)
@@ -93,7 +87,7 @@ class DocReferenceJourney(unittest.TestCase):
         page.keyboard.press("Control+End")
         page.keyboard.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this space")
-        expect(picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)).to_be_visible()
+        expect(picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)).to_be_visible()
         return picker
 
     def test_01_all_native_pages_remain_reachable_and_search_finds_off_page_identity(self):
@@ -101,8 +95,8 @@ class DocReferenceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page, text = self.scene(phone)
                 picker = self.picker(page, text)
-                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
-                for kind in ("work", "decision", "result"):
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)
+                for kind in ("work", "decision"):
                     choose(picker.get_by_label("Reference type"), kind)
                     query.fill("")
                     seen = set()
@@ -132,21 +126,21 @@ class DocReferenceJourney(unittest.TestCase):
                     query.press("ArrowDown")
                 selected = picker.locator('[role="option"][aria-selected="true"]')
                 self.assertTrue(selected.evaluate("el => { const row=el.getBoundingClientRect(), list=el.parentElement.getBoundingClientRect(); return row.top>=list.top-1 && row.bottom<=list.bottom+1; }"), "the keyboard-selected option stays exposed inside its own list")
-                self.assertEqual({read["kind"] for read in page.choice_observations}, {"work", "decision", "result"})
+                self.assertEqual({read["kind"] for read in page.choice_observations}, {"work", "decision"})
                 if phone: expect(picker.get_by_text("Tap a match to insert its link.", exact=True)).to_be_in_viewport()
                 shot(page, f"155-doc-reference-work-{'phone' if phone else 'desktop'}")
                 query.press("Enter")
                 has_text(text, "WRITING native reference notes")
                 self.assertRegex(text_of(text), r"flux:work/[0-9a-f-]{36}")
 
-    def test_02_six_reference_kinds_insert_exact_ids_and_persist_native_mentions(self):
+    def test_02_five_reference_kinds_insert_exact_ids_and_persist_native_mentions(self):
         for phone in (False, True):
             page, text = self.scene(phone)
-            expected = [("doc", self.doc), ("decision", self.native["decision"][0]), ("result", self.native["result"][0]), ("work", self.native["work"][0]), ("sketch", self.sketch), ("message", {"id": self.message["id"], "title": self.message["body"]})]
+            expected = [("doc", self.doc), ("decision", self.native["decision"][0]), ("work", self.native["work"][0]), ("sketch", self.sketch), ("message", {"id": self.message["id"], "title": self.message["body"]})]
             for kind, item in expected:
                 picker = self.picker(page, text)
                 choose(picker.get_by_label("Reference type"), kind)
-                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)
                 query.fill(item["title"])
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(1)
                 if phone: picker.get_by_role("listbox", name="Matches").get_by_role("option").tap()
@@ -166,7 +160,7 @@ class DocReferenceJourney(unittest.TestCase):
         page, text = self.scene(self_doc=True)
         picker = self.picker(page, text)
         choose(picker.get_by_label("Reference type"), "doc")
-        picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill(self.self_doc["title"])
+        picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True).fill(self.self_doc["title"])
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
 
     def test_03_required_failure_retries_without_publishing_partial_matches_or_erasing_editor(self):
@@ -184,7 +178,7 @@ class DocReferenceJourney(unittest.TestCase):
                 picker = self.picker(page, text)
                 expect(picker.get_by_role("alert")).to_contain_text("Could not load")
                 expect(picker.get_by_role("listbox", name="Matches").get_by_role("option")).to_have_count(0)
-                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)
                 query.fill("Native work reference 000")
                 expect(picker.get_by_role("alert")).to_be_visible()
                 fault["on"] = False
@@ -212,7 +206,7 @@ class DocReferenceJourney(unittest.TestCase):
                         route.continue_()
                 page.route(f"**/api/v1/projects/{self.project}/work-view?**", hold)
                 self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
-                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
+                query = picker.get_by_role("combobox", name="Find a Wiki page, decision, task, map or message", exact=True)
                 query.fill(target["title"])
                 waiting = picker.locator("p.doc-muted.doc-picker__empty[aria-busy='true']")
                 expect(waiting).to_have_text("Finding space objects…")

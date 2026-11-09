@@ -17,12 +17,9 @@ export interface MaterialSource {
 
 /**
  * What an explicit native effect contributed to a canonical task thread (#154). Ordinary text carries
- * no marker, so the JSON of every existing message is unchanged. A result contribution names the one
- * canonical result; its finding, evidence and sources come from that result's ordinary authorized API.
+ * no marker, so the JSON of every existing message is unchanged.
  */
-export type MessageContribution =
-  | { kind: 'blocker' | 'handoff' | 'came_of_it' }
-  | { kind: 'result'; resultId: string };
+export interface MessageContribution { kind: 'blocker' | 'handoff' | 'came_of_it' }
 
 export interface ConversationMessageFields {
   id: string;
@@ -46,7 +43,7 @@ export interface ConversationMessageFields {
    * shown as "Ada · via Assistant". The person stays the author.
    */
   via?: string;
-  /** Present only for a saved blocker, a published result or an explicit public handoff. */
+  /** Present only for a saved blocker, a "what came of it" line or an explicit public handoff. */
   contribution?: MessageContribution;
   /**
    * Present only when the message has attachments (#154), in the order they were attached. A message with

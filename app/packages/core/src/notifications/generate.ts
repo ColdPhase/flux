@@ -83,7 +83,7 @@ async function actorName(facts: NotificationFacts, actorId: string): Promise<str
 /**
  * Who an event concerns and why: people addressed in a message (mention, question), people in a
  * conversation that gets a reply, the other people of a direct message, the new owner of work,
- * the people whose work (or agent) a proposed decision or recorded result is about, and the
+ * the people whose work (or agent) a proposed decision is about, and the
  * recipient of a live invitation. Only
  * people in the event's recorded audience are considered; the actor is never notified.
  */
@@ -175,22 +175,19 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       }
       return result;
     }
-    case 'project.decision_proposed.v1':
-    case 'project.result_recorded.v1': {
-      const decision = event.kind === 'project.decision_proposed.v1';
-      const objectId = id(decision ? event.data.decisionId : event.data.resultId);
-      const item = objectId ? await (decision ? facts.decision(objectId) : facts.result(objectId)) : null;
+    case 'project.decision_proposed.v1': {
+      const objectId = id(event.data.decisionId);
+      const item = objectId ? await facts.decision(objectId) : null;
       if (!item || item.projectId !== event.objectId) return [];
       const by = await actorName(facts, event.actorId);
       const recipients = new Map<string, string>();
       for (const owner of item.workOwners) if (reachable(owner)) recipients.set(owner, 'It is about your work');
       if (item.by.kind === 'agent' && reachable(item.agentOwner)) recipients.set(item.agentOwner, 'Your agent produced it');
-      const kind = decision ? 'decision' : 'result';
       return [...recipients].map(([userId, why]) => ({
         userId, reason: 'review' as const, source: { type: 'project' as const, id: item.projectId },
-        title: `${decision ? 'Decision proposed' : 'Result to review'}: ${excerpt(item.title, 90)}`,
-        body: `${why} · ${by} ${decision ? 'proposed it' : 'recorded it'} in ${item.projectName}`,
-        url: `/projects/${item.projectId}/tasks?open=${kind}:${item.id}`,
+        title: `Decision proposed: ${excerpt(item.title, 90)}`,
+        body: `${why} · ${by} proposed it in ${item.projectName}`,
+        url: `/projects/${item.projectId}/tasks?open=decision:${item.id}`,
         // An agent produced the item, whoever the event's actor is on its behalf.
         aiOrigin: item.by.kind === 'agent', who: by,
       }));

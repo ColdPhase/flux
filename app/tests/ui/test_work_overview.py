@@ -43,8 +43,7 @@ class OverviewWorkJourney(unittest.TestCase):
         api(cls.context, "POST", f"/api/v1/decisions/{current['id']}/accept", {"expectedVersion": 1, "stillApplies": [], "park": []})
         thought = {"type": "thought", "id": cls.thought}
         api(cls.context, "POST", cls.root + "/decisions", {"title": "Keep the manual off switch", "sources": [sources[0], thought]}, 201)
-        result = api(cls.context, "POST", cls.root + "/results", {"title": "The shield reduced noise in both runs", "finding": "positive", "sources": [sources[0], thought, sources[2]]}, 201)
-        cls.doc = api(cls.context, "POST", cls.root + "/docs", {"title": "What we learned about shielding", "from": {"type": "result", "id": result["id"]}}, 201)["id"]
+        cls.doc = api(cls.context, "POST", cls.root + "/docs", {"title": "What we learned about shielding", "from": {"type": "decision", "id": current["id"]}}, 201)["id"]
         cls.state = cls.context.storage_state()
         cls.native = cls.records()
         cls.expected = {(kind, item["id"]) for kind, items in cls.native.items() for item in items["items"]}
@@ -53,12 +52,12 @@ class OverviewWorkJourney(unittest.TestCase):
 
     @classmethod
     def records(cls):
-        return {kind: api(cls.context, "GET", cls.root + f"/{plural}?limit=100") for kind, plural in (("work", "work"), ("decision", "decisions"), ("result", "results"))}
+        return {kind: api(cls.context, "GET", cls.root + f"/{plural}?limit=100") for kind, plural in (("work", "work"), ("decision", "decisions"))}
 
     @classmethod
     def tearDownClass(cls):
         try:
-            if json.dumps(cls.records(), sort_keys=True) != cls.before: raise AssertionError("Overview reads changed native work/decision/result fields or links")
+            if json.dumps(cls.records(), sort_keys=True) != cls.before: raise AssertionError("Overview reads changed native work/decision fields or links")
         finally: cls.browser.close(); cls.pw.stop()
 
     def page(self, phone=False):
@@ -106,7 +105,7 @@ class OverviewWorkJourney(unittest.TestCase):
                 ov = self.open(page)
                 objects = ov.get_by_role("navigation", name="Overview object pages")
                 links = ov.get_by_role("navigation", name="Overview relation pages")
-                expect(objects).to_contain_text("1–50 of 69 objects")
+                expect(objects).to_contain_text("1–50 of 68 objects")
                 expect(ov.locator(".ov-scroll-hint")).to_contain_text("all 50 objects on this page")
                 expect(ov).to_contain_text("Related notes; no source relationship")
                 first = self.identities(page); self.assertEqual(len(first), 50)
@@ -123,7 +122,7 @@ class OverviewWorkJourney(unittest.TestCase):
                         links.get_by_role("button", name="Next", exact=True).click()
                     if object_page == 0:
                         objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
-                        expect(objects).to_contain_text("51–69 of 69 objects")
+                        expect(objects).to_contain_text("51–68 of 68 objects")
                         expect(links).to_contain_text("1–50 of")
                         # Both pinned native versions remain distinct destinations.
                         for version, title in ((1, "Shield measurement notes"), (2, "Shield measurement notes, revised")):
@@ -186,7 +185,7 @@ class OverviewWorkJourney(unittest.TestCase):
         field.evaluate("el=>{el.focus();el.setSelectionRange(5,17);}")
         route,response=held.pop(); route.fulfill(response=response)
         expect(ov.get_by_role("navigation", name="Overview relation pages")).to_contain_text("1–50 of")
-        expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("51–69 of 69 objects")
+        expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("51–68 of 68 objects")
         self.assertEqual(field.evaluate("el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]"), [True,5,17])
         page.unroute("**/work-relations?**", hold)
 
@@ -210,7 +209,7 @@ class OverviewWorkJourney(unittest.TestCase):
         expect(source).to_have_count(1)
         expect(source.locator(".ov-row__t")).to_have_text("Shield measurement notes")
         expect(source).to_contain_text("Cited in this conversation")
-        expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("1–50 of 69 objects")
+        expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("1–50 of 68 objects")
         ov.get_by_role("button", name="This conversation", exact=True).click(); self.ready(page)
         expect(ov.get_by_role("region", name="Linked in this conversation")).to_be_visible()
 
@@ -279,7 +278,7 @@ class OverviewWorkJourney(unittest.TestCase):
         self.assertNotEqual(ov.get_attribute("data-overview-observed-at"),old_observation)
         new_refs=set(tuple(ref) for ref in self.identities(page))
         self.assertIn(("work",added["id"]),new_refs);self.assertNotEqual(new_refs,old_refs)
-        expect(objects).to_contain_text("1–50 of 70 objects")
+        expect(objects).to_contain_text("1–50 of 69 objects")
         expect(relations).to_contain_text("1–50 of")
         self.assertFalse(requests[-1].get("cursor"),"new native reference set cannot dispatch the previous set-bound cursor")
         self.assertEqual(set(requests[-1]["objects"][0].split(',')),{f"{kind}:{identity}" for kind,identity in new_refs})

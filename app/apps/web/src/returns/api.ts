@@ -10,7 +10,7 @@ export function getReturnSummary(place: ReturnPlace, signal?: AbortSignal) {
 export const saveReturnPoint = (place: ReturnPlace, mark: string | null) =>
   request<ReturnPoint>(RETURN_POINTS_PATH, { method: 'PUT', body: { place, mark }, leavesReads: true });
 
-/** Where an item's source opens. Work, decisions and results open in Details on their project. */
+/** Where an item's source opens. Work and decisions open in Details on their project. */
 export function sourceHref(source: ReturnSource) {
   switch (source.type) {
     case 'message': return `/projects/${source.projectId}/conversations/${source.conversationId}#message-${source.messageId}`;

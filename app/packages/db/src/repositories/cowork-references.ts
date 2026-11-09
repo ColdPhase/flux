@@ -11,8 +11,6 @@ export function readableReferenceSet(references: SQL, workspaceId: SQL, projectI
     WHERE NOT COALESCE(CASE reference.value->>'type'
       WHEN 'message' THEN EXISTS (SELECT 1 FROM project_messages object
         WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId})
-      WHEN 'result' THEN EXISTS (SELECT 1 FROM project_results object
-        WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId})
       WHEN 'work' THEN EXISTS (SELECT 1 FROM project_work_items object
         WHERE object.id::text=reference.value->>'id' AND object.workspace_id=${workspaceId} AND object.project_id=${projectId}
           AND object.version::text=reference.value->>'version')

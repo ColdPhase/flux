@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import { placeDecisionReference, upsertSection } from '@flux/core';
-import { projectWorkReferenceRowsPath, type Decision, type Doc, type DocVersionSummary, type Page, type Project, type WorkReferenceRows, type WorkResult, type Workspace } from '@flux/contracts';
+import { placeDecisionReference } from '@flux/core';
+import { projectWorkReferenceRowsPath, type Decision, type Doc, type DocVersionSummary, type Page, type Project, type WorkReferenceRows, type Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { createSealed, passphrase } from './support/encryption.js';
@@ -56,10 +56,6 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     // A new page started from a decision is the card alone.
     const started = json<Doc>(await post(ada, `/api/v1/projects/${garden.id}/docs`, { title: 'Decisions and why', from: { type: 'decision', id: rule.id } }), 201);
     assert.deepEqual([started.body, started.reason], [`${ref(rule.title, rule.id)}\n`, `Started from the decision “${rule.title}”`]);
-    // Results keep their sections.
-    const result = json<WorkResult>(await post(ada, `/api/v1/projects/${garden.id}/results`, { title: 'Probes corrode in three weeks', finding: 'negative', evidence: 'Readings drift.' }), 201);
-    const withResult = json<Doc>(await post(ada, `/api/v1/docs/${doc.id}/sections`, { from: { type: 'result', id: result.id } }, ifMatch(2)), 200);
-    assert.match(withResult.body, /## Result: Probes corrode in three weeks\n\n\*\*Negative result\*\*/);
   });
 
   test('the card is live: accepting or replacing a decision changes no page and adds no version', async () => {
@@ -91,7 +87,7 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     assert.ok(added.body.endsWith(`${ref(accepted.title, accepted.id)}\n`));
   });
 
-  test('the text rules: one card line, never twice, and a result rewrite keeps the cards after it', () => {
+  test('the text rules: one card line, never twice, and under a chosen heading when it is still there', () => {
     const id = '11111111-1111-4111-8111-111111111111';
     const card = `[A](flux:decision/${id})`;
     // The reference stands alone after a blank line, so the reader shows it as the card.
@@ -111,11 +107,6 @@ describe('F-034: decisions in the Wiki are live cards', () => {
       ['Intro.', '', '## Pickup', '', 'Codes.', '', '### Detail', '', 'More.', '', card, '', '## Still open', '', 'Lockers?', ''].join('\n'));
     assert.equal(placeDecisionReference(page, id, 'A', '## Still open').body, `${page.trimEnd()}\n\n${card}\n`);
     assert.equal(placeDecisionReference(page, id, 'A', '## Gone').body, `${page.trimEnd()}\n\n${card}\n`, 'a heading the page no longer has: the end');
-    // A result's section rewritten later keeps the cards after it (they are not part of the section).
-    const result = { type: 'result' as const, id: '22222222-2222-4222-8222-222222222222' };
-    const resultText = ['## Result: R', '', 'Old.', '', `Source: [R](flux:result/${result.id})`, '', card, '', 'Tail.', ''].join('\n');
-    assert.equal(upsertSection(resultText, result, ['## Result: R', '', 'New.', '', `Source: [R](flux:result/${result.id})`].join('\n')).body,
-      ['## Result: R', '', 'New.', '', `Source: [R](flux:result/${result.id})`, '', card, '', 'Tail.', ''].join('\n'));
   });
 
   test('an encrypted workspace: Add to docs and the card reason work through its seal', async () => {

@@ -71,7 +71,7 @@ export class RefHosts {
 }
 
 const REF = /^flux:(doc|work|decision|result|message|thought|sketch)\/([0-9a-f-]{36})$/i;
-const KIND_WORD: Record<string, string> = { decision: 'Decision', work: 'Task', result: 'Result', doc: 'Wiki page', message: 'Message', thought: 'Thought', sketch: 'Map' };
+const KIND_WORD: Record<string, string> = { decision: 'Decision', work: 'Task', doc: 'Wiki page', message: 'Message', thought: 'Thought', sketch: 'Map' };
 
 /** The reference's target while its line is written: the label stays text, the target reads as its kind (CW-4). */
 class KindWord extends WidgetType {

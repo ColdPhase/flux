@@ -8,20 +8,17 @@ import {
   decisionPath,
   projectDecisionsPath,
   projectLinksPath,
-  projectResultsPath,
   projectWorkPath,
   projectObjectNoticesPath,
   projectTaskNoticesPath,
   taskActivityPath,
   taskDiscussionPath,
-  resultPath,
   WORK_LIMITS,
   WORK_STATUSES,
   workItemPath,
   workspaceAssignedWorkPath,
   type AcceptDecisionCommand,
   type CreateObjectLinkCommand,
-  type CreateResultCommand,
   type CreateWorkCommand,
   type PageQuery,
   type ProposeDecisionCommand,
@@ -46,7 +43,7 @@ const principalRef = { type: ['object', 'null'], required: ['kind', 'id'], addit
 const waitingOn = { type: ['object', 'null'], required: ['kind', 'id'], additionalProperties: false,
   properties: { kind: { type: 'string', enum: ['decision', 'task'] }, id: { type: 'string', minLength: 1 } } } as const;
 const objectRef = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
+  properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'doc', 'sketch'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
 const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as const;
 const ids = { type: 'array', maxItems: WORK_LIMITS.links, items: { type: 'string' } } as const;
 const status = { type: 'string', enum: [...WORK_STATUSES] } as const;
@@ -76,13 +73,8 @@ const proposeDecision = { type: 'object', required: ['title'], additionalPropert
   title, rationale: { type: 'string', maxLength: WORK_LIMITS.rationale }, supersedes: { type: 'string' }, sources: refs, affects: ids,
 } } as const;
 const acceptDecision = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
-const createResult = { type: 'object', required: ['title', 'finding'], additionalProperties: false, properties: {
-  title, finding: { type: 'string', enum: ['positive', 'negative'] }, evidence: { type: 'string', maxLength: WORK_LIMITS.evidence },
-  sources: refs, work: ids, decisions: ids, finishes: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id: { type: 'string' }, expectedVersion: version } },
-  clientCommandId: { type: 'string', format: 'uuid' },
-} } as const;
 const createLink = { type: 'object', required: ['from', 'to'], additionalProperties: false, properties: {
-  from: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['work', 'decision', 'result'] }, id: { type: 'string' } } },
+  from: { type: 'object', required: ['type', 'id'], additionalProperties: false, properties: { type: { type: 'string', enum: ['work', 'decision'] }, id: { type: 'string' } } },
   to: objectRef,
 } } as const;
 
@@ -91,7 +83,7 @@ const projectReader: ReplayCheck = (principal, body, db) =>
   assertAuthorized(principal, 'project.read', { type: 'project', id: String((body as { projectId?: unknown } | null)?.projectId ?? '') }, accessReader(db));
 
 /**
- * `/api/v1` work, decision and result routes (#101). Each handler resolves the current session
+ * `/api/v1` work and decision routes (#101). Each handler resolves the current session
  * and calls one core use case, which authorizes. Every POST/PATCH accepts `Idempotency-Key`;
  * changing work and accepting a decision need `If-Match` (or `expectedVersion`).
  */
@@ -132,7 +124,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectTaskNoticesPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listTaskNotices(await principal(request), request.params.projectId, request.query));
 
-  // The decisions and results the conversation announces (#694); the project's audience, like the task notices.
+  // The decisions the conversation announces (#694); the project's audience, like the task notices.
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectObjectNoticesPath(':projectId'), { schema: { querystring: page } },
     async (request) => work.listObjectNotices(await principal(request), request.params.projectId, request.query));
 
@@ -196,16 +188,6 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
       run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, expectedVersion(request)),
       replay: projectReader,
     }));
-
-  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectResultsPath(':projectId'), { schema: { querystring: page } },
-    async (request) => work.listResults(await principal(request), request.params.projectId, request.query));
-  app.post<{ Params: { projectId: string }; Body: CreateResultCommand }>(projectResultsPath(':projectId'), { schema: { body: createResult } },
-    async (request, reply) => command(request, reply, {
-      operation: `POST ${projectResultsPath(':projectId')}`, scope: projectScope(request.params.projectId), status: 201,
-      run: (actor, conn) => workUseCases(conn).createResult(actor, request.params.projectId, request.body),
-      replay: projectReader,
-    }));
-  app.get<{ Params: { resultId: string } }>(resultPath(':resultId'), async (request) => work.getResult(await principal(request), request.params.resultId));
 
   app.post<{ Params: { projectId: string }; Body: CreateObjectLinkCommand }>(projectLinksPath(':projectId'), { schema: { body: createLink } },
     async (request, reply) => command(request, reply, {

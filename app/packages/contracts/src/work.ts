@@ -3,14 +3,14 @@ import type { AgentProjectOwner, SendMessageCommand } from './conversation.js';
 import type { GithubTaskRule } from './github.js';
 
 /**
- * Work items, decisions and results of a project (issue #101, foundation 8.5/8.6).
+ * Work items and decisions of a project (issue #101, foundation 8.5/8.6).
  * They are distinct objects with stable ids, connected to each other and to conversation
  * messages and material versions by many-to-many links. Everything is visible exactly to the
  * people and agents with current access to the project; there is no second audience.
  */
 export const projectWorkPath = (projectId: string) => `/api/v1/projects/${projectId}/work`;
 export const projectTaskNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/task-notices`;
-/** The decisions and results a project's conversation announces (#694), newest first. */
+/** The decisions a project's conversation announces (#694), newest first. */
 export const projectObjectNoticesPath = (projectId: string) => `/api/v1/projects/${projectId}/object-notices`;
 export const taskDiscussionPath = (workId: string) => `/api/v1/work/${workId}/discussion`;
 /** The history of a task's status, owner, due date and title (#488), newest first. */
@@ -18,8 +18,8 @@ export const taskActivityPath = (workId: string) => `/api/v1/work/${workId}/acti
 
 /**
  * A direct public contribution to a task thread. `handoff` marks an explicit public instruction to the next
- * person or agent; it carries no authority by itself. Blocker, "what came of it" and result contributions are never sent
- * this way: they come from saving a blocker, finishing a task with a line, or publishing a result.
+ * person or agent; it carries no authority by itself. Blocker and "what came of it" contributions are never sent
+ * this way: they come from saving a blocker or finishing a task with a line.
  */
 export interface TaskContributionCommand extends SendMessageCommand {
   kind?: 'text' | 'handoff';
@@ -50,8 +50,6 @@ export const workItemPath = (workId: string) => `/api/v1/work/${workId}`;
 export const projectDecisionsPath = (projectId: string) => `/api/v1/projects/${projectId}/decisions`;
 export const decisionPath = (decisionId: string) => `/api/v1/decisions/${decisionId}`;
 export const decisionAcceptPath = (decisionId: string) => `${decisionPath(decisionId)}/accept`;
-export const projectResultsPath = (projectId: string) => `/api/v1/projects/${projectId}/results`;
-export const resultPath = (resultId: string) => `/api/v1/results/${resultId}`;
 export const projectLinksPath = (projectId: string) => `/api/v1/projects/${projectId}/links`;
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
@@ -60,8 +58,7 @@ export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/works
 export const WORK_STATUSES = ['open', 'in_progress', 'blocked', 'done'] as const;
 export type WorkStatus = (typeof WORK_STATUSES)[number];
 export type DecisionStatus = 'proposed' | 'accepted' | 'superseded';
-export type ResultFinding = 'positive' | 'negative';
-export type WorkObjectType = 'work' | 'decision' | 'result';
+export type WorkObjectType = 'work' | 'decision';
 /** Objects that own links: work objects and project docs (#112). */
 export type LinkOwnerType = WorkObjectType | 'doc';
 
@@ -70,7 +67,7 @@ export type LinkOwnerType = WorkObjectType | 'doc';
  * trimmed criteria of 1-`criterion` characters, at most 50 same-project prerequisites and a trimmed 1-120
  * character plan intent key.
  */
-export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50,
+export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, links: 50,
   criteria: 20, criterion: 1000, dependencies: 50, intentKey: 120, cameOfIt: 500 } as const;
 
 /** A page of a task's activity (#488): `limit` 1-`max`, `default` when omitted. */
@@ -90,10 +87,10 @@ export type ObjectRef =
 /**
  * `source`: created from, or based on, a message or material version (the source stays in place).
  * `affects`: a decision concerns this work.
- * `about`: a result reports on this work or decision. `related`: any other connection.
+ * `related`: any other connection.
  * `mentions`: the current text of a doc refers to it (#112); rewritten with each doc version.
  */
-export type LinkRole = 'source' | 'affects' | 'about' | 'related' | 'mentions' | 'part_of';
+export type LinkRole = 'source' | 'affects' | 'related' | 'mentions' | 'part_of';
 
 /** One task that is part of another (#841): its state in words, and who has it. */
 export interface TaskSubtask {
@@ -231,13 +228,6 @@ export interface Decision extends ProjectObject {
   updatedAt: string;
 }
 
-export interface WorkResult extends ProjectObject {
-  title: string;
-  finding: ResultFinding;
-  evidence: string;
-  createdBy: NamedPrincipal;
-}
-
 export interface CreateWorkCommand {
   /** Durable domain retry identity, reused by every entry point for this exact creation. */
   clientCommandId?: string;
@@ -254,7 +244,7 @@ export interface CreateWorkCommand {
   dueOn?: string | null;
   /** Messages, sketch thoughts or material versions the work comes from. They are linked, never moved or copied. */
   sources?: ObjectRef[];
-  /** Other objects of the project to connect (thoughts, decisions, results, messages). */
+  /** Other objects of the project to connect (thoughts, decisions, messages). */
   related?: ObjectRef[];
   /** At most 20 distinct trimmed statements of 1-1,000 characters. */
   criteria?: string[];
@@ -293,14 +283,14 @@ export interface TaskCreationNotice {
 }
 
 /**
- * What the conversation says about a decision or a result (#694, F-026 P5): one line with who and where it came
+ * What the conversation says about a decision (#694, F-026 P5): one line with who and where it came
  * from, and the object as a card that opens in Details. Like a task notice it is information, never a message.
  * A decision has up to two: when it was proposed and when a person accepted it. `title` and the state are the
  * object's current ones; `by` and `createdAt` are who did it and when. The audience is the project's: only
  * people who can read the project read these.
  */
 interface ObjectNoticeBase {
-  /** Stable per object and moment, `<id>:proposed`, `<id>:accepted` or `<id>:recorded`. */
+  /** Stable per object and moment, `<id>:proposed` or `<id>:accepted`. */
   id: string;
   workspaceId: string;
   projectId: string;
@@ -312,10 +302,7 @@ interface ObjectNoticeBase {
   conversationId: string | null;
   createdAt: string;
 }
-export type ObjectNotice = ObjectNoticeBase & (
-  | { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus }
-  | { kind: 'result.recorded'; resultId: string; finding: ResultFinding }
-);
+export type ObjectNotice = ObjectNoticeBase & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
 
 export interface UpdateWorkCommand extends VersionPrecondition {
   /**
@@ -420,22 +407,6 @@ export interface ProposeDecisionCommand {
  * Flux does not move or park tasks when a decision changes (#871).
  */
 export type AcceptDecisionCommand = VersionPrecondition;
-
-export interface CreateResultCommand {
-  /** Durable domain retry identity of this exact publication (#154); a retry never duplicates the result or its task messages. */
-  clientCommandId?: string;
-  title: string;
-  finding: ResultFinding;
-  evidence?: string;
-  sources?: ObjectRef[];
-  work?: string[];
-  decisions?: string[];
-  /**
-   * A work item of `work` this result finishes (its status becomes done), e.g. a negative
-   * experiment, with the version the author saw. A stale version is 409 VERSION_CONFLICT.
-   */
-  finishes?: { id: string; expectedVersion: number };
-}
 
 export interface CreateObjectLinkCommand {
   from: { type: WorkObjectType; id: string };

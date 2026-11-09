@@ -42,9 +42,6 @@ class NativeDetailsJourney(unittest.TestCase):
         for i in range(64):
             rule=api(cls.ctx,"POST",cls.root+"/decisions",{"title":f"Use the measured shield and cable · {i+1:03d}","rationale":f"Measured rule {i+1} retains its own full reason.","affects":[cls.target["id"]],"sources":[sources[0]]},201)
             cls.rules.append(api(cls.ctx,"POST",f"/api/v1/decisions/{rule['id']}/accept",{"expectedVersion":1}))
-        cls.result=api(cls.ctx,"POST",cls.root+"/results",{"title":"The shield reduced noise in both runs","finding":"positive","evidence":"Native full evidence: 18 dB lower noise on both runs.","work":[cls.target["id"]],"sources":[sources[0],sources[3]]},201)
-        cls.docs=[]
-        for i in range(54):cls.docs.append(api(cls.ctx,"POST",cls.root+"/docs",{"title":f"Shielding field notes · {i+1:03d}","from":{"type":"result","id":cls.result["id"]}},201))
         cls.state=cls.ctx.storage_state()
 
     @classmethod
@@ -55,8 +52,8 @@ class NativeDetailsJourney(unittest.TestCase):
         self.addCleanup(ctx.close);page=ctx.new_page();errors=[];page.on("pageerror",lambda error:errors.append(str(error)))
         self.addCleanup(lambda:self.assertEqual(errors,[],"no uncaught browser errors"));self.addCleanup(lambda:page.unroute_all(behavior="ignoreErrors"));return page
 
-    def native(self,kind,id):return api(self.ctx,"GET",f"/api/v1/{'work' if kind=='work' else 'decisions' if kind=='decision' else 'results'}/{id}")
-    def records(self):return {kind:api(self.ctx,"GET",self.root+f"/{plural}?limit=100") for kind,plural in (("work","work"),("decision","decisions"),("result","results"))}
+    def native(self,kind,id):return api(self.ctx,"GET",f"/api/v1/{'work' if kind=='work' else 'decisions'}/{id}")
+    def records(self):return {kind:api(self.ctx,"GET",self.root+f"/{plural}?limit=100") for kind,plural in (("work","work"),("decision","decisions"))}
 
     def open(self,page,kind,id):
         page.goto(f"/projects/{self.project}/tasks?open={kind}:{id}")
@@ -93,7 +90,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 page=self.page(phone);observed=[];legacy=[]
                 def collect(response):
                     if "/work-relations?" in response.url and response.status==200:observed.append(response.json())
-                    if re.search(r"/api/v1/(work|decisions|results)/[0-9a-f-]+$",response.url):legacy.append(response.url)
+                    if re.search(r"/api/v1/(work|decisions)/[0-9a-f-]+$",response.url):legacy.append(response.url)
                 page.on("response",collect);panel=self.open(page,"work",self.target["id"])
                 expect(panel).to_contain_text(self.target["outcome"]);expect(panel.get_by_role("button",name="Owner",exact=True)).to_contain_text("Ada Kowalska")
                 expect(panel.get_by_role("region",name="Also linked").get_by_role("link")).to_have_attribute("href",f"/projects/{self.project}/conversations/{self.conversation}#message-{self.message}")
@@ -168,36 +165,18 @@ class NativeDetailsJourney(unittest.TestCase):
 
     def test_08_docked_object_links_keep_their_own_project_after_route_navigation(self):
         second=api(self.ctx,"POST",f"/api/v1/workspaces/{self.workspace}/projects",{"name":"Neighbouring workshop","visibility":"restricted"},201)["id"]
-        page=self.page();panel=self.open(page,"result",self.result["id"])
+        page=self.page();panel=self.open(page,"decision",self.rules[1]["id"])
         # Main's #184 sidebar lists projects under its own "Projects" navigation ("Places" holds Home/Inbox).
         page.get_by_role("complementary",name="Sidebar").get_by_role("navigation",name="Spaces").get_by_role("link",name="Neighbouring workshop",exact=True).click()
         # #763 H11-8 (#802, docs/development/return-to-origin.md): a docked object does not follow the person to another
         # project; it closes there, and Back to the page it was opened on restores it with its own project's links.
         expect(page).to_have_url(re.compile(f"/projects/{second}$"));expect(panel).to_have_count(0)
-        expect(page.locator(f"#details .wd[data-detail-id='{self.result['id']}']")).to_have_count(0)
+        expect(page.locator(f"#details .wd[data-detail-id='{self.rules[1]['id']}']")).to_have_count(0)
         page.go_back();expect(page).to_have_url(re.compile(f"/projects/{self.project}/tasks"));expect(panel).to_be_visible();self.ready(panel)
-        panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
+        panel.get_by_role("region",name="Affects").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
         expect(panel).not_to_contain_text("Everyone in Library lighting measurements")
         expect(panel.get_by_role("heading",name="Not available",exact=True)).to_have_count(0)
-
-    def test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version(self):
-        result=api(self.ctx,"POST",self.root+"/results",{"title":"Independent doc source with measured evidence","finding":"positive","evidence":"Twenty measured runs"},201)
-        doc=api(self.ctx,"POST",self.root+"/docs",{"title":"Source section can be removed without losing its link","from":{"type":"result","id":result["id"]}},201)
-        doc=api(self.ctx,"PATCH",f"/api/v1/docs/{doc['id']}",{"body":"Unrelated notes remain here","expectedVersion":doc["version"]})
-        self.assertTrue(any(link["role"]=="source" and link["to"]["id"]==result["id"] for link in doc["links"]))
-        for unchanged in (False,True):
-            page=self.page();panel=self.open(page,"result",result["id"]);panel.get_by_role("button",name="Add to a Wiki page",exact=True).click()
-            panel=page.locator("#details .wd")
-            choose(panel.get_by_label("Wiki page",exact=True), doc["id"])
-            expect(panel).to_contain_text("unchanged content keeps its current version")
-            expect(panel).not_to_contain_text("rewritten as version")
-            panel.get_by_role("button",name="Add or update section",exact=True).click()
-            expect(page.get_by_text(f"Added to “{doc['title']}”")).to_be_visible();page.get_by_role("button",name="Open",exact=True).click()
-            # The page opens in its editor, written where it is read (#869): the section's heading is a heading line there.
-            expect(page.locator(".wiki-editor .cm-md-h").filter(has_text=re.compile("^"+re.escape(f"Result: {result['title']}")+"$"))).to_be_visible()
-            saved=api(self.ctx,"GET",f"/api/v1/docs/{doc['id']}")
-            self.assertEqual(saved["version"],doc["version"]+(0 if unchanged else 1));doc=saved
 
     def test_11_empty_relations_keep_loading_failure_and_retry_visible(self):
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Record the next shield reading"}, 201)

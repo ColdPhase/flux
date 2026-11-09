@@ -9,7 +9,6 @@ import type {
   ProjectExportGithubSources,
   ProjectExportLink,
   ProjectExportMaterial,
-  ProjectExportResult,
   ProjectExportSketch,
   ProjectExportWork,
   ProjectPerson,
@@ -40,7 +39,6 @@ export interface ProjectExportRows {
   sketches(projectId: string): Promise<ProjectExportSketch[]>;
   work(projectId: string): Promise<ProjectExportWork[]>;
   decisions(projectId: string): Promise<ProjectExportDecision[]>;
-  results(projectId: string): Promise<ProjectExportResult[]>;
   links(projectId: string): Promise<ProjectExportLink[]>;
   /** Display names keyed by `<kind>:<id>`. */
   names(actors: ExportActor[]): Promise<Map<string, string>>;

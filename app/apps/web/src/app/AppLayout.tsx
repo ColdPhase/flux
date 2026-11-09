@@ -56,9 +56,9 @@ const SIDEBAR_KEY = 'flux.sidebar';
 const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
-const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'propose-decision']);
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'propose-decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
-const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
+const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', 'thought-tasks': 'Tasks' };
 /**
  * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "Space details" or
  * "Message info" for the place's own panel, the form's or the button's own words for the rest. Its close control is "Close <heading>",
@@ -91,9 +91,9 @@ interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: strin
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
 /**
  * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
- * Attach a result, Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
+ * Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
  */
-const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'people', 'owned']);
+const KEPT_VIEWS = new Set(['work', 'decision', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
   if (view === 'place' || view === 'connect-ai') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
@@ -408,7 +408,7 @@ function AppLayoutContent() {
     if (openedAt.current === location.key) return;
     const params = new URLSearchParams(location.search);
     const open = params.get('open') ?? '';
-    const match = /^(work|decision|result):([0-9a-f-]{36})$/i.exec(open);
+    const match = /^(work|decision):([0-9a-f-]{36})$/i.exec(open);
     const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
     // The phone's "+" Create → Decision (F-026 S2) opens "Propose a decision" on its project.
     const propose = open === 'propose-decision' && projectId ? projectId : null;
@@ -418,7 +418,7 @@ function AppLayoutContent() {
     const search = params.toString();
     // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
-    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() }
+    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() }
       : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview' });
   }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell, projectId]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
@@ -555,7 +555,7 @@ function AppLayoutContent() {
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
   // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
   const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
-  // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
+  // A task or decision opens in the one detail panel with its kind as a chip (F-026 S4).
   const ownedShown = isOwned(detailsView) && owned ? owned : null;
   const objectChip = ownedShown ? ownedShown.chip : typeof detailsView === 'object' ? KIND_LABEL[detailsView.kind] : undefined;
   // "‹ back": the owner's own way back (an agent's thread to its agent), else the step this content replaced.

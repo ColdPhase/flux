@@ -36,7 +36,7 @@ LISTS = {
     "projectId": "/api/v1/workspaces/{workspaceId}/projects",
     "workId": "/api/v1/projects/{projectId}/work", "taskId": "/api/v1/projects/{projectId}/work",
     "docId": "/api/v1/projects/{projectId}/docs", "decisionId": "/api/v1/projects/{projectId}/decisions",
-    "resultId": "/api/v1/projects/{projectId}/results", "conversationId": "/api/v1/projects/{projectId}/conversations",
+    "conversationId": "/api/v1/projects/{projectId}/conversations",
     "materialId": "/api/v1/projects/{projectId}/materials", "sketchId": "/api/v1/workspaces/{workspaceId}/sketches",
     "dmId": "/api/v1/workspaces/{workspaceId}/dms", "draftId": "/api/v1/workspaces/{workspaceId}/drafts",
     "agentId": "/api/v1/workspaces/{workspaceId}/agents",

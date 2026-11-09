@@ -225,12 +225,9 @@ describe('notifications from committed events', () => {
     assert.equal(assigned.url, `/projects/${projectId}/tasks?open=work:${work.id}`);
 
     const decision = expectStatus(await cy.browser.request('POST', `/api/v1/projects/${projectId}/decisions`, { body: { title: 'Print on recycled paper', affects: [work.id] } }), 201) as { id: string };
-    const result = expectStatus(await cy.browser.request('POST', `/api/v1/projects/${projectId}/results`, { body: { title: 'Recycled stock shows the grid lines', finding: 'positive', work: [work.id] } }), 201) as { id: string };
     const review = await waitForItem(ben, (item) => item.url?.endsWith(`decision:${decision.id}`) === true, 'Ben\'s decision review');
     assert.equal(review.reason, 'review');
     assert.equal(review.title, 'Decision proposed: Print on recycled paper');
-    const resultItem = await waitForItem(ben, (item) => item.url?.endsWith(`result:${result.id}`) === true, 'Ben\'s result review');
-    assert.equal(resultItem.reason, 'review');
     await generatorCaughtUp();
     assert.equal((await inbox(ada)).items.filter((item) => item.url?.includes(own.id)).length, 0, 'assigning yourself notifies nobody');
   });

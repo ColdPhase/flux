@@ -21,19 +21,15 @@ function source(scope: AgentOrientationScope, kind: AgentSourceKind): SQL {
     FROM project_conversations c LEFT JOIN project_messages m ON m.conversation_id = c.id AND m.sequence = 1
       AND m.workspace_id = c.workspace_id AND m.project_id = c.project_id
     WHERE c.workspace_id = ${scope.workspaceId} AND c.project_id = ${scope.projectId}`;
-  const table = kind === 'work' ? sql`project_work_items` : kind === 'decision' ? sql`project_decisions` : sql`project_results`;
-  const version = kind === 'result' ? sql`NULL::integer` : sql`version`;
-  const at = kind === 'result' ? sql`NULL::timestamptz` : sql`updated_at`;
-  const state = kind === 'result' ? sql`finding` : sql`status`;
-  return sql`SELECT id, left(title, 300) AS title, ${version} AS version, ${at} AS updated_at,
-    NULL::integer AS sequence, ${state} AS state FROM ${table}
+  const table = kind === 'work' ? sql`project_work_items` : sql`project_decisions`;
+  return sql`SELECT id, left(title, 300) AS title, version, updated_at,
+    NULL::integer AS sequence, status AS state FROM ${table}
     WHERE workspace_id = ${scope.workspaceId} AND project_id = ${scope.projectId} ${kind === 'work' ? sql`AND creation_reverted_at IS NULL` : sql``}`;
 }
 function reference(scope: AgentOrientationScope, kind: AgentSourceKind, row: MetadataRow): AgentSourceReference {
-  const checkpoint: AgentSourceCheckpoint = kind === 'result' ? { kind, id: row.id }
-    : kind === 'conversation' ? { kind, id: row.id, sequence: row.sequence! }
-      : kind === 'map' ? { kind, id: row.id, version: row.version!, updatedAt: new Date(row.updated_at!).toISOString() }
-        : { kind, id: row.id, version: row.version! };
+  const checkpoint: AgentSourceCheckpoint = kind === 'conversation' ? { kind, id: row.id, sequence: row.sequence! }
+    : kind === 'map' ? { kind, id: row.id, version: row.version!, updatedAt: new Date(row.updated_at!).toISOString() }
+      : { kind, id: row.id, version: row.version! };
   return { ...scope, checkpoint, title: row.title, state: row.state };
 }
 /** Caller holds the current connection, selected-project and canonical project policy locks. */

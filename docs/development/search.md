@@ -2,7 +2,7 @@
 
 Foundation 8.12: a person knows something exists but not where or under which name. One search
 covers project messages, direct messages, docs and materials and every version of them, work items,
-decisions, results, sketches and their thoughts and people. It runs in PostgreSQL only
+decisions, sketches and their thoughts and people. It runs in PostgreSQL only
 (`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
 no separate search server. The #16 rule applies throughout: **access filtering happens before
 ranking, limits and snippets.**
@@ -14,7 +14,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 | Column | Meaning |
 | --- | --- |
-| `kind` | `project`, `message`, `dm_message`, `material`, `doc`, `work`, `decision`, `result`, `sketch`, `thought` or `person`. |
+| `kind` | `project`, `message`, `dm_message`, `material`, `doc`, `work`, `decision`, `sketch`, `thought` or `person`. |
 | `audience_key` | The object that carries the row's permission: `project:<id>`, `dm:<id>`, `sketch:<id>` or `members:<workspace>`. |
 | `project_id`, `parent_id`, `object_id`, `version` | The place and the exact target: the conversation of a message, the DM of a DM message, the sketch of a thought, and the material version. |
 | `title`, `body`, `status`, `author_kind`/`author_id`, `at` | Content, the status that names it ("Task · blocked"), who wrote it and when. |
@@ -29,7 +29,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   says "Project" or "Project · restricted"; its place is the workspace.
 - **Kept current in the same transaction.** `AFTER INSERT OR UPDATE OR DELETE` row triggers on
   `projects`, `project_messages`, `dm_messages`, `project_material_versions`, `project_work_items`,
-  `project_decisions`, `project_results`, `sketches`, `sketch_thoughts` and
+  `project_decisions`, `sketches`, `sketch_thoughts` and
   `workspace_members` (plus `auth_users` name changes) write the row with the change itself. A
   committed edit is searchable at once; a deleted object, including cascades from a deleted
   project, DM or sketch, disappears with it. Moving a thought on the map does not reindex it. The
@@ -111,7 +111,7 @@ needs a live session and answers `Cache-Control: no-store`.
 
 - `q`: 1–200 characters (`400 QUERY_REQUIRED` / `QUERY_TOO_LONG`). A query without any letter or
   digit returns an empty answer. Queries are always parameters; operators, quotes and SQL are data.
-- `type`: `project` (project names), `message` (project and direct messages), `doc`, `material`, `work`, `decision`, `result`,
+- `type`: `project` (project names), `message` (project and direct messages), `doc`, `material`, `work`, `decision`,
   `sketch` (sketches and thoughts) or `person`.
 - `place`: `project:<id>`, `dm:<id>` or `private` (your private map). A place
   the reader cannot see gives the same empty answer as a place without matches.
@@ -150,7 +150,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   sidebar's Search and the phone's round Search button open the same dialog (a floating one near the
   top on the computer, a full-screen sheet on the phone), as `Search.dc.html` draws it. There is no
   Search page and no `/search` route. It searches as you type (140 ms debounce), lists up to 20 results as
-  a combobox listbox in groups by kind (Tasks with decisions and results, Messages, Wiki, Files, Thoughts
+  a combobox listbox in groups by kind (Tasks with decisions, Messages, Wiki, Files, Thoughts
   with maps and drafts, Spaces, People; the groups keep that order and a group keeps the server's
   ranking), and has no filter chips, no place filter and no Create group. ↑/↓ move, Enter opens the
   selected row (the first is selected), Esc closes and returns focus. A longer list is narrowed by typing
@@ -166,7 +166,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a person to a
-  direct message with them, and work, decisions and results in Details on their project. A message
+  direct message with them, and work and decisions in Details on their project. A message
   older than the conversation's first window is reached by paging back (`app/apps/web/src/app/seekMessage.ts`,
   pages of 100 through the same authorized DM and conversation reads, at most 10,000 messages) and
   then shown and focused.

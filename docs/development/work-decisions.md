@@ -1,4 +1,4 @@
-# Work items, decisions and results (issue #101)
+# Work items and decisions (issue #101)
 
 **Later required amendment, 2026-09-30:** [F-016](../product/mcp-cowork.md)
 adds separate local-agent execution/review records and disclosed GitHub rules
@@ -8,7 +8,7 @@ UI116-3 ([final design](../design/final/README.md#5-behaviour) rule P5) changes 
 without rewriting historical threads. Implementation is tracked in the new
 contract's delivery table; this notice is not runtime evidence.
 
-Foundation 8.5/8.6 and the #44 product contract: conversation, task, decision and result keep
+Foundation 8.5/8.6 and the #44 product contract: conversation, task and decision keep
 their own meaning and stable ids and are connected by many-to-many links. Creating work from a
 message keeps the message where it is. Everything described here is visible exactly to the
 principals with current read access to the project; there is no second audience.
@@ -19,8 +19,7 @@ principals with current read access to the project; there is no second audience.
 | --- | --- | --- |
 | Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` ([four states](#statuses-waiting-and-what-came-of-it-868)), optional blocker, one thing it waits for and `dropped` and `cameOfIt` (only while blocked or done), optional `dueOn` ([below](#due-date-and-activity-488)), version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`); see [acceptance authority](#acceptance-authority-o-009-250). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. The screens call a superseded decision "replaced". |
-| Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; Nothing is stored when finishing is refused. A result linked to work (`work`) also contributes to each task's conversation ([below](#contributions-to-the-task-conversation-154)). |
-| Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
+| Link | role, from (work/decision, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
 
 **No pivot (founder direction, Hubert, 2026-11-03; #871).** Accepting a decision that replaces an earlier one
 only marks the earlier one `superseded`. Flux does not move, park or re-link any task because a decision changed; people
@@ -37,8 +36,8 @@ competing replacements of the same decision at once: one wins, the other gets `4
   That covers owners and admins, members of the space and a guest with a contributor grant. The proposer may accept their own proposal.
 - **Who is refused.** A person without access, removed from the space or gone gets `404`. An
   agent gets `403 DECISION_NEEDS_PERSON`, whoever owns it and whatever its grant.
-- **Paths that never accept.** The assistant in Flux has no decision path: its proposals are results
-  only. MCP has no accepting tool and no `decision.*` operation other than `decision.propose`, so a
+- **Paths that never accept.** The assistant in Flux has no decision path: it proposes nothing for
+  a person to accept (#1054). MCP has no accepting tool and no `decision.*` operation other than `decision.propose`, so a
   standing grant cannot name acceptance.
 - **Superseding.** It happens only when an authorized person accepts the replacement.
 - **No silent change.** A refusal changes nothing: same status and version, no
@@ -58,7 +57,6 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
-| `GET/POST /api/v1/projects/:projectId/results`, `GET /api/v1/results/:id` | `POST` takes an optional `clientCommandId` (UUID, #154): see below. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
 | `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
 
@@ -69,23 +67,20 @@ missing one.
 
 ## Contributions to the task conversation (#154)
 
-Two commands also contribute to the task's canonical conversation, in the same transaction, through the
+Two things also contribute to the task's canonical conversation, in the same transaction, through the
 mandatory `WorkPorts.contributions` hook (there is no work adapter without it; see
 [task discussions](task-discussions.md#explicit-native-effects-on-the-canonical-thread)):
 
 - **Saving a blocker.** `PATCH` with a nonempty `blocker` (status `blocked`) is one authored contribution whose
   body is exactly the saved, trimmed text. Clearing the blocker (`null`, empty or whitespace) and changing only
   status, owner, title or outcome contribute nothing. Creation with a blocker keeps only its creation notice.
-- **Publishing a result.** One canonical result is created; every task in `work` receives one contribution by
-  the creating principal whose body is the result title and whose `contribution` is
-  `{ "kind": "result", "resultId": "<that result>" }`. The finding, evidence and sources are read from the
-  result through `GET /api/v1/results/:id`. A result with no linked task creates no task thread.
+- **What came of it.** A task finished with a nonempty `cameOfIt` line writes it once as `contribution.kind` `came_of_it`
+  ([below](#statuses-waiting-and-what-came-of-it-868)).
 
-`clientCommandId` makes either command durably retryable. The receipt is scoped to the real actor, project,
+`clientCommandId` makes the command durably retryable. The receipt is scoped to the real actor, project,
 operation and UUID. An exact retry rechecks current project write access, the produced state (a changed task is
 `409 COMMAND_POSTSTATE_STALE`, never overwritten and never contributed twice) and the stored contributions, then
-returns the original outcome; a changed intent is `409 IDEMPOTENCY_CONFLICT`. Without it nothing deduplicates a
-repeated result, and the `If-Match` version fences a stale identical blocker save. Browsers always send one.
+returns the original outcome; a changed intent is `409 IDEMPOTENCY_CONFLICT`. Without it the `If-Match` version fences a stale identical blocker save. Browsers always send one.
 The receipt is separate from the 24-hour `Idempotency-Key` response cache and from the #152 connection-command ledger.
 
 ## Statuses, waiting and what came of it (#868)
@@ -110,7 +105,7 @@ when a prerequisite is still open, since Doing needs every one done):
 | It waits for | Resolved when | The line says |
 | --- | --- | --- |
 | a decision | the decision is accepted (`POST /decisions/:id/accept`) | the decision was accepted |
-| a task | that task becomes done, by `PATCH`, by a result that finishes it, or dropped | #7 is done / #7 was dropped |
+| a task | that task becomes done, by `PATCH`, by a linked pull request's rule (#1055) or dropped | #7 is done / #7 was dropped |
 | a person | they say they are done: `POST /work/:id/waiting-done` (the Inbox item's Done, or the panel's) | Jonas is done |
 
 A task that is Blocked when its agent's run ends is left as it is (the report says "Blocked: #4 …" in the agent's chat), in both "Do it and tell me" and "Ask me first": the drain does not mark it Done or hand it back, so the tasks that wait for it do not resume on a false Done. The agent takes the task up again when its wait is resolved and when a person moves it from Blocked to Doing (Resolve), as when it was given the task; moving it to To do does not start it.
@@ -122,7 +117,8 @@ continue: the decision was accepted", `reason` is the phrase), and tells its own
 sentence (`project.work_updated.v1` with `resumedFor`, `reason` and `taskId`), an agent that holds it picks it up again as when it was
 given the task (an `assigned` row in `agent_task_events`, #856). The tasks are found under the project graph lock and locked with the
 rest of the command's fence, then read again: one that moved on meanwhile is left alone. A task that a pull request's rule moves to
-Done (#74) does not resume waiting tasks yet.
+Done (#74) resumes the tasks that wait for it the same way (#1055): the rule's fence (`lockForRules`) also locks the waiting tasks, found
+under the graph lock, and the line, the activity entry, the owner's note and an agent's pick-up are the same.
 
 ## Due date and activity (#488)
 
@@ -135,7 +131,7 @@ work detail and the task carry it. MCP does not take or show it yet. It is store
 
 **Activity.** Every successful change of **status, owner, due date or title** keeps one row of
 `project_task_activity` per field that really changed, made by the principal that acted (a person or an agent, whichever
-path: the API, MCP, the assistant, a result that finishes a task, or a task rule of a linked pull request, which acts for
+path: the API, MCP, the assistant, or a task rule of a linked pull request, which acts for
 the rule's author and is marked `automation: 'github_rule'`), at the time of the change. The row is written by
 `WorkRepository.updateWork`, the one function every change of a task ends in, in the transaction of the change, so a replay
 of the same `clientCommandId` or `Idempotency-Key`, a refused change and a change that leaves the fields as they were
@@ -153,7 +149,7 @@ blocked/unblocked lines (`project_task_updates`, #550), which are unchanged.
 Each committed change records exactly one project event in its transaction (a contribution adds its own
 `project.conversation_created.v1` or `project.message_sent.v1`, all in the one final batch):
 `project.work_created.v1`, `project.work_updated.v1`, `project.decision_proposed.v1`,
-`project.decision_accepted.v1`, `project.result_recorded.v1` or `project.link_created.v1`. The
+`project.decision_accepted.v1` or `project.link_created.v1`. The
 `object_id` is the project, `data` carries only the object id, so the stream reaches current
 project readers and the client refetches. Idempotent replays and failed changes record none.
 
@@ -165,8 +161,8 @@ project readers and the client refetches. Idempotent replays and failed changes 
 - `app/packages/db/src/repositories/work.ts` and migration `0008_work.sql`: rows only, no decisions.
 - `app/apps/server/src/work/`: adapters (`evaluateProject`/`authorize`/`visibleFilter`, `recordEvent`)
   and routes. No architecture allowlist entries were added.
-- `app/apps/web/src/work/`: loads every page of work, decisions and results (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
-  (Task, Decision, Result, plus Details; #189), inline objects under their source message and
+- `app/apps/web/src/work/`: loads every page of work and decisions (100 per request until `total`), so the state line, Tasks and inline objects are complete; the Tasks tab (`/projects/:id/tasks`), the state line, message actions
+  (Task, Decision, plus Details; #189), inline objects under their source message and
   the Details panel views and forms.
 
 ## Not yet
@@ -184,7 +180,7 @@ use cases), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role mat
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
 path), `app/tests/ui/test_decision_authority.py` (#250: a contributor accepts; the viewer's "Who decides" note went with the viewer role, #903)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
-propose/accept, negative result by the second person, a replacing decision, phone) and
+propose/accept, a replacing decision, phone) and
 `app/tests/ui/test_decision_surfaces.py` (#692, #693: the proposal form keeps the panel's rhythm of
 28 px between sections and 8 px inside one; the proposal's title and Accept block paint no surface of
 their own and start on one left edge, at 390 and 1440, light and dark). Screenshots:

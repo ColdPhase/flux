@@ -10,7 +10,7 @@ import { agentTaskRows } from './agent-tasks.js';
 import { openField, openRows, openRow, sealFor, sealOf, sealRow, sealsOf, type FieldSeal } from '../sealing.js';
 
 /**
- * Drizzle rows for work items, decisions, results and their links (issues #101, #46). They
+ * Drizzle rows for work items, decisions and their links (issues #101, #46). They
  * satisfy the `WorkRepository` port of `packages/core/src/work/ports.ts` structurally (this
  * package does not depend on core) and make no access decisions: the core use cases ask the
  * access policy first, and list filters come from the policy's `visibleFilter`.
@@ -19,14 +19,12 @@ import { openField, openRows, openRow, sealFor, sealOf, sealRow, sealsOf, type F
 type Actor = { kind: 'human' | 'agent'; id: string };
 type WorkRow = typeof schema.projectWorkItems.$inferSelect;
 type DecisionRow = typeof schema.projectDecisions.$inferSelect;
-type ResultRow = typeof schema.projectResults.$inferSelect;
 type LinkRow = typeof schema.projectObjectLinks.$inferSelect;
-type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
+type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
 type Window = { limit: number; offset: number };
 
 const w = schema.projectWorkItems;
 const d = schema.projectDecisions;
-const r = schema.projectResults;
 const l = schema.projectObjectLinks;
 
 export function toWorkRecord(row: WorkRow) {
@@ -53,13 +51,6 @@ export function toDecisionRecord(row: DecisionRow) {
     proposedBy: { kind: row.proposedByKind, id: row.proposedById }, decidedBy: row.decidedBy, decidedAt: row.decidedAt,
     supersedesId: row.supersedesId, supersededById: row.supersededById, supersededAt: row.supersededAt,
     version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
-  };
-}
-
-export function toResultRecord(row: ResultRow) {
-  return {
-    id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, title: row.title, finding: row.finding, evidence: row.evidence,
-    createdBy: { kind: row.createdByKind, id: row.createdById }, createdAt: row.createdAt,
   };
 }
 
@@ -167,9 +158,9 @@ function baselineMatches(row: WorkRow): boolean {
   return row.creationBaseline !== null && canonical(row.creationBaseline) === canonical(baselineOf(row));
 }
 
-const TABLE_NAMES = new Map<unknown, string>([[w, 'project_work_items'], [d, 'project_decisions'], [r, 'project_results']]);
+const TABLE_NAMES = new Map<unknown, string>([[w, 'project_work_items'], [d, 'project_decisions']]);
 
-async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d | typeof r, where: SQL, window: Window, map: (row: Row) => T) {
+async function paged<Row, T>(db: DbExecutor, table: typeof w | typeof d, where: SQL, window: Window, map: (row: Row) => T) {
   const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(table).where(where);
   const rows = await openRows(db, TABLE_NAMES.get(table)!, await db.select().from(table).where(where).orderBy(desc(table.createdAt), desc(table.id)).limit(window.limit).offset(window.offset));
   return { items: (rows as Row[]).map(map), total: counted?.total ?? 0 };
@@ -255,15 +246,14 @@ export function workRows(db: DbExecutor) {
         projectId: work.projectId, actorKind: by.kind, actorId: by.id, clientCommandId: commandId, requestFingerprint: fingerprint, workId: work.id, noticeId }));
       return { work: toWorkRecord((await openedWork(db, updated!))), noticeId };
     },
-    async locate(type: 'work' | 'decision' | 'result', id: string) {
-      const table = type === 'work' ? w : type === 'decision' ? d : r;
+    async locate(type: 'work' | 'decision', id: string) {
+      const table = type === 'work' ? w : d;
       const [row] = await db.select({ projectId: table.projectId }).from(table).where(eq(table.id, id));
       return row ?? null;
     },
 
     listWork: (projectId: string, window: Window) => paged(db, w, and(eq(w.projectId, projectId), isNull(w.creationRevertedAt))!, window, toWorkRecord),
     listDecisions: (projectId: string, window: Window) => paged(db, d, eq(d.projectId, projectId), window, toDecisionRecord),
-    listResults: (projectId: string, window: Window) => paged(db, r, eq(r.projectId, projectId), window, toResultRecord),
 
     /** Blocked work that concerns `userId` (#550): theirs, waiting for them, or held by an agent they own. */
     async listBlockedFor(workspaceId: string, userId: string, visibleProjects: SQL, window: Window) {
@@ -348,24 +338,23 @@ export function workRows(db: DbExecutor) {
       return toWorkRecord(await openedWork(db, row!));
     },
     /** The durable native-command lock, then the earlier receipt of this exact actor, project, operation and command. */
-    async nativeCommand(projectId: string, by: Actor, operation: 'work.update' | 'result.create', commandId: string) {
+    async nativeCommand(projectId: string, by: Actor, operation: 'work.update', commandId: string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`native-command:${projectId}:${by.kind}:${by.id}:${operation}:${commandId}`}))`);
       const n = schema.nativeCommandReceipts;
       const [row] = await db.select().from(n).where(and(eq(n.projectId, projectId), eq(n.actorKind, by.kind), eq(n.actorId, by.id),
         eq(n.operation, operation), eq(n.clientCommandId, commandId)));
       if (!row) return null;
       row.requestFingerprint = openRow('native_command_receipts', row, await sealOf(db, row.workspaceId, { write: false })).requestFingerprint;
-      const object = row.operation === 'work.update' ? { type: 'work' as const, id: row.workId!, version: row.workVersion! } : { type: 'result' as const, id: row.resultId! };
+      const object = { type: 'work' as const, id: row.workId, version: row.workVersion };
       return { operation: row.operation, commandId: row.clientCommandId, fingerprint: row.requestFingerprint, object, messageIds: row.messageIds };
     },
     async recordNativeCommand(scope: { workspaceId: string; projectId: string }, by: Actor,
-      receipt: { operation: 'work.update' | 'result.create'; commandId: string; fingerprint: string;
-        object: { type: 'work'; id: string; version: number } | { type: 'result'; id: string }; messageIds: string[] }) {
+      receipt: { operation: 'work.update'; commandId: string; fingerprint: string;
+        object: { type: 'work'; id: string; version: number }; messageIds: string[] }) {
       await db.insert(schema.nativeCommandReceipts).values({ ...scope, actorKind: by.kind, actorId: by.id, operation: receipt.operation,
         clientCommandId: receipt.commandId, requestFingerprint: (await sealFor(db, 'native_command_receipts', scope.workspaceId,
           { projectId: scope.projectId, actorKind: by.kind, actorId: by.id, operation: receipt.operation, clientCommandId: receipt.commandId, requestFingerprint: receipt.fingerprint })).requestFingerprint,
-        workId: receipt.object.type === 'work' ? receipt.object.id : null, workVersion: receipt.object.type === 'work' ? receipt.object.version : null,
-        resultId: receipt.object.type === 'result' ? receipt.object.id : null, messageIds: receipt.messageIds });
+        workId: receipt.object.id, workVersion: receipt.object.version, messageIds: receipt.messageIds });
     },
     async createdWork(projectId: string, by: Actor, commandId: string) {
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`work-create:${projectId}:${by.kind}:${by.id}:${commandId}`}))`);
@@ -417,47 +406,41 @@ export function workRows(db: DbExecutor) {
         createdAt: new Date(row.created_at) })) };
     },
     /**
-     * The moments the conversation announces (#694): a decision proposed, a decision accepted, a result recorded, newest first.
-     * Derived from the objects themselves, so every decision and result has its lines and a state change shows at once;
+     * The moments the conversation announces (#694): a decision proposed, a decision accepted, newest first.
+     * Derived from the objects themselves, so every decision has its lines and a state change shows at once;
      * `sources` and the conversation of the first message source come from the object's own `source` links.
      */
     async listObjectNotices(projectId: string, window: Window) {
       const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})
-        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)
-        + (SELECT count(*) FROM ${schema.projectResults} WHERE ${schema.projectResults.projectId} = ${projectId})` }).from(sql`(SELECT 1) AS one`);
-      const sourcesOf = (type: 'decision' | 'result', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
+        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)` }).from(sql`(SELECT 1) AS one`);
+      const sourcesOf = (type: 'decision', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
           THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
           ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source'), '[]'::jsonb)`);
-      const conversationOf = (type: 'decision' | 'result', id: string) => sql.raw(`(SELECT m.conversation_id FROM project_object_links l
+      const conversationOf = (type: 'decision', id: string) => sql.raw(`(SELECT m.conversation_id FROM project_object_links l
           JOIN project_messages m ON m.id = l.to_id WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source' AND l.to_type = 'message'
           ORDER BY l.created_at, l.id LIMIT 1)`);
       const result = await db.execute(sql`
         SELECT e.* FROM (
-          SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, 'decision.proposed' AS kind, d.id AS object_id, d.title, d.status, NULL::text AS finding,
+          SELECT d.id::text || ':proposed' AS id, d.workspace_id, d.project_id, 'decision.proposed' AS kind, d.id AS object_id, d.title, d.status,
             d.proposed_by_kind AS by_kind, d.proposed_by_id AS by_id, ${sourcesOf('decision', 'd.id')} AS sources, ${conversationOf('decision', 'd.id')} AS conversation_id, d.created_at AS at
             FROM project_decisions d WHERE d.project_id = ${projectId}
           UNION ALL
-          SELECT d.id::text || ':accepted', d.workspace_id, d.project_id, 'decision.accepted', d.id, d.title, d.status, NULL::text,
+          SELECT d.id::text || ':accepted', d.workspace_id, d.project_id, 'decision.accepted', d.id, d.title, d.status,
             'human', d.decided_by, ${sourcesOf('decision', 'd.id')}, ${conversationOf('decision', 'd.id')}, d.decided_at
             FROM project_decisions d WHERE d.project_id = ${projectId} AND d.decided_at IS NOT NULL AND d.decided_by IS NOT NULL
-          UNION ALL
-          SELECT r.id::text || ':recorded', r.workspace_id, r.project_id, 'result.recorded', r.id, r.title, NULL::text, r.finding,
-            r.created_by_kind, r.created_by_id, ${sourcesOf('result', 'r.id')}, ${conversationOf('result', 'r.id')}, r.created_at
-            FROM project_results r WHERE r.project_id = ${projectId}
         ) e ORDER BY e.at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
-      const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted' | 'result.recorded'; object_id: string;
-        title: string; status: 'proposed' | 'accepted' | 'superseded' | null; finding: 'positive' | 'negative' | null; by_kind: 'human' | 'agent'; by_id: string;
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; kind: 'decision.proposed' | 'decision.accepted'; object_id: string;
+        title: string; status: 'proposed' | 'accepted' | 'superseded' | null; by_kind: 'human' | 'agent'; by_id: string;
         sources: import('@flux/contracts').ObjectRef[]; conversation_id: string | null; at: Date | string }[];
       // F-030: the titles come through raw SQL; they are opened here, not in SQL (#696).
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
       for (const row of rows) {
-        row.title = openField(row.kind === 'result.recorded' ? 'project_results' : 'project_decisions', 'title', [row.object_id], row.title, seals.get(row.workspace_id)!)!;
+        row.title = openField('project_decisions', 'title', [row.object_id], row.title, seals.get(row.workspace_id)!)!;
       }
       return { total: Number(count?.total ?? 0), items: rows.map((row) => {
         const base = { id: row.id, workspaceId: row.workspace_id, projectId: row.project_id, title: row.title, by: { kind: row.by_kind, id: row.by_id },
           sources: row.sources, conversationId: row.conversation_id, createdAt: new Date(row.at) };
-        return row.kind === 'result.recorded' ? { ...base, kind: row.kind, resultId: row.object_id, finding: row.finding! }
-          : { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
+        return { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
       }) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
@@ -536,18 +519,6 @@ export function workRows(db: DbExecutor) {
       return toDecisionRecord((await opened(db, 'project_decisions', row))!);
     },
 
-    async findResult(id: string) {
-      const row = await opened(db, 'project_results', (await db.select().from(r).where(eq(r.id, id)))[0]);
-      return row ? toResultRecord(row) : null;
-    },
-    async insertResult(result: { id: string; workspaceId: string; projectId: string; title: string; finding: ResultRow['finding']; evidence: string; createdBy: Actor }) {
-      const [row] = await db.insert(r).values(await sealFor(db, 'project_results', result.workspaceId, {
-        id: result.id, workspaceId: result.workspaceId, projectId: result.projectId, title: result.title, finding: result.finding,
-        evidence: result.evidence, createdByKind: result.createdBy.kind, createdById: result.createdBy.id,
-      })).returning();
-      return toResultRecord({ ...row!, title: result.title, evidence: result.evidence });
-    },
-
     async links(ids: string[]) {
       if (!ids.length) return [];
       const rows = await db.select().from(l).where(or(inArray(l.fromId, ids), inArray(l.toId, ids))).orderBy(asc(l.createdAt), asc(l.id));
@@ -588,7 +559,7 @@ export function workRows(db: DbExecutor) {
             .where(and(eq(schema.projectMaterialVersions.projectId, projectId), eq(schema.projectMaterialVersions.materialId, ref.id), eq(schema.projectMaterialVersions.version, ref.version)));
           break;
         default: {
-          const table = ref.type === 'work' ? w : ref.type === 'decision' ? d : r;
+          const table = ref.type === 'work' ? w : d;
           found = await db.select({ id: table.id }).from(table).where(and(eq(table.projectId, projectId), eq(table.id, ref.id)));
         }
       }
@@ -638,7 +609,7 @@ export function workRows(db: DbExecutor) {
         for (const row of await db.select({ id: schema.sketches.id, title: schema.sketches.title }).from(schema.sketches).where(and(projectSketch(projectId), inArray(schema.sketches.id, sketchIds))))
           titles.set(`sketch:${row.id}`, { title: open('sketches', 'title', [row.id], row.title), sketchId: row.id });
       }
-      for (const [type, table] of [['work', w], ['decision', d], ['result', r]] as const) {
+      for (const [type, table] of [['work', w], ['decision', d]] as const) {
         const wanted = of(type);
         if (!wanted.length) continue;
         if (type === 'work') {
@@ -646,7 +617,7 @@ export function workRows(db: DbExecutor) {
             titles.set(`work:${row.id}`, { title: row.reverted ? `${open('project_work_items', 'title', [row.id], row.title)} · creation undone` : open('project_work_items', 'title', [row.id], row.title) });
         } else {
           for (const row of await db.select({ id: table.id, title: table.title }).from(table).where(and(eq(table.projectId, projectId), inArray(table.id, wanted))))
-            titles.set(`${type}:${row.id}`, { title: open(type === 'decision' ? 'project_decisions' : 'project_results', 'title', [row.id], row.title) });
+            titles.set(`${type}:${row.id}`, { title: open('project_decisions', 'title', [row.id], row.title) });
         }
       }
       return titles;

@@ -150,9 +150,9 @@ export function notificationFactRows(db: DbExecutor) {
       .where(and(inArray(schema.projectWorkItems.id, ids), isNotNull(schema.projectWorkItems.ownerUserId)));
     return rows.map((row) => row.owner!);
   };
-  const linkedWork = async (fromId: string, role: 'affects' | 'about') => {
+  const linkedWork = async (fromId: string) => {
     const rows = await db.select({ id: schema.projectObjectLinks.toId }).from(schema.projectObjectLinks)
-      .where(and(eq(schema.projectObjectLinks.fromId, fromId), eq(schema.projectObjectLinks.role, role), eq(schema.projectObjectLinks.toType, 'work')));
+      .where(and(eq(schema.projectObjectLinks.fromId, fromId), eq(schema.projectObjectLinks.role, 'affects'), eq(schema.projectObjectLinks.toType, 'work')));
     return rows.map((row) => row.id);
   };
   const agentOwner = async (kind: string, id: string) => {
@@ -231,16 +231,7 @@ export function notificationFactRows(db: DbExecutor) {
       if (!row) return null;
       return {
         id: row.id, projectId: row.projectId, projectName: await projectName(row.projectId), title: row.title,
-        by: { kind: row.kind as 'human' | 'agent', id: row.by }, workOwners: await workOwners(await linkedWork(row.id, 'affects')), agentOwner: await agentOwner(row.kind, row.by),
-      };
-    },
-    async result(resultId: string) {
-      const r = schema.projectResults;
-      const [row] = await openRows(db, 'project_results', await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, title: r.title, kind: r.createdByKind, by: r.createdById }).from(r).where(eq(r.id, resultId)));
-      if (!row) return null;
-      return {
-        id: row.id, projectId: row.projectId, projectName: await projectName(row.projectId), title: row.title,
-        by: { kind: row.kind as 'human' | 'agent', id: row.by }, workOwners: await workOwners(await linkedWork(row.id, 'about')), agentOwner: await agentOwner(row.kind, row.by),
+        by: { kind: row.kind as 'human' | 'agent', id: row.by }, workOwners: await workOwners(await linkedWork(row.id)), agentOwner: await agentOwner(row.kind, row.by),
       };
     },
     /** A pending invitation of an available session, with its anchor's project-level label (#62). */

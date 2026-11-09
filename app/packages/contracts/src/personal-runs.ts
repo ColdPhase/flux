@@ -1,7 +1,6 @@
-import type { Page, PageQuery, VersionPrecondition } from './access.js';
+import type { Page, PageQuery } from './access.js';
 import { WEB_SEARCHES_PER_REQUEST, type AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
-import type { ResultFinding } from './work.js';
 
 /**
  * Owner-invoked personal assistant runs (issue #68; Connect AI, #854).
@@ -31,10 +30,6 @@ export const assistantRunShowPath = (runId: string) => `${assistantRunPath(runId
 /** Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. */
 export const assistantRunDismissPath = (runId: string) => `${assistantRunPath(runId)}/dismiss`;
 export const conversationAssistantAnswersPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-answers`;
-export const projectAssistantProposalsPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-proposals`;
-export const assistantProposalPath = (proposalId: string) => `/api/v1/assistant-proposals/${proposalId}`;
-export const assistantProposalAcceptPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/accept`;
-export const assistantProposalDismissPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/dismiss`;
 
 /**
  * Where a run belongs (#842, F-036 AG-4). `space`: a space's conversation, a thread or a task's thread (`conversationId`), or the
@@ -379,12 +374,11 @@ export interface AssistantAnswer {
   askedBy: { id: string; name: string };
   request: { kind: AssistantRunKind; prompt: string };
   body: string;
-  /** Stopped at the output limit: shown as truncated, never a proposal; the owner can continue it. */
+  /** Stopped at the output limit: shown as truncated; the owner can continue it. */
   truncated: boolean;
   provenance: { provider: AiProviderKind; model: string };
   /** Only supplied project-audience sources the answer cites. */
   sources: AssistantSourceRef[];
-  proposalId: string | null;
   committedAt: string;
   /** The schedule that posted this answer in the conversation (F-027 AST-7 "Output"); null for a request. */
   schedule?: { id: string; title: string } | null;
@@ -404,33 +398,3 @@ export interface ListOwnRunsQuery extends PageQuery {
 
 /** `POST /api/v1/assistant-runs/:runId/show` (#842): the message the answer became. */
 export interface ShowAnswerResult { run: AssistantRun; messageId: string }
-
-export type AssistantProposalStatus = 'proposed' | 'accepted' | 'dismissed';
-
-/**
- * A consequential change drafted by a person's assistant. Nothing is saved until a person with
- * authority over the target accepts it: project write access, and for a result that finishes an
- * owned work item, its owner or a project manager. The assistant's owner has no extra right.
- */
-export interface AssistantProposal {
-  id: string;
-  runId: string;
-  projectId: string;
-  audience: { kind: 'project'; projectId: string };
-  /** "Jo's assistant" and its owner. */
-  draftedBy: { ownerUserId: string; label: string };
-  fact: string;
-  interpretation: string;
-  change: { type: 'result'; title: string; finding: ResultFinding; evidence: string; finishes: { workId: string } | null };
-  status: AssistantProposalStatus;
-  decidedBy: { id: string; name: string } | null;
-  decidedAt: string | null;
-  /** The result recorded on accept, by the accepting person, drafted by the assistant. */
-  resultId: string | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
-/** `POST /api/v1/assistant-proposals/:id/accept`, with `If-Match` or `expectedVersion`. */
-export type DecideAssistantProposalCommand = VersionPrecondition;

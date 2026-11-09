@@ -23,7 +23,6 @@ function namedPrincipals(item: NativeWorkRow | NativeWorkDetailObject): (NamedPr
   switch (item.kind) {
     case 'work': return [item.owner, ...('createdBy' in item ? [item.createdBy] : [])];
     case 'decision': return [item.proposedBy, item.decidedBy];
-    case 'result': return [item.createdBy];
   }
 }
 
@@ -47,7 +46,6 @@ async function withAgentOwners<T extends NativeWorkRow | NativeWorkDetailObject>
     switch (item.kind) {
       case 'work': return { ...item, owner: scopeOne(item.owner), ...('createdBy' in item ? { createdBy: scope(item.createdBy) } : {}) } as T;
       case 'decision': return { ...item, proposedBy: scope(item.proposedBy), decidedBy: scopeOne(item.decidedBy) } as T;
-      case 'result': return { ...item, createdBy: scope(item.createdBy) } as T;
     }
   });
 }
@@ -81,7 +79,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
     sourceVisibilityFingerprint: visibility.fingerprint,
     summary: summary.summary, observedAt: summary.observedAt,
     async view(projectId, principal, selection, limit, cursor) {
-      if (selection.purpose === 'choices' && selection.choice === 'result_work' && selection.selected) await requireObjects(projectId, [{ kind: 'work', id: selection.selected }]);
+      if (selection.purpose === 'choices' && selection.choice === 'open_work' && selection.selected) await requireObjects(projectId, [{ kind: 'work', id: selection.selected }]);
       return hydrate(projectId, await keys.view(projectId, principal, selection, limit, cursor));
     },
     async selectedWork(projectId, id) { await requireObjects(projectId, [{ kind: 'work', id }]); return (await withAgentOwners(db, await objects.rows(projectId, [{ kind: 'work', id }])))[0]!; },
@@ -102,7 +100,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
       const refs = object.kind === 'decision' ? [object.supersedes, object.supersededBy] : [];
       // #238: the facts core decides this reader's Undo eligibility from; they are not part of the projection.
       const undo = object.kind === 'work' ? await workRows(db).creationUndoFacts(object.id) ?? undefined : undefined;
-      return { object, observedAt: await summary.observedAt(), relations: { edges: facts.edges, sourceMessages: facts.sourceMessages, sourceMaterials: facts.sourceMaterials, decisions: facts.decisions, results: facts.results },
+      return { object, observedAt: await summary.observedAt(), relations: { edges: facts.edges, sourceMessages: facts.sourceMessages, sourceMaterials: facts.sourceMaterials, decisions: facts.decisions },
         context: await objects.decisionRefs(projectId, refs.filter((id): id is string => id !== null)), ...(undo ? { undo } : {}) };
     },
     async relations(projectId, selection, limit, cursor) {

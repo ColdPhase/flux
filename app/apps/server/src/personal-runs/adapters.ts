@@ -1,8 +1,7 @@
 import { withTaskUseErrors } from '../work/task-use-errors.js';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { personalRunRows, withIdpStanding, sql, workRows, type DbExecutor, accessReader, type Database, type Transaction } from '@flux/db';
+import { personalRunRows, withIdpStanding, sql, type DbExecutor, accessReader, type Database } from '@flux/db';
 import {
-  createAssistantProposalUseCases,
   createPersonalRunUseCases,
   noPersonalConnections,
   PERSONAL_RUN_JOB,
@@ -12,9 +11,7 @@ import {
   type PersonalRunPorts,
   type PersonalRunQueue,
   type PersonalRunUnitOfWork,
-  type ProposalUnitOfWork,
 } from '@flux/core';
-import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { assistantRows } from '../assistant/adapters.js';
 import { eventPorts } from '../events.js';
@@ -56,29 +53,6 @@ export function personalRunUnitOfWork(db: Database, queue: PersonalRunQueueFacto
   }) };
 }
 
-/** Accept records the result through the #101 work use case, in the accept's own transaction. */
-export function proposalUnitOfWork(db: Database, queue: PersonalRunQueueFactory): ProposalUnitOfWork {
-  return {
-    run: (work) => db.transaction(async (tx) => {
-      const session = transactionEventSession(tx);
-      const native = nativeWorkInEventSession(tx as Transaction, session);
-      const rows = workRows(tx);
-      const result = await session.run(() => work({
-        ...personalRunPorts(tx, queue, session, session),
-        results: {
-          async findWork(workId, options) {
-            const item = await rows.findWork(workId, options);
-            return item ? { id: item.id, projectId: item.projectId, version: item.version, ownerUserId: item.owner?.kind === 'human' ? item.owner.id : null } : null;
-          },
-          recordResult: (principal, projectId, command) => native.createResult(principal, projectId, command),
-        },
-      }));
-      await session.flushEvents();
-      return result;
-    }),
-  };
-}
-
 export interface PersonalRunComposition {
   queue: PersonalRunQueueFactory;
   /** #124 supplies the real lookup; until then nobody has a usable connection. */
@@ -92,5 +66,3 @@ export interface PersonalRunComposition {
 export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime }: PersonalRunComposition) {
   return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(runtime ? { runtime } : {}) });
 }
-
-export const assistantProposalUseCases = (db: Database, queue: PersonalRunQueueFactory) => createAssistantProposalUseCases(proposalUnitOfWork(db, queue));

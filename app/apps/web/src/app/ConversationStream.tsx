@@ -53,7 +53,7 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 
 /**
  * One entry of the stream, in time order: a root, or one compact task-created announcement (UI116-3)
- * linking its task, or a decision or result. An announcement is never a root and
+ * linking its task, or a decision. An announcement is never a root and
  * has no thread; the task's first genuine contribution is the root its discussion grows under.
  */
 export type StreamEntry =
@@ -61,7 +61,7 @@ export type StreamEntry =
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
   | { kind: 'object'; key: string; at: string; object: ObjectNotice };
 
-/** The decision or result an entry announces, for the line that follows it. */
+/** The decision an entry announces, for the line that follows it. */
 const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
 const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1 };
@@ -92,7 +92,7 @@ export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNo
 export function useTaskNotices(projectId: string, page: Page<TaskCreationNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
   return useNoticeFeed(listTaskNotices, projectId, page, roots, hasOlderRoots, onDenied);
 }
-/** The decisions and results the conversation announces (#694), kept and paged the same way as the task announcements. */
+/** The decisions the conversation announces (#694), kept and paged the same way as the task announcements. */
 export function useObjectNotices(projectId: string, page: Page<ObjectNotice>, roots: ConversationRoot[], hasOlderRoots: boolean, onDenied: (cause: unknown) => void) {
   return useNoticeFeed(listObjectNotices, projectId, page, roots, hasOlderRoots, onDenied);
 }
@@ -287,7 +287,7 @@ export interface StreamProps {
   roots: ConversationRoots;
   /** The loaded task announcements (UI116-3), oldest first. */
   notices: TaskCreationNotice[];
-  /** The decisions and results the stream announces (#694). */
+  /** The decisions the stream announces (#694). */
   objects?: ObjectNotice[];
   author: (message: ConversationMessage) => string;
   audience: string;
@@ -485,7 +485,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const bottom = feed.getBoundingClientRect().bottom;
     const below = arrived.filter((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1);
     const tasks = below.filter((id) => id.startsWith('notice-')).length;
-    // A decision or result line is neither a message nor a task update: it comes in quietly, uncounted.
+    // A decision line is neither a message nor a task update: it comes in quietly, uncounted.
     const quiet = below.filter((id) => id.startsWith('object-')).length;
     if (below.length - quiet) setNewBelow((current) => ({ messages: current.messages + below.length - tasks - quiet, tasks: current.tasks + tasks }));
   });
@@ -611,7 +611,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   }
 
   const dayOf = display.map((entry) => day(entry.at));
-  // The divider goes before the first notice of an unread decision or result (#763 H11-3).
+  // The divider goes before the first notice of an unread decision (#763 H11-3).
   const unreadObjectKey = unread && 'objectId' in unread
     ? display.find((entry) => entry.kind === 'object' && objectTarget(entry.object).id === unread.objectId)?.key ?? null : null;
   const below = newBelowText(newBelow.messages, newBelow.tasks);
@@ -658,7 +658,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   observed={root.message.authorId !== meId} seenBy={(seen.get(root.message.id) ?? []).map((person) => person.name)}
-                  onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
+                  onDenied={onDenied} />];
               }), ...outbox.pending.flatMap((item, index) => {
                 const label = day(item.at);
                 const previous = index ? day(outbox.pending[index - 1]!.at) : dayOf.at(-1);
@@ -749,7 +749,7 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
           <span className="convo-notice__num ui-task-number">#{notice.workNumber}</span>
           <span className="convo-notice__title">{title}</span>
           {owner ? <span className="convo-notice__owner">{owner.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={owner.name} size="sm" />}<span className="convo-notice__owner-name">{owner.name}</span></span> : null}
-          {/* A word always goes with the glyph, at the card's right edge like a decision's or a result's (#763 A8). */}
+          {/* A word always goes with the glyph, at the card's right edge like a decision's (#763 A8). */}
           <span className="convo-object__state convo-notice__state">{reverted ? 'Undone' : STATUS_LABEL[current?.status ?? 'open']}</span>
           <Icon name="chevron-right" size={14} />
         </button>
@@ -815,7 +815,7 @@ type RootItemProps = {
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   /** Another person's root is watched for viewing receipts; `seenBy` names who observed every root of this author run. */
   observed?: boolean; seenBy?: readonly string[];
-  onOpen: (root: ConversationRoot, reply: boolean) => void; onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
+  onOpen: (root: ConversationRoot, reply: boolean) => void; onDenied: (cause: unknown) => void;
 };
 /** A root the person sent that is not stored yet (#264). */
 type QueuedRootProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
@@ -848,7 +848,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
     const queued = props as QueuedRootProps;
     return pendingMessageRow({ place: 'stream', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { root, project, owners, meId, messageWork, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
+  const { root, project, owners, meId, messageWork, open, arrived, makeWork, onOpen, onDenied } = stored;
   const mine = message.authorId === meId;
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
@@ -866,7 +866,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message.sourceDeleted ? <DeletedSourceCitation /> : null}
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
-      {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
+      {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />

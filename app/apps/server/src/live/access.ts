@@ -70,12 +70,6 @@ export async function requireLivePresentationSource(principal: Principal, projec
     if (!row || row.projectId !== projectId || row.version !== ref.version) missing();
     return;
   }
-  if (ref.type === 'result') {
-    const query = db.select({ projectId: s.projectResults.projectId }).from(s.projectResults).where(eq(s.projectResults.id, ref.id));
-    const [row] = lock ? await query.for('share') : await query;
-    if (!row || row.projectId !== projectId || ref.version !== 1) missing();
-    return;
-  }
   if (ref.type === 'sketch') {
     const query = db.select({ projectId: s.sketches.projectId, scope: s.sketches.scope, version: s.sketches.version })
       .from(s.sketches).where(eq(s.sketches.id, ref.id));
@@ -128,11 +122,6 @@ export function liveAccess(db: Executor): LiveAccess {
     if (type === 'material') {
       const [row] = await db.select({ projectId: schema.projectMaterials.projectId }).from(schema.projectMaterials)
         .where(eq(schema.projectMaterials.id, id));
-      return row?.projectId ?? null;
-    }
-    if (type === 'result') {
-      const [row] = await db.select({ projectId: schema.projectResults.projectId }).from(schema.projectResults)
-        .where(eq(schema.projectResults.id, id));
       return row?.projectId ?? null;
     }
     return null;

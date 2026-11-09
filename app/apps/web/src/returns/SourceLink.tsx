@@ -13,7 +13,7 @@ export function SourceLink({ source, className, children, label, onFollow }: { s
   const href = sourceHref(source);
   const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.button === 0 && !event.metaKey && !event.ctrlKey && !event.shiftKey) onFollow?.();
-    if (source.type !== 'work' && source.type !== 'decision' && source.type !== 'result') return;
+    if (source.type !== 'work' && source.type !== 'decision') return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
     event.preventDefault();
     // Already on the space: open Details in place and keep the conversation where it is. From elsewhere the space

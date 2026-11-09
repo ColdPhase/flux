@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { DomainError, upsertSection, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Doc, DocPreview, DocSummary, DocVersion, DocVersionSummary, Material, MaterialVersion, Page, Project, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import { DomainError, type Principal } from '@flux/core';
+import type { Agent, Conversation, Decision, Doc, DocPreview, DocSummary, DocVersion, DocVersionSummary, Material, MaterialVersion, Page, Project, Workspace, WorkItem } from '@flux/contracts';
 import { docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
@@ -11,8 +11,8 @@ import { StreamClient } from './support/stream.js';
 
 // Project docs and wiki (issue #112): two people plus a viewer and an outsider; immutable
 // versions with author, time and reason; If-Match conflicts and idempotent retries; links and
-// backlinks to work, decisions, results, messages, sketches and other docs; "Add to docs" from
-// a result or decision; sanitized Markdown; events and the workspace list filter.
+// backlinks to work, decisions, messages, sketches and other docs; "Add to docs" from
+// a decision; sanitized Markdown; events and the workspace list filter.
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
@@ -191,17 +191,16 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal(rows.rows[0].n, 1);
   });
 
-  test('links reach work, decisions, results, messages, sketches and docs; backlinks are visible; other projects never leak', async () => {
+  test('links reach work, decisions, messages, sketches and docs; backlinks are visible; other projects never leak', async () => {
     const work = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Test the ToF sensor' }), 201);
     const decision = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use ToF for gestures' }), 201);
-    const result = json<WorkResult>(await post(partner, `/api/v1/projects/${lamp.id}/results`, { title: 'ToF works at 0 lux', finding: 'positive' }), 201);
     const sketch = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Sensor options', scope: 'project', projectId: lamp.id }), 201);
     const privateSketch = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Secret plan', scope: 'private' }), 201);
     const message = conversation.messages[0]!;
     const target = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Sensor comparison' }), 201);
     const foreignDoc = json<Doc>(await post(owner, `/api/v1/projects/${other.id}/docs`, { title: 'Hidden elsewhere' }), 201);
     const body = [
-      `Plan: [the test](flux:work/${work.id}), [rule](flux:decision/${decision.id}), [finding](flux:result/${result.id}).`,
+      `Plan: [the test](flux:work/${work.id}), [rule](flux:decision/${decision.id}).`,
       `From [the chat](flux:message/${message.id}), see [options](flux:sketch/${sketch.id}) and [comparison](flux:doc/${target.id}).`,
       `Not linkable: [private](flux:sketch/${privateSketch.id}), [elsewhere](flux:doc/${foreignDoc.id}), [gone](flux:work/${randomUUID()}).`,
       '`[code](flux:doc/' + target.id + ')` is only code.',
@@ -209,7 +208,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Sensing plan', body }), 201);
 
     const mentions = doc.links.filter((link) => link.role === 'mentions').map((link) => `${link.to.type}:${link.toTitle}`).sort();
-    assert.deepEqual(mentions, ['decision:Use ToF for gestures', 'doc:Sensor comparison', `message:${message.body}`, 'result:ToF works at 0 lux', 'sketch:Sensor options', 'work:Test the ToF sensor']);
+    assert.deepEqual(mentions, ['decision:Use ToF for gestures', 'doc:Sensor comparison', `message:${message.body}`, 'sketch:Sensor options', 'work:Test the ToF sensor']);
     assert.equal(doc.mentions.filter((item) => item.path === null).length, 3);
     assert.ok(!doc.html.includes('Secret plan') && !doc.html.includes('Hidden elsewhere'), 'nothing of other audiences is shown');
     assert.ok(doc.html.includes(`href="/projects/${lamp.id}/conversations/${conversation.id}#message-${message.id}"`));
@@ -274,18 +273,16 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal(doc.body, payloads, 'the source is stored as written');
   });
 
-  test('Add to docs from a result or decision keeps the source, and a newer version says what changed', async () => {
-    const result = json<WorkResult>(await post(partner, `/api/v1/projects/${lamp.id}/results`, {
-      title: 'The camera fails below 10 lux', finding: 'negative', evidence: '38% of gestures caught at 5 lux.\n## not a heading',
-    }), 201);
-    const started = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'What we learned', from: { type: 'result', id: result.id } }), 201);
-    assert.equal(started.reason, 'Started from the result “The camera fails below 10 lux”');
-    assert.match(started.body, /^## Result: The camera fails below 10 lux\n\n\*\*Negative result\*\* · recorded by docs-partner · /);
-    assert.ok(started.body.includes('\\## not a heading'), 'quoted text cannot open a new section');
-    assert.ok(started.body.trimEnd().endsWith(`Source: [The camera fails below 10 lux](flux:result/${result.id})`));
-    assert.ok(started.links.some((link) => link.role === 'source' && link.to.type === 'result' && link.to.id === result.id));
-    const resultView = json<WorkResult>(await get(viewer, `/api/v1/results/${result.id}`), 200);
-    assert.ok(resultView.links.some((link) => link.from.type === 'doc' && link.from.id === started.id && link.role === 'source'), 'the result shows the doc');
+  test('Add to docs from a decision keeps the source, and a newer version says what changed', async () => {
+    const first = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a camera first', rationale: 'Richest gestures' }), 201);
+    assert.equal(code(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'What we learned', from: { type: 'decision', id: first.id } })), 'DECISION_NOT_ACCEPTED', 'a proposal stays out');
+    json(await post(owner, `/api/v1/decisions/${first.id}/accept`, {}, ifMatch(1)), 200);
+    const started = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'What we learned', from: { type: 'decision', id: first.id } }), 201);
+    assert.equal(started.reason, 'Started from the decision “Use a camera first”');
+    assert.equal(started.body, `[Use a camera first](flux:decision/${first.id})\n`, 'the page starts with the decision as one live line');
+    assert.ok(started.links.some((link) => link.role === 'source' && link.to.type === 'decision' && link.to.id === first.id));
+    const firstView = json<Decision>(await get(viewer, `/api/v1/decisions/${first.id}`), 200);
+    assert.ok(firstView.links.some((link) => link.from.type === 'doc' && link.from.id === started.id && link.role === 'source'), 'the decision shows the doc');
 
     // A decision is added to the same doc as one live reference line (F-034); replacing it rewrites nothing.
     const rule = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a camera', rationale: 'Richest gestures' }), 201);
@@ -304,23 +301,12 @@ describe('project docs with immutable versions, links and backlinks', () => {
     json(await post(owner, `/api/v1/decisions/${replacement.id}/accept`, {}, ifMatch(1)), 200);
     const again = json<Doc>(await post(partner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(2)), 200);
     assert.deepEqual([again.version, again.body], [2, added.body], 'the card reads the replacement itself; the page is not rewritten');
-    // The result's section is still rewritten in place with its current state.
-    const rewritten = json<Doc>(await post(partner, section, { from: { type: 'result', id: result.id } }, ifMatch(2)), 200);
-    assert.equal(rewritten.version, 2, 'an unchanged result section makes no version');
 
-    const elsewhere = json<WorkResult>(await post(owner, `/api/v1/projects/${other.id}/results`, { title: 'Other finding', finding: 'positive' }), 201);
-    assert.equal(code(await post(owner, section, { from: { type: 'result', id: elsewhere.id } }, ifMatch(2))), 'LINK_TARGET_NOT_FOUND');
-    assert.equal(code(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'x', from: { type: 'result', id: elsewhere.id } })), 'LINK_TARGET_NOT_FOUND');
-  });
-
-  test('upsertSection replaces only the cited section and keeps other text byte for byte', () => {
-    const source = { type: 'result' as const, id: '11111111-1111-1111-1111-111111111111' };
-    const marker = `Source: [R](flux:result/${source.id})`;
-    const text = ['# Intro', '', 'Keep   spacing', '', '', '## Result: R', '', 'old', '', marker, '', '## Next', '```', '## not a heading', '```', ''].join('\n');
-    const { body, replaced } = upsertSection(text, source, ['## Result: R', '', 'new', '', marker].join('\n'));
-    assert.equal(replaced, true);
-    assert.equal(body, ['# Intro', '', 'Keep   spacing', '', '', '## Result: R', '', 'new', '', marker, '', '## Next', '```', '## not a heading', '```', ''].join('\n'));
-    assert.deepEqual(upsertSection('', source, '## A\n\nx').body, '## A\n\nx\n');
+    const elsewhere = json<Decision>(await post(owner, `/api/v1/projects/${other.id}/decisions`, { title: 'Other decision' }), 201);
+    assert.equal(code(await post(owner, section, { from: { type: 'decision', id: elsewhere.id } }, ifMatch(2))), 'LINK_TARGET_NOT_FOUND');
+    assert.equal(code(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'x', from: { type: 'decision', id: elsewhere.id } })), 'LINK_TARGET_NOT_FOUND');
+    // Only a decision can be added: a type that is not one is refused before anything is read.
+    assert.equal((await post(owner, section, { from: { type: 'work', id: elsewhere.id } }, ifMatch(2))).status, 400);
   });
 
   test('events carry ids only and reach project readers; a project\'s list is for its readers', async () => {

@@ -26,9 +26,8 @@ export function workViewReadUrl(projectId: string, query: ProjectWorkViewQuery =
   }
   const selector = { purpose: 'choices', choice: query.choice, q: query.q?.trim() || undefined, ...window };
   switch (query.choice) {
-    case 'accepted_decisions':
-    case 'open_work': return withQuery(path, selector);
-    case 'result_work': return withQuery(path, { ...selector, selected: query.selected });
+    case 'accepted_decisions': return withQuery(path, selector);
+    case 'open_work': return withQuery(path, { ...selector, selected: query.selected });
     case 'doc_refs': return withQuery(path, { ...selector, kind: query.kind });
   }
 }

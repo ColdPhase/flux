@@ -38,8 +38,6 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     { body: { title: 'Battery comparison', outcome: 'Compare current battery runtime' } }), 201);
   const decision = expect(await browser.request('POST', `/api/v1/projects/${projectId}/decisions`,
     { body: { title: 'Battery comparison decision', rationale: 'Run a comparison first' } }), 201);
-  const result = expect(await browser.request('POST', `/api/v1/projects/${projectId}/results`,
-    { body: { title: 'Battery observation result', finding: 'negative', evidence: 'Four hours observed' } }), 201);
   const conversation = expect(await browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
     { body: { body: 'Battery comparison discussion', clientMessageId: randomUUID() } }), 201);
   const map = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`,
@@ -103,7 +101,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.ok(!JSON.stringify(deniedSources.message).includes(String(hiddenMaterial.materialId)));
   const recorded: Record<string, unknown>[] = [];
   for (const [kind, id] of [['material', materialId], ['doc', doc.id], ['work', work.id], ['decision', decision.id],
-    ['result', result.id], ['conversation', conversation.id], ['map', map.id]] as const) {
+    ['conversation', conversation.id], ['map', map.id]] as const) {
     const index = toolValue((await mcp(bearer, 40, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId, kind, limit: 1 } })).message);
     assert.equal(index.coverage, 'canonical_metadata_page'); assert.equal((index.items as unknown[]).length, 1);
     const window = toolValue((await mcp(bearer, 41, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId, kind, limit: 50 } })).message);
@@ -126,11 +124,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.ok(!JSON.stringify(privateComparison).includes('Secret'));
   assert.ok((privateComparison.unavailable as Record<string, unknown>[]).every((row) => Object.keys(row).sort().join(',') === 'id,kind'));
   const originalChanges = toolValue((await mcp(bearer, 44, 'tools/call', { name: 'flux_changes_since', arguments: { projectId, known: recorded } })).message);
-  assert.equal((originalChanges.unchanged as unknown[]).length, 7); assert.deepEqual(originalChanges.changed, []);
+  assert.equal((originalChanges.unchanged as unknown[]).length, 6); assert.deepEqual(originalChanges.changed, []);
   for (const [name, arguments_] of [
     ['flux_project_orientation', { projectId, kind: 'work', limit: 51 }],
     ['flux_changes_since', { projectId, known: [recorded[0], recorded[0]] }],
-    ['flux_changes_since', { projectId, known: Array.from({ length: 51 }, () => ({ kind: 'result', id: randomUUID() })) }],
+    ['flux_changes_since', { projectId, known: Array.from({ length: 51 }, () => ({ kind: 'decision', id: randomUUID(), version: 1 })) }],
     ['flux_bootstrap', { projectId, clientSessionId: randomUUID(), clientInfo: { name: 'trusted' }, loadedInstructions: true }],
   ] as const) {
     const denied = await mcp(bearer, 45, 'tools/call', { name, arguments: arguments_ });
@@ -173,7 +171,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     arguments: { projectId, materialId: hiddenMaterial.materialId } });
   assert.equal((hiddenRead.message?.result as { isError?: boolean })?.isError, true);
   assert.ok(!JSON.stringify(hiddenRead.message).includes('Private content'));
-  for (const [name, record] of [['work', work], ['decision', decision], ['result', result], ['conversation', conversation], ['map', map]] as const) {
+  for (const [name, record] of [['work', work], ['decision', decision], ['conversation', conversation], ['map', map]] as const) {
     const read = toolValue((await mcp(bearer, 22, 'tools/call', { name: `flux_get_${name}`, arguments: { projectId, id: record.id } })).message);
     assert.equal(read.id, record.id);
   }

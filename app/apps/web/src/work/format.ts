@@ -1,4 +1,4 @@
-import { waitingPhrase, type Decision, type ObjectLink, type WaitingOn, type WorkItem, type WorkResult, type WorkStatus } from '@flux/contracts';
+import { waitingPhrase, type Decision, type ObjectLink, type WaitingOn, type WorkItem, type WorkStatus } from '@flux/contracts';
 
 /**
  * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note
@@ -27,7 +27,7 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 }
 
 /**
- * A reference card's state as parts that read as the one line (`decisionLine`, `resultLine`, or a work item's
+ * A reference card's state as parts that read as the one line (`decisionLine`, or a work item's
  * status and owner). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
  * the state itself: "In progress", "accepted Oct 23", "Negative result".
  */
@@ -45,13 +45,7 @@ export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' 
   return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
 }
 
-export function resultPieces(result: Pick<WorkResult, 'finding' | 'createdBy'>): StatePiece[] {
-  return [{ text: `${result.finding === 'negative' ? 'Negative' : 'Positive'} result` }, { text: ` · ${result.createdBy.name}`, extra: true }];
-}
-
 export const decisionLine = (decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>) => stateText(decisionPieces(decision));
-
-export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) => stateText(resultPieces(result));
 
 /**
  * What a blocked task waits for, composed the same way on the board, the list and the panel (#763 C1): "Waiting for

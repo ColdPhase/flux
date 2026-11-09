@@ -7,7 +7,7 @@ Two modes:
 * ``scripts/check_live_ui.sh`` runs the same file with ``FLUX_UI_LIVE=1`` against the pinned
   self-hosted LiveKit SFU. Real Chromium clients with Chromium's fake microphone, camera and
   screen then go through the required journey twice: two people, then four — blocked task →
-  join → show a fragment and a screen → save a result → leave.
+  join → show a fragment and a screen → save a change → leave.
 
 Fake devices and one local network are local evidence only. Physical devices, restrictive
 networks and TURN are verified in #63.
@@ -586,18 +586,18 @@ class LiveJourney(LiveBase):
         self.bar(nia).get_by_role("button", name=re.compile("^Camera on")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Camera off"))).to_be_visible()
 
-        # A persisted result through the ordinary task action, during the session (no reload).
+        # A persisted change through the ordinary task action, during the session (no reload).
         jonas.get_by_text(TASK).first.click()
         jpanel = jonas.locator("#details")
         expect(jpanel.get_by_role("heading", name=TASK)).to_be_visible()
-        # The result is saved through the ordinary work API while the session runs; the form
-        # itself is covered by tests/ui/test_work_decisions.py.
-        self.api(jonas, "POST", f"/api/v1/projects/{self.ids['project']}/results", {
-            "title": "IR-cut filter stays in on rev B; night mode works with it removed", "finding": "positive",
-            "evidence": "Filter out: 18 of 20 waves caught at 5 lux. Filter in: 0 of 20.", "work": [self.ids["work"]]}, status=201,
-            headers={"idempotency-key": str(uuid.uuid4())})
-        self.assertEqual(self.api(jonas, "GET", f"/api/v1/work/{self.ids['work']}", status=200)["status"], "blocked", "a result does not change status by itself")
-        self.assertEqual(jonas.evaluate("window.__live.sockets"), 1, "saving the result kept the one connection")
+        # The change is saved through the ordinary work API while the session runs; the panel's own
+        # controls are covered by tests/ui/test_work_details.py.
+        note = "IR-cut filter stays in on rev B; night mode works with it removed"
+        task = self.api(jonas, "GET", f"/api/v1/work/{self.ids['work']}", status=200)
+        self.api(jonas, "PATCH", f"/api/v1/work/{self.ids['work']}", {"outcome": note, "expectedVersion": task["version"]}, status=200,
+                 headers={"idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(self.api(jonas, "GET", f"/api/v1/work/{self.ids['work']}", status=200)["status"], "blocked", "saving the outcome does not change status by itself")
+        self.assertEqual(jonas.evaluate("window.__live.sockets"), 1, "saving the change kept the one connection")
 
         # Leaving releases every device; saved work stays; nothing is generated.
         self.bar(nia).get_by_role("button", name="Leave", exact=True).click()
@@ -606,9 +606,7 @@ class LiveJourney(LiveBase):
         expect(self.bar(jonas).locator(".lv-face")).to_have_count(1)
         self.bar(jonas).get_by_role("button", name="Leave", exact=True).click()
         expect(jonas.get_by_text(re.compile("Nobody else was here"))).to_be_visible()
-        results = self.api(jonas, "GET", f"/api/v1/projects/{self.ids['project']}/results", status=200)
-        items = results["items"] if isinstance(results, dict) else results
-        self.assertTrue(any("IR-cut filter stays in" in item["title"] for item in items), "the result is saved in the project")
+        self.assertEqual(self.api(jonas, "GET", f"/api/v1/work/{self.ids['work']}", status=200)["outcome"], note, "the change is saved in the task")
         self.assertEqual(self.api(jonas, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)["version"], 1, "showing a doc made no new version")
         docs = self.api(jonas, "GET", f"/api/v1/projects/{self.ids['project']}/docs", status=200)
         self.assertEqual(len(docs["items"] if isinstance(docs, dict) else docs), 1, "no meeting report or empty doc was generated")
@@ -793,8 +791,8 @@ class LiveJourney(LiveBase):
         bar.get_by_role("button", name="Session details and more").click()
         sheet = phone.get_by_role("dialog", name="Live session")
         # Call on the conversation page starts at the newest root when no thread is open (OneConversation);
-        # test_01 saved a result there, so that is the session's name, with the seeded thread before it.
-        expect(sheet.get_by_role("heading", name=re.compile("night camera test|IR-cut filter stays in on rev B"))).to_be_visible()
+        # the seeded thread is the session's name.
+        expect(sheet.get_by_role("heading", name=re.compile("night camera test"))).to_be_visible()
         shot(phone, "live-phone-390-sheet")
         # A labelled way back is in the first screen of the sheet, as a touch target (review of #131).
         back = sheet.get_by_role("button", name="Back to work")

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValue, type AgentOperation, type CreateResultCommand,
+import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValue, type AgentOperation,
   type CreateWorkCommand, type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources, nativeActionExecutor } from './action-execution.js';
@@ -103,29 +103,6 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
         const reverted = await native.undoTaskCreation(agent, workId, { clientCommandId: input.clientCommandId, expectedVersion });
         return { value: { workId, number: reverted.work.number, noticeId: reverted.noticeId, clientCommandId: reverted.clientCommandId, version: reverted.work.version },
           postconditions: [{ kind: 'work', id: workId, version: reverted.work.version }] };
-      }));
-    } catch (error) { return toolError(error); }
-  });
-
-  register('result.record').registerTool('flux_record_result', {
-    title: 'Record a project result',
-    description: 'Record one observed result: a positive or negative finding with its evidence, linked to the tasks and decisions '
-      + 'it concerns. It can finish one of those tasks at the version you last read. The cited source material revisions are linked and must still be current. '
-      + 'Record only what was actually observed.',
-    inputSchema: z.strictObject({ ...execution(), result: z.strictObject({
-      title: text(WORK_LIMITS.title), finding: z.enum(['positive', 'negative']), evidence: z.string().max(WORK_LIMITS.evidence).optional(),
-      workIds: ids.optional(), decisionIds: ids.optional(),
-      finishes: z.strictObject({ workId: id, expectedVersion: version }).optional()
-        .describe('A task among workIds that this result completes, at the version you last read.'),
-    }) }),
-    annotations,
-  }, async ({ result: { workIds, decisionIds, finishes, ...result }, ...input }) => {
-    try {
-      const recorded: CreateResultCommand = { ...result, ...materialSources(input), ...(workIds ? { work: workIds } : {}),
-        ...(decisionIds ? { decisions: decisionIds } : {}), ...(finishes ? { finishes: { id: finishes.workId, expectedVersion: finishes.expectedVersion } } : {}) };
-      return toolResult(await execute(input, 'result.record', null, recorded as unknown as AgentJsonValue, async ({ work: native, agent }) => {
-        const created = await native.createResult(agent, input.projectId, recorded);
-        return { value: { resultId: created.id }, postconditions: [{ kind: 'result', id: created.id }] };
       }));
     } catch (error) { return toolError(error); }
   });

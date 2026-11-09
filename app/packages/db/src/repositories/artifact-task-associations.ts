@@ -6,13 +6,12 @@ import { taskGraphRows } from './task-graph.js';
 import { taskUseRows, TaskUseRefusal } from './task-use.js';
 
 export interface ArtifactScope { workspaceId: string; projectId: string }
-export interface CanonicalArtifact { kind: 'doc'|'material'|'result'|'decision'|'thought'; id: string; version?: number }
+export interface CanonicalArtifact { kind: 'doc'|'material'|'decision'|'thought'; id: string; version?: number }
 /** Direct scoped persisted relations only. This does NOT change the Undo reference resolver. */
 export async function canonicalArtifactTaskIds(tx: DbExecutor, scope: ArtifactScope, artifact: CanonicalArtifact) {
   const l=schema.projectObjectLinks,w=schema.projectWorkItems;
   const material=artifact.kind==='doc'||artifact.kind==='material';
-  const outgoing=artifact.kind==='result' ? and(eq(l.fromType,'result'),eq(l.fromId,artifact.id),eq(l.toType,'work'),eq(l.role,'about'))
-    : artifact.kind==='decision' ? and(eq(l.fromType,'decision'),eq(l.fromId,artifact.id),eq(l.toType,'work'),eq(l.role,'affects'))
+  const outgoing=artifact.kind==='decision' ? and(eq(l.fromType,'decision'),eq(l.fromId,artifact.id),eq(l.toType,'work'),eq(l.role,'affects'))
     : artifact.kind==='doc' ? and(eq(l.fromType,'doc'),eq(l.fromId,artifact.id),eq(l.toType,'work'),inArray(l.role,['mentions','source'])) : undefined;
   const incoming=material ? and(eq(l.fromType,'work'),eq(l.toId,artifact.id),inArray(l.toType,['doc','material']),inArray(l.role,['source','related']),
     or(isNull(l.toVersion),artifact.version===undefined?undefined:eq(l.toVersion,artifact.version)))

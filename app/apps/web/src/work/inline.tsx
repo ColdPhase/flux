@@ -4,7 +4,7 @@ import { messagePreview, type ConversationMessage, type NativeWorkRow, type Proj
 import { Icon } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
-import { decisionPieces, firstClause, firstLine, resultPieces, taskNumber, workPieces, type StatePiece } from './format';
+import { decisionPieces, firstClause, firstLine, taskNumber, workPieces, type StatePiece } from './format';
 import type { MessageWorkPreview } from './message-associations';
 import './work.css';
 
@@ -25,7 +25,7 @@ export function DiscussedTask({ task, row }: { task: { workId: string; title: st
 }
 
 /** A calm chip under a message for an object made from it: icon, title and a quiet state. */
-function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'rule' | 'result' | 'map'; number?: number; state: StatePiece[]; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
+function ObjectChip({ icon, number, state, title, need, onOpen, label, objectKind, objectId, nativeRef }: { icon: 'tasks' | 'rule' | 'map'; number?: number; state: StatePiece[]; title: string; need?: boolean; onOpen: () => void; label: string; objectKind: string; objectId: string; nativeRef?: string }) {
   return (
     <button type="button" data-work-kind={objectKind} data-work-id={objectId} data-native-ref={nativeRef} className={`ws-chip${need ? ' ws-chip--need' : ''}`} onClick={onOpen} aria-label={`${label}: ${title}`}>
       <Icon name={icon} size={14} />
@@ -45,9 +45,9 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   const { openDetails } = useShellActions();
   const { me } = useShellData();
   const navigate = useNavigate();
-  const counts = preview?.counts ?? { work: 0, decisions: 0, results: 0 };
+  const counts = preview?.counts ?? { work: 0, decisions: 0 };
   const items = preview?.items ?? [];
-  const total = counts.work + counts.decisions + counts.results;
+  const total = counts.work + counts.decisions;
   const thoughts = preview?.thoughts ?? [];
   // The discussed task, unless the task was also made from this message (then its own chip shows it).
   const discussed = thread && !items.some((item) => item.kind === 'work' && item.id === thread.workId) ? thread : null;
@@ -55,11 +55,11 @@ export function MessageObjects({ message, projectId, preview, thread = null, thr
   return (
     <div className="ws-attach">
       {discussed ? <DiscussedTask task={discussed} row={threadRow} /> : null}
-      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : item.kind === 'decision' ? 'rule' : 'result'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : item.kind === 'decision' ? decisionPieces(item) : resultPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : item.kind === 'decision' ? 'Decision' : 'Result'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
+      {items.map((item) => <ObjectChip key={`${item.kind}:${item.id}`} objectKind={item.kind} objectId={item.id} icon={item.kind === 'work' ? 'tasks' : 'rule'} number={item.kind === 'work' ? item.number : undefined} state={item.kind === 'work' ? workPieces(item) : decisionPieces(item)} title={item.title} need={item.kind === 'decision' && item.status === 'proposed'} label={item.kind === 'work' ? `Task #${item.number}` : 'Decision'} onOpen={() => openDetails({ kind: item.kind, id: item.id })} />)}
       {/* CW-2: the thought made from this message, as its decisions are; it opens the map with the thought selected. */}
       {thoughts.map((thought) => <ObjectChip key={`thought:${thought.thoughtId}`} objectKind="thought" objectId={thought.thoughtId} icon="map" title={thought.text} state={[{ text: `On the map · ${thought.sketchTitle}` }]} label="On the map"
         onOpen={() => navigate(`/projects/${projectId}/map/${thought.sketchId}#thought-${thought.thoughtId}`)} />)}
-      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} ${counts.work === 1 ? 'task' : 'tasks'}` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null, counts.results ? `${counts.results} ${counts.results === 1 ? 'result' : 'results'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
+      {items.length < total ? <button type="button" className="ws-attach__more" onClick={() => openDetails({ kind: 'overview', messageId: message.id, selection: { accountId: me.user.id, projectId, message } })}>{[counts.work ? `${counts.work} ${counts.work === 1 ? 'task' : 'tasks'}` : null, counts.decisions ? `${counts.decisions} ${counts.decisions === 1 ? 'decision' : 'decisions'}` : null].filter(Boolean).join(' · ')} · view linked objects</button> : null}
     </div>
   );
 }

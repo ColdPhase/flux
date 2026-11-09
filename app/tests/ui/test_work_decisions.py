@@ -1,9 +1,9 @@
-"""Browser tests for work, decisions and results linked to conversations (issue #101, AC-5/AC-6).
+"""Browser tests for work and decisions linked to conversations (issue #101, AC-5/AC-6).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Two people sign up in their own browser contexts and share one project. From
-messages they create work in one action, propose and accept a decision, attach a negative result
-that finishes the experiment and a decision that replaces another and moves no task; one of them works on a phone. Every step is
+messages they create work in one action, propose and accept a decision, finish an experiment with
+what came of it and a decision that replaces another and moves no task; one of them works on a phone. Every step is
 checked against the API, so the test proves persisted behaviour rather than local state.
 """
 
@@ -90,7 +90,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         return {
             "work": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/work?limit=100", status=200)["items"],
             "decisions": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/decisions?limit=100", status=200)["items"],
-            "results": self.api(page, "GET", f"/api/v1/projects/{self.project_id}/results?limit=100", status=200)["items"],
         }
 
     def open_conversation(self, who: str, **kwargs) -> Page:
@@ -134,7 +133,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page = self.open_conversation("owner")
         # The computer's header is one row without a state line (#340); the project starts empty.
         expect(page.get_by_label("Current state")).to_have_count(0)
-        self.assertEqual(self.work(page), {"work": [], "decisions": [], "results": []})
+        self.assertEqual(self.work(page), {"work": [], "decisions": []})
         message = page.locator(f"#message-{self.messages['idea']}")
         message.hover()
         message.get_by_role("button", name="Create task").click()
@@ -205,24 +204,22 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertEqual((decision["status"], decision["decidedBy"]["id"]), ("accepted", OWNER["id"]))
         page.keyboard.press("Escape")
 
-    # ---------------------------------------------------------------- negative result, other person
+    # ---------------------------------------------------------------- what came of it, other person
 
-    def test_04_a_negative_result_finishes_the_experiment(self) -> None:
-        # A message has no "Record a result" (#867): a result is made by an agent's tool, so it is made here through the API.
+    def test_04_finishing_the_experiment_says_what_came_of_it(self) -> None:
+        # A message has no "Record a result" (#867) and there is no Result object (#868): Done takes one optional line, made here through the API.
         page = self.open_conversation("partner")
         idea = next(item for item in self.work(page)["work"] if item["title"] == IDEA)
-        made = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/results", {
-            "clientCommandId": str(uuid.uuid4()), "title": "The camera cannot track gestures below 10 lux", "finding": "negative",
-            "evidence": "38% of 20 gestures at 5 lux", "work": [idea["id"]], "finishes": {"id": idea["id"], "expectedVersion": idea["version"]}}, status=201)
-        self.assertEqual(made["finding"], "negative")
+        made = self.api(page, "PATCH", f"/api/v1/work/{idea['id']}", {"status": "done", "cameOfIt": "The camera cannot track gestures below 10 lux",
+                                                                       "expectedVersion": idea["version"]}, status=200)
+        self.assertEqual((made["status"], made["cameOfIt"]), ("done", "The camera cannot track gestures below 10 lux"))
         stored = self.work(page)
-        self.assertEqual(stored["results"][0]["finding"], "negative")
-        self.assertEqual(stored["work"][0]["status"], "done", "a negative result finished the experiment")
+        self.assertEqual(stored["work"][0]["status"], "done", "the experiment is finished")
 
         page.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; a
-        # result shows in its task's details (#342).
+        # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; what came of a task
+        # shows in its details (#342).
         page.get_by_role("radio", name="List", exact=True).click()
         finished = page.get_by_role("region", name=re.compile("^Done"))
         expect(finished).to_contain_text(IDEA)
@@ -451,7 +448,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertNotEqual(own_fill, other_fill, f"{label}: the own-message treatment still distinguishes it")
         self.assertLessEqual(mine["x"] + mine["width"], feed["x"] + feed["width"] + 1, f"{label}: inside the pane")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.viewport_size["width"], f"{label}: no sideways scroll")
-        # Linked work, decisions and results stay inside their column and the viewport on both sides.
+        # Linked work and decisions stay inside their column and the viewport on both sides.
         for column, pane in ((".project-convo__in", stream), (".thread__in", feed)):
             chips = page.locator(f"{column} .project-convo__message .ws-chip")
             self.assertGreater(chips.count(), 0, f"{label}: {column} has linked objects")

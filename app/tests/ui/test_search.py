@@ -134,7 +134,6 @@ class SearchJourney(unittest.TestCase):
         self.api(nia, "POST", f"/api/v1/projects/{p}/work", {"title": "Mount the infrared sensor in the lamp base", "outcome": "A base that hides the sensor"}, status=201)
         rule = self.api(ari, "POST", f"/api/v1/projects/{p}/decisions", {"title": "Use the infrared sensor at night", "rationale": "It passed the hallway test at 5 lux."}, status=201)
         self.api(ari, "POST", f"/api/v1/decisions/{rule['id']}/accept", {}, status=200, headers={"if-match": '"1"'})
-        self.api(nia, "POST", f"/api/v1/projects/{p}/results", {"title": "Infrared sensor passed the low-light test", "finding": "positive", "evidence": "20 gestures at 5 lux"}, status=201)
         sketch = self.api(nia, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensing options", "scope": "project", "projectId": p}, status=201)
         thought = self.api(nia, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Sensor hidden behind the walnut veneer", "x": 0, "y": 0}, status=201)
         doc = self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Lamp wiring guide", "body": "Fit the brass collar before the sensor board."}, status=201)

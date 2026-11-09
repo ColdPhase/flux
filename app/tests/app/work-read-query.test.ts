@@ -23,12 +23,12 @@ test('task URL fields default explicitly and reject duplicates/unknown/coerced s
   invalid(() => assertEmptyWorkReadQuery(params('limit=50')));
 });
 
-test('native choices stay disjoint; result choices keep a separate deep selection', () => {
-  for (const choice of ['accepted_decisions', 'open_work', 'result_work']) assert.equal(parseWorkViewRead(params(`purpose=choices&choice=${choice}`)).selection.purpose, 'choices');
-  assert.deepEqual(parseWorkViewRead(params(`purpose=choices&choice=result_work&selected=${a}&q=%20board%20`)).selection,
-    { purpose: 'choices', choice: 'result_work', q: 'board', selected: a });
+test('native choices stay disjoint; the task choice keeps a separate deep selection', () => {
+  for (const choice of ['accepted_decisions', 'open_work']) assert.equal(parseWorkViewRead(params(`purpose=choices&choice=${choice}`)).selection.purpose, 'choices');
+  assert.deepEqual(parseWorkViewRead(params(`purpose=choices&choice=open_work&selected=${a}&q=%20board%20`)).selection,
+    { purpose: 'choices', choice: 'open_work', q: 'board', selected: a });
   for (const input of ['choice=open_work', 'purpose=choices&choice=open_work&mine=true', 'purpose=choices&choice=accepted_decisions&selected='+a,
-    'purpose=choices&choice=parked_work', 'purpose=choices&choice=pivot_work', 'purpose=choices&choice=doc_refs', 'purpose=choices&choice=doc_refs&kind=message', 'purpose=choices&choice=result_work&decisionId='+a]) invalid(() => parseWorkViewRead(params(input)));
+    'purpose=choices&choice=parked_work', 'purpose=choices&choice=pivot_work', 'purpose=choices&choice=doc_refs', 'purpose=choices&choice=doc_refs&kind=message', 'purpose=choices&choice=open_work&decisionId='+a]) invalid(() => parseWorkViewRead(params(input)));
   invalid(() => parseWorkViewRead(params('purpose=choices&choice=doc_refs&kind=work&q='+'a'.repeat(201))));
   invalid(() => parseWorkViewRead(params('purpose=choices&choice=open_work&q=%00')));
 });
@@ -41,16 +41,16 @@ test('source batch bounds apply before deduplication and conversation/source cur
 });
 
 test('relationship batches retain kind identities and reject malformed/oversized selectors', () => {
-  assert.deepEqual(parseWorkRelationRead(params(`objects=result:${a},work:${a},work:${a}&role=about`)).selection,
-    { objects: [{ kind: 'result', id: a }, { kind: 'work', id: a }], role: 'about' });
-  for (const input of ['', 'objects=thought:'+a, 'objects=work:'+a+':1', 'objects=work:'+a+'&role=hidden', 'objects='+Array(101).fill('work:'+a).join(',')]) invalid(() => parseWorkRelationRead(params(input)));
+  assert.deepEqual(parseWorkRelationRead(params(`objects=decision:${a},work:${a},work:${a}&role=related`)).selection,
+    { objects: [{ kind: 'decision', id: a }, { kind: 'work', id: a }], role: 'related' });
+  for (const input of ['', 'objects=thought:'+a, 'objects=result:'+a, 'objects=work:'+a+'&role=about', 'objects=work:'+a+':1', 'objects=work:'+a+'&role=hidden', 'objects='+Array(101).fill('work:'+a).join(',')]) invalid(() => parseWorkRelationRead(params(input)));
 });
 
 test('selected reference rows have no collection/query authority and raw bounds precede normalization', () => {
-  assert.deepEqual(parseWorkReferenceRead(params(`objects=work:${b},result:${a},work:${b.toUpperCase()},decision:${a}`)),
-    [{ kind: 'decision', id: a }, { kind: 'result', id: a }, { kind: 'work', id: b }]);
+  assert.deepEqual(parseWorkReferenceRead(params(`objects=work:${b},work:${b.toUpperCase()},decision:${a}`)),
+    [{ kind: 'decision', id: a }, { kind: 'work', id: b }]);
   assert.equal(parseWorkReferenceRead(params('objects='+Array(100).fill('work:'+a).join(','))).length, 1);
-  for (const input of ['', 'objects=', 'objects=work:'+a+',', 'objects=message:'+a, 'objects=work:bad', 'objects=work:'+a+':1',
+  for (const input of ['', 'objects=', 'objects=work:'+a+',', 'objects=message:'+a, 'objects=result:'+a, 'objects=work:bad', 'objects=work:'+a+':1',
     ...['limit=1', 'cursor=abc', 'q=private', 'accountId='+b, 'role=source'].map((field) => 'objects=work:'+a+'&'+field),
     'objects=work:'+a+'&objects=work:'+a, 'objects='+Array(101).fill('work:'+a).join(',')]) invalid(() => parseWorkReferenceRead(params(input)));
 });

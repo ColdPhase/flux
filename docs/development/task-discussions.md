@@ -21,8 +21,7 @@ expose the exact root ID even when its body is outside the newest message window
 All discussion content has the task's current project audience. Existing helper
 in-flight views retain their owner scope; existing committed project answers
 retain their actual project audience. Neither becomes a task contribution merely
-by being viewed. Accepted result publication keeps its accepting human identity,
-canonical result ID and permitted agent provenance distinct.
+by being viewed.
 
 ## Shared commands and atomicity
 
@@ -36,14 +35,12 @@ deduplication of indistinguishable retries. Browser clients always supply a key.
 
 The common lock order is current access rows, durable command identity, sorted
 task IDs, then conversation sequence. Writes, explicit binding, associated task
-or result changes and stream events commit together. Simultaneous first sends
+changes and stream events commit together. Simultaneous first sends
 serialize on the task: one root, then sequence 2, with each actual actor/content.
 No client-supplied author or creation time is accepted.
 
 Explicit nonempty blocker saves are authored contributions; clearing a blocker
-and ordinary status/owner changes are not comments. A result publication writes
-one result and per-task messages referring to that exact result, locking several
-task IDs in sorted order. A public handoff instruction is a contribution;
+and ordinary status/owner changes are not comments. The one line at Done ("what came of it") is one. A public handoff instruction is a contribution;
 heartbeats, acknowledgments, private helper exchanges and execution logs are not.
 #153 consumes this shared primitive with its own authority/generation fencing.
 
@@ -215,42 +212,37 @@ First part of the [2026-10-01 contract](task-discussions/2026-10-01-contribution
 effects, atomicity, hooks and lock order apply; the file corrections remain for that part.
 
 - **Meaning.** A nonempty explicitly saved blocker contributes its exact saved text; clearing it or changing only
-  status/owner/title/outcome contributes nothing; creation with a blocker keeps only its creation notice. A result
-  creates one canonical result and one authored contribution per linked task (body: the result title, marker:
-  that result's id). A result with no linked task creates no thread. An explicit public handoff is
+  status/owner/title/outcome contributes nothing; creation with a blocker keeps only its creation notice. An explicit public handoff is
   `POST /api/v1/work/:workId/discussion` with `kind: "handoff"` through the same primitive as text; blocker and
-  result kinds cannot be requested directly, the generic conversation entry takes no kind, and heartbeats,
+  "what came of it" kinds cannot be requested directly, the generic conversation entry takes no kind, and heartbeats,
   acknowledgments and private logs never contribute. The one line at Done, "what came of it" (#868, migration
-  0035), is the third such effect: `PATCH { status: 'done', cameOfIt }` with a nonempty line contributes it, marker
+  0035), is the second such effect (there was a result kind until #1054): `PATCH { status: 'done', cameOfIt }` with a nonempty line contributes it, marker
   `came_of_it`, by the same command identity as a blocker (an Undo's `restore` writes nothing).
-- **Wire.** A message of an explicit effect carries `contribution`: `{ kind: 'blocker' | 'handoff' | 'came_of_it' }` or
-  `{ kind: 'result', resultId }`. Ordinary text omits it, so human JSON is unchanged; genuine agent authors keep the
+- **Wire.** A message of an explicit effect carries `contribution`: `{ kind: 'blocker' | 'handoff' | 'came_of_it' }`. Ordinary text omits it, so human JSON is unchanged; genuine agent authors keep the
   tagged `author` variant. Conversation, task-discussion root/window, the browser and `getDiscussionRoot` agree.
 - **Storage (migration 0040).** `project_messages.contribution_kind` (default `text`, so historical rows are
-  truthfully plain text and nothing is inferred) and `result_id` with a scoped composite FK to the result and a check
-  that the kind `result` and a result id go together; `native_command_receipts`, one row per real actor, project,
-  operation and client UUID with fingerprint, produced task version or result and the contribution message ids. These
+  truthfully plain text and nothing is inferred); `native_command_receipts`, one row per real actor, project,
+  operation (`work.update`) and client UUID with fingerprint, produced task version and the contribution message ids. These
   tables are part of the v0.1 schema baseline (#779), which has no reversal.
 - **Mandatory hook.** `WorkPorts.contributions` (`WorkContributions`) is required by type. Every work adapter composes
   it (`createWorkContributions`) over the same transaction and event session as the discussion use cases: ordinary
-  HTTP, `nativeWorkInTransaction` (same-transaction agent execution), the helper proposal acceptance and the tests'
+  HTTP, `nativeWorkInTransaction` (same-transaction agent execution) and the tests'
   failure injections. It opens no unit of work, commits nothing and never flushes.
 - **Order.** Current project write access, then the command's durable identity (the native receipt, then every
   derived message identity, sorted), then the project task-graph lock when the command starts or finishes a task
   or replaces prerequisites ([native plan order](agent-connection/2026-10-01-native-plan-contract.md); a plan
-  material row, only on creation, precedes the identity), then the complete sorted task set (a finishing result
-  locks its linked tasks and the finisher's prerequisites in ONE ascending pass), then the domain writes and
+  material row, only on creation, precedes the identity), then the complete sorted task set (a finishing task
+  locks the tasks waiting for it and its prerequisites in ONE ascending pass), then the domain writes and
   canonical appends, then the receipt, then ONE final all-audience event batch owned by the caller's unit of work. The
   handle enforces `prepare` → `lockTasks` → `append` once each. A generic reply to a task-bound conversation
   discovers the binding without locking and takes the task row before the conversation sequence, like every
-  contribution. Message identities are deterministic from the stable command (or the canonical result) plus the
-  exact task. The helper acceptance path uses its locked proposal as the command identity and only reads the task it
-  finishes (authority check); the result then locks that task in the order above and fences the version it read.
-- **Retries.** `clientCommandId` on `PATCH /api/v1/work/:id` and `POST /api/v1/projects/:id/results`; semantics in
+  contribution. Message identities are deterministic from the stable command plus the
+  exact task.
+- **Retries.** `clientCommandId` on `PATCH /api/v1/work/:id`; semantics in
   [work and decisions](work-decisions.md#contributions-to-the-task-conversation-154).
 - **Consumers.** Search, notifications, Return and helper context needed no code change: each reads the real
   authored body and actor, which is what the contribution is. Their output legitimately changes: the Return view and
-  "Since you left" count the opening of a task thread that a result created like any new conversation, and the
+  "Since you left" count the opening of a task thread like any new conversation, and the
   Conversation tab's default (the project's newest conversation) can now be a task thread. Both are interim
   behavior for the final design shell (#340, #341) to settle, not a decision made here. Portable export carries the marker
   additively.
@@ -269,26 +261,26 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   loaded root stay hidden with them; loading those roots shows them in their place, and older announcement pages
   are read as far back as the loaded roots reach. A refresh that skipped past the loaded announcements reads
   forward until it meets them. Reading never creates an announcement, task or root.
-- **Decisions and results (#694).** A decision proposed or accepted, and a result recorded, are announced like a task
+- **Decisions (#694).** A decision proposed or accepted is announced like a task
   ([P5](../design/final/README.md#5-behaviour)). `GET /api/v1/projects/:id/object-notices` (newest first, the same
   `limit`/`offset` page and the same project audience: 404 for anyone who cannot read the project) is derived from the
-  objects, so each decision has a `decision.proposed` line at its creation and a `decision.accepted` line at its acceptance,
-  and each result a `result.recorded` line. A line carries the object's id, its **current** title and state
-  (`status` of a decision, `finding` of a result), who did it (`by`), the object's `source` links and `conversationId`, the
+  objects, so each decision has a `decision.proposed` line at its creation and a `decision.accepted` line at its acceptance
+  (a result had a `result.recorded` line until #1054). A line carries the object's id, its **current** title and state
+  (`status` of the decision), who did it (`by`), the object's `source` links and `conversationId`, the
   conversation of its first message source. The stream merges them with the roots by time; an open thread shows the lines whose
   `conversationId` is that thread (or whose source is one of its messages) among its replies. A thread's composer
   `/decide` and `/task` carry the thread's opening message as the source, so what is typed there is traceable to it.
-  The live stream carries only `project.decision_proposed.v1`, `project.decision_accepted.v1`, `project.result_recorded.v1`
-  and `project.work_created.v1` with the project as the object and the decision, result or task id in the stored data; the
+  The live stream carries only `project.decision_proposed.v1`, `project.decision_accepted.v1`
+  and `project.work_created.v1` with the project as the object and the decision or task id in the stored data; the
   open conversation reads again when one arrives, so no title or text travels on the stream.
 - **The task's discussion is not a root (#868).** `GET /api/v1/projects/:id/conversation-roots` lists the project's conversations that
   are not a task's discussion: a task's first contribution and its replies are read and written in the task's Details (below), and the
-  stream shows one line for each task event (the announcement, a decision, a result). A root carries no `task` field. The discussion is
+  stream shows one line for each task event (the announcement, a decision). A root carries no `task` field. The discussion is
   still a conversation of the project, so `GET /api/v1/conversations/:id` opens it, with the task it belongs to, for a link to one of its
   messages (a search result, a notification, "Open in Conversation"). Agents write in it with the same contribution, as themselves
   (`flux_discuss_task`, [agent connection](agent-connection.md#project-wiki-docs-and-conversations)). At most five agent messages in a
   row are accepted until a person writes (`AGENT_TURN_LIMIT`, C-51), whichever tool or path wrote them and whichever agents they were:
-  `flux_discuss_task`, `flux_reply_in_conversation` or `flux_ask_question` with the discussion's conversation, and a blocker, result or
+  `flux_discuss_task`, `flux_reply_in_conversation` or `flux_ask_question` with the discussion's conversation, and a blocker, "what came of it" or
   hand-off contribution all count and are refused alike. The check is in the one append every message of a space goes through
   (`appendMessage` in `packages/core/src/task-discussions/service.ts`, used by the task's own writes and by the conversation store's
   start and reply), after the task's row lock that every writer of the discussion takes, so parallel writers cannot pass it together.

@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { ConversationMessage } from '@flux/contracts';
-import { useLoaderData, useRevalidator } from 'react-router';
+import { useLoaderData } from 'react-router';
 import { outboxView } from '../composer/draft';
 import { useFileDrop } from '../composer/Files';
 import { MEDIA, useMediaQuery } from '../ui';
@@ -58,7 +58,6 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const touch = useMediaQuery(MEDIA.touch);
   const core = usePaneCore(data, variant);
   const { me, project, conversation, writable, aiOff, composerId } = core;
-  const revalidator = useRevalidator();
   const { openDetails } = useShellActions();
   const { accessLost, hideIfDenied } = usePaneAccess(core);
   const drafts = useComposerDrafts(core);
@@ -96,14 +95,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
 
   if (accessLost) return <div className="pane-scroll"><div className="pane-in project-setup" role="alert"><h2>Space unavailable</h2><p>Your access to this space may have changed. Reload to check current access.</p></div></div>;
   // The root sits at the thread's top (and in the stream); the list holds its replies and answers.
-  // What came of this thread (#694): the decisions and results made from it stand among its replies, in time order.
+  // What came of this thread (#694): the decisions made from it stand among its replies, in time order.
   const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
   const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!thread.olderCursor, made);
   const { messageWork, referenceWork } = reading;
   const others = (core.people ?? []).filter((person) => person.kind === 'human' && person.id !== me.user.id).map((person) => person.name.trim().split(/\s+/)[0] || person.name);
   const answers = { meId: me.user.id, projectId: project.id, writable, messages, assistant, changes, referenceWork, author, others,
     lookups: { projectId: project.id, messages, work: referenceWork.rows, author },
-    onAskAbout: writable && !aiOff ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null, onDecided: () => { void revalidator.revalidate(); } };
+    onAskAbout: writable && !aiOff ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null };
   return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>

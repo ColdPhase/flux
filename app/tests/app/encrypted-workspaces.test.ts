@@ -450,7 +450,7 @@ describe('F-030 AI forced off', () => {
       'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections', 'agent_memory_items', 'agent_oauth_bindings',
       'agent_proposals', 'agent_questions', 'agent_runtime_sessions', 'agent_stops', 'agent_task_taking',
       'agents', 'assistant_changes', 'assistant_jobs',
-      'assistant_proposals', 'assistant_settings', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_units', 'personal_runs',
+      'assistant_settings', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_units', 'personal_runs',
     ], 'the AI tables with a workspace path');
     assert.deepEqual(withPath.filter((t) => !t.guarded).map((t) => t.name), [], 'every one is guarded');
     const projectOf = async (ws: string, who: Person) =>

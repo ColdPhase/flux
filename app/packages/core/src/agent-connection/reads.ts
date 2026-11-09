@@ -2,7 +2,7 @@ import { NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
 import { requireAgentProject, type AgentConnectionContext } from './proposals.js';
 
-export type AgentProjectObjectKind = 'work' | 'decision' | 'result' | 'doc' | 'material' | 'conversation' | 'sketch';
+export type AgentProjectObjectKind = 'work' | 'decision' | 'doc' | 'material' | 'conversation' | 'sketch';
 /** Metadata only. No title, body, private provenance or object existence reaches the caller. */
 export interface AgentProjectObjectPort {
   scopeOf(kind: AgentProjectObjectKind, id: string, within: { workspaceId: string; projectId: string }): Promise<{ workspaceId: string; projectId: string } | null>;

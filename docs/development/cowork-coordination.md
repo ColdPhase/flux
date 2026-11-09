@@ -540,7 +540,7 @@ for why).
   these two operations its `unitId` is.
 - **Payloads (exact keys).**
   - Complete is `{ expectedVersion, generation, leaseId, outcome }`.
-    `outcome` is one exact native reference: `{ type: 'result' | 'message', id }`
+    `outcome` is one exact native reference: `{ type: 'message', id }`
     or `{ type: 'material' | 'doc' | 'work' | 'thought', id, version }`. A
     GitHub reference is refused until #74 supplies the verified recipient
     adapter.

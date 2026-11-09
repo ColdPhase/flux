@@ -16,7 +16,7 @@ export const listConversationRoots = (projectId: string, options: { before?: str
 /** The project's task announcements (UI116-3), newest first. */
 export const listTaskNotices = (projectId: string, options: { offset?: number; limit?: number } = {}, signal?: AbortSignal) =>
   request<Page<TaskCreationNotice>>(`${projectTaskNoticesPath(projectId)}?limit=${options.limit ?? 100}&offset=${options.offset ?? 0}`, { signal });
-/** The decisions and results the conversation announces (#694), newest first. */
+/** The decisions the conversation announces (#694), newest first. */
 export const listObjectNotices = (projectId: string, options: { offset?: number; limit?: number } = {}, signal?: AbortSignal) =>
   request<Page<ObjectNotice>>(`${projectObjectNoticesPath(projectId)}?limit=${options.limit ?? 100}&offset=${options.offset ?? 0}`, { signal });
 export const getConversation = (id: string, signal?: AbortSignal) => request<Conversation>(conversationPath(id), { signal });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { SearchWork } from '@flux/core';
-import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
+import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -83,7 +83,6 @@ describe('search: one query across Flux, only what you may read', () => {
     }), 200, 'material v2');
     work = json<WorkItem>(await post(nia, `/api/v1/projects/${lamp.id}/work`, { title: 'Test the infrared sensor at night', outcome: 'Numbers for the low-light case' }), 201, 'work');
     json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use the infrared sensor', rationale: 'It passed the hallway test.' }), 201, 'decision');
-    json<WorkResult>(await post(nia, `/api/v1/projects/${lamp.id}/results`, { title: 'Infrared sensor passed low light', finding: 'positive', evidence: 'Hallway log from Tuesday' }), 201, 'result');
     const lampSketch = await sketch(nia, ws.id, 'Lamp shapes', lamp.id);
     await thought(nia, lampSketch.id, 'Sensor hidden in the base');
     const openThread = await conversation(olek, open.id, 'The workshop is on Thursday, bring the sensor kit.');
@@ -96,7 +95,7 @@ describe('search: one query across Flux, only what you may read', () => {
 
   test('a contributor finds every kind she may read, with places, labels and exact targets', async () => {
     const answer = await search(nia, 'sensor');
-    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'material', 'message', 'message', 'message', 'result', 'thought', 'work'].sort());
+    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'material', 'message', 'message', 'message', 'thought', 'work'].sort());
     const byKind = (kind: string) => answer.items.filter((item) => item.kind === kind);
     const materialHit = byKind('material')[0]!;
     assert.equal(text(materialHit.title), 'Sensor comparison');
@@ -118,7 +117,6 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
     assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
-    assert.equal(byKind('result')[0]!.label, 'Positive result');
     // The matched word is marked, never as markup.
     const message = answer.items.find((item) => text(item.title).includes('5 lux'))!;
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');

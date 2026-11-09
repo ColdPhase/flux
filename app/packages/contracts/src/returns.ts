@@ -44,11 +44,11 @@ export interface ReturnPoint {
   canRestore: boolean;
 }
 
-export type ReturnItemKind = 'decision' | 'result' | 'work' | 'question' | 'message' | 'material' | 'sketch' | 'doc';
+export type ReturnItemKind = 'decision' | 'work' | 'question' | 'message' | 'material' | 'sketch' | 'doc';
 
 /** Where an item came from; the client turns it into a link. */
 export type ReturnSource =
-  | { type: 'work' | 'decision' | 'result'; id: string; projectId: string }
+  | { type: 'work' | 'decision'; id: string; projectId: string }
   | { type: 'message'; projectId: string; conversationId: string; messageId: string }
   | { type: 'material'; projectId: string; materialId: string; version: number }
   | { type: 'sketch'; sketchId: string; projectId: string | null }
@@ -76,7 +76,7 @@ export interface ReturnItem {
 }
 
 export interface ReturnNextStep {
-  /** e.g. "Answer Ari's question" or "Review the result Nia attached". */
+  /** e.g. "Answer Ari's question" or "Review the decision Nia proposed". */
   text: string;
   /** Why this is the next step, e.g. "Ari asked you in “Camera or sensor?” on Sep 27." */
   reason: string;

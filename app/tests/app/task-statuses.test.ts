@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Decision, NeedsYouResponse, Project, ProjectWorkView, TaskActivityPage, TaskCreationNotice, TaskDiscussion, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import type { Decision, NeedsYouResponse, Project, ProjectWorkView, TaskActivityPage, TaskCreationNotice, TaskDiscussion, Workspace, WorkItem } from '@flux/contracts';
 import { DomainError } from '@flux/core';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
@@ -277,15 +277,15 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal((await notHeard(ada, s)).length, 0);
     });
 
-    test('the task it waited for is Done: by a change, as dropped, or by a result that finishes it', async () => {
+    test('the task it waited for is Done: by a change, as dropped, or with the line of what came of it', async () => {
       const awaited = await create({ title: 'Order six probes', owner: human(ada) });
       const dropped = await create({ title: 'Buy the old probes', owner: human(ada) });
-      const viaResult = await create({ title: 'Bench test', owner: human(ada) });
+      const viaLine = await create({ title: 'Bench test', owner: human(ada) });
       const wait = async (title: string, on: WorkItem) => patch(await create({ title, owner: human(ada) }), { status: 'blocked', waitingOn: { kind: 'task', id: on.id } });
       const one = await wait('Mount the probes', awaited);
       const two = await wait('Calibrate the probes', awaited);
       const three = await wait('Use the old probes', dropped);
-      const four = await wait('Read the bench result', viaResult);
+      const four = await wait('Read the bench result', viaLine);
 
       await patch(awaited, { status: 'done' }, kai);
       assert.equal((await read(one)).status, 'in_progress');
@@ -300,12 +300,10 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal((await lineOf(three, 'task.resumed'))[0]!.reason, `#${dropped.number} was dropped`);
       await heardOf(ada, three, `#${dropped.number} was dropped`);
 
-      const result = expectStatus(await send(kai, 'POST', `/api/v1/projects/${place.id}/results`,
-        { title: 'It works', finding: 'positive', work: [viaResult.id], finishes: { id: viaResult.id, expectedVersion: viaResult.version } }), 201) as WorkResult;
-      assert.ok(result.id);
-      assert.equal((await read(viaResult)).status, 'done');
+      await patch(viaLine, { status: 'done', cameOfIt: 'It works' }, kai);
+      assert.equal((await read(viaLine)).status, 'done');
       assert.equal((await read(four)).status, 'in_progress');
-      assert.equal((await lineOf(four, 'task.resumed'))[0]!.reason, `#${viaResult.number} is done`);
+      assert.equal((await lineOf(four, 'task.resumed'))[0]!.reason, `#${viaLine.number} is done`);
     });
 
     test('a task whose prerequisite is still open goes back to To do, since Doing needs every prerequisite done', async () => {

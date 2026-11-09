@@ -195,6 +195,8 @@ to the same surface, such as #859's (which removes `requiredScope` and `MCP_SCOP
 
 #941 adds the tool `flux_delete_doc` (operation `doc.delete`), an additive change to contract 2 in `mcp-tools.v2.json`; playbook 1.15.0 names it.
 
+#1054 is one more: it removes the tools `flux_record_result`, `flux_list_results` and `flux_get_result` with the Result object, the `result` kind of `flux_project_orientation`, `flux_changes_since`, `flux_release_unit` checkpoints and `flux_search_project`, and the `result` outcome of `flux_complete_unit`. Since the founder's direction of 2026-11-09 (no backward compatibility before the first release, nobody has installed a client), `mcp-tools.v2.json`, `project-export.v1.json` (no `results`, no `result` object, no `result` contribution, no `about` role) and the playbook text (still 1.17.0) are edited in place: no version bump, no alias, and contract 1's snapshot stays as it was.
+
 ## Costs and limitations
 
 - Every MCP tool change now touches the snapshot. That is intended: the snapshot

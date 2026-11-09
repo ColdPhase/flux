@@ -1,10 +1,10 @@
-import type { AgentProjectOwner, DecisionStatus, WaitingOn, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
+import type { AgentProjectOwner, DecisionStatus, WaitingOn, LinkOwnerType, LinkRole, ObjectRef, TaskPlanIntent, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { PlanIntentRecord, TaskGraphReader } from './task-graph.js';
 import type { GithubRuleReading } from '../github/rules.js';
 
 /**
- * Ports of the work, decision and result use cases (issues #101, #46). Core states what it
+ * Ports of the work and decision use cases (issues #101, #46). Core states what it
  * needs; the server implements them with the access policy (`authorize`, `evaluateProject`,
  * `visibleFilter`), the `@flux/db` work rows and `recordEvent`, and passes them in. Nothing in
  * `packages/core/src/work` imports those adapters.
@@ -69,17 +69,6 @@ export interface DecisionRecord {
   updatedAt: Date;
 }
 
-export interface ResultRecord {
-  id: string;
-  workspaceId: string;
-  projectId: string;
-  title: string;
-  finding: ResultFinding;
-  evidence: string;
-  createdBy: ActorRef;
-  createdAt: Date;
-}
-
 export interface ObjectLinkRecord {
   id: string;
   projectId: string;
@@ -113,7 +102,7 @@ export interface TaskCreationNoticeRecord {
   reason?: string | null;
   createdAt: Date;
 }
-/** One moment of a decision or result the conversation announces (#694); the title and state are current. */
+/** One moment of a decision the conversation announces (#694); the title and state are current. */
 export type ObjectNoticeRecord = {
   id: string;
   workspaceId: string;
@@ -123,18 +112,15 @@ export type ObjectNoticeRecord = {
   sources: ObjectRef[];
   conversationId: string | null;
   createdAt: Date;
-} & (
-  | { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus }
-  | { kind: 'result.recorded'; resultId: string; finding: ResultFinding }
-);
-/** The two native commands that keep a durable retry receipt (#154); creation keeps its own identity on the task row. */
-export type NativeOperation = 'work.update' | 'result.create';
+} & { kind: 'decision.proposed' | 'decision.accepted'; decisionId: string; status: DecisionStatus };
+/** The native command that keeps a durable retry receipt (#154); creation keeps its own identity on the task row. */
+export type NativeOperation = 'work.update';
 export interface NativeCommandReceipt {
   operation: NativeOperation;
   commandId: string;
   fingerprint: string;
-  /** The produced object: a task and its produced version, or a result. */
-  object: { type: 'work'; id: string; version: number } | { type: 'result'; id: string };
+  /** The produced object: a task and its produced version. */
+  object: { type: 'work'; id: string; version: number };
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
@@ -162,7 +148,6 @@ export interface TaskActivityPosition { position: string; id: string }
 export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
-export type NewResult = Omit<ResultRecord, 'createdAt'>;
 export interface NewObjectLink {
   id: string;
   workspaceId: string;
@@ -207,7 +192,7 @@ export interface WorkAccess {
 /** Rows only; the repository makes no access decisions (the use cases ask {@link WorkAccess}). */
 export interface WorkRepository extends TaskGraphReader {
   /** The project of an object, whoever may read it; callers must authorize before using it. */
-  locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
+  locate(type: 'work' | 'decision', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
   /**
    * Unfinished work owned by `owner` in the projects of `workspaceId` that pass the
@@ -223,7 +208,7 @@ export interface WorkRepository extends TaskGraphReader {
   /** Called in the same transaction as the work row, links and stream event. */
   insertCreationNotice(work: WorkRecord, sources: ObjectRef[]): Promise<void>;
   listTaskNotices(projectId: string, page: PageWindow): Promise<Paged<TaskCreationNoticeRecord>>;
-  /** Proposed and accepted decisions and recorded results of the project as one stream, newest first (#694). */
+  /** Proposed and accepted decisions of the project as one stream, newest first (#694). */
   listObjectNotices(projectId: string, page: PageWindow): Promise<Paged<ObjectNoticeRecord>>;
   /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
   insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
@@ -249,8 +234,8 @@ export interface WorkRepository extends TaskGraphReader {
   taskUseTargets(refs: readonly ObjectRef[]): Promise<readonly string[]>;
   prepareTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
   lockPreparedTaskUse(ids: readonly string[]): Promise<{ ids: readonly string[]; projectIds: readonly string[]; mark(ids?: readonly string[]): Promise<void> }>;
-  /** Optional for pure domain compositions; the production adapter marks the tasks a result or decision is about as used (#394). */
-  artifactUsed?(scope:{workspaceId:string;projectId:string},boundary:{kind:'result'|'decision';id:string;revision:string},
+  /** Optional for pure domain compositions; the production adapter marks the tasks a decision is about as used (#394). */
+  artifactUsed?(scope:{workspaceId:string;projectId:string},boundary:{kind:'decision';id:string;revision:string},
     retained:{readonly ids:readonly string[];mark(ids?:readonly string[]):Promise<void>}):Promise<void>;
   creatorAgentOwner(agentId: string, options?: { lock?: boolean }): Promise<string | null>;
   creationUndoReceipt(projectId: string, by: ActorRef, commandId: string): Promise<{ workId: string; fingerprint: string; noticeId: string } | null>;
@@ -303,9 +288,6 @@ export interface WorkRepository extends TaskGraphReader {
   findDecision(id: string, options?: { lock?: boolean }): Promise<DecisionRecord | null>;
   insertDecision(decision: NewDecision): Promise<DecisionRecord>;
   updateDecision(id: string, changes: DecisionChanges): Promise<DecisionRecord>;
-  listResults(projectId: string, page: PageWindow): Promise<Paged<ResultRecord>>;
-  findResult(id: string): Promise<ResultRecord | null>;
-  insertResult(result: NewResult): Promise<ResultRecord>;
   /** Links from or to any of these ids, oldest first. */
   links(ids: string[]): Promise<ObjectLinkRecord[]>;
   /** Inserts links; an identical existing link is kept. */
@@ -328,7 +310,6 @@ export type WorkEventKind =
   | 'project.work_updated.v1'
   | 'project.decision_proposed.v1'
   | 'project.decision_accepted.v1'
-  | 'project.result_recorded.v1'
   | 'project.link_created.v1'
   /** A person's change of Owner ended a local client's hold (#985); the same event as a Stop. */
   | 'project.agent_stopped.v1';
@@ -340,19 +321,15 @@ export interface WorkEventLog {
 
 /**
  * What an explicit native effect contributes to a task's canonical thread (#154). The command identity is
- * the stable domain command (a client UUID, or a freshly generated one when the caller gave none) or the
- * canonical result; every message identity is derived from it plus the exact task, so a retry or replay
- * can never append a second message.
+ * the stable domain command (a client UUID, or a freshly generated one when the caller gave none); every
+ * message identity is derived from it plus the exact task, so a retry or replay can never append a second message.
  */
-export type ContributionAnchor =
-  | { operation: 'work.update'; commandId: string }
-  | { operation: 'result.create'; resultId: string };
+export type ContributionAnchor = { operation: 'work.update'; commandId: string };
 export interface ContributionDraft {
   workId: string;
-  kind: 'blocker' | 'result' | 'came_of_it';
-  /** The exact authored text: the saved blocker, the "what came of it" line or the result title. */
+  kind: 'blocker' | 'came_of_it';
+  /** The exact authored text: the saved blocker or the "what came of it" line. */
   body: string;
-  resultId?: string;
 }
 /** An opaque handle that moves through prepare, lockTasks and append, in that order only. */
 export interface PreparedContributions {

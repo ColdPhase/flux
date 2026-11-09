@@ -44,9 +44,8 @@ class MessageWorkJourney(unittest.TestCase):
         current = api(owner, "POST", cls.root + "/decisions", {"title": "Use the distance sensor", "supersedes": old["id"], "sources": [sources[0]]}, 201)
         api(owner, "POST", f"/api/v1/decisions/{current['id']}/accept", {"expectedVersion": 1, "stillApplies": [], "park": []})
         proposal = api(owner, "POST", cls.root + "/decisions", {"title": "Keep the manual off switch", "sources": [sources[0]]}, 201)
-        result = api(owner, "POST", cls.root + "/results", {"title": "The shield reduced noise", "finding": "positive", "sources": [sources[0]]}, 201)
-        cls.expected = {("work", work["id"]) for work in cls.work} | {("decision", item["id"]) for item in (old, current, proposal)} | {("result", result["id"])}
-        cls.expected_titles = {(kind, item["id"]): item["title"] for kind, items in (("work", cls.work), ("decision", (old, current, proposal)), ("result", (result,))) for item in items}
+        cls.expected = {("work", work["id"]) for work in cls.work} | {("decision", item["id"]) for item in (old, current, proposal)}
+        cls.expected_titles = {(kind, item["id"]): item["title"] for kind, items in (("work", cls.work), ("decision", (old, current, proposal))) for item in items}
         api(owner, "POST", cls.root + "/work", {"title": "Related only; not made from either message", "related": [sources[0]]}, 201)
         long = api(owner, "POST", cls.root + "/conversations", {"body": "Library installation notes from the first measurement", "clientMessageId": str(uuid.uuid4())}, 201)
         cls.long_conversation = long["id"]; cls.long_messages = [long["messages"][0]["id"]]
@@ -62,7 +61,7 @@ class MessageWorkJourney(unittest.TestCase):
 
     @classmethod
     def digest(cls):
-        return json.dumps([api(cls.contexts[0], "GET", cls.root + f"/{kind}?limit=100") for kind in ("work", "decisions", "results")], sort_keys=True)
+        return json.dumps([api(cls.contexts[0], "GET", cls.root + f"/{kind}?limit=100") for kind in ("work", "decisions")], sort_keys=True)
 
     @classmethod
     def tearDownClass(cls):
@@ -111,9 +110,9 @@ class MessageWorkJourney(unittest.TestCase):
                 self.assertEqual(set(parse_qs(urlsplit(reads[0]).query)["messageIds"][0].split(',')), {self.m0, self.m1})
                 objects = page.locator("#thread").get_by_role("navigation", name="Linked object pages")
                 edges = page.locator("#thread").get_by_role("navigation", name="Message link pages")
-                expect(objects).to_contain_text("1–50 of 68 objects")
+                expect(objects).to_contain_text("1–50 of 67 objects")
                 expect(edges).to_contain_text("1–50 of 100 links")
-                expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 tasks · 3 decisions · 1 result")
+                expect(page.locator(f"#thread [data-message-id='{self.m0}'] .ws-attach__more")).to_contain_text("64 tasks · 3 decisions")
                 expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
                 first = self.chips(page); self.assertEqual(len(first), 50)
@@ -125,13 +124,13 @@ class MessageWorkJourney(unittest.TestCase):
                 edges.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
                 self.assertEqual(self.chips(page), first)
                 objects.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
-                expect(objects).to_contain_text("51–68 of 68 objects")
-                expect(edges).to_contain_text("1–32 of 32 links")
-                last = self.chips(page); self.assertEqual(len(last), 32)
+                expect(objects).to_contain_text("51–67 of 67 objects")
+                expect(edges).to_contain_text("1–31 of 31 links")
+                last = self.chips(page); self.assertEqual(len(last), 31)
                 self.assertEqual({(chip["kind"], chip["id"]) for chip in first + second_edges + last}, self.expected)
                 self.assertLessEqual(len(self.chips(page)), 50)
                 expect(field).to_have_value("Keep this reply while checking the older measurement links")
-                page.locator(".thread__feed").get_by_role("button",name="Result: The shield reduced noise",exact=True).scroll_into_view_if_needed()
+                page.locator(".thread__feed").get_by_role("button",name="Decision: Keep the manual off switch",exact=True).scroll_into_view_if_needed()
                 shot(page, f"bounded-message-objects-mixed-{'phone' if phone else 'desktop'}")
                 if phone:
                     # #501 AC-2 supersedes full visual wrapping: retain the exact native
@@ -165,7 +164,7 @@ class MessageWorkJourney(unittest.TestCase):
                 page.wait_for_function("()=>new Promise(resolve=>{let last=-1,stable=0;const check=()=>{const p=document.querySelector('.thread__feed');stable=p.scrollTop===last?stable+1:0;last=p.scrollTop;if(stable>8)resolve(true);else requestAnimationFrame(check);};requestAnimationFrame(check);})")
                 shot(page, f"bounded-message-objects-{'phone' if phone else 'desktop'}")
                 page.reload(); self.ready(page)
-                expect(objects).to_contain_text("51–68 of 68 objects")
+                expect(objects).to_contain_text("51–67 of 67 objects")
                 self.assertEqual(self.chips(page), last)
                 expect(field).to_have_value("Keep this reply while checking the older measurement links")
                 objects.get_by_role("button", name="Previous", exact=True).click(); self.ready(page)
@@ -233,7 +232,7 @@ class MessageWorkJourney(unittest.TestCase):
         field.fill("Ada Nowak's separate private reply")
         route,response=held.pop();route.fulfill(response=response);self.ready(page)
         self.assertEqual(self.chips(page),first);expect(field).to_have_value("Ada Nowak's separate private reply")
-        expect(page.locator("#thread").get_by_role("navigation",name="Linked object pages")).to_contain_text("1–50 of 68 objects")
+        expect(page.locator("#thread").get_by_role("navigation",name="Linked object pages")).to_contain_text("1–50 of 67 objects")
         page.unroute("**/work-associations?**",hold)
 
     def test_05_older_visible_messages_use_one_bounded_batch_and_native_source(self):

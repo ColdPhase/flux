@@ -19,7 +19,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | `reply` | same | The conversation's starter and earlier writers, unless the message mentions them. |
 | `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants. |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
-| `review` | `project.decision_proposed.v1`, `project.result_recorded.v1` | Owners of work the decision affects or the result is about, and the owner of the agent that produced it. |
+| `review` | `project.decision_proposed.v1` | Owners of work the decision affects, and the owner of the agent that produced it. |
 | `invitation` | `project.live_invited.v1` (`{ sessionId, invitationId, recipientId }`, recorded only when a new invitation row is inserted) | The invited person, while the invitation is still `pending` and its live session `available` ([live sessions](live-sessions.md), #62). |
 
 The actor is never notified. Nothing else notifies: no digests, counts or "you have been away".

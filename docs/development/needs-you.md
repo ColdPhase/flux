@@ -19,7 +19,7 @@ an item. Access is checked at the moment of reading: an object the person cannot
 | `blocked` | A task they own that is blocked | `project_work_items` they own with status `blocked` |
 | `mention` | Someone mentioned them | their unread `mention` notifications, newer than 14 days |
 
-Replies, direct messages, assigned work and results to review stay notifications: they reach people where they
+Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
 `/inbox/:id` links. **Agent questions with ready-made answers (S14) have no contract yet**, so none are listed;
 the `question` kind is for people's questions today.
@@ -70,8 +70,8 @@ declined in the last 24 hours ("4 done today").
 ## The Tasks views
 
 The Tasks tab lists tasks only: its views take `kinds=work` (`GET …/work-view?purpose=tasks&kinds=work`), which
-leaves decisions and results out of the "All" selection and its total. API readers without `kinds` still get
+leaves decisions out of the "All" selection and its total. API readers without `kinds` still get
 the whole mixed view. A decision's history stays in its own details, as plain sentences that appear only when they apply ("This replaces the decision …",
-"This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"); a result shows in its task's details. Old links to the Decisions view
+"This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"). Old links to the Decisions view
 (`/projects/:id/tasks?status=needs|rules`) open the Inbox's Decisions filter (`/inbox?show=decisions`); a
 decision's own link (`?open=decision:<id>`) opens the decision.

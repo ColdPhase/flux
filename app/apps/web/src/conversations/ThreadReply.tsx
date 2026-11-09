@@ -20,7 +20,7 @@ type ThreadReplyProps = {
   preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
   /** Another person's reply is watched for viewing receipts; `seenBy` names who observed every reply of this author run. */
   observed?: boolean; seenBy?: readonly string[];
-  onOpenResult: (resultId: string) => void; onDenied: (cause: unknown) => void;
+  onDenied: (cause: unknown) => void;
 };
 type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
 
@@ -49,7 +49,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
     const queued = props as QueuedReplyProps;
     return pendingMessageRow({ place: 'thread', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { mine, meId, arrived, name, project, owners, people, preview, writable, onOpenResult, onDenied } = stored;
+  const { mine, meId, arrived, name, project, owners, people, preview, writable, onDenied } = stored;
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
@@ -62,7 +62,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message.sourceDeleted ? <DeletedSourceCitation /> : null}
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
-      {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
+      {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}

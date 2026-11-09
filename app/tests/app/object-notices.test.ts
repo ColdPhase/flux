@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Conversation, ConversationMessage, Decision, ObjectNotice, Page, WorkResult } from '@flux/contracts';
+import type { Conversation, ConversationMessage, Decision, ObjectNotice, Page } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { pool } from './support/db.js';
 import { StreamClient } from './support/stream.js';
 
-// What the conversation says about decisions and results (#694): a decision proposed or accepted in a thread, and a
-// result recorded, leave a line with who, where from and the object's state now. Read by exactly the people who
+// What the conversation says about decisions (#694): a decision proposed or accepted in a thread leaves a line with who,
+// where from and the object's state now. Read by exactly the people who
 // can read the project; the live events carry identifiers only.
 
 async function scene() {
@@ -67,7 +67,7 @@ test('accepting changes the state on both lines and adds the acceptance by the p
   assert.equal(latest.createdAt, accepted.decidedAt);
   assert.equal(latest.by.id, f.owner.id, 'the person who accepted it, not the proposer');
   for (const line of [latest, first]) {
-    assert.equal(line.kind === 'result.recorded' ? null : line.status, 'accepted', 'both lines show where the decision stands now');
+    assert.equal(line.status, 'accepted', 'both lines show where the decision stands now');
     assert.equal(line.conversationId, f.root.id, 'the acceptance stays in the thread of the proposal');
     assert.deepEqual(line.sources, [{ type: 'message', id: f.replyOne.id }]);
   }
@@ -80,24 +80,20 @@ test('a replaced decision shows as replaced on its lines and the new rule leads'
   await f.accept(second);
   const page = await f.notices();
   assert.equal(page.total, 4);
-  const states = Object.fromEntries(page.items.map((line) => [line.id, line.kind === 'result.recorded' ? null : line.status]));
+  const states = Object.fromEntries(page.items.map((line) => [line.id, line.status]));
   assert.deepEqual(states, { [`${first.id}:proposed`]: 'superseded', [`${first.id}:accepted`]: 'superseded', [`${second.id}:proposed`]: 'accepted', [`${second.id}:accepted`]: 'accepted' });
   assert.equal(page.items[0]!.id, `${second.id}:accepted`);
   const noSource = page.items.find((line) => line.id === `${second.id}:proposed`)!;
   assert.deepEqual([noSource.sources, noSource.conversationId], [[], null], 'a decision made from nothing names no thread');
 });
 
-test('a result recorded from a thread shows with its finding, and pages by the same window as the task notices', async () => {
+test('the lines page by the same window as the task notices', async () => {
   const f = await scene();
-  const result = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/results`, {
-    body: { title: 'The camera fails below 10 lux', finding: 'negative', evidence: 'Ten runs in the dark room', sources: [{ type: 'message', id: f.replyOne.id }] },
-  }), 201) as WorkResult;
-  const [line] = (await f.notices()).items;
-  assert.deepEqual({ ...line, id: undefined }, { id: undefined, kind: 'result.recorded', resultId: result.id, finding: 'negative', workspaceId: f.ws.id, projectId: f.place.id,
-    title: result.title, by: result.createdBy, sources: [{ type: 'message', id: f.replyOne.id }], conversationId: f.root.id, createdAt: result.createdAt });
+  await f.propose({ title: 'Rule 0', sources: [{ type: 'message', id: f.replyOne.id }] });
   for (const index of [1, 2]) await f.propose({ title: `Rule ${index}` });
   const second = expectStatus(await f.reader.browser.request('GET', `${f.noticePath}?limit=2&offset=1`), 200) as Page<ObjectNotice>;
   assert.deepEqual([second.total, second.items.length, second.limit, second.offset], [3, 2, 2, 1]);
+  assert.ok(second.items.every((line) => line.kind === 'decision.proposed'));
 });
 
 test('only people who can read the project read its lines, and another project never leaks in', async () => {

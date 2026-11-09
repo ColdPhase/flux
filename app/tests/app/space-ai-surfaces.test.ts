@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import type { PgBoss } from 'pg-boss';
-import { assistantRunChangesActionPath } from '@flux/contracts';
+import { assistantChangeActionPath, assistantRunChangesActionPath } from '@flux/contracts';
 import { deliverNotificationEmail, type NotificationMailer } from '@flux/core';
 import { coworkUnitRows, pushDeliveryRepository } from '@flux/db';
 import { emailUnitOfWork } from '../../apps/worker/src/notifications/adapters.js';
@@ -133,19 +133,15 @@ describe('space AI switch: the remaining surfaces', () => {
 
   test('an idempotent replay of a gated command is refused while AI is off', async () => {
     const key = randomUUID();
-    // A proposal the assistant drafted: its owner dismisses it with an Idempotency-Key (test fixture row, as in space-ai-routes).
-    const proposalId = randomUUID();
-    const fixture = await pool.connect();
-    try {
-      await fixture.query('BEGIN');
-      await fixture.query('SET LOCAL session_replication_role = replica');
-      await fixture.query(`INSERT INTO assistant_proposals (id, workspace_id, project_id, run_id, owner_user_id, fact, interpretation, change_type, result_title, result_finding)
-        VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [proposalId, scene.ws.id, scene.place.id, randomUUID(), scene.owner.id]);
-      await fixture.query('COMMIT');
-    } catch (error) { await fixture.query('ROLLBACK'); throw error; } finally { fixture.release(); }
-    const ask = () => scene.owner.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/dismiss`, { body: { expectedVersion: 1 }, headers: { 'idempotency-key': key } });
+    // A change the assistant left waiting (deleting always waits): its owner skips it with an Idempotency-Key.
+    const page = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/docs`, { body: { title: 'Page to keep', body: 'Text' } }), 201) as { id: string; version: number };
+    const run = await scene.liveRun();
+    assert.match(text((await run.call('flux_delete_doc', { docId: page.id, expectedVersion: page.version })).message), /^Waiting for /);
+    await scene.complete(run.runId);
+    const [change] = await changesOf(run.runId);
+    const ask = () => scene.owner.browser.request('POST', assistantChangeActionPath(change!.id, 'skip'), { body: { expectedVersion: change!.version }, headers: { 'idempotency-key': key } });
     const first = await ask();
-    assert.equal(first.status, 200, `the proposal is dismissed with an Idempotency-Key: ${first.text}`);
+    assert.equal(first.status, 200, `the change is skipped with an Idempotency-Key: ${first.text}`);
     await setSpaceAi(scene.place.id, 'blocked');
     const replay = await ask();
     assert.deepEqual([replay.status, code(replay.json)], [403, 'SPACE_AI_OFF']);

@@ -3,7 +3,6 @@ import {
   WORK_LIMITS,
   waitingPhrase,
   type CreateObjectLinkCommand,
-  type CreateResultCommand,
   type CreateWorkCommand,
   type Decision,
   type NamedPrincipal,
@@ -16,7 +15,6 @@ import {
   type WaitingOn,
   type WorkItem,
   type WorkObjectType,
-  type WorkResult,
   type TaskActivityPage,
   type TaskActivityQuery,
   type ObjectNotice,
@@ -27,7 +25,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, TaskChangeVia, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, TaskChangeVia, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
   lockProjectGraphs, sortedIds } from './task-graph.js';
 import * as valid from './validation.js';
@@ -35,12 +33,12 @@ import { creationUndoEligibility, mayUndoTaskCreation, type TaskCreationUndoFact
 import { presentGithubRule, type GithubRuleReading } from '../github/rules.js';
 import { readTaskActivity } from './task-activity.js';
 
-// Work, decision and result use cases (issue #101). Each runs in one unit of work: it asks the
+// Work and decision use cases (issue #101). Each runs in one unit of work: it asks the
 // access port first (reads: project read; changes: project write with the access rows locked),
 // then checks versions and references, changes rows and records exactly one project event, so
 // the decision, the change and the stream event commit together.
 //
-// Rules: agents act through their #29 project grants and may create work and results and
+// Rules: agents act through their #29 project grants and may create work and
 // propose decisions; only a person accepts a decision. Accepting a decision that replaces an
 // earlier one only marks the earlier one superseded (kept, with its reason). Flux never moves or
 // parks work because a decision changed: people decide about the tasks themselves (#871).
@@ -51,16 +49,16 @@ import { readTaskActivity } from './task-activity.js';
 // -> the complete task rows in ascending id -> everything else. Starting or finishing a task needs every
 // prerequisite done. Nothing infers that listed criteria are satisfied.
 //
-// Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and a
-// published result contribute through the mandatory `ports.contributions` hook, inside the same unit
+// Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and the
+// "what came of it" line contribute through the mandatory `ports.contributions` hook, inside the same unit
 // of work, in that same order: the command's durable identity is the native receipt and then every
 // derived message identity (sorted), before the graph lock; the complete sorted task set (the linked
 // tasks together with the prerequisites a finishing task reads, in ONE ascending pass) precedes the
 // domain writes, the canonical appends, the receipt, and the events last (one final batch owned by the
 // caller's unit of work).
 
-const LABEL: Record<WorkObjectType, string> = { work: 'Work item', decision: 'Decision', result: 'Result' };
-const CODE: Record<WorkObjectType, string> = { work: 'WORK_NOT_FOUND', decision: 'DECISION_NOT_FOUND', result: 'RESULT_NOT_FOUND' };
+const LABEL: Record<WorkObjectType, string> = { work: 'Work item', decision: 'Decision' };
+const CODE: Record<WorkObjectType, string> = { work: 'WORK_NOT_FOUND', decision: 'DECISION_NOT_FOUND' };
 const FINISHED = new Set(['done']);
 
 const iso = (date: Date) => date.toISOString();
@@ -148,9 +146,6 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
       decidedAt: record.decidedAt ? iso(record.decidedAt) : null, supersedes: record.supersedesId, supersededBy: record.supersededById,
       supersededAt: record.supersededAt ? iso(record.supersededAt) : null, version: record.version, updatedAt: iso(record.updatedAt),
     }),
-    result: (record: ResultRecord): WorkResult => ({
-      ...base(record), title: record.title, finding: record.finding, evidence: record.evidence, createdBy: named(record.createdBy),
-    }),
   };
 }
 
@@ -163,9 +158,6 @@ async function presentWork(ports: WorkPorts, record: WorkRecord) {
 }
 async function presentDecision(ports: WorkPorts, record: DecisionRecord) {
   return (await presenter(ports, [record.id], decisionActors([record]))).decision(record);
-}
-async function presentResult(ports: WorkPorts, record: ResultRecord) {
-  return (await presenter(ports, [record.id], [record.createdBy])).result(record);
 }
 
 /**
@@ -187,7 +179,7 @@ async function authorized(ports: WorkPorts, principal: Principal, type: WorkObje
 
 /**
  * Whether the cited objects exist in this project. Every write that cites one calls it again right after taking the project graph
- * lock: the assistant's Undo of a decision, result, map or message it made holds that lock while it looks for use and removes the
+ * lock: the assistant's Undo of a decision, map or message it made holds that lock while it looks for use and removes the
  * object, so a citation is either committed before that look or finds the object gone (#68). No row is locked for this, so it cannot
  * cross a writer that locks the object's own row first (a map's thoughts, for instance).
  */
@@ -260,9 +252,10 @@ const waitingForOf = (value: unknown): ActorRef | null => {
  * What was waited for is resolved (#868): each blocked task that still waits for it goes back to Doing by itself (To do when a prerequisite is
  * still open, since Doing needs every prerequisite done), the stream says "#4 can continue: the decision was accepted", and its owner is
  * told once: a person in their Inbox, an agent by taking the task up again. `ids` are the tasks found under the graph lock, locked by the
- * caller; each is read again, locked, and left alone if it no longer waits.
+ * caller; each is read again, locked, and left alone if it no longer waits. Every path that finishes a task goes through here: a person's change,
+ * a decision's acceptance and a pull request's rule (#1055).
  */
-async function resumeWaiting(ports: WorkPorts, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
+export async function resumeWaiting(ports: Pick<WorkPorts, 'work' | 'events'>, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
   because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<void> {
   for (const id of ids) {
     const task = await ports.work.findWork(id, { lock: true });
@@ -321,15 +314,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
   }
   const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items)); return items.map(view.work); };
   const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items)); return items.map(view.decision); };
-  const presentResults = async (ports: WorkPorts, items: ResultRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), items.map((i) => i.createdBy)); return items.map(view.result); };
 
   return {
     listWork: (principal: Principal, projectId: string, query?: PageQuery) =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listWork(project, window), presentWorks),
     listDecisions: (principal: Principal, projectId: string, query?: PageQuery) =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listDecisions(project, window), presentDecisions),
-    listResults: (principal: Principal, projectId: string, query?: PageQuery) =>
-      list(principal, projectId, query, (ports, project, window) => ports.work.listResults(project, window), presentResults),
     listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<TaskCreationNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window), async (ports, items) => {
         const found = await ports.work.findWorks(items.map((item) => item.workId));
@@ -349,7 +339,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         });
       }),
 
-    /** What the conversation says about decisions and results (#694): the project's audience reads it, no one else. */
+    /** What the conversation says about decisions (#694): the project's audience reads it, no one else. */
     listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<ObjectNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window), async (ports, items) => {
         const names = await ports.work.names(items.map((item) => item.by));
@@ -385,10 +375,6 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     getDecision: (principal: Principal, decisionId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, 'decision', decisionId, 'read');
       return presentDecision(ports, (await ports.work.findDecision(id))!);
-    }),
-    getResult: (principal: Principal, resultId: string) => uow.run(async (ports) => {
-      const { id } = await authorized(ports, principal, 'result', resultId, 'read');
-      return presentResult(ports, (await ports.work.findResult(id))!);
     }),
 
     async undoTaskCreation(principal: Principal, workId: string, command: UndoTaskCreationCommand): Promise<UndoTaskCreationResult> {
@@ -770,95 +756,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       });
     },
 
-    /**
-     * A positive or negative finding with evidence. It can finish one of the work items it reports on. One
-     * canonical result is created; every task it reports on (`work`) also gets one authored contribution that
-     * names that exact result, with the result title as its text, made by the creating principal. A result
-     * with no linked task creates no task thread. With `clientCommandId` an exact retry returns the original
-     * result without a second result or message.
-     */
-    async createResult(principal: Principal, projectId: string, command: CreateResultCommand): Promise<WorkResult> {
-      const by = actor(principal);
-      if (!command || typeof command !== 'object') throw new InvalidInputError('Result is required');
-      const project = valid.id(projectId, 'projectId');
-      const title = valid.title(command.title);
-      const finding = valid.finding(command.finding);
-      const evidence = valid.text(command.evidence, 'evidence', WORK_LIMITS.evidence);
-      const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
-      const workIds = valid.ids(command.work, 'work');
-      const decisions: ObjectRef[] = valid.ids(command.decisions, 'decisions').map((id) => ({ type: 'decision', id }));
-      const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
-      let finishes: { id: string; version: number } | null = null;
-      if (command.finishes !== undefined) {
-        const raw = command.finishes as { id?: unknown; expectedVersion?: unknown } | null;
-        if (!raw || typeof raw !== 'object') throw new InvalidInputError('finishes must be { id, expectedVersion }');
-        finishes = { id: valid.id(raw.id, 'finishes.id'), version: valid.expectedVersion(raw.expectedVersion) };
-        if (!workIds.includes(finishes.id)) throw new InvalidInputError('finishes must be one of the linked work items');
-      }
-      const fingerprint = sha256({ operation: 'result.create', projectId: project, title, finding, evidence, sources: sources.map(valid.refKey).sort(),
-        work: [...workIds].sort(), decisions: decisions.map((decision) => decision.id).sort(), finishes });
-      return uow.run(async (ports) => {
-        const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
-        if (clientCommandId) {
-          // Command identity before any task lock. An exact retry rechecks current authorization (above), the
-          // canonical sources and the stored result and contributions, and writes nothing.
-          const earlier = await ports.work.nativeCommand(project, by, 'result.create', clientCommandId);
-          if (earlier) {
-            sameCommand(earlier, fingerprint);
-            await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
-            const stored = earlier.object.type === 'result' ? await ports.work.findResult(earlier.object.id) : null;
-            if (!stored || stored.projectId !== project || !await ports.contributions.confirm(principal, project, earlier.messageIds)) throw invalidPostState();
-            return presentResult(ports, stored);
-          }
-        }
-        await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
-        const resultId = randomUUID();
-        // Every message identity (derived from this result and its task) is locked before the first task lock,
-        // then the complete sorted task set, so overlapping results lock in one order and cannot deadlock.
-        const contributions = workIds.length ? await ports.contributions.prepare(principal, project, { operation: 'result.create', resultId },
-          workIds.map((workId) => ({ workId, kind: 'result' as const, body: title, resultId }))) : null;
-        // Finishing is also a start/finish transition: graph lock, then ONE ascending pass over the linked tasks
-        // together with the finishing task's prerequisites, so no other pass can lock them in another order.
-        await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
-        const directTasks = [...workIds, ...await ports.work.taskUseTargets([...sources, ...decisions])];
-        // The tasks that wait for the task it finishes can continue (#868).
-        const waiters = finishes ? await ports.work.waiters({ kind: 'task', id: finishes.id }) : [];
-        const wanted = sortedIds([...directTasks, ...waiters, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
-        const useFence = await ports.work.lockPreparedTaskUse(wanted);
-        const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
-        // Finishing changes someone's work: it needs the version the author saw.
-        const finished = finishes ? locked.find((row) => row.id === finishes!.id)! : null;
-        if (finished && finishes) {
-          if (finished.version !== finishes.version) throw new VersionConflictError(finished.version, await presentWork(ports, finished));
-        }
-        const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });
-        const from = { type: 'result' as const, id: record.id };
-        await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
-        await ports.work.artifactUsed?.(scope,{kind:'result',id:record.id,revision:'created'},useFence);
-        if (finished && finished.status !== 'done') {
-          const done = await ports.work.updateWork(finished.id, { status: 'done', blocker: null }, by);
-          await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
-          await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'task' && task.waitingOn.id === finished.id,
-            { said: `#${done.number} is done`, token: 'work', taskId: finished.id });
-        }
-        await useFence.mark(directTasks);
-        const view = await presentResult(ports, record);
-        await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
-        const messageIds = contributions ? await ports.contributions.append(contributions) : [];
-        if (clientCommandId) await ports.work.recordNativeCommand(scope, by,
-          { operation: 'result.create', commandId: clientCommandId, fingerprint, object: { type: 'result', id: record.id }, messageIds });
-        return view;
-      });
-    },
-
-    /** Connects a work item, decision or result to anything else in the project. */
+    /** Connects a work item or decision to anything else in the project. */
     async createLink(principal: Principal, projectId: string, command: CreateObjectLinkCommand): Promise<ObjectLink> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Link is required');
       const project = valid.id(projectId, 'projectId');
-      const from = valid.ref(command.from, ['work', 'decision', 'result'], 'from') as { type: WorkObjectType; id: string };
+      const from = valid.ref(command.from, ['work', 'decision'], 'from') as { type: WorkObjectType; id: string };
       const to = valid.ref(command.to, valid.ANY_TYPES, 'to');
       if (from.type === to.type && from.id === to.id) throw new InvalidInputError('An object cannot link to itself');
       return uow.run(async (ports) => {

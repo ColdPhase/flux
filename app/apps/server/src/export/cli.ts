@@ -42,7 +42,7 @@ try {
   const bundle = await exportUseCases(db, process.env.FLUX_PUBLIC_ORIGIN ?? null, storage).exportBundle({ kind: 'human', id: userId }, target.id);
   process.stderr.write(`Exported "${bundle.data.project.name}" (${target.id}) as ${bundle.data.provenance.exportedBy.name}: `
     + `${bundle.data.conversations.length} conversations, ${bundle.data.docs.length} docs, ${bundle.data.sketches.length} sketches, `
-    + `${bundle.data.work.length} work items, ${bundle.data.decisions.length} decisions, ${bundle.data.results.length} results.\n`);
+    + `${bundle.data.work.length} work items, ${bundle.data.decisions.length} decisions.\n`);
   process.stderr.write(`FLUX_EXPORT_FILE ${bundle.fileName}\n`);
   await pipeline(bundle.content, process.stdout);
 } catch (error) {

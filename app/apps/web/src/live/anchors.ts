@@ -4,7 +4,7 @@ import { getConversation } from '../conversations/api';
 import { getMaterial } from '../materials/api';
 import { getSketch } from '../api/sketches';
 import { getDoc } from '../docs/api';
-import { getResult, getWork } from '../work/api';
+import { getWork } from '../work/api';
 
 /**
  * Where a live session lives and what can be shown in it (#59 §3). Anchors and fragments are
@@ -92,10 +92,6 @@ export async function resolveFragment(projectId: string, ref: LivePresentationRe
         const item = await getWork(ref.id, signal);
         const changed = item.version !== ref.version;
         return { label: item.title, what: changed ? 'task, changed since it was shown' : 'task', path: `/projects/${projectId}/tasks?open=work:${item.id}` };
-      }
-      case 'result': {
-        const result = await getResult(ref.id, signal);
-        return { label: result.title, what: 'result', path: `/projects/${projectId}/tasks?open=result:${result.id}` };
       }
       case 'material': {
         try {

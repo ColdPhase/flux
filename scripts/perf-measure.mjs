@@ -165,8 +165,7 @@ function viewPlan(ids) {
         get('notice reference rows', `/api/v1/projects/${p}/work-reference-rows?${query({ objects: references })}`)]] },
     { view: 'Conversation thread', groups: [
       [get('thread', `/api/v1/conversations/${ids.conversationId}`)],
-      [get('assistant answers', `/api/v1/conversations/${ids.conversationId}/assistant-answers?limit=100&offset=0`),
-        get('assistant proposals', `/api/v1/projects/${p}/assistant-proposals?limit=100`)]] },
+      [get('assistant answers', `/api/v1/conversations/${ids.conversationId}/assistant-answers?limit=100&offset=0`)]] },
     { view: 'Tasks', groups: [...shell, ...projectShell.slice(0, 2),
       ['open', 'in_progress', 'blocked', 'finished'].map((group) =>
         get(`work view ${group}`, `/api/v1/projects/${p}/work-view?${query({ purpose: 'tasks', group, mine: false, limit: 50 })}`)),

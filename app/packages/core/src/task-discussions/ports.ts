@@ -19,8 +19,8 @@ export interface DiscussionConversation {
   createdBy: ActorRef;
   createdAt: Date;
 }
-/** `text` is ordinary; the others are explicit native effects (#154) and `result` names its canonical result. */
-export type ContributionKind = 'text' | 'blocker' | 'result' | 'handoff' | 'came_of_it';
+/** `text` is ordinary; the others are explicit native effects (#154). */
+export type ContributionKind = 'text' | 'blocker' | 'handoff' | 'came_of_it';
 export interface DiscussionMessage {
   id: string;
   conversationId: string;
@@ -34,7 +34,6 @@ export interface DiscussionMessage {
   clientMessageId: string;
   requestFingerprint: string;
   kind: ContributionKind;
-  resultId: string | null;
   createdAt: Date;
   files?: MessageFile[];
   /** The agent whose answer the author posted with Show everyone (#842). */
@@ -51,7 +50,6 @@ export interface NewDiscussionMessage {
   source: MaterialSource | null;
   /** Defaults to ordinary text. */
   kind?: ContributionKind;
-  resultId?: string | null;
   /**
    * A line Flux itself writes for an agent: an in-app agent's run report, its question to another agent, the answer, or a status line
    * ("Stopped by Maja", "This needs a person"). Those are bounded by the run and by TA-3, so the five-in-a-row limit neither counts

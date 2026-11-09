@@ -7,7 +7,7 @@ import { objectPhrase, objectState, objectTarget } from './objectNotices';
 import './object-notices.css';
 
 /**
- * One line that a decision was proposed or accepted, or a result recorded (#694, F-026 P5): who did it and where it
+ * One line that a decision was proposed or accepted (#694, F-026 P5): who did it and where it
  * came from, then the object as a card with its state now. It is information, not a message: no replies or actions
  * of its own, and the card opens the object in Details (one panel on the computer, one sheet on the phone). The same
  * line sits in the project's stream and, when it came from a thread, in that thread.
@@ -24,7 +24,6 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
   const phrase = objectPhrase(notice, authorOf, inThread, { name, mine }, follows);
   const state = objectState(notice);
   const target = objectTarget(notice);
-  const noun = target.kind === 'decision' ? 'decision' : 'result';
   const message = notice.sources.find((source) => source.type === 'message');
   const toMessage = () => {
     if (!message) return;
@@ -47,8 +46,8 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
           <span className="convo-notice__what">{phrase.lead}{link ? <> {link}</> : null}</span>
           <time dateTime={notice.createdAt} title={when(notice.createdAt)}>{clock(notice.createdAt)}</time>
         </p>
-        {follows ? null : <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open ${noun} ${notice.title}, ${state.word.toLowerCase()}`}>
-          <Icon name={target.kind === 'decision' ? 'rule' : 'result'} size={16} />
+        {follows ? null : <button type="button" className="convo-notice__task convo-object__card" onClick={() => onOpen(target)} aria-label={`Open decision ${notice.title}, ${state.word.toLowerCase()}`}>
+          <Icon name="rule" size={16} />
           <span className="convo-notice__title">{notice.title}</span>
           <span className="convo-object__state" data-state={state.state}>{state.word}</span>
           <Icon name="chevron-right" size={14} />

@@ -105,15 +105,15 @@ export function foldEntries<Root extends StreamEntryLike, Notice extends StreamE
 }
 
 /** The first thing unread that the stream can show, oldest first; items arrive newest first. */
-/** The first unread item; decisions and results count too (#763 H11-3), so Jump never lands after an accepted rule. */
-export type UnreadTarget = { messageId: string; conversationId: string | null } | { workId: string } | { objectKind: 'decision' | 'result'; objectId: string };
+/** The first unread item; decisions count too (#763 H11-3), so Jump never lands after an accepted rule. */
+export type UnreadTarget = { messageId: string; conversationId: string | null } | { workId: string } | { objectKind: 'decision'; objectId: string };
 export function firstUnread(summary: Pick<ReturnSummary, 'items'>, roots: ConversationRoot[]): UnreadTarget | null {
   const rootIds = new Set(roots.map((root) => root.message.id));
   for (const item of [...summary.items].reverse()) {
     const source = item.source;
     if (source.type === 'message') return { messageId: source.messageId, conversationId: rootIds.has(source.messageId) ? null : source.conversationId };
     if (source.type === 'work') return { workId: source.id };
-    if (source.type === 'decision' || source.type === 'result') return { objectKind: source.type, objectId: source.id };
+    if (source.type === 'decision') return { objectKind: source.type, objectId: source.id };
   }
   return null;
 }

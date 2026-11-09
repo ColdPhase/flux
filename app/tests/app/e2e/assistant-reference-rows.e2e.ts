@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page, type Route } from 'playwright';
 import { expect } from 'playwright/test';
-import { type AssistantAnswer, type AssistantProposal, type AssistantRun, type Conversation, type Page as NativePage, type Project, type WorkItem } from '@flux/contracts';
+import { type AssistantAnswer, type AssistantRun, type Conversation, type Page as NativePage, type Project, type WorkItem } from '@flux/contracts';
 import { pool } from '../support/db.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
 
@@ -45,8 +45,6 @@ let place: Project, thread: Conversation;
 let agentId: string;
 const tasks: WorkItem[] = [];
 const answers: AssistantAnswer[] = [];
-let proposal: AssistantProposal;
-let target: WorkItem;
 const referenceReads: string[][] = [];
 const collectionReads: string[] = [];
 const pageErrors: string[] = [];
@@ -63,8 +61,8 @@ async function script(text: string) {
 }
 async function answer(prompt: string) {
   const run = await post<AssistantRun>(manager, `/api/v1/conversations/${thread.id}/assistant-runs`, { prompt, kind: 'ask', clientRunId: randomUUID() }, 202);
-  // The answer to `/ai` is its asker's alone (#842), so it has no proposal and no card for everyone. These checks are about what a proposal shows
-  // to a project's readers, so the run is a schedule's: the mock's two-second delay leaves time to say so before the worker commits it.
+  // The answer to `/ai` is its asker's alone (#842), so other readers would not see it. These checks are about what the project's readers see,
+  // so the run is a schedule's: the mock's two-second delay leaves time to say so before the worker commits it.
   await pool.query(`UPDATE personal_runs SET kind = 'scheduled', authority = 'owner_schedule', background_label = 'Reference check' WHERE id = $1`, [run.id]);
   let completed: AssistantRun | null = null;
   await expect.poll(async () => {
@@ -85,7 +83,7 @@ async function signedIn(who: Person, width = 1440, height = 900) {
     if (request.method() !== 'GET') return;
     const url = new URL(request.url());
     if (url.pathname.endsWith('/work-reference-rows')) referenceReads.push(url.searchParams.get('objects')!.split(','));
-    if (/\/api\/v1\/projects\/[^/]+\/(work|decisions|results)$/.test(url.pathname)) collectionReads.push(url.pathname);
+    if (/\/api\/v1\/projects\/[^/]+\/(work|decisions)$/.test(url.pathname)) collectionReads.push(url.pathname);
   });
   return page;
 }
@@ -164,7 +162,6 @@ test('120 immutable native citations remain linked beyond a single metadata wind
 
 test('genuinely missing historical citation is isolated from valid rows; phone links and private draft survive', {timeout:45_000},async()=>{
   // The native schema permits this unreferenced task deletion; no FK is disabled.
-  // Proposals retain a scoped task FK, so this is historical-citation evidence only.
   const missing=tasks[118]!,valid=tasks[119]!;
   const result=await pool.query('DELETE FROM project_work_items WHERE id=$1',[missing.id]);
   assert.equal(result.rowCount,1);
@@ -195,56 +192,8 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
   await capture(page,'references-phone-native-mixed');
 });
 
-test('proposal authority distinguishes loading, failed read, owned, manager, unowned and real agent owner', {timeout:90_000},async()=>{
-  target=await post<WorkItem>(manager,`/api/v1/projects/${place.id}/work`,{title:'Validate the measured range',owner:{kind:'human',id:owner.id},clientCommandId:randomUUID()});
-  await script('Fact: measured range {works}. <proposal>{{"fact":"Measured range","interpretation":"Validate it","title":"Range proposal","finding":"positive","evidence":"Native measurements","finishes":"{work}"}}</proposal>');
-  const committed=await answer('Draft a result for the range');
-  proposal=expectStatus(await manager.browser.request('GET',`/api/v1/assistant-proposals/${committed.proposalId}`),200) as AssistantProposal;
-  const nonowner=await open(writer);
-  const card=nonowner.locator('.assistant-proposal').last();
-  await card.scrollIntoViewIfNeeded();await expect(card).toContainText('waits for someone who can decide it');
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  await expect(card.getByRole('button',{name:'Dismiss',exact:true})).toHaveCount(0);
-  const denied=await writer.browser.request('POST',`/api/v1/assistant-proposals/${proposal.id}/accept`,{body:{expectedVersion:proposal.version}});assert.equal(denied.status,403);
-  const readonly=await open(viewer);const readonlyCard=readonly.locator('.assistant-proposal').last();await readonlyCard.scrollIntoViewIfNeeded();
-  await expect(readonlyCard).toContainText('waits for someone who can decide it');await expect(readonlyCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  const mine=await open(owner);const mineCard=mine.locator('.assistant-proposal').last();await mineCard.scrollIntoViewIfNeeded();await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  await mine.locator('#thread-composer').fill('Keep the private reply during a required read failure');
-  await mine.route(referencePattern,(route)=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({code:'WORK_READ_UNAVAILABLE',error:'Injected required read failure'})}));
-  await mine.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(mineCard).toContainText('Couldn’t check the linked task');
-  await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  await expect(mineCard.getByRole('button',{name:'Dismiss',exact:true})).toHaveCount(0);
-  await expect(mine.locator('#thread-composer')).toHaveValue('Keep the private reply during a required read failure');
-  await capture(mine,'references-proposal-read-failed');
-  await mine.unroute(referencePattern);await mine.getByRole('button',{name:'Refresh task references',exact:true}).click();
-  await expect(mineCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  target=await patchTask(target,{owner:null});await nonowner.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  target=await patchTask(target,{owner:{kind:'agent',id:agentId}});await nonowner.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  target=await patchTask(target,{owner:{kind:'human',id:owner.id}});await nonowner.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  const managerPage=await open(manager);const managerCard=managerPage.locator('.assistant-proposal').last();await managerCard.scrollIntoViewIfNeeded();await expect(managerCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-  // Unavailable proposal target rendering only: scoped native FK prevents deleting
-  // this actual target. The native final command authority remains independently checked.
-  await managerPage.route(referencePattern,async(route)=>{
-    const response=await route.fetch();const value=await response.json();
-    value.items=value.items.filter((row:{id:string})=>row.id!==target.id);value.unavailable.push({kind:'work',id:target.id});
-    await route.fulfill({response,json:value});
-  });
-  await managerPage.evaluate(()=>window.dispatchEvent(new Event('focus')));
-  await expect(managerCard).toContainText('linked task is unavailable');
-  await expect(managerCard.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
-  await expect(managerCard.getByRole('button',{name:'Dismiss',exact:true})).toBeVisible();
-  await capture(managerPage,'references-proposal-unavailable-rendering-only');
-  await managerPage.unroute(referencePattern);await managerCard.getByRole('button',{name:'Refresh linked task'}).click();
-  await expect(managerCard.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
-});
-
 test('required metadata retry preserves lost-response command UUID, native reply identity and answer reading anchor', {timeout:60_000},async()=>{
   const page=await open(owner,390,844);
-  const card=page.locator('.assistant-proposal').last();await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
   const replyText='One native reply despite lost response and metadata retry';
   const sends:string[]=[];
   const replies=`**/api/v1/conversations/${thread.id}/messages`;
@@ -268,7 +217,7 @@ test('required metadata retry preserves lost-response command UUID, native reply
   // real citation focused so that arrival/viewport movement cannot retire the
   // required metadata selector before the injected failure is observed.
   const anchor=page.locator(`[data-answer-run="${answers[2]!.runId}"]`);
-  await anchor.scrollIntoViewIfNeeded();await anchor.locator('[data-native-ref]').first().focus();
+  await anchor.scrollIntoViewIfNeeded();await expect(anchor).toBeVisible();await anchor.locator('[data-native-ref]').first().focus();
   await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await page.waitForTimeout(250);
@@ -290,7 +239,7 @@ test('required metadata retry preserves lost-response command UUID, native reply
   const matches=canonical.messages.filter((message)=>message.body===replyText);assert.equal(matches.length,1);assert.equal(matches[0]!.authorId,owner.id);
   await capture(page,'references-phone-retry-reader');
   assert.equal(collectionReads.length,0);assert.ok(referenceReads.every((batch)=>batch.length>0&&batch.length<=100));assert.deepEqual(pageErrors,[]);
-  if(evidence)writeFileSync(join(evidence,'native-reference-observation.json'),JSON.stringify({runtime:process.env.FLUX_GIT_COMMIT,immutableNativeSources:120,metadataBatchSizes:referenceReads.map((batch)=>batch.length),fullCollectionReads:collectionReads.length,nativeMissingHistoricalCitation:true,proposalUnavailableRenderingOnly:true,replyCount:matches.length,reusedCommandUUID:sends[0]===sends[1],answerAnchorDelta:after-before},null,2));
+  if(evidence)writeFileSync(join(evidence,'native-reference-observation.json'),JSON.stringify({runtime:process.env.FLUX_GIT_COMMIT,immutableNativeSources:120,metadataBatchSizes:referenceReads.map((batch)=>batch.length),fullCollectionReads:collectionReads.length,nativeMissingHistoricalCitation:true,replyCount:matches.length,reusedCommandUUID:sends[0]===sends[1],answerAnchorDelta:after-before},null,2));
 });
 
 
@@ -320,9 +269,9 @@ test('a reader scroll whose event has not arrived yet is kept when message work 
   assert.deepEqual(pageErrors,[]);
 });
 
-test('late authorized metadata cannot resurrect manager actions across real account A→B→A revalidation', {timeout:60_000},async()=>{
+test('late authorized metadata cannot resurrect the manager read across real account A→B→A revalidation', {timeout:60_000},async()=>{
   const page=await open(manager);
-  const card=page.locator('.assistant-proposal').last();await card.scrollIntoViewIfNeeded();await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','ready');
   const held:{route:Route,response:Awaited<ReturnType<Route['fetch']>>}[]=[];
   let captureNext=true;
   await page.route(referencePattern,async(route)=>{
@@ -338,19 +287,19 @@ test('late authorized metadata cannot resurrect manager actions across real acco
     await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
   }
   await switchAccount(writer);
-  await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by Reference manager');
+  await expect(page.locator('.assistant-answer__asked').last()).toHaveText(/^for Reference/);
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
   await page.locator('#thread-composer').fill('Only the second account owns this private draft');
   await switchAccount(manager);
-  await expect(page.locator('.assistant-answer__asked').last()).toHaveText('asked by you');
+  await expect(page.locator('.assistant-answer__asked').last()).toHaveText(/^for you/);
   await expect(page.getByRole('button',{name:'Refresh task references',exact:true})).toBeVisible();
   await held[0]!.route.fulfill({response:held[0]!.response});
   await page.waitForTimeout(500);
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toHaveCount(0);
+  // The manager read that arrived late belongs to the first account's turn: it does not make the references ready again.
+  await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','unavailable');
   await expect(page.locator('#thread-composer')).toHaveValue('');
   await page.unroute(referencePattern);await page.getByRole('button',{name:'Refresh task references',exact:true}).click();
-  await expect(card.getByRole('button',{name:'Accept',exact:true})).toBeVisible();
+  await expect(page.locator('.thread__pane')).toHaveAttribute('data-references-phase','ready');
   await capture(page,'references-account-aba-recovered');
   assert.equal(collectionReads.length,0);assert.deepEqual(pageErrors,[]);
 });

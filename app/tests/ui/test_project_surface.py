@@ -2,7 +2,7 @@
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Three people share a restricted project with a realistic conversation, a cited
-source, work, a current rule, a negative result, a proposed decision, a project sketch and a doc.
+source, work, a current rule, a proposed decision, a project sketch and a doc.
 The tests cover the header (title, truthful audience, Conversation · Tasks · Map · Docs), the
 one-line current state, the Details overview of linked context, creating a project sketch from
 the Map tab, and the phone. Every change is checked against the API.
@@ -167,7 +167,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
         base = f"/api/v1/projects/{pid}"
         work = self.api(nia, "POST", f"{base}/work", {"title": "Test the camera in low light", "owner": {"kind": "human", "id": NIA["id"]}, "status": "in_progress", "sources": [{"type": "message", "id": messages["m0"]}]}, status=201)
         self.api(jonas, "POST", f"{base}/work", {"title": "Order two VL53L5CX boards", "owner": {"kind": "human", "id": JONAS["id"]}, "sources": [{"type": "message", "id": messages["m3"]}]}, status=201)
-        result = self.api(nia, "POST", f"{base}/results", {"title": "Camera caught 38% of gestures at 5 lux", "finding": "negative", "evidence": "20 gestures per light level in a dark bedroom", "work": [work["id"]], "sources": [{"type": "message", "id": messages["m1"]}, {"type": "material", "id": material["materialId"], "version": material["version"]}]}, status=201)
         rule = self.api(ada, "POST", f"{base}/decisions", {"title": "Use a ToF sensor, not the camera, for gestures", "rationale": "It works in the dark and stores no images", "sources": [{"type": "message", "id": messages["m2"]}]}, status=201)
         self.api(ada, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": 1}, status=200)
         proposal = self.api(nia, "POST", f"{base}/decisions", {"title": "Keep a manual off switch on the base", "rationale": "Children should not have to wave to turn it off", "sources": [{"type": "message", "id": messages["m4"]}]}, status=201)
@@ -175,8 +174,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         idea = self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "React to gestures in the dark", "x": 0, "y": 0}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         for index, text in enumerate(("Camera", "ToF distance sensor", "PIR presence")):
             self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": -260 + index * 260, "y": 160, "linkFrom": {"thoughtId": idea["thought"]["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
-        doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "result", "id": result["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
-        type(self).ids = {"workspace": ws["id"], "project": pid, "bike": bike["id"], "conversation": cid, "long_project": long_project["id"], "work": work["id"], "result": result["id"], "rule": rule["id"],
+        doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "decision", "id": rule["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        type(self).ids = {"workspace": ws["id"], "project": pid, "bike": bike["id"], "conversation": cid, "long_project": long_project["id"], "work": work["id"], "rule": rule["id"],
                           "proposal": proposal["id"], "sketch": sketch["id"], "doc": doc["id"], "material": material["materialId"], **messages}
 
     # ---------------------------------------------------------------- header
@@ -252,7 +251,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     def test_03_details_open_the_projects_objects(self) -> None:
         """The computer's header is one row (F-026 §4, #340) and carries no "N needs you" (#865: the Inbox is the one list
-        of what needs the person); the rule, the work, the result and the proposal open from Details."""
+        of what needs the person); the rule, the work and the proposal open from Details."""
         page = self.open_project("ada")
         header = page.locator("header.top")
         expect(header.get_by_label("Current state")).to_have_count(0)
@@ -261,7 +260,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         open_details(page)
         linked = panel.get_by_role("region", name="Linked in this conversation")
         for heading in ("Use a ToF sensor, not the camera, for gestures", "Test the camera in low light",
-                        "Camera caught 38% of gestures at 5 lux", "Keep a manual off switch on the base"):
+                        "Keep a manual off switch on the base"):
             linked.get_by_role("button", name=re.compile(re.escape(heading))).click()
             expect(panel.get_by_role("heading", name=heading)).to_be_visible()
             open_details(page)
@@ -333,7 +332,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=OPENING)).to_be_visible()
         linked = panel.get_by_role("region", name="Linked in this conversation")
-        for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures", "Keep a manual off switch on the base", "Camera caught 38% of gestures at 5 lux"):
+        for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures", "Keep a manual off switch on the base"):
             expect(linked.get_by_role("button", name=re.compile(re.escape(title)))).to_be_visible()
         expect(panel.get_by_role("navigation", name="Overview object pages"), "one page of objects has no pager (#512)").to_have_count(0)
         expect(panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes"))).to_be_visible()

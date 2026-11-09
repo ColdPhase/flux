@@ -169,7 +169,6 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
   if (record.answerBody === null || !record.committedAt) return null;
   const names = await ports.runs.names([record.ownerUserId]);
   const name = names.get(record.ownerUserId) ?? 'Former member';
-  const proposal = await ports.runs.proposalOfRun(record.id);
   const schedule = record.kind === 'scheduled' ? await ports.runs.jobOfRun?.(record.id) ?? null : null;
   const own = isPrivateAnswer(record);
   return {
@@ -179,7 +178,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
     provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
-    proposalId: proposal?.id ?? null, committedAt: iso(record.committedAt), ...(schedule ? { schedule } : {}),
+    committedAt: iso(record.committedAt), ...(schedule ? { schedule } : {}),
   };
 }
 

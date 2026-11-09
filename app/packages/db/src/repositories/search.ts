@@ -15,7 +15,7 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'person';
+export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'sketch' | 'thought' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];

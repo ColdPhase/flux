@@ -11,9 +11,6 @@ import {
   myAgentPath,
   ASSISTANT_RUNS_PATH,
   agentAssistantRunsPath,
-  assistantProposalAcceptPath,
-  assistantProposalDismissPath,
-  assistantProposalPath,
   assistantRunDismissPath,
   assistantRunPath,
   assistantRunRetryPath,
@@ -27,11 +24,9 @@ import {
   conversationAssistantRunsPath,
   PERSONAL_ASSISTANT_PATH,
   PERSONAL_RUN_LIMITS,
-  projectAssistantProposalsPath,
   type AddAgentMemoryCommand,
   type AssistantModelPick,
   type CreateMyAgentCommand,
-  type DecideAssistantProposalCommand,
   type EditAgentMemoryCommand,
   type AssistantPlace,
   type InvokeAssistantRunCommand,
@@ -44,9 +39,9 @@ import {
 import { conversationUseCases, ForbiddenError, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
 import { isCompanyGuest, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
-import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
+import { commandRunner, useDomainErrors, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
-import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
+import { personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
 import { makeAgent, removeAgent } from './make-agent.js';
 import { conversationStore } from '../conversation/store.js';
 import { dmUseCases } from '../direct-messages/adapters.js';
@@ -63,7 +58,6 @@ interface Options {
 }
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
-const version = { type: 'integer', minimum: 1 } as const;
 /** One of the caller's connections (#854): a plan, or an API key's id. */
 const connection = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const model = { type: 'string', minLength: 1, maxLength: 200 } as const;
@@ -88,7 +82,6 @@ const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], ad
 const runsQuery = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' },
   conversationId: { type: 'string' }, spaceId: { type: 'string' }, dmId: { type: 'string' }, dmThreadRootId: { type: 'string' }, chatAgentId: { type: 'string' } } } as const;
 const retry = { type: 'object', required: ['clientRunId'], additionalProperties: false, properties: { clientRunId: { type: 'string' } } } as const;
-const decide = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
 
 /**
  * Stored responses of these commands are the caller's own state; the principal scopes the key. A guest of the company finds none of it (their
@@ -109,7 +102,6 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   const queue = pgBossPersonalRunQueue(boss);
   const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
-  const proposals = assistantProposalUseCases(db, queue);
   // The owner's schedules (F-027 A8) run on the same composition: the same connection, switch and runtime.
   registerAssistantJobRoutes(app, db, sessions, boss, composition);
 
@@ -246,20 +238,4 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
         replay: ownState,
       });
     });
-
-  app.get<{ Params: { projectId: string }; Querystring: PageQuery }>(projectAssistantProposalsPath(':projectId'), { schema: { querystring: page } },
-    async (request) => proposals.list(await principal(request), request.params.projectId, request.query));
-  app.get<{ Params: { proposalId: string } }>(assistantProposalPath(':proposalId'), async (request, reply) => {
-    const proposal = await proposals.get(await principal(request), request.params.proposalId);
-    return reply.header('etag', versionEtag(proposal)).send(proposal);
-  });
-  for (const [path, verb] of [[assistantProposalAcceptPath(':proposalId'), 'accept'], [assistantProposalDismissPath(':proposalId'), 'dismiss']] as const) {
-    app.post<{ Params: { proposalId: string }; Body: DecideAssistantProposalCommand }>(path, { schema: { body: decide } },
-      async (request, reply) => command(request, reply, {
-        operation: `POST ${path}`, scope: 'account', etag: true,
-        run: (actor, conn) => assistantProposalUseCases(conn, queue)[verb](actor, request.params.proposalId, request.body ?? {}, expectedVersion(request)),
-        // A replay needs current read access to the proposal's project.
-        replay: async (actor, body, conn) => { await assistantProposalUseCases(conn, queue).get(actor, String((body as { id?: unknown } | null)?.id ?? '')); },
-      }));
-  }
 }

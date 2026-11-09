@@ -64,12 +64,6 @@ export function agentExecutionRows(tx: DbExecutor) {
           eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.kind, 'doc'))).for('share');
         return !row;
       }
-      if (condition.kind === 'result') {
-        const table = schema.projectResults;
-        const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, condition.id),
-          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId))).for('share');
-        return !!row;
-      }
       if (condition.kind === 'thought') {
         const table = schema.sketchThoughts;
         const [row] = await tx.select({ version: table.version }).from(table).innerJoin(schema.sketches,

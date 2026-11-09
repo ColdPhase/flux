@@ -33,7 +33,7 @@ function useAway(open: boolean, close: () => void, ...inside: React.RefObject<HT
   }, [open]);
 }
 
-/** Opens a clicked reference in the app: tasks, decisions and results in the Details panel, the rest by route. */
+/** Opens a clicked reference in the app: tasks and decisions in the Details panel, the rest by route. */
 export function useReferenceClicks() {
   const navigate = useNavigate();
   const { openDetails } = useShellActions();
@@ -42,7 +42,7 @@ export function useReferenceClicks() {
     if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     const type = anchor.dataset.refType;
     const id = anchor.dataset.refId;
-    if (id && (type === 'work' || type === 'decision' || type === 'result')) {
+    if (id && (type === 'work' || type === 'decision')) {
       event.preventDefault();
       openDetails({ kind: type, id });
       return;

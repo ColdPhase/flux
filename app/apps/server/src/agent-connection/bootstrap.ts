@@ -10,7 +10,6 @@ import { toolError, toolResult } from './tool-results.js';
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
 export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.enum(['doc', 'material', 'work', 'decision']), id: z.uuid(), version: z.int().min(1).max(2_147_483_647) }),
-  z.strictObject({ kind: z.literal('result'), id: z.uuid() }),
   z.strictObject({ kind: z.literal('conversation'), id: z.uuid(), sequence: z.int().min(0).max(2_147_483_647) }),
   z.strictObject({ kind: z.literal('map'), id: z.uuid(), version: z.int().min(1).max(2_147_483_647), updatedAt: z.iso.datetime() }),
 ]);

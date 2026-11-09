@@ -28,7 +28,7 @@ const message = (label: string, fields: Partial<MessageSource> & Pick<MessageSou
 });
 const MESSAGES: SuppliedSource[] = [
   message('S1', { body: 'The camera fails below 5 lux.', authorName: OWNER, createdAt: new Date('2026-11-06T08:14:00Z') }),
-  message('S2', { body: 'Logged 4.8 lux at 06:10 on the north barrel.', authorName: 'Fieldbot', author: { kind: 'agent', id: 'a-1' }, contribution: { kind: 'result', resultId: 'r-1' }, createdAt: new Date('2026-11-06T08:20:00Z') }),
+  message('S2', { body: 'Logged 4.8 lux at 06:10 on the north barrel.', authorName: 'Fieldbot', author: { kind: 'agent', id: 'a-1' }, contribution: { kind: 'came_of_it' }, createdAt: new Date('2026-11-06T08:20:00Z') }),
   message('S3', { body: 'Then the ToF sensor is next. Notes: https://example.com/tof?a=1&b=2', authorName: 'Jonas Berg', via: 'Assistant', edited: true,
     files: [{ id: 'f-1', name: 'north.csv', size: 2048 } as MessageFile], createdAt: new Date('2026-11-07T15:02:00Z') }),
   message('S4', { body: INJECTION, authorName: 'Kai Weber', createdAt: new Date('2026-11-07T15:30:00Z') }),
@@ -136,7 +136,7 @@ describe('the brief of every run (#1064)', () => {
   test('every message carries its author and its time in the owner\'s zone; the request comes last, with who asked and when', () => {
     const { request } = buildBrief(base);
     assert.ok(request.includes('<message ref="S1" from="Ada Nowak" at="2026-11-06 09:14">The camera fails below 5 lux.</message>'));
-    assert.ok(request.includes('<message ref="S2" from="Fieldbot (agent)" at="2026-11-06 09:20" kind="result">'));
+    assert.ok(request.includes('<message ref="S2" from="Fieldbot (agent)" at="2026-11-06 09:20" kind="came_of_it">'));
     assert.ok(request.includes('from="Jonas Berg" at="2026-11-07 16:02" via="Assistant" edited="yes">'));
     assert.ok(request.includes('<attachment name="north.csv" bytes="2048"/>'));
     assert.ok(request.endsWith('<request from="Ada Nowak" at="2026-11-08 10:01">Co ustaliliśmy w sprawie kamery?</request>'));

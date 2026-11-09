@@ -11,7 +11,7 @@ function readPosition(key: string): Position | null {
     if (!raw) return null;
     const value = JSON.parse(raw) as Position;
     if (!Number.isFinite(value.top) || value.top < 0) return null;
-    if (value.anchor && (typeof value.anchor.id !== 'string' || !['work', 'decision', 'result'].includes(value.anchor.kind) || !Number.isFinite(value.anchor.offset))) return null;
+    if (value.anchor && (typeof value.anchor.id !== 'string' || !['work', 'decision'].includes(value.anchor.kind) || !Number.isFinite(value.anchor.offset))) return null;
     positions.set(key, value);
     return value;
   } catch { return null; }

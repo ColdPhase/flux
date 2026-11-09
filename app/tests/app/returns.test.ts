@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -94,11 +94,9 @@ describe('return view: since you left', () => {
     json(await post(ari, `/api/v1/decisions/${rule.id}/accept`, {}, { 'if-match': '"1"' }), 200);
     const replacement = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a PIR sensor', supersedes: rule.id }), 201);
     json(await post(ari, `/api/v1/decisions/${replacement.id}/accept`, {}, { 'if-match': '"1"' }), 200);
-    const task = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Mount the PIR sensor', owner: { kind: 'human', id: nia.id } }), 201);
+    json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Mount the PIR sensor', owner: { kind: 'human', id: nia.id } }), 201);
     const blocked = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Order the lens' }), 201);
     json(await patch(ari, `/api/v1/work/${blocked.id}`, { status: 'blocked' }, { 'if-match': '"1"' }), 200);
-    const result = json<WorkResult>(await post(ari, `/api/v1/projects/${lamp.id}/results`,
-      { title: 'Camera misses gestures at 5 lux', finding: 'negative', work: [task.id] }), 201);
     const material = json<{ materialId: string }>(await post(ari, `/api/v1/projects/${lamp.id}/materials`, { clientMutationId: randomUUID(), title: 'Low-light test plan', body: '5 lux, 20 gestures' }), 201);
     const sketch = json<{ id: string }>(await post(ari, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Sensing options', scope: 'project', projectId: lamp.id }), 201);
     const secret = json<{ id: string }>(await post(ari, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Ari private ideas', scope: 'private' }), 201);
@@ -113,30 +111,24 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari added a task for you: Mount the PIR sensor'));
     const lens = back.items.find((item) => item.text === 'Blocked: Order the lens')!;
     assert.equal(lens.detail, 'No reason was recorded.');
-    const recorded = back.items.find((item) => item.kind === 'result')!;
-    assert.equal(recorded.text, 'Ari recorded a result: Camera misses gestures at 5 lux');
-    assert.equal(recorded.detail, 'It did not work out, about “Mount the PIR sensor” · No evidence was recorded.');
     assert.ok(list.includes('New material: Low-light test plan'));
     assert.ok(list.includes('Ari started a sketch: Sensing options'));
     assert.equal(JSON.stringify(back).includes(secret.id), false, 'a private sketch of someone else never appears');
     assert.equal(JSON.stringify(back).includes('Ari private ideas'), false);
-    // The result, linked to Nia's task, also opened that task's own thread with its title as the first contribution (#154).
-    assert.ok(list.includes('Ari started “Camera misses gestures at 5 lux”'), list.join('\n'));
-    assert.equal(list.length, 9, list.join('\n'));
+    assert.equal(list.length, 7, list.join('\n'));
 
     // Every item links to its source.
     const sources = new Map(back.items.map((item) => [item.text, item.source]));
     assert.deepEqual(sources.get('Ari asked you: “Nia, can you check the camera at 5 lux before Friday?”'), { type: 'message', projectId: lamp.id, conversationId: thread.id, messageId: reply.id });
     assert.deepEqual(changed.source, { type: 'decision', id: replacement.id, projectId: lamp.id });
-    assert.deepEqual(recorded.source, { type: 'result', id: result.id, projectId: lamp.id });
     assert.deepEqual(sources.get('New material: Low-light test plan'), { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 1 });
     assert.deepEqual(sources.get('Ari started a sketch: Sensing options'), { type: 'sketch', sketchId: sketch.id, projectId: lamp.id });
     for (const item of back.items) assert.deepEqual(item.project, { id: lamp.id, name: 'Gesture lamp' });
 
     // What needs Nia comes first; the counts are only of what she can see.
-    assert.deepEqual(back.items.filter((item) => item.needsYou).map((item) => item.kind).sort(), ['question', 'result', 'work']);
-    assert.equal(back.needsYou, 3);
-    assert.ok(back.items.slice(0, 3).every((item) => item.needsYou));
+    assert.deepEqual(back.items.filter((item) => item.needsYou).map((item) => item.kind).sort(), ['question', 'work']);
+    assert.equal(back.needsYou, 2);
+    assert.ok(back.items.slice(0, 2).every((item) => item.needsYou));
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
       ['Answer Ari\'s question', '“Nia, can you check the camera at 5 lux before Friday?” Ari asked you in “Camera or sensor for the lamp?”.', `message:${reply.id}`]);
 
@@ -148,12 +140,12 @@ describe('return view: since you left', () => {
     const home = await summary(nia, { type: 'home' });
     assert.deepEqual(texts(home.items).sort(), [...list].sort());
 
-    // The next step follows real state: once Nia answers, the result about her work is next.
+    // The next step follows real state: once Nia answers, the task made for her is next.
     await say(nia, thread.id, 'Checked it: the camera fails at 5 lux.');
     const later = await summary(nia, { type: 'project', id: lamp.id });
     assert.equal(later.items.some((item) => item.kind === 'question'), false, 'an answered question no longer needs you');
     assert.deepEqual(later.nextStep && [later.nextStep.text, later.nextStep.reason],
-      ['Review the result Ari attached', 'It reports on “Mount the PIR sensor”, which is yours.']);
+      ['Pick up “Mount the PIR sensor”', 'Ari added it for you.']);
 
     // A proposed decision needs a person who can write; the proposer and viewers are not asked.
     const proposal = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Dim the lamp at night', rationale: 'Less glare' }), 201);

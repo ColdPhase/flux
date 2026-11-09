@@ -17,29 +17,29 @@ function scene(role: CoWorkTransitionUnit['role'] = 'execute') {
   const facts: CoWorkUnitTransitionFacts = { unit, assignee, now,
     runUnits: [{ id: unit.id, role, assignmentConnectionId: context.connectionId, ownerUserId: 'owner-a' }] };
   const fence = { expectedVersion: 2, generation: 1, leaseId: unit.lease!.id };
-  const complete: CoWorkUnitTransitionInput = { operation: 'complete', ...fence, outcome: { type: 'result', id: randomUUID() } };
+  const complete: CoWorkUnitTransitionInput = { operation: 'complete', ...fence, outcome: { type: 'message', id: randomUUID() } };
   const transfer: CoWorkUnitTransitionInput = { operation: 'transfer', ...fence, assignmentConnectionId: assignee.id };
   return { context, unit, assignee, facts, fence, complete, transfer };
 }
 
 test('payloads are exact: a native outcome or an assignee plus the holder fence; GitHub outcomes stay unavailable', () => {
   const leaseId = randomUUID().toUpperCase(), result = randomUUID().toUpperCase(), assignee = randomUUID().toUpperCase();
-  assert.deepEqual(normalizeCoWorkUnitTransition('complete', { expectedVersion: 2, generation: 1, leaseId, outcome: { type: 'result', id: result } }),
-    { operation: 'complete', expectedVersion: 2, generation: 1, leaseId: leaseId.toLowerCase(), outcome: { type: 'result', id: result.toLowerCase() } });
+  assert.deepEqual(normalizeCoWorkUnitTransition('complete', { expectedVersion: 2, generation: 1, leaseId, outcome: { type: 'message', id: result } }),
+    { operation: 'complete', expectedVersion: 2, generation: 1, leaseId: leaseId.toLowerCase(), outcome: { type: 'message', id: result.toLowerCase() } });
   assert.deepEqual(normalizeCoWorkUnitTransition('transfer', { expectedVersion: 2, generation: 1, leaseId, assignmentConnectionId: assignee }),
     { operation: 'transfer', expectedVersion: 2, generation: 1, leaseId: leaseId.toLowerCase(), assignmentConnectionId: assignee.toLowerCase() });
   const fence = { expectedVersion: 2, generation: 1, leaseId };
-  for (const payload of [null, [], { ...fence }, { ...fence, outcome: { type: 'result', id: result }, assignmentConnectionId: assignee },
-    { ...fence, outcome: { type: 'result', id: result }, prompt: 'x' }, { ...fence, outcome: { type: 'result' } },
-    { ...fence, outcome: { type: 'doc', id: result } }, { ...fence, outcome: { type: 'result', id: result, version: 1 } },
-    { ...fence, outcome: 'done' }, { expectedVersion: 0, generation: 1, leaseId, outcome: { type: 'result', id: result } },
-    { expectedVersion: 2, generation: 0, leaseId, outcome: { type: 'result', id: result } },
-    { expectedVersion: 2, generation: 1, leaseId: 'lease', outcome: { type: 'result', id: result } }])
+  for (const payload of [null, [], { ...fence }, { ...fence, outcome: { type: 'message', id: result }, assignmentConnectionId: assignee },
+    { ...fence, outcome: { type: 'message', id: result }, prompt: 'x' }, { ...fence, outcome: { type: 'message' } },
+    { ...fence, outcome: { type: 'doc', id: result } }, { ...fence, outcome: { type: 'message', id: result, version: 1 } },
+    { ...fence, outcome: 'done' }, { expectedVersion: 0, generation: 1, leaseId, outcome: { type: 'message', id: result } },
+    { expectedVersion: 2, generation: 0, leaseId, outcome: { type: 'message', id: result } },
+    { expectedVersion: 2, generation: 1, leaseId: 'lease', outcome: { type: 'message', id: result } }])
     assert.throws(() => normalizeCoWorkUnitTransition('complete', payload), code('INVALID_INPUT'), JSON.stringify(payload));
   assert.throws(() => normalizeCoWorkUnitTransition('complete', { ...fence,
     outcome: { type: 'github_pr', bindingId: randomUUID(), linkId: randomUUID(), headSha: 'a'.repeat(40) } }), code('COWORK_OUTCOME_UNAVAILABLE'));
   for (const payload of [{ ...fence }, { ...fence, assignmentConnectionId: 'someone' }, { ...fence, assignmentConnectionId: assignee, state: 'pending' },
-    { ...fence, assignmentConnectionId: assignee, outcome: { type: 'result', id: result } }])
+    { ...fence, assignmentConnectionId: assignee, outcome: { type: 'message', id: result } }])
     assert.throws(() => normalizeCoWorkUnitTransition('transfer', payload), code('INVALID_INPUT'), JSON.stringify(payload));
 });
 

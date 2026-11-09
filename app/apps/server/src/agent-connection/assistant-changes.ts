@@ -60,7 +60,7 @@ export function redactCall<T>(value: T): T {
 }
 
 const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, before: null, after: title || null });
-/** A map, a result, a decision, a message or a page the assistant made, which only the assistant's Undo can take back (a page also by its owner's delete) while nobody used it (#68, #1021). */
+/** A map, a decision, a message or a page the assistant made, which only the assistant's Undo can take back (a page also by its owner's delete) while nobody used it (#68, #1021). */
 const removal = (title: string, plan: Omit<Extract<UndoRecord['plan'], { kind: 'removal' }>, 'kind'> = {}): UndoRecord => ({ plan: { kind: 'removal', ...plan }, before: null, after: title || null });
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 /**
@@ -88,7 +88,7 @@ const isVersionConflict = (error: unknown) => error instanceof DomainError && er
   && /VERSION_CONFLICT|STALE|CHANGED/.test(error.code) && error.code !== 'IDEMPOTENCY_CONFLICT';
 
 const OBJECT: Record<string, AssistantObjectType> = {
-  'work.create': 'work', 'work.update': 'work', 'result.record': 'result', 'decision.propose': 'decision', 'doc.create': 'doc',
+  'work.create': 'work', 'work.update': 'work', 'decision.propose': 'decision', 'doc.create': 'doc',
   'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
   'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
@@ -105,8 +105,6 @@ interface Target {
   recipient?: string;
   /** What Undo needs, read before the change (A4); null when the change cannot be taken back. */
   undo: UndoRecord | null;
-  /** The task a result finishes, as it is before: Undo puts it back if nobody touched it since. */
-  finishesBefore?: { workId: string; status: string; blocker: string | null };
   words: ReturnType<typeof assistantChangeWords>;
 }
 
@@ -118,8 +116,8 @@ const workField = (work: WorkView, key: string): unknown =>
   key === 'waitingFor' ? work.waitingForUserId : ((work as unknown as Record<string, unknown>)[key] ?? null);
 
 /**
- * What taking back a just-made map, result, decision or message needs, read from what the change really wrote (a trimmed title, the
- * task a result finished and the version it has now). Null for any other change, and for a message in a task's discussion.
+ * What taking back a just-made map, decision or message needs, read from what the change really wrote (a trimmed title and the
+ * version it has now). Null for any other change, and for a message in a task's discussion.
  */
 async function removalUndo(tx: Transaction, operation: string, value: Record<string, unknown>, postconditions: AgentPostcondition[], target: Target,
   agentId: string): Promise<UndoRecord | null> {
@@ -139,12 +137,6 @@ async function removalUndo(tx: Transaction, operation: string, value: Record<str
     case 'decision.propose': {
       const version = afterVersion(postconditions);
       return removal(target.title, version ? { version } : {});
-    }
-    case 'result.record': {
-      const before = target.finishesBefore;
-      const work = before ? await rows.work(before.workId) : null;
-      const finished = before && work && before.status !== 'done' && String(workField(work, 'status')) === 'done';
-      return removal(target.title, finished ? { finishes: before } : {});
     }
     case 'conversation.create': case 'conversation.reply': {
       const removals = assistantRemovalRows(tx as DbExecutor);
@@ -177,8 +169,6 @@ async function withinRunPlace(tx: Transaction, operation: AgentOperation, object
   const rows = assistantChangeRows(tx as DbExecutor);
   const kind = agentOperationTarget(operation);
   if (kind && (!objectId || !await objects.scopeOf(kind, objectId, place, false))) return false;
-  const finishes = operation === 'result.record' ? (payload.finishes as { id?: string } | undefined)?.id : undefined;
-  if (finishes && !await objects.scopeOf('work', finishes, place, false)) return false;
   const thoughts = [...new Set(namedThoughts(operation, payload))];
   const found = await rows.thoughts(thoughts);
   if (found.length !== thoughts.length || found.some((thought) => thought.sketchId !== objectId)) return false;
@@ -209,15 +199,6 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     // A page the assistant started is taken back by deleting it while only this agent has written it and nothing uses it (#1021, through #941's delete).
     case 'doc.create': case 'map.create': case 'decision.propose':
       return { ...base, objectId: null, title: text(payload.title), undo: null };
-    case 'result.record': {
-      const finishes = payload.finishes as { id?: string } | undefined;
-      const work = finishes?.id ? await rows.work(finishes.id) : null;
-      if (!work) return { ...base, objectId: null, title: text(payload.title) };
-      const maker = { userId: work.ownerUserId ?? (work.createdByKind === 'human' ? work.createdById : null),
-        agentId: work.ownerAgentId ?? (work.createdByKind === 'agent' ? work.createdById : null) };
-      return { ...base, objectId: null, title: text(payload.title), mine: ours(maker), maker: otherPerson(maker),
-        finishesBefore: { workId: work.id, status: String(workField(work, 'status')), blocker: (workField(work, 'blocker') as string | null) ?? null } };
-    }
     case 'work.update': {
       const work = objectId ? await rows.work(objectId) : null;
       const changes = (payload.changes ?? {}) as Record<string, unknown>;
@@ -380,7 +361,7 @@ async function toldPerson(tx: Transaction, operation: string, objectId: string |
 }
 
 /** What makes or changes a person's things. Coordination (claims, releases, units) touches none, so the waiting rule does not read it. */
-const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'result.record', 'doc.update', 'doc.delete', 'map.rename', 'map.thought.create',
+const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'doc.update', 'doc.delete', 'map.rename', 'map.thought.create',
   'map.thought.update', 'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete']);
 
 /** Whether this change always waits for the owner's OK (F-036 AG-3): a deletion, or something of another person's. Read inside the change's transaction. */
@@ -409,7 +390,7 @@ const afterVersion = (postconditions: AgentPostcondition[]) => {
   return null;
 };
 const producedId = (value: Record<string, unknown>) => {
-  for (const key of ['workId', 'docId', 'mapId', 'thoughtId', 'linkId', 'resultId', 'decisionId', 'messageId'])
+  for (const key of ['workId', 'docId', 'mapId', 'thoughtId', 'linkId', 'decisionId', 'messageId'])
     if (typeof value[key] === 'string') return value[key] as string;
   return null;
 };
@@ -621,7 +602,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
         let undo = target.undo;
-        // A map, a result, a decision, a message and a page are the agent's own to take back (#68, #1021).
+        // A map, a decision, a message and a page are the agent's own to take back (#68, #1021).
         undo = await removalUndo(tx, operation, produced.value as Record<string, unknown>, produced.postconditions, target, authority.agentId) ?? undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;

@@ -25,7 +25,6 @@ const SCOPE_SQL: Record<AiScopeKind, ((id: string) => SQL) | null> = {
   conversation: (id) => sql`SELECT project_id AS id FROM project_conversations WHERE id = ${id}`,
   work: (id) => sql`SELECT project_id AS id FROM project_work_items WHERE id = ${id}`,
   run: (id) => sql`SELECT project_id AS id FROM personal_runs WHERE id = ${id}`,
-  assistant_proposal: (id) => sql`SELECT project_id AS id FROM assistant_proposals WHERE id = ${id}`,
   assistant_change: (id) => sql`SELECT project_id AS id FROM assistant_changes WHERE id = ${id}`,
   agent_question: (id) => sql`SELECT project_id AS id FROM agent_questions WHERE id = ${id}`,
   assistant_job: (id) => sql`SELECT project_id AS id FROM assistant_jobs WHERE id = ${id}`,
@@ -43,7 +42,7 @@ export async function projectIdOfAiScope(db: DbExecutor, kind: AiScopeKind, id: 
 
 /**
  * F-029 "AI origin" (`isAiOrigin` of the contract): the row's own `ai_origin` flag, which its writer set from the actor or
- * the source (an agent's message, decision or result, an assistant's suggestion, note or join request). True while the space
+ * the source (an agent's message or decision, an assistant's suggestion, note or join request). True while the space
  * it is about has AI off: it is then left out of lists, counts and Needs you, and neither pushed nor e-mailed, including rows
  * created before AI was turned off.
  */

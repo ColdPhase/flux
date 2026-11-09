@@ -1,4 +1,4 @@
-/* A decision or a result announced in the conversation (#694, F-026 P5). It shares the task announcement's parts
+/* A decision announced in the conversation (#694, F-026 P5). It shares the task announcement's parts
    (.convo-notice__meta, __src, __task, __title): one author column, a meta line, then the object as one card. */
 .convo-object { position: relative; max-width: min(600px, 100%); padding-left: 44px; margin: 24px 0; list-style: none; }
 .convo-object > :is(.ui-avatar, .author-face) { position: absolute; left: 0; top: 0; }

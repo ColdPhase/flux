@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase } from '@flux/db';
-import { taskActivityPath, type GithubBinding, type GithubCapabilities, type GithubCheck, type GithubPullFacts, type GithubTaskLink, type GithubTaskRuleView, type ReturnSummary, type TaskActivityPage, type WorkItem } from '@flux/contracts';
+import { taskActivityPath, type GithubBinding, type GithubCapabilities, type GithubCheck, type GithubPullFacts, type GithubTaskLink, type GithubTaskRuleView, type ReturnSummary, type TaskActivityPage, type TaskCreationNotice, type WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { githubRoutes } from '../../apps/server/src/github/routes.js';
@@ -13,6 +13,7 @@ import type { GithubConfig } from '../../apps/server/src/github/config.js';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 import { publicOrigin } from './support/http.js';
+import { waitFor } from './support/push.js';
 
 // "Let linked PRs move this task" (#74 G-1a) through the real routes, SQL, durable inbox and per-binding processing.
 // Only the provider is a typed fixture (no real installation); every effect is read back from the API and database.
@@ -189,6 +190,37 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     await patch(owner, await work(owner, task), { status: 'in_progress' });
     const own = expectStatus(await viewer.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
     assert.deepEqual([own.items.length, own.items[0]!.actor.id, own.items[0]!.automation, own.items[0]!.status?.to], [5, owner.id, undefined, 'in_progress']);
+  });
+
+  test('a task a pull request\'s rule finishes lets the tasks that wait for it continue, as when a person finishes it (#1055)', async () => {
+    const { owner, writer, task, binding, place } = await setup('Waits');
+    const inbox = async (who: Person) => (expectStatus(await who.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string }[] }).items;
+    const waiting = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Mount the lamp after the firmware',
+      owner: { kind: 'human', id: writer.id }, status: 'blocked', waitingOn: { kind: 'task', id: task.id } } }), 201) as WorkItem;
+    const another = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Another task' } }), 201) as WorkItem;
+    const other = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Still waits for another task',
+      owner: { kind: 'human', id: writer.id }, status: 'blocked', waitingOn: { kind: 'task', id: another.id } } }), 201) as WorkItem;
+    fixture.set(REPO, 60, { state: 'closed', merged: true });
+    await github.link(actor(owner), task.id, { bindingId: binding.id, number: 60, role: 'required_output' });
+    await enable(owner, task);
+    await settle(binding);
+    const finished = await work(owner, task);
+    assert.equal(finished.status, 'done', 'a merged required pull request finishes the task');
+    // The waiting task is Doing and says why, once, in the stream, in its activity and to its owner, as for the other paths.
+    const resumed = await work(owner, waiting);
+    assert.deepEqual([resumed.status, resumed.waitingOn], ['in_progress', null]);
+    const lines = (expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/task-notices?limit=100`), 200) as { items: TaskCreationNotice[] }).items
+      .filter((line) => line.kind === 'task.resumed');
+    assert.deepEqual(lines.map((line) => [line.workId, line.reason]), [[waiting.id, `#${finished.number} is done`]], 'one line, and none for the task that waits for another');
+    const entries = (expectStatus(await owner.browser.request('GET', taskActivityPath(waiting.id)), 200) as TaskActivityPage).items.filter((item) => item.automation === 'wait_resolved');
+    assert.deepEqual(entries.map((entry) => [entry.status?.from, entry.status?.to]), [['blocked', 'in_progress']]);
+    await waitFor(async () => (await inbox(writer)).find((item) => item.title === `#${waiting.number} can continue: #${finished.number} is done`), 'the owner hears the task can continue');
+    assert.equal((await work(owner, other)).status, 'blocked', 'a task that waits for something else stays blocked');
+    // A late delivery of the same merged pull request changes nothing and says nothing a second time.
+    await webhook('pull_request', pullEvent('reopened', REPO, 60)); await settle(binding);
+    assert.equal((await work(owner, waiting)).version, resumed.version);
+    const again = (expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/task-notices?limit=100`), 200) as { items: TaskCreationNotice[] }).items.filter((line) => line.kind === 'task.resumed');
+    assert.equal(again.length, 1);
   });
 
   test('Ready to close, two required PRs across repositories, closed unmerged and related-only links', async () => {

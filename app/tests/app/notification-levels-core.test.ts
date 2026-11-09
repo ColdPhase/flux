@@ -68,7 +68,7 @@ describe('quiet hours', () => {
       advanceCursor: async () => undefined,
       eventsAfter: async (seq) => (seq ? [] : [{ id: randomUUID(), seq: 1, kind: 'dm.message_sent.v1', workspaceId, objectId: randomUUID(), actorId: 'human:ada', data: { messageId: randomUUID() } }]),
       facts: {
-        audience: async () => ['kai'], projectMessage: async () => null, work: async () => null, decision: async () => null, result: async () => null, liveInvitation: async () => null,
+        audience: async () => ['kai'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null,
         dmMessage: async (dmId, id) => ({ id, workspaceId, dmId, kind: 'pair', title: null, authorId: 'ada', body: 'hi', participantIds: ['ada', 'kai'] }),
         names: async (ids) => new Map(ids.map((id) => [id, id])),
       },

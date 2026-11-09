@@ -65,7 +65,7 @@ export interface ReviewFacts {
   projectName: string;
   title: string;
   by: { kind: 'human' | 'agent'; id: string };
-  /** People who own work this decision affects or this result is about. */
+  /** People who own work this decision affects. */
   workOwners: string[];
   /** The person who owns the agent that produced it, when an agent did. */
   agentOwner: string | null;
@@ -94,7 +94,6 @@ export interface NotificationFacts {
   dmMessage(dmId: string, messageId: string): Promise<DmMessageFacts | null>;
   work(workId: string): Promise<WorkFacts | null>;
   decision(decisionId: string): Promise<ReviewFacts | null>;
-  result(resultId: string): Promise<ReviewFacts | null>;
   /** Null unless the invitation is still pending and its session still available. */
   liveInvitation(invitationId: string): Promise<LiveInvitationFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;

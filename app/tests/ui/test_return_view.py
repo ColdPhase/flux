@@ -157,11 +157,9 @@ class ReturnViewJourney(unittest.TestCase):
         task = self.api(ari, "POST", f"/api/v1/projects/{p}/work", {"title": "Mount the PIR sensor in the lamp base", "owner": {"kind": "human", "id": NIA["id"]}}, status=201)
         lens = self.api(ari, "POST", f"/api/v1/projects/{p}/work", {"title": "Order the wide-angle lens"}, status=201)
         self.api(ari, "PATCH", f"/api/v1/work/{lens['id']}", {"status": "blocked"}, status=200, headers={"if-match": '"1"'})
-        result = self.api(ari, "POST", f"/api/v1/projects/{p}/results", {"title": "Camera misses 62% of gestures at 5 lux", "finding": "negative",
-                                                                          "evidence": "20 gestures, bedside lamp at 5 lux", "work": [task["id"]]}, status=201)
         self.api(ari, "POST", f"/api/v1/projects/{p}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Low-light test plan", "body": "5 lux, 20 gestures, two people"}, status=201)
         self.api(ari, "POST", f"/api/v1/workspaces/{self.workspace_id}/sketches", {"title": "Sensing options", "scope": "project", "projectId": p}, status=201)
-        type(self).ids = {"question": question, "pivot": pivot["id"], "result": result["id"]}
+        type(self).ids = {"question": question, "pivot": pivot["id"], "task": task["id"]}
 
     # ---------------------------------------------------------------- Nia returns
 
@@ -177,8 +175,8 @@ class ReturnViewJourney(unittest.TestCase):
         # Home does not list the changes (#865): only what waits for her and where to continue.
         expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
         expect(page.get_by_role("button", name="I have the context")).to_have_count(0)
-        # Eight updates plus the task thread that the result opened (#154), three of them needing her.
-        self.assertEqual((len(self.summary(page, "home")["items"]), self.summary(page, "home")["needsYou"]), (9, 3))
+        # Seven updates, two of them needing her: Ari's question and the task made for her.
+        self.assertEqual((len(self.summary(page, "home")["items"]), self.summary(page, "home")["needsYou"]), (7, 2))
         # No guilt: nothing to clear and no badges in the rail.
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         shot(page, "return-home-desktop-1440")

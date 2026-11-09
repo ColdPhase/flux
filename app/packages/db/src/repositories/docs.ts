@@ -17,7 +17,7 @@ import { openAliased, openRows, sealOf, sealRow } from '../sealing.js';
  */
 
 type Actor = { kind: 'human' | 'agent'; id: string };
-type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'result' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
+type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
 type Window = { limit: number; offset: number };
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
@@ -157,7 +157,7 @@ export function docRows(db: DbExecutor) {
       await db.execute(sql`UPDATE project_messages SET source_material_id = NULL, source_material_version = NULL, source_deleted = true
         WHERE project_id = ${scope.projectId} AND source_material_id = ${docId}`);
       await db.execute(sql`UPDATE live_sessions SET state = 'ending', updated_at = now() WHERE doc_id = ${docId} AND state IN ('available', 'rotating')`);
-      // A task, decision or result that took a version of the page as a source names it as a 'material' (a doc is both); those links go too.
+      // A task or decision that took a version of the page as a source names it as a 'material' (a doc is both); those links go too.
       await db.execute(sql`DELETE FROM project_object_links WHERE (from_type IN ('doc', 'material') AND from_id = ${docId}) OR (to_type IN ('doc', 'material') AND to_id = ${docId})`);
       // The creation notice of a task made from a version of the page lists it among its sources: that entry goes with the page.
       await db.execute(sql`UPDATE project_task_notices SET sources = COALESCE((SELECT jsonb_agg(item) FROM jsonb_array_elements(sources) AS item

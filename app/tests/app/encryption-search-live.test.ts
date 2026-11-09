@@ -42,7 +42,6 @@ async function writeSet(ws: string, side: 'A' | 'B') {
   await post(ben, `/api/v1/conversations/${conversation.id}/messages`, { body: 'Camera privacy is still the open question for the workshop.', clientMessageId: randomUUID() }, 201);
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: 'Use a time-of-flight sensor', rationale: 'Cameras raise privacy concerns at the stall.' }, 201);
   await post(ada, `/api/v1/decisions/${decision.id}/accept`, {}, 200, { 'if-match': `"${decision.version}"` });
-  await post(ada, `/api/v1/projects/${project.id}/results`, { title: 'Low light run', finding: 'positive', evidence: 'The sensor stayed accurate in the dark.' }, 201);
   await post(ada, `/api/v1/projects/${project.id}/work`, { title: 'Order the sensor boards', outcome: 'Boards arrive before the workshop' }, 201);
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: 'Sensor field notes', body: 'Notes about the sensor and the lamp enclosure.' }, 201) as unknown as Doc & { currentVersion?: number };
   expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: 'Notes about the sensor and the lamp enclosure. Presentation outline follows.' },

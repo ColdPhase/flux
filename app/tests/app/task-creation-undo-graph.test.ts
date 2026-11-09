@@ -19,13 +19,13 @@ async function fixture() {
   const value = toolValue(await f.tool('flux_create_task', { projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,
     clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],task:{title:'Exact shared graph target'} }));
   const item = await f.read(String(value.workId)) as unknown as WorkItem;
-  const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
-    {body:{title:'Initially unassociated result',finding:'positive'}}),201);
+  const decision = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
+    {body:{title:'Initially unassociated decision'}}),201);
   const owner = String((await pool.query('SELECT owner_user_id FROM agents WHERE id=$1',[f.agentId])).rows[0].owner_user_id);
-  const ref = {type:'result',id:String(result.id)};
+  const ref = {type:'decision',id:String(decision.id)};
   const link = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
     const native = nativeWorkInTransaction(tx);
-    await native.createLink({kind:'human',id:owner},f.projectId,{from:ref as {type:'result';id:string},to:{type:'work',id:item.id}});
+    await native.createLink({kind:'human',id:owner},f.projectId,{from:ref as {type:'decision';id:string},to:{type:'work',id:item.id}});
     await native.flushEvents();
   };
   return {...f,item,ref,link};

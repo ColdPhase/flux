@@ -18,7 +18,6 @@ describe('bounded native PostgreSQL work key selection', () => {
   let owner: Person, other: Person, projectId: string, workspaceId: string;
   const ids = Array.from({ length: 8 }, () => randomUUID());
   const decisions = Array.from({ length: 3 }, () => randomUUID());
-  const results = Array.from({ length: 2 }, () => randomUUID());
   const actor = () => ({ kind: 'human' as const, id: owner.id });
   const tasks: NativeWorkViewSelector = { purpose: 'tasks', group: 'all', mine: false };
   const read = (selection: NativeWorkViewSelector = tasks, limit = 50, cursor?: WorkReadCursor) => db.transaction(
@@ -43,12 +42,10 @@ describe('bounded native PostgreSQL work key selection', () => {
     })));
     await db.insert(schema.projectWorkItems).values(Array.from({ length: 110 }, (_, i) => ({ id: randomUUID(), workspaceId, projectId, title: `Additional native ${i.toString(36)}`,
       ownerUserId: other.id, createdByKind: 'human' as const, createdById: owner.id, createdAt: new Date(at) })));
-    await db.insert(schema.projectResults).values(results.map((id, i) => ({ id, workspaceId, projectId, title: `Result ${i}`, finding: 'negative' as const, createdByKind: 'human' as const, createdById: i ? other.id : owner.id, createdAt: new Date(at) })));
     // Explicit raw native precision fixture: JS Date cannot represent these adjacent keys.
     await db.execute(sql`UPDATE ${schema.projectWorkItems} SET created_at = ${at}::timestamptz WHERE project_id = ${projectId}::uuid`);
     await db.execute(sql`UPDATE ${schema.projectWorkItems} SET created_at = ${newer}::timestamptz WHERE id = ${ids[1]}::uuid`);
     await db.execute(sql`UPDATE ${schema.projectDecisions} SET created_at = ${at}::timestamptz WHERE project_id = ${projectId}::uuid`);
-    await db.execute(sql`UPDATE ${schema.projectResults} SET created_at = ${at}::timestamptz WHERE project_id = ${projectId}::uuid`);
   });
 
   test('all native bands remain reachable through bounded forward and direct previous pages', async () => {
@@ -57,7 +54,7 @@ describe('bounded native PostgreSQL work key selection', () => {
     let previousPage: NativeWorkReadKey[] = [];
     while (true) {
       const page = await read(tasks, 17, cursor);
-      assert.equal(page.total, 123); assert.equal(page.before, seen.length); assert.ok(page.items.length <= 17);
+      assert.equal(page.total, 121); assert.equal(page.before, seen.length); assert.ok(page.items.length <= 17);
       assert.equal(page.hasBefore, seen.length > 0);
       for (const key of page.items) assert.deepEqual(Object.keys(key).sort(), ['createdAt', 'id', 'kind', 'rank']);
       if (page.hasBefore) {
@@ -68,28 +65,27 @@ describe('bounded native PostgreSQL work key selection', () => {
       if (!page.hasAfter) break;
       cursor = keyCursor('next', page.items.at(-1)!);
     }
-    assert.equal(new Set(seen.map((key) => `${key.kind}:${key.id}`)).size, 123);
-    assert.deepEqual([...new Set(seen.map((key) => key.rank))], [0, 1, 2, 3, 4, 5, 6, 7]);
+    assert.equal(new Set(seen.map((key) => `${key.kind}:${key.id}`)).size, 121);
+    assert.deepEqual([...new Set(seen.map((key) => key.rank))], [0, 1, 2, 3, 4, 5, 6]);
     assert.equal(seen.find((key) => key.id === ids[0])?.createdAt, at);
     assert.equal(seen.find((key) => key.id === ids[1])?.createdAt, newer);
     assert.ok(seen.findIndex((key) => key.id === ids[1]) < seen.findIndex((key) => key.id === ids[0]));
     assert.equal((await read(tasks, 100)).items.length, 100, 'only returned keys, never the overfetch key, may be hydrated');
   });
 
-  test('mine uses native owner/result creator while keeping proposals and excluding rules', async () => {
+  test('mine uses the native owner while keeping proposals and excluding rules', async () => {
     const page = await read({ purpose: 'tasks', group: 'all', mine: true }, 100);
-    assert.equal(page.total, 6); // 4 own work + project-wide proposal + own result.
-    assert.deepEqual(new Set(page.items.map((key) => key.id)), new Set([ids[0], ids[2], ids[4], ids[6], decisions[0], results[0]]));
+    assert.equal(page.total, 5); // 4 own work + project-wide proposal.
+    assert.deepEqual(new Set(page.items.map((key) => key.id)), new Set([ids[0], ids[2], ids[4], ids[6], decisions[0]]));
     assert.equal((await read({ purpose: 'tasks', group: 'rules', mine: true })).total, 0);
     const blocked = await read({ purpose: 'tasks', group: 'blocked', mine: false });
     assert.deepEqual(new Set(blocked.items.map((key) => key.id)), new Set([ids[3]]));
   });
 
-  test('choice predicates retain open work, result choices, full native kinds and literal wildcard search', async () => {
-    const choose = (choice: 'open_work' | 'result_work', q = ''): NativeWorkViewSelector => ({ purpose: 'choices', choice, q });
+  test('choice predicates retain open work, full native kinds and literal wildcard search', async () => {
+    const choose = (choice: 'open_work', q = ''): NativeWorkViewSelector => ({ purpose: 'choices', choice, q });
     assert.equal((await read(choose('open_work'), 100)).total, 116);
-    assert.equal((await read(choose('result_work'), 100)).total, 116);
-    const literal = await read(choose('result_work', '100%_'));
+    const literal = await read(choose('open_work', '100%_'));
     assert.deepEqual(literal.items.map((key) => key.id), [ids[0]]);
     assert.equal((await read({ purpose: 'choices', choice: 'accepted_decisions', q: '' })).total, 1);
     assert.equal((await read({ purpose: 'choices', choice: 'doc_refs', kind: 'decision', q: '' })).total, 3);

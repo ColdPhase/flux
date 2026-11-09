@@ -213,20 +213,18 @@ describe('a task has a due date and a history of who changed it', () => {
       assert.equal(handed.kind, 'owner');
       assert.deepEqual([handed.actor.kind, handed.actor.id], ['human', ownerId]);
       assert.deepEqual(handed.owner, { from: null, to: { kind: 'agent', id: f.agentId, name: 'Planning agent', projectOwner: { kind: 'human', id: ownerId } } });
-      // A task finished by the result an agent records.
+      // A task finished by the agent with a line of what came of it.
       const finishing = (expectStatus(await f.owner.request('GET', `/api/v1/work/${task.id}`), 200) as WorkItem);
-      toolValue(await f.tool('flux_record_result', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [f.source],
-        result: { title: 'Compared twice', finding: 'positive', evidence: 'Both runs agree', workIds: [task.id], finishes: { workId: task.id, expectedVersion: finishing.version } } }));
+      toolValue(await f.tool('flux_update_task', command(finishing.version, { status: 'done', cameOfIt: 'Both runs agree' })));
       const finished = (await readEntries()).items[0]!;
       assert.deepEqual([finished.kind, finished.actor.kind, finished.actor.id, finished.status?.to], ['status', 'agent', f.agentId, 'done']);
       assert.equal(toolFailure(await f.tool('flux_update_task', command(finishing.version, { title: 'Stale' }))).code, 'VERSION_CONFLICT');
       assert.equal((await readEntries()).items.length, 4, 'a refused agent change records nothing');
     });
 
-    test('a person finishing a task with a result is the one who made the change', async () => {
+    test('a person finishing a task with a line is the one who made the change', async () => {
       const task = await create({ title: 'Measure it', status: 'in_progress' });
-      expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/results`,
-        { body: { title: 'Measured', finding: 'negative', evidence: 'Four hours', work: [task.id], finishes: { id: task.id, expectedVersion: task.version }, clientCommandId: randomUUID() } }), 201);
+      await patch(task, { status: 'done', cameOfIt: 'Four hours', clientCommandId: randomUUID() });
       const [entry] = (await activity(task)).items;
       assert.deepEqual([entry!.kind, entry!.actor.id, entry!.status], ['status', ada.id, { from: 'in_progress', to: 'done', blocker: null, waitingFor: null }]);
     });

@@ -153,32 +153,20 @@ async function authorized(ports: DocPorts, principal: Principal, docId: unknown,
 }
 
 /**
- * What "Add to docs" writes for a result or decision of the project: a result's Markdown section as it stands now,
- * named by a `flux:` reference so it can be found and rewritten later, or a decision's one reference line (F-034),
- * which the reader shows as the live card. A proposed decision is refused.
+ * What "Add to docs" writes for a decision of the project: one reference line (F-034), which the reader shows as the live card.
+ * A proposed decision is refused.
  */
 async function composeSection(ports: DocPorts, projectId: string, source: DocSectionSource) {
-  const missing = () => new RuleViolationError(`The ${source.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
-  const actorName = async (ref: { kind: 'human' | 'agent'; id: string }) => (await ports.work.names([ref])).get(`${ref.kind}:${ref.id}`) ?? (ref.kind === 'agent' ? 'an agent' : 'a former member');
-  if (source.type === 'result') {
-    const result = await ports.work.findResult(source.id);
-    if (!result || result.projectId !== projectId) throw missing();
-    const finding = result.finding === 'negative' ? 'Negative result' : 'Positive result';
-    const lines = [`## Result: ${text.literal(result.title)}`, '', `**${finding}** · recorded by ${text.literal(await actorName(result.createdBy))} · ${text.dateLine(result.createdAt)}`, ''];
-    if (result.evidence.trim()) lines.push(text.quotedBlock(result.evidence), '');
-    lines.push(text.sourceLine(source, result.title));
-    return { section: lines.join('\n'), title: result.title, label: 'result' };
-  }
   const decision = await ports.work.findDecision(source.id);
-  if (!decision || decision.projectId !== projectId) throw missing();
+  if (!decision || decision.projectId !== projectId) throw new RuleViolationError(`The ${source.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
   // F-034: a proposed decision stays out of the Wiki until it is accepted.
   if (decision.status === 'proposed') throw new RuleViolationError('Accept the decision before adding it to the Wiki', 'DECISION_NOT_ACCEPTED');
-  return { section: text.decisionReferenceLine(decision.title, decision.id), title: decision.title, label: 'decision' };
+  return { title: decision.title, label: 'decision' };
 }
 
-/** Writes what {@link composeSection} made into a doc text: a result's section, or a decision's one reference line. */
-function place(body: string, source: DocSectionSource, composed: { section: string; title: string }, under?: string) {
-  return source.type === 'decision' ? text.placeDecisionReference(body, source.id, composed.title, under) : text.upsertSection(body, source, composed.section);
+/** Writes what {@link composeSection} made into a doc text: the decision's one reference line. */
+function place(body: string, source: DocSectionSource, composed: { title: string }, under?: string) {
+  return text.placeDecisionReference(body, source.id, composed.title, under);
 }
 
 export interface DocUseCaseOptions {
@@ -207,7 +195,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     return view;
   }
 
-  /** Under the graph lock `prepareDocBodyTaskUse` took: the result or decision this doc is started from is still there (the assistant's Undo may have taken it back meanwhile, #68). */
+  /** Under the graph lock `prepareDocBodyTaskUse` took: the decision this doc is started from is still there (the assistant's Undo may have taken it back meanwhile, #68). */
   async function requireSourceStill(ports: DocPorts, projectId: string, source: DocSectionSource) {
     if (!(await ports.work.targetExists(projectId, { type: source.type, id: source.id } as ObjectRef)))
       throw new RuleViolationError(`The ${source.type} is not part of this space`, 'LINK_TARGET_NOT_FOUND');
@@ -384,9 +372,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     },
 
     /**
-     * "Add to docs": writes the section of a result or decision into the doc, or rewrites the
-     * section that already cites it, as a new version that says what changed. The earlier
-     * statement stays in the earlier version, and the doc links to its source.
+     * "Add to docs": writes the reference line of a decision into the doc, as a new version that says what changed. The
+     * earlier text stays in the earlier version, and the doc links to its source.
      */
     async addSection(principal: Principal, docId: string, command: AddDocSectionCommand, expected: number | undefined): Promise<Doc> {
       const by = authorOf(principal, agentAuthors);
@@ -399,7 +386,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
-        const { body, replaced } = place(current.current.body, from, composed, typeof command?.under === 'string' ? command.under : undefined);
+        const { body } = place(current.current.body, from, composed, typeof command?.under === 'string' ? command.under : undefined);
         const scope = { workspaceId, projectId };
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, body], [from]);
         await requireSourceStill(ports, projectId, from);
@@ -412,7 +399,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
           return present(ports, current);
         }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
-        const reason = `${replaced && from.type === 'result' ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
+        const reason = `Added the ${composed.label} “${composed.title}”`;
         const row = await ports.docs.append(id, { title: current.current.title, body, reason, author: by });
         await ports.live.rebindSaved(row, randomUUID());
         return commit(ports, principal, scope, row, false, taskFence);

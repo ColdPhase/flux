@@ -33,7 +33,7 @@ const unitFence = {
 const checkpointText = (maximum: number) => z.string().min(1).max(maximum);
 /** One exact native reference; GitHub outcomes wait for the #74 recipient adapter. */
 const outcomeRef = z.discriminatedUnion('type', [
-  z.strictObject({ type: z.enum(['result', 'message']), id }),
+  z.strictObject({ type: z.literal('message'), id }),
   z.strictObject({ type: z.enum(['material', 'doc', 'work', 'thought']), id, version }),
 ]);
 type Source = { materialId: string; version: number };

@@ -102,12 +102,6 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     inputSchema: object, annotations }, ({ projectId, id }) => result(projectId, async ({ tx, principal, requireObject }) => {
     await requireObject(projectId, 'decision', id); return workUseCases(tx).getDecision(principal, id);
   }));
-  server.registerTool('flux_list_results', { title: 'List project results', description: 'A page of positive and negative results.',
-    inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => workUseCases(tx).listResults(principal, projectId, capped(query))));
-  server.registerTool('flux_get_result', { title: 'Read a project result', description: 'Read one result and its source links.',
-    inputSchema: object, annotations }, ({ projectId, id }) => result(projectId, async ({ tx, principal, requireObject }) => {
-    await requireObject(projectId, 'result', id); return workUseCases(tx).getResult(principal, id);
-  }));
 
   server.registerTool('flux_list_docs', { title: 'List project wiki', description: 'A page of wiki titles, versions and publication states.',
     inputSchema: projectPage, annotations }, ({ projectId, ...query }) => result(projectId, ({ tx, principal }) => docUseCases(tx).listProjectDocs(principal, projectId, capped(query))));
@@ -157,7 +151,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
 
   server.registerTool('flux_search_project', { title: 'Search a project',
     description: 'Search project content: snippets and a cursor for more. Private, direct-message and person results are excluded.',
-    inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']).optional(),
+    inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'sketch']).optional(),
       cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
   ({ projectId, ...query }) => {
     return result(projectId, async ({ tx, principal, workspaceId }) => {

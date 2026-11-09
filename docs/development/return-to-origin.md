@@ -29,9 +29,9 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    followed. A record is used only for the same path it was kept for. Nothing is kept for more than the latest 60
    entries of a tab. Records are held in memory at once and written to storage 250 ms later (and when the page is hidden
    or a reference is followed), so scrolling never waits on storage; a message loaded only to show in Details is not
-   written. **Nothing private is kept:** a panel view is kept as ids only (a task, decision, result, overview, recap or
+   written. **Nothing private is kept:** a panel view is kept as ids only (a task, decision, overview, recap or
    people view; an overview names its message by id and reads it again). A message's text, a thought's text and the fields
-   of a form (Propose a decision, Attach a result, Add to docs, Make it a project) are never written, and a form view is
+   of a form (Propose a decision, Add to docs, Make it a project) are never written, and a form view is
    not restored (the panel returns closed). A confirmed sign-out here, or in another tab (the draft retirement), forgets
    every `flux:place:*` record, the in-memory records and the caches below (`forgetPlaces`). The first entry of every
    document has the router key `default`, so a record is also checked against its page and only a return after the
@@ -69,7 +69,7 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    page (Inbox, Your tasks, Home) by any path but a link that keeps the panel closes a docked panel that shows an object
    or a form, and drops its trail; Details there opens on the new place. Moving between the views of one project
    (Conversation, Tasks, Map, Wiki, Agents) keeps it. Back to the earlier page restores it as above. A link from another
-   place to a project's task, decision or result opens it there on arrival (`?open=`).
+   place to a project's task or decision opens it there on arrival (`?open=`).
 
 ## Where the control sits (rule 7)
 

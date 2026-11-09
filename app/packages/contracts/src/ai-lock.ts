@@ -13,7 +13,7 @@ import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath,
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_CONSOLE_RESUME_PATH,
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
-export type AiScopeKind = 'project' | 'conversation' | 'work' | 'run' | 'assistant_proposal'
+export type AiScopeKind = 'project' | 'conversation' | 'work' | 'run'
   | 'assistant_change' | 'agent_question'
   | 'assistant_job';
 
@@ -108,10 +108,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/assistant-runs/:runId': exempt(OWN_HISTORY),
   'POST /api/v1/assistant-runs/:runId/stop': exempt(REDUCES),
   'POST /api/v1/assistant-runs/:runId/retry': gated('params', 'runId', 'run'),
-  'GET /api/v1/projects/:projectId/assistant-proposals': gated('params', 'projectId', 'project'),
-  'GET /api/v1/assistant-proposals/:proposalId': gated('params', 'proposalId', 'assistant_proposal'),
-  'POST /api/v1/assistant-proposals/:proposalId/accept': gated('params', 'proposalId', 'assistant_proposal'),
-  'POST /api/v1/assistant-proposals/:proposalId/dismiss': gated('params', 'proposalId', 'assistant_proposal'),
   // The owner's runtime slot (F-022): account-level; runs on it are gated per space in the worker and in each tool call.
   [`GET ${AGENT_RUNTIME_PATH}`]: exempt(ACCOUNT),
   [`POST ${AGENT_RUNTIME_BINDING_PATH}`]: exempt(ACCOUNT),

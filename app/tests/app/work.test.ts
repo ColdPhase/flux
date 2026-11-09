@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { DomainError, type Principal } from '@flux/core';
-import type { Agent, Conversation, Decision, Material, Page, Project, Workspace, WorkItem, WorkResult } from '@flux/contracts';
+import type { Agent, Conversation, Decision, Material, Page, Project, TaskDiscussion, Workspace, WorkItem } from '@flux/contracts';
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
@@ -212,59 +212,48 @@ describe('work, decisions and results in a project', () => {
     assert.equal((invalid.json as { code: string }).code, 'SUPERSEDES_NOT_CURRENT', 'only an accepted rule can be replaced');
   });
 
-  test('a negative result finishes an experiment and links its evidence', async () => {
+  test('finishing an experiment with a line says what came of it, on the task and in its discussion', async () => {
     const experiment = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera in low light', status: 'in_progress', owner: { kind: 'human', id: partner.id } }), 201);
-    const reply = json<{ id: string }>(await post(partner, `/api/v1/conversations/${conversation.id}/messages`,
-      { body: '38% of gestures caught at 5 lux.', clientMessageId: randomUUID() }), 201);
-    const decisions = json<Page<Decision>>(await get(partner, `/api/v1/projects/${lamp.id}/decisions`), 200).items;
-    const rule = decisions.find((item) => item.status === 'accepted')!;
-    const result = json<WorkResult>(await post(partner, `/api/v1/projects/${lamp.id}/results`, {
-      title: 'The camera cannot track gestures below 10 lux', finding: 'negative', evidence: '38% at 5 lux over 20 gestures',
-      sources: [{ type: 'message', id: reply.id }], work: [experiment.id], decisions: [rule.id], finishes: { id: experiment.id, expectedVersion: experiment.version },
-    }), 201);
-    assert.equal(result.finding, 'negative');
-    assert.deepEqual(result.links.map((link) => `${link.role}:${link.to.type}`).sort(), ['about:decision', 'about:work', 'source:message']);
-    const finished = json<WorkItem>(await get(owner, `/api/v1/work/${experiment.id}`), 200);
-    assert.equal(finished.status, 'done');
-    assert.ok(finished.links.some((link) => link.role === 'about' && link.from.id === result.id));
-    assert.equal((await get(outsider, `/api/v1/results/${result.id}`)).status, 404);
-    const linked = json<{ role: string }>(await post(owner, `/api/v1/projects/${lamp.id}/links`, {
-      from: { type: 'result', id: result.id }, to: { type: 'material', id: material.materialId, version: 1 },
-    }), 201);
-    assert.equal(linked.role, 'related');
+    const line = 'The camera cannot track gestures below 10 lux';
+    const finished = json<WorkItem>(await patch(partner, `/api/v1/work/${experiment.id}`, { status: 'done', cameOfIt: line }, { 'if-match': `"${experiment.version}"` }), 200);
+    assert.deepEqual([finished.status, finished.cameOfIt, finished.dropped], ['done', line, false]);
+    const talk = json<TaskDiscussion>(await get(owner, `/api/v1/work/${experiment.id}/discussion`), 200);
+    assert.deepEqual(talk.messages.map((message) => [message.body, message.contribution, message.authorId]), [[line, { kind: 'came_of_it' }, partner.id]]);
+    assert.equal((await get(outsider, `/api/v1/work/${experiment.id}/discussion`)).status, 404);
+    assert.equal(json<WorkItem>(await get(viewer, `/api/v1/work/${experiment.id}`), 200).cameOfIt, line, 'every reader of the project reads it');
   });
 
-  test('a result finishes work only at the version its author saw and never reverses a disposition', async () => {
-    const results = async () => (await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id = $1', [lamp.id])).rows[0].n as number;
-    const finish = (work: WorkItem, expectedVersion: number | undefined, title = 'Finding') => post(partner, `/api/v1/projects/${lamp.id}/results`,
-      { title, finding: 'negative', work: [work.id], finishes: expectedVersion === undefined ? { id: work.id } : { id: work.id, expectedVersion } });
+  test('finishing with a line is fenced by the version its author saw and never reverses a disposition', async () => {
+    const messages = async () => (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id = $1', [lamp.id])).rows[0].n as number;
+    const finish = (work: WorkItem, expectedVersion: number | undefined, line = 'Finding') => patch(partner, `/api/v1/work/${work.id}`,
+      { status: 'done', cameOfIt: line }, expectedVersion === undefined ? undefined : { 'if-match': `"${expectedVersion}"` });
     const code = (response: ClientResponse) => (response.json as { code: string }).code;
 
     // Stale: someone changed the work after the author looked at it.
     const stale = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'PIR range test' }), 201);
     json(await patch(owner, `/api/v1/work/${stale.id}`, { status: 'in_progress' }, { 'if-match': '"1"' }), 200);
-    const before = await results();
+    const before = await messages();
     const staleFinish = await finish(stale, 1);
     assert.equal(staleFinish.status, 409);
     assert.equal(code(staleFinish), 'VERSION_CONFLICT');
     assert.equal((staleFinish.json as { current: WorkItem }).current.status, 'in_progress');
-    assert.equal((await finish(stale, undefined)).status, 400, 'finishing needs the expected version');
-    assert.equal(await results(), before, 'a rejected result stores nothing');
+    assert.equal((await finish(stale, undefined)).status, 428, 'finishing needs the version the author saw');
+    assert.equal(await messages(), before, 'a rejected finish writes no line');
     assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${stale.id}`), 200).status, 'in_progress');
 
-    // Dropped (#868: Done with a "dropped" note): another person's decision to drop the work stays; a result that names it does not take it back.
+    // Dropped (#868: Done with a "dropped" note): another person's decision to drop the work stays; a later line does not take it back.
     const dropped = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Radar module' }), 201);
     const droppedNow = json<WorkItem>(await patch(owner, `/api/v1/work/${dropped.id}`, { status: 'done', dropped: true }, { 'if-match': '"1"' }), 200);
-    json(await finish(droppedNow, droppedNow.version), 201);
+    json(await finish(droppedNow, droppedNow.version), 200);
     const stillDropped = json<WorkItem>(await get(owner, `/api/v1/work/${dropped.id}`), 200);
-    assert.deepEqual([stillDropped.status, stillDropped.dropped, stillDropped.version], ['done', true, droppedNow.version]);
+    assert.deepEqual([stillDropped.status, stillDropped.dropped], ['done', true]);
 
     // Work a decision change left alone finishes like any other.
     const housing = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera housing' }), 201);
-    json(await finish(housing, housing.version, 'Housing not needed'), 201);
+    json(await finish(housing, housing.version, 'Housing not needed'), 200);
     const done = json<WorkItem>(await get(owner, `/api/v1/work/${housing.id}`), 200);
     assert.equal(done.status, 'done');
-    assert.equal(await results(), before + 2, 'the result naming the dropped task and the one that finished the housing');
+    assert.equal(await messages(), before + 2, 'the line on the dropped task and the one that finished the housing');
   });
 
   test('events reach only project readers; assigned work uses the visibility filter and access loss hides everything', async () => {

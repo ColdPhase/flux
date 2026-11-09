@@ -490,9 +490,6 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
     case 'decision':
       for (const r of await rowsOf(db, 'project_decisions', sql`SELECT id, workspace_id, title, rationale FROM project_decisions WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.title), body: str(r.rationale) });
       break;
-    case 'result':
-      for (const r of await rowsOf(db, 'project_results', sql`SELECT id, workspace_id, title, evidence FROM project_results WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.title), body: str(r.evidence) });
-      break;
     case 'sketch':
       for (const r of await rowsOf(db, 'sketches', sql`SELECT id, workspace_id, title FROM sketches WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.title), body: '' });
       break;
@@ -803,8 +800,8 @@ export function sealedSearchRows(db: DbExecutor) {
       return result;
     },
 
-    /** The chooser's title filter (a task, decision or result of one project whose title contains `q`): null when the workspace is plain, locked or too large. */
-    async titleMatches(workspaceId: string, projectId: string, kind: 'work' | 'decision' | 'result', q: string): Promise<{ ids: string[] } | { unavailable: true } | null> {
+    /** The chooser's title filter (a task or decision of one project whose title contains `q`): null when the workspace is plain, locked or too large. */
+    async titleMatches(workspaceId: string, projectId: string, kind: 'work' | 'decision', q: string): Promise<{ ids: string[] } | { unavailable: true } | null> {
       try {
         if (!(await sealOf(db, workspaceId, { write: false })).sealed) return null;
         const index = await ensure(db, workspaceId);

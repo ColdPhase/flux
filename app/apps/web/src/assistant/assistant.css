@@ -1,5 +1,5 @@
 /* The personal assistant in a conversation (#57 design, #68). No new colours: the shared tokens,
-   the ordinary message hierarchy, one framed proposal. */
+   the ordinary message hierarchy. */
 .assistant-avatar { position: absolute; left: 0; top: 10px; }
 .project-convo__message-meta span.assistant-answer__asked { visibility: visible; }
 .assistant-answer__asked { color: var(--t3); }
@@ -25,23 +25,7 @@
 .assistant-working__actions { display: flex; align-items: center; gap: 4px; flex: none; }
 @keyframes assistant-breathe { 50% { opacity: .45; } }
 
-.assistant-proposal { margin-top: 10px; padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
-.assistant-proposal.is-accepted, .assistant-proposal.is-dismissed { box-shadow: inset 0 0 0 1px var(--line); }
-.assistant-proposal__label { display: flex; align-items: center; gap: 7px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
-.assistant-proposal__ring { width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--t1); }
-.assistant-proposal.is-accepted .assistant-proposal__ring { background: var(--t1); box-shadow: none; }
-.assistant-proposal.is-dismissed .assistant-proposal__ring { box-shadow: inset 0 0 0 1.5px var(--t3); }
-.assistant-proposal__title { margin-top: 4px; font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
-.assistant-proposal__claims { display: grid; gap: 4px; margin: 6px 0 0; font-size: var(--fs-sm); }
-.assistant-proposal__claims > div { display: grid; grid-template-columns: 104px 1fr; gap: 8px; }
-.assistant-proposal__claims dt { color: var(--t3); font-weight: 500; }
-.assistant-proposal__claims dd { margin: 0; color: var(--t1); overflow-wrap: anywhere; }
-.assistant-proposal__effect { margin-top: 8px; font-size: var(--fs-sm); color: var(--t2); }
 .assistant-proposal__actions { display: flex; gap: 8px; margin-top: 10px; }
-.assistant-proposal__wait, .assistant-proposal__done { margin-top: 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
-.assistant-proposal__done svg { margin-right: 5px; vertical-align: -2px; color: var(--t1); }
-.assistant-proposal__done .ui-link { margin-left: 8px; }
-.assistant-proposal__done .ui-link { font-size: var(--fs-sm); min-height: 24px; }
 
 .assistant-waiting { margin-top: 10px; display: grid; gap: 8px; }
 .assistant-waiting-item { list-style: none; }
@@ -73,7 +57,6 @@
 
 @media (max-width: 640px) {
   .assistant-answer .project-convo__message-meta { flex-wrap: wrap; row-gap: 0; }
-  .assistant-proposal__claims > div { grid-template-columns: 1fr; gap: 0; }
   .assistant-waiting .assistant-proposal__actions { flex-wrap: wrap; }
   .assistant-proposal__actions .ui-btn { flex: 1; }
   .assistant-working { padding-left: 42px; flex-wrap: wrap; }

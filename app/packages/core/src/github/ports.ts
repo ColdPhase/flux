@@ -76,7 +76,9 @@ export interface GithubTasks {
   lockForRules(workspaceId: string, projectId: string, taskIds: readonly string[]): Promise<Map<string, GithubTaskState>>;
   /**
    * Changes status and blocker under the locks above and increments the version. The status change joins the task's
-   * activity (#488) as made by `by`, the rule's author, on whose behalf the rule acts, marked as automated.
+   * activity (#488) as made by `by`, the rule's author, on whose behalf the rule acts, marked as automated. A task that
+   * becomes done also lets the blocked tasks that wait for it continue, in the same transaction (#868, #1055); the locks
+   * above include those tasks.
    */
   move(taskId: string, change: { status: WorkStatus; blocker: string | null }, by: { kind: 'human'; id: string }): Promise<GithubTaskState>;
   /**
