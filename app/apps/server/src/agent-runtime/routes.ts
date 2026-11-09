@@ -5,7 +5,7 @@ import {
   type AgentRuntimeClient, type AgentRuntimeConsoleResume, type AgentRuntimeConsoleTicket,
 } from '@flux/contracts';
 import { agentRuntimeUseCases, InvalidInputError, type AgentRuntimeConfig } from '@flux/core';
-import { agentRuntimeStore, type Database } from '@flux/db';
+import { agentRuntimeStore, isCompanyGuest, type Database } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import type { SessionResolver } from '../identity/index.js';
 import { requireNotGuest } from '../access/guest-no-ai.js';
@@ -64,13 +64,22 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   const clientOf = (request: FastifyRequest) => fields(request, { client: AGENT_RUNTIME_CLIENTS }).client as AgentRuntimeClient;
   const noStore = { 'cache-control': 'no-store' };
 
-  app.get(AGENT_RUNTIME_PATH, async (request, reply) => reply.headers(noStore).send(await runtime.status(await owner(request))));
+  // A guest of the company has no AI (AG-2): their place and sign-ins are kept, but the status shows none of them and every change of them is
+  // refused, until they are a member again (C-50, #1059). Connecting one is refused the same way (#959).
+  app.get(AGENT_RUNTIME_PATH, async (request, reply) => {
+    const userId = await owner(request);
+    return reply.headers(noStore).send(await runtime.status(userId, { hidden: await isCompanyGuest(db, userId) }));
+  });
   app.post(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => {
     const userId = await owner(request);
     await requireNotGuest(db, userId);
     return reply.headers(noStore).send(await runtime.bind(userId));
   });
-  app.delete(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => reply.code(202).headers(noStore).send(await runtime.remove(await owner(request))));
+  app.delete(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => {
+    const userId = await owner(request);
+    await requireNotGuest(db, userId);
+    return reply.code(202).headers(noStore).send(await runtime.remove(userId));
+  });
 
   // The console: a ticket for this owner and this session, for one method of the fixed list.
   app.post(AGENT_RUNTIME_CONSOLE_PATH, async (request, reply) => {
@@ -87,6 +96,7 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   // session or owner learns nothing (F-027 AST-1.5/1.6).
   app.post(AGENT_RUNTIME_CONSOLE_RESUME_PATH, async (request, reply) => {
     const session = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, session.user.id);
     const { client } = fields(request, { client: AGENT_RUNTIME_CLIENTS });
     const live = liveConsoles.get(session.user.id);
     if (!live || live.sessionId !== session.sessionId || live.client !== client) return reply.code(404).headers(noStore).send({ error: 'No sign-in is waiting in this session', code: 'AGENT_RUNTIME_NO_PENDING_SIGN_IN' });
@@ -121,14 +131,17 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
 
   app.post(AGENT_RUNTIME_SIGN_OUT_PATH, async (request, reply) => {
     const { user, sessionId } = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, user.id);
     return reply.headers(noStore).send(await runtime.signOut(user.id, clientOf(request), sessionId));
   });
   app.post(AGENT_RUNTIME_CHECK_PATH, async (request, reply) => {
     const { user, sessionId } = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, user.id);
     return reply.headers(noStore).send(await runtime.check(user.id, clientOf(request), sessionId));
   });
   app.post(AGENT_RUNTIME_NOTICE_PATH, async (request, reply) => {
     const { user } = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, user.id);
     return reply.headers(noStore).send(await runtime.dismissAccountNotice(user.id, clientOf(request)));
   });
 }

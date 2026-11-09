@@ -55,9 +55,15 @@ export interface SettledRunFacts {
 }
 
 export interface AssistantJobRepository {
+  /** The owner's live schedules in the workspace; none while the owner is a guest of the company (#1059). */
   list(ownerUserId: string, workspaceId: string): Promise<(JobRecord & { projectName: string })[]>;
-  /** Includes deleted ones (Undo of a delete). */
-  find(id: string, options?: { lock?: boolean }): Promise<(JobRecord & { projectName: string }) | null>;
+  /**
+   * Includes deleted ones (Undo of a delete). With `visibleToOwner`, as the owner's own screen reads it: a guest of the company finds none
+   * of their schedules (they are kept, hidden and refused until they are a member again, #1059).
+   */
+  find(id: string, options?: { lock?: boolean; visibleToOwner?: boolean }): Promise<(JobRecord & { projectName: string }) | null>;
+  /** Whether the owner is a guest of the company now: the tick fires nothing of theirs and writes nothing about it. */
+  ownerIsGuest(ownerUserId: string): Promise<boolean>;
   countActive(ownerUserId: string): Promise<number>;
   insert(job: NewJob): Promise<JobRecord>;
   /** Applies the changes and increments the version; the caller holds the row lock. */

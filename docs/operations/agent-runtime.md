@@ -217,7 +217,7 @@ logins. A workspace role gives no access to anyone's place.
   reported as deleted and their user id goes to nobody else. The worker asks again every ten seconds, and does not sign them out a
   second time: the sign-out of the first try stands. If it stays open, see [A release that stays open](#a-release-that-stays-open).
   They see in Settings that the operator released it.
-- **Idle policy** (off by default): `FLUX_AGENT_RUNTIME_IDLE_DAYS=<1–365>` releases a place that had no run for that many days.
+- **Idle policy** (off by default): `FLUX_AGENT_RUNTIME_IDLE_DAYS=<1–365>` releases a place that had no run for that many days. A guest's place is not released: it is kept, hidden, until they are a member again (C-50).
   Settings shows the person the date beforehand.
 
 Flux has no in-app instance administrator role yet, so these operator steps are launcher commands.

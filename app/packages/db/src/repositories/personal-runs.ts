@@ -8,7 +8,7 @@ import type { DbExecutor } from './push.js';
 import { personalRunWebReadRows } from './personal-run-web-reads.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
-import { companyGuestSql } from './access.js';
+import { companyGuestSql, isCompanyGuest } from './access.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -87,8 +87,8 @@ export function personalRunRows(db: DbExecutor) {
     return { ...row, connectionId: apiKeyId, assistantModel: model };
   }
 
-  async function findRun(id: string, options: { lock?: boolean } = {}) {
-    const query = db.select().from(r).where(eq(r.id, id));
+  async function findRun(id: string, options: { lock?: boolean; visibleToOwner?: boolean } = {}) {
+    const query = db.select().from(r).where(and(eq(r.id, id), options.visibleToOwner ? sql`NOT ${companyGuestSql(r.ownerUserId)}` : undefined));
     const [row] = options.lock ? await query.for('update') : await query;
     return row ? toRun(row) : null;
   }
@@ -149,6 +149,9 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     findRun,
+
+    /** Whether the owner is a guest of the company now: their keys and plan sign-in are kept but not shown (C-50, #1059). */
+    ownerIsGuest: (ownerUserId: string) => isCompanyGuest(db, ownerUserId),
 
     /** Working runs (any kind) and the owner's own queued requests: at most one of each (AST-6 queue). Queued background runs have their own limit. */
     async inFlightCount(ownerUserId: string) {

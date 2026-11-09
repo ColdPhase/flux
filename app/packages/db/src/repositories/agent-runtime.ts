@@ -4,6 +4,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
 import type { Pool } from 'pg';
 import { holdingSessionLock } from '../session-lock.js';
+import { companyGuestSql } from './access.js';
 import type * as schema from '../schema.js';
 import {
   currentRuntimeAuthOperation, markLoginConfirmedGone, markLoginPossible, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
@@ -322,7 +323,8 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
 
     async idleBindings(before) {
       const rows = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
-        WHERE state = 'active' AND coalesce(last_used_at, created_at) < ${before.toISOString()}::timestamptz ORDER BY created_at LIMIT 100`);
+        WHERE state = 'active' AND coalesce(last_used_at, created_at) < ${before.toISOString()}::timestamptz
+          AND NOT ${companyGuestSql(sql`owner_user_id`)} ORDER BY created_at LIMIT 100`);
       return rows.rows.map(binding);
     },
   };

@@ -381,9 +381,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
     const enablement = await ports.runs.enablement(owner);
-    const keys = providerEnabled ? await connections.list(owner) : [];
+    // A guest of the company has no enablement, and their keys and plan sign-in are kept but not shown until they are a member again (C-50, #1059).
+    const guest = !enablement && await ports.runs.ownerIsGuest(owner);
+    const keys = providerEnabled && !guest ? await connections.list(owner) : [];
     // A plan assistant's standing is its own CLI's; otherwise the owner's most recently signed-in CLI.
-    const standing = await runtimeStanding(owner, enablement?.engine === 'runtime' ? runtimeClientOf(enablement.provider) : undefined);
+    const standing = guest ? RUNTIME_OFF : await runtimeStanding(owner, enablement?.engine === 'runtime' ? runtimeClientOf(enablement.provider) : undefined);
     const setup = {
       provider: providerEnabled ? 'on' as const : 'off' as const,
       connection: keys.some((key) => key.status === 'active' && key.ownerUserId === owner) ? 'active' as const : 'none' as const,
@@ -511,6 +513,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const place = await locate(ports, principal, wanted);
     // The owner's row lock serializes this owner's invocations: same-key retries and the budget reservation cannot race.
     const enablement = await ports.runs.enablement(owner, { lock: true, ...(place.agentId ? { agentId: place.agentId } : { workspaceId: place.workspaceId }) });
+    // A guest of the company finds none of their runs (C-50, #1059), so an old request replays none either: they are refused before the replay
+    // lookup, with the answer a new request meets, in a space, a direct message and a chat alike.
+    if (!enablement && await ports.runs.ownerIsGuest(owner)) throw new ConflictError('You have no agent to answer yet. Make one in Settings › AI', 'PERSONAL_RUN_NOT_ENABLED');
     refuseForeignIds(request.claimed, owner, enablement);
     const existing = await ports.runs.runByClientId(owner, request.clientRunId);
     if (existing) {
@@ -569,7 +574,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   async function ownRun(ports: PersonalRunPorts, principal: Principal, runId: unknown, lock = false) {
     const owner = ownerOf(principal);
     if (!isId(runId)) throw runNotFound();
-    const run = await ports.runs.findRun(runId.toLowerCase(), { lock });
+    // A guest of the company finds none of their runs (kept, hidden and refused until they are a member again, C-50, #1059).
+    const run = await ports.runs.findRun(runId.toLowerCase(), { lock, visibleToOwner: true });
     if (!run || run.ownerUserId !== owner) throw runNotFound();
     return run;
   }
@@ -679,6 +685,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const owner = ownerOf(principal);
       return uow.run(async (ports) => {
         const enablement = await ports.runs.enablement(owner);
+        // A guest of the company has no connection to choose from: their keys and plan sign-in are kept, hidden and refused (C-50, #1059).
+        if (!enablement && await ports.runs.ownerIsGuest(owner)) return modelChoice([], null, false);
         const current: ModelPick | null = enablement ? { connection: enablementConnection(enablement), model: modelOf(enablement) } : null;
         return modelChoice(await ownConnections(owner), current, !!enablement);
       });

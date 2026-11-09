@@ -121,10 +121,12 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
     const [agent] = lock ? await query.for('share') : await query;
     if (!agent || agent.revokedAt) return inactive;
     // An agent acts only while its owner is a company member, with exactly the owner's rights (F-036 AG-3). A guest has no AI (AG-2).
-    const ownerRole = await memberRole(db, workspaceId, agent.ownerUserId, lock);
     // A guest of the company has no AI wherever else they hold a role: the company's role decides, not the agent's own workspace's (#1003).
-    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole },
-      active: ownerRole !== null && ownerRole !== 'guest' && !(await isCompanyGuest(db, agent.ownerUserId, { lock })) };
+    // The company's membership row is taken first and the agent's workspace's own after it, the order `createAgent` and a change to guest
+    // use, so a role change and a read of an agent in another workspace cannot wait for each other (#1059).
+    const companyGuest = await isCompanyGuest(db, agent.ownerUserId, { lock });
+    const ownerRole = await memberRole(db, workspaceId, agent.ownerUserId, lock);
+    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active: ownerRole !== null && ownerRole !== 'guest' && !companyGuest };
   }
   return inactive;
 }

@@ -100,8 +100,15 @@ own.
 - A guest has no agents and no AI. The server refuses a guest's API key, plan sign-in and new agent (`GUEST_NO_AI`), and a
   guest cannot sign in a local client or keep one, whatever address they open and whatever role another workspace (an encrypted
   space) gives them (#978). A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-  A member who is made a guest keeps their agents, keys and client connections, but the server lists and finds none of them,
-  and refuses every change of one, until they are a member again (C-50).
+  A member who is made a guest keeps their agents, keys, client connections, schedules and old `/ai` runs, but the server lists and
+  finds none of them, and refuses every change of one (including a run's changes and Show everyone), until they are a member again
+  (C-50). An old `/ai` request is not replayed to them either: the same request, in a space, a direct message or a chat and with
+  or without an `Idempotency-Key`, is refused, and the conversation's change list gives them only what was done, not their own
+  refusals, skips or waiting changes. Their plan sign-in is not shown and not signed out, the idle policy
+  (`FLUX_AGENT_RUNTIME_IDLE_DAYS`) does not release it, and the assistant's model list is empty. Their schedules do not fire, and
+  nothing is written to their history meanwhile: the next time after the role comes back is the next one on the clock. A one-time
+  schedule that falls due while its owner is a guest comes back off, as one that falls due while AI is off in its space does, and
+  stays off. A "Paused …" notice of a schedule leaves their Inbox and returns with the role.
 
 ## AG-3 — Rights, "What it may do", approvals and Undo
 
