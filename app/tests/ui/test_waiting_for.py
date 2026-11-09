@@ -156,8 +156,10 @@ class WaitingFor(unittest.TestCase):
                 expect(page.locator(".ui-toast").filter(has_text="back to blocked")).to_be_visible()
                 back = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
                 self.assertEqual((back["status"], back["blocker"], back["waitingFor"]["id"]), ("blocked", reason, self.kai))
-                page.goto(f"/projects/{self.project}")
-                expect(page.get_by_text(reason, exact=True)).to_have_count(1)
+                # The reason was said once in the task's discussion, and the Undo did not say it again (a task's discussion is not mirrored into the
+                # project conversation since #868; the conversation has one line per task event).
+                said = [m for m in api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/discussion")["messages"] if m.get("body") == reason]
+                self.assertEqual(len(said), 1)
 
     def test_06_the_board_and_the_list_say_who_and_why_as_the_panel_does(self):
         # #763 C1: "Waiting for <person> · <reason>", or the reason alone, never "Waiting for <reason>".
