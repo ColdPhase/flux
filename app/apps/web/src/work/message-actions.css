@@ -35,13 +35,10 @@
 /* The tooltip of a small control opens below it, which would cover the pill's neighbours: keep it above. */
 .msg-acts [data-tip]::after { top: auto; bottom: calc(100% + 6px); }
 
-/* The menu, on both devices: one list under its anchor. A long press dims and blurs the stream behind it. */
+/* The computer's menu: one list under its anchor. (A phone's long press opens a bottom sheet instead: MessageSheet, message-sheet.css.) */
 .msg-menu__scrim { position: fixed; inset: 0; z-index: calc(var(--z-menu) - 1); }
-.msg-menu__scrim.is-press { background: var(--scrim); }
-@supports (backdrop-filter: blur(1px)) { .msg-menu__scrim.is-press { backdrop-filter: blur(5px); } }
 .msg-menu { position: fixed; z-index: var(--z-menu); display: flex; flex-direction: column; min-width: 232px; max-width: calc(100vw - 24px); padding: 6px; border-radius: 16px;
   background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
-.msg-menu.is-press { min-width: 272px; }
 .msg-menu__item { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 12px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); text-align: left; transition: var(--tr); }
 .msg-menu__item:hover:not(:disabled), .msg-menu__item:focus-visible { background: var(--sub); }
 .msg-menu__item:disabled { color: var(--t3); cursor: progress; }
@@ -95,7 +92,3 @@
   .thread .msg-acts__b { width: 24px; height: 24px; border-radius: 8px; }
   .thread .project-convo__message > .project-convo__message-meta, .thread .dm-msg__meta { padding-right: 90px; }
 }
-
-/* A long press lifts the pressed bubble above the blur; the menu sits directly under it (F-026 phone-messagemenu, #763 B3). */
-.msg-menu__lift { position: fixed; z-index: var(--z-menu); overflow: hidden; box-shadow: var(--sh-pop); pointer-events: auto; }
-.msg-menu__lift > * { pointer-events: none; }

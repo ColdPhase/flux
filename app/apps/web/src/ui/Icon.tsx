@@ -79,6 +79,8 @@ const paths = {
   follow: <><path d="M3 3l4.25 10 1.5-4.25L13 7.25z" /></>,
   pulse: <path d="M1.75 8h2.5l1.5-3.5 2.5 7 1.75-5 1 1.5h3.25" />,
   /** Tasks (#136): the Kanban and List views, "Mine" and an agent that owns a task. */
+  flag: <><path d="M4 14V2.5" /><path d="M4 3h7.5l-1.75 2.75L11.5 8.5H4" /></>,
+  grid: <><rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1.25" /><rect x="9" y="2.5" width="4.5" height="4.5" rx="1.25" /><rect x="2.5" y="9" width="4.5" height="4.5" rx="1.25" /><rect x="9" y="9" width="4.5" height="4.5" rx="1.25" /></>,
   board: <><rect x="2.25" y="2.5" width="3" height="11" rx="1" /><rect x="6.5" y="2.5" width="3" height="7" rx="1" /><rect x="10.75" y="2.5" width="3" height="9" rx="1" /></>,
   list: <><path d="M6 4.5h7.5M6 8h7.5M6 11.5h7.5" /><circle cx="3" cy="4.5" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="8" r=".8" fill="currentColor" stroke="none" /><circle cx="3" cy="11.5" r=".8" fill="currentColor" stroke="none" /></>,
   person: <><circle cx="8" cy="5.25" r="2.5" /><path d="M3.25 13.5c.55-2.5 2.4-3.9 4.75-3.9s4.2 1.4 4.75 3.9" /></>,

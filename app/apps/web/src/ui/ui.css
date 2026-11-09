@@ -242,6 +242,28 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 /* The keyboard button is visually hidden; its focus ring is drawn on the visible handle. */
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber { outline: 2px solid var(--t1); outline-offset: -4px; border-radius: 12px; }
 .ui-detent-sheet:has(> .ui-vh:focus-visible) > .ui-grabber span { background: var(--t1); }
+/* A phone sheet that is a short list (the "+" Create sheet, a message's actions; F-026 phone-actions-create, #1013): a grabber, a title or
+   the message, then rows of a soft tile with an icon and a label, 52px tall. It sits at the bottom, as high as its rows, and on a tablet is
+   480px wide in the middle of the bottom edge, not the whole screen. */
+.ui-overlay--bottom .ui-overlay__surface.ui-list-sheet {
+  inset: auto 0 0 0; width: min(100%, 480px); margin-inline: auto; max-height: calc(100dvh - env(safe-area-inset-top) - 12px); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0; padding: 8px 16px max(24px, env(safe-area-inset-bottom));
+}
+.ui-list-sheet__title { margin: 0 8px 6px; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.03em; }
+.ui-list-sheet__rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
+.ui-list-sheet__row {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 52px; padding: 4px 8px; border-radius: 14px; color: var(--t1);
+  font-size: var(--fs-lg); text-align: left; transition: var(--tr);
+}
+.ui-list-sheet__row:active:not([aria-disabled="true"], :disabled), .ui-list-sheet__row:focus-visible { background: var(--sub); }
+.ui-list-sheet__row:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.ui-list-sheet__row:focus-visible .ui-list-sheet__tile { background: var(--el); }
+.ui-list-sheet__row[aria-disabled="true"] { color: var(--t3); }
+.ui-list-sheet__tile { display: grid; place-items: center; flex: none; width: 36px; height: 36px; border-radius: 10px; background: var(--sub); color: var(--t1); }
+.ui-list-sheet__row[aria-disabled="true"] .ui-list-sheet__tile { color: var(--t3); }
+.ui-list-sheet__note { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
+.ui-list-sheet__sep { height: 1px; margin: 6px 8px; background: var(--line); }
+.ui-list-sheet__foot { margin: 10px 8px 0; font-size: var(--fs-sm); color: var(--t3); }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */

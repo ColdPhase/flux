@@ -1,0 +1,10 @@
+/* A phone's actions on one message (F-026 phone-actions-create, #1013): the message in a soft pill at the top of the sheet, at most
+   three lines of it, then the actions as rows (the shared .ui-list-sheet rows in ui.css). The clamp is on the text, inside the padded
+   pill, so a fourth line never shows in the padding. */
+.msg-sheet__message { margin: 0 0 8px; padding: 12px 16px; border-radius: 18px; background: var(--sub); color: var(--t1); }
+.msg-sheet__message p {
+  margin: 0; font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
+}
+/* A touch opens the sheet with focus on the sheet itself (for Esc and screen readers); the keyboard's ring is not drawn round all of it. */
+.ui-overlay__surface.msg-sheet--touch:focus-visible { outline: none; }

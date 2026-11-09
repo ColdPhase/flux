@@ -1,8 +1,10 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type RefObject } from 'react';
 import { createPortal } from 'react-dom';
-import type { ConversationMessage } from '@flux/contracts';
+import { messagePreview, type ConversationMessage } from '@flux/contracts';
 import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { plainWords } from './messageWords';
+import { MessageSheet } from './MessageSheet';
+import { swallowReleaseClick } from './releaseClick';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
@@ -10,7 +12,8 @@ import './message-actions.css';
 // screen readers (founder direction 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left.
 // The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, Copy text, then (on your own messages) Edit and Delete.
 // Copy text is on every message that has words and was not deleted (founder direction 2026-11-08).
-// The phone's list starts with the two actions the computer shows beside the message.
+// The phone's list starts with the two actions the computer shows beside the message, and opens as one bottom sheet with the message
+// at the top (MessageSheet, #1013): the list is this file's, so the computer's menu and the phone's sheet never differ.
 
 /**
  * A private direct-message bubble (#536, #537): reply in its thread, create a task from an excerpt, add its words to My map and copy
@@ -57,7 +60,7 @@ export interface MessageActionOptions {
 }
 
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
-interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
+export interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
 
 /** The words Copy text puts on the clipboard: the message's body as plain text. */
 const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
@@ -85,7 +88,7 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   const { writable, onCreateWork, onReply, onAddToMap, onEdit, onDelete, removed } = options;
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
+    ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'tasks' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
     ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
@@ -97,46 +100,20 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   ];
 }
 
-/** A menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
-function MessageMenu({ items, anchor, press, onClose, label, popProps }: { items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string; popProps: ReturnType<typeof usePop>['props'] }) {
+/** The computer's menu under its anchor: arrow keys, Escape and a click outside close or move; focus returns to the opener. */
+function MessageMenu({ items, anchor, onClose, label, popProps }: { items: MenuItem[]; anchor: HTMLElement; onClose: (restoreFocus: boolean) => void; label: string; popProps: ReturnType<typeof usePop>['props'] }) {
   const menu = useRef<HTMLDivElement>(null);
-  const lift = useRef<HTMLDivElement>(null);
   const [place, setPlace] = useState<CSSProperties>({ top: 0, left: 0, opacity: 0 });
-  const [lifted, setLifted] = useState<CSSProperties | null>(null);
-  // A long press lifts the pressed bubble above the blur and anchors the menu directly under it (F-026
-  // `phone-messagemenu.webp`, #763 B3): a copy of the bubble, so the stream itself never moves or re-stacks.
   useLayoutEffect(() => {
     const node = menu.current;
     if (!node) return;
     const { offsetWidth: width, offsetHeight: height } = node;
-    const bubble = press ? anchor.closest<HTMLElement>('.message-bubble, .dm-msg__bubble') ?? anchor : null;
-    if (bubble && lift.current) {
-      const box = bubble.getBoundingClientRect();
-      const copy = bubble.cloneNode(true) as HTMLElement;
-      copy.removeAttribute('id');
-      for (const element of copy.querySelectorAll('[id]')) element.removeAttribute('id');
-      for (const element of copy.querySelectorAll<HTMLElement>('a, button, input, textarea, select, [tabindex]')) element.setAttribute('tabindex', '-1');
-      // The copy leaves the rules that styled it through its ancestors behind, so it carries its own look.
-      const look = getComputedStyle(bubble);
-      for (const name of ['background-color', 'color', 'border-radius', 'padding', 'font', 'box-shadow', 'border', 'line-height'] as const) copy.style.setProperty(name, look.getPropertyValue(name));
-      copy.style.margin = '0';
-      copy.style.width = `${box.width}px`;
-      copy.style.maxWidth = 'none';
-      lift.current.replaceChildren(copy);
-      const tall = Math.min(box.height, Math.round(window.innerHeight * 0.4));
-      const gap = 8;
-      const top = Math.max(12, Math.min(box.top, window.innerHeight - 12 - tall - gap - height));
-      const left = Math.max(12, Math.min(box.left, window.innerWidth - width - 12));
-      setLifted({ top, left: box.left, width: box.width, height: tall, borderRadius: look.borderRadius });
-      setPlace({ top: top + tall + gap, left });
-      return;
-    }
     const box = anchor.getBoundingClientRect();
-    const left = Math.max(12, Math.min(press ? box.left : box.right - width, window.innerWidth - width - 12));
+    const left = Math.max(12, Math.min(box.right - width, window.innerWidth - width - 12));
     const below = box.bottom + 8;
     const top = below + height > window.innerHeight - 12 ? Math.max(12, box.top - height - 8) : below;
     setPlace({ top, left });
-  }, [anchor, items.length, press]);
+  }, [anchor, items.length]);
   useEffect(() => { menu.current?.querySelector<HTMLElement>('[role="menuitem"]:not(:disabled)')?.focus({ preventScroll: true }); }, []);
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const buttons = [...menu.current!.querySelectorAll<HTMLElement>('[role="menuitem"]:not(:disabled)')];
@@ -158,9 +135,8 @@ function MessageMenu({ items, anchor, press, onClose, label, popProps }: { items
   );
   return createPortal(
     <>
-      <div {...popProps} data-pop-fade="" className={`msg-menu__scrim${press ? ' is-press' : ''}`} onPointerDown={() => onClose(false)} />
-      {press ? <div {...popProps} data-pop-fade="" ref={lift} className="msg-menu__lift" aria-hidden="true" style={lifted ?? { opacity: 0 }} onPointerDown={() => onClose(false)} /> : null}
-      <div {...popProps} ref={menu} className={`msg-menu${press ? ' is-press' : ''}`} role="menu" aria-label={label} style={place} onKeyDown={onKeyDown}>
+      <div {...popProps} data-pop-fade="" className="msg-menu__scrim" onPointerDown={() => onClose(false)} />
+      <div {...popProps} ref={menu} className="msg-menu" role="menu" aria-label={label} style={place} onKeyDown={onKeyDown}>
         {primary.map(render)}
         {secondary.length && primary.length ? <div className="msg-menu__sep" role="separator" /> : null}
         {secondary.map(render)}
@@ -174,7 +150,7 @@ function MessageMenu({ items, anchor, press, onClose, label, popProps }: { items
  * The menu and its scrim leave as they came (#593 AC-1): the opener keeps the last anchor and says whether the menu is `open`; a
  * closed menu stays mounted for --dur-out, inert, while focus is already back on its opener.
  */
-function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; press: boolean; onClose: (restoreFocus: boolean) => void; label: string }) {
+function MessageMenuHost({ open, ...props }: { open: boolean; items: MenuItem[]; anchor: HTMLElement; onClose: (restoreFocus: boolean) => void; label: string }) {
   const pop = usePop(open);
   return pop.mounted ? <MessageMenu {...props} popProps={pop.props} /> : null;
 }
@@ -211,7 +187,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
       {writable && !removed ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
-      {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions"
+      {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} label="Message actions"
         onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}
     </div>
   );
@@ -237,20 +213,20 @@ interface TouchProps<E extends HTMLElement> {
 
 /**
  * The phone's gestures on one message (S6, founder direction 2026-10-16): a swipe right opens Reply in thread
- * (the WhatsApp, Telegram and iMessage habit) and a long press opens the message menu. Both belong to the touch
+ * (the WhatsApp, Telegram and iMessage habit) and a long press opens the message sheet. Both belong to the touch
  * pointer only; nothing swipes left. The returned props go on the message's list item and `node` inside it.
- * A visually hidden button opens the same menu for keyboards and screen readers, who cannot long press, and a
+ * A visually hidden button opens the same sheet for keyboards and screen readers, who cannot long press, and a
  * computer's Reply button does the same as the swipe, so a gesture is never the only way to an action.
  */
 export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: MessageActionOptions | DmActionOptions | null): { props: TouchProps<E>; node: ReactNode } {
   const touch = useMediaQuery('(hover: none)');
   const items = useMenuItems(options, touch);
   const ref = useRef<E>(null);
-  // The last menu stays (inert) while it leaves; `menu` is the open one, if any.
-  const [last, setLast] = useState<{ kind: 'press' | 'button'; anchor: HTMLElement } | null>(null);
+  // The sheet stays mounted (inert) while it leaves; `menu` is how the open one was opened, if any.
+  const [last, setLast] = useState<'press' | 'button' | null>(null);
   const [shown, setShown] = useState(false);
   const menu = shown ? last : null;
-  const setMenu = (next: { kind: 'press' | 'button'; anchor: HTMLElement } | null) => { if (next) { setLast(next); setShown(true); } else setShown(false); };
+  const setMenu = (next: 'press' | 'button' | null) => { if (next) { setLast(next); setShown(true); } else setShown(false); };
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const gesture = useRef<{ x: number; y: number; mode: 'idle' | 'swipe' | 'dead'; timer: number; interactive: boolean } | null>(null);
@@ -267,7 +243,9 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
-    setMenu({ kind: 'press', anchor: row.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? row });
+    setMenu('press');
+    // The finger is still down: its release must not tap the sheet that just opened under it.
+    swallowReleaseClick();
     try { navigator.vibrate?.(8); } catch { /* optional */ }
   };
   const props = {
@@ -276,7 +254,8 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     style: offset ? { transform: `translateX(${offset}px)` } : undefined,
     onPointerDown: (event: ReactPointerEvent<E>) => {
       swallow.current = false;
-      if (event.pointerType !== 'touch') return;
+      // The sheet is a portal: its touches bubble through React to this row, but they are not on the message.
+      if (event.pointerType !== 'touch' || !event.currentTarget.contains(event.target as Node)) return;
       const row = event.currentTarget;
       const interactive = !!(event.target as Element).closest('a, button, input, textarea, select, [role="button"]');
       clearTimer();
@@ -312,14 +291,14 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     },
     onPointerCancel: () => { clearTimer(); gesture.current = null; if (dragging) { setDragging(false); setOffset(0); } },
     // Android raises a context menu after a long press: the message menu is the answer, not the browser's.
-    onContextMenu: (event: MouseEvent<E>) => { event.preventDefault(); if (!menu) openPress(event.currentTarget); },
+    onContextMenu: (event: MouseEvent<E>) => { if (!event.currentTarget.contains(event.target as Node)) return; event.preventDefault(); if (!menu) openPress(event.currentTarget); },
     onClickCapture: (event: MouseEvent<E>) => { if (swallow.current) { swallow.current = false; event.preventDefault(); event.stopPropagation(); } },
   };
   const node = (
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
-      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu?.kind === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu({ kind: 'button', anchor: event.currentTarget.parentElement?.querySelector<HTMLElement>('.message-bubble > .message-body, .dm-msg__body') ?? event.currentTarget }); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
-      {last ? <MessageMenuHost open={shown} items={items} anchor={last.anchor} press={last.kind === 'press'} label="Message actions"
+      <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu('button'); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
+      {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' ? options.body : messagePreview(options.message.body, options.message.files?.length)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );

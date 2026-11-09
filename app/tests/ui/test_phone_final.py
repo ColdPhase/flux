@@ -14,7 +14,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from app_select import choose, expect_value
+from app_select import choose
 
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
@@ -228,14 +228,14 @@ class PhoneFinal(unittest.TestCase):
     def test_04b_create_decision_and_page_start_those_things_in_the_chosen_project(self):
         page = self.page(SIZES[0])
         base = f"/api/v1/projects/{self.project['id']}"
-        # Decision: the same Create window as the computer's, on its Decision tab, in the space chosen in the sheet.
+        # Decision: the same Create window as the computer's, on its Decision tab, in the space chosen in the window (#1013: the sheet has no picker).
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        choose(sheet.get_by_label("Space"), self.project["id"])
+        expect(sheet.get_by_role("combobox")).to_have_count(0)
         sheet.get_by_role("button", name=re.compile("^Decision")).click()
         window = page.get_by_role("dialog", name="New decision")
-        expect(window.get_by_role("combobox", name="Space")).to_be_visible()
+        choose(window.get_by_role("combobox", name="Space"), self.project["id"])
         title = f"Probes stay on the north beds {uuid.uuid4().hex[:6]}"
         window.get_by_role("textbox", name="Decision", exact=True).fill(title)
         window.get_by_role("button", name=re.compile("^Propose decision")).click()
@@ -251,9 +251,9 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/projects")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
-        choose(sheet.get_by_label("Space"), self.project["id"])
         sheet.get_by_role("button", name=re.compile("^Page")).click()
         window = page.get_by_role("dialog", name="New page")
+        choose(window.get_by_role("combobox", name="Space"), self.project["id"])
         name = f"Bed map {uuid.uuid4().hex[:6]}"
         window.get_by_role("textbox", name="Page title", exact=True).fill(name)
         window.get_by_role("button", name=re.compile("^Create page")).click()
@@ -426,14 +426,13 @@ class PhoneFinal(unittest.TestCase):
                 self.assert_no_sideways_scroll(page, size["width"])
 
     def test_11_create_sheet_selection_and_text_persist_and_create_only_in_selected_project(self):
-        # The "+" sheet has one way to create: its Task tile opens the one Create window (#345) in the chosen project.
+        # The "+" sheet has one way to create: its Task row opens the one Create window (#345), whose Space picker chooses the project (#1013).
         page = self.page(SIZES[0])
         page.goto("/projects")
         title = f"Print bed labels {uuid.uuid4().hex[:8]}"
         page.get_by_role("button", name="Create", exact=True).click()
-        project_picker = page.get_by_role("dialog", name="Create").get_by_role("combobox")
-        choose(project_picker, self.second_project["id"])
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
+        choose(page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Space"), self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_be_visible()
         field.fill(title)
@@ -443,7 +442,7 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).click()
         project_picker = page.get_by_role("dialog", name="New task").get_by_role("combobox", name="Space")
-        expect_value(project_picker, self.second_project["id"])
+        choose(project_picker, self.second_project["id"])
         field = page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)
         expect(field).to_have_value(title)
         page.get_by_role("dialog", name="New task").get_by_role("button", name=re.compile("^Create task")).click()
