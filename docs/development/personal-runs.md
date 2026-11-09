@@ -213,15 +213,27 @@ pages, founder direction 2026-11-09, #1113).
   addresses; a run has as many responses as it makes requests). A cited address is listed only when the run's search returned it.
 - **Any address opens (#1065, founder direction 2026-11-09, C-30).** `flux_read_web` opens any public address on every engine, and refuses
   one that carries private Flux text the run read (`privateFragmentIn`, `WEB_READ_PRIVATE_TEXT`, with the fragment in its words). The private
-  text is kept in `personal_run_private_texts` (migration 0049), compared-ready by `keptPrivateText` (NFKC, percent-decoded up to three times,
-  `+` as a space, lower case, runs of space as one; a word with `://` or a dot between two letters or digits, an address or host name a person
-  wrote, is left out so it still opens): the worker writes the brief when the run is dispatched (the API-key run's system prompt and request,
-  rendered with every source read; the CLI's text on standard input), and the API writes each Flux tool result of a run in `boundRunResult`
-  (never `flux_read_web`'s page, and never an error). A fragment is 12 compared characters with at least 6 letters or digits, of two words or
-  more or with a digit (`fragmentLike`); one long word alone is too common. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a
+  text is kept in `personal_run_private_texts` (migration 0049) by `keptPrivateText`: `body`, the text compared-ready (percent-decoded up to four
+  times, lower case, NFKD without accents, invisible format and control characters dropped, `+` as a space, runs of space as one) with the web
+  addresses written in it left out, and `addresses`, those addresses compared the same way, without scheme and `www.` (an address with
+  `http(s)://`, or a site name with a lower-case top level such as `wiki.example/lamp`, never inside an email address; only the address is left
+  out, never the words around it, since a tool's JSON has no spaces between its fields). The worker writes the brief when the run is
+  dispatched (the API-key run's system prompt and request, rendered with every source read; the CLI's text on standard input), and the API
+  writes each Flux tool result of a run in `boundRunResult` (never `flux_read_web`'s page, and never an error) before the result is returned.
+  The address is read as the agent wrote it, as the server sends it (`new URL(…).href`: the parser drops tabs and line breaks) and with its
+  host in Unicode, each percent-decoded until it stops changing (every pass shortens it, so at most `ADDRESS_MAX` passes), and the hex,
+  base64 (either alphabet) and base32 runs of the decoded address are decoded at every alignment; the fragment (`#…`) is never sent and is not
+  read. It is refused when a 12-character window of a reading, with at least 6 letters or digits and a space, a digit or an `@`
+  (`fragmentLike`; one long word alone is too common), stands in a `body`, or when a reading of another site carries an address of
+  `addresses` whole (more than its site) or by a long part of its path or query (`carriedPart`: 12 characters or more, `fragmentLike`, with no
+  letter or digit glued to it). Each redirect hop is checked in `beforeRequest` before it is asked, so a site that unpacks an address it was
+  sent cannot pass the words on; the hop already sent is listed as redirected. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a
   search "use your web search, not the address of a search page"). The given-address lists (`personal_runs.given`, `assistant_jobs.given`,
   `project_work_items.text_by_agent`, `personal_run_web_reads.seen`) are gone (0049). How many addresses a run reads is not limited, and
-  there is no limit per minute (#1116): only the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote or encoded is not caught: the founder's accepted risk.
+  there is no limit per minute (#1116): only the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`).
+  What the agent rewrote (other words, hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the
+  provider or the CLI's vendor before Flux sees it: the founder's accepted risk. Cost: one check reads every window of the run's private text
+  once (at most about 8 MiB of tool results, `RUN_TOKEN_LIMITS`), a few hundred milliseconds at that bound.
 - **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
   byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
   it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input
@@ -252,7 +264,8 @@ pages, founder direction 2026-11-09, #1113).
   `found` (`n`, the result addresses, and for Codex the queries): Claude Code's from the result entries of the `user` event's structured
   `tool_use_result` (`searchResultAddresses`; never an address from the tool's text, which interleaves the CLI's own summary, and none for an
   error); Codex's from a completed item with a search action (`codexSearchFound`: its queries, and the `text_result` entries whose `ref_id`
-  is `turn<N>search<M>` when the item carries `results`, which only Codex's standalone search fills, a feature Flux leaves off). The worker
+  is `turn<N>search<M>` in the item's `results`, which the standalone `web.run` search of the pinned Codex fills; an opened page's entry has
+  the address as its `ref_id` and is left out; see RT-5 for what was observed with the real binary). The worker
   writes them in stream order through one promise chain (`record`): `startWebSearch` writes a `personal_run_web_searches` row,
   `settleWebSearch` fills its results and queries. Neither CLI hands Flux citations: at the commit, the addresses the answer names
   (`addressesIn`) are written as the run's cited row, and `searches` lists those its search returned under "Found on the web:". Claude

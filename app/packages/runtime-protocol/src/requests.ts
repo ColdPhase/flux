@@ -41,7 +41,7 @@ export type SupervisorRequest =
   /**
    * `model`: the assistant's chosen model (F-027 AST-11), passed to the CLI's own model option; absent: the account's default.
    * `webSearch`: the CLI keeps its own web search (#1065, C-29: the operator's web switch is on): Claude Code's `WebSearch`, Codex's
-   * standalone web search on OpenAI's cached index.
+   * web search on OpenAI's cached index (`web_search="cached"`).
    */
   | { kind: 'run'; bindingId: string; client: RuntimeClient; runId: string; prompt: string; runToken: string; tools: string[]; caps: RunCaps; model?: string; webSearch?: true }
   | { kind: 'stop'; bindingId: string; runId: string }

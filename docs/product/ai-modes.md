@@ -146,14 +146,24 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   than a message, reasoning, an allowed Flux tool call or, with the web on, a `web_search` item stops
   the CLI with nothing committed (a call to Codex's own MCP resource readers, which stay offered, is
   such an item). **With the web on, Codex searches** (#1065, founder 2026-11-09):
-  `-c web_search="cached"` (OpenAI's cached index, `external_web_access` false); with
-  `FLUX_WEB_READS=off` it is `web_search="disabled"`, and the preflight requires the one or the other.
-  The pinned `codex exec --json` (rust-v0.160.1) carries a `results` field on the `web_search` item
-  (openai/codex #32898 of 2026-07-13 and #46319 of 2026-09-17, both in that tag; GitHub compare API,
-  2026-11-09), filled only by Codex's standalone web search (`features.standalone_web_search`, still
-  under development and off by default there); Flux does not turn that feature on, so a Codex run
-  normally records its queries and no result addresses. Its answer names its sources itself, and it
-  opens any page it found with `flux_read_web` like any other address.
+  `-c web_search="cached"`, OpenAI's cached index; with `FLUX_WEB_READS=off` it is `web_search="disabled"`,
+  and the preflight requires the one or the other (the real pinned binary's `config/read` reflects it:
+  `contract/check-codex.ts`, 2026-11-09). How the pinned Codex searches depends on the model (codex-rs at
+  rust-v0.160.1, read 2026-11-09): a Responses Lite model, as the default `gpt-6.1-sol` and most of the
+  catalog are, gets the standalone `web.run` tool (`ext/web-search`, offered for the OpenAI provider),
+  which the CLI runs by posting to `alpha/search` on the host it already uses, with
+  `external_web_access: false`; another model, such as `gpt-5.5`, gets the hosted `web_search` tool with
+  `external_web_access: false` (`core/src/tools/hosted_spec.rs`). Either way no live request reaches a
+  site from the runtime, the egress does not change, and a page the model asks to open is read from
+  OpenAI's index (OpenAI's description of `external_web_access`, a vendor claim). **Observed with the
+  real pinned binary** (offline, a local mock as the model and the search endpoint, 2026-11-09): with
+  Flux's web-on overrides the default model was offered `web.run`; its call reached `alpha/search` with
+  `external_web_access: false`; and `codex exec --json` printed the `web_search` item started with no
+  query and completed with its query, action and `results` (`text_result` entries, `ref_id`
+  `turn0search0` for a search result and the address itself for a page it opened). With the web off,
+  neither tool was offered. Flux records the queries and the search result entries (never an opened
+  page), and the run's answer names its sources; it opens any page it found with `flux_read_web` like
+  any other address.
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
 - Transcripts are not kept. An agent's memory is only what its owner told it (AG-1).
@@ -262,7 +272,8 @@ operator decides for their server through the operator step (RT-9).
 8. **Web reading and search.** Egress beyond the vendors' hosts, prompt injection from any page or search result, and an address that
    carries what the agent knows to a site. Any address opens (founder direction 2026-11-09, C-30); the defence is AG-2, AG-3 and AG-8,
    the brief's rule never to put anything from Flux into an address, the server's refusal of an address that carries private Flux text
-   the run read, and the tests in #856, #953, #954 and #1065. What the agent rewrote or encoded can still leave: accepted by the founder.
+   the run read (as written, encoded or on a redirect hop), and the tests in #856, #953, #954 and #1065. What the agent rewrote can still
+   leave: accepted by the founder.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract
    test, the start-up and JSONL checks, and honest *Sign in again* and *Provider refused* states.

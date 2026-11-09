@@ -99,7 +99,7 @@ export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) =>
     '--no-session-persistence', '--max-turns', String(caps.maxTurns), ...(model ? ['--model', model] : []), '--append-system-prompt', brief,
   ],
   // Codex (T6 #281): every default-on feature of the pinned version that is not reviewed as harmless is off
-  // (CODEX_FEATURE_REVIEW), web search is disabled, analytics is off (so no telemetry host is needed), and
+  // (CODEX_FEATURE_REVIEW), web search is on OpenAI's cached index with the web on and disabled with it off (#1065), analytics is off (so no telemetry host is needed), and
   // Flux is the only MCP server, required, with the exact non-empty tool list. The prompt is read from stdin
   // (`-`); Flux's brief is a developer message, so Codex keeps its own instructions.
   codex: ({ tools, mcpUrl, brief, model, webSearch }) => [

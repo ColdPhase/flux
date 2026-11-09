@@ -7,6 +7,7 @@ import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
 import type { Paged, PageWindow } from '../work/ports.js';
 import type { TaskFacts } from './brief.js';
+import type { KeptPrivateText } from './web-addresses.js';
 
 /**
  * Ports of the personal assistant runs (issue #68, decision O-008). Core states what it needs;
@@ -168,15 +169,15 @@ export interface PersonalRunRepository {
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
   addWebSearch(runId: string, found: WebSearchFound): Promise<void>;
-  /** A search the owner's Claude Code started (#1065, C-30), written as in progress with its query; returns its row. */
+  /** A search the owner's CLI started (#1065, C-30), written with its query when the CLI shows it then; returns its row. */
   startWebSearch(runId: string, query: string): Promise<string>;
-  /** The results of that search came back: normalized, bounded, readable by the run from now on; `queries` when the CLI named them only now. */
+  /** The results of that search came back, normalized and bounded, and `queries` when the CLI named them only now (Codex). */
   settleWebSearch(id: string, results: string[], queries?: string[]): Promise<void>;
   /**
    * Private Flux text the run read (#1065, C-30), as `keptPrivateText` keeps it: its brief when it starts, and each Flux tool result. A web
    * address that carries a fragment of it is refused.
    */
-  addPrivateText(runId: string, body: string): Promise<void>;
+  addPrivateText(runId: string, kept: KeptPrivateText): Promise<void>;
   /** The task graph's lock (after the owner's, #921) for a run in a space; a run in a DM or a chat touches no task graph and holds nothing. */
   prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
@@ -476,8 +477,8 @@ export interface PersonalComputeUsage { inputTokens: number; outputTokens: numbe
 /**
  * What a response of the provider's built-in web search brought (#954, C-30), read from the provider's structured answer and never
  * from the model's text: the queries it searched, the addresses the search returned and the addresses the answer cites. Each address
- * is normalized (no fragment) and at most `ADDRESS_MAX` long. Only the results are the run's readable addresses from then on (C-30);
- * the queries, and the cited addresses that a search of the run returned, are listed under its answer.
+ * is normalized (no fragment) and at most `ADDRESS_MAX` long. The queries, and the cited addresses that a search of the run returned,
+ * are listed under its answer (C-30).
  */
 export interface WebSearchFound { queries: string[]; results: string[]; cited: string[] }
 
@@ -605,7 +606,7 @@ export interface PersonalRuntimeRunRequest {
   caps: { maxTurns: number; wallClockSeconds: number; idleSeconds: number; maxAnswerBytes: number };
   /** The model the run was sent with (F-027 AST-11), for the CLI's own model option; absent: the CLI's default. */
   model?: string;
-  /** The CLI keeps its own web search (#1065, C-29): Claude Code's `WebSearch`, Codex's standalone web search. */
+  /** The CLI keeps its own web search (#1065, C-29): Claude Code's `WebSearch`, Codex's web search on OpenAI's cached index. */
   webSearch?: true;
 }
 

@@ -224,7 +224,7 @@ export function personalRunRows(db: DbExecutor) {
     addWebSearch: (runId: string, found: { queries: string[]; results: string[]; cited: string[] }) => personalRunWebReadRows(db).addSearch(runId, found),
     startWebSearch: (runId: string, query: string) => personalRunWebReadRows(db).startSearch(runId, query),
     settleWebSearch: (id: string, results: string[], queries?: string[]) => personalRunWebReadRows(db).settleSearch(id, results, queries),
-    addPrivateText: (runId: string, body: string) => personalRunWebReadRows(db).addPrivateText(runId, body),
+    addPrivateText: (runId: string, kept: { body: string; addresses: string[] }) => personalRunWebReadRows(db).addPrivateText(runId, kept),
 
     // A run in a direct message or a chat reads no task graph and holds no lock (#842); one in a space holds its graph after the owner's lock (#921).
     prepareTaskUse: async (projectId: string | null, conversationId: string | null, sources: readonly { type: string; id: string }[] = []) =>

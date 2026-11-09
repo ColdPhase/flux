@@ -11,7 +11,8 @@ import { CLI_PATHS, CODEX_FEATURE_REVIEW, codexRunOverrides } from '../superviso
 //    CODEX_FEATURE_REVIEW (switched off, or kept with a reason). An unknown default-on feature fails.
 // 2. `codex <run overrides> features list`: every feature the review switches off is off.
 // 3. `codex app-server` with the run's overrides: `config/read` reflects them (the blocking preflight's
-//    premise), so effectiveConfigHolds accepts it; and without them it does not.
+//    premise), so effectiveConfigHolds accepts it; and without them it does not. With the web on (#1065)
+//    it reads `web_search: "cached"`, which only the web-on preflight accepts.
 // 4. The app-server client refuses `command/exec` before writing anything.
 // Usage: node check-codex.js [path-to-codex]. Prints one JSON summary; exit 1 on any failure.
 
@@ -59,6 +60,13 @@ try {
   withOverrides.close();
   report.configReadReflectsOverrides = effectiveConfigHolds(read?.config, tools, mcpUrl);
   if (!report.configReadReflectsOverrides) failures.push('config/read does not reflect the -c overrides');
+  // #1065: with the web on, Codex's own search on OpenAI's cached index (`web_search="cached"`), and the preflight accepts exactly that.
+  const webOn = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, person: null, overrides: codexRunOverrides(tools, mcpUrl, RUN_BRIEF, true) });
+  const readOn = await webOn.request('config/read', {}) as { config?: { web_search?: unknown } };
+  webOn.close();
+  report.webSearchWithTheWebOn = readOn?.config?.web_search;
+  if (readOn?.config?.web_search !== 'cached' || !effectiveConfigHolds(readOn?.config, tools, mcpUrl, true)) failures.push('config/read does not reflect web_search="cached"');
+  if (effectiveConfigHolds(readOn?.config, tools, mcpUrl)) failures.push('the web-off preflight accepted the cached search');
   const plain = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, person: null });
   const bare = await plain.request('config/read', {}) as { config?: unknown };
   report.refusedCommandExec = await plain.request('command/exec', { command: ['true'] }).then(() => false, (error: Error) => error.name === 'AppServerMethodRefused');

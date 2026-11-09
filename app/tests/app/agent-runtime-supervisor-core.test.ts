@@ -555,7 +555,7 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.ok(!off.includes('WebSearch'));
     const codex = RUN_TEMPLATES.codex({ ...input, webSearch: true });
     assert.ok(codex.includes('web_search="cached"') && !codex.includes('web_search="disabled"'), 'Codex searches on OpenAI\'s cached index');
-    assert.ok(!codex.some((arg) => /standalone|live|indexed/.test(arg)), 'never live, and not the under-development standalone search');
+    assert.ok(!codex.some((arg) => /standalone|live|indexed/.test(arg)), 'never live or indexed, and no search feature of its own');
     assert.ok(RUN_TEMPLATES.codex(input).includes('web_search="disabled"'), 'with the web off it has none');
   });
 
@@ -578,6 +578,8 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     const item = { id: 'item_3', type: 'web_search', query: 'island ferry', action: { type: 'search', query: 'island ferry', queries: ['island ferry', 'ferry winter'] }, results: [
       { type: 'text_result', ref_id: 'turn0search0', url: 'https://harbour.example/timetable', title: 'Harbour' },
       { type: 'text_result', ref_id: 'turn0view0', url: 'https://evil.example/opened', title: 'Opened' },
+      // A page `web.run` opened, as the real pinned CLI printed it (2026-11-09): its address is its `ref_id`.
+      { type: 'text_result', ref_id: 'https://evil.example/opened-by-url', url: 'https://evil.example/opened-by-url', title: 'Opened' },
       { type: 'image_result', ref_id: 'turn0search1', url: 'https://img.example/a.png' },
       { type: 'text_result', ref_id: 'turn1search4', url: 'javascript:alert(1)' },
       'Links: https://evil.example/planted',

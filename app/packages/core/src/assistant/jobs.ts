@@ -256,7 +256,6 @@ export function createAssistantJobs({ uow, startBackground, now: clock = () => n
         if (enabled && !record.enabled) await acceptNote(ports, principal.id, enablement, input.noteVersion);
         const changedTime = input.schedule !== undefined || input.timeZone !== undefined || (enabled && !record.enabled);
         const nextRunAt = !enabled ? null : changedTime || !record.nextRunAt ? firstRun(merged.schedule, merged.timeZone, at) : record.nextRunAt;
-        // Change edits the wording only: the web addresses a run may read were fixed when the schedule was prepared, from its owner's own words (C-30).
         const updated = await ports.jobs.update(record.id, { ...merged, enabled, nextRunAt, prepared: enabled ? false : record.prepared });
         return viewOne(ports, updated.id, at);
       });

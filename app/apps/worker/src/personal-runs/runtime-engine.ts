@@ -36,7 +36,7 @@ function eventOf(frame: RunFrame): PersonalRuntimeEvent {
 
 /**
  * `webSearch`: the operator's web switch (`FLUX_WEB_READS`, C-29). On, a run keeps the CLI's own web search (#1065, RT-5): Claude Code's
- * `WebSearch`, Codex's standalone web search.
+ * `WebSearch`, Codex's web search on OpenAI's cached index.
  */
 export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database, { webSearch = false }: { webSearch?: boolean } = {}): PersonalRuntime {
   const manager = config.manager;

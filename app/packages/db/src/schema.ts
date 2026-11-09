@@ -1754,12 +1754,14 @@ export const personalRunWebSearches = pgTable('personal_run_web_searches', {
 
 /**
  * 0049 (#1065, C-30): the private Flux text a run has read (its brief, and each Flux tool result), compared-ready, so the server can refuse
- * a web address that carries a fragment of it. Kept only for that check; deleted with the run.
+ * a web address that carries a fragment of it, and the web addresses written in it, which still open. Kept only for that check; deleted
+ * with the run.
  */
 export const personalRunPrivateTexts = pgTable('personal_run_private_texts', {
   id: uuid('id').primaryKey().defaultRandom(),
   runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   body: text('body').notNull(),
+  addresses: text('addresses').array().notNull().default(sql`'{}'`),
   readAt: timestamp('read_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
 }, (table) => [index('personal_run_private_texts_run_idx').on(table.runId)]);
 

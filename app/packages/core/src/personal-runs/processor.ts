@@ -466,7 +466,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         loop = await runToolLoop({
           compute, session, first: ready.fitted.request, price: connection.price!, reservedMicros: run.reservedMicros,
           maxTurns: Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), deadline: now() + wallClockMs, now, gate, signal: controller.signal,
-          // A search's results are the run's readable addresses (C-30) from the moment its response is back, before its calls run.
+          // A search's queries and results are recorded (C-30) from the moment its response is back, before its calls run.
           onWebSearch: (found) => uow.run((ports) => ports.runs.addWebSearch(run.id, boundedWebSearch(found))),
           // Refused by the provider: this run goes on without the search, told so in its brief, and the key's model is not offered it for a while.
           withoutSearch: (request) => ({ ...dropSearch(request), system: brief([], false, false).system }),

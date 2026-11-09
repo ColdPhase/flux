@@ -129,7 +129,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     for (const key of ['shell_tool', 'unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image'])
       assert.equal(run.overrides.features[key], false, `named in #281: ${key}`);
     assert.equal(run.overrides.web_search, 'cached', 'with the web on, Codex\'s own search on OpenAI\'s cached index (#1065)');
-    assert.equal(run.overrides.features.standalone_web_search, undefined, 'and not the under-development standalone search');
+    assert.equal(run.overrides.features.standalone_web_search, undefined, 'and no search feature switched on: the pinned Codex picks its search by model');
     assert.ok(run.prompt.includes(RUNTIME_WEB_SEARCH_LINE) && !run.prompt.includes(NO_WEB_SEARCH_LINE), 'and its brief says it can search');
     assert.equal(run.overrides.cli_auth_credentials_store, 'file');
     assert.equal(run.overrides.analytics.enabled, false);
@@ -301,7 +301,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
       assert.equal(found?.isError, false, found?.text);
       assert.equal(other?.isError, false, other?.text);
       assert.deepEqual([withWords?.isError, refusal(withWords)], [true, 'WEB_READ_PRIVATE_TEXT']);
-      assert.deepEqual((await searchRows(started.run.id))[0], { queries: [query], results: [], cited: [] }, 'the hosted search names its query, no results');
+      assert.deepEqual((await searchRows(started.run.id))[0], { queries: [query], results: [], cited: [] }, 'an item without results (the hosted search) names its query only');
       assert.equal((await row(started.run.id)).answer_body, `The last boat leaves the island at 17:40 (${at('/read/timetable')}).\n\n`
         + `Searched the web for:\n- ${query}\nRead on the web:\n- ${at('/read/timetable')}\n- ${at('/read/second')}`);
     });

@@ -37,7 +37,7 @@ export function personalRunWebReadRows(db: DbExecutor) {
     },
     /**
      * What one provider answer's built-in web search brought to the run (#954, C-30), already normalized and bounded by core
-     * (`boundedWebSearch`). Written by the worker before any tool call of that answer runs, so its results are readable addresses at once.
+     * (`boundedWebSearch`). Written by the worker before any tool call of that answer runs.
      */
     async addSearch(runId: string, found: { queries: readonly string[]; results: readonly string[]; cited: readonly string[] }) {
       if (!found.queries.length && !found.results.length && !found.cited.length) return;
@@ -76,14 +76,17 @@ export function personalRunWebReadRows(db: DbExecutor) {
       for (const row of rows) { for (const query of row.queries) queries.add(query); for (const address of row.cited) if (results.has(address)) cited.add(address); }
       return { queries: [...queries], cited: [...cited] };
     },
-    /** Private Flux text the run read (#1065, C-30), already compared-ready (`keptPrivateText`): what an address may not carry. */
-    async addPrivateText(runId: string, body: string) {
-      if (body) await db.insert(schema.personalRunPrivateTexts).values({ runId, body });
+    /**
+     * Private Flux text the run read (#1065, C-30), as core keeps it (`keptPrivateText`): its comparable form, what an address may not carry,
+     * and the addresses written in it, which still open.
+     */
+    async addPrivateText(runId: string, kept: { body: string; addresses: readonly string[] }) {
+      if (kept.body.trim()) await db.insert(schema.personalRunPrivateTexts).values({ runId, body: kept.body, addresses: [...kept.addresses] });
     },
     /** All the private text the run has read, for the check of an address it asks for. */
-    async privateTexts(runId: string): Promise<string[]> {
+    async privateTexts(runId: string): Promise<{ body: string; addresses: string[] }[]> {
       const p = schema.personalRunPrivateTexts;
-      return (await db.select({ body: p.body }).from(p).where(eq(p.runId, runId))).map((row) => row.body);
+      return db.select({ body: p.body, addresses: p.addresses }).from(p).where(eq(p.runId, runId));
     },
   };
 }

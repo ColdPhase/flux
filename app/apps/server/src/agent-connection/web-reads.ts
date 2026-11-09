@@ -14,8 +14,9 @@ import { WEB_READ_WORDS, type WebReader } from '../web-reads/reader.js';
  *
  * Any public address opens (#1065, founder direction 2026-11-09, C-30), the same on every engine. An address is still a way to send something
  * to a site, so the server refuses one that carries a fragment of private Flux text the run read (`privateFragmentIn`: its brief and its Flux
- * tool results, kept as `personal_run_private_texts`), and says why; the brief tells the agent never to put anything from Flux into an
- * address. What the agent rewrote or encoded can still leave (the founder's accepted risk). Every address the server then sent a request to
+ * tool results, kept as `personal_run_private_texts`; as written, as sent, percent-encoded or in a hex, base64 or base32 run), and each
+ * redirect hop that does, and says why; the brief tells the agent never to put anything from Flux into an address. What the agent rewrote
+ * (other words, hyphens for spaces, pieces under 12 characters) can still leave (the founder's accepted risk). Every address the server then sent a request to
  * is recorded as one of the run's sources, written before the request goes out, the pages that came back and the ones that failed alike, and
  * the run lists them all at its end in Flux's own words: under its answer, or, when it ends without one, in its end line.
  *
@@ -38,19 +39,27 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, cl
       await withAgentConnection(db, claims, 'read', run.projectId, async () => undefined);
       const rows = personalRunWebReadRows(db);
       const asked = normalizedAddress(url) ?? url;
-      // Private Flux text the run read, written into the address as it was (#1065, C-30): refused, and the agent is told which words.
-      const fragment = privateFragmentIn(url, await rows.privateTexts(run.id));
-      if (fragment) throw new DomainError(422, 'WEB_READ_PRIVATE_TEXT', `${WEB_READ_WORDS.private_text} (It carries "${fragment}".)`);
+      // Private Flux text the run read, carried by the address (#1065, C-30): refused before anything is sent or written, and the agent is
+      // told which words. A redirect hop is checked too before it is asked: a site that unpacks an address it was sent cannot pass it on.
+      const texts = await rows.privateTexts(run.id);
+      const refuseCarrying = (address: string) => {
+        const fragment = privateFragmentIn(address, texts);
+        if (fragment) throw new DomainError(422, 'WEB_READ_PRIVATE_TEXT', `${WEB_READ_WORDS.private_text} (It carries "${fragment}".)`);
+      };
+      refuseCarrying(url);
       // Each address is written down, with the run checked live again, BEFORE its request goes out (the first and each redirect hop): a run
       // that is stopped sends nothing more, and one that is stopped while the site answers still lists what it sent.
       const ids: string[] = [];
       let read: Awaited<ReturnType<WebReader['read']>>;
       try {
-        read = await reader.read(url, { beforeRequest: (address) => withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
-          ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked' }));
-        }) });
+        read = await reader.read(url, { beforeRequest: async (address) => {
+          if (address !== asked) refuseCarrying(address);
+          await withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
+            ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked' }));
+          });
+        } });
       } catch (error) {
-        // Stopped between two hops: the ones already sent were redirected on.
+        // Stopped, or a hop refused, between two hops: the ones already sent were redirected on.
         for (const id of ids) await rows.settle(id, { outcome: 'redirected' });
         throw error;
       }

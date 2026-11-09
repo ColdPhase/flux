@@ -289,7 +289,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         })();
       };
       // The CLI searches with its own web search while the operator's web switch is on (#1065, C-29, RT-5): Claude Code's WebSearch,
-      // Codex's standalone web search.
+      // Codex's web search on OpenAI's cached index.
       const webSearch = runtime!.webSearch === true;
       // The CLI's searches are written in the order it wrote them (C-30): the start with its query, then its results and, for Codex, its
       // queries. A failed write only leaves the search unlisted.

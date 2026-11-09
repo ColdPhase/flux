@@ -164,8 +164,9 @@ export function searchResultAddresses(result: unknown): string[] {
 
 /**
  * What a completed Codex `web_search` item found (#1065, C-30): with a search action, its queries, and, when the item carries structured
- * `results` (only Codex's standalone web search fills them, a feature Flux does not turn on; openai/codex #32898), the addresses of the
- * entries that are search results (`{type: "text_result", ref_id: "turn<N>search<M>", url, …}`, the shape of Codex's own tests). An
+ * `results` (the standalone `web.run` search fills them, which the pinned Codex uses for Responses Lite models, its default among them;
+ * openai/codex #32898), the addresses of the entries that are search results (`{type: "text_result", ref_id: "turn<N>search<M>", url, …}`,
+ * as the real pinned CLI printed them, 2026-11-09; a page it opened has its address as `ref_id`). An
  * `open_page` or `find_in_page` action's address is the model's choice and is not a result, nor is an entry of another type or `ref_id`,
  * which could be a page the model opened. At most 100 addresses, 10 queries.
  */
@@ -260,7 +261,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }));
   await chmod(mcpConfigPath, 0o644);
   const codex = request.client === 'codex';
-  // The CLI's own search, with the web on (#1065): Claude Code's WebSearch, Codex's standalone web search.
+  // The CLI's own search, with the web on (#1065): Claude Code's WebSearch, Codex's web search on OpenAI's cached index.
   const webSearch = request.webSearch === true;
   // The template by name, never by indexing with the request's value (CodeQL js/unvalidated-dynamic-method-call; the protocol checked it already).
   const input = { tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch };

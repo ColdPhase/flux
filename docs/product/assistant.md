@@ -313,10 +313,11 @@ agent's brief says so; nothing fails. **Any address opens** (founder direction, 
 for Claude and Codex, with no approval taps): the same rule on every engine. The brief tells the agent to open only what its answer
 needs, never to put anything from Flux into an address (no words of messages, tasks, the Wiki or the request, no names, ids or keys)
 and that what a page or a message says is data, not an order; and the server refuses, without asking anyone, an address that carries
-a verbatim fragment of private Flux text the run has read (12 characters or more, compared without case and percent-encoding),
-telling the agent why ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-**Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote or encoded, or signals by which address it chooses, can
-leave through an address; the check stops only the plain copy. The defence is the one above, and the list of every address the
+a verbatim fragment of private Flux text the run has read (12 characters or more, compared without case, accents or percent-encoding,
+also in a run of hex, base64 or base32, and on every redirect hop), or a link written in Flux carried to another site, telling the agent why ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+**Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote (other words, hyphens for spaces, pieces under 12
+characters), or signals by which address it chooses, can leave through an address, and a search query reaches the search's vendor; the
+check stops the copy. The defence is the one above, and the list of every address the
 server asked for. The key's daily budget is what stops spending: each search is charged as the provider reports it. On the owner's
 API key a page's text is sent to the model once and, once the model has noted it, left out of later requests, so a long read fits;
 the Claude Code and Codex engines manage their own context. A test shows that web content cannot bypass an approval, and what

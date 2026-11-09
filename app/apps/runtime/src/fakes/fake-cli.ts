@@ -492,8 +492,8 @@ async function codexRun(argv: string[]): Promise<number> {
   emit({ type: 'item.completed', item: { id: next(), type: 'reasoning', text: 'Reading the project through Flux.' } });
   /**
    * Codex's own search (#1065): the `web_search` item as the pinned `codex exec --json` prints it, started with no query and completed with
-   * its query and action. Only Codex's standalone web search (a feature Flux does not turn on) adds structured `results`; the fake adds
-   * them when the planned call has some (`text_result` entries, the shape of Codex's own tests, then `rawResults` as they are).
+   * its query and action, and the structured `results` of the standalone `web.run` search when the planned call has some (`text_result`
+   * entries as the real pinned CLI printed them, then `rawResults` as they are; without them, as the hosted search's item has none).
    */
   const webSearch = async (planned: PlannedCall) => {
     const id = next();
