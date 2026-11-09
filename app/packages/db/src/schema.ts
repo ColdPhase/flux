@@ -60,8 +60,8 @@ export const authSessions = pgTable('auth_sessions', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   ipAddress: text('ip_address'),
   userAgent: text('user_agent'),
-  /** Carries, for one INSERT, the password hash a check accepted (migration 0039, #1088); the trigger compares it and clears it, so it is never stored. */
-  passwordChecked: text('password_checked'),
+  /** Carries, for one INSERT, the password version a check accepted (migration 0042, #1088); the trigger compares it and clears it, so it is never stored. */
+  passwordVersionChecked: integer('password_version_checked'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('auth_sessions_user_id_idx').on(table.userId)]);
@@ -78,8 +78,10 @@ export const authAccounts = pgTable('auth_accounts', {
   refreshTokenExpiresAt: timestamp('refresh_token_expires_at', { withTimezone: true }),
   scope: text('scope'),
   password: text('password'),
-  /** Carries, for one UPDATE, the hash the change was checked against (migration 0039, #1088); the trigger compares it and clears it, so it is never stored. */
-  passwordExpected: text('password_expected'),
+  /** Bumped by a trigger on every write of the password (migration 0042, #1088): what a password check is compared with at the write. */
+  passwordVersion: integer('password_version').notNull().default(0),
+  /** Carries, for one UPDATE, the version the change was checked against (migration 0042, #1088); the trigger compares it and clears it, so it is never stored. */
+  passwordVersionExpected: integer('password_version_expected'),
   /** When the identity provider last confirmed this identity (migration 0071, #312); null for a password account. */
   confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

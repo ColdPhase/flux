@@ -83,11 +83,17 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   other sessions, so deleting each other's session first cannot leave it unraised.
   **A password check that a reset overtakes creates nothing** ([#1088](https://github.com/ColdPhase/flux/issues/1088)): Better Auth verifies a password
   against the hash it read and then creates the session (or writes the new hash) without looking again, so a sign-in or a password change that was
-  already running with the old password could outlive a reset, or put the old password back. The check now remembers the hash it accepted for
-  the rest of the request (in memory); the session insert and the password write carry it to the database (`auth_sessions.password_checked`,
-  `auth_accounts.password_expected`, migration 0039), whose triggers refuse them unless the credential account still has that hash, under the
-  row lock, in the same statement. A write with no check (a reset) also ends every session of the account in that statement, because Better Auth
-  deletes the sessions just before it writes. Nothing is kept in the carrying columns (the trigger clears them before the row is stored, and the hash is the value the account row already holds). The hook refuses
+  already running with the old password could outlive a reset, or put the old password back. The check now remembers the hash it accepted, in memory, for
+  the rest of the request. A trigger bumps `auth_accounts.password_version` on every write of the password; the session insert and the password
+  write carry the version of the row whose hash was accepted (`auth_sessions.password_version_checked`, `auth_accounts.password_version_expected`,
+  migration 0042), and the triggers refuse them unless the credential account is still at that version, under the row lock, in the same
+  statement. A write with no check (a reset) also ends every session of the account in that statement, because Better Auth deletes the sessions
+  just before it writes. The carried value is a counter, cleared by the trigger before the row is stored: **a password hash is never a
+  parameter of a statement that can fail on the check** (review of #1093: drizzle quotes a failed statement with its parameters, and Better
+  Auth's router and better-call printed the error, so a refused request put the hash in the API log four times). The write of the new hash
+  itself still carries it, so `onAPIError: { throw: true }` keeps every error that is not Better Auth's own out of both loggers and sends it to
+  Flux's error handler, which logs only the class, the SQLSTATE and the constraint (#991). `check_application.sh` looks for a password hash
+  (`<32 hex>:<128 hex>`, `$argon2`, `$2a$`) in the API, worker and provider-mock logs after the named test files and after the full suite. The hook refuses
   first when the new hash is already visible, with "Invalid email or password"; a request that loses the race inside the statement gets the generic error.
 - **#991, errors.** Every error that is not a domain refusal, a 401 or a Fastify 4xx answers `500` with a class code and logs only the
   redacted error. The encrypted-space rule of F-030 now holds for every space, so there is one path to keep correct, not two.

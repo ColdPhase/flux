@@ -148,6 +148,15 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   const connections = agentOauthUseCases(connectionStore);
   const throttle = createSignInThrottle(db, config.secret);
   const devices = createDevices(db, config.secret, config.publicOrigin.startsWith('https:'));
+  /**
+   * The password version of the account whose hash a check accepted, or null when it has changed since (#1088, migration 0042). Read by user and
+   * compared here: the hash is never a parameter of a statement, because a failed statement is quoted with its parameters in the error.
+   */
+  const acceptedPasswordVersion = async (userId: string, accepted: string): Promise<number | null> => {
+    const [credential] = await db.select({ password: schema.authAccounts.password, version: schema.authAccounts.passwordVersion }).from(schema.authAccounts)
+      .where(and(eq(schema.authAccounts.userId, userId), eq(schema.authAccounts.providerId, 'credential')));
+    return credential?.password === accepted ? credential.version : null;
+  };
   const signIn = createOneClickSignIn(db);
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const unavailable = () => new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
@@ -225,6 +234,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   };
   return betterAuth({
     appName: 'Flux',
+    // An error that is not Better Auth's own (a failed statement: drizzle quotes it with its parameters, which can be a password hash or an
+    // email address) is not logged by Better Auth's router or by better-call, which would print it whole. It goes to Flux's error handler,
+    // which logs only the class, the SQLSTATE and the constraint and answers 500 (#991, ASVS V7.4.1; found in the review of #1093). Better Auth's own
+    // errors (a wrong password, a refused origin) are still answered as they were.
+    onAPIError: { throw: true },
     baseURL: config.publicOrigin,
     basePath: '/api/auth',
     secret: config.secret,
@@ -256,10 +270,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // (`createSessionResolver`), because Better Auth only renews it (#993).
     session: { modelName: 'authSessions', cookieCache: { enabled: false }, expiresIn: config.sessionIdleSeconds,
       updateAge: Math.min(86_400, Math.max(60, Math.floor(config.sessionIdleSeconds / 4))),
-      additionalFields: { passwordChecked: { type: 'string', required: false, input: false, returned: false } } },
+      additionalFields: { passwordVersionChecked: { type: 'number', required: false, input: false, returned: false } } },
     // A new identity never acquires an existing account by asserting the same email (#113).
     account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true },
-      additionalFields: { passwordExpected: { type: 'string', required: false, input: false, returned: false } } },
+      additionalFields: { passwordVersionExpected: { type: 'number', required: false, input: false, returned: false } } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
     plugins: [
       // The OAuth tokens of the MCP plugin are signed with these keys. Better Auth would also sign a JWT on every session read for a
@@ -456,16 +470,13 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       session: {
         create: {
           // A password check that accepted a hash which has since changed (a reset came in between) creates no session: the database refuses
-          // the insert too (migration 0039), this refuses it first and cleanly (#1088).
+          // the insert too (migration 0042), this refuses it first and cleanly (#1088).
           before: async (session) => {
             const checked = signIns.getStore()?.passwordChecked;
             if (!checked) return;
-            const [credential] = await db.select({ password: schema.authAccounts.password }).from(schema.authAccounts)
-              .where(and(eq(schema.authAccounts.userId, session.userId), eq(schema.authAccounts.providerId, 'credential')));
-            if (credential?.password !== checked) {
-              throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
-            }
-            return { data: { passwordChecked: checked } };
+            const version = await acceptedPasswordVersion(session.userId, checked);
+            if (version === null) throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
+            return { data: { passwordVersionChecked: version } };
           },
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
           after: async (session) => {
@@ -489,16 +500,18 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       account: {
         create: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
         update: {
-          before: async (account) => {
+          before: async (account, context) => {
             const data: Record<string, unknown> = withoutIdpTokens(account);
             const facts = signIns.getStore();
-            // A change of the password that follows a password check (change-password) is written only if the hash is still the one that was
-            // accepted, so a reset that came in between is not undone; a reset carries no check and always writes (#1088). The session the
-            // same request creates next is for the new hash.
+            // A change of the password that follows a password check (change-password) is written only if the account is still at the version
+            // the accepted hash had, so a reset that came in between is not undone; a reset carries no check and always writes (#1088). The
+            // session the same request creates next is for the new hash.
             if (typeof data.password === 'string' && facts?.passwordChecked) {
-              const expected = facts.passwordChecked;
+              const userId = context ? (await getSessionFromCtx(context))?.user.id : undefined;
+              const version = userId ? await acceptedPasswordVersion(userId, facts.passwordChecked) : null;
+              if (version === null) throw new APIError('BAD_REQUEST', { message: 'Invalid password', code: 'INVALID_PASSWORD' });
               facts.passwordChecked = data.password;
-              return { data: { ...data, passwordExpected: expected } };
+              return { data: { ...data, passwordVersionExpected: version } };
             }
             return { data };
           },
