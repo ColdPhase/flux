@@ -32,6 +32,8 @@ EASE_OUT = [0.22, 1, 0.36, 1]
 # The wait after which a navigation shows its "Opening …" row, and how long the row stays once shown (app/RouteProgress.tsx).
 ROUTE_PROGRESS_AFTER_MS = 200
 ROUTE_PROGRESS_AT_LEAST_MS = 300
+# What a view still waiting on its reads or its code shows in the content area.
+SETTLED_NOT = '#content [data-pending-view], #content [aria-busy="true"]:not(button, a), #content .is-opening'
 # The root of the view in the content area.
 ROOT = "() => { const first = document.querySelector('#content').firstElementChild; return first ? String(first.className).split(' ')[0] : ''; }"
 
@@ -41,20 +43,25 @@ RECORD = r"""
   window.__frameRecorder = true;
   const BUSY = '[aria-busy="true"]:not(button, a, [role="button"], [role="menuitem"]), .is-opening';
   window.__frames = null;
+  window.__recorderErrors = [];
   document.addEventListener('click', () => { window.__lastClick = performance.now(); }, true);
   const step = () => {
-    if (window.__frames) {
+    // A frame that cannot be read (no content area for a moment) is noted, and the recorder goes on: a recorder that stopped on its first
+    // exception would show the old view for the rest of the switch and no sign that it had stopped (#900).
+    try {
       const pane = document.querySelector('#content');
-      const pictures = [...document.body.children].filter((el) => el.hasAttribute('data-dissolve'));
-      window.__frames.push({
-        t: performance.now(), pictures: pictures.length, busy: !!pane.querySelector(BUSY),
-        ink: (pane.innerText || '').trim().length > 0 || !!pane.querySelector('canvas, svg, [data-pending-view]'),
-        pending: !!pane.querySelector('[data-pending-view]'),
-        empty: !!pane.querySelector('.is-opening') && !(pane.querySelector('.opening') && getComputedStyle(pane.querySelector('.opening')).opacity > 0.9),
-        view: pane.firstElementChild ? String(pane.firstElementChild.className).split(' ')[0] : '', path: location.pathname,
-        progress: !!document.querySelector('.route-progress'), click: window.__lastClick || 0,
-      });
-    }
+      if (window.__frames && pane) {
+        const pictures = [...document.body.children].filter((el) => el.hasAttribute('data-dissolve'));
+        window.__frames.push({
+          t: performance.now(), pictures: pictures.length, busy: !!pane.querySelector(BUSY),
+          ink: (pane.innerText || '').trim().length > 0 || !!pane.querySelector('canvas, svg, [data-pending-view]'),
+          pending: !!pane.querySelector('[data-pending-view]'),
+          empty: !!pane.querySelector('.is-opening') && !(pane.querySelector('.opening') && getComputedStyle(pane.querySelector('.opening')).opacity > 0.9),
+          view: pane.firstElementChild ? String(pane.firstElementChild.className).split(' ')[0] : '', path: location.pathname,
+          progress: !!document.querySelector('.route-progress'), click: window.__lastClick || 0,
+        });
+      } else if (window.__frames) window.__recorderErrors.push('no #content at ' + Math.round(performance.now()));
+    } catch (error) { window.__recorderErrors.push(String(error)); }
     requestAnimationFrame(step);
   };
   requestAnimationFrame(step);
@@ -102,6 +109,10 @@ class ViewSwitch(unittest.TestCase):
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
         page.goto(self.fx.project_url())
         ready(page)
+        # `ready` only says the shell is up. The walk starts from the Conversation once it is in place and nothing waits on its reads: on a
+        # loaded machine (a first page of a cold WebKit, with others running) the first switch used to be made while the page was still
+        # arriving, and the recorder then saw no frame of the view the switch left (#900).
+        page.wait_for_function(f"() => document.querySelector('#content .project-convo') && !document.querySelector({SETTLED_NOT!r})", timeout=20000)
         page.evaluate(RECORD)
         return page
 
@@ -109,7 +120,11 @@ class ViewSwitch(unittest.TestCase):
         """Switches to a view and returns what every frame was made of, from before the click until the switch is over."""
         clear(page)
         before = page.evaluate(ROOT)
-        page.evaluate("() => { window.__frames = []; }")
+        self.assertTrue(before, f"{name}: the walk leaves a view that is in place, not an empty content area")
+        page.evaluate("() => { window.__frames = []; window.__recorderErrors = []; }")
+        # A frame of the view the switch leaves is on record before the click. How often the engine paints is not for the test to assume: a
+        # loaded machine's WebKit can paint the first render of Tasks at a frame every 80 ms or slower, and a fixed wait then saw 3 frames (#900).
+        page.wait_for_function("() => window.__frames.length > 0", timeout=10000)
         project_view(page, name, touch=phone)
         page.wait_for_url(re.compile(PATH[name]))
         # The address changes a moment before the view does: judge from the switch itself.
@@ -117,7 +132,21 @@ class ViewSwitch(unittest.TestCase):
         # Over when the view is in and nothing waits on its reads; the recorder has seen a few frames of that.
         page.wait_for_function("() => !document.querySelector('#content [aria-busy=\"true\"]:not(button, a), #content .is-opening')", timeout=8000)
         page.wait_for_timeout(250)
+        # And the recorder has seen the view that came, in a few frames of it: the switch is judged from frames, so it waits for them, not for a time.
+        page.wait_for_function(f"() => {{ const f = window.__frames; return f.length >= 4 && f[f.length - 1].view === ({ROOT})(); }}", timeout=15000)
         return page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
+
+    @staticmethod
+    def timeline(frames: list[dict]) -> list[tuple]:
+        """The frames as runs of the same state: (ms from the first frame, view, pending, busy, path, frames in the run)."""
+        runs: list[list] = []
+        for frame in frames:
+            state = (frame["view"], frame["pending"], frame["busy"], frame["path"])
+            if runs and runs[-1][1:5] == list(state):
+                runs[-1][5] += 1
+            else:
+                runs.append([round(frame["t"] - frames[0]["t"]), *state, 1])
+        return [tuple(run) for run in runs]
 
     def judge(self, page: Page, frames: list[dict], label: str, dark: bool) -> None:
         self.assertGreater(len(frames), 3, f"{label}: the recorder saw the switch")
@@ -139,7 +168,8 @@ class ViewSwitch(unittest.TestCase):
             self.assertTrue(all(abs(a - b) <= 0.011 for a, b in zip(numbers(fade["easing"]), EASE_OUT)), f"eased {fade['easing']!r}")
         self.assertEqual([entry for entry in views_only if (entry["to"] or {}).get("opacity") == 0], [], f"{label}: nothing fades out: the old view is not held")
         views = [frame["view"] for i, frame in enumerate(frames) if i == 0 or frames[i - 1]["view"] != frame["view"]]
-        self.assertEqual(len(views), 2, f"{label}: the content area goes from the old view to the new once: {views}")
+        self.assertEqual(len(views), 2, f"{label}: the content area goes from the old view to the new once: {views}; the frames: {self.timeline(frames)}; "
+                         f"the recorder could not read: {page.evaluate('window.__recorderErrors')}")
         self.assertNotEqual(views[0], views[1])
 
     def switches(self, *, dark: bool, phone: bool) -> None:
