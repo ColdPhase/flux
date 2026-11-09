@@ -231,8 +231,9 @@ pages, founder direction 2026-11-09, #1113).
   writes the brief and any API process a result; the links come joined by `array_to_string` and are split natively), adds them with a turn
   of the event loop every few thousand links, and keeps the words and the links each once (the links in 256 small maps by hash, never one
   big map, and in one joined block per text, with where each starts and its site). An index goes when its run's rows are gone (the run
-  ended), when its token is refused, after 10 minutes unused, or least recently used first past 16 runs or 48 Mi characters. **One gate**
-  per process runs one check at a time, so parallel reads of a run, or of many, wait their turn.
+  ended), when its token is refused, after 10 minutes unused (a minute's timer checks), or least recently used first past 16 runs or 48 Mi
+  characters. **One gate** per process runs one check at a time, so parallel reads of a run, or of many, wait their turn (first come, first
+  served; fairness across runs is #1144).
   **The check**, per address: an address longer than `ADDRESS_MAX` (2,048) as it is sent, a redirect hop's included, is not checked or asked
   (`AddressTooLong`, `WEB_READ_TOO_LONG`). Otherwise it is read as the server sends it (`new URL(…).href`, the parser drops tabs and line
   breaks) and with its host in Unicode, its host and path and its query each percent-decoded until they stop changing, revealed, folded and
@@ -243,14 +244,14 @@ pages, founder direction 2026-11-09, #1113).
   redirect hop the windows of the written link the read's first address was or began with (`AddressChain`; nothing that opened only by the
   same-site rule carries over). An address equal to a written link opens at once. The rest are hashed (Rabin-Karp, a random multiplier per
   process, a bitmap in front of a `Map`) and the kept text is read once: the link blocks (a window found in a link of the address's own site
-  or a subdomain of it either way, in the host and path, is that link's own text and allowed; one found anywhere else in the query or a
+  or its one named pair (`github.com` ↔ `api.github.com`, `SITE_PAIRS`; no general subdomain rule: a `www.google.com` link may never lend its text to `script.google.com`), in the host and path, is that link's own text and allowed; one found anywhere else in the query or a
   decoded run is refused at once; a host-and-path window found only in another site's link is refused), then the words (any window found is
   refused unless it lies in the host and path and a same-site link holds it). The scan yields every 256 Ki characters and after every block.
   Cost on the review's repro (8 MiB of words and 30,000 links, a 2 KB address of `[a-f2-7]` runs): about 40 ms; #1134's check took 21.8 s.
   Each redirect hop is checked in `beforeRequest` before it is asked, under the same gate and with the read's index; the hop already sent is
   listed as redirected. **A run's change** (`tool-registry.ts`'s effect wrapper, `refusedPrivateAddress`, #1138) is checked the same way: each
   web address its arguments hold (`writtenAddresses`) against the run's index; one that carries private text refuses the change
-  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
+  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. A run's answer and its `<ask>` question are not checked when stored (#1143). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
   search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
   the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote (other words,
   hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before

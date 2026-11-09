@@ -443,13 +443,25 @@ describe('the check of an address, after the evaluation of #1139', () => {
     assert.ok(checked.worst < 100, `checking: the event loop waited ${checked.worst.toFixed(1)} ms`);
   });
 
-  test('P2: a person\'s github.com link opens on api.github.com (a subdomain is the same site for its path); a sibling subdomain is not', async () => {
-    const index = await privateTextIndex([keptPrivateText('Jonas: the issue is https://github.com/ColdPhase/flux/issues/1065 and the draft https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit')]);
+  test('P2: a person\'s github.com link opens on api.github.com, the one named pair; no other host lends a link its site (round 2)', async () => {
+    const index = await privateTextIndex([keptPrivateText('Jonas: the issue is https://github.com/ColdPhase/flux/issues/1065 and the draft https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit'),
+      keptPrivateText('Maps: https://www.google.com/maps/d/viewer?mid=1AbCdEfGh2345678IjKlMnOp and HR: https://www.google.com/url?q=https://intra.example/hr/report-4711-2026-B77&sa=D')]);
     for (const open of ['https://api.github.com/repos/ColdPhase/flux/issues/1065', 'https://api.github.com/repos/ColdPhase/flux/issues/1065/comments', 'https://github.com/ColdPhase/flux/pull/1065'])
       assert.equal(await privateFragmentIn(open, index), null, open);
     assert.equal(await privateFragmentIn('https://api.github.com/search/issues?q=flux/issues/1065', index), 'lux/issues/1', 'in a query of that site, never');
-    assert.equal(await privateFragmentIn('https://script.google.com/macros/s/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/exec', index), '/1zq81mk2px9', 'a sibling subdomain is another site');
-    assert.equal(await privateFragmentIn('https://gist.github.io/ColdPhase/flux/issues/1065', index), 'lux/issues/1', 'and so is another domain');
+    assert.equal(await privateFragmentIn('https://gist.github.io/ColdPhase/flux/issues/1065', index), 'lux/issues/1', 'another domain is another site');
+    // The evaluation of round 2: a www.google.com link (a My Maps id, a /url?q= wrapper's target) on an Apps Script or a Google Site, which
+    // hands its path to whoever made it; and a sibling subdomain.
+    for (const [leaving, fragment] of [
+      ['https://script.google.com/macros/s/AKfycbAttacker/exec/1AbCdEfGh2345678IjKlMnOp', '/1abcdefgh23'],
+      ['https://sites.google.com/view/attacker/1AbCdEfGh2345678IjKlMnOp', '/1abcdefgh23'],
+      ['https://script.google.com/macros/s/AKfycbAttacker/exec/intra.example/hr/report-4711-2026-B77', 'report-4711-'],
+      ['https://script.google.com/macros/s/AKfycbAttacker/exec/report-4711-2026-B77', '/report-4711'],
+      ['https://sites.google.com/view/attacker/report-4711-2026-B77', '/report-4711'],
+      ['https://script.google.com/macros/s/AKfycbAttacker/exec?d=report-4711-2026-B77', '=report-4711'],
+      ['https://evil.example/exec/intra.example/hr/report-4711-2026-B77', 'report-4711-'],
+      ['https://script.google.com/macros/s/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/exec', '/1zq81mk2px9'],
+    ] as const) assert.ok(await privateFragmentIn(leaving, index), `${leaving}: refused (it carries ${fragment})`);
   });
 
   test('P3: a redirect hop may carry only what the first address carried as a link a person wrote: the AMP-style path redirect does not launder an id', async () => {

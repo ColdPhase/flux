@@ -23,6 +23,9 @@ function gated<T>(work: () => Promise<T>): Promise<T> {
   return turn;
 }
 
+/** An index nobody checks against any more (its run ended in this process's silence) still goes after `idleMs`. */
+setInterval(() => evict(Date.now(), ''), 60_000).unref();
+
 function evict(now: number, keep: string) {
   for (const [runId, entry] of cache) if (runId !== keep && now - entry.usedAt > CACHE.idleMs) cache.delete(runId);
   let characters = [...cache.values()].reduce((sum, entry) => sum + entry.index.size, 0);
