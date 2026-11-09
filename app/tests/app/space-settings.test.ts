@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, projectGrantsPath, projectLeavePath, projectPath, type InboxResponse, type NeedsYouResponse, type Project, type SearchResponse } from '@flux/contracts';
+import { INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, projectGrantsPath, projectLeavePath, projectPath, workspaceMemberPath, type InboxResponse, type NeedsYouResponse, type Project, type SearchResponse } from '@flux/contracts';
 import { authorizeDelivery, authorizeEvent } from '@flux/core';
 import { accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
@@ -123,6 +123,32 @@ describe('space settings: who may do what', () => {
     assert.deepEqual(left!.recipients, [`human:${guest.id}`]);
     const [, leftRevoked] = await audiences('project.grant_revoked.v1');
     assert.ok(leftRevoked!.recipients.includes(`human:${spaceAdmin.id}`) && !leftRevoked!.recipients.includes(`human:${guest.id}`) && !leftRevoked!.recipients.includes(`human:${member.id}`));
+  });
+
+  test('a person removed from the company, or who leaves it, hears of it alone, by its id; nobody else ever has that event (#862)', async () => {
+    const [removed, leaver] = await Promise.all([person('set-company-removed'), person('set-company-leaver')]);
+    await addMember(owner, wsId, removed, 'member');
+    await addMember(owner, wsId, leaver, 'member');
+    const space = await newSpace('Left with the company');
+    await grant(spaceAdmin, space.id, removed, 'contributor');
+    const ended = async () => (await pool.query(`SELECT e.id, e.data, e.seq, array_agg(a.recipient ORDER BY a.recipient) AS recipients FROM events e
+      JOIN event_audience a ON a.event_id = e.id WHERE e.kind = 'workspace.access_ended.v1' AND e.object_id = $1 AND e.workspace_id = $1 GROUP BY e.id, e.data, e.seq ORDER BY e.seq`, [wsId]))
+      .rows as { id: string; data: Record<string, unknown>; recipients: string[] }[];
+    const before = (await ended()).length;
+    expectStatus(await owner.browser.request('DELETE', workspaceMemberPath(wsId, removed.id)), 204);
+    expectStatus(await removed.browser.request('GET', projectPath(space.id)), 404);
+    expectStatus(await leaver.browser.request('DELETE', workspaceMemberPath(wsId, leaver.id)), 204);
+    const [byOwner, byThemselves] = (await ended()).slice(before);
+    assert.deepEqual(byOwner!.recipients, [`human:${removed.id}`], 'the removed person alone, by name');
+    assert.deepEqual(byThemselves!.recipients, [`human:${leaver.id}`], 'and the person who left, for their other tabs');
+    assert.deepEqual([byOwner!.data, byThemselves!.data], [{}, {}], 'ids only');
+    const event = { kind: 'workspace.access_ended.v1', workspaceId: wsId, objectId: wsId };
+    assert.equal(await authorizeDelivery({ kind: 'human', id: removed.id }, event, accessReader(db)), true, 'the stream delivers it from their own row, though they are no longer a member');
+    assert.equal(await authorizeEvent({ kind: 'human', id: removed.id }, event, accessReader(db)), false, 'an audience or an event looked up by id (a cursor) still needs the company');
+    assert.equal(await authorizeDelivery({ kind: 'human', id: removed.id }, { ...event, kind: 'workspace.member_removed.v1' }, accessReader(db)), false, 'no other event of the company');
+    assert.equal(await authorizeDelivery({ kind: 'agent', id: randomUUID() }, event, accessReader(db)), false);
+    // Nobody else holds a row of it (the audiences above), so no replay from any cursor gives it to them; a cursor that names it needs the company.
+    assert.equal(await authorizeEvent({ kind: 'human', id: member.id }, event, accessReader(db)), true, 'a member still reads the company, so an id lookup is the ordinary rule');
   });
 
   test('delete: a space admin and a company admin; not a member, a guest, an outsider or a stranger; everything in it is erased', async () => {

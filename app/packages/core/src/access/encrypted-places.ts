@@ -1,7 +1,7 @@
 import type { WorkspaceRole } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Executor, Principal } from '../types.js';
-import { eventPorts } from './common.js';
+import { eventPorts, recordAccessEnded } from './common.js';
 import { ConflictError } from './errors.js';
 import { isManager, isUuid } from './policy.js';
 import type { AccessPorts } from './repositories.js';
@@ -85,4 +85,5 @@ async function leaveEncryptedSpace(principal: Principal, spaceId: string, userId
   await workspaces.recordRemoved(spaceId, userId, principal.id);
   if (sealedChange) await ports.encryption(tx).recordRemovals(spaceId);
   await recordEvent(eventPorts(ports, tx), principal, spaceId, 'workspace.member_removed.v1', spaceId, { userId });
+  await recordAccessEnded(ports, tx, principal, spaceId, userId);
 }

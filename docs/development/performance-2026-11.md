@@ -150,9 +150,10 @@ a kept read, `leavesReads`, leaves it: where the person stopped reading, which m
 live stream, on a resync, at sign-out, on a refusal that says access changed (401, 404, 410, 423: a locked workspace's
 place then shows its panel; not a 403, which refuses what a role may not do, such as a guest's read of the members), and
 when the browser comes back online or the person comes back to the window; an answer read while a write ran is not kept.
-Entering a space reads the space itself (`fresh`), never a kept answer, and the views' own loaders join that read: a person
-removed from the company, or from an encrypted space, gets no event, and Back into the space must say it is no longer
-available (#592). A person removed from a space also hears of it: `project.access_ended.v1` reaches them alone, by the space's
+Entering a space reads the space itself (`fresh`), never a kept answer, and the views' own loaders join that read, so Back into
+a space a person lost says it is no longer available (#592). A person removed from the company or an encrypted space, or who
+left it elsewhere, also hears of it: `workspace.access_ended.v1` reaches them alone, and their tab forgets every kept answer and
+reads its shell again. A person removed from a space also hears of it: `project.access_ended.v1` reaches them alone, by the space's
 id ([access policy](access-policy.md)), so it leaves their sidebar at once and an open place of it lands on the project list. The
 Inbox, which changes without an event when an item is handled on another device, is kept for one page only (`onePage`): the
 sidebar's count and the page's queue share one read, and the next page reads again. The agents' unread dots are kept as the

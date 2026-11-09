@@ -1,5 +1,6 @@
 import type { WorkspaceRole } from '@flux/contracts';
-import { policyEventPorts } from '../events.js';
+import { randomUUID } from 'node:crypto';
+import { policyEventPorts, principalKey } from '../events.js';
 import type { Executor, Principal } from '../types.js';
 import { ForbiddenError } from './errors.js';
 import type { Actor } from './policy.js';
@@ -16,6 +17,17 @@ import type { AccessPorts } from './repositories.js';
 /** Events of these use cases: the access policy decides the audience; `@flux/db` stores (#89). */
 export function eventPorts(ports: Pick<AccessPorts, 'access' | 'events'>, tx: Executor) {
   return policyEventPorts(ports.access(tx), ports.events(tx));
+}
+
+/**
+ * A person's place in a company or an encrypted space ended: removed, or they left (#862). Every other event of it is decided by who can
+ * read it, so they would hear nothing, and their open tabs would keep what they had read. `workspace.access_ended.v1` goes to them alone,
+ * by name, and the stream lets this one kind through from their own row although they are no longer a member (`authorizeDelivery`); their
+ * tabs forget what they kept and read their shell again. It names the workspace and nothing else; the actor is stored, never sent.
+ */
+export async function recordAccessEnded(ports: Pick<AccessPorts, 'access' | 'events'>, tx: Executor, principal: Principal, workspaceId: string, userId: string) {
+  await eventPorts(ports, tx).repository.insert({ id: randomUUID(), kind: 'workspace.access_ended.v1', objectId: workspaceId, actorId: principalKey(principal), data: {}, workspaceId },
+    [principalKey({ kind: 'human', id: userId })]);
 }
 
 /** Only an owner may create, change or remove another owner; admins manage admins, members and guests. */

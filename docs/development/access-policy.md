@@ -424,11 +424,15 @@ Events recorded before migration 0004 have no audience rows and are not replayed
 `project.access_ended.v1` for the person whose grant went, alone and by name (`recordGrantRevoked`; not when they still open
 the space through the company), so their open tabs forget what they kept of the space, drop it from the sidebar and leave an
 open place of it for the project list (#592). The stream's final check of a recipient's own audience rows is
-`authorizeDelivery`: `authorizeEvent`, or `project.access_ended.v1` for an active person of the company; only the person it was
-written for has a row of that kind. Like every stream event it names the kind, the company and the space's id, nothing else.
+`authorizeDelivery`: `authorizeEvent`, or `project.access_ended.v1` for an active person of the company, or
+`workspace.access_ended.v1` (below); only the person each was written for has a row of either kind. Like every stream event
+it names the kind, the company and the space's id, nothing else.
 Audiences and an event looked up by id (a `?cursor=` that is an event id, the return view) still use `authorizeEvent` alone.
-Removal from the company sends the person no event they can receive; entering a space reads the space itself, never a kept
-answer, so that path is covered by the read (`projectShellLoader`).
+Leaving, or being removed from, a company or an encrypted space (`removeMember`, and the encrypted spaces a person leaves
+with the company) records `workspace.access_ended.v1` for that person alone, by name (`recordAccessEnded`); `authorizeDelivery`
+lets it through from their own row although they are no longer a member, and it names the workspace and nothing else (the
+actor is stored, never sent). Their tabs forget every kept answer, read the shell again, and an open place of one of its spaces
+lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`).
 
 The event's object type comes from the first segment of its kind: `workspace`,
 `project`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:

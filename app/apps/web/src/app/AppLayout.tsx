@@ -278,6 +278,13 @@ function AppLayoutContent() {
     // This person was removed from a space, or left it elsewhere (#862): it leaves the sidebar, and a place of it that is open lands on the
     // nearest place with one line saying why (#592).
     if (event.kind === 'project.access_ended.v1') { noteSpaceLost(event.objectId); revalidator.revalidate(); return; }
+    // This person's place in the company or an encrypted space ended (#862): the tab has forgotten what it kept (every event does), reads its
+    // shell again, and a place of one of its spaces that is open lands on the nearest place with one line, as above.
+    if (event.kind === 'workspace.access_ended.v1') {
+      for (const project of projects) if (project.workspaceId === event.objectId) noteSpaceLost(project.id);
+      revalidator.revalidate();
+      return;
+    }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);

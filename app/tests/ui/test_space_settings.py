@@ -435,8 +435,8 @@ class SpaceSettings(unittest.TestCase):
 
 
     def test_10_removed_from_the_company_back_into_a_space_says_so_and_removed_inside_lands_calmly(self) -> None:
-        """#862: removal from the company sends the person no event, so entering a space reads the space itself: Back into its Map lands on
-        the project list with one line (#592), not on what the tab had kept. Someone removed from a space while on its Map lands there too."""
+        """#862: entering a space reads the space itself, so Back into its Map after removal from the company lands on the project list with
+        one line (#592), not on what the tab had kept. Someone removed from a space while on its Map lands there too."""
         self.ensure_world()
         ada = self.page("ada")
         email = f"max.spaceset+{STAMP}@example.test"
@@ -481,7 +481,52 @@ class SpaceSettings(unittest.TestCase):
         self.assertEqual(max_page.context.request.get(f"{ORIGIN}/api/v1/projects/{pid}").status, 404)
         max_page.go_back()
         lands_calmly(max_page)
-        # The company's lists in this tab are read again on the next refresh, as on `main`: removal from the company sends no event here.
+
+
+    def test_11_removal_from_the_company_reaches_an_open_tab_inside_a_space_and_new_message(self) -> None:
+        """#862: removal from the company reaches the person's open tab (`workspace.access_ended.v1`, for them alone): a view of a space they
+        moved to inside it lands on the project list with one line (#592), and New message no longer offers the company's people."""
+        self.ensure_world()
+        ada = self.page("ada")
+        email = f"noa.spaceset+{STAMP}@example.test"
+        self.sign_up("noa", "Noa Lind", email)
+        self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        noa_id = self.api(self.page("noa"), "GET", "/api/v1/me")["user"]["id"]
+        space = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Wheel room", "visibility": "restricted", "people": [noa_id]}, status=201)
+        pid = space["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Clay order arrives Tuesday", "clientMessageId": str(uuid.uuid4())}, status=201)
+        noa = self.page("noa")
+        noa.goto("/")
+        # New message lists the company's people.
+        noa.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages").click()
+        noa.get_by_role("link", name="New message").first.click()
+        people = noa.get_by_role("list", name="People")
+        expect(people.get_by_text("Ada Kowalska")).to_have_count(1)
+        noa.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(noa.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # Into the space, then two views inside it: the space's own read is not made again on these moves.
+        noa.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("^Wheel room")).click()
+        expect(noa.get_by_text("Clay order arrives Tuesday").first).to_be_visible()
+        view_tab(noa, "Tasks")
+        expect(noa).to_have_url(re.compile(rf"/projects/{pid}/tasks"))
+        view_tab(noa, "Map")
+        expect(noa).to_have_url(re.compile(rf"/projects/{pid}/map"))
+        gone = ada.request.delete(f"{ORIGIN}/api/v1/workspaces/{self.ids['workspace']}/members/{noa_id}", headers={"origin": ORIGIN})
+        self.assertEqual(gone.status, 204, gone.text())
+        # Told at once: the open view lands calmly, and the space leaves the lists.
+        expect(noa.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
+        expect(noa).to_have_url(re.compile(r"/projects$"))
+        expect(noa.get_by_text("This place isn’t available")).to_have_count(0)
+        expect(noa.get_by_role("navigation", name="Spaces").get_by_text("Wheel room")).to_have_count(0)
+        # Back into Tasks reads the space and says so too.
+        noa.go_back()
+        expect(noa.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
+        expect(noa).to_have_url(re.compile(r"/projects$"))
+        # New message no longer offers the company's people.
+        noa.get_by_role("navigation", name="Messages").get_by_role("link", name="Messages").click()
+        noa.get_by_role("link", name="New message").first.click()
+        expect(noa.locator("#content").get_by_role("heading", name="New message")).to_be_visible()
+        expect(noa.get_by_text("Ada Kowalska")).to_have_count(0)
 
 
 if __name__ == "__main__":

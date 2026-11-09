@@ -365,16 +365,20 @@ export async function authorizeEvent(principal: Principal, event: EventRef, read
 }
 
 /**
- * The stream's final check of one of the recipient's own audience rows: `authorizeEvent`, except that `project.access_ended.v1` reaches
- * the person it was written for although they can no longer read the space (#862). Only that person ever has a row of this kind (it is
- * written for them by name when their grant goes, `recordGrantRevoked`), so their open tabs forget what they kept of the space and drop
- * it from the sidebar at once; the event says which space and nothing else. Only for delivery from the recipient's own rows: an audience
- * is decided, and an event looked up by id, with `authorizeEvent` alone.
+ * The stream's final check of one of the recipient's own audience rows: `authorizeEvent`, except for the two events that tell a person
+ * their place ended (#862), which reach them although they can no longer read what the event names. Only that person ever has a row of
+ * either kind, written for them by name, and each names the place and nothing else:
+ * - `project.access_ended.v1`, when their grant to a space goes (`recordGrantRevoked`), while they are still in the company;
+ * - `workspace.access_ended.v1`, when they leave or are removed from a company or an encrypted space (`recordAccessEnded`), so they are
+ *   no longer a member of it.
+ * Their open tabs forget what they kept and read their shell again. Only for delivery from the recipient's own rows: an audience is
+ * decided, and an event looked up by id, with `authorizeEvent` alone.
  */
 export async function authorizeDelivery(principal: Principal, event: EventRef, reader: AccessReader): Promise<boolean> {
   if (await authorizeEvent(principal, event, reader)) return true;
-  return event.kind === 'project.access_ended.v1' && principal.kind === 'human' && !!event.workspaceId && isUuid(event.objectId)
-    && (await reader.loadActor(principal, event.workspaceId)).active;
+  if (principal.kind !== 'human' || !event.workspaceId || !isUuid(event.objectId)) return false;
+  if (event.kind === 'workspace.access_ended.v1') return event.objectId === event.workspaceId;
+  return event.kind === 'project.access_ended.v1' && (await reader.loadActor(principal, event.workspaceId)).active;
 }
 
 const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
