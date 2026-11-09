@@ -480,6 +480,9 @@
                 "type": "null"
               }
             ]
+          },
+          "via": {
+            "type": "string"
           }
         },
         "required": [

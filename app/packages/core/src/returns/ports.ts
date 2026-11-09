@@ -63,6 +63,8 @@ export interface ReturnDecision {
 export interface ReturnMessage {
   attachmentCount?: number;
   id: string; projectId: string; conversationId: string; author: ActorRef; body: string; sequence: number; createdAt: Date;
+  /** The client or assistant that posted for its author ("Ada · via Claude Code"): the summary names it, as the message does. */
+  via?: string | null;
 }
 export interface ReturnConversation { id: string; projectId: string; createdBy: ActorRef; opening: string }
 export interface ReturnMaterial { id: string; projectId: string; title: string; version: number }

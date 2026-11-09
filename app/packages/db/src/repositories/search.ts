@@ -86,6 +86,8 @@ export interface SearchRowRecord {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
+  via?: string | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
@@ -202,7 +204,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, length(h.body) > 0 AS has_body,
+      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, coalesce(pmv.via, dmv.via) AS via, length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
@@ -216,6 +218,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN workspaces w ON w.id = h.workspace_id
     LEFT JOIN auth_users au ON h.author_kind = 'human' AND au.id = h.author_id
     LEFT JOIN agents ag ON ag.id = (CASE WHEN h.author_kind = 'agent' THEN h.author_id::uuid END)
+    LEFT JOIN project_messages pmv ON pmv.id = (CASE WHEN h.kind = 'message' THEN h.object_id::uuid END)
+    LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
     LEFT JOIN project_work_items wi ON h.kind = 'work' AND wi.id = h.object_id::uuid
@@ -227,7 +231,7 @@ interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
   current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
-  author_kind: 'human' | 'agent' | null; author_id: string | null;
+  author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
 
@@ -329,6 +333,7 @@ export function searchRows(db: SearchExecutor) {
         snippet: row.body_headline ? highlightParts(row.body_headline) : null,
         hasBody: row.has_body,
         authorName: row.author_name,
+        via: row.via,
         author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
         at: row.at instanceof Date ? row.at : new Date(row.at),
       }));

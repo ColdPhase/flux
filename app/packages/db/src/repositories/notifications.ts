@@ -199,7 +199,7 @@ export function notificationFactRows(db: DbExecutor) {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
+        authorName: agent?.name ?? null, via: message.via ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };
     },
@@ -214,7 +214,7 @@ export function notificationFactRows(db: DbExecutor) {
       const [dm] = await openRows(db, 'dms', [row.dm]);
       return {
         id: message!.id, workspaceId: dm!.workspaceId, dmId, kind: dm!.kind as 'pair' | 'group', title: dm!.title,
-        authorId: message!.authorId, body: message!.body, participantIds: participants.map((item) => item.id),
+        authorId: message!.authorId, via: message!.via ?? null, body: message!.body, participantIds: participants.map((item) => item.id),
       };
     },
     async work(workId: string) {

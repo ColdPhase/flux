@@ -4,7 +4,7 @@ import { before, beforeEach, describe, test } from 'node:test';
 import * as Y from 'yjs';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
-  NEEDS_YOU_PATH, personalRunTokenPath,
+  NEEDS_YOU_PATH, personalRunTokenPath, projectExportPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
@@ -533,11 +533,22 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.deepEqual([row.author_id, row.author_agent_id, row.via, row.created_by, row.created_by_agent_id], [owner.id, null, 'Test client', owner.id, null]);
     const mine = await post('flux_reply_in_conversation', { conversationId: started.conversationId, message: { body: 'My own follow-up' } });
     assert.deepEqual((await pool.query(`SELECT author_id, via FROM project_messages WHERE id = $1`, [mine.messageId])).rows[0], { author_id: owner.id, via: 'Test client' });
-    // A person it mentions is told by the owner's name, as for the owner's own message, not by an agent's.
-    const mentioning = await post('flux_reply_in_conversation', { conversationId: started.conversationId, message: { body: '@ac-jonas the probes are calibrated' } });
-    const told = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string; reason: string; url: string | null }[] }).items
+    // The mark goes with the message everywhere it is named (the review of #1105): the person it mentions is told "Ada · via Test client mentioned
+    // you" (the Inbox item and the push have that title), flagged as AI-origin; search, "While you were away" and the export name it the same way.
+    const mentioning = await post('flux_reply_in_conversation', { conversationId: started.conversationId, message: { body: '@ac-jonas the probes are calibrated zebrafish' } });
+    const told = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; title: string; reason: string; url: string | null }[] }).items
       .find((item) => item.url?.endsWith(mentioning.messageId))), 'Jonas\'s mention');
-    assert.deepEqual([told.title, told.reason], ['ac-ada mentioned you in Lamp sensor', 'mention']);
+    assert.deepEqual([told.title, told.reason], ['ac-ada · via Test client mentioned you in Lamp sensor', 'mention']);
+    assert.equal((await pool.query(`SELECT ai_origin FROM notifications WHERE id = $1`, [told.id])).rows[0].ai_origin, true, 'the notice is AI-origin, so it is hidden while AI is off in the space');
+    const found = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', `/api/v1/search?q=zebrafish`), 200) as { items: { id: string; author: string | null }[] }).items
+      .find((item) => item.id.endsWith(mentioning.messageId))), 'the search result');
+    assert.equal(found.author, 'ac-ada · via Test client');
+    const away = await waitFor(async () => ((expectStatus(await peer.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as { items: { actor: string | null; text: string }[] }).items
+      .find((item) => item.text.includes('zebrafish'))), 'the "While you were away" item');
+    assert.deepEqual([away.actor, away.text.startsWith('ac-ada · via Test client asked you: ')], ['ac-ada · via Test client', true]);
+    const exported = expectStatus(await owner.browser.request('GET', projectExportPath(place.id)), 200) as { conversations: { messages: { id: string; via?: string; author: { kind: string } }[] }[] };
+    const exportedMessage = exported.conversations.flatMap((conversation) => conversation.messages).find((message) => message.id === mentioning.messageId)!;
+    assert.deepEqual([exportedMessage.author.kind, exportedMessage.via], ['human', 'Test client'], 'the export keeps who it was posted through');
     // A task's discussion is the agents' own talk: the line is the agent's, with its change line and its owner's unconditional delete (C-51, TA-3).
     const item = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Talk about the lamp driver' } }), 201) as { id: string };
     const root = expectStatus(await owner.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Who looks at it?', clientMessageId: randomUUID() } }), 201) as { conversationId: string };

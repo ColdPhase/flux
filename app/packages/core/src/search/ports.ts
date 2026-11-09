@@ -63,6 +63,8 @@ export interface SearchRow {
   snippet: SearchText | null;
   hasBody: boolean;
   authorName: string | null;
+  /** The client or assistant a message was posted through, for the author's line ("Ada · via Claude Code"). */
+  via?: string | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
   at: Date;
 }
