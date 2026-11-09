@@ -3,6 +3,7 @@
 // Flux, not the agent, checks that both owners are among the task's people, runs the other agent on it, posts both in the
 // discussion and gives the asker the answer. The block is data an agent wrote, never an instruction to anyone.
 
+import { joinsAddress } from '../personal-runs/web-addresses.js';
 import { WEB_SOURCES_HEADINGS } from '../personal-runs/web-sources.js';
 
 /** The most questions in a row before the exchange goes back to the people: a technical bound nobody meets in normal use. */
@@ -29,7 +30,9 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
   const end = text.indexOf(CLOSE, start + OPEN.length);
   // An unfinished block asks nothing and is not posted, and what Flux appended after it is not lost with it: the addresses the run asked for.
   if (end < 0) return { body: (text.slice(0, start).trimEnd() + sourcesAfter(text, start)).trim(), ask: null };
-  const body = (text.slice(0, start) + text.slice(end + CLOSE.length)).trim();
+  // The block taken out never joins the text on its sides into a web address that was not there (#1149): then a line break stands in its place.
+  const joined = text.slice(0, start) + text.slice(end + CLOSE.length);
+  const body = (joinsAddress(text, joined) ? `${text.slice(0, start)}\n${text.slice(end + CLOSE.length)}` : joined).trim();
   try {
     const raw = JSON.parse(text.slice(start + OPEN.length, end)) as { agent?: unknown; owner?: unknown; question?: unknown };
     const agent = typeof raw.agent === 'string' ? raw.agent.trim() : '';

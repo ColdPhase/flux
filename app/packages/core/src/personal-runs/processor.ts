@@ -13,7 +13,7 @@ import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
-import { answerWithoutPrivateAddresses } from './answer-addresses.js';
+import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { boundedWebSearch, keepPrivateText } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
@@ -311,8 +311,6 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
 
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
-    // An address in the answer that carries private text the run read is left out before the answer is stored (#1143, C-30).
-    if (result?.kind === 'completed' && !early) result = { ...result, text: await answerWithoutPrivateAddresses(uow, runId, result.text) };
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
@@ -347,7 +345,10 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
       const redacted = redactSecrets(result.text);
       const parsed = parseOutput(redacted.text, sources);
-      parsed.body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, parsed.body));
+      // The answer's final text, cleaned while the run's kept text still exists (#1143, #1149, C-30): after its marks and its schedule block are
+      // taken out (and the schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
+      const cleaner = answerCleaner(() => ports.runs.privateTexts(run.id));
+      parsed.body = await answerWithWebSources(ports, run, await cleaner.cleanAnswer(await answerWithSchedule(ports, run, parsed.body, cleaner)));
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {

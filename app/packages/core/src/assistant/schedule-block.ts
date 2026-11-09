@@ -1,3 +1,4 @@
+import { joinsAddress } from '../personal-runs/web-addresses.js';
 import type { AssistantJobSchedule } from '@flux/contracts';
 
 // "Set up by asking" (F-027 AST-7): in the owner's own request, "every weekday at 9 tell me what's blocked here" makes the
@@ -11,19 +12,22 @@ const BLOCK = /<schedule>([\s\S]*?)<\/schedule>/g;
 const OPEN = /<schedule>[\s\S]*$/;
 
 /** The answer without any schedule block, and the first block that reads as a schedule (the schedule itself is validated when prepared). */
-export function takeScheduleBlocks(answer: string): { text: string; request: ScheduleRequest | null } {
+export function takeScheduleBlocks(answer: string, separator = false): { text: string; request: ScheduleRequest | null } {
   let request: ScheduleRequest | null = null;
+  const gap = separator ? ' ' : '';
   let text = answer.replace(BLOCK, (_match, inner: string) => {
-    if (request) return '';
+    if (request) return gap;
     try {
       const raw = JSON.parse(inner) as Record<string, unknown>;
       const when = raw.when ?? raw.schedule;
       if (typeof raw.text === 'string' && raw.text.trim() && when && typeof when === 'object' && !Array.isArray(when))
         request = { ...(typeof raw.title === 'string' && raw.title.trim() ? { title: raw.title.trim().slice(0, 60) } : {}), text: raw.text, schedule: when as AssistantJobSchedule };
     } catch { /* a malformed block is dropped, never guessed */ }
-    return '';
+    return gap;
   });
   // An answer cut off inside a block leaves no half of it behind.
-  text = text.replace(OPEN, '');
+  text = text.replace(OPEN, gap);
+  // A block taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
+  if (!separator && joinsAddress(answer, text)) return takeScheduleBlocks(answer, true);
   return { text: text.trim(), request };
 }

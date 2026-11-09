@@ -1,4 +1,4 @@
-import { AddressTooLong, DomainError, PrivateTextIndex, privateFragmentIn, writtenAddresses, type AddressChain } from '@flux/core';
+import { AddressTooLong, addressChain, DomainError, PrivateTextIndex, privateFragmentIn, writtenAddresses, type AddressChain } from '@flux/core';
 import { personalRunWebReadRows, type DbExecutor } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -96,19 +96,24 @@ export async function checkRunAddress(db: DbExecutor, runId: string, address: st
 
 /**
  * The first web address written in a change's text that carries private text the run read (#1138, C-30), and the fragment it carries;
- * null when none does. A link a person wrote, copied as it is, passes; so a later read of what the run wrote cannot pass a copy as one. An
- * address longer than a web address may be cannot be read later, and is not checked.
+ * null when none does (a `null` fragment: one too long to be read). A link a person wrote, copied as it is, passes; so a later read of what
+ * the run wrote cannot pass a copy as one.
  */
-export async function privateAddressWritten(db: DbExecutor, runId: string, text: string): Promise<{ address: string; fragment: string } | null> {
+export async function privateAddressWritten(db: DbExecutor, runId: string, text: string): Promise<{ address: string; fragment: string | null } | null> {
   const addresses = writtenAddresses(text);
   if (!addresses.length) return null;
   return gated(runId, async () => {
     const index = await synced(db, runId);
     for (const address of addresses) {
       try {
-        const fragment = await privateFragmentIn(address, index);
+        // What a run writes may carry a link's text only as that link or after it, never by its site's path rule (#1149, C-30).
+        const fragment = await privateFragmentIn(address, index, addressChain(), { sameSitePaths: false });
         if (fragment) return { address, fragment };
-      } catch (error) { if (!(error instanceof AddressTooLong)) throw error; }
+      } catch (error) {
+        // Too long to be read (#1149): a later cut of the text could shorten it into one that reads, so it is not written either.
+        if (!(error instanceof AddressTooLong)) throw error;
+        return { address, fragment: null };
+      }
     }
     return null;
   });
@@ -126,6 +131,8 @@ function argumentText(value: unknown, into: string[] = []): string[] {
 export async function refusedPrivateAddress(db: DbExecutor, runId: string, args: Record<string, unknown>) {
   const found = await privateAddressWritten(db, runId, argumentText(args).join('\n'));
   if (!found) return null;
+  if (found.fragment === null) return toolError(new DomainError(422, 'CHANGE_PRIVATE_ADDRESS', 'That change writes a web address longer than one can be '
+    + 'read (2,048 characters as sent). Make the change without it, or with a shorter address.'));
   return toolError(new DomainError(422, 'CHANGE_PRIVATE_ADDRESS', `That change writes a web address that carries words you read in Flux ("${found.fragment}"), `
     + 'and nothing from Flux may go into a web address. Make the change without that address; a link a person wrote can be copied as it is.'));
 }

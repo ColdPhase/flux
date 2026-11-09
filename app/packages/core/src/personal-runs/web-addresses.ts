@@ -242,19 +242,44 @@ export async function keepPrivateText(text: string): Promise<KeptPrivateText> {
 }
 
 /** Where each web address is written in a text, and the address as it would be read: the same addresses `keptPrivateText` cuts out. */
-function addressSpans(text: string): { start: number; end: number; address: string }[] {
-  const spans: { start: number; end: number; address: string }[] = [];
+function addressSpans(text: string): { start: number; end: number; address: string; tooLong?: true }[] {
+  const spans: { start: number; end: number; address: string; tooLong?: true }[] = [];
   const found = (scheme: string) => (raw: string, start: number) => {
+    // An address longer than one can be read is a span too, all of it (#1149): a later cut of the text could shorten it into one that reads.
+    if (raw.length > ADDRESS_MAX) {
+      let end = raw.length;
+      while (end > 0 && MARKS.has(raw[end - 1]!)) end--;
+      spans.push({ start, end: start + end, address: `${scheme}${raw.slice(0, end)}`, tooLong: true });
+      return `${' '.repeat(end)}${raw.slice(end)}`;
+    }
     const kept = withoutTrailingMarks(raw);
     const address = normalizedAddress(`${scheme}${kept}`);
-    if (!address) return raw;
-    spans.push({ start, end: start + kept.length, address });
+    const tooLong = !address && sentLength(`${scheme}${kept}`) > ADDRESS_MAX;
+    if (!address && !tooLong) return raw;
+    spans.push({ start, end: start + kept.length, address: address ?? `${scheme}${kept}`, ...(tooLong ? { tooLong: true as const } : {}) });
     return `${' '.repeat(kept.length)}${raw.slice(kept.length)}`;
   };
   // As in `cutAddresses`: the addresses with a scheme first, then, in what is left, the sites named without one. The blanks keep the positions.
   const rest = text.replace(ADDRESS, (raw, start: number) => found('')(raw, start));
   rest.replace(BARE_SITE, (raw, start: number) => found('https://')(raw, start));
   return spans.sort((one, other) => one.start - other.start);
+}
+
+/** Whether a text names a web address, one too long to be read included: what `withoutPrivateAddresses` would look at. */
+export const holdsAddress = (text: string) => addressSpans(text).length > 0;
+
+/** How long an address is as it would be sent; 0 when it is no web address. */
+function sentLength(address: string): number {
+  try { const url = new URL(address); return url.protocol === 'http:' || url.protocol === 'https:' ? url.href.split('#')[0]!.length : 0; } catch { return 0; }
+}
+
+/**
+ * Whether taking pieces out of `before` (a source mark, a `<schedule>` or `<ask>` block, a citation mark) made `after` name a web address
+ * `before` did not (#1149): two pieces joined into one. The caller then leaves a space where each piece was.
+ */
+export function joinsAddress(before: string, after: string): boolean {
+  const had = new Set(addressSpans(before).map((span) => span.address));
+  return addressSpans(after).some((span) => !had.has(span.address));
 }
 
 /**
@@ -284,9 +309,13 @@ export const ADDRESS_LEFT_OUT = '[address left out]';
 export async function withoutPrivateAddresses(text: string, index: PrivateTextIndex): Promise<{ text: string; left: string[] }> {
   const spans = addressSpans(text);
   if (!spans.length) return { text, left: [] };
-  const refused = new Set<string>();
-  for (const address of new Set(spans.map((span) => span.address))) {
-    try { if (await privateFragmentIn(address, index)) refused.add(address); } catch (error) { if (!(error instanceof AddressTooLong)) throw error; }
+  const refused = new Set<string>(spans.filter((span) => span.tooLong).map((span) => span.address));
+  for (const address of new Set(spans.filter((span) => !span.tooLong).map((span) => span.address))) {
+    // What a run writes keeps only addresses a person's link allows, never one allowed only by its site's path rule (#1149).
+    try { if (await privateFragmentIn(address, index, addressChain(), { sameSitePaths: false })) refused.add(address); } catch (error) {
+      if (!(error instanceof AddressTooLong)) throw error;
+      refused.add(address);
+    }
   }
   if (!refused.size) return { text, left: [] };
   let out = '';
@@ -304,9 +333,8 @@ export async function withoutPrivateAddresses(text: string, index: PrivateTextIn
  * read is refused, so a later read of it cannot pass the check as a link a person wrote.
  */
 export function writtenAddresses(text: string): string[] {
-  const found = new Set<string>();
-  cutAddresses(text, (address) => found.add(address));
-  return [...found];
+  // One too long to be read is named too (#1149): it may not be written, since a later cut of the text could shorten it into one that reads.
+  return [...new Set(addressSpans(text).map((span) => span.address))];
 }
 
 // A rolling hash of 12-character windows (Rabin-Karp): one pass over the run's kept text finds which of the address's windows stand in it,
@@ -319,13 +347,22 @@ const hashOf = (text: string, at: number) => { let hash = 0; for (let i = 0; i <
 const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.length; i++) hash = (Math.imul(hash, BASE) + text.charCodeAt(i)) | 0; return hash; };
 
 /**
- * Object storage's path-style hosts, where the bucket is the path's first part: S3 (`s3.amazonaws.com`, `s3.<region>.amazonaws.com`,
- * `s3-<region>.amazonaws.com`) and Google Cloud Storage (`storage.googleapis.com`).
+ * Object storage's path-style hosts, where the bucket is the path's first part (#1144, #1149; C-30 lists the same): Google Cloud Storage's two
+ * (`storage.googleapis.com`, `storage.cloud.google.com`); every host that starts with `s3.` or `s3-` under Amazon S3 (`amazonaws.com`:
+ * `s3.amazonaws.com`, `s3.<region>…`, `s3-<region>…`, `s3.dualstack.<region>…`), Wasabi (`wasabisys.com`), Backblaze B2
+ * (`backblazeb2.com`) and Scaleway (`scw.cloud`); and a region's own host of DigitalOcean Spaces (`<region>.digitaloceanspaces.com`) and
+ * Akamai/Linode Object Storage (`<region>.linodeobjects.com`).
  */
+const PATH_STYLE_HOSTS = new Set(['storage.googleapis.com', 'storage.cloud.google.com']);
+const PATH_STYLE_S3 = ['amazonaws.com', 'wasabisys.com', 'backblazeb2.com', 'scw.cloud'];
+const PATH_STYLE_REGIONS = ['digitaloceanspaces.com', 'linodeobjects.com'];
 function pathStyleStorage(host: string): boolean {
   // Plain string checks, no pattern with repeated parts: a host is the agent's to choose (CodeQL: no backtracking on `s3------…`).
   const name = host.replace(/:\d+$/, '');
-  return name === 'storage.googleapis.com' || (name.endsWith('.amazonaws.com') && (name.startsWith('s3.') || name.startsWith('s3-')));
+  const labels = name.split('.').length;
+  return PATH_STYLE_HOSTS.has(name)
+    || PATH_STYLE_S3.some((domain) => name.endsWith(`.${domain}`) && (name.startsWith('s3.') || name.startsWith('s3-')))
+    || PATH_STYLE_REGIONS.some((domain) => name.endsWith(`.${domain}`) && labels === domain.split('.').length + 1);
 }
 /**
  * The site a compared address without its scheme belongs to: its host (and port); on object storage's path-style hosts, the host and the bucket (#1144):
@@ -586,7 +623,11 @@ function linkAt(starts: readonly number[], at: number): number {
  *   collect it (`docs.google.com/forms/…/formResponse?entry.1=<id>`).
  * Its work is bounded by `ADDRESS_MAX` and one pass over the kept text, and it yields to the event loop as it goes. Throws `AddressTooLong`.
  */
-export async function privateFragmentIn(address: string, index: PrivateTextIndex, chain: AddressChain = addressChain()): Promise<string | null> {
+export async function privateFragmentIn(address: string, index: PrivateTextIndex, chain: AddressChain = addressChain(),
+  options: { sameSitePaths?: boolean } = {}): Promise<string | null> {
+  // `sameSitePaths: false` (#1149): what a run writes into Flux (an answer, a change) may carry a link's text only as that link or after it,
+  // never by its site's path rule alone, so a later run that reads it as a written link gives it nothing the writing run did not have.
+  const sameSitePaths = options.sameSitePaths ?? true;
   const readings = readingsOf(address);
   if (!readings) return null;
   const named = index.writtenPrefix(readings.compared);
@@ -621,7 +662,8 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
     const refused = await read(block.text, (candidate, at) => {
       if (candidate.where & ELSEWHERE) return candidate.window;
       const linkSite = block.sites[linkAt(block.starts, at)]!;
-      if (candidate.where & IN_HOST ? sameSite(hostOf(site), hostOf(linkSite)) : sameSite(site, linkSite)) candidate.sameSite = true; else elsewhere.add(candidate);
+      // A window of the address's own host is that host's text, shared by every page of it; a path's window is a link's own text.
+      if (candidate.where & IN_HOST ? sameSite(hostOf(site), hostOf(linkSite)) : sameSitePaths && sameSite(site, linkSite)) candidate.sameSite = true; else elsewhere.add(candidate);
       return null;
     });
     if (refused) return refused;
