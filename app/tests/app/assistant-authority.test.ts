@@ -192,6 +192,10 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     await live.call('flux_update_task', { workId: unblock.id, expectedVersion: unblockNow.version, changes: { status: 'in_progress' } });
     await live.call('flux_rename_map', { mapId: map.id, expectedVersion: map.version, title: 'Sensor rig map' });
     await scene.complete(live.runId);
+    // Making a task wait for Jonas would tell him: it waits for the owner's OK (#1089), and the OK makes it, as the run's own change.
+    const waiting = (await changesOf(live.runId)).filter((row) => row.state === 'waiting');
+    assert.deepEqual(waiting.map((row) => [row.operation, row.wait_reason]), [['work.update', 'tells']]);
+    expectStatus(await run('POST', assistantChangeActionPath(waiting[0]!.id, 'apply'), scene.owner), 200);
     assert.deepEqual((await scene.taskRow(criteria.id)).criteria, ['Calibrated at two depths', 'Logged in the Wiki']);
     assert.deepEqual(await scene.dependencies(dependent.id), [prerequisite.id]);
     assert.deepEqual([(await scene.taskRow(blockedTask.id)).status, (await scene.taskRow(blockedTask.id)).waiting_for_user_id], ['blocked', scene.peer.id]);

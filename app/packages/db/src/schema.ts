@@ -1801,7 +1801,7 @@ export const assistantProposals = pgTable('assistant_proposals', {
 
 /** The agent change log (migration 0104, F-027 A3 #403; reasons and states of 0003, F-036 #855): one row per effect call of a run. */
 export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'skipped', 'undone', 'refused'] as const;
-export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others'] as const;
+export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others', 'tells'] as const;
 export const assistantChanges = pgTable('assistant_changes', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),

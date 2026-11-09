@@ -137,6 +137,11 @@ work there too.
 - **Tasks for other people.** A subtask or task for someone else is a proposal with [Approve],
   [Edit] and [Skip], and Approve all for a group. Tasks for the owner or the owner's agents are
   created directly.
+- **Telling another person.** A server agent's change that would notify someone other than its
+  owner waits too: a task made to wait for them, or a decision or result about their task. Flux
+  would send them its words, and a server agent sends no message to another person by itself
+  ([#1089](https://github.com/ColdPhase/flux/issues/1089)). A local client is its person's own tool
+  and is not held to this (LC-2).
 
 **Never possible.** No tool exists for these, so nothing waits either; the agent can only say it
 in words:
@@ -151,8 +156,9 @@ in words:
   the owner edits the list (AG-1); an agent never adds to it by itself;
 - anything outside its owner's rights. The agent says so; nothing is prepared for or sent to
   another person;
-- posting in a conversation with other people, a space's or a DM; only the owner's Show everyone
-  does that (AG-4);
+- for server agents, posting in a conversation with other people, a space's or a DM; only the
+  owner's Show everyone does that (AG-4). A local client may post in a space's conversations as its
+  person, marked "via Claude Code" or "via Codex" (LC-2, Hubert, 2026-11-08);
 - for server agents, anything outside Flux except reading GitHub and the web (AG-8).
 
 **Waiting items.** A change that waits shows in the task discussion or private conversation

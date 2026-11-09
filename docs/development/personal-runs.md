@@ -250,6 +250,11 @@ Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 
   where Flux puts it: the asker's Show everyone, the task's discussion for a run on a task, the agent's private chat. Every brief of
   a run that can change things says so (`NO_POSTING_LINE`). `agent-runs-post-nowhere.test.ts` has a model obey a message in the
   conversation that tells it to post, and nothing is posted.
+- **No run tells another person (#1089).** A run's change that would notify someone other than its owner waits for the owner's
+  OK with the reason `tells` (AG-3 "Telling another person"): a task created or changed to wait for another person
+  (`waitingFor`, unless it already waited for them), or a decision (`affects`) or result (`work`, `finishes`) linked to a task another
+  person owns. These are the notifications that would carry the agent's words (`toldPerson` in `assistant-changes.ts`). The owner's
+  Approve makes the change and Flux then notifies them. A local client is not held to this (LC-2).
 - **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
   token, lists the tools (MCP 2026-07-28, stateless HTTP) and offers the model only the minted ones; a
   refused call (401/403 or a JSON-RPC error) is an error result; `close` ends the token

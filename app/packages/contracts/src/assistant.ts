@@ -47,10 +47,11 @@ export const ASSISTANT_CHANGE_LIMITS = {
 /** `skipped`: the owner chose Skip (or Keep, for a deletion). */
 export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' | 'skipped' | 'undone' | 'refused';
 /**
- * Why a change waits (F-036 AG-3): the agent's "What it may do" is Ask me first, it deletes something, or it changes another
- * person's thing (including a task for another person). Nothing else waits, and nothing waiting expires.
+ * Why a change waits (F-036 AG-3): the agent's "What it may do" is Ask me first, it deletes something, it changes another
+ * person's thing (including a task for another person), or, for a run, it would tell another person something (`tells`: a task
+ * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
-export type AssistantWaitReason = 'ask' | 'removal' | 'others';
+export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
 export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'result' | 'decision';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */

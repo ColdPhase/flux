@@ -149,7 +149,9 @@ The points of #851, with the later answers applied (point 11 comes from #868):
 9. **Code.** Server agents work only inside Flux, read the connected GitHub repository and read
    the web, and never write to either. Code changes come from the person's local Claude Code or
    Codex over MCP: one sign-in, no scopes or switches, the same "What it may do" row, and "work
-   on #4" from the editor (#859).
+   on #4" from the editor (#859). Being the person's own tool, a local client may post in a space's
+   conversations as the person, marked "via Claude Code" or "via Codex"; server agents never post
+   there (Hubert, 2026-11-08, #1089).
 10. **Notifications.** "Only what needs me" includes agents waiting for you, and Quiet hours is
     one row (#872).
 11. **Blocked.** A task blocked on a person, a decision or another task returns to Doing by
