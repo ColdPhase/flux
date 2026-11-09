@@ -383,6 +383,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(head.locator(".ov-tile")).to_have_text("G")
         expect(head).to_contain_text("Jonas")
         expect(head).not_to_contain_text("Riverside Makers")
+        # #1110: the head names the people it was added to (no "only you two"), and one line says who else can open it.
+        expect(head.locator(".ov-audience")).to_have_text("Jonas, Nia and you")
+        expect(panel.get_by_role("region", name="Space settings", exact=True)).to_contain_text("The company’s owners and admins can open it too.")
+        self.assertEqual(panel.inner_text().lower().count("can open it"), 1, "who can open it is said once")
 
         # AC-3 (#865): the space's current tasks and decision are not repeated here; Tasks and the Inbox hold them.
         text = panel.inner_text()

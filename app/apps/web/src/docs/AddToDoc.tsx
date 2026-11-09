@@ -2,7 +2,7 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { DocSummary, ObjectLink } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Input, Select, Option, useToast } from '../ui';
+import { Button, Input, Select, Option, useToast } from '../ui';
 import { useShellActions, type AddToDocView } from '../app/shellContext';
 import { addDocSection, createDoc, docUrl, getDoc, listProjectDocs } from './api';
 
@@ -78,7 +78,6 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
   const kind = view.from.type === 'result' ? 'result' : 'decision';
   return (
     <form className="details wd" onSubmit={(event) => void submit(event)}>
-      <p className="details__eyebrow wd-eyebrow"><Icon name="doc" size={13} />Add to a Wiki page</p>
       <h3 className="details__title">{view.from.title}</h3>
       <p className="details__lead">{kind === 'decision'
         ? 'The decision appears in the page as one card with its reason. The card keeps itself up to date, so the page never needs rewriting.'

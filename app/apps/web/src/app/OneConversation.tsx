@@ -141,7 +141,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     (target?.querySelector<HTMLElement>('.convo-replies button') ?? target)?.focus({ preventScroll: true });
   }, [thread]);
 
-  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
+  const audience = audienceLine(people, me.user.id);
   const stream = (end: ReactNode) => (
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} end={end} />

@@ -1,0 +1,1 @@
+- On a phone a toast that appears over a sheet whose content is still settling is placed above the content's final position, not where it was a frame earlier, so it no longer covers the sheet's last link ([#1106](https://github.com/ColdPhase/flux/issues/1106)).

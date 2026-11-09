@@ -278,9 +278,12 @@ export interface AddressRepository {
     Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
   /** The same for the address a link goes to, whichever account asks (#1056); `addressHash` is a hash of the limiter's key for the address. */
   reserveAddressSend(addressHash: string, limits: { perWindow: number; windowSeconds: number }):
-    Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
-  /** Gives back one slot of `reserveAddressSend` when the send it was for did not happen (the person's own limit refused it, #1070). */
-  releaseAddressSend(addressHash: string): Promise<void>;
+    Promise<{ allowed: true; window: string } | { allowed: false; retryAfterSeconds: number }>;
+  /**
+   * Gives back one slot of `reserveAddressSend` when the send it was for did not happen (the person's own limit refused it, #1070).
+   * `window` is the one the reservation answered with: a slot of a window that has ended since is not the new window's to give back (#1110).
+   */
+  releaseAddressSend(addressHash: string, window: string): Promise<void>;
 }
 
 export interface VerificationMailer {

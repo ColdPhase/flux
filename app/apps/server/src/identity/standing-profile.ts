@@ -54,7 +54,7 @@ export async function updateStandingProfile(db: Pick<Database, 'transaction'>, u
         eq(schema.authAccounts.userId, userId), eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, profile.subject))).for('share');
       if (!account) return 'subject' as const;
       const [holder] = await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
-        .where(eq(sql`lower(${schema.authUsers.email})`, profile.email));
+        .where(eq(sql`lower(normalize(${schema.authUsers.email}, NFC))`, profile.email.normalize('NFC')));
       if (holder && holder.id !== userId) return 'collision' as const;
       await tx.update(schema.authUsers).set({ email: profile.email, emailVerified: true, updatedAt: now,
         ...(profile.name ? { name: profile.name } : {}) }).where(eq(schema.authUsers.id, userId));

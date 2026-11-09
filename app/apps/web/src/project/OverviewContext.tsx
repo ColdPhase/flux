@@ -23,6 +23,6 @@ export function OverviewContext({ message = false }: { message?: boolean }) {
   return <div className="ov-panel-context" aria-label="Overview context">
     <strong>{shell.project.name}</strong>
     {title ? <span title={title}>{title}</span> : null}
-    <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id, shell.project.visibility === 'workspace')}</small>
+    <small><Icon name={shell.project.visibility === 'workspace' ? 'people' : 'lock'} size={11} />{audienceLine(shell.people, me.user.id)}</small>
   </div>;
 }

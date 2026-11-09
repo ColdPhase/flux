@@ -160,6 +160,13 @@ function useModalLift(active: boolean): { inset: number; movedAt: number } {
         // A few pixels (a control re-rendering in the band) is not a move: a tap aimed at the toast still lands on it.
         setLift((current) => current.inset === inset ? current
           : { inset, movedAt: settled && Math.abs(inset - current.inset) >= MOVE_PX ? now : current.movedAt });
+        // A surface's content that is still moving (a panel taking the place of another enters a few pixels low and settles) is measured
+        // where it is going, not where it was: no DOM change follows its last frame, so measure again when each such motion ends (#1106).
+        for (const animation of document.getAnimations()) {
+          const effect = animation.effect;
+          const target = effect instanceof KeyframeEffect ? effect.target : null;
+          if (animation.playState === 'running' && target?.closest('[aria-modal="true"]') && effect!.getComputedTiming().iterations !== Infinity) animation.finished.then(measure, () => undefined);
+        }
       });
     };
     const observer = new MutationObserver(measure);

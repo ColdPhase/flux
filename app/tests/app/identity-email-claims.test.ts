@@ -34,6 +34,20 @@ async function accountsOf(userId: string) {
 }
 
 describe('an identity whose email another account holds', () => {
+  test('a provider reports the held address with a decomposed letter: it is the same address (#1110)', async () => {
+    const composed = `jos\u00e9-${randomUUID().slice(0, 8)}@acme.test`;
+    const decomposed = composed.replace('\u00e9', 'e\u0301').replace('@acme.test', '@ACME.test');
+    assert.notEqual(composed, decomposed);
+    const holder = await user(composed, true);
+    const claims = createEmailClaims(db);
+    assert.deepEqual(await claims.holder(providerId, 'sub-nfc', decomposed), { kind: 'held' }, 'found under the other form');
+    // The other way: an account stored in the decomposed form is found by the composed one.
+    const stored = `mar\u00eda-${randomUUID().slice(0, 8)}@acme.test`;
+    await user(stored.replace('\u00ed', 'i\u0301'), true);
+    assert.deepEqual(await claims.holder(providerId, 'sub-nfc-2', stored), { kind: 'held' });
+    assert.deepEqual(await accountsOf(holder), []);
+  });
+
   test('a verified account is refused: no claim, no link, the account keeps its address and sessions', async () => {
     const email = `verified-${randomUUID().slice(0, 8)}@acme.test`;
     const holder = await user(email, true);

@@ -299,12 +299,21 @@ test('real agent history reaches bounded helper context, search, export, notific
   const event = (await pool.query(`SELECT id,seq,kind,workspace_id AS "workspaceId",object_id AS "objectId",actor_id AS "actorId",data
     FROM events WHERE data->>'messageId'=$1`, [reply.id])).rows[0] as GeneratorEvent;
   assert.equal(event.actorId, `agent:${agent.id}`);
-  const candidates = await candidatesFor(event, facts);
-  assert.deepEqual(candidates.map((row) => row.userId), [f.writer.id]);
-  assert.match(candidates[0]!.title, /Trial analyst \(agent\)/);
+  // A server agent's line tells nobody but its owner (#1089, AG-4): the person who wrote earlier in the thread is not told, whatever it asks,
+  // and the owner, who took no part in it yet, is not either. (Below, the owner joins and is.)
+  assert.equal(message.onlyNotifies, f.owner.id);
+  assert.deepEqual((await candidatesFor(event, facts)).map((row) => row.userId), []);
   const back = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as ReturnSummary;
   assert.ok(back.items.some((item) => item.kind === 'question' && item.text.includes('Trial analyst') && item.source.type === 'message' && item.source.messageId === reply.id));
   assert.equal(JSON.stringify(back).includes(f.owner.id), false, 'agent owner is not fabricated as the author');
+  // The owner joins the thread: the agent's next question tells the owner, and still not the person who wrote before.
+  expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'I will look at the trial too.', clientMessageId: randomUUID() } }), 201);
+  const next = await taskDiscussionUseCases(db).contribute(principal, f.task.id, { body: 'Did the owner see the trial result?', clientMessageId: randomUUID() });
+  const nextEvent = (await pool.query(`SELECT id,seq,kind,workspace_id AS "workspaceId",object_id AS "objectId",actor_id AS "actorId",data
+    FROM events WHERE data->>'messageId'=$1`, [next.id])).rows[0] as GeneratorEvent;
+  const told = await candidatesFor(nextEvent, facts);
+  assert.deepEqual(told.map((row) => row.userId), [f.owner.id]);
+  assert.match(told[0]!.title, /Trial analyst \(agent\)/);
 });
 
 test('agent first-send rollback is atomic; revoking the agent blocks retries while genuine history stays readable', async () => {

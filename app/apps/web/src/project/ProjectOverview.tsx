@@ -186,7 +186,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
           <span className="ov-tile" aria-hidden="true">{project.name.trim().charAt(0).toUpperCase()}</span>
           <div className="ov-head__b">
             <h3 className="details__title">{project.name}</h3>
-            <p className="ov-audience">{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
+            <p className="ov-audience">{audienceLine(people, me.user.id)}</p>
           </div>
         </header>
       </> : <>

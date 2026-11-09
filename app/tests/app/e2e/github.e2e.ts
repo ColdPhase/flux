@@ -187,23 +187,25 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await memberPage.getByRole('heading', { name: 'Authorize your GitHub account', exact: true }).waitFor();
   await openDetails(memberPage);
   await memberPage.getByRole('complementary', { name: 'Details' }).waitFor();
-  assert.equal(await memberPage.getByRole('link', { name: 'GitHub repositories', exact: true }).count(), 0, 'project management entry is absent for a viewer');
+  assert.equal(await memberPage.getByRole('link', { name: 'GitHub repositories', exact: true }).count(), 0, 'the repositories entry is absent for a member of the space');
   await closeDetails(memberPage);
   assert.equal(await memberPage.getByText('gesture-lamp-firmware', { exact: false }).count(), 0);
   assert.equal(await memberPage.getByRole('link', { name: /Keep a manual off switch/ }).count(), 0);
   await memberPage.getByRole('button', { name: 'Continue to GitHub', exact: true }).click();
-  await memberPage.getByRole('heading', { name: 'Linked pull requests', exact: true }).waitFor();
+  // A member of a space writes in it (two roles since #903, no viewer): the form to link a pull request is theirs, adding repositories is not.
+  await memberPage.getByRole('heading', { name: 'Link an existing pull request', exact: true }).waitFor();
   await memberPage.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(memberPage.getByLabel('Task', { exact: true }), task.id);
   await memberPage.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
-  assert.equal(await memberPage.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 0);
+  assert.equal(await memberPage.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 1, 'a member can link a pull request');
   assert.equal(await memberPage.getByRole('button', { name: 'Choose installation', exact: true }).count(), 0);
   for (const [label, width, height] of [['desktop', 1440, 900], ['tablet', 820, 1180], ['phone', 390, 844]] as const) {
     const target = label === 'desktop' ? memberPage : await (await context(viewer, { viewport: { width, height }, hasTouch: true, isMobile: label === 'phone' })).newPage();
     await target.setViewportSize({ width, height });
-    if (target !== memberPage) { await target.goto(`/projects/${place.id}/github`); await target.getByRole('heading', { name: 'Linked pull requests', exact: true }).waitFor(); await target.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(target.getByLabel('Task', { exact: true }), task.id); }
+    if (target !== memberPage) { await target.goto(`/projects/${place.id}/github`); await target.getByRole('heading', { name: 'Link an existing pull request', exact: true }).waitFor(); await target.getByLabel('Find task',{exact:true}).fill(task.title);await chooseOption(target.getByLabel('Task', { exact: true }), task.id); }
     await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
-    assert.equal(await target.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 0);
-    assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} read-only projection fits`);
+    assert.equal(await target.getByRole('button', { name: 'Verify and link PR', exact: true }).count(), 1);
+    assert.equal(await target.getByRole('button', { name: 'Choose installation', exact: true }).count(), 0, 'adding repositories stays with the space\'s admins');
+    assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} member's projection fits`);
     if (process.env.FLUX_E2E_EVIDENCE_DIR) await target.screenshot({ path: join(process.env.FLUX_E2E_EVIDENCE_DIR, `github-settings-${label}-reader.png`), fullPage: true });
   }
   transport.denied = true; await page.getByRole('button', { name: 'Refresh access', exact: true }).click();

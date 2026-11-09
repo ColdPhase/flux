@@ -461,6 +461,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Olek’s room")).to_be_visible()
         sidebar = page.get_by_role("navigation", name="Spaces")
         expect(sidebar.get_by_role("link", name=re.compile("Olek’s room"))).to_have_count(0)
+        # She is not one of the people it was added to, so its people line does not call her "you" (#1110).
+        expect(page.locator("header.top .top__audience")).to_have_attribute("title", re.compile(r"^Olek"))
+        expect(page.locator("header.top .top__audience")).not_to_have_attribute("title", re.compile(r"\byou\b", re.I))
         page.locator("#thread-composer").fill("/ai What changed here?")
         ask = page.locator("#project-ask")
         expect(ask).to_contain_text("Your assistant works only in spaces you’re in.")
