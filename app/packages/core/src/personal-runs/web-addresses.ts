@@ -218,8 +218,8 @@ class Pacer {
 }
 
 /**
- * `keptPrivateText` for a text of any size, in slices of about 32 KiB cut after a character no address holds (a space, a quote, a bracket),
- * with a turn of the event loop between them (#1136: a 256 KiB tool result of bare site names took about 80 ms in one go).
+ * `keptPrivateText` for a text of any size, in slices of about 32 KiB cut after a character no address holds (a space, a quote, a bracket)
+ * when one is near, with a turn of the event loop between them (#1136: a 256 KiB tool result of bare site names took about 80 ms in one go).
  */
 export async function keepPrivateText(text: string): Promise<KeptPrivateText> {
   if (text.length <= SLICE) return keptPrivateText(text);
@@ -228,8 +228,9 @@ export async function keepPrivateText(text: string): Promise<KeptPrivateText> {
   for (let from = 0; from < text.length;) {
     let to = Math.min(text.length, from + SLICE);
     if (to < text.length) {
-      const stop = text.slice(to, to + SLICE).search(/[\s"'<>]/);
-      to = stop < 0 ? Math.min(text.length, to + SLICE) : to + stop + 1;
+      // A long run with no such character (`a.ab,a.ab,…`) is cut where it is: a link across the cut is kept as two pieces of private text.
+      const stop = text.slice(to, to + 4096).search(/[\s"'<>]/);
+      if (stop >= 0) to += stop + 1;
     }
     const kept = keptPrivateText(text.slice(from, to));
     bodies.push(kept.body);
