@@ -263,6 +263,39 @@ class AssistantChanges(unittest.TestCase):
             self.no_horizontal_scroll(page)
             shot(page, f"assistant-changes-390-{'dark' if dark else 'light'}-waiting")
 
+    def test_09_a_change_that_would_tell_someone_shows_the_words_and_the_person(self) -> None:
+        # #1089: a run's change that would notify another person waits; the owner reads what Flux would send, and to whom, before the OK,
+        # and the Inbox gives each change's own reason, not the sentence about deleting and other people's things.
+        page = self.page()
+        line = "It would notify Jonas Weber: what tells other people waits for your OK."
+        said = "“Order the spare probes” · Needs the budget"
+        tells = self.change(operation="work.create", objectId=None, objectTitle="Order the spare probes", waitReason="tells", phrase="add task", verb="Add",
+                            line=line, tells={"id": "jonas", "name": "Jonas Weber"}, after=said, done="added task Order the spare probes")
+        self.stub_changes(page, [tells], [])
+        self.open_conversation(page)
+        card = page.locator(f'[data-change="{tells["id"]}"]')
+        expect(card).to_contain_text("Assistant wants to add task Order the spare probes")
+        expect(card.locator(".assistant-waiting__said")).to_have_text(f"Jonas Weber would read: {said}")
+        expect(card.locator(".assistant-waiting__why")).to_have_text(line)
+        expect(card.get_by_role("button", name="Edit")).to_have_count(0)
+        self.no_horizontal_scroll(page)
+        shot(page, "assistant-changes-1440-light-tells")
+        inbox_change = {"id": tells["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order the spare probes", "line": line,
+                        "waitReason": "tells", "forPerson": None, "tells": {"id": "jonas", "name": "Jonas Weber"}, "after": said}
+        item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "1 thing waits for you", "detail": "add 1 task",
+                "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+                "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
+                "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "agentName": "Assistant", "summary": "add 1 task", "changes": [inbox_change]}}
+        queue = {"items": [item], "count": 1, "later": 0, "doneToday": 0}
+        page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(queue)))
+        page.goto("/inbox")
+        entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        expect(entry).to_contain_text(f"Add {said}")
+        expect(entry).to_contain_text("tells Jonas Weber")
+        expect(entry.locator(".nyc__reason")).to_have_text(line)
+        expect(entry).not_to_contain_text("Deleting and other people")
+        shot(page, "assistant-changes-1440-light-inbox-tells")
+
     def test_08_a_page_the_assistant_started_has_undo_and_a_refusal_opens_the_page(self) -> None:
         page = self.page()
         calls: list[tuple[str, str]] = []

@@ -252,9 +252,15 @@ Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 
   conversation that tells it to post, and nothing is posted.
 - **No run tells another person (#1089).** A run's change that would notify someone other than its owner waits for the owner's
   OK with the reason `tells` (AG-3 "Telling another person"): a task created or changed to wait for another person
-  (`waitingFor`, unless it already waited for them), or a decision (`affects`) or result (`work`, `finishes`) linked to a task another
-  person owns. These are the notifications that would carry the agent's words (`toldPerson` in `assistant-changes.ts`). The owner's
-  Approve makes the change and Flux then notifies them. A local client is not held to this (LC-2).
+  (`waitingFor`, unless it already waited for them), a new title or blocker on a task that goes on waiting for another person (their
+  Needs-you item shows both), or a decision (`affects`) or result (`work`, `finishes`) linked to a task another person owns. These are
+  the notifications that would carry the agent's words (`toldPerson` in `assistant-changes.ts`). The waiting change shows the person
+  (`tells`) and the words (`after`) on its card and in the Inbox. The owner's Approve makes the change and Flux then notifies them. A
+  local client is not held to this (LC-2).
+- **A server agent's line notifies only its owner (#1089, AG-4).** A message written by an agent that is not a local client (a run's
+  blocker or result line, a task's report from the drain) still shows in the discussion, but the notification generator gives it to
+  nobody but the agent's owner (`ProjectMessageFacts.onlyNotifies`), so an @name in it sends no mention, push or email. A local client's
+  message notifies as before.
 - **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
   token, lists the tools (MCP 2026-07-28, stateless HTTP) and offers the model only the minted ones; a
   refused call (401/403 or a JSON-RPC error) is an error result; `close` ends the token

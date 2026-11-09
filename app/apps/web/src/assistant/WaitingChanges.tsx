@@ -135,6 +135,8 @@ function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
   return (
     <li className="assistant-waiting__card" data-change={change.id}>
       <p className="assistant-waiting__what">{what}</p>
+      {/* What Flux would send the person, before the OK (#1089): the title and blocker, or the decision's or result's title. */}
+      {change.tells && change.after ? <p className="assistant-waiting__said">{change.tells.name} would read: {change.after}</p> : null}
       {change.line ? <p className="assistant-waiting__why">{change.line}</p> : null}
       {editing ? <form className="assistant-waiting__edit" onSubmit={(event) => { event.preventDefault(); onAct(`edit:${change.id}`, async () => { await editChange(change, title.trim()); onEdit(false); }); }}>
         <label className="ui-vh" htmlFor={`edit-${change.id}`}>Task title</label>

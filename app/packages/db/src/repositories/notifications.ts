@@ -184,8 +184,11 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1));
       const earlier = await db.selectDistinct({ authorId: pm.authorId }).from(pm)
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
-      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name }).from(schema.agents)
+      const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
+      // A local client writes as its person and may tell people (LC-2); every other agent's line tells only its owner (#1089, AG-4).
+      const [client] = message.authorAgentId ? await db.select({ id: schema.agentConnections.id }).from(schema.agentConnections)
+        .where(and(eq(schema.agentConnections.agentId, message.authorAgentId), ne(schema.agentConnections.computeSource, 'owner_assistant'))).limit(1) : [];
       const [asked] = await db.select({ userId: schema.agentQuestions.askedUserId, question: schema.agentQuestions.question }).from(schema.agentQuestions)
         .where(eq(schema.agentQuestions.messageId, message.id));
       return {
@@ -194,6 +197,7 @@ export function notificationFactRows(db: DbExecutor) {
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
         authorName: agent?.name ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
+        ...(message.authorAgentId && !client ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };
     },
     async dmMessage(dmId: string, messageId: string) {
