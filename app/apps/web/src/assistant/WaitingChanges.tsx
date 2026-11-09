@@ -8,6 +8,7 @@ import { applyChange, editChange, listConversationChanges, listRunChanges, skipC
 import { RefLink } from '../place/origin';
 import { useKeepFocus } from './useKeepFocus';
 import { ClampedWords } from './ClampedWords';
+import { peopleNamed } from './peopleNamed';
 
 // An agent's message about what it changed, and what waits for its owner (F-036 AG-3, #855; mockup UndoApproval).
 // Everyone who can read the conversation sees the change line with Undo; only the owner sees what waits, and only the
@@ -121,10 +122,12 @@ function ChangeLine({ changes, onChanged, meId, standalone }: { changes: Assista
   );
 }
 
-/** Who would read what, for a change that would notify a person (#1089): "Jonas would read: …", in three lines with "Show all". */
+/** Who would read what, for a change that would notify people (#1089, #1102): "Jonas and Maja would read: …", in three lines with "Show all". */
 function ToldWords({ change }: { change: AssistantChange }) {
-  if (!change.tells || !change.after) return null;
-  return <div className="assistant-waiting__said"><span>{change.tells.name} would read:</span> <ClampedWords text={change.after} /></div>;
+  // A change read before #1102 (a cached page) may carry no list: nobody is named then.
+  const told = change.tells ?? [];
+  if (!told.length || !change.after) return null;
+  return <div className="assistant-waiting__said"><span>{peopleNamed(told)} would read:</span> <ClampedWords text={change.after} /></div>;
 }
 
 /** One waiting change as a card: a deletion asks [Delete] [Keep]; a task for another person [Approve] [Edit] [Skip]. */

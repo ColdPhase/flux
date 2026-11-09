@@ -270,7 +270,7 @@ class AssistantChanges(unittest.TestCase):
         line = "It would notify Jonas Weber: what tells other people waits for your OK."
         said = "“Order the spare probes” · Needs the budget"
         tells = self.change(operation="work.create", objectId=None, objectTitle="Order the spare probes", waitReason="tells", phrase="add task", verb="Add",
-                            line=line, tells={"id": "jonas", "name": "Jonas Weber"}, after=said, done="added task Order the spare probes")
+                            line=line, tells=[{"id": "jonas", "name": "Jonas Weber"}], after=said, done="added task Order the spare probes")
         self.stub_changes(page, [tells], [])
         self.open_conversation(page)
         card = page.locator(f'[data-change="{tells["id"]}"]')
@@ -281,7 +281,7 @@ class AssistantChanges(unittest.TestCase):
         self.no_horizontal_scroll(page)
         shot(page, "assistant-changes-1440-light-tells")
         inbox_change = {"id": tells["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order the spare probes", "line": line,
-                        "waitReason": "tells", "forPerson": None, "tells": {"id": "jonas", "name": "Jonas Weber"}, "after": said}
+                        "waitReason": "tells", "forPerson": None, "tells": [{"id": "jonas", "name": "Jonas Weber"}], "after": said}
         item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "1 thing waits for you", "detail": "add 1 task",
                 "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
                 "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
@@ -303,9 +303,9 @@ class AssistantChanges(unittest.TestCase):
         for phone in (False, True):
             page = self.page(phone=phone)
             proposal = self.proposal("Harmless label task", "Jonas")
-            proposal.update(tells={"id": "maja", "name": "Maja Lind"}, after="“Harmless label task” · Third-person words, ship it now")
+            proposal.update(tells=[{"id": "maja", "name": "Maja Lind"}], after="“Harmless label task” · Third-person words, ship it now")
             told = self.change(operation="work.create", objectId=None, objectTitle="Order the spare probes", waitReason="tells", phrase="add task", verb="Add",
-                               line="It would notify Jonas Weber: what tells other people waits for your OK.", tells={"id": "jonas", "name": "Jonas Weber"},
+                               line="It would notify Jonas Weber: what tells other people waits for your OK.", tells=[{"id": "jonas", "name": "Jonas Weber"}],
                                after=f"“Order the spare probes” · {long_words.strip()}", done="added task Order the spare probes")
             self.stub_changes(page, [proposal, told], [])
             self.open_conversation(page)
@@ -325,9 +325,9 @@ class AssistantChanges(unittest.TestCase):
             shot(page, f"assistant-changes-{'390' if phone else '1440'}-light-tells-both")
 
             inbox = [{"id": proposal["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Harmless label task", "line": "Tasks for other people wait for your OK.",
-                      "waitReason": "others", "forPerson": {"id": "jonas", "name": "Jonas"}, "tells": {"id": "maja", "name": "Maja Lind"}, "after": proposal["after"]},
+                      "waitReason": "others", "forPerson": {"id": "jonas", "name": "Jonas"}, "tells": [{"id": "maja", "name": "Maja Lind"}], "after": proposal["after"]},
                      {"id": told["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order the spare probes", "line": told["line"],
-                      "waitReason": "tells", "forPerson": None, "tells": {"id": "jonas", "name": "Jonas Weber"}, "after": told["after"]}]
+                      "waitReason": "tells", "forPerson": None, "tells": [{"id": "jonas", "name": "Jonas Weber"}], "after": told["after"]}]
             item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "2 things wait for you", "detail": "add 2 tasks",
                     "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
                     "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
@@ -337,7 +337,9 @@ class AssistantChanges(unittest.TestCase):
             page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), (lambda payload: lambda route: route.fulfill(status=200, content_type="application/json", body=payload))(body))
             page.goto("/inbox")
             entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
-            expect(entry).to_contain_text("Add Harmless label task · “Harmless label task” · Third-person words, ship it now")
+            # The title is said once (#1102).
+            expect(entry).to_contain_text("Add “Harmless label task” · Third-person words, ship it now")
+            expect(entry).not_to_contain_text("Add Harmless label task ·")
             expect(entry).to_contain_text("tells Maja Lind")
             expect(entry).to_contain_text("tells Jonas Weber")
             expect(entry.get_by_role("button", name="Show all", exact=True).last).to_be_visible()
@@ -346,6 +348,42 @@ class AssistantChanges(unittest.TestCase):
             self.assertLess(box["height"], 700, f"the Inbox item stays short: {box['height']}")
             self.no_horizontal_scroll(page)
             shot(page, f"assistant-changes-{'390' if phone else '1440'}-light-inbox-tells-both")
+
+    def test_11_long_names_go_under_the_words_on_a_phone_and_everyone_told_is_named(self) -> None:
+        # #1102: at 390 px a change for one person that tells others keeps its words readable: the names go to their own line instead of
+        # squeezing the words to nothing, and a decision about several people's tasks names them all.
+        page = self.page(phone=True)
+        names = [{"id": "a", "name": "Maximiliane Gräfin von Hohenzollern-Sigmaringen"}, {"id": "b", "name": "Bartholomäus Wojciechowski-Kowalczyk"}]
+        changes = [{"id": str(uuid.uuid4()), "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Harmless label task",
+                    "line": "Tasks for other people wait for your OK.", "waitReason": "others",
+                    "forPerson": {"id": "c", "name": "Konstantinopoulos-Papadimitriou Alexandra"}, "tells": names[:1],
+                    "after": "“Harmless label task” · Third-person words, ship it now"},
+                   {"id": str(uuid.uuid4()), "version": 1, "phrase": "propose decision", "verb": "Propose", "objectTitle": "One cable colour",
+                    "line": f"It would notify {names[0]['name']} and {names[1]['name']}: what tells other people waits for your OK.", "waitReason": "tells",
+                    "forPerson": None, "tells": names, "after": "“One cable colour”"}]
+        item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "2 things wait for you", "detail": "add 1 task, propose 1 decision",
+                "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+                "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
+                "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "agentName": "Assistant", "summary": "add 1 task, propose 1 decision", "changes": changes}}
+        body = json.dumps({"items": [item], "count": 1, "later": 0, "doneToday": 0})
+        page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), (lambda payload: lambda route: route.fulfill(status=200, content_type="application/json", body=payload))(body))
+        page.goto("/inbox")
+        entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        expect(entry).to_contain_text("Add “Harmless label task” · Third-person words, ship it now")
+        expect(entry).to_contain_text(f"tells {names[0]['name']} and {names[1]['name']}")
+        card = entry.bounding_box()
+        self.assertIsNotNone(card)
+        for row in entry.locator(".nyc__waits li").all():
+            words = row.locator(".nyc__waits-words").bounding_box()
+            self.assertIsNotNone(words)
+            self.assertGreater(words["width"], 120, f"the words keep their width: {words['width']}")
+            for label in row.locator(".nyc__waits-for").all():
+                box = label.bounding_box()
+                self.assertIsNotNone(box)
+                self.assertGreaterEqual(box["y"], words["y"] + words["height"] - 1, "the names are under the words")
+                self.assertLessEqual(box["x"] + box["width"], card["x"] + card["width"] + 1, "and inside the card")
+        self.no_horizontal_scroll(page)
+        shot(page, "assistant-changes-390-light-inbox-long-names")
 
     def test_08_a_page_the_assistant_started_has_undo_and_a_refusal_opens_the_page(self) -> None:
         page = self.page()

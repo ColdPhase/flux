@@ -133,6 +133,9 @@
 
 /* One agent run's waiting changes (F-036 AG-7, mockup AiPhone): what waits, and for whom. */
 .nyc__waits { display: grid; gap: 4px; margin: 6px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); color: var(--t1); }
-.nyc__waits li { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
-.nyc__waits li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
-.nyc__waits-for { flex: none; color: var(--t3); font-size: var(--fs-xs); }
+.nyc__waits li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; column-gap: 12px; row-gap: 2px; min-width: 0; }
+/* The words keep a readable width; names that do not fit beside them go to the next line instead of squeezing them (#1102). */
+.nyc__waits li > span:first-child { flex: 1 1 18ch; min-width: 0; overflow-wrap: anywhere; }
+.nyc__waits-for { flex: 0 1 auto; min-width: 0; color: var(--t3); font-size: var(--fs-xs); overflow-wrap: anywhere; }
+/* On a phone the names have their own line under the words. */
+@media (max-width: 640px) { .nyc__waits li > span.nyc__waits-words { flex-basis: 100%; } }

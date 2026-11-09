@@ -78,10 +78,12 @@ export interface AssistantChange {
   /** A task proposed for another person: who it is for. [Approve] [Edit] [Skip] (F-036 AG-3). */
   forPerson: { id: string; name: string } | null;
   /**
-   * The person a waiting `tells` change would notify (#1089); `after` then holds the words they would read (the task's title and
-   * blocker, or the decision's or result's title), so the owner sees what Flux would send before the OK.
+   * Everyone a waiting change of a run would notify, other than the person a task is for (`forPerson`): the one a task would wait for,
+   * or the owners of the tasks a decision or result is about (#1089, #1102). Set whatever the change waits for, `others` included; empty
+   * otherwise. `after` then holds the words they would read (the task's title and blocker, or the decision's or result's title), so the
+   * owner sees what Flux would send, and to whom, before the OK.
    */
-  tells: { id: string; name: string } | null;
+  tells: { id: string; name: string }[];
   /** Who approved it ("Approved by Ada"), for a change applied after a wait; who took it back, for an undone one. */
   decidedBy: { id: string; name: string } | null;
   /** Whose agent made it: the message reads "Ada's assistant" for everyone who can read the conversation. */

@@ -255,8 +255,10 @@ Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 
   (`waitingFor`, unless it already waited for them), a new title or blocker on a task that goes on waiting for another person (their
   Needs-you item shows both), or a decision (`affects`) or result (`work`, `finishes`) linked to a task another person owns. These are
   the notifications that would carry the agent's words (`toldPerson` in `assistant-changes.ts`). The waiting change keeps that person
-  (`told_user_id`, migration 0043) and shows them (`tells`) and the words (`after`) on its card and in the Inbox, also when it waits for
-  another reason (a task for Jonas that would tell Maja shows both); long words take three lines and "Show all". The owner's Approve
+  (`told_user_id`, migration 0043) and shows everyone it would tell (`tells`: that person, and for a decision or result every other owner
+  of a task it is about, read when it is shown, #1102) and the words (`after`) on its card and in the Inbox, also when it waits for
+  another reason (a task for Jonas that would tell Maja shows both); long words take three lines and "Show all", and on a phone the
+  names go under the words. The owner's Approve
   makes the change and Flux then notifies them. A local client is not held to this (LC-2).
 - **A server agent's line notifies only its owner (#1089, AG-4).** A message written by an agent that is not a local client (a run's
   blocker or result line, a task's report from the drain) still shows in the discussion, but the notification generator gives it to

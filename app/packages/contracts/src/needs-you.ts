@@ -126,8 +126,8 @@ export interface NeedsYouAssistantChanges {
   summary: string;
   changes: { id: string; version: number; phrase: string; verb: string; objectTitle: string; line: string | null;
     waitReason: AssistantWaitReason | null; forPerson: { id: string; name: string } | null;
-    /** A `tells` change (#1089): who would be notified, and the words they would read. */
-    tells: { id: string; name: string } | null; after: string | null }[];
+    /** Who a waiting change would notify (#1089, #1102; empty when nobody) and the words they would read. */
+    tells: { id: string; name: string }[]; after: string | null }[];
 }
 
 export interface NeedsYouResponse {
