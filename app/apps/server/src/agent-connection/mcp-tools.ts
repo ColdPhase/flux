@@ -18,6 +18,7 @@ import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
+import { refusedPrivateAddress } from './run-private-text.js';
 import { boundRunResult } from './run-token.js';
 import { eventPorts } from '../events.js';
 import type { McpDispatch } from './mcp-dispatch.js';
@@ -53,7 +54,8 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
     instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
     maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
   });
-  const tools = agentToolRegistry(server, claims.dispatch, run ? (result, tool) => boundRunResult(db, run.id, result as { content?: unknown }, tool) : undefined, run ? { projectId: run.projectId } : undefined);
+  const tools = agentToolRegistry(server, claims.dispatch, run ? (result, tool) => boundRunResult(db, run.id, result as { content?: unknown }, tool) : undefined,
+    run ? { projectId: run.projectId, written: (args) => refusedPrivateAddress(db, run.id, args) } : undefined);
   registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);
   registerAgentDomainReads(tools.forAccess('read'), db, claims, cursorSecret);
   registerAgentBootstrap(tools, db, claims);

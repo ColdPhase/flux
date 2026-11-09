@@ -14,7 +14,7 @@ import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerWithWebSources } from './web-sources.js';
-import { boundedWebSearch, keptPrivateText } from './web-addresses.js';
+import { boundedWebSearch, keepPrivateText } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
@@ -436,7 +436,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date(), answerSources: fitted.sources.map((source) => source.ref) });
       // What people, the company and its tools wrote in the brief is private Flux text the run read (#1065, #1136, C-30): a web address
       // may not carry it. All it read, the fit aside; Flux's own words in the brief are not private.
-      await ports.runs.addPrivateText(run.id, keptPrivateText(briefPrivateText(briefInput(read.sources, false, search))));
+      await ports.runs.addPrivateText(run.id, await keepPrivateText(briefPrivateText(briefInput(read.sources, false, search))));
       await taskFence?.mark();
       return { done: false as const, fitted };
     });

@@ -15,7 +15,7 @@ export const WEB_READ_KIND: FetchKind = { accept: 'text/html,application/xhtml+x
  */
 export const READS_AT_ONCE = 6;
 
-export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'private_text';
+export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'private_text' | 'too_long';
 /**
  * `requested` is every address the server sent a request to for this read (#953): empty when it was refused from the address alone or for
  * the rate, otherwise the address and each redirect hop, whether or not a page came back.
@@ -48,6 +48,8 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
   empty: 'The page has no text to read.',
   // The same on every engine (#1136): not every engine has a web search, and the brief already tells one that has it to look things up there.
   private_text: 'That address carries words you read in Flux, and nothing from Flux may go into a web address. Open the page without them.',
+  // #1136: as it is sent, an address (or a redirect hop) of more than 2,048 characters is not read.
+  too_long: 'That address, or one it redirects to, is longer than a web address may be (2,048 characters as sent).',
 };
 
 export function webReader(options: WebReaderOptions) {

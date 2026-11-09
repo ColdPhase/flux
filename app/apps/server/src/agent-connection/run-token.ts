@@ -1,5 +1,5 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, keptPrivateText, requireSpaceAi } from '@flux/core';
+import { DomainError, keepPrivateText, requireSpaceAi } from '@flux/core';
 import { personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -90,6 +90,6 @@ export async function boundRunResult<T extends ToolOutput>(db: Database, runId: 
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'run'));
     return toolError(new DomainError(413, 'MCP_RESULTS_TOO_LARGE', 'This run has read as much as one assistant run may; the run stops'));
   }
-  if (tool !== 'flux_read_web') await personalRunWebReadRows(db).addPrivateText(runId, keptPrivateText(resultText(result)));
+  if (tool !== 'flux_read_web') await personalRunWebReadRows(db).addPrivateText(runId, await keepPrivateText(resultText(result)));
   return result;
 }

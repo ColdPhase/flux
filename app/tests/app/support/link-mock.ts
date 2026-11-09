@@ -67,6 +67,12 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
   // #1136: a DOI-like resolver on public.test that sends a reader on to its publisher, another site (other.test), with the same id.
   if (path.startsWith('/doi/')) return request.headers.host === 'other.test' ? html(response, page(`<title>Publisher: ${path.slice(5)}</title>`).replace('<h1>body</h1>', '<p>The article.</p>'))
     : redirect(response, `http://other.test${path}`);
+  // The evaluation of #1139: a site whose redirects carry a long Location of marks (`n` of them), `k` hops deep.
+  if (path.startsWith('/long-hop/')) {
+    const left = Number(path.split('/')[2]);
+    const n = Number(url.searchParams.get('n') ?? '15000');
+    return left > 0 ? redirect(response, `/long-hop/${left - 1}/${'/'.repeat(n)}?n=${n}`) : html(response, page('<title>End of the hops</title>'));
+  }
   // #1136: any other page of a site (a wiki page, a document and its export, a form), with its path as its words.
   if (path.startsWith('/any/')) return html(response, page(`<title>Page</title>`).replace('<h1>body</h1>', `<p>The page at ${path.slice(5).replace(/[<>&"]/g, '')}.</p>`));
   // #1065: a site that unpacks an address it was sent (here: written backwards) and redirects to it.

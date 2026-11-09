@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -89,15 +89,22 @@ export function personalRunWebReadRows(db: DbExecutor) {
         SELECT r.id, ${body}, ${sql.param([...kept.addresses])}::text[] FROM personal_runs r
         WHERE r.id = ${runId} AND r.status IN ('reading', 'dispatching') FOR SHARE OF r`);
     },
-    /**
-     * All the private text the run has read, for the check of an address it asks for. The links come joined by the database and are split
-     * natively (#1136): parsing tens of thousands of array elements in JavaScript would hold the API's event loop. A compared link never
-     * holds a control character, so the unit separator cannot occur in one.
-     */
-    async privateTexts(runId: string): Promise<{ body: string; addresses: string[] }[]> {
+    /** The ids of the private texts the run has kept so far: the check's index fetches only those it does not hold yet (#1136). */
+    async privateTextIds(runId: string): Promise<string[]> {
       const p = schema.personalRunPrivateTexts;
-      const rows = await db.select({ body: p.body, addresses: sql<string>`array_to_string(${p.addresses}, E'\x1f')` }).from(p).where(eq(p.runId, runId));
-      return rows.map((row) => ({ body: row.body, addresses: row.addresses ? row.addresses.split('\x1f') : [] }));
+      return (await db.select({ id: p.id }).from(p).where(eq(p.runId, runId))).map((row) => row.id);
+    },
+    /**
+     * Private texts of the run by id, for the check of an address it asks for. The links come joined by the database and are split natively
+     * (#1136): parsing tens of thousands of array elements in JavaScript would hold the API's event loop. A compared link never holds a
+     * control character, so the unit separator cannot occur in one.
+     */
+    async privateTexts(runId: string, ids: readonly string[]): Promise<{ id: string; body: string; addresses: string[] }[]> {
+      if (!ids.length) return [];
+      const p = schema.personalRunPrivateTexts;
+      const rows = await db.select({ id: p.id, body: p.body, addresses: sql<string>`array_to_string(${p.addresses}, E'\x1f')` }).from(p)
+        .where(and(eq(p.runId, runId), inArray(p.id, [...ids])));
+      return rows.map((row) => ({ id: row.id, body: row.body, addresses: row.addresses ? row.addresses.split('\x1f') : [] }));
     },
   };
 }

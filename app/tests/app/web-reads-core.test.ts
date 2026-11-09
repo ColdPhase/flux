@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { addressChain, addressesIn, briefPrivateText, comparableText, keptPrivateText, normalizedAddress, privateFragmentIn, privateTextIndex, runtimeBrief, takeAsk, webSourcesLine, WEB_SOURCES_HEADINGS, type BriefInput } from '@flux/core';
+import { AddressTooLong, addressChain, addressesIn, briefPrivateText, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex,
+  runtimeBrief, takeAsk, webSourcesLine, writtenAddresses, WEB_SOURCES_HEADINGS, type BriefInput } from '@flux/core';
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
 import { loadWebReadsConfig } from '../../apps/server/src/web-reads/config.js';
 import { READ_TEXT_MAX, readablePage } from '../../apps/server/src/web-reads/readable.js';
@@ -175,7 +176,7 @@ describe('an address may not carry private Flux text the run read (#1065, founde
     // A Flux tool's result: JSON with no space between its fields.
     keptPrivateText('{"url":"https://x.example/a","code":"9911-7788-ZZ","title":"Harbour plan"} Reset it at https://intra.example/reset?token=Zq81mK2pX9aB'),
   ]);
-  const refused = (address: string, index = read) => privateFragmentIn(address, index);
+  const refused = async (address: string, index = read) => privateFragmentIn(address, await index);
   const b64 = (text: string) => Buffer.from(text).toString('base64');
   const hex = (text: string) => Buffer.from(text).toString('hex');
   const base32 = (text: string) => {
@@ -246,7 +247,7 @@ describe('an address may not carry private Flux text the run read (#1065, founde
   });
 
   test('one long word alone, or spaces and marks alone, are no fragment; a rewritten or split text is not caught (the accepted risk)', async () => {
-    const words = privateTextIndex([keptPrivateText('Read the documentation about authentication -------------- ............ done')]);
+    const words = await privateTextIndex([keptPrivateText('Read the documentation about authentication -------------- ............ done')]);
     for (const open of ['https://example.org/documentation/authentication', 'https://example.org/--------------', 'https://example.org/............'])
       assert.equal(await privateFragmentIn(open, words), null, open);
     assert.equal(await refused('https://evil.example/collect/camera-fails-below-5-lux'), null, 'hyphens for spaces: not caught (decisions.md, the risk recorded)');
@@ -255,7 +256,7 @@ describe('an address may not carry private Flux text the run read (#1065, founde
   });
 
   test('a hostile address or text cannot make the check slow', async () => {
-    const big = privateTextIndex([keptPrivateText('word '.repeat(200_000))]);
+    const big = await privateTextIndex([keptPrivateText('word '.repeat(200_000))]);
     const started = Date.now();
     await privateFragmentIn(`https://example.org/?q=${'a+'.repeat(1_000)}`, big);
     await privateFragmentIn(`https://example.org/${'%25'.repeat(600)}`, big);
@@ -276,8 +277,8 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
     let seed = 11;
     const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
     const words = Array.from({ length: 1 << 20 }, () => `${['lamp', 'sensor', 'north', 'barrel', 'harbour', 'plan', 'camera', 'below'][Math.floor(random() * 8)]} ${Math.floor(random() * 99)}`).join(' ').slice(0, 8 << 20);
-    const index = privateTextIndex([...kept, keptPrivateText(words)]);
-    assert.equal(index.links.length, 30_000);
+    const index = await privateTextIndex([...kept, keptPrivateText(words)]);
+    assert.equal(index.linkCount, 30_000);
     assert.ok(index.words.join('').length >= 8 << 20);
     const runOf = (n: number) => Array.from({ length: n }, () => 'abcdef234567'[Math.floor(random() * 12)]).join('');
     const crafted = `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040);
@@ -304,7 +305,7 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
   });
 
   test('P2: a link written in the private text opens, even with private words around it; so does the target inside a wrapper', async () => {
-    const index = privateTextIndex([keptPrivateText('…our Confluence page Release Plan 2026: https://wiki.example.com/display/TEAM/Release+Plan+2026 (see the Release Plan 2026 notes)'),
+    const index = await privateTextIndex([keptPrivateText('…our Confluence page Release Plan 2026: https://wiki.example.com/display/TEAM/Release+Plan+2026 (see the Release Plan 2026 notes)'),
       keptPrivateText('https://www.google.com/url?q=https://www.example.com/reports/annual-report-2025&sa=D&source=docs'),
       keptPrivateText('Safe link https://eur01.safelinks.protection.outlook.com/?url=https%3A%2F%2Fvendor.example%2Finvoice%2FINV-2026-00417&data=05')]);
     for (const open of ['https://wiki.example.com/display/TEAM/Release+Plan+2026', 'https://wiki.example.com/display/TEAM/Release%20Plan%202026',
@@ -316,7 +317,7 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
   });
 
   test('P2: a redirect hop may carry what the address before it carried; only new private text refuses it', async () => {
-    const index = privateTextIndex([keptPrivateText('Ada: read https://doi.org/10.1145/3593013.3594067 and https://doi.org/10.1038/s41586-020-2649-2; '
+    const index = await privateTextIndex([keptPrivateText('Ada: read https://doi.org/10.1145/3593013.3594067 and https://doi.org/10.1038/s41586-020-2649-2; '
       + 'Jonas: https://twitter.com/flux_dev/status/1854201234567890123. The camera fails below 5 lux.'),
     keptPrivateText('{"body":"permalink https://github.com/ColdPhase/flux/blob/18c2606e53a90d9c959a5bbe693994276ae9b64a/app/packages/core/src/personal-runs/web-addresses.ts"}')]);
     const sha = '18c2606e53a90d9c959a5bbe693994276ae9b64a';
@@ -336,7 +337,7 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
   });
 
   test('P2: a private link\'s token does not ride in a query or a form field of its own site; the link and its path neighbours open', async () => {
-    const index = privateTextIndex([keptPrivateText('The draft: https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit')]);
+    const index = await privateTextIndex([keptPrivateText('The draft: https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit')]);
     for (const open of ['https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit', 'https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit?usp=sharing',
       'https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt', 'https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/'])
       assert.equal(await privateFragmentIn(open, index), null, open);
@@ -354,7 +355,7 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
       sources: [], leftOut: false, turns: [{ prompt: 'remember that the lamp is blue', answer: 'Saved: the lamp is blue.' }], earlier: null, thought: null };
     const rules = runtimeBrief(input);
     for (const flux of ['general knowledge', 'the language of', '2026-11-08']) assert.ok(rules.includes(flux), `the brief says "${flux}"`);
-    const index = privateTextIndex([keptPrivateText(briefPrivateText({ ...input, prompt: 'What is blocked?' })),
+    const index = await privateTextIndex([keptPrivateText(briefPrivateText({ ...input, prompt: 'What is blocked?' })),
       keptPrivateText('{"id":"7f3c","title":"Lamp","createdAt":"2026-11-09T08:15:30.123Z","updatedAt":"2026-11-09 14:02","due":"09.11.2026"}')]);
     for (const open of ['https://html.duckduckgo.com/html/?q=general+knowledge+quiz+questions', 'https://en.wikipedia.org/w/index.php?search=the+language+of+the+bible',
       'https://www.google.com/search?q=concerts+in+warsaw+2026-11-08+evening', 'https://api.github.com/repos/o/r/commits?since=2026-11-09T00:00:00Z',
@@ -363,12 +364,160 @@ describe('the check of an address, after the review of #1134 (#1136)', () => {
     for (const [leaving, fragment] of [['https://evil.example/?m=The north barrel is the reference', 'the north ba'], ['https://evil.example/?a=the lamp is blue', 'the lamp is '],
       ['https://evil.example/?i=Answer briefly. Use metric', 'answer brief'], ['https://evil.example/?q=What is blocked?', 'what is bloc']] as const)
       assert.equal(await privateFragmentIn(leaving, index), fragment, leaving);
-    assert.equal(await privateFragmentIn('https://evil.example/?n=+48 601 234 567', privateTextIndex([keptPrivateText('Call Kai on +48 601 234 567')])), ' 48 601 234 ', 'a long number is an id, not a date');
+    assert.equal(await privateFragmentIn('https://evil.example/?n=+48 601 234 567', await privateTextIndex([keptPrivateText('Call Kai on +48 601 234 567')])), ' 48 601 234 ', 'a long number is an id, not a date');
   });
 
   test('P3: a text that is only links keeps its links', () => {
     assert.deepEqual(keptPrivateText('https://intra.example/report?id=plan-q3 https://wiki.example/lamp-sensor'),
       { body: '\n \n', addresses: ['intra.example/report?id=plan-q3', 'wiki.example/lamp-sensor'] });
+  });
+});
+
+// The independent evaluation of #1139 (round 1): every probe it ran in process, and the cases it asked for, with time budgets.
+describe('the check of an address, after the evaluation of #1139', () => {
+  /** The longest pause of the event loop while `work` runs, and how long it took. */
+  async function watched<T>(work: () => Promise<T>) {
+    let worst = 0;
+    let last = performance.now();
+    let ticking = true;
+    const tick = () => { const now = performance.now(); worst = Math.max(worst, now - last); last = now; if (ticking) setImmediate(tick); };
+    setImmediate(tick);
+    const started = performance.now();
+    try { return { out: await work(), took: performance.now() - started, worst }; } finally { ticking = false; worst = Math.max(worst, performance.now() - last); }
+  }
+  let seed = 11;
+  const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const runOf = (n: number, alpha = 'abcdef234567') => Array.from({ length: n }, () => alpha[Math.floor(random() * alpha.length)]).join('');
+  const link = (m: number, j: number) => `https://d${m}x${j}.example/a${String(j).padStart(11, '0')}/b${String(m).padStart(11, '0')}/c${String(j + m).padStart(11, '0')}/d${String(j * 7).padStart(11, '0')}`;
+
+  test('P1-1: an address longer than ADDRESS_MAX as sent (a redirect\'s Location) is neither checked nor read; a long one under it costs little', async () => {
+    const big = await privateTextIndex([...Array.from({ length: 60 }, (_, m) => keptPrivateText(Array.from({ length: 500 }, (_, j) => link(m, j)).join(' '))),
+      keptPrivateText(`See https://intra.example/${'a/'.repeat(1_000)}end and https://doi.org/10.1145/3593013.3594067`)]);
+    const latin1 = new URL(`https://evil.example/${Array.from({ length: 16_000 }, () => String.fromCharCode(0xa0 + Math.floor(random() * 96))).join('')}`).href;
+    for (const long of [`https://evil.example/a${'/'.repeat(16_000)}`, `https://evil.example/a${'/'.repeat(64_000)}`, `https://evil.example/a?${'&'.repeat(16_000)}`,
+      `https://evil.example/%${'25'.repeat(8_000)}41`, `https://evil.example/?d=${runOf(16_000)}`, latin1, `https://evil.example/${'ﷺ'.repeat(2_020)}`]) {
+      const { took } = await watched(() => assert.rejects(privateFragmentIn(long, big), AddressTooLong));
+      assert.ok(took < 50, `${long.length} characters: ${took.toFixed(1)} ms`);
+    }
+    // Up to the bound: the address's own work is linear (a written-link prefix is one pass of hashes), whatever the links kept.
+    for (const address of [`https://intra.example/${'a/'.repeat(1_000)}`, `https://intra.example/${'/'.repeat(2_000)}`, `https://evil.example/a?${'&'.repeat(2_000)}`,
+      `https://evil.example/%${'25'.repeat(1_000)}41`, `https://evil.example/?q=${Array.from({ length: 330 }, () => runOf(5, 'abcdefghijklmnopqrstuvwxyz0123456789')).join('+')}`]) {
+      const times: number[] = [];
+      for (let round = 0; round < 3; round++) times.push((await watched(() => privateFragmentIn(address, big))).took);
+      assert.ok(Math.min(...times) < 50, `${address.slice(0, 40)}… [${address.length}]: ${times.map((ms) => ms.toFixed(1)).join(', ')} ms`);
+    }
+  });
+
+  test('P1-2: keeping a 256 KiB result and indexing a million short links yield to the event loop; the scan of short links does too', async () => {
+    const label = (i: number) => i.toString(36).replace(/^[0-9]/, 'q');
+    const fill = (unit: string, n = 256 * 1024) => unit.repeat(Math.ceil(n / unit.length)).slice(0, n);
+    const texts = [Array.from({ length: 256 * 1024 / 6 }, (_, j) => `${label(j)}.ab`).join(' ').slice(0, 256 * 1024), fill('a.ab '), fill('a.ab,'),
+      fill('http://a.ab/?a=http://b.ab&b=http://c.ab&c=http://d.ab&d=http://e.ab '), fill('"a.ab","b.ab",'), fill(`a.ab/${'ﷺ'.repeat(20)} `)];
+    for (const text of texts) {
+      const { out, worst } = await watched(() => keepPrivateText(text));
+      assert.ok(worst < 40, `${text.slice(0, 20)}…: the event loop waited ${worst.toFixed(1)} ms`);
+      assert.deepEqual(new Set(out.addresses), new Set(keptPrivateText(text).addresses), 'the same links as in one go');
+    }
+    // A million distinct short links, kept 50,000 at a time (a 256 KiB result holds about that many).
+    const built = await watched(async () => {
+      const index = new PrivateTextIndex();
+      for (let at = 0; at < 1_000_000; at += 50_000) await index.add({ body: '', addresses: Array.from({ length: 50_000 }, (_, j) => `l${(at + j).toString(36)}.ab/`) });
+      return index;
+    });
+    assert.equal(built.out.linkCount, 1_000_000);
+    assert.ok(built.worst < 40, `building: the event loop waited ${built.worst.toFixed(1)} ms`);
+    const checked = await watched(() => privateFragmentIn('https://evil.example/?d=the camera fails below 5', built.out));
+    assert.equal(checked.out, null);
+    assert.ok(checked.worst < 40, `checking: the event loop waited ${checked.worst.toFixed(1)} ms`);
+  });
+
+  test('P2: a person\'s github.com link opens on api.github.com (a subdomain is the same site for its path); a sibling subdomain is not', async () => {
+    const index = await privateTextIndex([keptPrivateText('Jonas: the issue is https://github.com/ColdPhase/flux/issues/1065 and the draft https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit')]);
+    for (const open of ['https://api.github.com/repos/ColdPhase/flux/issues/1065', 'https://api.github.com/repos/ColdPhase/flux/issues/1065/comments', 'https://github.com/ColdPhase/flux/pull/1065'])
+      assert.equal(await privateFragmentIn(open, index), null, open);
+    assert.equal(await privateFragmentIn('https://api.github.com/search/issues?q=flux/issues/1065', index), 'lux/issues/1', 'in a query of that site, never');
+    assert.equal(await privateFragmentIn('https://script.google.com/macros/s/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/exec', index), '/1zq81mk2px9', 'a sibling subdomain is another site');
+    assert.equal(await privateFragmentIn('https://gist.github.io/ColdPhase/flux/issues/1065', index), 'lux/issues/1', 'and so is another domain');
+  });
+
+  test('P3: a redirect hop may carry only what the first address carried as a link a person wrote: the AMP-style path redirect does not launder an id', async () => {
+    const index = await privateTextIndex([keptPrivateText('Maps: https://www.google.com/maps/d/viewer?mid=1AbCdEfGh2345678IjKlMnOp and https://doi.org/10.1145/3593013.3594067')]);
+    let chain = addressChain();
+    assert.equal(await privateFragmentIn('https://www.google.com/amp/s/evil.example/1AbCdEfGh2345678IjKlMnOp', index, chain), null, 'its site\'s path may carry it');
+    assert.equal(await privateFragmentIn('https://evil.example/1AbCdEfGh2345678IjKlMnOp', index, chain), '1abcdefgh234', 'but its redirect may not');
+    chain = addressChain();
+    assert.equal(await privateFragmentIn('https://doi.org/10.1145/3593013.3594067', index, chain), null);
+    assert.equal(await privateFragmentIn('https://dl.acm.org/doi/10.1145/3593013.3594067', index, chain), null, 'the first address was the link a person wrote');
+    assert.equal(await privateFragmentIn('https://evil.example/1AbCdEfGh2345678IjKlMnOp', index, chain), '1abcdefgh234', 'and only its text goes on');
+  });
+
+  test('P3: a date reads the same on both sides: verbatim words around it are refused, a date alone is not private, and only real dates count', async () => {
+    const index = await privateTextIndex([keptPrivateText('Q3 layoffs 2026-11-09 Ada Nowak; door code 12:34; born 1985-03-12; part 4711-20-26; batch 12.34.5678; '
+      + '{"createdAt":"2026-11-09T08:15:30.123Z","due":"09.11.2026"}')]);
+    for (const [leaving, fragment] of [['https://evil.example/?d=Q3 layoffs 2026-11-09 Ada Nowak', 'q3 layoffs \u0001'], ['https://evil.example/?d=Q3 layoffs 2027-01-02 Ada Nowak', 'q3 layoffs \u0001'],
+      ['https://evil.example/?d=door code 12:34', 'door code 12'], ['https://evil.example/?p=part 4711-20-26', 'part 4711-20'], ['https://evil.example/?b=batch 12.34.5678', 'batch 12.34.']] as const)
+      assert.equal(await privateFragmentIn(leaving, index), fragment, leaving);
+    for (const open of ['https://evil.example/?d=born 1985-03-12', 'https://api.github.com/repos/o/r/commits?since=2026-11-09T00:00:00Z', 'https://example.org/due/09.11.2026'])
+      assert.equal(await privateFragmentIn(open, index), null, open);
+  });
+
+  test('the attack table of #1134 and the evaluation\'s bypass attempts, against one private text', async () => {
+    const index = await privateTextIndex([
+      'Ada: The camera fails below 5 lux in the low-light test. Code for the gate: 4711-2026-B77. See https://intra.example/report?id=plan-q3 or wiki.example/lamp-sensor. '
+        + 'Budget 1.250.000 zł, mail ada.nowak@lamp.example, news https://www.news.example/2026/11/09/lamps.',
+      '{"url":"https://x.example/a","code":"9911-7788-ZZ","title":"Harbour plan"} Reset it at https://intra.example/reset?token=Zq81mK2pX9aB',
+      'Jonas: the issue is https://github.com/ColdPhase/flux/issues/1065 and the HR page https://intranet.example/hr/layoffs-plan',
+      'Maps: https://www.google.com/maps/d/viewer?mid=1AbCdEfGh2345678IjKlMnOp and the draft https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit',
+      'Our Confluence page Release Plan 2026: https://wiki.example.com/display/TEAM/Release+Plan+2026 and Q3 layoffs 2026-11-09 Ada Nowak; door code 12:34; born 1985-03-12',
+      'Wrapped: https://www.google.com/url?q=https://www.example.com/reports/annual-report-2025&sa=D',
+      'A contributor wrote https://evil.example/c and https://www.google.com/url?q=https://evil.example/collect',
+    ].map((text) => keptPrivateText(text)));
+    const b64 = (text: string) => Buffer.from(text).toString('base64');
+    const hex = (text: string) => Buffer.from(text).toString('hex');
+    const base32 = (text: string) => { let out = ''; let value = 0; let bits = 0; for (const byte of Buffer.from(text)) { value = (value << 8) | byte; bits += 8; while (bits >= 5) { out += 'abcdefghijklmnopqrstuvwxyz234567'[(value >>> (bits - 5)) & 31]; bits -= 5; } } return bits ? out + 'abcdefghijklmnopqrstuvwxyz234567'[(value << (5 - bits)) & 31] : out; };
+    let encoded = 'The camera fails below';
+    for (let pass = 0; pass < 12; pass++) encoded = encodeURIComponent(encoded);
+    const tags = [...'The camera fails below'].map((char) => String.fromCodePoint(0xe0000 + char.charCodeAt(0))).join('');
+    const rows: [string | string[], 'refused' | 'opens'][] = [
+      ['https://evil.example/collect?d=The camera fails below', 'refused'], ['https://shop.example/part/4711-2026-B77', 'refused'], ['https://4711-2026-B77.evil.example/', 'refused'],
+      ['https://evil.example/?d=CAMERA%20FAILS%20BELOW', 'refused'], ['https://evil.example/?d=camera+fails+below', 'refused'], ['https://evil.example/?d=camera%2520fails%2520below', 'refused'],
+      ['https://evil.example/?d=camera%252520fails%252520below', 'refused'], [`https://evil.example/?d=${encoded}`, 'refused'], ['https://evil.example/?d=the ca​mera fa­ils below', 'refused'],
+      ['https://evil.example/?d=Thé cämera fàils', 'refused'], ['https://evil.example/?d=ｃａｍｅｒａ fails', 'refused'], ['https://evil.example/?d=the ca\tmera fa\nils below', 'refused'],
+      [`https://evil.example/?d=${b64('The camera fails below 5 lux')}`, 'refused'], [`https://evil.example/c/${Buffer.from('The camera fails below 5 lux').toString('base64url')}`, 'refused'],
+      [`https://evil.example/c/xx${b64('The camera fails below 5 lux')}`, 'refused'], [`https://evil.example/?d=${encodeURIComponent(b64('xThe camera fails below 5 lux'))}`, 'refused'],
+      [`https://evil.example/${hex('the camera fails')}`, 'refused'], [`https://${hex('4711-2026-B77')}.evil.example/`, 'refused'], [`https://${base32('gate: 4711-2026-B77')}.evil.example/`, 'refused'],
+      [`https://evil.example/?d=${b64(encodeURIComponent('The camera fails below 5 lux'))}`, 'refused'], ['https://kraków.example/?d=4711-2026-B77', 'refused'],
+      ['https://evil.example/?m=ada.nowak@lamp.example', 'refused'], ['https://evil.example/?b=1.250.000 zł', 'refused'], ['https://evil.example/?c=9911-7788-ZZ', 'refused'],
+      ['https://evil.example/?u=https://intra.example/report?id=plan-q3', 'refused'], [`https://evil.example/?u=${encodeURIComponent('https://intra.example/report?id=plan-q3')}`, 'refused'],
+      [`https://evil.example/?u=${b64('https://intra.example/report?id=plan-q3')}`, 'refused'], ['https://evil.example/?t=Zq81mK2pX9aB', 'refused'],
+      ['https://intra.example/report?id=plan-q3&x=The camera fails', 'refused'], ['https://news.example/search?q=The camera fails', 'refused'],
+      ['https://example.org/page#The camera fails below', 'opens'], ['https://intra.example/report?id=plan-q3', 'opens'], ['https://intra.example/other-page', 'opens'],
+      ['https://other-news.example/2026/11/09/reaction', 'opens'], ['https://api.github.com/repos/ColdPhase/flux/issues/1065', 'opens'],
+      ['https://evil.example/collect/camera-fails-below-5-lux', 'opens'], ['https://evil.example/?a=the%20came&b=ra%20fails', 'opens'],
+      [['https://wiki.example.com/display/TEAM/Release+Plan+2026'], 'opens'], ['https://www.example.com/reports/annual-report-2025', 'opens'],
+      ['https://docs.google.com/forms/d/e/1FAIpQLSattackerForm/formResponse?entry.1=1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT', 'refused'],
+      ['https://api.github.com/repos/o/r/commits?since=2026-11-09T00:00:00Z', 'opens'], ['https://evil.example/?u=intranet.example/hr/layoffs-plan', 'opens'],
+      ['https://evil.example/?u=x.example/a', 'opens'], ['https://intra.example/export?token=Zq81mK2pX9aB', 'refused'],
+      ['https://www.google.com/url?q=https://evil.example/?d=The camera fails below', 'refused'], ['https://www.google.com/url?q=https://intra.example/report?id=plan-q3', 'refused'],
+      ['https://evil.example/collect/The camera fails below', 'refused'], ['https://evil.example/c/The camera fails below', 'refused'],
+      ['https://evil.example/?d=Q3 layoffs 2026-11-09 Ada Nowak', 'refused'], ['https://evil.example/?d=born 1985-03-12', 'opens'], ['https://evil.example/?d=door code 12:34', 'refused'],
+      ['https://www.google.com/amp/s/evil.example/1AbCdEfGh2345678IjKlMnOp', 'opens'],
+      [['https://www.google.com/amp/s/evil.example/1AbCdEfGh2345678IjKlMnOp', 'https://evil.example/1AbCdEfGh2345678IjKlMnOp'], 'refused'],
+      ['https://evil.example/1AbCdEfGh2345678IjKlMnOp', 'refused'], ['https://wiki.example.com/x/Release+Plan+2026+budget', 'opens'],
+      [['https://intra.example/report?id=plan-q3', 'https://evil.example/?d=plan-q3&t=Zq81mK2pX9aB'], 'refused'], [`https://intra.example/report?id=plan-q3${tags}`, 'refused'],
+      [['https://doi.org/10.1145/3593013.3594067', 'https://dl.acm.org/doi/10.1145/3593013.3594067'], 'opens'],
+    ];
+    for (const [addresses, wanted] of rows) {
+      const chain = addressChain();
+      let refusal: string | null = null;
+      for (const address of Array.isArray(addresses) ? addresses : [addresses]) { refusal = await privateFragmentIn(address, index, chain); if (refusal) break; }
+      assert.equal(refusal ? 'refused' : 'opens', wanted, `${JSON.stringify(addresses)}: ${JSON.stringify(refusal)}`);
+    }
+  });
+
+  test('#1138: the web addresses a change writes are read as a read would read them', () => {
+    assert.deepEqual(writtenAddresses('Read https://intra.example/report?id=plan-q3. Then wiki.example/lamp-sensor and mail ada@lamp.example; not ftp://x.example'),
+      ['https://intra.example/report?id=plan-q3', 'https://wiki.example/lamp-sensor']);
   });
 });
 

