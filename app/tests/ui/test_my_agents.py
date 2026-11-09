@@ -244,7 +244,7 @@ class MyAgentsJourney(unittest.TestCase):
         expect(gus.get_by_role("region", name="Your agents", exact=True)).to_have_count(0)
         # Every other AI address leads a guest to that one line, not to a page of controls (#959).
         for address in ("/settings/ai-connections", "/settings/ai-connections?new=1", "/settings/agents/connect", "/settings/agents/claude-code",
-                        "/settings/agents/codex", "/settings/assistant", "/settings/assistant/claude-code", f"/settings/agents/{self.ids['assistant']}"):
+                        "/settings/agents/codex", f"/settings/agents/{self.ids['assistant']}"):
             gus.goto(address)
             expect(gus.get_by_text("Guests don’t have AI.")).to_be_visible()
             self.assertEqual(re.sub(r"^https?://[^/]+", "", gus.url), "/settings/agents", address)

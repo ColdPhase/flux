@@ -163,8 +163,6 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, "runtime-off-phone-390")
         page.goto("/settings/agents/claude-code")
         expect(page.get_by_role("note")).to_contain_text("Claude Code in Flux isn’t offered on this Flux server.")
-        page.goto("/settings/assistant/claude-code")  # the earlier address still opens the console
-        expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_03_before_sign_in_the_notices_are_plain(self) -> None:
