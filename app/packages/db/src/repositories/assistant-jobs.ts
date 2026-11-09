@@ -1,22 +1,19 @@
-import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, lte, sql } from 'drizzle-orm';
 import type { AssistantJobSchedule } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { notificationRows } from './push.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
 
-// Drizzle rows of "On a schedule" (migration 0109, F-027 A8 #408). They satisfy `AssistantJobRepository` of
+// Drizzle rows of an agent's schedules (migration 0024, F-036 AG-9, #858). They satisfy `AssistantJobRepository` of
 // packages/core/src/assistant structurally and make no access decisions: the core use cases ask the access policy first.
 
 const j = schema.assistantJobs;
 const jr = schema.assistantJobRuns;
 type JobRow = typeof j.$inferSelect;
 type JobRunRow = typeof jr.$inferSelect;
-type NewJobRow = Pick<JobRow, 'id' | 'workspaceId' | 'ownerUserId' | 'projectId' | 'title' | 'text' | 'timeZone' | 'conversationId' | 'postToConversation' | 'enabled' | 'prepared' | 'nextRunAt'>
+type NewJobRow = Pick<JobRow, 'id' | 'workspaceId' | 'ownerUserId' | 'agentId' | 'title' | 'text' | 'given' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt'>
   & { schedule: AssistantJobSchedule; preparedRunId?: string | null };
-type JobChanges = Partial<Pick<JobRow, 'projectId' | 'title' | 'text' | 'timeZone' | 'conversationId' | 'postToConversation' | 'enabled' | 'prepared' | 'pausedReason'
-  | 'nextRunAt' | 'lastRunAt' | 'failureStreak' | 'deletedAt'>> & { schedule?: AssistantJobSchedule };
+type JobChanges = Partial<Pick<JobRow, 'title' | 'text' | 'given' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt' | 'lastRunAt' | 'deletedAt'>> & { schedule?: AssistantJobSchedule };
 
 const toJob = (row: JobRow) => ({ ...row, schedule: row.schedule as unknown as AssistantJobSchedule });
 
@@ -26,23 +23,27 @@ export function assistantJobRows(db: DbExecutor) {
    * refused until they are a member again (#1059, C-50). The worker's lookups (settling a firing, the tick) leave it off and still find them.
    */
   async function find(id: string, options: { lock?: boolean; visibleToOwner?: boolean } = {}) {
-    const query = db.select({ job: j, projectName: schema.projects.name }).from(j)
-      .innerJoin(schema.projects, and(eq(schema.projects.workspaceId, j.workspaceId), eq(schema.projects.id, j.projectId)))
-      .where(and(eq(j.id, id), options.visibleToOwner ? sql`NOT ${companyGuestSql(j.ownerUserId)}` : undefined));
-    const [row] = options.lock ? await query.for('update', { of: j }) : await query;
-    return row ? { ...toJob(row.job), projectName: row.projectName } : null;
+    const query = db.select().from(j).where(and(eq(j.id, id), options.visibleToOwner ? sql`NOT ${companyGuestSql(j.ownerUserId)}` : undefined));
+    const [row] = options.lock ? await query.for('update') : await query;
+    return row ? toJob(row) : null;
   }
   return {
-    async list(ownerUserId: string, workspaceId: string) {
-      const rows = await db.select({ job: j, projectName: schema.projects.name }).from(j)
-        .innerJoin(schema.projects, and(eq(schema.projects.workspaceId, j.workspaceId), eq(schema.projects.id, j.projectId)))
-        .where(and(eq(j.ownerUserId, ownerUserId), eq(j.workspaceId, workspaceId), isNull(j.deletedAt), sql`NOT ${companyGuestSql(j.ownerUserId)}`))
-        .orderBy(asc(j.createdAt), asc(j.id));
-      return rows.map((row) => ({ ...toJob(row.job), projectName: row.projectName }));
+    /** An agent's schedules, oldest first; not the deleted ones, and none while the owner is a guest of the company (#1059). */
+    async list(ownerUserId: string, agentId: string) {
+      const rows = await db.select().from(j)
+        .where(and(eq(j.ownerUserId, ownerUserId), eq(j.agentId, agentId), isNull(j.deletedAt), sql`NOT ${companyGuestSql(j.ownerUserId)}`)).orderBy(asc(j.createdAt), asc(j.id));
+      return rows.map(toJob);
     },
     find,
     /** Whether the owner is a guest of the company now (a plain read: the tick is the only caller, and it moves a schedule on either way). */
     ownerIsGuest: (ownerUserId: string) => isCompanyGuest(db, ownerUserId),
+    /**
+     * Holds an agent's schedule rows for the rest of the transaction. Deleting an agent takes them first, then the owner's lock: the order a firing
+     * already has (it holds its schedule row, then takes the owner's lock in `fireJob`), so the two cannot wait on each other.
+     */
+    async lockForAgent(ownerUserId: string, agentId: string) {
+      await db.select({ id: j.id }).from(j).where(and(eq(j.ownerUserId, ownerUserId), eq(j.agentId, agentId))).orderBy(asc(j.id)).for('update');
+    },
     async countActive(ownerUserId: string) {
       const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(j).where(and(eq(j.ownerUserId, ownerUserId), isNull(j.deletedAt)));
       return row?.total ?? 0;
@@ -84,7 +85,7 @@ export function assistantJobRows(db: DbExecutor) {
       const [row] = await db.select({ id: jr.id }).from(jr).where(and(eq(jr.jobId, jobId), eq(jr.firedAt, firedAt), eq(jr.firedBy, firedBy)));
       return Boolean(row);
     },
-    async updateRun(id: string, changes: Partial<Pick<JobRunRow, 'runId' | 'state' | 'resultLine' | 'needsYou' | 'finishedAt'>>) {
+    async updateRun(id: string, changes: Partial<Pick<JobRunRow, 'runId' | 'state' | 'resultLine' | 'finishedAt'>>) {
       const [row] = await db.update(jr).set(changes).where(eq(jr.id, id)).returning();
       return row!;
     },
@@ -98,7 +99,7 @@ export function assistantJobRows(db: DbExecutor) {
       return new Map((rows.rows as Record<string, unknown>[]).map((raw) => {
         const row: JobRunRow = { id: raw.id as string, jobId: raw.job_id as string, ownerUserId: raw.owner_user_id as string, firedAt: new Date(raw.fired_at as string),
           firedBy: raw.fired_by as 'schedule' | 'now', runId: (raw.run_id as string | null) ?? null, state: raw.state as JobRunRow['state'], resultLine: raw.result_line as string,
-          needsYou: raw.needs_you as boolean, startedAt: new Date(raw.started_at as string), finishedAt: raw.finished_at ? new Date(raw.finished_at as string) : null };
+          startedAt: new Date(raw.started_at as string), finishedAt: raw.finished_at ? new Date(raw.finished_at as string) : null };
         return [row.jobId, row] as const;
       }));
     },
@@ -122,36 +123,6 @@ export function assistantJobRows(db: DbExecutor) {
     async acceptNote(ownerUserId: string, accountKey: string, version: string) {
       await db.insert(schema.assistantBackgroundNotes).values({ ownerUserId, accountKey, noteVersion: version })
         .onConflictDoUpdate({ target: [schema.assistantBackgroundNotes.ownerUserId, schema.assistantBackgroundNotes.accountKey], set: { noteVersion: version, acceptedAt: new Date() } });
-    },
-
-    async settledFacts(runId: string) {
-      const c = schema.assistantChanges;
-      const [row] = await db.select({
-        applied: sql<number>`count(*) FILTER (WHERE ${c.state} IN ('applied', 'applied_after_wait'))::int`,
-        waiting: sql<number>`count(*) FILTER (WHERE ${c.state} = 'waiting')::int`,
-      }).from(c).where(eq(c.runId, runId));
-      return { appliedChanges: row?.applied ?? 0, waitingChanges: row?.waiting ?? 0 };
-    },
-
-    /** One Inbox item for the owner about their own assistant (a paused schedule), about a project they can read. */
-    async notify(ownerUserId: string, projectId: string, title: string, body: string, url: string) {
-      const [project] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
-      if (!project) throw new Error('Project not found');
-      const id = randomUUID();
-      await notificationRows(db).insert({ id, userId: ownerUserId, source: { workspaceId: project.workspaceId, type: 'project', id: projectId }, title, body, url, aiOrigin: true });
-      return id;
-    },
-
-    /** The project's latest conversation of people: where a silent run is anchored. */
-    async anchorConversation(projectId: string) {
-      const c = schema.projectConversations;
-      const [row] = await db.select({ id: c.id }).from(c).where(eq(c.projectId, projectId)).orderBy(desc(c.createdAt), desc(c.id)).limit(1);
-      return row?.id ?? null;
-    },
-    async conversationInProject(projectId: string, conversationId: string) {
-      const c = schema.projectConversations;
-      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.id, conversationId), eq(c.projectId, projectId)));
-      return Boolean(row);
     },
   };
 }

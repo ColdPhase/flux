@@ -122,8 +122,14 @@ export function placeOf(run: Pick<RunRecord, 'projectId' | 'conversationId' | 'd
   return run.projectId !== null ? { kind: 'space', projectId: run.projectId, conversationId: run.conversationId }
     : run.dmId !== null ? { kind: 'dm', dmId: run.dmId, threadRootId: run.dmThreadRootId } : { kind: 'chat', agentId: run.agentId };
 }
-/** A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask. A schedule's or a task's result is posted. */
-export const isPrivateAnswer = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
+/**
+ * A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask. A task's result is posted; so is a schedule's
+ * in a space, but an agent's schedule runs in its private chat (#858), where the result is a line only its owner reads.
+ */
+export const isPrivateAnswer = (run: Pick<RunRecord, 'kind' | 'projectId' | 'dmId'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought'
+  || run.kind === 'scheduled' && run.projectId === null && run.dmId === null;
+/** A run the owner said to the agent in its chat, or `/ai` in a place: it has the chat's turns behind it. A schedule is a single instruction. */
+export const isAsked = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
 
 /**
  * How a run may end at a standing check: one of its statuses, or `ai_off` (F-029), which is recorded as `stopped` with
@@ -271,7 +277,7 @@ export interface PersonalRunRepository {
    * Posts a line the agent says on its own in its chat, about one of its runs (#842). Once per `key` for the agent: a second call returns the
    * first line. Null when the agent is gone. Posting is the only way a line gets into a chat.
    */
-  postAgentChat(line: { agentId: string; runId: string; key: string; body: string }): Promise<{ message: AgentChatMessage; created: boolean } | null>;
+  postAgentChat(line: { agentId: string; runId: string | null; key: string; body: string; schedule?: AgentChatMessage['schedule'] }): Promise<{ message: AgentChatMessage; created: boolean } | null>;
   /** The lines an agent said in its chat, oldest first, the latest `limit`. */
   agentChatMessages(agentId: string, limit: number): Promise<AgentChatMessage[]>;
   /** For each of the owner's agents, how much of its chat they have not read, and when it last said something. */
@@ -288,7 +294,6 @@ export interface PersonalRunRepository {
    */
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
   /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
-  jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
   /** The "What it may do" of the owner's first agent in the workspace (F-036 AG-3); null without one. */
   assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
 }
@@ -340,9 +345,9 @@ export interface PersonalRunEventLog {
   record(principal: Principal, workspaceId: string, kind: PersonalRunEventKind, objectId: string, data: Record<string, unknown>): Promise<void>;
 }
 
-/** Prepares the schedule an owner's request asked for (F-027 AST-7 "Set up by asking"); off, never turned on by a run. */
+/** Prepares the schedule an owner's words to their agent asked for (AG-9 "Set up by asking"); off, never turned on by a run. */
 export interface PersonalRunSchedules {
-  prepare(ownerUserId: string, projectId: string, runId: string, request: { title?: string; text: string; schedule: unknown }):
+  prepare(ownerUserId: string, agentId: string, runId: string, request: { title?: string; text: string; schedule: unknown }):
     Promise<{ ok: true; title: string; words: string } | { ok: false; message: string }>;
 }
 

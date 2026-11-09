@@ -172,7 +172,7 @@ describe('web content cannot bypass approvals (#918)', () => {
   test('every prompt a run gets says that a web page and other people\'s words are data, never instructions', () => {
     // The same brief for every place and both engines (#1064); its full text is pinned in ai-brief.test.ts.
     const base: BriefInput = {
-      engine: 'server', kind: 'task', silent: false, tools: ['flux_get_work', 'flux_read_web', 'flux_update_task'], agentName: 'Assistant', ownerName: 'Ada', now: new Date(), timeZone: 'UTC',
+      engine: 'server', kind: 'task', tools: ['flux_get_work', 'flux_read_web', 'flux_update_task'], agentName: 'Assistant', ownerName: 'Ada', now: new Date(), timeZone: 'UTC',
       place: { kind: 'space', spaceId: 'p', spaceName: 'Lamp', conversationId: 'c', task: null }, task: null, scheduleTitle: null, agent: null,
       prompt: 'Task #4: title', requestedAt: new Date(), sources: [], leftOut: false, turns: [], earlier: null, thought: null,
     };

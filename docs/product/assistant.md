@@ -106,9 +106,8 @@ own.
   or without an `Idempotency-Key`, is refused, and the conversation's change list gives them only what was done, not their own
   refusals, skips or waiting changes. Their plan sign-in is not shown and not signed out, the idle policy
   (`FLUX_AGENT_RUNTIME_IDLE_DAYS`) does not release it, and the assistant's model list is empty. Their schedules do not fire, and
-  nothing is written to their history meanwhile: the next time after the role comes back is the next one on the clock. A one-time
-  schedule that falls due while its owner is a guest comes back off, as one that falls due while AI is off in its space does, and
-  stays off. A "Paused …" notice of a schedule leaves their Inbox and returns with the role.
+  nothing is written to their history or to their hidden chat meanwhile (no "Skipped" line): the next time after the role comes back
+  is the next one on the clock. A one-time schedule that falls due while its owner is a guest comes back off, and stays off.
 
 ## AG-3 — Rights, "What it may do", approvals and Undo
 
@@ -330,18 +329,29 @@ instruction.
 ## AG-9 — Schedules
 
 - The owner makes a schedule by telling an agent in its private conversation, for example
-  "Every weekday at 9 summarise new tasks for me". The agent prepares it and the owner confirms
-  it there.
-- Schedules are listed in that conversation, where the owner pauses, changes or deletes them,
-  and their results arrive there. The Inbox is not used for schedules unless something needs the
-  owner (AG-7).
-- The morning summary is one such schedule, for example "Every weekday at 9 summarise what needs
-  me". It is the only morning summary in Flux: the plain, non-AI summary in Notifications (#350)
-  is removed (F-038).
-- A scheduled run acts like its agent (AG-3) and never makes or changes a schedule.
+  "Every weekday at 9 summarise new tasks for me". The agent answers in plain words with what it
+  prepared and the owner confirms it there with one tap. Nothing else makes a schedule: not `/ai`
+  in a space, and not a run of a schedule.
+- Schedules are listed in that conversation: its header has one line ("Every weekday 9:00 ·
+  Garden summary · 1 schedule"), on the computer and the phone, that opens the one list, where the
+  owner turns them on, pauses, changes, runs and deletes them (Undo for a day). The agent's page
+  in Settings shows the same list. Their results arrive in the conversation, as one message each
+  ([C-53, C-54](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  The Inbox is not used for schedules unless something needs the owner (AG-7).
+- A schedule reads web addresses only when its owner typed them: in the sentence that asked for it
+  (or in the text they made it with through the API). They are fixed when the schedule is prepared;
+  Change edits the wording only, and to give a schedule a new address the owner asks the agent again
+  in the chat. Addresses the agent wrote in the schedule's text give none (C-30). A scheduled run
+  may still search the web and read what the search returned.
+- The morning summary is one such schedule: a ready-made one on the agent's page, "Every weekday
+  at 9 summarise what needs me", off until the owner turns it on. It is the only morning summary
+  in Flux: the plain, non-AI summary in Notifications (#350) is removed (F-038).
+- A scheduled run acts like its agent in its chat: it reads what its owner can see and changes
+  nothing, and it never makes or changes a schedule.
 - **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up
-  ([coordinator default C-14](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). There is no minimum interval between firings and no pause after failures; a failed
-  run shows as failed in the conversation (AG-4) and the next firing happens as scheduled.
+  ([coordinator default C-14](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). There is no minimum interval between firings and no pause after failures; a firing that
+  fails, or cannot start (for example "Sign in to Claude again"), says so in the conversation (AG-4) and the next firing happens as scheduled.
+  Deleting an agent deletes its schedules.
 
 ## AG-10 — AI in a space
 

@@ -3,11 +3,10 @@ import { createHash, randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { AGENT_CHATS_PATH, AGENT_CONNECTIONS_PATH, ASSISTANT_MODEL_PATH, ASSISTANT_RUNS_PATH, MY_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, agentAssistantRunsPath, agentChatMessagesPath,
   agentConnectionPath, assistantJobHistoryPath, assistantJobPath, assistantJobRestorePath, assistantJobRunNowPath, assistantJobsPath, assistantRunChangesActionPath,
-  assistantRunChangesPath, assistantRunDismissPath, conversationAssistantChangesPath, dmAssistantRunsPath, IDEMPOTENCY_KEY_HEADER, INBOX_PATH, assistantRunPath, assistantRunRetryPath, assistantRunShowPath, assistantRunStopPath, backgroundComputeConnectionPath,
+  assistantRunChangesPath, assistantRunDismissPath, conversationAssistantChangesPath, dmAssistantRunsPath, IDEMPOTENCY_KEY_HEADER, assistantRunPath, assistantRunRetryPath, assistantRunShowPath, assistantRunStopPath, backgroundComputeConnectionPath,
   backgroundComputeConnectionsPath, conversationAssistantRunsPath, myAgentPath, type AgentConnection, type AssistantJob, type AssistantModelChoice, type AssistantRun,
   type AssistantChange, type BackgroundComputeConnection, type Conversation, type Dm, type MyAgent, type PersonalAssistantStatus } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
-import { assistantJobRows } from '@flux/db';
 import { assistantTick, type TickDeps } from '@flux/core';
 import { assistantUnitOfWork } from '../../apps/worker/src/assistant/index.js';
 import { db, pool } from './support/db.js';
@@ -106,8 +105,10 @@ describe('a member made a guest keeps their AI, hidden and refused, and has it b
     await grant(boss, space.id, keeper, 'contributor');
     const thread = expectStatus(await keeper.browser.request('POST', `/api/v1/projects/${space.id}/conversations`,
       { body: { body: 'What is the probe about?', clientMessageId: randomUUID() } }), 201) as Conversation;
-    const schedules = assistantJobsPath(company, keeper.id);
-    const job = expectStatus(await keeper.browser.request('POST', schedules, { body: { projectId: space.id, title: 'Secret weekly prompt', text: 'Summarise the week',
+    // A schedule belongs to one of the person's agents (#858): the keeper's Assistant, made by the first key.
+    const agentId = ((expectStatus(await keeper.browser.request('GET', MY_AGENTS_PATH), 200) as { items: MyAgent[] }).items)[0]!.id;
+    const schedules = assistantJobsPath(agentId);
+    const job = expectStatus(await keeper.browser.request('POST', schedules, { body: { title: 'Secret weekly prompt', text: 'Summarise the week',
       schedule: { kind: 'weekly', at: '09:00', weekday: 1 }, timeZone: 'UTC', enabled: false } }), 201) as AssistantJob;
     const asked = expectStatus(await keeper.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is the probe about?' } }), 202) as AssistantRun;
@@ -124,16 +125,17 @@ describe('a member made a guest keeps their AI, hidden and refused, and has it b
 
     await becomes('guest');
 
-    assert.deepEqual(await listed(), [], 'no schedule is listed');
     const refuse = async (method: string, path: string, body?: unknown) => {
       const response = await keeper.browser.request(method, path, body === undefined ? {} : { body });
       assert.equal(response.status, 404, `${method} ${path}: ${response.text}`);
     };
-    await refuse('GET', assistantJobHistoryPath(company, keeper.id, job.id));
-    await refuse('PATCH', assistantJobPath(company, keeper.id, job.id), { expectedVersion: job.version, title: 'Renamed by a guest' });
-    await refuse('DELETE', assistantJobPath(company, keeper.id, job.id));
-    await refuse('POST', assistantJobRestorePath(company, keeper.id, job.id));
-    await refuse('POST', assistantJobRunNowPath(company, keeper.id, job.id));
+    // The agent is hidden from a guest, and so are its schedules: none is listed, read, changed, run or restored.
+    await refuse('GET', schedules);
+    await refuse('GET', assistantJobHistoryPath(agentId, job.id));
+    await refuse('PATCH', assistantJobPath(agentId, job.id), { expectedVersion: job.version, title: 'Renamed by a guest' });
+    await refuse('DELETE', assistantJobPath(agentId, job.id));
+    await refuse('POST', assistantJobRestorePath(agentId, job.id));
+    await refuse('POST', assistantJobRunNowPath(agentId, job.id));
     assert.equal(await jobs(job.id), 1, 'the schedule is kept, not deleted');
     await refuse('GET', assistantRunPath(run.id));
     await refuse('GET', assistantRunChangesPath(run.id));
@@ -152,23 +154,21 @@ describe('a member made a guest keeps their AI, hidden and refused, and has it b
     await becomes('member');
 
     assert.deepEqual((await listed()).map((item) => [item.id, item.title]), [[job.id, 'Secret weekly prompt']], 'the same schedule is back');
-    expectStatus(await keeper.browser.request('GET', assistantJobHistoryPath(company, keeper.id, job.id)), 200);
+    expectStatus(await keeper.browser.request('GET', assistantJobHistoryPath(agentId, job.id)), 200);
     assert.equal((expectStatus(await keeper.browser.request('GET', assistantRunPath(run.id)), 200) as AssistantRun).prompt, 'What is the probe about?', 'and the same run');
     expectStatus(await keeper.browser.request('GET', assistantRunChangesPath(run.id)), 200);
     assert.equal((await models()).groups.length, 1, 'and the model list');
     // A change is accepted again: delete, then bring it back with Undo.
-    expectStatus(await keeper.browser.request('DELETE', assistantJobPath(company, keeper.id, job.id)), 200);
-    expectStatus(await keeper.browser.request('POST', assistantJobRestorePath(company, keeper.id, job.id)), 200);
+    expectStatus(await keeper.browser.request('DELETE', assistantJobPath(agentId, job.id)), 200);
+    expectStatus(await keeper.browser.request('POST', assistantJobRestorePath(agentId, job.id)), 200);
     assert.notEqual((await keeper.browser.request('POST', assistantRunShowPath(run.id))).status, 404, 'Show everyone finds the run again (an answer to show or not)');
     await pool.query('DELETE FROM assistant_jobs WHERE owner_user_id = $1', [keeper.id]);
   });
 
   test('a guest\'s schedule does not fire and writes no history, and fires at its next time once they are a member again (#1059)', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, async () => {
     await becomes('member');
-    const space = await createProject(boss, company, 'Guest schedule does not fire', 'restricted');
-    await grant(boss, space.id, keeper, 'contributor');
-    expectStatus(await keeper.browser.request('POST', `/api/v1/projects/${space.id}/conversations`, { body: { body: 'Where to post?', clientMessageId: randomUUID() } }), 201);
-    const job = expectStatus(await keeper.browser.request('POST', assistantJobsPath(company, keeper.id), { body: { projectId: space.id, title: 'Daily check', text: 'Look at the week',
+    const agentId = ((expectStatus(await keeper.browser.request('GET', MY_AGENTS_PATH), 200) as { items: MyAgent[] }).items)[0]!.id;
+    const job = expectStatus(await keeper.browser.request('POST', assistantJobsPath(agentId), { body: { title: 'Daily check', text: 'Look at the week',
       schedule: { kind: 'daily', at: '09:00' }, timeZone: 'UTC' } }), 201) as AssistantJob;
     assert.equal(job.enabled, true);
     const fire = tomorrowAt9();
@@ -186,6 +186,7 @@ describe('a member made a guest keeps their AI, hidden and refused, and has it b
     await tick(new Date(fire.getTime() + DAY + 60_000));
     assert.deepEqual(started, [], 'nothing was started for a guest');
     assert.deepEqual(await history(), [], 'and no "Skipped" row was written');
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM agent_chat_messages WHERE agent_id = $1`, [agentId])).rows[0].n), 0, 'nor a line in the hidden chat ("this agent is gone" it never was)');
     const waiting = await row();
     assert.deepEqual([waiting.enabled, waiting.last_run_at], [true, null], 'the schedule is kept as it was, with no last run');
     assert.equal(new Date(waiting.next_run_at!).getTime(), fire.getTime() + 2 * DAY, 'and moved on to its next time after now');
@@ -260,21 +261,5 @@ describe('a member made a guest keeps their AI, hidden and refused, and has it b
     assert.equal((await replayed(spacePath, keyed, { [IDEMPOTENCY_KEY_HEADER]: key })).status, 202, 'and the stored response is replayed');
     assert.deepEqual(await changes(), ['applied', 'refused', 'skipped', 'waiting'], 'and the change list is whole again');
     await pool.query('DELETE FROM assistant_changes WHERE run_id = $1', [spaceRun.id]);
-  });
-
-  test('a paused schedule\'s Inbox item is hidden from a guest and is back for a member (#1090)', async () => {
-    await becomes('member');
-    const space = await createProject(boss, company, 'Guest inbox', 'restricted');
-    await grant(boss, space.id, keeper, 'contributor');
-    // The notice exactly as the tick writes it when a schedule fails three times.
-    const title = `Paused Weekly review ${randomUUID()}: it failed three times in a row`;
-    await assistantJobRows(db).notify(keeper.id, space.id, title, 'Your assistant paused this schedule. Turn it on again when it is fixed.', '/settings/assistant');
-    const inbox = async () => ((expectStatus(await keeper.browser.request('GET', INBOX_PATH), 200) as { items: { title: string }[] }).items).map((item) => item.title);
-    assert.ok((await inbox()).includes(title), 'a member reads it');
-    await becomes('guest');
-    assert.equal((await inbox()).includes(title), false, 'a guest does not');
-    await becomes('member');
-    assert.ok((await inbox()).includes(title), 'and it is back, the same one');
-    await pool.query('DELETE FROM notifications WHERE user_id = $1 AND title = $2', [keeper.id, title]);
   });
 });

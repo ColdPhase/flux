@@ -2,11 +2,9 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { assistantJobsPath, projectAiPolicyPath, projectPath, type AssistantJob, type Project, type SetSpaceAiResult } from '@flux/contracts';
-import type { PgBoss } from 'pg-boss';
-import { assistantTick, sweepSpaceAi } from '@flux/core';
+import { projectAiPolicyPath, projectPath, type Project, type SetSpaceAiResult } from '@flux/contracts';
+import { sweepSpaceAi } from '@flux/core';
 import { accessPorts } from '@flux/db';
-import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
 import { buildApp } from '../../apps/server/src/app.js';
 import { loadServerConfig } from '../../apps/server/src/config.js';
 import { assistantScene, human, lockWaiters, type AssistantScene } from './support/assistant-scene.js';
@@ -220,31 +218,6 @@ describe('space AI switch: flip and cutover', () => {
     assert.deepEqual(results.map((response) => response.status), [200, 200], results.map((response) => response.text).join(' | '));
     assert.deepEqual(results.map((response) => (response.json as { changed: boolean }).changed).sort(), [false, true], 'exactly one flip');
     assert.equal((await spaceAiRow(scene.place.id))!.epoch, at!.epoch + 1);
-  });
-
-  test('a schedule time missed while AI is off never fires; the next time after re-enable does', async () => {
-    const sent: { name: string; data: Record<string, unknown> }[] = [];
-    const boss = { send: async (name: string, data?: object | null) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
-    const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true }, db, boss) }, now);
-    const day = 86_400_000;
-    const base = new Date(Date.now() + 3 * day);
-    const at = (days: number, minutes = 0) => new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days, 9, minutes));
-    const job = expectStatus(await scene.owner.browser.request('POST', assistantJobsPath(scene.ws.id, scene.owner.id),
-      { body: { projectId: scene.place.id, text: 'List what moved', schedule: { kind: 'daily', at: '09:00' }, timeZone: 'UTC' } }), 201) as AssistantJob;
-    await pool.query('UPDATE assistant_jobs SET next_run_at = $2 WHERE id = $1', [job.id, at(0)]); // far ahead of the real clock
-    const firings = async () => Number((await pool.query('SELECT count(*)::int AS n FROM assistant_job_runs WHERE job_id = $1', [job.id])).rows[0].n);
-    const next = async () => new Date((await pool.query('SELECT next_run_at FROM assistant_jobs WHERE id = $1', [job.id])).rows[0].next_run_at as string).getTime();
-    try {
-      expectStatus(await put(scene.owner, 'blocked'), 200);
-      await tick(at(0, 1));
-      assert.deepEqual([await firings(), sent.length], [0, 0], 'nothing fires while AI is off, and no history row is written');
-      assert.equal(await next(), at(1).getTime(), 'the schedule moved on to its next time');
-      expectStatus(await put(scene.owner, 'allowed'), 200);
-      await tick(at(0, 5));
-      assert.equal(await firings(), 0, 'the missed time does not fire after AI is on again');
-      await tick(at(1, 1));
-      assert.equal(await firings(), 1, 'control: the next time fires');
-    } finally { await pool.query('DELETE FROM assistant_jobs WHERE id = $1', [job.id]); }
   });
 
   test('a second API process (this test process) sees a change made through the first at once', async () => {

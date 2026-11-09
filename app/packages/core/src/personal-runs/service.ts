@@ -69,19 +69,20 @@ const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
  * Nobody meets it in normal use; paused requests (waiting for a limit to reset) are not counted.
  */
 export const MAX_WAITING_REQUESTS = 20;
-/** What Flux's own tick asks for when a schedule is due (F-027 A8). */
+/** What Flux's own tick asks for when a schedule is due (F-036 AG-9, #858): a run of the schedule's agent, in the agent's private chat. */
 export interface BackgroundRunSpec {
   ownerUserId: string;
-  projectId: string;
-  /** Where the run is anchored: the conversation a schedule posts in, or any conversation of the project for a silent run. */
-  conversationId: string;
+  agentId: string;
   kind: 'scheduled';
   prompt: string;
+  /**
+   * The web addresses the run may read (C-30): those the schedule's owner typed. The schedule's text is written by the agent as often as by the
+   * owner, so it is never read for addresses here; the schedule keeps what the owner typed.
+   */
+  given: readonly string[];
   /** Deterministic per firing, so a repeated start returns the same run. */
   clientRunId: string;
-  /** The answer stays out of the conversation (Recent keeps it). */
-  silent: boolean;
-  /** The short name the owner knows it by, for the lane's lines: "Finishing your daily check first" (F-027 AST-6 "Queue"). */
+  /** The short name the owner knows it by, for the lane's lines: "Finishing your Morning summary first" (F-027 AST-6 "Queue"). */
   label: string;
 }
 /** A background run that could not start says why in plain words; a sign-out fails the firing, anything else skips it. */
@@ -169,7 +170,6 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
   if (record.answerBody === null || !record.committedAt) return null;
   const names = await ports.runs.names([record.ownerUserId]);
   const name = names.get(record.ownerUserId) ?? 'Former member';
-  const schedule = record.kind === 'scheduled' ? await ports.runs.jobOfRun?.(record.id) ?? null : null;
   const own = isPrivateAnswer(record);
   return {
     runId: record.id, conversationId: record.conversationId, projectId: record.projectId,
@@ -178,7 +178,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
     provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
-    committedAt: iso(record.committedAt), ...(schedule ? { schedule } : {}),
+    committedAt: iso(record.committedAt),
   };
 }
 
@@ -493,13 +493,15 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
   /**
    * The web addresses a run is given when it starts (#953, C-30): written in text a person wrote, never in what an agent wrote. That is the
-   * request when the owner or their schedule wrote it, the task when a person made it and no agent has written it since, and the people's
+   * request when the owner wrote it (a schedule's text is the agent's as often as the owner's, so a schedule keeps the addresses its owner typed
+   * and `startBackground` gives those), the task when a person made it and no agent has written it since, and the people's
    * messages in the conversation. A task run's prompt (and the prompt of a question between agents, and of a continuation, which holds the
    * agents' question and answer lines) is built by the server from agents' words, so it is not read for addresses. Fixed here, with the run.
    */
   async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId?: string | null; workId?: string | null }): Promise<string[]> {
     const texts = await ports.runs.personTexts({ projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, dmThreadRootId: run.dmThreadRootId ?? null }, run.workId ?? null);
-    if (run.kind !== 'task' && run.kind !== 'task_answer') texts.unshift(run.prompt);
+    // A schedule's prompt is its text, often the agent's words: its addresses are the schedule's own `given` (`startBackground`), and a retry of its run is refused.
+    if (run.kind !== 'task' && run.kind !== 'task_answer' && run.kind !== 'scheduled') texts.unshift(run.prompt);
     return [...givenAddresses(texts)].slice(0, GIVEN_AT_START_MAX);
   }
 
@@ -582,30 +584,22 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   }
 
   /**
-   * F-027 A8: starts the owner's scheduled run on the same path as a request: the owner's enablement
-   * (pause, removal), the connection or the signed-in CLI, the assistant's and the owner's current access to the project and
-   * the key's daily budget are all checked, and the run, its reservation and its dispatch job commit with the caller's
-   * transaction. Flux sets no background runs a day (#843). Nothing falls back to another account; a run that cannot
-   * start says why and writes nothing.
+   * F-036 AG-9 (#858): starts the owner's scheduled run on the same path as a request: the owner's enablement (pause, removal), the
+   * agent, the connection or the signed-in CLI and the key's daily budget are all checked, and the run, its reservation and its
+   * dispatch job commit with the caller's transaction. The run is in the agent's private chat: it reads what its owner can see, each
+   * space gating every call, and changes nothing (C-38, C-53). Flux sets no background runs a day (#843). Nothing falls back to another
+   * account; a run that cannot start says why and writes nothing.
    */
   async function startBackground(ports: PersonalRunPorts, spec: BackgroundRunSpec): Promise<BackgroundStart> {
     const skipped = (line: string): BackgroundStart => ({ started: false, outcome: 'skipped', line });
     const owner = spec.ownerUserId;
     const principal: Principal = { kind: 'human', id: owner };
-    const place = await ports.runs.locateConversation(spec.conversationId);
-    if (!place || place.projectId !== spec.projectId) return skipped('Skipped: this project has no conversation yet');
-    // AG-10: nothing starts in a space whose AI is off (the tick does not fire there; this is the backstop).
-    const ai = await ports.access.spaceAi(place.projectId, { lock: true });
-    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this space');
-    // The assistant changes things as the owner's: the owner must still be able to write here.
-    if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
     if (existing) return { started: true, run: existing, created: false };
-    const enablement = await ports.runs.enablement(owner, { lock: true, workspaceId: place.workspaceId });
-    if (!enablement) return skipped('Skipped: you have no agent');
+    const enablement = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    if (!enablement) return skipped('Skipped: this agent is gone');
     const agentId = enablement.agentId;
     if (!(await ports.access.canInvoke(principal, agentId, { lock: true }))) return skipped('Skipped: your assistant is not available');
-    if (!(await ports.access.canUseProject({ kind: 'agent', id: agentId }, 'read', place.projectId, { lock: true }))) return skipped('Skipped: I\'m not in this project');
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) {
       if (admitted.problem === 'runtime_sign_in') return { started: false, outcome: 'failed', line: `Sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again` };
@@ -613,19 +607,18 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     }
     // A background firing does not wait for the key's next day: the next firing is its next chance.
     if (admitted.fields.resumeAt) return skipped(budgetLine);
-    const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId,
+      id: randomUUID(), workspaceId: enablement.workspaceId, projectId: null, conversationId: null, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
-      prompt: spec.prompt, given: await givenAtStart(ports, { kind: spec.kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null }),
-      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
-      aiEpoch: ai.epoch,
+      // The schedule's own text is not read for addresses (C-30): the agent may have written it. Only what its owner typed is given.
+      prompt: spec.prompt, given: spec.given.slice(0, GIVEN_AT_START_MAX),
+      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: false,
+      aiEpoch: null,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
       authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
     });
     await ports.queue.enqueue(run.id);
-    await taskFence.mark();
     await announce(ports, run);
     return { started: true, run, created: true };
   }
@@ -848,6 +841,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const earlier = await ownRun(ports, principal, runId);
         // A run on a task is tried again from the task (#856): it is bound to that task and its owner assignment.
         if (earlier.kind === 'task') throw new ConflictError('Try again from the task', 'ASSISTANT_RUN_NOT_RETRYABLE');
+        // A schedule's run is fired by its schedule (its web addresses are the schedule's `given`, C-30, and its result is a line of the chat): Run now is the way to run it again.
+        if (earlier.kind === 'scheduled') throw new ConflictError('Run it again from its schedule', 'ASSISTANT_RUN_NOT_RETRYABLE');
         if (IN_FLIGHT.has(earlier.status)) throw new ConflictError('The run is still in progress', 'ASSISTANT_RUN_NOT_RETRYABLE');
         const started = await start(ports, principal, placeOf(earlier), retryRequest(earlier, command?.clientRunId), earlier.id);
         return { run: await runView(ports, started.run), created: started.created };
@@ -890,7 +885,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const readable = new Map<string, boolean>();
         const enriched: AgentChatMessage[] = [];
         for (const line of lines) {
-          const run = await ports.runs.findRun(line.runId);
+          const run = line.runId ? await ports.runs.findRun(line.runId) : null;
           const label = run?.kind === 'task' && run.workId ? await ports.runs.workLabel(run.workId) : null;
           if (!run || !label) { enriched.push(line); continue; }
           if (!readable.has(label.projectId)) readable.set(label.projectId, await ports.access.canUseProject(reader, 'read', label.projectId));

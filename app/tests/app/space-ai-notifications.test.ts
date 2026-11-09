@@ -7,7 +7,7 @@ import {
   DEFAULT_PREFERENCES, deliverNotificationEmail, generateNotifications, preferenceRepository,
   type GeneratorEvent, type GeneratorPorts, type NotificationFacts, type NotificationMailer, type ProjectMessageFacts, type ReviewFacts,
 } from '@flux/core';
-import { assistantJobRows, notificationGeneratorRows, pushDeliveryRepository } from '@flux/db';
+import { notificationGeneratorRows, pushDeliveryRepository } from '@flux/db';
 import { emailUnitOfWork } from '../../apps/worker/src/notifications/adapters.js';
 import { assistantScene, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
@@ -182,12 +182,6 @@ describe('space AI switch: notifications by AI origin (#642)', () => {
       assert.ok(await pushDeliveryRepository(db).findTarget({ notificationId: id!, subscriptionId, userId: owner.id }), 'still pushed');
       assert.ok((await unreadIn(owner)).items.some((item) => item.id === id), 'still in the Inbox');
     } finally { await setSpaceAi(scene.place.id, 'allowed'); }
-  });
-
-  test('an assistant\'s schedule paused notice', async () => {
-    const { owner, place } = scene;
-    const id = await assistantJobRows(db).notify(owner.id, place.id, 'Paused Daily check: it could not run', 'Your assistant paused this schedule. Turn it on again when it is fixed.', '/settings/assistant');
-    await assertGated('assistant schedule notice', owner, scene.place.id, id);
   });
 
   test('an operator request', async () => {

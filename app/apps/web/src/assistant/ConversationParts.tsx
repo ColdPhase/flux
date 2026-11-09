@@ -5,7 +5,6 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
-import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
 import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
@@ -155,7 +154,7 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
 }
 
 /** The body with `[n]` citations as links that open exactly the cited object. */
-export function AnswerBody({ answer, lookups }: { answer: AssistantAnswer; lookups: SourceLookups }) {
+export function AnswerBody({ answer, lookups }: { answer: Pick<AssistantAnswer, 'body' | 'sources'>; lookups: SourceLookups }) {
   const parts: ReactNode[] = [];
   let last = 0;
   for (const match of answer.body.matchAll(/\[(\d{1,3})\]/g)) {
@@ -212,7 +211,6 @@ export function AnswerItem({ answer, mine, lookups, when, clock, changes = null,
       {resultInMessage && /^done\b[^\n]{0,160}$/i.test(answer.body.trim()) ? null : <AnswerBody answer={answer} lookups={lookups} />}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {changes}
-      {mine && answer.projectId ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
         <span>{sourceSummary(answer.sources.length)} · {answeredBy(answer.provenance)}</span>
         {mine ? <>

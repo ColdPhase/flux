@@ -11,7 +11,7 @@ import { eventPorts } from '../events.js';
 /**
  * The personal-run ports inside `tx`. The processor never queues (retries are new runs the owner starts through the API); the
  * schedule tick passes a queue for the runs it starts. A request's schedule block prepares a schedule here, off, in a
- * savepoint of its own, so a refused one leaves the run's commit untouched (F-027 AST-7 "Set up by asking").
+ * savepoint of its own, so a refused one leaves the run's commit untouched (AG-9 "Set up by asking").
  */
 export function personalRunPorts(tx: Transaction, queue?: PersonalRunQueue): PersonalRunPorts {
   const ports: PersonalRunPorts = {
@@ -21,14 +21,11 @@ export function personalRunPorts(tx: Transaction, queue?: PersonalRunQueue): Per
     events: { record: async (principal, workspaceId, kind, projectId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data); } },
   };
   ports.schedules = {
-    async prepare(ownerUserId, projectId, runId, request) {
+    async prepare(ownerUserId, agentId, runId, request) {
       try {
-        const enablement = await ports.runs.enablement(ownerUserId);
-        if (!enablement) return { ok: false, message: 'your assistant is off' };
         const timeZone = await personalRunRows(tx).personTimeZone(ownerUserId);
-        const job = await tx.transaction((savepoint) => prepareSchedule({ ...personalRunPorts(savepoint, queue), jobs: assistantJobRows(savepoint),
-          inbox: { tell: async () => { throw new Error('Nothing is told about a prepared schedule'); } } }, ownerUserId,
-        { projectId, ...(request.title ? { title: request.title } : {}), text: request.text, schedule: request.schedule as never, timeZone }, runId));
+        const job = await tx.transaction((savepoint) => prepareSchedule({ ...personalRunPorts(savepoint, queue), jobs: assistantJobRows(savepoint) }, ownerUserId, agentId,
+          { ...(request.title ? { title: request.title } : {}), text: request.text, schedule: request.schedule as never, timeZone }, runId));
         return { ok: true, title: job.title, words: scheduleWords(job.schedule, job.timeZone) };
       } catch (error) {
         if (error instanceof DomainError) return { ok: false, message: error.message };

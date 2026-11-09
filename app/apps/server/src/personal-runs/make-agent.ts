@@ -1,6 +1,6 @@
 import { FIRST_AGENT_NAME, type CreateMyAgentCommand, type MyAgent } from '@flux/contracts';
 import { createAgent, DomainError, InvalidInputError, type Principal } from '@flux/core';
-import { accessPorts, agentTaskRows, lockAssistantOwner, type Database } from '@flux/db';
+import { accessPorts, agentTaskRows, assistantJobRows, lockAssistantOwner, type Database } from '@flux/db';
 import { workUseCases } from '../work/adapters.js';
 import { personalRunUseCases, type PersonalRunComposition } from './adapters.js';
 
@@ -32,6 +32,9 @@ export async function makeAgent(tx: Database, composition: PersonalRunCompositio
 export async function removeAgent(tx: Database, composition: PersonalRunComposition, actor: Principal, agentId: string): Promise<void> {
   // Anything that is not an id is for the deletion to answer "not found".
   if (actor.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)) {
+    // The agent's schedules before the owner's lock, as a firing takes them (a firing holds its schedule row and then takes the owner's lock): two
+    // transactions that need both never wait on each other.
+    await assistantJobRows(tx).lockForAgent(actor.id, agentId.toLowerCase());
     await lockAssistantOwner(tx, actor.id);
     for (const held of await agentTaskRows(tx).heldBy(agentId.toLowerCase(), actor.id)) {
       try {

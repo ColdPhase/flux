@@ -12,7 +12,7 @@ import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
-import { isPrivateAnswer } from './ports.js';
+import { isAsked, isPrivateAnswer } from './ports.js';
 import { runtimeBrief, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerWithWebSources } from './web-sources.js';
@@ -135,7 +135,7 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
   } else if (dmId !== null) await ports.access.requireDm({ kind: 'human', id: run.ownerUserId }, dmId);
   const brief = await ports.runs.agentBrief(run.agentId);
   const dm = dmId !== null && isPrivateAnswer(run) ? await latestMessages((limit) => ports.runs.dmMessages(dmId, limit, run.dmThreadRootId)) : { messages: [], leftOut: false };
-  const turns = projectId === null && dmId === null && isPrivateAnswer(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
+  const turns = projectId === null && dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
   return {
     brief, facts: await readBriefFacts(ports, run, brief), leftOut: dm.leftOut, turns,
     sources: dm.messages.map((message, index) => ({ label: `S${index + 1}`, ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } })),
@@ -297,7 +297,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
         // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
         const prompt = runtimeBrief({
-          engine: 'runtime', kind: run.kind, silent: run.silent, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
+          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
         });

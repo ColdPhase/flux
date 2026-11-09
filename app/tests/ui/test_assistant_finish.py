@@ -247,10 +247,8 @@ class AssistantFinish(unittest.TestCase):
                 self.axe(page, f"your agents ({tag})")
                 row.get_by_role("link").click()
                 expect(page.get_by_label("Instructions")).to_be_visible()
-                self.axe(page, f"an agent's page ({tag})")
-                page.goto("/settings/assistant")
-                expect(page.get_by_role("heading", name=re.compile("schedules", re.I)).first).to_be_visible()
-                self.axe(page, f"the schedules page ({tag})")
+                expect(page.get_by_role("heading", name="Schedules")).to_be_visible()
+                self.axe(page, f"an agent's page, with its schedules ({tag})")
 
     def stub_model(self, page: Page) -> None:
         options = [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True}, {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]

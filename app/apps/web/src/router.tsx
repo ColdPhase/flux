@@ -190,8 +190,8 @@ export const router = createBrowserRouter([
                 { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
                 // One of your agents (F-036 AG-1, #857).
                 { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
-                // Assistant's schedules, until they move into its conversation (#858).
-                { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
+                // The schedules page that lived here is gone (#858): an agent's schedules are in its conversation. The old address leads to the agents.
+                { path: 'assistant', element: <Navigate to="/settings/agents" replace /> },
                 { path: 'ai-connections', ...secondary(async () => { const page = await import('./ai/AiKeysSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
               ] },
             ],

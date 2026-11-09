@@ -55,12 +55,16 @@ export const agentChatReadPath = (agentId: string) => `${AGENT_CHATS_PATH}/${age
  * of that run and the task it was about above it. `changes` is how many of the run's changes stand now, as its Undo would take them back
  * (not the agent's own line in the task's thread): the line offers Undo while it is above zero. `undone` is how many were taken back.
  * `words` and `task` are null when the line has none, or when the person can no longer read the task's space.
+ * A schedule's result is a line of its own (`schedule`, #858): `body` is the result, or what happened when it did not come ("Sign in to Claude again");
+ * `runId` is null when the firing could not start, so there is no run behind it.
  */
 export interface AgentChatMessage {
-  id: string; agentId: string; runId: string; body: string; createdAt: string;
+  id: string; agentId: string; runId: string | null; body: string; createdAt: string;
   changes: number; undone: number;
   words: string | null;
   task: { id: string; number: number; title: string; projectId: string; projectName: string } | null;
+  /** The schedule that said it: its name and when it runs ("Every weekday at 9:00"); `failed` when there is no result to show. Null for any other line. */
+  schedule: { title: string; words: string; failed: boolean } | null;
 }
 /** `GET /api/v1/agent-chats`: for each of the caller's agents, what they have not read in its chat (answers and reports) and when it last said something. */
 export interface AgentChatSummary { agentId: string; unread: number; lastAt: string | null }
@@ -382,8 +386,6 @@ export interface AssistantAnswer {
   /** Only supplied project-audience sources the answer cites. */
   sources: AssistantSourceRef[];
   committedAt: string;
-  /** The schedule that posted this answer in the conversation (F-027 AST-7 "Output"); null for a request. */
-  schedule?: { id: string; title: string } | null;
 }
 
 export type AssistantAnswerPage = Page<AssistantAnswer>;

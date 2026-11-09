@@ -14,8 +14,7 @@ import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CON
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
 export type AiScopeKind = 'project' | 'conversation' | 'work' | 'run'
-  | 'assistant_change' | 'agent_question'
-  | 'assistant_job';
+  | 'assistant_change' | 'agent_question';
 
 export type AiRouteRule =
   | { gate: 'gated'; from: 'params' | 'body'; key: string; kind: AiScopeKind; onlyWhen?: { body: string; equals: unknown } }
@@ -70,15 +69,15 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/assistant-changes/:changeId/skip': exempt(REDUCES),
   'POST /api/v1/assistant-changes/:changeId/edit': gated('params', 'changeId', 'assistant_change'),
   'POST /api/v1/assistant-changes/:changeId/undo': exempt('A human compensating write as the owner; the owner can always reverse AI output'),
-  'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules': exempt(PERSON),
-  'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules': gated('body', 'projectId', 'project'),
-  'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/preview': exempt(PERSON),
-  'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/background-note': exempt(PERSON),
-  'PATCH /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId': gated('params', 'jobId', 'assistant_job', { body: 'enabled', equals: true }),
-  'DELETE /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId': exempt(REDUCES),
-  'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/restore': gated('params', 'jobId', 'assistant_job'),
-  'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/run': gated('params', 'jobId', 'assistant_job'),
-  'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/history': exempt(PERSON),
+  // An agent's schedules (#858, AG-9): its owner's own sentences. A schedule is in no space; what its run reads is checked and gated in that space, call by call.
+  'GET /api/v1/my-agents/:agentId/schedules': exempt(PERSON),
+  'POST /api/v1/my-agents/:agentId/schedules': exempt(PERSON),
+  'GET /api/v1/my-agents/:agentId/background-note': exempt(PERSON),
+  'PATCH /api/v1/my-agents/:agentId/schedules/:jobId': exempt(PERSON),
+  'DELETE /api/v1/my-agents/:agentId/schedules/:jobId': exempt(REDUCES),
+  'POST /api/v1/my-agents/:agentId/schedules/:jobId/restore': exempt(PERSON),
+  'POST /api/v1/my-agents/:agentId/schedules/:jobId/run': useCase('A schedule is in no space; what its run reads is checked and gated in that space, call by call'),
+  'GET /api/v1/my-agents/:agentId/schedules/:jobId/history': exempt(PERSON),
   'GET /api/v1/personal-assistant': exempt('Account-wide status of the owner\'s own assistant; no AI read or action'),
   'GET /api/v1/personal-assistant/model': exempt(ACCOUNT),
   'PUT /api/v1/personal-assistant/model': exempt(ACCOUNT),

@@ -619,8 +619,6 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Settings', noDetails: true }
     : aiConnections
     ? { crumb: null, title: 'Your API keys', noDetails: true }
-    : location.pathname === '/settings/assistant'
-    ? { crumb: null, title: 'Schedules', noDetails: true }
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject

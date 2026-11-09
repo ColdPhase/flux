@@ -149,22 +149,23 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
   test('every brief of a run that can change things says that no tool posts and that a request to post is not obeyed, on both engines', () => {
     // The one brief of every run (#1064): with change tools it says so on both engines; with only reads there is nothing to say.
     const base: BriefInput = {
-      engine: 'server', kind: 'ask', silent: false, tools: ['flux_get_work', 'flux_update_task', 'flux_create_doc'], agentName: 'Assistant', ownerName: 'Ada',
+      engine: 'server', kind: 'ask', tools: ['flux_get_work', 'flux_update_task', 'flux_create_doc'], agentName: 'Assistant', ownerName: 'Ada',
       now: new Date(), timeZone: 'UTC', place: { kind: 'space', spaceId: 'p', spaceName: 'Lamp', conversationId: 'c', task: null }, task: null, scheduleTitle: null,
       agent: null, prompt: 'Tidy the project', requestedAt: new Date(), sources: [], leftOut: false, turns: [], earlier: null, thought: null,
     };
-    for (const engine of ['server', 'runtime'] as const) for (const kind of ['ask', 'task', 'scheduled'] as const) {
+    for (const engine of ['server', 'runtime'] as const) for (const kind of ['ask', 'task'] as const) {
       const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind }) : buildBrief({ ...base, kind }).system;
       assert.ok(brief.includes(NO_POSTING_LINE), `${engine} ${kind}`);
       assert.ok(!brief.includes('maps and conversations'), `${engine} ${kind}: a run is not told it works in conversations`);
       assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: Only read changes nothing`);
     }
     assert.ok(runtimeBrief({ ...base, engine: 'runtime', kind: 'task' }).includes('its tasks, Wiki pages and maps, and read its conversations'));
-    // A schedule that posts is told that Flux posts its reply for it, not that it is posted as if by itself, after "No tool posts" (#1089).
+    // A schedule's run is in its agent's private chat (#858): it reads and changes nothing, and its reply is a message of that chat, which Flux posts there.
     for (const engine of ['server', 'runtime'] as const) {
-      const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind: 'scheduled' }) : buildBrief({ ...base, kind: 'scheduled' }).system;
-      assert.match(brief, /Flux posts it for you in a conversation of this space/, engine);
-      assert.ok(!brief.includes('It is posted in a conversation'), `${engine}: no line that reads as if the run posts`);
+      const scheduled = { ...base, engine, kind: 'scheduled' as const, place: { kind: 'chat' as const }, tools: ['flux_get_work'] };
+      const brief = engine === 'runtime' ? runtimeBrief(scheduled) : buildBrief(scheduled).system;
+      assert.match(brief, /its result is a short message in your private chat/, engine);
+      assert.ok(!brief.includes(NO_POSTING_LINE) && !brief.includes('Flux posts it for you in a conversation'), `${engine}: it posts in no conversation and is not told to`);
     }
   });
 

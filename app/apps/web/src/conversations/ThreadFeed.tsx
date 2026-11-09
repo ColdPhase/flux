@@ -39,7 +39,7 @@ export function ThreadFeed(props: Props) {
     if (entry.type === 'object') withDay(entry.at, dayKey, [<ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
       follows={(() => { const previous = entries[index - 1]; return previous?.type === 'object' && day(previous.at) === day(entry.at) && followsProposal(entry.notice, previous.notice); })()}
       hasMessage={() => false} onOpen={(target) => props.openDetails(target)} />]);
-    else if (entry.type === 'answer') withDay(entry.at, dayKey, answerElements(entry, index, entries, answers));
+    else if (entry.type === 'answer') withDay(entry.at, dayKey, answerElements(entry, answers));
     else {
       const message = entry.message;
       const previous = entries[index - 1], next = entries[index + 1];

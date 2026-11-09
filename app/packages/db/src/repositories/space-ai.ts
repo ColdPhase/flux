@@ -27,7 +27,6 @@ const SCOPE_SQL: Record<AiScopeKind, ((id: string) => SQL) | null> = {
   run: (id) => sql`SELECT project_id AS id FROM personal_runs WHERE id = ${id}`,
   assistant_change: (id) => sql`SELECT project_id AS id FROM assistant_changes WHERE id = ${id}`,
   agent_question: (id) => sql`SELECT project_id AS id FROM agent_questions WHERE id = ${id}`,
-  assistant_job: (id) => sql`SELECT project_id AS id FROM assistant_jobs WHERE id = ${id}`,
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

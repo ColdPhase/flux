@@ -1,6 +1,5 @@
-// "On a schedule" (F-027 AST-7, A8 #408). A schedule is the owner's own sentence, run by their
-// assistant at a time in their time zone, in one project. The words "job" and "cron" are internal, except inside a
-// schedule's *More* (AST-10.2).
+// An agent's schedules (F-036 AG-9, #858). A schedule is the owner's own sentence, told to one of their agents in its private
+// conversation and run by that agent at a time in the owner's time zone. The words "job" and "cron" are internal.
 
 export const ASSISTANT_JOB_LIMITS = {
   /** The row's name; taken from the first words of the sentence when the owner gives none. */
@@ -16,8 +15,6 @@ export const ASSISTANT_JOB_LIMITS = {
   history: 20,
   /** A run that could not start within this many minutes of its time is skipped (AST-7 "Missed runs"). */
   missedMinutes: 10,
-  /** Failures in a row that pause a schedule (AST-7 "Failures"). */
-  failuresToPause: 3,
   /** A deleted schedule can be brought back with Undo for this long (hours). */
   undoHours: 24,
 } as const;
@@ -51,8 +48,6 @@ export interface AssistantJobRun {
   firedBy: AssistantJobRunTrigger;
   state: AssistantJobRunState;
   line: string;
-  /** The result needs the owner (one Inbox item exists for it). */
-  needsYou: boolean;
   /** The assistant run behind it, when one started. */
   runId: string | null;
   finishedAt: string | null;
@@ -62,23 +57,19 @@ export interface AssistantJobRun {
 export interface AssistantJob {
   id: string;
   workspaceId: string;
-  projectId: string;
-  projectName: string;
+  /** The agent it belongs to: it runs in that agent's private conversation. */
+  agentId: string;
   title: string;
   text: string;
   schedule: AssistantJobSchedule;
   timeZone: string;
   /** "Every Monday at 9:00". */
   words: string;
-  /** Post the result in the project conversation (under *More*); null when the schedule keeps its result in Recent. */
-  conversationId: string | null;
   enabled: boolean;
   /** Prepared from a request and still waiting for the owner's tap (never enabled by anyone else). */
   prepared: boolean;
   /** The owner's request that prepared it; the conversation offers *Turn on* under that answer. */
   preparedRunId: string | null;
-  /** Why it is off by itself: three failures in a row. */
-  pausedReason: 'failures' | null;
   /** The next three times, in the owner's time zone ("Mon 9:00"); empty when off. */
   next: { at: string; label: string }[];
   /** The latest history line, when there is one. */
@@ -91,17 +82,12 @@ export interface AssistantJob {
 }
 
 export interface CreateAssistantJob {
-  projectId: string;
   /** Optional: the first words of `text` name the schedule. */
   title?: string;
   text: string;
   schedule: AssistantJobSchedule;
   timeZone: string;
-  /** Post the result in the project conversation (More). */
-  postToConversation?: boolean;
-  /** The conversation a one-off "Do it at" belongs to. */
-  conversationId?: string;
-  /** `false` creates the schedule off (the sheet always creates it on with *Turn on*). */
+  /** `false` creates the schedule off. */
   enabled?: boolean;
   /** The version of the background-use note the owner saw, when the account needs one (AST-2.1). */
   noteVersion?: string;
@@ -112,8 +98,6 @@ export interface UpdateAssistantJob {
   text?: string;
   schedule?: AssistantJobSchedule;
   timeZone?: string;
-  projectId?: string;
-  postToConversation?: boolean;
   enabled?: boolean;
   noteVersion?: string;
 }
@@ -129,16 +113,15 @@ export interface AssistantBackgroundNote {
   credits: string | null;
 }
 
-export const assistantJobsPath = (workspaceId: string, ownerUserId: string) => `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/schedules`;
-export const assistantJobPath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobsPath(workspaceId, ownerUserId)}/${jobId}`;
-export const assistantJobRunNowPath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/run`;
-export const assistantJobRestorePath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/restore`;
-export const assistantJobHistoryPath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/history`;
-export const assistantJobNotePath = (workspaceId: string, ownerUserId: string) => `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/background-note`;
-/** The cron preview of *More*: the expression in words and its next three times. Flux sets no minimum between runs (#843). */
-export const assistantJobPreviewPath = (workspaceId: string, ownerUserId: string) => `${assistantJobsPath(workspaceId, ownerUserId)}/preview`;
+export const assistantJobsPath = (agentId: string) => `/api/v1/my-agents/${agentId}/schedules`;
+export const assistantJobPath = (agentId: string, jobId: string) => `${assistantJobsPath(agentId)}/${jobId}`;
+export const assistantJobRunNowPath = (agentId: string, jobId: string) => `${assistantJobPath(agentId, jobId)}/run`;
+export const assistantJobRestorePath = (agentId: string, jobId: string) => `${assistantJobPath(agentId, jobId)}/restore`;
+export const assistantJobHistoryPath = (agentId: string, jobId: string) => `${assistantJobPath(agentId, jobId)}/history`;
+export const assistantJobNotePath = (agentId: string) => `/api/v1/my-agents/${agentId}/background-note`;
 
-export interface AssistantJobPreview {
-  words: string;
-  next: { at: string; label: string }[];
-}
+/** The ready-made schedules an agent offers to turn on, as a sentence the owner can say to it (#858: the morning summary is one). */
+export const ASSISTANT_SCHEDULE_STARTERS = [
+  { id: 'morning-summary', title: 'Morning summary', text: 'Every weekday at 9, summarise what needs me: my tasks that are due or waiting, and what changed in my spaces since yesterday.',
+    schedule: { kind: 'weekdays', at: '09:00' } as AssistantJobSchedule },
+] as const;

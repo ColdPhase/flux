@@ -33,13 +33,11 @@ async function fireDue(deps: TickDeps, now: Date): Promise<number> {
       const once = job.schedule.kind === 'once';
       // The next time after now, never the next after the missed one: there is no backlog (AST-7 "Missed runs").
       const next = once ? null : nextRuns(job.schedule, job.timeZone, now, 1)[0] ?? null;
-      // AG-10: while AI is off in the job's space nothing fires and no history row is written; the schedule moves on
-      // to its next time after now, so a missed time never runs later (AST-7). The same for a schedule whose owner is a guest of the
-      // company (AG-2, C-50, #1059): it is kept, and fires again at its next time once they are a member again.
-      const aiOn = !(await ports.jobs.ownerIsGuest(job.ownerUserId)) && (await ports.access.spaceAi(job.projectId, { lock: true })).state === 'allowed';
-      if (aiOn) await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
-      // Skipped while AI is off or the owner is a guest: no "Last run" either, only the next time.
-      await ports.jobs.update(job.id, { ...(aiOn ? { lastRunAt: firedAt } : {}), nextRunAt: next, ...(once || !next ? { enabled: false } : {}) });
+      // A schedule whose owner is a guest of the company (AG-2, C-50, #1059) fires nothing and writes no history: it is kept, hidden and refused, and
+      // fires again at its next time once they are a member again. The time moves on, so a missed time never runs later (AST-7).
+      const fires = !(await ports.jobs.ownerIsGuest(job.ownerUserId));
+      if (fires) await fireJob(ports, deps.startBackground, job, firedAt, 'schedule', { late });
+      await ports.jobs.update(job.id, { ...(fires ? { lastRunAt: firedAt } : {}), nextRunAt: next, ...(once || !next ? { enabled: false } : {}) });
       return job.id;
     });
     if (!id) break;

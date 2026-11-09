@@ -66,7 +66,14 @@
 
 /* The chat itself (#842): the owner's turns and the agent's, in the look of a direct message. */
 .agc-pane { min-height: 0; }
-.agc-pane .agc__bar { margin-bottom: 18px; }
+.agc-pane .agc__bar { margin-bottom: 12px; }
+/* Above the history: the agent's bar and its schedules line do not scroll with it */
+.agc__top { flex: none; }
+.agc__top .dm__in { padding-bottom: 0; }
+.agc__top .agc__sched { margin-bottom: 4px; }
+/* The line takes the width of its message, so the rest is cut by an ellipsis at the edge instead of running past it */
+.agc__meta { align-self: stretch; min-width: 0; }
+.agc__meta-rest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__turn .dm-msg__body { white-space: pre-wrap; }
 .agc__answer > p { margin: 0; }
 .agc__state { color: var(--t2); }
@@ -80,3 +87,35 @@
 .agc__line b { font-weight: 500; color: var(--t1); }
 .agc__line-note { margin: 2px 0 0; font-size: var(--fs-xs); color: var(--t2); }
 .agc__time { font-variant-numeric: tabular-nums; }
+
+/* An agent's schedules (#858, AG-9): beside what it remembers, and the confirmation under its answer in the chat */
+.agp__schedule { flex-wrap: wrap; }
+/* The words keep a readable width and the actions drop to their own line on a phone, rather than squeezing the name into a column of letters */
+.agp__schedule .sset-row__b { flex: 1 1 200px; min-width: 0; }
+.agp__schedule-actions { display: inline-flex; flex-wrap: wrap; gap: 2px 6px; margin-left: auto; }
+.agp__note { margin: 8px 2px 0; padding: 10px 12px; border-radius: 12px; background: var(--el); font-size: var(--fs-sm); color: var(--t2); }
+.agp__note p { margin: 0 0 8px; }
+/* The schedule line in the conversation's header (mockup: clock, the first schedule in words, "1 schedule", chevron) and the one list it opens */
+.agc__sched { margin: 0 0 10px; }
+.agc__sched-row { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 8px 14px; border: 1px solid var(--line); border-radius: 14px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.agc__sched-row:hover { background: var(--hov); }
+.agc__sched-row:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.agc__sched-row svg { flex: none; }
+.agc__sched-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agc__sched-count { flex: none; font-size: var(--fs-xs); color: var(--t3); }
+.agc__sched-panel { margin-top: 8px; max-height: 45vh; overflow-y: auto; overscroll-behavior: contain; }
+.agc__sched-panel .agp__memory { margin: 0; }
+/* What a prepared schedule will do, with Turn on and Change (mockup: the card under the agent's reply) */
+.agc__ready { display: flex; flex-direction: column; gap: 6px; max-width: 100%; margin-top: 8px; padding: 12px 14px; border-radius: 14px; background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
+.agc__ready-when { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; color: var(--t1); }
+.agc__ready-when svg { flex: none; }
+.agc__ready-when span { color: var(--t2); }
+.agc__ready-text { margin: 0; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+.agc__ready-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.agc__on { display: inline-flex; align-items: center; gap: 6px; min-height: var(--ctl); padding: 0 12px; border-radius: 10px; background: var(--hov); color: var(--t1); font-size: var(--fs-sm); }
+.agc__ready-off { font-size: var(--fs-xs); color: var(--t3); }
+.agc__change { display: flex; flex-direction: column; gap: 8px; width: 100%; margin-top: 6px; }
+.agc__change-when { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.agc__change-when .agp__input { width: auto; }
+.agc__change-actions { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+.agc__line--failed { color: var(--t2); }

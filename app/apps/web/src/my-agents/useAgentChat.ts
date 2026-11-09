@@ -16,7 +16,9 @@ export function useAgentChat(agentId: string, meId: string) {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [failed, setFailed] = useState(false);
   const [reads, setReads] = useState(0);
-  const refresh = useCallback(() => setReads((value) => value + 1), []);
+  // What the chat's neighbours (the schedules) read again with: the stream's events and the person's own doing, not the timer below.
+  const [signal, setSignal] = useState(0);
+  const refresh = useCallback(() => { setReads((value) => value + 1); setSignal((value) => value + 1); }, []);
   useEffect(() => {
     let alive = true;
     listPlaceRuns({ kind: 'chat', agentId }, { limit: LATEST })
@@ -42,12 +44,12 @@ export function useAgentChat(agentId: string, meId: string) {
   const working = !!runs?.some(isWorking);
   useEffect(() => {
     if (!working) return;
-    const timer = window.setInterval(refresh, 4000);
+    const timer = window.setInterval(() => setReads((value) => value + 1), 4000);
     return () => window.clearInterval(timer);
-  }, [working, refresh]);
+  }, [working]);
 
   return {
-    runs, lines, status, failed, working, refresh,
+    runs, lines, status, failed, working, refresh, version: signal,
     async send(prompt: string) {
       const started = await askAssistant({ kind: 'chat', agentId }, { clientRunId: crypto.randomUUID(), kind: 'ask', prompt });
       setRuns((items) => [...(items ?? []).filter((item) => item.id !== started.id), started]);

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { AI_HTTP_ROUTES, INBOX_PATH, NEEDS_YOU_PATH, assistantJobsPath, type AiRouteRule, type AiScopeKind, type InboxResponse } from '@flux/contracts';
+import { AI_HTTP_ROUTES, INBOX_PATH, NEEDS_YOU_PATH, type AiRouteRule, type AiScopeKind, type InboxResponse } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import { aiRoutes } from '../../apps/server/src/access/ai-gate.js';
 import { buildApp } from '../../apps/server/src/app.js';
@@ -27,9 +27,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
   const work = await scene.task(owner, 'Calibrate the probes');
   const run = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look around' });
   await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.run.id]);
-  const job = expectStatus(await owner.browser.request('POST', assistantJobsPath(ws.id, owner.id),
-    { body: { projectId: place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } }), 201) as { id: string };
-  const ids = { change: randomUUID(), question: randomUUID(), job: job.id };
+  const ids = { change: randomUUID(), question: randomUUID() };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -43,7 +41,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   return { project: place.id, conversation: thread.id, work: work.id,
-    run: run.run.id, assistant_change: ids.change, agent_question: ids.question, assistant_job: ids.job };
+    run: run.run.id, assistant_change: ids.change, agent_question: ids.question };
 }
 
 /** The request a gated route answers to: its scope object in the path or body, the owner wherever an owner is named. */
@@ -71,10 +69,9 @@ describe('space AI switch: HTTP routes', () => {
   after(async () => { await ensureSpaceAiAllowed(blocked.place.id); });
 
   test('every gated route refuses while AI is off and writes nothing; AI on and outsiders are unaffected', async () => {
-    assert.ok(gatedRoutes.length >= 17, `the manifest gates the AI routes (${gatedRoutes.length})`);
+    assert.ok(gatedRoutes.length >= 12, `the manifest gates the AI routes (${gatedRoutes.length})`);
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
-      (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs,
       (SELECT count(*) FROM events WHERE workspace_id = $1) AS events`, [blocked.ws.id])).rows[0];
     await setSpaceAi(blocked.place.id, 'blocked');
     const before = await counts();
