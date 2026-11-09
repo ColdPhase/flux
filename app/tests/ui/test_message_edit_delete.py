@@ -287,6 +287,17 @@ class MessageEditDelete(unittest.TestCase):
         expect(field).to_be_visible()
         page.locator(f"#message-{mine['id']}").get_by_role("button", name="Save").click()
         expect(page.locator(f"#message-{mine['id']} .message-body")).to_contain_text("changed on a phone")
+        # Delete on the phone, then the removed message's sheet: the message as the stream shows it at the top, and only Reply in thread and Copy link (#1013).
+        own = page.locator(f"#message-{mine['id']}")
+        long_press(bubble)
+        page.get_by_role("menuitem", name="Delete", exact=True).click()
+        own.get_by_role("button", name="Delete", exact=True).click()
+        expect(own.locator(".message-body--removed")).to_have_text("Message removed")
+        long_press(own.locator(".message-body--removed"))
+        sheet = page.get_by_role("dialog", name="Message", exact=True)
+        self.assertEqual([text.strip() for text in sheet.get_by_role("menuitem").all_inner_texts()], ["Reply in thread", "Copy link"])
+        expect(sheet.locator(".msg-sheet__message")).to_have_text("Message removed")
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- Copy text (founder direction 2026-11-08)
 

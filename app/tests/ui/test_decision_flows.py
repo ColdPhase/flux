@@ -14,7 +14,8 @@ what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844
   and says where it went with one toast and Open.
 * B2: (gone with #867: a message has no "Hand off to an agent")
   no task.
-* B3: a phone's long press lifts the message above the blur and shows the five drawn items under it.
+* B3: a phone's long press opens one bottom sheet with the message at the top and the actions below (#1013); a real touch's release
+  leaves it open and runs nothing; on a tablet it is not the whole screen wide.
 * B4: a computer's More actions lists only what the toolbar lacks: Add to map and Copy link (#867).
 * B5: a task made from a message is titled with its first clause, selected.
 * B6: "Propose a decision" has one title and no pager for one page of rules.
@@ -31,7 +32,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from app_select import choose
-from message_gestures import long_press
+from message_gestures import centre, long_press, real_touch
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "decisions are answered where they are asked"
@@ -336,6 +337,79 @@ class DecisionFlows(unittest.TestCase):
         menu.get_by_role("menuitem", name="Copy link").focus()
         page.keyboard.press("Escape")
         expect(sheet).to_have_count(0)
+
+    # The sheet opens under a finger that is still down: Chromium's click after the release goes to whatever is then under it (#1013 review P1).
+    # `long_press` dispatches pointer events only, so these use real touches (CDP), for a message above the sheet and one under its rows.
+    @unittest.skipUnless(UI_BROWSER == "chromium", "CDP touch is Chromium only")
+    def test_13_a_real_long_press_leaves_the_sheet_open_and_runs_nothing(self) -> None:
+        page = self.page(phone=True)
+        pid = self.ids["project"]
+        for n in range(6):
+            self.api(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": f"Filler above, line {n}: the beds were watered before eight and the probes read normally", "clientMessageId": str(uuid.uuid4())}, 201)
+        target = self.api(page, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Press and hold this message about the far east bed", "clientMessageId": str(uuid.uuid4())}, 201)["messages"][0]["id"]
+        # Enough below it that the feed can scroll the message up to the top of the screen, and enough above for the other way.
+        for n in range(12):
+            self.api(page, "POST", f"/api/v1/projects/{pid}/conversations",
+                     {"body": f"Filler below, line {n}: the gateway is quiet and the far beds are dry again after the long weekend", "clientMessageId": str(uuid.uuid4())}, 201)
+        for size, row, hold in (((390, 844), None, 600), ((390, 844), "Create task", 600), ((390, 844), "Create task", 1200),
+                                ((320, 568), "Reply in thread", 600), ((320, 568), "Create task", 600)):
+            with self.subTest(size=size, under=row, hold=hold):
+                page = self.page(phone=True)
+                page.set_viewport_size({"width": size[0], "height": size[1]})
+                page.goto(f"/projects/{pid}")
+                message = page.locator(f"#message-{target}")
+                bubble = message.locator(".message-bubble > .message-body")
+                expect(bubble).to_be_visible()
+                bubble.scroll_into_view_if_needed()
+                sheet = page.get_by_role("dialog", name="Message", exact=True)
+                menu = sheet.get_by_role("menu", name="Message actions")
+                # Where the sheet puts its rows: open it with the keyboard's button once, read them, close it.
+                message.get_by_role("button", name="Message actions", exact=True).focus()
+                page.keyboard.press("Enter")
+                expect(menu).to_be_visible()
+                page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+                top = sheet.bounding_box()["y"]
+                at = lambda name: (lambda box: box["y"] + box["height"] / 2)(menu.get_by_role("menuitem", name=name, exact=True).bounding_box())  # noqa: E731
+                y = at(row) if row else min(top - 70, 190)
+                page.keyboard.press("Escape")
+                expect(sheet).to_have_count(0)
+                # The feed is scrolled until the message is where the finger will be: above the sheet, or under one of its rows.
+                feed = page.locator(".project-convo__feed")
+                feed.evaluate("(el, dy) => { el.scrollTop += dy; }", centre(bubble)[1] - y)
+                page.wait_for_timeout(200)
+                x, found = centre(bubble)
+                self.assertAlmostEqual(found, y, delta=4, msg="the message is where the finger will be")
+                real_touch(page, x, y, hold)
+                page.wait_for_timeout(700)
+                expect(sheet).to_be_visible()
+                expect(menu).to_be_visible()
+                expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
+                expect(page.locator("#thread-composer")).to_have_count(0)
+                self.assertEqual(sheet.evaluate("el => getComputedStyle(el).outlineStyle"), "none", "a touch leaves no focus ring round the whole sheet")
+                if size[0] == 390 and row is None:
+                    shot(page, "1013-real-long-press-390")
+                # The swallowed click was the only one: a tap on a row, right after, still runs it.
+                row_box = menu.get_by_role("menuitem", name="Create task", exact=True).bounding_box()
+                real_touch(page, row_box["x"] + row_box["width"] / 2, row_box["y"] + row_box["height"] / 2)
+                expect(page.get_by_role("dialog", name="New task")).to_be_visible()
+
+    def test_14_on_a_tablet_the_message_sheet_is_narrow_and_in_the_middle_of_the_bottom_edge(self) -> None:
+        page = self.page(phone=True)
+        page.set_viewport_size({"width": 1180, "height": 820})
+        page.goto(f"/projects/{self.ids['project']}")
+        message = self.message(page)
+        expect(message).to_be_visible()
+        message.get_by_role("button", name="Message actions", exact=True).focus()
+        page.keyboard.press("Enter")
+        sheet = page.get_by_role("dialog", name="Message", exact=True)
+        expect(sheet.get_by_role("menu", name="Message actions")).to_be_visible()
+        page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+        box = sheet.bounding_box()
+        self.assertLessEqual(box["width"], 480.5, "not the whole screen wide")
+        self.assertAlmostEqual(box["x"] + box["width"] / 2, 590, delta=1, msg="in the middle of the bottom edge")
+        self.assertAlmostEqual(box["y"] + box["height"], 820, delta=1)
+        expect(sheet.locator(".msg-sheet__message")).to_contain_text("The resistive probes in bed 5")
+        shot(page, "1013-message-sheet-1180")
 
 
 if __name__ == "__main__":

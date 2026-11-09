@@ -4,7 +4,7 @@ Playwright has no long press or swipe, so these dispatch the same pointer events
 (pointerType "touch"); a mouse never triggers them.
 """
 
-from playwright.sync_api import Locator
+from playwright.sync_api import Locator, Page
 
 
 def touch(target: Locator, kind: str, x: float, y: float) -> None:
@@ -57,3 +57,15 @@ def tap(target: Locator, hold_ms: int = 40) -> None:
     touch(target, "pointerdown", x, y)
     target.page.wait_for_timeout(hold_ms)
     touch(target, "pointerup", x, y)
+
+
+def real_touch(page: Page, x: float, y: float, hold_ms: int = 40) -> None:
+    """A touch through Chromium's own gesture handling (CDP `Input.dispatchTouchEvent`), at a point of the viewport. Unlike `touch`, which
+    dispatches pointer events only, this sends the `click` that follows a release, aimed at whatever is under the finger then (#1013). Chromium only."""
+    cdp = page.context.new_cdp_session(page)
+    try:
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y}]})
+        page.wait_for_timeout(hold_ms)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    finally:
+        cdp.detach()

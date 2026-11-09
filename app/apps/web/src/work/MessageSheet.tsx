@@ -8,7 +8,8 @@ import './message-sheet.css';
  * actions below, in the computer's order (Reply in thread and Create task, then the ⋯ menu's list, a line apart before Edit and Delete).
  * A long press and the quiet ⋯ both open it. The list is the one the computer's menu shows (`useMenuItems`), never a copy of it.
  * A tap on the dimmed screen, Esc or a drag down on the grabber closes it; an item closes it and does its action. Opened by the keyboard or a
- * screen reader (`focusFirst`) it puts focus on the first action; a touch leaves it on the sheet, so no row looks selected before it is tapped.
+ * screen reader (`focusFirst`) it puts focus on the first action; a touch leaves it on the sheet, which then shows no focus ring (a ring
+ * round the whole sheet is for the keyboard), so no row looks selected before it is tapped.
  */
 export function MessageSheet({ open, items, preview, focusFirst, onClose }: { open: boolean; items: MenuItem[]; preview: string; focusFirst: boolean; onClose: (restoreFocus: boolean) => void }) {
   const menu = useRef<HTMLDivElement>(null);
@@ -31,7 +32,7 @@ export function MessageSheet({ open, items, preview, focusFirst, onClose }: { op
     </button>
   );
   return (
-    <Overlay open={open} onClose={() => onClose(true)} placement="bottom" label="Message" initialFocus={focusFirst ? first : undefined} className="ui-list-sheet msg-sheet">
+    <Overlay open={open} onClose={() => onClose(true)} placement="bottom" label="Message" initialFocus={focusFirst ? first : undefined} className={`ui-list-sheet msg-sheet${focusFirst ? '' : ' msg-sheet--touch'}`}>
       <div className="ui-grabber" aria-hidden="true"><span /></div>
       {preview ? <div className="msg-sheet__message"><p>{preview}</p></div> : null}
       <div ref={menu} role="menu" aria-label="Message actions" className="ui-list-sheet__rows" onKeyDown={onKeyDown}>

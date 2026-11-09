@@ -6,3 +6,5 @@
   margin: 0; font-size: var(--fs-base); line-height: 1.4; overflow-wrap: anywhere;
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden;
 }
+/* A touch opens the sheet with focus on the sheet itself (for Esc and screen readers); the keyboard's ring is not drawn round all of it. */
+.ui-overlay__surface.msg-sheet--touch:focus-visible { outline: none; }

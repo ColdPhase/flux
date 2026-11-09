@@ -4,6 +4,7 @@ import { messagePreview, type ConversationMessage } from '@flux/contracts';
 import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { plainWords } from './messageWords';
 import { MessageSheet } from './MessageSheet';
+import { swallowReleaseClick } from './releaseClick';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
@@ -87,7 +88,7 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   const { writable, onCreateWork, onReply, onAddToMap, onEdit, onDelete, removed } = options;
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
+    ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'tasks' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
     ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
@@ -243,6 +244,8 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
   const openPress = (row: HTMLElement) => {
     opener.current = row;
     setMenu('press');
+    // The finger is still down: its release must not tap the sheet that just opened under it.
+    swallowReleaseClick();
     try { navigator.vibrate?.(8); } catch { /* optional */ }
   };
   const props = {
