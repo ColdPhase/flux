@@ -1,4 +1,4 @@
-import { agentPauseRows, coworkUnitRows } from '@flux/db';
+import { coworkUnitRows } from '@flux/db';
 import { requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy } from '@flux/core';
 import { requireTaskPrerequisitesMet } from '../work/task-graph.js';
 import type { CoWorkClaimPolicy } from './claims.js';
@@ -25,7 +25,6 @@ export const COWORK_CLAIM_POLICY: CoWorkClaimPolicy = Object.freeze({
   requireEligible: (tx, context, unit, action) => requireCoWorkClaimEligibility({
     task: (taskId) => coworkUnitRows(tx).claimTask(context.workspaceId, taskId),
     requirePrerequisitesMet: (taskId) => requireTaskPrerequisitesMet(tx, context.workspaceId, taskId),
-    pausedByPerson: (taskId, connectionId) => agentPauseRows(tx).pausedConnection(taskId, connectionId),
   }, unit, action),
   async requireCheckpointSources(tx, context, checkpoint, command) {
     await requireCoWorkCheckpointSources(checkpoint.progress, command, {

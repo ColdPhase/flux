@@ -38,9 +38,9 @@ describe('the one company and its Everyone space', () => {
   test('setup made exactly one company, with an owner and one Everyone space whose creator is its admin', async () => {
     const owners = (await pool.query<{ user_id: string }>("SELECT user_id FROM workspace_members WHERE workspace_id = $1 AND role = 'owner'", [companyId])).rows;
     assert.ok(owners.length >= 1, 'the company has an owner');
-    const everyone = (await pool.query<{ id: string; name: string; views: string[]; created_by: string }>(
-      "SELECT id, name, views, created_by FROM projects WHERE workspace_id = $1 AND visibility = 'workspace'", [companyId])).rows;
-    assert.deepEqual(everyone.map((row) => [row.name, row.views]), [[EVERYONE_SPACE_NAME, ['map', 'docs']]]);
+    const everyone = (await pool.query<{ id: string; name: string; created_by: string }>(
+      "SELECT id, name, created_by FROM projects WHERE workspace_id = $1 AND visibility = 'workspace'", [companyId])).rows;
+    assert.deepEqual(everyone.map((row) => row.name), [EVERYONE_SPACE_NAME]);
     const grant = (await pool.query<{ role: string }>('SELECT role FROM project_grants WHERE project_id = $1 AND user_id = $2', [everyone[0]!.id, everyone[0]!.created_by])).rows;
     assert.deepEqual(grant.map((row) => row.role), ['manager'], 'the person who set the company up is the first admin of Everyone');
   });

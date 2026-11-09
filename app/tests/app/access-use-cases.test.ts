@@ -5,7 +5,6 @@ import type { WorkspaceRole } from '@flux/contracts';
 import { accessPorts, type Database } from '@flux/db';
 import {
   addMember,
-  addProjectView,
   ConflictError,
   changeRole,
   createAgent,
@@ -55,7 +54,7 @@ const TARGET = 'target-user';
 const now = new Date('2026-10-27T10:00:00.000Z');
 const human = (id: string): Principal => ({ kind: 'human', id });
 
-const project: ProjectRecord = { id: PROJECT, workspaceId: WS, name: 'Lamp', visibility: 'workspace', views: [], version: 1, createdAt: now };
+const project: ProjectRecord = { id: PROJECT, workspaceId: WS, name: 'Lamp', visibility: 'workspace', version: 1, createdAt: now };
 const memberRow = (role: WorkspaceRole, userId = TARGET): MemberRecord => ({ workspaceId: WS, userId, role, createdAt: now });
 const grantRow = (userId: string = TARGET): GrantRecord => ({ id: GRANT, projectId: PROJECT, userId, role: 'contributor', createdBy: OWNER, createdAt: now });
 
@@ -71,7 +70,6 @@ interface Scene {
   drop?: 'none' | 'deleted' | 'last';
   grantWrite?: GrantWrite;
   existingGrant?: GrantRecord | null;
-  views?: string[];
   /** The space the reader returns (default `workspace`, as the company's Everyone is). */
   visibility?: 'workspace' | 'restricted';
   /** Whether the scene's workspace is the company (F-037). */
@@ -101,7 +99,7 @@ function scene(options: Scene = {}, checked = true) {
     spaceAi: async (_projectId: string, o?: { lock?: boolean }) => { log(`access.spaceAi${o?.lock ? '(lock)' : ''}`); return { state: options.aiState ?? 'allowed', epoch: 4 }; },
     locateProject: async () => { log('access.locateProject'); return { workspaceId: WS }; },
     lockProjectAccess: async () => { log('access.lockProjectAccess'); },
-    readProject: async () => { log('access.readProject'); return { project: { ...project, views: options.views ?? [], visibility: options.visibility ?? project.visibility }, level: 3 }; },
+    readProject: async () => { log('access.readProject'); return { project: { ...project, visibility: options.visibility ?? project.visibility }, level: 3 }; },
     readAgent: async () => { log('access.readAgent'); return { id: AGENT, workspaceId: WS, ownerUserId: OWNER, revokedAt: null }; },
   };
   const workspaces = {
@@ -139,11 +137,10 @@ function scene(options: Scene = {}, checked = true) {
     memberRole: async () => { log('projects.memberRole'); return 'member' as const; },
     deleteGrant: async () => { log('projects.deleteGrant'); },
     get: async () => { log('projects.get'); return project; },
-    insert: async (row: { id: string; name: string; visibility: 'workspace' | 'restricted'; views: string[] }) => {
+    insert: async (row: { id: string; name: string; visibility: 'workspace' | 'restricted' }) => {
       log('projects.insert');
-      return { ...project, id: row.id, name: row.name, visibility: row.visibility, views: row.views };
+      return { ...project, id: row.id, name: row.name, visibility: row.visibility };
     },
-    setViews: async (_id: string, views: string[]) => { log('projects.setViews'); return { ...project, views, version: 2 }; },
     aiPolicies: async () => { log('projects.aiPolicies'); return [{ projectId: PROJECT, state: 'allowed' as const, changedAt: now, changedBy: null }]; },
     lockAiPolicy: async () => { log('projects.lockAiPolicy'); return { projectId: PROJECT, state: 'allowed' as const, epoch: 3 }; },
     updateAiPolicy: async () => { log('projects.updateAiPolicy'); return { epoch: 4 }; },
@@ -369,7 +366,7 @@ describe('grant and agent use cases over in-memory repositories', () => {
     const s = scene();
     const agent = await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, s.db, s.ports);
     assert.deepEqual(agent.owner, { kind: 'human', id: OWNER });
-    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'agents.isCompanyGuest', 'agents.insert', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'agents.isCompanyGuest', 'access.loadActor(lock)', 'agents.insert', ...EVENT_LAST, 'commit']);
     const off = scene({ aiState: 'blocked' });
     await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, off.db, off.ports);
     assert.ok(off.calls.includes('agents.insert'));
@@ -452,16 +449,6 @@ describe('the remaining mutations, and the check that every port is bound to its
     const everyone = scene({ grantRole: 'manager', admins: 2, company: true });
     await assert.rejects(leaveProject(human(OWNER), PROJECT, everyone.db, everyone.ports), (error: unknown) => error instanceof RuleViolationError && error.code === 'EVERYONE_CANNOT_BE_LEFT');
     assert.ok(!everyone.calls.includes('projects.deleteGrant'));
-  });
-
-  test('addProjectView: the project row for the change, the project under lock, the update, the event last; a view already shown writes nothing', async () => {
-    const s = scene();
-    const added = await addProjectView(human(OWNER), PROJECT, { view: 'map' }, s.db, s.ports);
-    assert.deepEqual(added.views, ['map']);
-    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.setViews', ...EVENT_LAST, 'projects.aiPolicies', 'commit']);
-    const again = scene({ views: ['map'] });
-    await addProjectView(human(OWNER), PROJECT, { view: 'map' }, again.db, again.ports);
-    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.aiPolicies', 'commit']);
   });
 
   test('revokeAgent: the agent evaluated under lock, the revocation, the event last', async () => {

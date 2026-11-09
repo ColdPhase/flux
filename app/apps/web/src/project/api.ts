@@ -1,5 +1,5 @@
 import {
-  WORKSPACES_PATH, projectAiPolicyPath, projectLeavePath, projectPath, workspaceProjectsPath, type ProjectViewId, projectViewsPath, type SetSpaceAiResult, type SpaceAiState,
+  WORKSPACES_PATH, projectAiPolicyPath, projectLeavePath, projectPath, workspaceProjectsPath, type SetSpaceAiResult, type SpaceAiState,
   type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -54,8 +54,5 @@ export const leaveProject = (projectId: string) => request<null>(projectLeavePat
 /** Turns AI off or on in the space (AG-10); turning it off stops what agents were doing there at once. */
 export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKey: string) =>
   request<SetSpaceAiResult>(projectAiPolicyPath(projectId), { method: 'PUT', body: { state }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
-/** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
-export const addProjectView = (projectId: string, view: ProjectViewId) =>
-  request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });
 export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal, share: true });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal });

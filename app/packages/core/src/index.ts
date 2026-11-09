@@ -38,7 +38,7 @@ export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, join
 export { listMembers, addMember, changeRole, removeMember, listRemovedPeople, restoreMember } from './access/members.js';
 export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite, type InviteJoined } from './access/invites.js';
 export { setSpaceAi, sweepSpaceAi, SpaceAiSweepIncomplete, type SpaceAiSweepQueue } from './access/space-ai.js';
-export { createProject, addProjectView, listProjects, getProject, listProjectPeople, listSpacePeople, renameProject } from './access/projects.js';
+export { createProject, listProjects, getProject, listProjectPeople, listSpacePeople, renameProject } from './access/projects.js';
 export { deleteProject, leaveProject } from './access/project-exit.js';
 export { listProjectGrants, grantProject, revokeProjectGrant } from './access/grants.js';
 export { createAgent, listAgents, revokeAgent } from './access/agents.js';
@@ -103,7 +103,6 @@ export * from './editing/map-ports.js';
 export * from './editing/map-journal.js';
 export * from './agent-connection/agent-stops.js';
 export * from './agent-connection/agent-questions.js';
-export * from './agent-connection/project-agents.js';
 
 export * from './files/detail.js';
 export * from './files/ports.js';

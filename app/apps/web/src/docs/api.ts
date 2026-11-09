@@ -32,6 +32,9 @@ const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 export const listProjectDocs = (projectId: string, signal?: AbortSignal) => everything<DocSummary>(projectDocsPath(projectId), signal, true);
 export const getDoc = (id: string, signal?: AbortSignal) => request<Doc>(docPath(id), { signal });
 export const listVersions = (id: string, signal?: AbortSignal) => everything<DocVersionSummary>(docVersionsPath(id), signal);
+/** The newest versions of a page, newest first, at most `count` (#982). */
+export const newestVersions = (id: string, count: number, signal?: AbortSignal) =>
+  request<Page<DocVersionSummary>>(`${docVersionsPath(id)}?limit=${count}&offset=0`, { signal }).then((page) => page.items);
 export const getVersion = (id: string, version: number, signal?: AbortSignal) => request<DocVersion>(docVersionPath(id, version), { signal });
 export const previewDoc = (projectId: string, body: string, signal?: AbortSignal) =>
   request<DocPreview>(projectDocPreviewPath(projectId), { method: 'POST', body: { body }, signal });

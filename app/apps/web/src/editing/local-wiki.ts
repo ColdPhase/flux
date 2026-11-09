@@ -1,11 +1,21 @@
 import * as Y from 'yjs';
 import type { Doc, DocChangeCause } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
-import { updateDoc } from '../docs/api.js';
+import { getVersion, newestVersions, updateDoc } from '../docs/api.js';
 import { documentDraftGeneration, draftKey, keep, keepLeft, readKept, takeLeft, type Kept } from '../docs/drafts.js';
+import { dropSavedCopy, copyOf } from './saved-copy.js';
 import { AUTOSAVE } from './wiki.js';
 
 const LOADED = Symbol('text from the server');
+
+/**
+ * Before the editor opens on a page: a kept copy older than the page whose text a later version by this person already holds is dropped
+ * (#982), so a save that succeeded as the tab closed never shows as a conflict. A copy on the page's current version, or with its text, needs no
+ * look; the read is only made when the copy is older and differs.
+ */
+export const needsSavedLook = (doc: Doc, userId: string) => { const kept = copyOf(userId, doc); return !!kept && kept.base < doc.version && kept.body !== doc.body; };
+export const settleKeptCopy = (doc: Doc, userId: string, signal?: AbortSignal) => dropSavedCopy(doc, userId,
+  { newest: (id, count, aborted) => newestVersions(id, count, aborted), body: async (id, version, aborted) => (await getVersion(id, version, aborted)).body }, signal);
 /** How long typing rests before it is saved as the next version. */
 const IDLE_MS = 1200;
 const CONFLICT = 'This page changed while you were writing. Choose “Keep my text” or “Use their version” first.';

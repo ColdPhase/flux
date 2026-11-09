@@ -164,7 +164,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     } },
     async (request, reply) => command(request, reply, {
       operation: `PATCH ${workItemPath(':workId')}`, scope: locatedScope('work', request.params.workId), etag: true,
-      run: (actor, conn) => workUseCases(conn).updateWork(actor, request.params.workId, request.body, expectedVersion(request)),
+      run: (actor, conn) => workUseCases(conn).updateWork(actor, request.params.workId, request.body, expectedVersion(request), undefined, { endsClientHold: true }),
       replay: projectReader,
     }));
 

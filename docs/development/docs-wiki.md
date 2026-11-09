@@ -201,7 +201,13 @@ draws it since #869: two columns only, the sidebar and the page.
   (the server writes the kept version's reason from the cause, naming the version it replaced), and unsaved text survives a reload of
   the tab. A tab that closes with unsaved text sends it at once and also leaves a copy on this
   device (localStorage, removed at sign-out and once a save holds the text), which the next visit
-  to the page restores whatever order the closing saves reached the server in (#967).
+  to the page restores whatever order the closing saves reached the server in (#967). The answer of
+  the closing save is never seen, so a copy can outlive a save that went through: when the copy is
+  older than the page and a later version by the same person already holds its text, the editor
+  drops the copy before it opens (#982; it reads the newest versions after the copy, then at most five of
+  the person's own in full, together, and gives up after three seconds with the copy kept), so there is no conflict with text the person already saved. The copies of
+  other accounts are removed when an account's shell opens; an account's own never are, by age or otherwise: the copy exists only because
+  every save sent as the tab closed was refused, so it may be the only place the text still is.
 - **The row above the title**: "Saved · just now" (or "Saving…"), "Jonas is here too" and the faces
   of the people writing, **Contents** (≡: the headings, levels 1–3; choosing one scrolls to it,
   smoothly unless motion is reduced; "No headings yet" without any) and **⋯** (History, Copy link,

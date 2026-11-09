@@ -111,7 +111,8 @@ Kept from CO-3, [O-011](decisions.md) and [F-033](decisions.md):
 - The person, or the space admin, can Stop the client's work on a task: its next Flux call is
   refused ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Flux cannot kill a
   local process, so it shows "Stopped by Ada" (or by the admin's name), not that the client
-  stopped running, and the person is told who stopped it. Only the person prompts the client. That
+  stopped running, and the person is told who stopped it. Taking the task back, or giving it to someone else, by changing its Owner
+  ends the client's claim the same way ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Only the person prompts the client. That
   the space admin's Stop also reaches a local client is a [coordinator default C-6](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
 - A local client may ask a person a question with ready answers, as an agent does (AG-6).
 

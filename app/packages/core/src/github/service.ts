@@ -61,11 +61,9 @@ async function linkVerified(ports: GithubPorts, github: Principal, work: { id: s
   if (role === 'required_output') await adoptGithubRuleOnLink(ports, github, work.id, binding, repository, by);
   return linkView(record);
 }
-/** The agent holds the task now (the facts of Stop): the task is its own, open and not parked, and no person paused it. */
+/** The agent holds the task now (the facts of Stop): the task is its own, open and not parked. */
 async function requireHold(ports: GithubPorts, taskId: string, agentId: string) {
-  const hold = await ports.rows.hold(taskId, agentId);
-  if (hold === 'paused') throw new ConflictError('A person paused this work. Take no new step on this task until they resume it.', 'COWORK_PAUSED');
-  if (hold === 'none') throw new ForbiddenError('Only the agent that holds this task can link its pull request. A person assigns the task to the agent first.', 'TASK_NOT_HELD');
+  if (await ports.rows.hold(taskId, agentId) === 'none') throw new ForbiddenError('Only the agent that holds this task can link its pull request. A person assigns the task to the agent first.', 'TASK_NOT_HELD');
 }
 export function githubUseCases(uow: GithubUnitOfWork) {
   return {

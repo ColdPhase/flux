@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { AGENT_TOOLS, ASSISTANT_RUN_EFFECT_TOOLS, MY_AGENTS_PATH, agentConnectionPath, assistantRunTools, myAgentPath, taskActivityPath,
-  type AgentConnection, type MyAgent, type ProjectAgents, type TaskActivityPage } from '@flux/contracts';
+  type AgentConnection, type MyAgent, type TaskActivityPage } from '@flux/contracts';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { authorize } from '@flux/core';
 import { accessReader } from '@flux/db';
@@ -44,27 +44,18 @@ test('the assistant\'s tools are the reads, and the changes unless it only reads
   assert.ok(!assistantRunTools('read').some((name) => ASSISTANT_RUN_EFFECT_TOOLS.includes(name as never)), 'Only read lists no change tool');
 });
 
-test('#522: private assistant discovery is owner-only while an MCP connection sharing its identity stays visible', async () => {
+test('#522: private assistant discovery is owner-only; an MCP connection sharing its identity keeps the agent in project people', async () => {
   const f = await setup('roster-privacy');
-  const roster = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/agents`), 200) as unknown as ProjectAgents;
   const people = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/people`), 200) as { id: string }[];
   const agents = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/workspaces/${f.ws.id}/agents`), 200) as { id: string }[];
   const grants = async (reader: Person) => expectStatus(await reader.browser.request('GET', `/api/v1/projects/${f.managed.id}/grants`), 200) as { principal: { kind: string; id: string } }[];
   assert.equal((await grants(f.owner)).some((row) => row.principal.id === f.agent.id), false, 'an assistant has no grant of its own (F-036 AG-3)');
-  const own = await roster(f.owner);
-  assert.equal(own.connections.length, 1); assert.equal(own.connections[0]?.assistant, true, 'the owner retains its eligible hand-off choice');
-  assert.deepEqual((await roster(f.manager)).connections, [], 'even a workspace owner never discovers another person’s assistant connection');
   assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s project people');
   assert.equal((await agents(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s workspace agent picker');
   assert.equal((await people(f.owner)).some((row) => row.id === f.agent.id), true, 'own identity remains available for own authorized use');
   expectStatus(await f.manager.browser.request('GET', myAgentPath(f.agent.id)), 404);
 
   const external = await createConnection(pool, f.owner.browser, { agentId: f.agent.id, name: 'Ines coding client', clientDesignation: 'codex' }) as { id: string };
-  const shared = await roster(f.manager);
-  assert.deepEqual(shared.connections.map((row) => row.id), [external.id], 'the explicitly connected MCP client is still public to project members');
-  assert.equal(shared.connections[0]?.assistant, undefined);
-  assert.equal(shared.connections[0]?.own, false);
-  assert.equal(shared.connections[0]?.owner.id, f.owner.id);
   assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), true, 'public MCP identity is not hidden merely because its owner also selected it for their assistant');
   expectStatus(await f.manager.browser.request('DELETE', `/api/v1/agent-connections/${external.id}`), 404);
 });

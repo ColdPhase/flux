@@ -17,8 +17,6 @@ export const workspaceRestorePath = (workspaceId: string, userId: string) => `${
 export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/projects`;
 export const workspaceAgentsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/agents`;
 export const projectPath = (projectId: string) => `${PROJECTS_PATH}/${projectId}`;
-/** POST: adds one optional view to the project (#351). */
-export const projectViewsPath = (projectId: string) => `${projectPath(projectId)}/views`;
 export const projectGrantsPath = (projectId: string) => `${projectPath(projectId)}/grants`;
 /** GET: the people and agents who can read the project now (#117), for its audience line. */
 export const projectPeoplePath = (projectId: string) => `${projectPath(projectId)}/people`;
@@ -146,20 +144,12 @@ export interface WorkspaceMember {
   unlockPassword?: boolean;
 }
 
-/** The views a project shows only once it needs them (#351, F-026 S21). Conversation and Tasks are always there. */
-export const PROJECT_VIEWS = ['map', 'docs'] as const;
-export type ProjectViewId = (typeof PROJECT_VIEWS)[number];
-/** F-037: every new space starts the same way, with Conversation, Tasks, Map and Wiki; there are no templates. */
-export const NEW_SPACE_VIEWS: readonly ProjectViewId[] = ['map', 'docs'];
-
 export interface Project {
   id: string;
   workspaceId: string;
   name: string;
   visibility: ProjectVisibility;
   access: ProjectAccess;
-  /** Optional views. A new space has Map and Wiki; use also shows a view (agents with an agent). */
-  views: ProjectViewId[];
   /**
    * On a list: whether the reader belongs to this space. False only for a company owner or admin who can reach it without
    * being in it: Settings › Company lists it for them, and their sidebar does not (F-037).
@@ -307,11 +297,6 @@ export interface CreateProjectCommand {
 
 /** `PATCH`: a space admin, or a company owner or admin, renames the space. */
 export interface RenameProjectCommand { name: string }
-
-/** Adds an optional view to a project. Adding one it already has changes nothing. */
-export interface AddProjectViewCommand {
-  view: ProjectViewId;
-}
 
 /** Creates or replaces the single grant for this person on the project. */
 export interface GrantProjectCommand {

@@ -51,11 +51,24 @@ export function keep(key: string, value: Kept | null, lifetime = generation) {
  * The unsaved text of a tab that closed, kept on this device (#967): the tab's own copy goes with the tab, and the saves
  * sent as it closed may all be refused, so the next visit to the page restores this one. Sign-out removes it.
  */
-const leftKey = (key: string) => key.replace(/^flux:doc-edit:/, 'flux:doc-left:');
+const LEFT_PREFIX = 'flux:doc-left:';
+const leftKey = (key: string) => key.replace(/^flux:doc-edit:/, LEFT_PREFIX);
 export function keepLeft(key: string, value: Kept | null, lifetime = generation) {
   if (lifetime !== generation) return;
   try { if (value) localStorage.setItem(leftKey(key), JSON.stringify(value)); else localStorage.removeItem(leftKey(key)); }
   catch { /* The tab's own copy and the saves sent as it closes remain. */ }
+}
+function parseLeft(raw: string | null): Kept | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Partial<Kept> | null;
+    return value && typeof value.body === 'string' && typeof value.title === 'string' && Number.isSafeInteger(value.base) ? value as Kept : null;
+  } catch { return null; }
+}
+/** The copy a closed tab left, where it is; it stays until someone takes it. */
+export function peekLeft(key: string): Kept | null {
+  if (retiredStorage) return null;
+  try { return parseLeft(localStorage.getItem(leftKey(key))); } catch { return null; }
 }
 /** Takes the copy a closed tab left: from now on this tab keeps it. */
 export function takeLeft(key: string): Kept | null {
@@ -64,9 +77,20 @@ export function takeLeft(key: string): Kept | null {
     const raw = localStorage.getItem(leftKey(key));
     if (!raw) return null;
     localStorage.removeItem(leftKey(key));
-    const value = JSON.parse(raw) as Partial<Kept> | null;
-    return value && typeof value.body === 'string' && typeof value.title === 'string' && Number.isSafeInteger(value.base) ? value as Kept : null;
+    return parseLeft(raw);
   } catch { return null; }
+}
+/**
+ * The copies closed tabs left on this device outlive a session that expired and an account that signed in after it (#982: only a
+ * confirmed sign-out removed them). When an account's shell opens, the copies of other accounts go. An account's own never go by age:
+ * a copy exists only because every save sent as the tab closed was refused, so it may be the only place the text still is, and only a
+ * version known to hold it (see `editing/saved-copy.ts`) or the person may end it.
+ */
+export function retireLeftCopies(userId: string) {
+  if (retiredStorage) return;
+  try {
+    for (const key of Object.keys(localStorage)) if (key.startsWith(LEFT_PREFIX) && !key.startsWith(`${LEFT_PREFIX}${userId}:`)) localStorage.removeItem(key);
+  } catch { /* Storage is refused: nothing to retire. */ }
 }
 
 /** Confirmed device sign-out, not error recovery, retires these private editor copies. */
@@ -79,6 +103,6 @@ export function forgetDocumentDrafts() {
   try {
     for (const key of Object.keys(sessionStorage)) if (key.startsWith('flux:doc-edit:') || key.startsWith('flux:wiki-live:')) sessionStorage.removeItem(key);
   } catch { /* Retirement has still discarded this visit's private overrides. */ }
-  try { for (const key of Object.keys(localStorage)) if (key.startsWith('flux:doc-left:')) localStorage.removeItem(key); }
+  try { for (const key of Object.keys(localStorage)) if (key.startsWith(LEFT_PREFIX)) localStorage.removeItem(key); }
   catch { /* A copy left on this device stays unread: this visit no longer reads stored copies. */ }
 }

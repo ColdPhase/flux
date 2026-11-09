@@ -100,12 +100,10 @@ export interface SpaceAiSweepRows {
 }
 
 export interface ProjectRepository {
-  /** The project row `FOR NO KEY UPDATE`, before a grant change or a view addition (nothing for an id that is not a UUID). */
+  /** The project row `FOR NO KEY UPDATE`, before a grant change (nothing for an id that is not a UUID). */
   lockForGrantChange(projectId: string): Promise<void>;
-  insert(row: { id: string; workspaceId: string; name: string; visibility: 'workspace' | 'restricted'; views: string[]; createdBy: string }): Promise<ProjectRecord>;
+  insert(row: { id: string; workspaceId: string; name: string; visibility: 'workspace' | 'restricted'; createdBy: string }): Promise<ProjectRecord>;
   get(projectId: string): Promise<ProjectRecord | null>;
-  /** The views, one version on. */
-  setViews(projectId: string, views: string[]): Promise<ProjectRecord>;
   /** A new name, one version on. */
   rename(projectId: string, workspaceId: string, name: string): Promise<ProjectRecord>;
   /** The AI switch of each space, with who last changed it. */

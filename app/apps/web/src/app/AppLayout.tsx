@@ -22,9 +22,8 @@ import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin'
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { viewIndex } from './views';
-import { PROJECT_VIEWS, SPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
-import { addProjectView } from '../project/api';
-import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
+import { SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
+import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
@@ -37,6 +36,7 @@ import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
 import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
+import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
 
@@ -53,8 +53,6 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
 }
 
 const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki'];
-const VIEW_LABEL: Record<ProjectViewId, string> = { map: 'Map', docs: 'Wiki' };
-const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs' };
 
 /** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki. */
 function viewOrder(pathname: string) {
@@ -234,19 +232,6 @@ function AppLayoutContent() {
   // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
   const revalidator = useRevalidator();
   const toast = useToast();
-  // Map and Wiki appear when needed; More adds one on purpose (#351, S21) and opens it.
-  // The answer may come after the person has moved on: the change stays, but only someone still in that
-  // project is taken to its new view (or told it failed).
-  const addView = async (projectId: string, view: ProjectViewId) => {
-    const stillHere = () => window.location.pathname.startsWith(`/projects/${projectId}`);
-    try {
-      await addProjectView(projectId, view);
-      revalidator.revalidate();
-      if (stillHere()) navigate(`/projects/${projectId}/${VIEW_PATH[view]}`);
-    } catch {
-      if (stillHere()) toast({ message: `${VIEW_LABEL[view]} couldn’t be added. Try again in a moment.`, tone: 'danger' });
-    }
-  };
   // F-029 (#614): a workspace's AI was turned off or on (the stream), or a refusal says so: the shell reads the policy again.
   // Coming back to the tab does too, at most once a minute, so a missed event never leaves AI showing for long.
   const revalidate = revalidator.revalidate;
@@ -307,6 +292,8 @@ function AppLayoutContent() {
   // The account this tab shows owns the settings saves still queued (notifications/session.ts).
   useEffect(() => {
     const session = beginNotificationSession(me.user.id);
+    // Unsaved Wiki text a closed tab left on this device does not outlive its account's absence or another account's visit (#982).
+    retireLeftCopies(me.user.id);
     return () => retireNotificationSession(session);
   }, [me.user.id]);
 
@@ -540,14 +527,12 @@ function AppLayoutContent() {
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
   // Conversation · Map · Tasks · Wiki in the final design's order (#117); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
-  const viewNow = /^\/projects\/[^/]+\/(map|docs)(\/|$)/.exec(location.pathname)?.[1] as ProjectViewId | undefined;
-  const shownProjectViews = project ? shownViews(project, viewNow) : null;
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
-  ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
+  ] : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
@@ -667,8 +652,6 @@ function AppLayoutContent() {
     : activeProject && projectViews ? { items: projectViews, label: 'Space views' }
       : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
-  const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId
-    ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
   const moreItems: MoreItem[] = [
@@ -677,7 +660,6 @@ function AppLayoutContent() {
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
-    ...addViewItems,
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
@@ -741,7 +723,6 @@ function AppLayoutContent() {
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
             metadataSlot={onWiki ? setMetadataSlot : undefined}
-            adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
             subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}

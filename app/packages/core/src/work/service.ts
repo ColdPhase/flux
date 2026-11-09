@@ -469,7 +469,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
      * blocker or changing only status/owner/text contributes nothing. With `clientCommandId` an exact retry
      * returns the original outcome without contributing again.
      */
-    async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined, via?: TaskChangeVia): Promise<WorkItem> {
+    async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined, via?: TaskChangeVia,
+      /** `endsClientHold`: a person's change of Owner in Details also ends the units of a local client that held the task (#985). */
+      options: { endsClientHold?: boolean } = {}): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
       if ((command as { planIntent?: unknown }).planIntent !== undefined) throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
@@ -515,6 +517,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         const contribution = savedBlocker ? await ports.contributions.prepare(principal, projectId,
           { operation: 'work.update', commandId: clientCommandId ?? randomUUID() }, [{ workId: id, kind: 'blocker', body: savedBlocker }]) : null;
+        // A person taking the task from an agent also ends a local client's hold (#936, #985). Claims take the agent's connection slots
+        // before the graph and the task, so they are taken first here too. The owner is read without a lock: if it changes before the
+        // task is locked, the version check below refuses the change.
+        const takenFrom = options.endsClientHold && by.kind === 'human' && changes.owner !== undefined && ports.work.lockAgentSlots
+          ? (await ports.work.findWork(id))?.owner : null;
+        const heldBy = takenFrom?.kind === 'agent' && !sameOwner(takenFrom, changes.owner ?? null) ? takenFrom.id : null;
+        if (heldBy) await ports.work.lockAgentSlots!(workspaceId, heldBy);
         // Replacing prerequisites, or starting/finishing a task, is a graph writer: graph lock (after the command
         // and message identities above), then every task it reads in one ascending pass (itself and the
         // prerequisites it will have).
@@ -542,6 +551,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (changes.waitingFor) await requireWaitingFor(ports, projectId, changes.waitingFor);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
         const record = await ports.work.updateWork(id, changes, by, via);
+        if (heldBy && current.owner?.kind === 'agent' && current.owner.id === heldBy) {
+          const ended = await ports.work.endAgentHold?.({ workspaceId, projectId, taskId: id, agentId: heldBy, stoppedBy: principal.id });
+          // As for Stop: the project's readers and the agent's owner are told who stopped it (AG-5).
+          if (ended) await ports.events.record(principal, workspaceId, 'project.agent_stopped.v1', projectId, { stopId: ended.stopId, taskId: id, agentId: heldBy });
+        }
         // A person's override suspends the task's rule now, not at the next delivery. Finishing work leaves it: a rule
         // never acts on finished work, and its one-tap Done is how "Ready to close" ends.
         if (overrides && !FINISHED.has(nextStatus)) await ports.work.suspendGithubRule({ id, fromStatus: current.status, status: record.status, version: record.version });

@@ -164,13 +164,6 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         expect(bar).to_have_count(0)
-        # Wiki appears in the title menu once a project has it (#351, F-026 S20); this
-        # project has none yet, so add it the way More does before walking the menu.
-        for view in ("docs",):
-            response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{self.project['id']}/views", method="POST",
-                headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
-                data=json.dumps({"view": view}))
-            self.assertEqual(response.status, 200, response.text())
         page.reload()
         menu = self.open_views(page)
         expect(menu.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")

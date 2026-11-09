@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { NEW_SPACE_VIEWS, PROJECT_VIEWS } from '@flux/contracts';
-import type { AddProjectViewCommand, CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectVisibility, ProjectViewId, RenameProjectCommand, SpaceAiState } from '@flux/contracts';
+import type { CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectVisibility, RenameProjectCommand, SpaceAiState } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
@@ -10,7 +9,7 @@ import type { AccessPorts } from './repositories.js';
 import type { ProjectRecord } from './records.js';
 import { oneOf, name, parsePage, PROJECT_VISIBILITIES } from './validation.js';
 
-// Projects, which people call spaces (F-037, #874): create, add a view, list, read and the audience (issues #46, #91).
+// Projects, which people call spaces (F-037, #874): create, list, read and the audience (issues #46, #91).
 // A space's people are its grants (./grants.ts): `manager` is a space admin, `contributor` a space member.
 
 type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
@@ -19,7 +18,7 @@ type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'ev
 export function toProject(row: ProjectRecord, level: number, ai: SpaceAiState | null): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, views: row.views as ProjectViewId[], ai: ai ?? 'blocked',
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, ai: ai ?? 'blocked',
     version: row.version, createdAt: row.createdAt.toISOString() };
 }
 
@@ -28,12 +27,12 @@ async function aiOf(db: Executor, ports: Pick<AccessPorts, 'projects'>, projectI
 }
 
 /**
- * Writes a new space and makes its creator its first space admin (F-037). Every space starts with Conversation, Tasks,
- * Map and Wiki; there are no templates and no goal. The caller has authorized `project.create` in this transaction.
+ * Writes a new space and makes its creator its first space admin (F-037). Every space shows Conversation, Tasks,
+ * Map and Wiki; there are no templates, no goal and nothing stored about which views it has. The caller has authorized `project.create` in this transaction.
  */
 export async function insertSpace(tx: Executor, ports: Pick<AccessPorts, 'projects'>, row: { workspaceId: string; name: string; visibility: ProjectVisibility; createdBy: string }): Promise<ProjectRecord> {
   const projects = ports.projects(tx);
-  const project = await projects.insert({ id: randomUUID(), ...row, views: [...NEW_SPACE_VIEWS] });
+  const project = await projects.insert({ id: randomUUID(), ...row });
   const grant = await projects.insertGrant({ id: randomUUID(), workspaceId: row.workspaceId, projectId: project.id, role: 'manager', createdBy: row.createdBy,
     userId: row.createdBy });
   if ('conflict' in grant) throw new Error(`The creator of a new space could not be its admin (${grant.conflict})`);
@@ -101,21 +100,6 @@ export async function renameProject(principal: Principal, projectId: string, com
     const { project, level } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
     const row = await ports.projects(tx).rename(projectId, project!.workspaceId, projectName);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.renamed.v1', projectId, {});
-    return toProject(row, level, await aiOf(tx, ports, projectId));
-  });
-}
-
-/** Adds an optional view (Map, Wiki or Agents) to a project; whoever can write there may (#351). */
-export async function addProjectView(principal: Principal, projectId: string, command: AddProjectViewCommand, db: Database, ports: ProjectPorts): Promise<Project> {
-  const view = oneOf(command?.view, PROJECT_VIEWS, 'view');
-  return db.transaction(async (tx) => {
-    // The same exclusive project lock a grant change takes, before the read: two additions then queue and
-    // the second reads the first's array, instead of both holding FOR SHARE and deadlocking on the update.
-    await ports.projects(tx).lockForGrantChange(projectId);
-    const { project, level } = enforce(await evaluateProject(principal, 'project.write', projectId, ports.access(tx), { lock: true }), 'project');
-    if (project!.views.includes(view)) return toProject(project!, level, await aiOf(tx, ports, projectId));
-    const row = await ports.projects(tx).setViews(projectId, [...project!.views, view]);
-    await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.view_added.v1', projectId, { view });
     return toProject(row, level, await aiOf(tx, ports, projectId));
   });
 }

@@ -4,18 +4,17 @@ import type { Project, ProjectGrant, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, workspace, type Person } from './support/people.js';
 
-// Spaces (F-037, #874): every new space starts the same way, with Conversation, Tasks, Map and Wiki, and no template or
-// goal; its creator is its first space admin and nobody else is in it until they are added. Optional views (#351) can
-// still be added once.
+// Spaces (F-037, #874): every new space starts the same way and shows Conversation, Tasks, Map and Wiki, with no template, no
+// goal and no views stored on the server (#1043); its creator is its first space admin and nobody else is in it until they
+// are added.
 
-describe('new spaces and their views over HTTP', () => {
+describe('new spaces over HTTP', () => {
   let owner: Person;
   let writer: Person;
   let reader: Person;
   let ws: Workspace;
 
   const create = (actor: Person, body: Record<string, unknown>) => actor.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body, headers: { 'idempotency-key': crypto.randomUUID() } });
-  const add = (actor: Person, projectId: string, view: unknown) => actor.browser.request('POST', `/api/v1/projects/${projectId}/views`, { body: { view }, headers: { 'idempotency-key': crypto.randomUUID() } });
 
   before(async () => {
     [owner, writer, reader] = await Promise.all(['owner', 'writer', 'reader'].map(person));
@@ -24,13 +23,13 @@ describe('new spaces and their views over HTTP', () => {
     await addMember(owner, ws.id, reader, 'member');
   });
 
-  test('a new space starts with Map and Wiki, has no template and no goal, and is closed to others by default', async () => {
+  test('a new space has no views, template or goal, and is closed to others by default', async () => {
     const herbs = expectStatus(await create(owner, { name: 'Herbs' }), 201) as Project;
     assert.equal(herbs.visibility, 'restricted');
-    assert.deepEqual(herbs.views, ['map', 'docs']);
     assert.equal('goal' in herbs, false);
+    assert.equal('views' in herbs, false, 'every space shows the same four views; the server stores none');
     // There are no templates: the field is dropped like any unknown one, and the space starts the same way.
-    assert.deepEqual((expectStatus(await create(owner, { name: 'Templated', template: 'research' }), 201) as Project).views, ['map', 'docs']);
+    assert.equal('views' in (expectStatus(await create(owner, { name: 'Templated', template: 'research' }), 201) as Project), false);
     // A member who was not added does not see it, not even its name.
     expectStatus(await reader.browser.request('GET', `/api/v1/projects/${herbs.id}`), 404);
     const listed = expectStatus(await reader.browser.request('GET', `/api/v1/workspaces/${ws.id}/projects`), 200) as { items: Project[] };
@@ -50,19 +49,10 @@ describe('new spaces and their views over HTTP', () => {
     assert.equal((expectStatus(await reader.browser.request('GET', `/api/v1/projects/${own.id}`), 200) as Project).access, 'manager');
   });
 
-  test('a space starts with its Map and Wiki, adding one again changes nothing, and Agents or any other view is refused', async () => {
+  test('there is no route to add a view, and the projects table has no views column', async () => {
     const created = expectStatus(await create(owner, { name: 'Plan' }), 201) as Project;
-    await grant(owner, created.id, writer, 'contributor');
-    assert.deepEqual(created.views, ['map', 'docs']);
-    const again = expectStatus(await add(writer, created.id, 'docs'), 200) as Project;
-    assert.equal(again.version, created.version, 'adding a view it has changes nothing');
-    expectStatus(await add(owner, created.id, 'tasks'), 400);
-    expectStatus(await add(owner, created.id, 'agents'), 400); // There is no Agents view (F-026).
-  });
-
-  test('the views column is required and starts empty for new rows', async () => {
-    const columns = await pool.query("SELECT column_default, is_nullable FROM information_schema.columns WHERE table_name = 'projects' AND column_name = 'views'");
-    assert.equal(columns.rows[0]?.is_nullable, 'NO');
-    assert.match(String(columns.rows[0]?.column_default), /'\{\}'/);
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${created.id}/views`, { body: { view: 'docs' }, headers: { 'idempotency-key': crypto.randomUUID() } }), 404);
+    assert.equal((await pool.query("SELECT 1 FROM information_schema.columns WHERE table_name = 'projects' AND column_name = 'views'")).rowCount, 0);
+    assert.equal((await pool.query("SELECT 1 FROM events WHERE kind = 'project.view_added.v1'")).rowCount, 0);
   });
 });

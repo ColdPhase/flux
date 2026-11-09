@@ -130,7 +130,10 @@ positions), increasing per-connection sequence and server expiry. Unchanged pres
 uses at most one heartbeat per second; **changed cursors/selections/writing activity
 are sent promptly with the 40 ms maximum batch window**, not once per second.
 Expire after five seconds, sweep at least once per second, and send leave on
-blur/navigation/close when possible. Movement/cursor updates also renew activity.
+blur/navigation/close when possible. A cursor cleared on blur deletes the presence row, and the next read of
+each other connection of the room sends that reader one more presence message for it, with no cursor and
+an expiry that has passed (#982), so the caret leaves at once instead of after the five seconds.
+Movement/cursor updates also renew activity.
 Do not replay expired presence after reconnect/restart. Protocol generations and
 terminal sequence watermarks prevent late packets from resurrecting ended activity.
 Participant names identify people; collaboration indicators follow the final

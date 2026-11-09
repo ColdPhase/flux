@@ -330,8 +330,8 @@ with the agent's authority behind it. `role` is `required_output` (default) or `
 - **Grant.** It is a change to the task, so it needs a live `work.update` standing grant for that task or the whole project, in the
   execute or plan class: the grant of `flux_update_task`. No operation, migration or GitHub permission is added. The owner's
   "Change tasks" switch covers both tools; a connection made before this tool lists it after its owner saves the permissions.
-- **Hold.** The agent must hold the task now: it is the task's owner, the task is open (not done, not pursued, not parked),
-  and no person paused it. Otherwise `TASK_NOT_HELD` (nobody, another agent, or closed) or `COWORK_PAUSED`; nothing is written or debited.
+- **Hold.** The agent must hold the task now: it is the task's owner, and the task is open (not done, not pursued, not parked).
+  Otherwise `TASK_NOT_HELD` (nobody, another agent, or closed); nothing is written or debited.
 - **Repository.** The URL names a repository an active binding of this task's project already connects (case-insensitive owner
   and name); otherwise `GITHUB_REPOSITORY_NOT_BOUND`, and GitHub is not asked. A person connects repositories; an agent cannot.
 - **Verification.** The same code as the person's link: the binding's repository is proven with the **owner's** current GitHub
@@ -548,7 +548,7 @@ map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
 claims, renews, releases and completes the unit; the block/transfer module
 transfers it. Versions 1.5.0 to 1.13.0 also named the request tools and the inbox;
-1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`.
+1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work.
 
 Every authenticated MCP connection delivers it in three ways:
 
@@ -617,8 +617,7 @@ work input runs.
   ordinary native registration with no seeded client/pre-registered ID or flag on add/login and performs a
   permitted read. Built-in state/recovery and all remaining parent gates stay pending. Manual prompt files,
   copied workflows or skill installation remain unacceptable substitutes.
-- **Not built:** Pause and Stop of a running agent. The Agents view shows state but has no controls for them;
-  revocation remains the only stop.
+- **Not built:** Pause of a running agent (Stop was built later, #347; Pause was removed again, #985).
 - **Not verified:** the resume path and changed-plan reanalysis of AC-1 (later work consuming changes), and the
   active-client adapter's scheduling/idle behaviour of AC-3 and AC-4. The native domain composition below exercises
   #153's inbox with sequential fresh client processes; it does not establish that adapter behaviour.
@@ -690,6 +689,20 @@ HTTP, all under `/api/v1`, `Idempotency-Key` accepted on the POSTs:
 - A stop is one transaction: slots of the agent's connections (locked first, as claims lock them), then the task
   through the canonical update (`owner: null`, `in_progress` to `open`), then the agent's unfinished units set to
   `stopped`, then the `agent_stops` row and `project.agent_stopped.v1`.
+- A person changing a task's Owner in Details (`PATCH /work/:id`, a human principal) away from an agent ends the hold the same way (#936,
+  #985): the units of that agent's connections on the task become `stopped` and the agent's next call is told `COWORK_STOPPED`. The
+  agent's connection slots are locked first, then the graph and the task, then the units, as a claim and a stop lock them. When a unit
+  was ended, Stop's own record is kept (an `agent_stops` row and `project.agent_stopped.v1`), so "Stopped by Ada" reads the same
+  whichever way the hold ended. Any project writer who may change the Owner may do this, which is more people than Stop allows
+  (`STOP_NOT_ALLOWED`): the Owner field is theirs to change (AG-5). Changes that leave the Owner as it was, and an agent's own changes,
+  leave the units alone.
+- There is no Pause and Resume of an agent's work (#985): the route `POST /projects/:projectId/agent-pauses`, the `agent_pauses` table,
+  `project.agent_paused.v1`, the `paused` field of `GET /working-agents`, the `pauses` of `GET /projects/:projectId/agent-stops` and the error
+  code `COWORK_PAUSED` are removed (playbook 1.16.0). Stop is the one way a person ends an agent's work. A unit the agent itself releases
+  with a checkpoint is still `paused`: that is the unit's state, not a person's pause.
+- `GET /projects/:projectId/agents` (the project's connections with their state and last actions) is removed (#985): its one reader, the
+  Hand-off dialog, was no longer shown (S12 has no hand-off window; the Owner field hands a task over), and it listed every connection of
+  everyone who could read the space.
 - The co-work tools answer a stopped unit with `COWORK_STOPPED` (claim, renew, release, complete, transfer, request
   admission and request claim/decline, child unit creation); the playbook names it.
 - `flux_ask_question { conversationId, question, options, askUserId? }` posts the agent's message (the question, then the
