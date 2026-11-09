@@ -14,11 +14,11 @@
     "@flux/core": "workspace:*",
     "@flux/db": "workspace:*",
     "@flux/runtime-protocol": "workspace:*",
-    "pg-boss": "12.38.0"
+    "pg-boss": "12.38.1"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
-    "@fastify/websocket": "11.3.6",
+    "@fastify/websocket": "11.3.7",
     "@types/node": "24.6.2",
     "@types/nodemailer": "8.0.2",
     "@types/pg": "8.23.1",
