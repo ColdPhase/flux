@@ -23,6 +23,8 @@ from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
+# The place's panel is headed by the label that opened it, and its close control follows (#1058).
+PLACE_CLOSE = re.compile(r"^Close (space details|message info)$")
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Kowalska", "email": f"ada.k+{STAMP}@example.test"}
 JONAS = {"name": "Jonas Berg", "email": f"jonas.b+{STAMP}@example.test"}
@@ -263,7 +265,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             linked.get_by_role("button", name=re.compile(re.escape(heading))).click()
             expect(panel.get_by_role("heading", name=heading)).to_be_visible()
             open_details(page)
-        panel.get_by_role("button", name="Close details").click()
+        panel.get_by_role("button", name=PLACE_CLOSE).click()
         expect(panel).to_be_hidden()
 
     # ---------------------------------------------------------------- tabs
@@ -402,7 +404,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
         # AC-6: no "Esc closes this panel" footer (Esc is in the close button's tooltip); one page of anything has no pager.
         expect(panel).not_to_contain_text("closes this panel")
-        expect(panel.get_by_role("button", name="Close details")).to_have_attribute("data-tip", "Close · Esc")
+        expect(panel.get_by_role("button", name=PLACE_CLOSE)).to_have_attribute("data-tip", "Close · Esc")
         expect(panel.get_by_role("navigation", name=re.compile("pages$"))).to_have_count(0)
         shot(page, "project-details-one-look-desktop-1440-light")
 
@@ -489,7 +491,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch"))).to_have_count(0)
         expect(sheet.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
         shot(page, "project-details-phone-390")
-        sheet.get_by_role("button", name="Close details").tap()
+        sheet.get_by_role("button", name=PLACE_CLOSE).tap()
         view_tab(page, "Map", tap=True)
         # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))

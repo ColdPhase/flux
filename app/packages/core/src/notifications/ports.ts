@@ -270,9 +270,11 @@ export interface AddressRepository {
   /** Atomically reserves one verification send within the limits, or says how long to wait. */
   reserveVerificationSend(userId: string, limits: { cooldownSeconds: number; perWindow: number; windowSeconds: number }):
     Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
-  /** The same for the address a link goes to, whichever account asks (#1056); `addressHash` is a hash of the lower-cased address. */
+  /** The same for the address a link goes to, whichever account asks (#1056); `addressHash` is a hash of the limiter's key for the address. */
   reserveAddressSend(addressHash: string, limits: { perWindow: number; windowSeconds: number }):
     Promise<{ allowed: true } | { allowed: false; retryAfterSeconds: number }>;
+  /** Gives back one slot of `reserveAddressSend` when the send it was for did not happen (the person's own limit refused it, #1070). */
+  releaseAddressSend(addressHash: string): Promise<void>;
 }
 
 export interface VerificationMailer {

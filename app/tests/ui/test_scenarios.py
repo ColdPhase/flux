@@ -269,7 +269,7 @@ class ScenarioJourney:
         locator.tap() if self.phone else locator.click()
 
     def details(self, page: Page):
-        return page.get_by_role("dialog", name="Details") if self.phone else page.locator("#details")
+        return page.locator("#details")  # the panel keeps its id while its heading follows what opened it (#1058)
 
     def press_changes(self, page: Page, button) -> tuple[dict, dict]:
         """The button at rest and held down by a real press (the one press, ui/press.ts: it scales the control, the fill is CSS :active)."""
@@ -289,8 +289,8 @@ class ScenarioJourney:
 
     def close_details(self, page: Page) -> None:
         if self.phone:
-            page.get_by_role("button", name="Close details").tap()
-            expect(page.get_by_role("dialog", name="Details")).to_have_count(0)
+            page.locator("#details").get_by_role("button", name=re.compile("^Close( |$)")).tap()  # "Close details", "Close <what opened it>" or, for a form, "Close" (#1058)
+            expect(page.locator("#details")).to_have_count(0)
 
     def go_to_place(self, page: Page, name: str) -> None:
         """A main place. Phones have them in the capsule (#341: Home, Projects, Inbox; Messages are inside

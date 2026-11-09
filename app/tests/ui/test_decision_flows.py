@@ -95,7 +95,7 @@ class DecisionFlows(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def panel(self, page: Page, *, phone: bool = False):
-        host = page.get_by_role("dialog", name="Details") if phone else page.locator("#details")
+        host = page.locator("#details")  # the panel keeps its id while its heading follows what opened it (#1058)
         panel = host.locator(".wd").first
         expect(panel).to_be_visible()
         return panel
@@ -294,7 +294,9 @@ class DecisionFlows(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks?open=propose-decision")
         panel = self.panel(page)
-        expect(panel.get_by_role("heading", level=3, name="Propose a decision")).to_be_visible()
+        # The panel's own heading is the one title: it is the label of what opened it, and the form does not repeat it (#1058).
+        expect(page.locator("#details").get_by_role("heading", name="Propose a decision")).to_have_count(1)
+        expect(page.locator("#details").get_by_role("heading", level=2, name="Propose a decision")).to_be_visible()
         expect(panel).not_to_contain_text("New proposal")
         select = panel.get_by_label("Does it replace an earlier one?", exact=True)
         expect(select).to_be_enabled()

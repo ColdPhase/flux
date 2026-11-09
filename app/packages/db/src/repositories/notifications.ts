@@ -407,6 +407,10 @@ export function notificationAddressRows(db: DbExecutor) {
       const [row] = await db.select().from(v).where(eq(v.addressHash, addressHash));
       return { allowed: false as const, retryAfterSeconds: retryAfter(row, { cooldownSeconds: 0, ...limits }) };
     },
+    async releaseAddressSend(addressHash: string) {
+      const v = schema.notificationAddressSends;
+      await db.update(v).set({ sent: sql`greatest(${v.sent} - 1, 0)` }).where(eq(v.addressHash, addressHash));
+    },
     async issueToken(addressId: string, tokenHash: string, expiresAt: Date) {
       await db.delete(t).where(eq(t.addressId, addressId));
       await db.insert(t).values({ tokenHash, addressId, expiresAt });
@@ -447,7 +451,7 @@ export function notificationEmailRows(db: DbExecutor) {
     },
     async mailboxClaimed(notificationId: string, exceptId: string, address: string) {
       const [row] = await db.select({ id: ob.id }).from(ob).where(and(eq(ob.notificationId, notificationId), ne(ob.id, exceptId),
-        inArray(ob.status, ['sending', 'sent']), sql`lower(${ob.address}) = lower(${address})`)).limit(1);
+        inArray(ob.status, ['sending', 'sent']), sql`lower(normalize(${ob.address}, NFC)) = lower(${address.normalize('NFC')})`)).limit(1);
       return !!row;
     },
     async accountAddress(userId: string) {

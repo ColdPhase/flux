@@ -32,7 +32,7 @@ export function profileFromClaims(issuer: string, claims: Record<string, unknown
   const family = providerFamily(issuer);
   const iss = typeof claims.iss === 'string' ? normalize(claims.iss) : '';
   const subject = typeof claims.sub === 'string' ? claims.sub : '';
-  const rawEmail = typeof claims.email === 'string' ? claims.email.trim().toLowerCase() : '';
+  const rawEmail = typeof claims.email === 'string' ? claims.email.trim().normalize('NFC').toLowerCase() : '';
   if (!subject) return { ok: false, reason: 'subject' };
   if (family === 'entra') {
     // The token's own tenant must match its issuer, and a configured single tenant must be that tenant.

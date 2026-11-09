@@ -59,6 +59,25 @@ const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'propose-decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
+/**
+ * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "Space details" or
+ * "Message info" for the place's own panel, the form's or the button's own words for the rest. Its close control is "Close <heading>",
+ * except where the heading is a request ("Propose a decision"), which only reads as "Close". A panel with a chip keeps "Details" as
+ * its name for assistive technology, with its kind after it.
+ */
+const panelHeading = (view: DetailsView, placeLabel: string): { title: string; close: string } => {
+  const named = (title: string) => ({ title, close: `Close ${title.charAt(0).toLowerCase()}${title.slice(1)}` });
+  const asked = (title: string) => ({ title, close: 'Close' });
+  if (view === 'place') return named(placeLabel);
+  if (view === 'connect-ai') return asked('Connect your AI');
+  switch (view.kind) {
+    case 'add-to-doc': return asked('Add to a Wiki page');
+    case 'propose-decision': return asked('Propose a decision');
+    case 'people': return named('People and encryption');
+    case 'overview': return named(view.messageId ? 'Linked objects' : placeLabel);
+    default: return named('Details');
+  }
+};
 
 /** The place a panel's content belongs to (#763 H11-8): one project or direct message with all its views, else the page itself. */
 const panelPlace = (pathname: string) => /^\/(?:projects|dm|spaces)\/[^/]+/.exec(pathname)?.[0] ?? pathname.replace(/\/+$/, '');
@@ -650,6 +669,7 @@ function AppLayoutContent() {
       : null;
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
+  const heading = panelHeading(detailsView, placeDetailsLabel);
   const moreItems: MoreItem[] = [
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
     ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
@@ -811,7 +831,7 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel over={panelOver} open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : 'Details'} closeLabel={opening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+          <SidePanel over={panelOver} open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {opening ? <ThreadOpening /> : null}

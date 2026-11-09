@@ -142,7 +142,7 @@ class DecisionSurfaces(unittest.TestCase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         page.goto(address)
-        host = page.get_by_role("dialog", name="Details") if phone else page.locator("#details")
+        host = page.locator("#details")
         panel = host.locator(".wd").first
         expect(panel).to_be_visible()
         if phone:

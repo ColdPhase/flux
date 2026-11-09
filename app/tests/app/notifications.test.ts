@@ -6,6 +6,7 @@ import {
   NOTIFICATION_EMAIL_JOB,
   applyPreferenceChange,
   buildNotificationEmail,
+  addressLimitKey,
   deliverNotificationEmail,
   localMinutes,
   loadNotificationMailConfig,
@@ -18,7 +19,7 @@ import { emailUnitOfWork, smtpNotificationMailer } from '../../apps/worker/src/n
 import { PgBoss } from 'pg-boss';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
-import { EVENTS_CHANNEL } from '@flux/db';
+import { EVENTS_CHANNEL, notificationEmailRows } from '@flux/db';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, mailpitUrl, publicOrigin, register, signIn } from './support/http.js';
 import { addMember, expectStatus, password, person, project, removeMember, workspace, type Person } from './support/people.js';
@@ -137,6 +138,17 @@ async function queueEmailRow(userId: string, notificationId: string, addressKind
   await queue.send(NOTIFICATION_EMAIL_JOB, { emailId: id }, { singletonKey: id, startAfter: new Date(Date.now() + 3_600_000) });
   return id;
 }
+
+describe('the address limit counts mailboxes (#1070)', () => {
+  test('its key drops a +tag, takes one letter form and lower case, and leaves the stored address alone', () => {
+    assert.equal(addressLimitKey('Name+News@Example.ORG'), 'name@example.org');
+    assert.equal(addressLimitKey('name+a+b@example.org'), 'name@example.org');
+    assert.equal(addressLimitKey('name@example.org'), 'name@example.org');
+    assert.equal(addressLimitKey('+only@example.org'), '+only@example.org', 'a local part that starts with + is kept whole');
+    assert.equal(addressLimitKey('jose\u0301+x@example.org'), 'jos\u00e9@example.org');
+    assert.equal(normalizeEmail('Name+News@Example.ORG'), 'Name+News@example.org');
+  });
+});
 
 describe('preference rules', () => {
   test('changes are validated and applied: the level, Email me too and quiet hours', () => {
@@ -716,6 +728,25 @@ describe('recipient matrix and operator TLS (#113)', () => {
     assert.equal(await mailboxCount(extra), before + 1, 'Mailpit holds exactly one message for the mailbox');
   });
 
+  test('a composed and a decomposed letter are one mailbox when the copies of a notification are matched (#1070)', async () => {
+    const lead = await person('Pia Voll');
+    const someone = await named('Rolf Ness', `rolf.${randomUUID().slice(0, 8)}@nebula.homes`);
+    const space = (await workspace(lead, 'Forms of a mailbox')).id;
+    await addMember(lead, space, someone, 'member');
+    const composed = `jos\u00e9-${randomUUID().slice(0, 8)}@gmail.test`;
+    const decomposed = composed.replace('\u00e9', 'e\u0301');
+    assert.notEqual(composed, decomposed);
+    // The extra address is confirmed in its one form; the identity provider reports the sign-in address in the other.
+    await pool.query('INSERT INTO notification_addresses (id, user_id, email, verified_at) VALUES ($1, $2, $3, now())', [randomUUID(), someone.id, composed]);
+    const copies = await heldCopies(lead, space, someone, 'Rolf Ness', 'Pump');
+    await pool.query("UPDATE notification_emails SET status = 'sent', address = $2 WHERE id = $1", [copies.account.id, decomposed]);
+    const rows = notificationEmailRows(db);
+    assert.equal(await rows.mailboxClaimed(copies.notificationId, copies.extra.id, composed), true, 'the other form is claimed');
+    assert.equal(await rows.mailboxClaimed(copies.notificationId, copies.extra.id, composed.toUpperCase()), true, 'in any letter case');
+    assert.equal(await rows.mailboxClaimed(copies.notificationId, copies.extra.id, `other-${randomUUID().slice(0, 8)}@gmail.test`), false, 'another mailbox is not');
+    assert.equal(await rows.mailboxClaimed(copies.notificationId, copies.account.id, decomposed), false, 'a copy does not claim its own mailbox');
+  });
+
   test('one mailbox, copies in flight: a sibling skips while a send is pending, a failed one retries, an uncertain one is never repeated (#113)', async () => {
     const lead = await person('Ines Kahl');
     const someone = await named('Otto Brin', `otto.${randomUUID().slice(0, 8)}@nebula.homes`);
@@ -1095,6 +1126,41 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     // The same address in another letter case is the same address, so it counts against the same limit.
     await skipCooldown(asking[3]!);
     assert.equal((await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: stranger.replace('@example.test', '@EXAMPLE.test') } })).status, 429);
+  });
+
+  test('a +tag alias counts as the same address for the limit, which has its own message and spends nobody\'s cooldown (#1070)', async () => {
+    const base = `target-${randomUUID().slice(0, 8)}`;
+    const aliases = [`${base}+a@example.test`, `${base}+b@example.test`, `${base}@example.test`];
+    const asking = [await person('Gus Ahl'), await person('Hal Brun'), await person('Ida Cole'), await person('Jon Dahl')];
+    for (const [index, alias] of aliases.entries()) {
+      const added = expectStatus(await asking[index]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: alias } }), 200) as NotificationPreferences;
+      assert.equal(added.email.addresses[0]!.email, alias, 'the stored address keeps its tag');
+    }
+    // A fourth alias of the same mailbox, in other letters, is the fourth link to it.
+    const refused = await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: `${base}+C@EXAMPLE.test` } });
+    assert.equal(refused.status, 429, refused.text);
+    const body = refused.json as { code: string; error: string };
+    assert.equal(body.code, 'ADDRESS_CONFIRMATION_LIMIT');
+    assert.match(body.error, /confirmation link/);
+    assert.doesNotMatch(body.error, /verification|this hour|minute/i, 'it names the address, not the person or a cooldown');
+    assert.ok(Number(refused.headers.get('retry-after')) > 60);
+    // The refusal spent nothing of Jon's own cooldown: another address goes out at once.
+    const other = `jon.other-${randomUUID()}@example.test`;
+    expectStatus(await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: other } }), 200);
+    await sleep(800);
+    assert.equal((await mailsTo(other)).length, 1, 'and its link was sent');
+
+    // The reverse: a refusal by the person's own cooldown gives the address's slot back, so it still gets three links from others.
+    const slotted = `slot-${randomUUID()}@example.test`;
+    const tooSoon = await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: slotted } });
+    assert.equal(tooSoon.status, 429);
+    assert.equal((tooSoon.json as { code: string }).code, 'VERIFICATION_RECENTLY_SENT');
+    assert.match((tooSoon.json as { error: string }).error, /less than a minute ago/);
+    const others = [await person('Kim Eld'), await person('Lou Fry'), await person('Max Gil')];
+    for (const someone of others) expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: slotted } }), 200);
+    const rejected = await asking[3]!.browser.request('POST', '/api/v1/notification-addresses', { body: { email: slotted } });
+    assert.equal(rejected.status, 429);
+    assert.equal((rejected.json as { code: string }).code, 'ADDRESS_CONFIRMATION_LIMIT', 'three links from others used the address up');
   });
 
   test('a malformed address id is a missing address, not a server error (#1056)', async () => {

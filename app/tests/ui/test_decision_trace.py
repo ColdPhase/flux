@@ -115,7 +115,7 @@ class DecisionTrace(unittest.TestCase):
 
     @staticmethod
     def details(page: Page, phone: bool):
-        return page.get_by_role("dialog", name="Details") if phone else page.locator("#details")
+        return page.locator("#details")  # the panel keeps its id while its heading follows what opened it (#1058)
 
     def thread_url(self, key: str) -> str:
         return f"/projects/{self.ids['project']}/conversations/{self.ids[key]}"

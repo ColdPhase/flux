@@ -250,7 +250,7 @@ class ConnectedFlow(unittest.TestCase):
     def test_08_add_the_card_under_a_heading_and_the_toast_stays_clear_of_the_sheet(self) -> None:
         page = self.page(phone=True)
         page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sat']}")
-        sheet = page.get_by_role("dialog", name="Details")
+        sheet = page.locator("#details")  # its heading follows what opened it: "Add to a Wiki page" after this tap (#1058)
         expect(sheet).to_be_visible()
         sheet.get_by_role("button", name="Add to a Wiki page").tap()
         choose(sheet.get_by_label("Wiki page", exact=True), label=PAGE)

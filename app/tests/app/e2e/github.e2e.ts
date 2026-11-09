@@ -117,7 +117,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
     await target.getByRole('menu', { name: 'More' }).getByRole('menuitem', { name: 'Details' }).click();
   };
   const closeDetails = async (target: typeof page) => {
-    const close = target.getByRole('button', { name: 'Close details', exact: true });
+    const close = target.getByRole('button', { name: 'Close space details', exact: true });
     if (await close.count()) await close.click();
   };
   await openDetails(page);

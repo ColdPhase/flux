@@ -61,7 +61,6 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
     <div className="details">
       <button type="button" className="details__back" aria-label="Back" onClick={onBack}><Icon name="chevron-left" size={14} />Back</button>
       <p className="details__eyebrow">Optional</p>
-      <h3 className="details__title">Connect your AI</h3>
       <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected spaces, read context and suggest proposals for human review.</p>
       <section className="details__sec" aria-labelledby="details-ai-ways">
         <h4 id="details-ai-ways">Ways to connect</h4>
