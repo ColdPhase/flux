@@ -1,3 +1,4 @@
+import { READS_LIMIT, READS_PATH, foldableRead, type FoldedReadsResponse } from '@flux/contracts';
 import { BUSY_RETRIES, busyWaitMs, waitOutBusy } from './busy.js';
 import { pageIsLive, pageLeaving } from './pageLeaving.js';
 
@@ -222,8 +223,74 @@ export function responseError(response: Pick<Response, 'status' | 'statusText'>,
 }
 
 async function read(path: string, init: ApiRequestInit): Promise<Answer> {
+  if (!init.headers && !init.keepalive && init.cache === undefined && (!init.method || init.method === 'GET') && foldableRead(path)) return foldedRead(path, init.signal);
+  return plainRead(path, init);
+}
+
+async function plainRead(path: string, init: ApiRequestInit): Promise<Answer> {
   const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
   return { ok: response.ok, status: response.status, statusText: response.statusText, text: await response.text() };
+}
+
+/**
+ * Reads asked for in one task, folded into one request (#862): a view that opens asks for its space, its people, its pages, its
+ * conversation's roots, notices and sources, the Inbox count and where the person left off in the same moment, and the server answers
+ * each from its own route (`GET /api/v1/reads`). Only the reads it folds (`foldableRead`); one alone goes as it is. A caller that aborts
+ * leaves the others their answer; the request stops only when every caller has left.
+ */
+interface Folded { path: string; signal: AbortSignal | undefined; settle(answer: Answer | null, error?: unknown): void; left: boolean }
+let folding: Folded[] | null = null;
+
+function foldedRead(path: string, signal: AbortSignal | undefined): Promise<Answer> {
+  return new Promise<Answer>((resolve, reject) => {
+    if (signal?.aborted) { reject(new DOMException('The operation was aborted.', 'AbortError')); return; }
+    const entry: Folded = { path, signal, left: false, settle: (answer, error) => {
+      if (entry.left) return;
+      entry.left = true;
+      signal?.removeEventListener('abort', onAbort);
+      if (answer) resolve(answer); else reject(error);
+    } };
+    const onAbort = () => entry.settle(null, new DOMException('The operation was aborted.', 'AbortError'));
+    signal?.addEventListener('abort', onAbort, { once: true });
+    if (!folding) { folding = []; void nextTask().then(flushFolded); }
+    folding.push(entry);
+  });
+}
+
+function flushFolded() {
+  const waiting = (folding ?? []).filter((entry) => !entry.left);
+  folding = null;
+  for (let start = 0; start < waiting.length; start += READS_LIMIT) void sendFolded(waiting.slice(start, start + READS_LIMIT));
+}
+
+async function sendFolded(entries: Folded[]) {
+  if (!entries.length) return;
+  if (entries.length === 1) {
+    const [entry] = entries as [Folded];
+    try { entry.settle(await plainRead(entry.path, { signal: entry.signal })); } catch (error) { entry.settle(null, error); }
+    return;
+  }
+  const abort = new AbortController();
+  const leave = () => { if (entries.every((entry) => entry.left || entry.signal?.aborted)) abort.abort(); };
+  for (const entry of entries) entry.signal?.addEventListener('abort', leave, { once: true });
+  try {
+    const response = await send(`${READS_PATH}?${entries.map((entry) => `path=${encodeURIComponent(entry.path)}`).join('&')}`, { accept: 'application/json', signal: abort.signal });
+    const text = await response.text();
+    if (!response.ok) {
+      // The fold itself was refused (signed out, too busy): each read gets that answer, as its own request would have.
+      for (const entry of entries) entry.settle({ ok: false, status: response.status, statusText: response.statusText, text });
+      return;
+    }
+    const { answers } = JSON.parse(text) as FoldedReadsResponse;
+    entries.forEach((entry, index) => {
+      const answer = answers[index];
+      entry.settle(answer ? { ok: answer.status >= 200 && answer.status < 300, status: answer.status, statusText: '', text: answer.body } : null, new NetworkError());
+    });
+  } catch (error) {
+    for (const entry of entries) entry.settle(null, error);
+  } finally {
+    for (const entry of entries) entry.signal?.removeEventListener('abort', leave);
+  }
 }
 
 /**

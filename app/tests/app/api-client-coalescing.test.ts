@@ -267,8 +267,9 @@ test('a fresh read drops the kept answer, so a caller that asks while it is on i
 test('an event forgets only the kept answers it can change: a message none, a page the docs, a run the agents\' chats, a change of access all', async (context) => {
   forgetKeptReads();
   const calls = stub(context);
-  const P = '11111111-1111-4111-8111-111111111111';
-  const W = '22222222-2222-4222-8222-222222222222';
+  // Ids that are not UUIDs, so these reads are not folded into one request (folding has its own tests).
+  const P = 'space-p';
+  const W = 'company-w';
   const paths = [`/api/v1/projects/${P}`, `/api/v1/projects/${P}/people`, `/api/v1/projects/${P}/docs?limit=100&offset=0`, `/api/v1/workspaces/${W}/members`, '/api/v1/agent-chats'];
   const keepAll = async () => {
     const reads = paths.map((path) => request(path, { share: true, keep: 10_000 }));
@@ -303,3 +304,56 @@ test('an event forgets only the kept answers it can change: a message none, a pa
 });
 
 function randomId() { return '33333333-3333-4333-8333-333333333333'; }
+
+// #862: the reads a view asks for in one moment are one request; the server answers each from its own route.
+test('reads asked for in one task are folded into one request, and each caller gets its own answer, status and all', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const space = '44444444-4444-4444-8444-444444444444';
+  const roots = request<{ items: string[] }>(`/api/v1/projects/${space}/conversation-roots`);
+  const notices = request<{ items: string[] }>(`/api/v1/projects/${space}/task-notices`);
+  const gone = request(`/api/v1/projects/${space}/materials`);
+  await settle();
+  assert.equal(calls.length, 1, 'one request');
+  const url = new URL(calls[0]!.path, 'http://flux.test');
+  assert.equal(url.pathname, '/api/v1/reads');
+  assert.deepEqual(url.searchParams.getAll('path'), [`/api/v1/projects/${space}/conversation-roots`, `/api/v1/projects/${space}/task-notices`, `/api/v1/projects/${space}/materials`]);
+  calls[0]!.finish({ answers: [
+    { status: 200, body: JSON.stringify({ items: ['root'] }) },
+    { status: 200, body: JSON.stringify({ items: ['notice'] }) },
+    { status: 404, body: JSON.stringify({ code: 'PROJECT_NOT_FOUND', error: 'Not here' }) },
+  ] });
+  assert.deepEqual(await roots, { items: ['root'] });
+  assert.deepEqual(await notices, { items: ['notice'] });
+  await assert.rejects(gone, (error: unknown) => (error as { status?: number }).status === 404, 'a refusal reaches its own caller');
+});
+
+test('a read alone, a read that is not folded and a write go as they are; a caller that aborts leaves the others their answer', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const space = '55555555-5555-4555-8555-555555555555';
+  const alone = request(`/api/v1/projects/${space}/people`);
+  await settle();
+  assert.deepEqual(calls.map((call) => call.path), [`/api/v1/projects/${space}/people`], 'one read alone is not folded');
+  calls[0]!.finish([]);
+  await alone;
+  const notFolded = request('/api/v1/search?q=x');
+  const folded = request(`/api/v1/projects/${space}/docs?limit=100&offset=0`);
+  void request(`/api/v1/projects/${space}/work`, { method: 'POST', body: {} }).catch(() => undefined);
+  await settle();
+  assert.deepEqual(calls.slice(1).map((call) => call.path).sort(), ['/api/v1/search?q=x', `/api/v1/projects/${space}/docs?limit=100&offset=0`, `/api/v1/projects/${space}/work`].sort());
+  for (const call of calls.slice(1)) call.finish({ ok: true });
+  await Promise.all([notFolded, folded]);
+
+  const one = new AbortController();
+  const left = request(`/api/v1/projects/${space}/agent-questions`, { signal: one.signal });
+  const stays = request<{ items: string[] }>(`/api/v1/projects/${space}/work-associations`);
+  await settle();
+  const fold = calls.at(-1)!;
+  assert.ok(fold.path.startsWith('/api/v1/reads?'), fold.path);
+  one.abort();
+  await assert.rejects(left, (error: unknown) => error instanceof DOMException && error.name === 'AbortError');
+  assert.equal(fold.signal?.aborted, false, 'the other caller still waits for it');
+  fold.finish({ answers: [{ status: 200, body: '{"items":[]}' }, { status: 200, body: '{"items":["link"]}' }] });
+  assert.deepEqual(await stays, { items: ['link'] });
+});

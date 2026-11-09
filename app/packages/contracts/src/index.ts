@@ -103,6 +103,7 @@ export interface SessionSummary {
 }
 
 export * from './access.js';
+export * from './reads.js';
 export * from './ai-lock.js';
 export * from './encryption.js';
 export * from './push.js';

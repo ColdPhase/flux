@@ -81,6 +81,7 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 import { useApiRateLimit } from './http/rate-limit.js';
+import { useFoldedReads } from './http/reads.js';
 import { isRouted, originFormTarget } from './http/routed-path.js';
 import { sessionCookieName } from './identity/session-cookie.js';
 import { useSecurityHeaders } from './http/security-headers.js';
@@ -150,6 +151,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   useApiRateLimit(app, { enabled: identityConfig.rateLimit, sessionCookie: sessionCookieName(identityConfig.publicOrigin.startsWith('https:')) });
   // nosniff, Referrer-Policy, no-store on /api/ and, for an https origin, Strict-Transport-Security (#992).
   useSecurityHeaders(app, { hsts: identityConfig.publicOrigin.startsWith('https:') });
+  // Several reads in one request, each answered by its own route (#862).
+  useFoldedReads(app);
   const { pool, db } = registerDatabase(app, connectionString);
   let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
   registerLockGate(app, { db, keys: encryptionKeys,
