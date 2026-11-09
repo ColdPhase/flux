@@ -32,7 +32,7 @@ assets, actors and boundaries it refers to are in the [threat model](threat-mode
 | [#997](https://github.com/ColdPhase/flux/issues/997) | P3 | 7.1.3, 7.2.1, 7.2.2 | No security event log for failed sign-ins, refusals and consent decisions (probed). **Fixed:** one `channel: security` line per event ([events](../operations/monitoring.md#security-events)) |
 
 These issues were already open and are referenced, not filed again:
-- [#953](https://github.com/ColdPhase/flux/issues/953) and PR #983 (web-read exfiltration, 12.6.1)
+- [#953](https://github.com/ColdPhase/flux/issues/953) and PR #983 (web-read exfiltration, 12.6.1), since followed by #1065 and #1136 (C-30)
 - [#959](https://github.com/ColdPhase/flux/issues/959) and [#978](https://github.com/ColdPhase/flux/issues/978) (guests and non-members connecting AI or clients, 4.1.3)
 - [#840](https://github.com/ColdPhase/flux/issues/840) (image signing, 10.3.1, 14.2)
 
@@ -354,7 +354,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 12.4.2 | Antivirus scanning | N/A / accepted | Not offered. Files are never rendered by Flux; recorded as an accepted risk for self-hosting |
 | 12.5.1 | Web tier serves only expected types | Pass | Static assets from the build; the not-found handler serves only `index.html` |
 | 12.5.2 | Uploads never executed as HTML or JS | Pass | `CSP: sandbox`, `nosniff`, `attachment` (`files/routes.ts:44-47`) |
-| 12.6.1 | Server-side fetches allow-listed | **Partial** | Address guard as 5.2.6 (**probe**). An agent can still choose any public URL and put data in it until #983 ([#953](https://github.com/ColdPhase/flux/issues/953)). Off by default (`FLUX_WEB_READS`, `FLUX_LINK_PREVIEWS`) |
+| 12.6.1 | Server-side fetches allow-listed | **Partial** | Address guard as 5.2.6 (**probe**). By founder decision an agent may open any public address (#1065, C-30); the server refuses one that carries private Flux text the run read, and every address asked is listed (#953, #1136); what the agent rewrote can still leave (accepted). Web reads are on by default since C-29 (`FLUX_WEB_READS=off` turns them off); link cards are off by default (`FLUX_LINK_PREVIEWS`) and never fetched for a server agent's line |
 
 ## V13 API and web service
 

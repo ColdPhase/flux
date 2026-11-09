@@ -437,6 +437,32 @@ export function buildBrief(input: BriefInput): { system: string; request: string
   return { system: system(placed), request: request(placed) };
 }
 
+/**
+ * What of a brief is private Flux text (#1065, #1136, C-30): what people, the company and its tools wrote, never Flux's own words (the rules,
+ * the headings, the clock), which name nothing of anyone and would refuse ordinary addresses ("general knowledge", today's date). The names
+ * of the owner, the agent, the place and the people in it; the agent's instructions and memory; the task; every source given (a message, its
+ * author, thread and file names; a task; a map thought); the earlier exchanges and answer; the request; and the ids the brief names. One
+ * piece per line, so no fragment spans two of them.
+ */
+export function briefPrivateText(input: BriefInput): string {
+  const place = input.place;
+  const task = input.task;
+  const pieces = [input.ownerName, input.agentName, input.scheduleTitle ?? '',
+    ...(place.kind === 'space' ? [place.spaceId, place.spaceName ?? '', place.conversationId ?? '', place.task?.title ?? ''] : place.kind === 'dm' ? place.others : []),
+    ...(input.agent ? [input.agent.name, input.agent.instructions, ...input.agent.memory] : []),
+    ...(task ? [task.id, task.title, task.outcome, ...task.criteria, task.blocker ?? '', ...task.prerequisites.map((item) => item.title)] : []),
+    ...input.sources.flatMap((source): string[] => {
+      const item = source.item;
+      if (item.kind === 'task') return [item.title, item.outcome];
+      if (item.kind === 'thought') return [item.text];
+      const message = item.message;
+      return [message.authorName, message.body, message.via ?? '', message.thread ?? '', ...(message.files ?? []).map((file) => file.name)];
+    }),
+    ...input.turns.flatMap((turn) => [turn.prompt, turn.answer]), input.earlier ?? '',
+    ...(input.thought ? [input.thought.sketchId, input.thought.thoughtId] : []), input.prompt];
+  return pieces.filter((piece) => piece.trim()).join('\n');
+}
+
 /** What the owner's own Claude Code or Codex gets on standard input: the same brief, its rules first and the request last. */
 export function runtimeBrief(input: BriefInput): string {
   const { system: rules, request: asked } = buildBrief(input);

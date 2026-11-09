@@ -167,7 +167,17 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   any other address.
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
-- Transcripts are not kept. An agent's memory is only what its owner told it (AG-1).
+- Transcripts are not kept. An agent's memory is only what its owner told it (AG-1). The one copy of
+  what a run read is the private Flux text the address check of `flux_read_web` needs (C-30): what people,
+  the company and its tools wrote in its brief and each Flux tool result, compared-ready, in
+  `personal_run_private_texts`. It is kept only while the run is in flight and deleted in the same
+  transaction as any end of the run (an answer, Stop, a limit, a failure, the sweep of a lost run); a result
+  that comes back after the end keeps nothing (#1136). Content deleted during a run stays in it until the run
+  ends.
+- **Codex's `web.run` can `open` an address the model chose** (#1136). The CLI posts it to OpenAI's search
+  with `external_web_access: false`, so by OpenAI's description the page comes from the cached index and the
+  address never reaches the site (a vendor claim, not checked by Flux); Flux sees the item only afterwards
+  and does not run the private-text check on it. Such a page is not a source Flux lists.
 
 ## RT-6 — Sign-in
 
@@ -277,8 +287,10 @@ operator decides for their server through the operator step (RT-9).
 8. **Web reading and search.** Egress beyond the vendors' hosts, prompt injection from any page or search result, and an address that
    carries what the agent knows to a site. Any address opens (founder direction 2026-11-09, C-30); the defence is AG-2, AG-3 and AG-8,
    the brief's rule never to put anything from Flux into an address, the server's refusal of an address that carries private Flux text
-   the run read (as written, encoded or on a redirect hop), and the tests in #856, #953, #954 and #1065. What the agent rewrote can still
-   leave: accepted by the founder.
+   the run read (as written, encoded, or new on a redirect hop), and the tests in #856, #953, #954, #1065 and #1136. What the agent rewrote
+   can still leave: accepted by the founder. Two channels are outside that check: Codex's `web.run` `open` (RT-5, read from OpenAI's cached
+   index by its description) and a link card, which with `FLUX_LINK_PREVIEWS=on` is fetched for a person's message but never for a line an
+   agent that runs on the server wrote (C-30).
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract
    test, the start-up and JSONL checks, and honest *Sign in again* and *Provider refused* states.

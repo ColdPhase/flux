@@ -5,7 +5,7 @@ export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
 export { reportTaskRun } from './task-report.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros } from './validation.js';
-export { buildBrief, NO_POSTING_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, PAGE_NOTE_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
+export { briefPrivateText, buildBrief, NO_POSTING_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, PAGE_NOTE_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { notedPageResult, PAGE_NOTE_MIN_CHARS, READ_WEB_TOOL } from './page-notes.js';
 export { announce as announceRunProgress } from './progress.js';
@@ -14,4 +14,4 @@ export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, r
 export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerWithWebSources, endedWithWebSources, webSourcesLine, WEB_SOURCES_HEADINGS } from './web-sources.js';
-export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, addressesIn, boundedWebSearch, comparableText, keptPrivateText, normalizedAddress, privateFragmentIn, type KeptPrivateText } from './web-addresses.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, AddressTooLong, addressChain, addressesIn, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';

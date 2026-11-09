@@ -1,7 +1,8 @@
 import { z } from 'zod';
-import { DomainError, normalizedAddress, privateFragmentIn } from '@flux/core';
+import { ADDRESS_MAX, addressChain, DomainError, normalizedAddress, type PrivateTextIndex } from '@flux/core';
 import { personalRunWebReadRows, type Database } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
+import { checkRunAddress, forgetRunPrivateText } from './run-private-text.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 import { WEB_READ_WORDS, type WebReader } from '../web-reads/reader.js';
@@ -13,10 +14,13 @@ import { WEB_READ_WORDS, type WebReader } from '../web-reads/reader.js';
  * or filled in, and there is no tool for it. What comes back is a page's words: data, never an instruction.
  *
  * Any public address opens (#1065, founder direction 2026-11-09, C-30), the same on every engine. An address is still a way to send something
- * to a site, so the server refuses one that carries a fragment of private Flux text the run read (`privateFragmentIn`: its brief and its Flux
- * tool results, kept as `personal_run_private_texts`; as written, as sent, percent-encoded or in a hex, base64 or base32 run), and each
- * redirect hop that does, and says why; the brief tells the agent never to put anything from Flux into an address. What the agent rewrote
- * (other words, hyphens for spaces, pieces under 12 characters) can still leave (the founder's accepted risk). Every address the server then sent a request to
+ * to a site, so the server refuses one that carries a fragment of private Flux text the run read (`privateFragmentIn`: what people, the
+ * company and its tools wrote in its brief, and its Flux tool results, kept as `personal_run_private_texts`; as sent, percent-encoded or in a
+ * hex, base64 or base32 run), and each redirect hop that carries a fragment the address before it did not (#1136), and says why; the brief
+ * tells the agent never to put anything from Flux into an address. A link written in the private text opens. What the agent rewrote (other
+ * words, hyphens for spaces, pieces under 12 characters) can still leave (the founder's accepted risk). The check reads the run's index of
+ * its kept text, built once per run and added to (`run-private-text.ts`), in one pass per address, behind one gate for the process and
+ * yielding to the event loop as it goes (#1136); an address longer than `ADDRESS_MAX` as sent is not read. Every address the server then sent a request to
  * is recorded as one of the run's sources, written before the request goes out, the pages that came back and the ones that failed alike, and
  * the run lists them all at its end in Flux's own words: under its answer, or, when it ends without one, in its end line.
  *
@@ -36,24 +40,34 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, cl
     try {
       // The connection, the policy and the run are checked before anything else, in a transaction that ends first: no lock is held
       // while a stranger's server answers.
-      await withAgentConnection(db, claims, 'read', run.projectId, async () => undefined);
+      await withAgentConnection(db, claims, 'read', run.projectId, async () => undefined).catch((error: unknown) => {
+        forgetRunPrivateText(run.id);
+        throw error;
+      });
       const rows = personalRunWebReadRows(db);
       const asked = normalizedAddress(url) ?? url;
       // Private Flux text the run read, carried by the address (#1065, C-30): refused before anything is sent or written, and the agent is
-      // told which words. A redirect hop is checked too before it is asked: a site that unpacks an address it was sent cannot pass it on.
-      const texts = await rows.privateTexts(run.id);
-      const refuseCarrying = (address: string) => {
-        const fragment = privateFragmentIn(address, texts);
-        if (fragment) throw new DomainError(422, 'WEB_READ_PRIVATE_TEXT', `${WEB_READ_WORDS.private_text} (It carries "${fragment}".)`);
+      // told which words. A redirect hop is checked too before it is asked: a site that unpacks an address it was sent cannot pass it on,
+      // while the text of the link a person wrote that the first address was goes on (#1136: DOI → publisher, twitter.com → x.com). An
+      // address longer than the tool takes, as it is sent (a redirect's Location is not bounded), is neither checked nor asked (#1136).
+      const chain = addressChain();
+      let index: PrivateTextIndex | undefined;
+      const refuseCarrying = async (address: string) => {
+        let sent: string | null = null;
+        try { sent = new URL(address).href; } catch { /* no web address: the reader says so */ }
+        if (sent !== null && sent.split('#')[0]!.length > ADDRESS_MAX) throw new DomainError(422, 'WEB_READ_TOO_LONG', WEB_READ_WORDS.too_long);
+        const checked = await checkRunAddress(db, run.id, address, chain, index);
+        index = checked.index;
+        if (checked.fragment) throw new DomainError(422, 'WEB_READ_PRIVATE_TEXT', `${WEB_READ_WORDS.private_text} (It carries "${checked.fragment}".)`);
       };
-      refuseCarrying(url);
+      await refuseCarrying(url);
       // Each address is written down, with the run checked live again, BEFORE its request goes out (the first and each redirect hop): a run
       // that is stopped sends nothing more, and one that is stopped while the site answers still lists what it sent.
       const ids: string[] = [];
       let read: Awaited<ReturnType<WebReader['read']>>;
       try {
         read = await reader.read(url, { beforeRequest: async (address) => {
-          if (address !== asked) refuseCarrying(address);
+          if (address !== asked) await refuseCarrying(address);
           await withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
             ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked' }));
           });

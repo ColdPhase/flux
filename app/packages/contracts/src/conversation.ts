@@ -106,13 +106,16 @@ export function messageLinkUrls(body: string): string[] {
  * - `off`: the operator has not turned link previews on (`FLUX_LINK_PREVIEWS`); no page was fetched.
  * - `sealed`: the workspace is encrypted; no page is ever fetched for it, so none of its addresses leave the server.
  * - `busy`: this person asked for too many fetches lately; retry later.
+ * - `agent`: an agent that runs on the server wrote the message (#1136, C-30); no page is fetched for it, since an address it wrote could
+ *   carry what it read past the check of its web reads. A person's message, an answer a person posted with Show everyone and a post of the
+ *   person's own local client are the person's.
  */
 export interface LinkPreviewCard { url: string; title: string | null; description: string | null }
 /** `GET /api/v1/projects/:projectId/messages/:messageId/place` (CW-2): the conversation a project message belongs to. */
 export const projectMessagePlacePath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/place`;
 export interface MessagePlace { projectId: string; conversationId: string; messageId: string }
 
-export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'busy'; cards: LinkPreviewCard[] }
+export interface MessageLinkPreviews { status: 'ready' | 'off' | 'sealed' | 'busy' | 'agent'; cards: LinkPreviewCard[] }
 export const messageLinkPreviewsPath = (projectId: string, messageId: string) => `/api/v1/projects/${projectId}/messages/${messageId}/link-previews`;
 
 /** Optional current-project display metadata; never changes a stored author or grants access. */

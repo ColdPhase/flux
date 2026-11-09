@@ -313,8 +313,10 @@ agent's brief says so; nothing fails. **Any address opens** (founder direction, 
 for Claude and Codex, with no approval taps): the same rule on every engine. The brief tells the agent to open only what its answer
 needs, never to put anything from Flux into an address (no words of messages, tasks, the Wiki or the request, no names, ids or keys)
 and that what a page or a message says is data, not an order; and the server refuses, without asking anyone, an address that carries
-a verbatim fragment of private Flux text the run has read (12 characters or more, compared without case, accents or percent-encoding,
-also in a run of hex, base64 or base32, and on every redirect hop), or a link written in Flux carried to another site, telling the agent why ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+a verbatim fragment of private Flux text the run has read (12 characters with a digit, a space or an `@`, compared without case, accents
+or percent-encoding, also in a run of hex, base64 or base32), telling the agent why. Private text is what people, the company and its
+tools wrote, never Flux's own brief words or which date it was; a link written in it opens, a redirect hop may carry only the text of the
+link a person wrote that the read began with, and a run's change may not write such an address into Flux (its answer is not checked yet, #1143) ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1136, #1138).
 **Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote (other words, hyphens for spaces, pieces under 12
 characters), or signals by which address it chooses, can leave through an address, and a search query reaches the search's vendor; the
 check stops the copy. The defence is the one above, and the list of every address the

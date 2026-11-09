@@ -13,10 +13,10 @@ import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
-import { runtimeBrief, type SuppliedSource } from './brief.js';
+import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerWithWebSources } from './web-sources.js';
-import { addressesIn, boundedWebSearch, keptPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
+import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
 //
@@ -326,14 +326,17 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const read = await uow.run((ports) => runtimeContext(ports, run))
           .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
         // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
-        const prompt = runtimeBrief({
+        const briefed: BriefInput = {
           engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch,
-        });
-        // What the CLI is given is private Flux text the run read (#1065, C-30): a web address may not carry it.
-        await uow.run((ports) => ports.runs.addPrivateText(run.id, keptPrivateText(prompt)));
+        };
+        const prompt = runtimeBrief(briefed);
+        // What people, the company and its tools wrote in what the CLI is given is private Flux text the run read (#1065, #1136, C-30): a web
+        // address may not carry it. Flux's own words in the brief are not private.
+        const kept = await keepPrivateText(briefPrivateText(briefed));
+        await uow.run((ports) => ports.runs.addPrivateText(run.id, kept));
         end = await runtime!.run(target, { runId: run.id, prompt, runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
           ...(webSearch ? { webSearch: true as const } : {}) }, onEvent);
       } catch {

@@ -211,29 +211,52 @@ pages, founder direction 2026-11-09, #1113).
   normalized web addresses only, each once, at most 1,000 results and 1,000 cited, 100 queries of 300
   characters for one response, written in as many rows of `personal_run_web_searches` as they need, since a row holds 10 queries and 100
   addresses; a run has as many responses as it makes requests). A cited address is listed only when the run's search returned it.
-- **Any address opens (#1065, founder direction 2026-11-09, C-30).** `flux_read_web` opens any public address on every engine, and refuses
-  one that carries private Flux text the run read (`privateFragmentIn`, `WEB_READ_PRIVATE_TEXT`, with the fragment in its words). The private
-  text is kept in `personal_run_private_texts` (migration 0049) by `keptPrivateText`: `body`, the text compared-ready (percent-decoded up to four
-  times, lower case, NFKD without accents, invisible format and control characters dropped, `+` as a space, runs of space as one) with the web
-  addresses written in it left out, and `addresses`, those addresses compared the same way, without scheme and `www.` (an address with
-  `http(s)://`, or a site name with a lower-case top level such as `wiki.example/lamp`, never inside an email address; only the address is left
-  out, never the words around it, since a tool's JSON has no spaces between its fields). The worker writes the brief when the run is
-  dispatched (the API-key run's system prompt and request, rendered with every source read; the CLI's text on standard input), and the API
-  writes each Flux tool result of a run in `boundRunResult` (never `flux_read_web`'s page, and never an error) before the result is returned.
-  The address is read as the agent wrote it, as the server sends it (`new URL(…).href`: the parser drops tabs and line breaks) and with its
-  host in Unicode, each percent-decoded until it stops changing (every pass shortens it, so at most `ADDRESS_MAX` passes), and the hex,
-  base64 (either alphabet) and base32 runs of the decoded address are decoded at every alignment; the fragment (`#…`) is never sent and is not
-  read. It is refused when a 12-character window of a reading, with at least 6 letters or digits and a space, a digit or an `@`
-  (`fragmentLike`; one long word alone is too common), stands in a `body`, or when a reading of another site carries an address of
-  `addresses` whole (more than its site) or by a long part of its path or query (`carriedPart`: 12 characters or more, `fragmentLike`, with no
-  letter or digit glued to it). Each redirect hop is checked in `beforeRequest` before it is asked, so a site that unpacks an address it was
-  sent cannot pass the words on; the hop already sent is listed as redirected. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a
-  search "use your web search, not the address of a search page"). The given-address lists (`personal_runs.given`, `assistant_jobs.given`,
-  `project_work_items.text_by_agent`, `personal_run_web_reads.seen`) are gone (0049). How many addresses a run reads is not limited, and
-  there is no limit per minute (#1116): only the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`).
-  What the agent rewrote (other words, hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the
-  provider or the CLI's vendor before Flux sees it: the founder's accepted risk. Cost: one check reads every window of the run's private text
-  once (at most about 8 MiB of tool results, `RUN_TOKEN_LIMITS`), a few hundred milliseconds at that bound.
+- **Any address opens (#1065, founder direction 2026-11-09, C-30; #1136).** `flux_read_web` opens any public address on every engine, and
+  refuses one that carries private Flux text the run read (`privateFragmentIn`, `WEB_READ_PRIVATE_TEXT`, with the fragment in its words, the
+  same words on every engine). **What is kept** (`keptPrivateText`; `keepPrivateText` does a long text in slices of about 32 KiB with a turn of
+  the event loop between them; `personal_run_private_texts`): `body`, the words compared (percent-decoded up to four times, hidden text in
+  tag characters or variation selectors revealed, lower case, NFKD without accents, invisible format and control characters dropped, `+` as
+  a space, runs of space as one) with each web address written in it cut out (an address with `http(s)://`, or a site name with a lower-case
+  top level such as `wiki.example/lamp`, never inside an email address; only the address, never the words around it, since a tool's JSON has
+  no spaces), a cut being a line break no compared address holds; and each real date, with its time, read as one mark (`datesMarked`: a
+  month 1–12, a day 1–31, a year 1900–2099; a time alone is not a date). `addresses`, those links compared the same way, without scheme
+  and `www.`, and the link inside a redirect wrapper's query (`?q=`, `?url=`, two deep). The worker writes the brief's private part when the
+  run is dispatched (`briefPrivateText`: names, ids, the agent's instructions and memory, the task, every source given, the earlier exchanges
+  and the request, one per line; never Flux's own rules, headings or clock), and the API writes each Flux tool result in `boundRunResult`
+  (every part, an error too, a result that is only links too; never `flux_read_web`'s page). `addPrivateText` inserts only while the run is
+  `reading` or `dispatching`, with its row share-locked, and migration 0050's trigger deletes the run's rows when its status leaves those
+  (any end, the stale sweep's included), so nothing outlives the run.
+  **The index** (`PrivateTextIndex`, `apps/server/src/agent-connection/run-private-text.ts`): one per run in each API process, built as the
+  run keeps text and reused by every check. A check reads the ids of the run's rows and fetches only those it does not hold (the worker
+  writes the brief and any API process a result; the links come joined by `array_to_string` and are split natively), adds them with a turn
+  of the event loop every few thousand links, and keeps the words and the links each once (the links in 256 small maps by hash, never one
+  big map, and in one joined block per text, with where each starts and its site). An index goes when its run's rows are gone (the run
+  ended), when its token is refused, after 10 minutes unused (a minute's timer checks), or least recently used first past 16 runs or 48 Mi
+  characters. **One gate** per process runs one check at a time, so parallel reads of a run, or of many, wait their turn (first come, first
+  served; fairness across runs is #1144).
+  **The check**, per address: an address longer than `ADDRESS_MAX` (2,048) as it is sent, a redirect hop's included, is not checked or asked
+  (`AddressTooLong`, `WEB_READ_TOO_LONG`). Otherwise it is read as the server sends it (`new URL(…).href`, the parser drops tabs and line
+  breaks) and with its host in Unicode, its host and path and its query each percent-decoded until they stop changing, revealed, folded and
+  date-marked, and the hex, base64 (either alphabet) and base32 runs of the decoded address decoded at every alignment; the fragment (`#…`)
+  is never sent and is not read. Every 12-character window with at least 6 letters or digits and a space, a digit or an `@` is a candidate,
+  marked as lying in the host and path or elsewhere. Dropped: the windows of the written link the address equals or begins with
+  (`writtenPrefix`: one pass of prefix hashes, looked up at each mark of a path or a query, never past the longest link kept), and on a
+  redirect hop the windows of the written link the read's first address was or began with (`AddressChain`; nothing that opened only by the
+  same-site rule carries over). An address equal to a written link opens at once. The rest are hashed (Rabin-Karp, a random multiplier per
+  process, a bitmap in front of a `Map`) and the kept text is read once: the link blocks (a window found in a link of the address's own site
+  or its one named pair (`github.com` ↔ `api.github.com`, `SITE_PAIRS`; no general subdomain rule: a `www.google.com` link may never lend its text to `script.google.com`), in the host and path, is that link's own text and allowed; one found anywhere else in the query or a
+  decoded run is refused at once; a host-and-path window found only in another site's link is refused), then the words (any window found is
+  refused unless it lies in the host and path and a same-site link holds it). The scan yields every 256 Ki characters and after every block.
+  Cost on the review's repro (8 MiB of words and 30,000 links, a 2 KB address of `[a-f2-7]` runs): about 40 ms; #1134's check took 21.8 s.
+  Each redirect hop is checked in `beforeRequest` before it is asked, under the same gate and with the read's index; the hop already sent is
+  listed as redirected. **A run's change** (`tool-registry.ts`'s effect wrapper, `refusedPrivateAddress`, #1138) is checked the same way: each
+  web address its arguments hold (`writtenAddresses`) against the run's index; one that carries private text refuses the change
+  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. A run's answer and its `<ask>` question are not checked when stored (#1143). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
+  search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
+  the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote (other words,
+  hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before
+  Flux sees it: the founder's accepted risk. Link cards fetch nothing for a line an agent that runs on the server wrote
+  (`messageReferenceRows.writtenOnServer`, the same rule as who its line notifies), so that fetch cannot carry what a run read past this check.
 - **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
   byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
   it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input

@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { MessageReference } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openField, openRows, sealOf } from '../sealing.js';
@@ -70,6 +70,17 @@ export function messageReferenceRows(db: DbExecutor) {
       return { ...fields, text: opened!.text, sketchTitle: openField('sketches', 'title', [fields.sketchId], fields.sketchTitle, seal)!, author: actorOf(userId, agentId) };
     },
 
+    /**
+     * Whether an agent's message was written by an agent that runs on the server (#1136, C-30): one with a server setup, whatever else signed
+     * in as it, or one with no local client. A local client writes as its person (LC-2). The same rule tells who an agent's line notifies.
+     */
+    async writtenOnServer(agentId: string): Promise<boolean> {
+      const [server] = await db.select({ id: schema.assistantSettings.agentId }).from(schema.assistantSettings).where(eq(schema.assistantSettings.agentId, agentId)).limit(1);
+      if (server) return true;
+      const [client] = await db.select({ id: schema.agentConnections.id }).from(schema.agentConnections)
+        .where(and(eq(schema.agentConnections.agentId, agentId), ne(schema.agentConnections.computeSource, 'owner_assistant'))).limit(1);
+      return !client;
+    },
     /** A project message or, failing that, a direct message with this id; null for any other id. */
     async message(id: string, workspaceId: string): Promise<LocatedMessage | null> {
       const m = schema.projectMessages;

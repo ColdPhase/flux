@@ -1,5 +1,5 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, keptPrivateText, requireSpaceAi } from '@flux/core';
+import { DomainError, keepPrivateText, requireSpaceAi } from '@flux/core';
 import { personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -63,13 +63,22 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
   return row;
 }
 
-type ToolOutput = { content?: unknown; isError?: boolean };
+type ToolOutput = { content?: unknown; structuredContent?: unknown; isError?: boolean };
+
+/** Everything a tool result holds as text: each part's text, any other part (a resource, a link) and structured content as JSON. */
+function resultText(result: ToolOutput): string {
+  const parts = Array.isArray(result?.content) ? result.content as unknown[] : [];
+  const texts = parts.map((part) => (typeof (part as { text?: unknown })?.text === 'string' ? (part as { text: string }).text : JSON.stringify(part)));
+  if (result?.structuredContent !== undefined) texts.push(JSON.stringify(result.structuredContent));
+  return texts.join('\n');
+}
 
 /**
  * Bounds what tools return to a run token: `RUN_TOKEN_LIMITS`, per result and per run, safety bounds (#843),
  * counted by the bytes of the result's content. A result past either bound is not returned; the run
  * records which bound it reached, and the worker ends the run in its own state. A Flux tool's result that is returned is private Flux text
- * the run read (#1065, C-30), kept so that a web address carrying it is refused; a web page (`flux_read_web`) is not Flux text.
+ * the run read (#1065, #1136, C-30), kept so that a web address carrying it is refused: an error too (it can name what it was about), every
+ * part of it, and a result that is only links. A web page (`flux_read_web`) is not Flux text.
  */
 export async function boundRunResult<T extends ToolOutput>(db: Database, runId: string, result: T, tool: string): Promise<T | ReturnType<typeof toolError>> {
   const bytes = Buffer.byteLength(JSON.stringify(result?.content ?? []), 'utf8');
@@ -81,9 +90,6 @@ export async function boundRunResult<T extends ToolOutput>(db: Database, runId: 
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'run'));
     return toolError(new DomainError(413, 'MCP_RESULTS_TOO_LARGE', 'This run has read as much as one assistant run may; the run stops'));
   }
-  if (tool !== 'flux_read_web' && result?.isError !== true) {
-    const text = (Array.isArray(result?.content) ? result.content : []).map((part) => (typeof (part as { text?: unknown })?.text === 'string' ? (part as { text: string }).text : '')).join('\n');
-    await personalRunWebReadRows(db).addPrivateText(runId, keptPrivateText(text));
-  }
+  if (tool !== 'flux_read_web') await personalRunWebReadRows(db).addPrivateText(runId, await keepPrivateText(resultText(result)));
   return result;
 }

@@ -78,12 +78,13 @@ export interface AgentToolRegistrar {
 }
 /**
  * Capability entries are written only when the corresponding real MCP tool is registered. `bound`, set for
- * a personal run's token only, sees every tool result, and the tool's name, before it is returned (F-022 "Caps"; #1065). Every tool is listed
+ * a personal run's token only, sees every tool result, and the tool's name, before it is returned (F-022 "Caps"; #1065); `run.written`
+ * sees a run's change before it runs and may refuse it (#1138). Every tool is listed
  * to every client: what a call may do is decided when it is made, by the owner's rights and the agent's "What it may do"
  * (an agent set to Only read gets plain words for a change), never by a scope or a switch chosen at sign-in (#859).
  */
 export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown, tool: string) => Promise<unknown>,
-  run?: { projectId: string | null }) {
+  run?: { projectId: string | null; written?: (args: Record<string, unknown>) => Promise<ToolOutput | null> }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
   /** Declared tools this server does not offer to this caller: not registered, not listed, and the manifest still adds up. */
@@ -114,6 +115,10 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
           callback = (async (args: Record<string, unknown>, extra: unknown) => {
             // AIM-3 redaction before anything is prepared, stored or written (AST-9.2): the call a waiting change keeps is the redacted one.
             const redacted = redactCall({ ...args, ...(run ? { projectId: args.projectId ?? run.projectId } : {}), ...(run && !private_ ? { sources: [] } : {}) });
+            // A run's change may not write a web address that carries private text the run read (#1138, C-30): read back, it would pass as
+            // a link a person wrote. Refused before anything is prepared or stored; a link a person wrote, copied as it is, passes.
+            const refused = run?.written ? await run.written(redacted) : null;
+            if (refused) return refused;
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, extra) as ToolOutput);
           }) as unknown as ToolCallback<I>;
         }
