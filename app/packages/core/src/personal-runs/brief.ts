@@ -246,7 +246,7 @@ function toolRules(input: Placed): string[] {
   const tools = input.tools;
   const search = searches(input);
   const web = tools.includes('flux_read_web')
-    ? [`${WEB} You can read only an address you were given: written by a person ${given(input)}, on a page you read${search ? ', or among the results of your own web search in this run' : ''}; when the tool says reading the web is off, carry on without it. Name the page you take a statement from: Flux lists every address you asked for at the end of your ${isAsk(input.kind) ? 'answer' : 'reply'}.`]
+    ? [`${WEB} You can read only an address you were given: written by a person ${given(input)}${search ? ', on a page you read, or among the results of your own web search in this run' : ', or on a page you read'}; when the tool says reading the web is off, carry on without it. Name the page you take a statement from: Flux lists every address you asked for at the end of your ${isAsk(input.kind) ? 'answer' : 'reply'}.`]
     : [];
   const searchLine = tools.length ? [search ? WEB_SEARCH_LINE : NO_WEB_SEARCH_LINE] : [];
   if (!tools.length) return place.kind === 'chat' ? ['Flux tools', 'You have no Flux tools here: use the chat so far and general knowledge.']

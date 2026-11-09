@@ -437,8 +437,8 @@ Not affected: F-010, F-014's draft-before-save thoughts, F-015, F-021, F-031, F-
   Other wire formats, and the Claude Code and Codex runtime (#1065), have no search. Reading and searching are on by default (C-29);
   `FLUX_WEB_READS=off` turns both off. A key whose provider refuses the tool (Anthropic documents a 400 when an organization's admin
   turned web search off in its Console; OpenAI's search is not on every model, e.g. o3-mini) is not left failing: a model Flux knows has
-  no search (`AI_MODELS_WITHOUT_WEB_SEARCH`, dated) is not offered it, and a refusal Flux recognises from the error's words is not
-  billed, the same request is sent once more without the search (its brief then says there is none), and the worker does not offer the
+  no search (`AI_MODELS_WITHOUT_WEB_SEARCH`, dated) is not offered it, and a refusal Flux recognises from the error's type and
+  message (at the request, or at Anthropic's token count before it) is not billed, the same request is sent once more without the search (its brief then says there is none), and the worker does not offer the
   search to that key's model for 6 hours (the review of #1073; the providers' exact words are unverified without a key). A request that
   offers search has room for 5 searches' results in its input (10,000 tokens each, an assumption to check with real keys), reserved
   like the rest of the request. On OpenAI no reasoning is carried from one turn to the next and no encrypted reasoning is asked for.

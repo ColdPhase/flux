@@ -198,7 +198,7 @@ describe('wire details beyond the shared contract', () => {
     assert.equal(one!.path, '/openai/v1/responses');
     const body = one!.body as Record<string, unknown>;
     assert.deepEqual([body.max_output_tokens, body.store, body.instructions, body.max_tokens, body.max_completion_tokens, 'tools' in body, 'include' in body],
-      [1_500, false, SYSTEM_PROMPT, undefined, undefined, false, false]);
+      [1_500, false, BRIEF.system, undefined, undefined, false, false]);
     assert.deepEqual(body.input, [{ role: 'user', content: request(openAiWire).input }]);
   });
 

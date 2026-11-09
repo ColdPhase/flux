@@ -180,12 +180,17 @@ Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 
   external_web_access: false }` with `max_tool_calls: 5` and `include: ['web_search_call.action.sources']`.
   Chat Completions has none, and `checkRequestLimits` refuses `webSearch` there or without tools. A model in
   `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
-  its brief (`webSearchBrief`) whether it can search; one without is told it has none.
-- **A refused search.** When the provider refuses the tool (`searchRefusal`: a 400 whose words name the web search
-  and a refusal, such as Anthropic's "not enabled" for an organization or OpenAI's "not supported" for a model), the
-  adapter returns `searchRefused` with `billed: 'none'`; the loop sends the same request once more without the search
-  (`withoutSearch`, which also swaps the brief's search sentence) in the same turn, and the worker does not offer the
-  search to that key's model for 6 hours (`searchRefusedUntil`, in memory).
+  its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
+  addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise, and always on the CLI's engine, #1065).
+- **A refused search.** When the provider refuses the tool, recognised only from the error's own `type` and `message`
+  (`anthropicSearchRefusal`: a 400 `invalid_request_error` saying web search is not enabled, an organization whose admin
+  turned it off; `openAiSearchRefusal`: a 400 `invalid_request_error` saying the tool `web_search` is not supported, a model
+  without it), the adapter returns `searchRefused` with `billed: 'none'`; the loop sends the same request once more
+  without the search (`withoutSearch`: the brief built again with `webSearch: false`) in the same turn. Anthropic's token
+  count carries the search tool too: a refusal there throws `WebSearchRefusedError`, and the preflight `fit` and the
+  loop's count count again without the search. Either way the worker does not offer the search to that key's model for
+  6 hours (`searchRefusedUntil`, in memory), and a Connect AI budget is checked without search room for a model in
+  `AI_MODELS_WITHOUT_WEB_SEARCH`.
 - **What comes back.** The adapters read the provider's structured answer, never the model's words:
   Anthropic's `server_tool_use` queries, `web_search_tool_result` addresses and `web_search_result_location`
   citations; OpenAI's `search` actions' queries and `action.sources` and the message's `url_citation`
