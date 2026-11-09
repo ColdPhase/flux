@@ -9,7 +9,7 @@ import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { accessPorts, schema, type Database } from '@flux/db';
 import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@flux/contracts';
-import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
+import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany, redactedError } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 import { createOneClickSignIn } from '../agent-connection/one-click.js';
@@ -93,6 +93,13 @@ export async function recordGrantAuthentication(db: Database, userId: string, se
   await db.insert(schema.oauthGrantAuthentication).values({ authorizationCodeId, userId, referenceId,
     authMethod: facts.method, authIdpSid: facts.idpSid, authConfirmedAt: facts.confirmedAt }).onConflictDoNothing();
 }
+
+/** Where Better Auth's log lines go when the API gives no logger (tests that build the auth by itself). */
+const CONSOLE_LOG = {
+  info: (object: object, message: string) => console.info(message, object),
+  warn: (object: object, message: string) => console.warn(message, object),
+  error: (object: object, message: string) => console.error(message, object),
+};
 
 const IDP_TOKEN_FIELDS = ['accessToken', 'refreshToken', 'idToken', 'accessTokenExpiresAt', 'refreshTokenExpiresAt'] as const;
 
@@ -239,6 +246,19 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // which logs only the class, the SQLSTATE and the constraint and answers 500 (#991, ASVS V7.4.1; found in the review of #1093). Better Auth's own
     // errors (a wrong password, a refused origin) are still answered as they were.
     onAPIError: { throw: true },
+    // Better Auth's own log lines go to Flux's logger, and what an error carries is reduced to its class, SQLSTATE and constraint: a failed
+    // statement is quoted with its parameters (a sign-up that lost a race with the same address prints the email and the name), and Better
+    // Auth hands that error to its logger. A line's text may hold an address (`Sign-up attempt for existing email: …`): those are replaced.
+    // Anything else it passes along is not printed (#1088, found in the delta review of #1093).
+    logger: {
+      log: (level, message, ...details) => {
+        const errors = details.filter((detail): detail is Error => detail instanceof Error || (typeof detail === 'object' && detail !== null && 'message' in detail))
+          .map((detail) => redactedError(detail).message);
+        const text = String(message).replace(/[^\s@"'`<>(),;:]+@[^\s@"'`<>(),;:]+/g, '<email>').replace(/\s+/g, ' ').slice(0, 240);
+        const sink = level === 'error' ? 'error' : level === 'warn' ? 'warn' : 'info';
+        (log ?? CONSOLE_LOG)[sink]({ channel: 'auth', ...(errors.length ? { error: errors.join('; ') } : {}) }, text);
+      },
+    },
     baseURL: config.publicOrigin,
     basePath: '/api/auth',
     secret: config.secret,
@@ -481,9 +501,17 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
           after: async (session) => {
             const sign = signIns.getStore();
-            await db.insert(schema.authSessionIdentities).values({
-              sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
-            }).onConflictDoNothing();
+            try {
+              await db.insert(schema.authSessionIdentities).values({
+                sessionId: session.id, method: sign?.providerId ?? 'password', idpSid: sign?.idpSid ?? null,
+              }).onConflictDoNothing();
+            } catch (error) {
+              // A reset that ended the sessions after this one was written (the password check was still current when the row went in) took it away
+              // before it could be recorded: the sign-in lost the race, and is answered as a refused one (#1088).
+              const state = (error as { code?: unknown; cause?: { code?: unknown } }).cause?.code ?? (error as { code?: unknown }).code;
+              if (state === '23503' && !sign?.providerId) throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
+              throw error;
+            }
             // A provider sign-in is the provider vouching for the person now (F-024 S2, #312).
             if (sign?.providerId) await confirmation.confirm(session.userId, sign.providerId);
             // The provider vouched for the person just now: keep its offline token for the standing check and
