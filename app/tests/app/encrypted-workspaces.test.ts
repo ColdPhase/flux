@@ -476,7 +476,7 @@ describe('F-030 AI forced off', () => {
   test('a gated AI route answers 403 SPACE_AI_OFF in A and works in B', async () => {
     for (const [ws, status] of [[A, 403], [B, 200]] as const) {
       const project = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Robots' } }), 201) as { id: string }).id;
-      const response = await ada.browser.request('GET', `/api/v1/projects/${project}/agents`);
+      const response = await ada.browser.request('GET', `/api/v1/projects/${project}/agent-stops`);
       assert.equal(response.status, status, response.text);
       if (status === 403) assert.equal(codeOf(response), 'SPACE_AI_OFF');
     }
