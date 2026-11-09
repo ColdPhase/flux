@@ -464,6 +464,30 @@ describe('flux_read_web: the check after the evaluation of #1139', () => {
     await scene.complete(run.runId);
   });
 
+  test('#1144: the runs take turns at the check: one run\'s 40 parallel reads do not hold another owner\'s single read behind all of them', async (t) => {
+    const other = await assistantScene('wqf');
+    const heavy = await scene.liveRun(undefined, 'Read many pages');
+    const more = keptPrivateText(Array.from({ length: 30_000 }, (_, j) => link(100 + (j % 60), j)).join(' '));
+    const words = keptPrivateText(Array.from({ length: 1 << 20 }, () => `${['lamp', 'sensor', 'north', 'barrel', 'harbour', 'plan', 'camera', 'below'][Math.floor(random() * 8)]} ${Math.floor(random() * 99)}`).join(' ').slice(0, 8 << 20));
+    for (const row of [more, words]) await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [heavy.runId, row.body, row.addresses]);
+    const light = await other.liveRun(undefined, 'Read one page');
+    const crafted = () => `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040);
+    const timed = async (work: () => Promise<unknown>) => { const started = Date.now(); await work(); return Date.now() - started; };
+    const alone = await timed(() => reading(light, crafted()));
+    await reading(heavy, crafted());
+    const floodStarted = Date.now();
+    const flood = Promise.all(Array.from({ length: 40 }, () => reading(heavy, crafted())));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const during = await timed(() => reading(light, crafted()));
+    await flood;
+    const floodTook = Date.now() - floodStarted;
+    t.diagnostic(`the light run's read: ${alone} ms alone, ${during} ms during the heavy run's 40 parallel reads, which took ${floodTook} ms`);
+    // Before #1144 the light read waited for all 40 checks (the evaluation: 1,884 ms of 2,200). Now it waits for one check of the heavy run.
+    assert.ok(during < floodTook / 2, `the light read took ${during} ms of the flood's ${floodTook} ms`);
+    await scene.complete(heavy.runId);
+    await other.complete(light.runId);
+  });
+
   test('#1138: a run\'s change that writes an address carrying what it read is refused; a link a person wrote, copied as it is, is written', async () => {
     await post(`Private plan: buy Harbour Co shares before Friday. The notes are at ${at('/read/notes')}`);
     const run = await scene.liveRun(undefined, 'Make a task from the plan');
