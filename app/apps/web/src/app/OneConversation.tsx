@@ -11,7 +11,7 @@ import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
 import { ConversationStream, streamPlace, useConversationRoots, useObjectNotices, useTaskNotices } from './ConversationStream';
-import { useStreamEvents } from '../api/stream';
+import { WORK_EVENT, useStreamEvents } from '../api/stream';
 import { ThreadRoot } from './ThreadRoot';
 import { SourceOfContext } from './messageParts';
 import { OwnedPanelContent, useOwnedPanel } from './ownedPanel';
@@ -90,10 +90,11 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   const objects = useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied);
-  // Another member proposes or accepts a decision or makes a task (#694): the stream and an open thread
-  // read it now instead of at the next poll. The events carry ids only; what is shown is read through the API.
+  // A change to the space's work, decisions or results, or a link between a message and a task (#694, #862): the stream's task lines and
+  // announcements, its chips and an open thread read it now (no timer reads them while the live stream is open). The events carry ids only;
+  // what is shown is read through the API.
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType === 'project' && event.objectId === project.id && /^project\.(decision_(proposed|accepted)|work_created|assistant_change_undone)\.v1$/.test(event.kind)) revalidator.revalidate();
+    if (event.objectType === 'project' && event.objectId === project.id && (WORK_EVENT.test(event.kind) || event.kind === 'project.link_created.v1')) revalidator.revalidate();
   });
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);

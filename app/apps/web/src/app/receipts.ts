@@ -139,11 +139,24 @@ export function useReceiptTick(enabled: boolean, identity: string, projectId: st
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !streamLive()) setTick((value) => value + 1); }, ms);
     return () => window.clearInterval(timer);
   }, [enabled, ms]);
+  useEffect(() => {
+    if (!enabled) return;
+    const onFocus = () => setTick((value) => value + 1);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [enabled]);
   useStreamEvents(identity, (event) => {
-    if (enabled && event.kind === MESSAGES_OBSERVED && event.objectId === projectId) setTick((value) => value + 1);
+    if (!enabled) return;
+    // Someone saw the person's messages; or someone may no longer read the space, and "Seen by" names only those who can now.
+    if ((event.kind === MESSAGES_OBSERVED || READERS_CHANGED.has(event.kind)) && event.objectId === projectId) setTick((value) => value + 1);
+    else if (event.objectType === 'workspace' && READERS_CHANGED.has(event.kind)) setTick((value) => value + 1);
   }, () => { if (enabled) setTick((value) => value + 1); });
   return tick;
 }
+
+/** Changes that can take a reader out of a space: "Seen by" names only people who can read it now (#534, #862). */
+const READERS_CHANGED = new Set(['project.grant_revoked.v1', 'project.grant_set.v1', 'project.access_ended.v1', 'project.deleted.v1',
+  'workspace.member_removed.v1', 'workspace.member_role_changed.v1', 'workspace.access_ended.v1']);
 
 /** Someone saw messages of a space for the first time; it reaches their authors only (#862). */
 export const MESSAGES_OBSERVED = 'project.messages_observed.v1';

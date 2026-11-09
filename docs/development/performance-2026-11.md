@@ -199,13 +199,27 @@ conversation's reads together.
   (`leavesReads`).
 - **Timers only while the stream is down.** No view reads on a timer while the live stream is open (`streamLive()` in
   `api/stream.ts`). The 15 s refreshes of the stream, a thread, Tasks and a space's work summary, the 20 s working-agents
-  read, the 2 min Inbox and agent-dot reads, and the 4 s fallbacks while an agent works all run only while the stream is
-  down. While it is open, views read on an event, a resync, focus or a move:
-  - Tasks and the work summary now read on a change to the space's work (`WORK_EVENT`);
+  read and the 4 s fallbacks while an agent works run only while the stream is down. While it is open, views read on an
+  event, a resync, focus or a move:
+  - Tasks and the work summary read on a change to the space's work (`WORK_EVENT`);
+  - a space's conversation reads on such a change and on a link between a message and a task, so its task lines,
+    announcements and chips follow;
   - the stream and a thread read on a new or changed source.
+- **Two timers stay.** The Inbox count and the agents' unread dots keep their two-minute read while the stream is open. Some
+  of their changes send no event: an item handled on another device, an item back from Later, a notification the worker
+  writes late, a chat read elsewhere. That is half a request a minute each.
 - **"Seen by" is told, not polled.** The space conversation's "Seen by" asked every 8 s, because seeing a message sent no
   event. Now the first sight of messages records `project.messages_observed.v1` for their authors who can read the space,
-  and for nobody else, and the author's page reads its receipts then.
+  and for nobody else, and the author's page reads its receipts then. It also reads them on focus and when someone may have
+  lost the space (a grant removed, someone left or removed from the company, a role changed), since it names only people
+  who can read the space now.
+- **A dead socket does not leave a tab with nothing.** The stream opens again from its cursor, so what it missed is
+  replayed:
+  - when the browser comes back online;
+  - when the page comes back after more than a minute hidden;
+  - when a timer fires far later than it was set for (the machine slept).
+
+  The server's pings cannot be seen from a page.
 - **Live calls.** A call starting still sends no event, so the "live now" cue (only with LiveKit configured) looks every
   30 s while the stream is open, every 12 s otherwise.
 

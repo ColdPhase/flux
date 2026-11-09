@@ -28,6 +28,10 @@ export interface StreamListener {
 
 interface Subscription { identity: string; listener: StreamListener }
 
+/** A tick of the sleep check, and how long away (hidden, or asleep) means the socket may be gone (#862). */
+const TICK_MS = 15_000;
+const AWAY_MS = 60_000;
+
 const subscriptions = new Set<Subscription>();
 let identity: string | null = null;
 let socket: WebSocket | null = null;
@@ -156,14 +160,40 @@ function connect() {
   };
 }
 
-// Back online: a reconnect waiting out its backoff happens now, not up to 15 s later.
+/**
+ * Opens the stream again now, from the last cursor, so whatever it missed is replayed (#862). For a socket the browser still reports open
+ * although its connection may be gone (a laptop that slept, a network that changed): the server's pings cannot be seen from a page, and
+ * with no timers while the stream is open, a dead one would leave the tab with nothing.
+ */
+function reopen() {
+  if (!subscriptions.size) return;
+  const old = socket;
+  socket = null;
+  if (old) { old.onopen = null; old.onmessage = null; old.onclose = null; old.close(1000); }
+  retry = 0;
+  clearTimer();
+  connect();
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    if (socket || !subscriptions.size) return;
-    retry = 0;
-    clearTimer();
-    connect();
+  // Back online: the connection may have changed under an open socket, and a reconnect waiting out its backoff happens now.
+  window.addEventListener('online', reopen);
+  // Back after a long time hidden, or after the machine slept (a timer that fired far later than it was set for): opened again.
+  let hiddenAt: number | null = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    if (away > AWAY_MS && socket) reopen();
   });
+  let tick = Date.now();
+  const sleepCheck = setInterval(() => {
+    const late = Date.now() - tick - TICK_MS;
+    tick = Date.now();
+    if (late > AWAY_MS && socket) reopen();
+  }, TICK_MS);
+  // Outside a browser (Node runs the client in tests) a timer must not keep the process alive (#752).
+  (sleepCheck as unknown as { unref?: () => void }).unref?.();
   document.addEventListener('visibilitychange', release);
 }
 onPageLive(release);

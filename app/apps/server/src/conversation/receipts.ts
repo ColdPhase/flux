@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
 import { schema, accessPorts, accessReader, type Database, type Executor } from '@flux/db';
-import { enforce, evaluateProject, eventAudience, InvalidInputError, listProjectPeople, NotFoundError, principalKey, RuleViolationError, uuid, type Principal } from '@flux/core';
+import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, principalKey, RuleViolationError, uuid, type Principal } from '@flux/core';
 import { eventPorts } from '../events.js';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
@@ -38,8 +38,10 @@ async function facts(tx: Pick<Database, 'select'>, projectId: string, list: stri
  */
 async function tellAuthors(tx: Executor, principal: Principal, workspaceId: string, projectId: string, authorIds: string[]) {
   const events = eventPorts(tx);
-  const authors = new Set(authorIds.map((id) => principalKey({ kind: 'human', id })));
-  const recipients = (await eventAudience(events, { kind: OBSERVED, workspaceId, objectId: projectId })).filter((key) => authors.has(key));
+  const event = { kind: OBSERVED, workspaceId, objectId: projectId };
+  // Only the authors are asked about, not the whole company: the same rule the audience of any event follows, for these few.
+  const recipients: string[] = [];
+  for (const id of new Set(authorIds)) if (await events.authorize({ kind: 'human', id }, event)) recipients.push(principalKey({ kind: 'human', id }));
   if (recipients.length) await events.repository.insert({ id: randomUUID(), kind: OBSERVED, objectId: projectId, actorId: principalKey(principal), data: {}, workspaceId }, recipients);
 }
 

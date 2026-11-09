@@ -143,7 +143,8 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
       window.removeEventListener(INBOX_CHANGED, reload);
     };
   }, [reload, hide, userId]);
-  useStreamEvents(userId, soon, reload);
+  // Someone seeing a message changes nothing that waits for this person (#862).
+  useStreamEvents(userId, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, reload);
 
   const mine = state.userId === userId ? state : { userId, response: null, failed: false };
   // A decision this person just accepted is not shown while the accept is waiting or on its way.

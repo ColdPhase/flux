@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { streamLive, useStreamEvents } from '../api/stream';
+import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED } from './api';
 import { getNeedsYou } from './needsYou';
 
@@ -26,8 +26,9 @@ export function useInboxDot(identity: string, pathname: string): number {
     const onFocus = () => refresh();
     window.addEventListener(INBOX_CHANGED, refresh);
     window.addEventListener('focus', onFocus);
-    // Only while the live stream is down (#862); while it is open, an event reads after a short pause (below).
-    const interval = setInterval(() => { if (!streamLive()) refresh(); }, 120_000);
+    // Also while the live stream is open (#862): an item handled on another device, an item back from Later and a notification written late
+    // send this tab no event. Half a request a minute.
+    const interval = setInterval(refresh, 120_000);
     return () => {
       window.removeEventListener(INBOX_CHANGED, refresh);
       window.removeEventListener('focus', onFocus);
