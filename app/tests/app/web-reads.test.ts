@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { pool } from './support/db.js';
 import { taskDiscussionPath, type TaskDiscussion } from '@flux/contracts';
-import { answerLines, taskRunPrompt, WEB_READS_PER_RUN } from '@flux/core';
+import { answerLines, taskRunPrompt } from '@flux/core';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
+import { READS_PER_MINUTE } from '../../apps/server/src/web-reads/reader.js';
 import { actionScene } from './support/mcp-actions.js';
 import { expectStatus } from './support/people.js';
 import { db } from './support/db.js';
@@ -163,12 +164,16 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
     await scene.complete(run.runId);
   });
 
-  test('one run asks for a bounded number of addresses', async () => {
+  test('a run is not limited in how many addresses it asks for (#1113): past 20 only the owner\'s per-minute throttle answers, and an address nothing gave is still refused', async () => {
     const own = await assistantScene('wrl');
-    const paths = Array.from({ length: WEB_READS_PER_RUN + 1 }, (_, index) => `/page/${index}`);
+    const paths = Array.from({ length: READS_PER_MINUTE + 2 }, (_, index) => `/page/${index}`);
     const run = await own.liveRun(undefined, `Read ${paths.map(at).join(' ')}`);
-    for (const path of paths.slice(0, WEB_READS_PER_RUN)) assert.equal(result((await reading(run, at(path))).message)?.isError, undefined, path);
-    assert.equal(code((await reading(run, at(paths[WEB_READS_PER_RUN]!))).message), 'WEB_READ_RUN_LIMIT');
+    for (const path of paths.slice(0, READS_PER_MINUTE)) assert.equal(result((await reading(run, at(path))).message)?.isError, undefined, path);
+    // The 21st and 22nd address of the run are given and are asked for: no limit of the run refuses them. The server's throttle of one owner's
+    // agents (a page fetch every three seconds, six at once) is what answers, and says to carry on or try again later.
+    for (const path of paths.slice(READS_PER_MINUTE)) assert.equal(code((await reading(run, at(path))).message), 'WEB_READ_BUSY', path);
+    assert.equal(code((await reading(run, at('/page/never-given'))).message), 'WEB_READ_NOT_GIVEN', 'an address that nothing gave is refused as before');
+    assert.deepEqual((await hits('/page')).map((hit) => hit.path), paths.slice(0, READS_PER_MINUTE), 'the throttled reads sent nothing');
     await own.complete(run.runId);
   });
 

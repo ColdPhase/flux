@@ -183,7 +183,7 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
 });
 
 describe('a budget that one request of the assistant\'s model would not fit is refused when it is saved (#909)', () => {
-  test('a Haiku key with the assistant on Fable: lowering to $0.20 is refused, $1.39 fits, and back on Haiku $0.20 fits', async () => {
+  test('a Haiku key with the assistant on Fable: lowering to $0.20 is refused, $1.34 fits, and back on Haiku $0.20 fits', async () => {
     const owner = await person('budget-assistant-owner');
     const ws = await workspace(owner, 'Budget assistant club');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
@@ -192,18 +192,18 @@ describe('a budget that one request of the assistant\'s model would not fit is r
     const me = { kind: 'human', id: owner.id } as const;
     await runs.enable(me, { agentId, connection: key.id, model: 'claude-haiku-4-5' });
     const lower = (cents: number) => owner.browser.request('PATCH', `${path}/${key.id}`, { body: { dailyBudgetCents: cents } });
-    // One Haiku request with Anthropic's own web search (#954) is (64,000 + 5 × 10,000) × $1/M + 4,000 × $5/M + 5 searches of a cent
-    // = 19 cents: with the assistant on Haiku, $0.20 is accepted.
+    // One Haiku request with Anthropic's own web search (#954) is (64,000 + 50,000 for the results) × $1/M + 4,000 × $5/M = 14 cents; its
+    // searches are charged as reported, not reserved (#1113): with the assistant on Haiku, $0.20 is accepted.
     expectStatus(await lower(20), 200);
     expectStatus(await lower(200), 200);
-    // The assistant moves to Fable, whose one request is 114,000 × $10/M + 4,000 × $50/M + 5 cents = $1.39; it fits $2.00.
+    // The assistant moves to Fable, whose one request is 114,000 × $10/M + 4,000 × $50/M = $1.34; it fits $2.00.
     await runs.chooseModel(me, { connection: key.id, model: 'claude-fable-5-1' });
     const refused = await lower(20);
     assert.equal(codeOf(refused), 'AI_BUDGET_TOO_SMALL', refused.text);
-    assert.match((refused.json as { error: string }).error, /Fable 5\.1, your assistant's model on this key, can cost up to \$1\.39/);
-    assert.equal(codeOf(await lower(138)), 'AI_BUDGET_TOO_SMALL');
+    assert.match((refused.json as { error: string }).error, /Fable 5\.1, your assistant's model on this key, can cost up to \$1\.34/);
+    assert.equal(codeOf(await lower(133)), 'AI_BUDGET_TOO_SMALL');
     assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)!.dailyBudgetCents, 200, 'the refused budget changed nothing');
-    expectStatus(await lower(139), 200);
+    expectStatus(await lower(134), 200);
     // Back on the key's own cheap model, a small budget is fine again.
     await runs.chooseModel(me, { connection: key.id, model: 'claude-haiku-4-5' });
     expectStatus(await lower(20), 200);

@@ -36,11 +36,6 @@ export function personalRunWebReadRows(db: DbExecutor) {
       }
       return [...first.values()];
     },
-    /** How many different addresses the run has asked for, apart from `except` (an address it asks again is not one more). */
-    async askedCount(runId: string, except = ''): Promise<number> {
-      const result = await db.execute<{ n: number }>(sql`SELECT count(DISTINCT url)::int AS n FROM personal_run_web_reads WHERE run_id = ${runId}::uuid AND url <> ${except}`);
-      return result.rows[0]?.n ?? 0;
-    },
     /**
      * The texts whose addresses the run's agent may read (#953): the addresses the run was given when it began (written only by people:
      * its request, the task and the people's messages, fixed at the start in `personal_runs.given`) and the addresses written on the pages
@@ -59,8 +54,14 @@ export function personalRunWebReadRows(db: DbExecutor) {
     async addSearch(runId: string, found: { queries: readonly string[]; results: readonly string[]; cited: readonly string[] }) {
       if (!found.queries.length && !found.results.length && !found.cited.length) return;
       const s = schema.personalRunWebSearches;
-      await db.insert(s).values({ runId, queries: found.queries.slice(0, 10).map((query) => query.slice(0, 300)),
-        results: found.results.slice(0, 100).map((address) => address.slice(0, 2048)), cited: found.cited.slice(0, 100).map((address) => address.slice(0, 2048)) });
+      // A row holds at most 10 queries and 100 results and cited addresses (its size check): a response of many searches (#1113, no
+      // limit on them) goes in as many rows as it needs, all written in this one statement, so none of it is lost to the row's size.
+      const slice = <T>(items: readonly T[], size: number, row: number) => items.slice(row * size, (row + 1) * size);
+      const rows = Math.max(Math.ceil(found.queries.length / 10), Math.ceil(found.results.length / 100), Math.ceil(found.cited.length / 100));
+      await db.insert(s).values(Array.from({ length: rows }, (_, row) => ({ runId,
+        queries: slice(found.queries, 10, row).map((query) => query.slice(0, 300)),
+        results: slice(found.results, 100, row).map((address) => address.slice(0, 2048)),
+        cited: slice(found.cited, 100, row).map((address) => address.slice(0, 2048)) })));
     },
     /**
      * The run's searches (#954): their queries and the addresses its answers cited, each once, in the order found. A cited address

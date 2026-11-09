@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { addressesIn, DomainError, givenAddresses, isGivenAddress, normalizedAddress, WEB_READS_PER_RUN } from '@flux/core';
+import { addressesIn, DomainError, givenAddresses, isGivenAddress, normalizedAddress } from '@flux/core';
 import { personalRunWebReadRows, type Database } from '@flux/db';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -15,7 +15,9 @@ import { WEB_READ_WORDS, type WebReader } from '../web-reads/reader.js';
  * An address is still a way to send something to a site, so (#953, coordinator default C-30) an agent reads only addresses it was GIVEN:
  * written in the request it answers, in the task or conversation it works in as they were when the run began, on a page it read in
  * the same run, or among the results of its own web search in the same run (#954: the provider's built-in search, recorded by the
- * worker when the provider's answer came back). It never composes one. One run asks for at most `WEB_READS_PER_RUN` addresses. Every address the server then sent a
+ * worker when the provider's answer came back). It never composes one. How many it reads is not limited (founder direction 2026-11-09,
+ * #1113): a run reads as many pages as its question needs, and the accepted risk is that a page with many links can leak what the agent
+ * knows through which of them it chooses to open (decisions.md, "The risk, recorded"). Every address the server then sent a
  * request to is recorded as one of the run's sources, written before the request goes out, the pages that came back and the ones that
  * failed alike, and the run lists them all at its end in Flux's own words: under its answer, or, when it ends without one, in its end line.
  *
@@ -42,18 +44,13 @@ export function registerAgentWebReads(tools: AgentToolRegistry, db: Database, cl
       const allowed = givenAddresses(await rows.given(run.id));
       for (const address of await rows.found(run.id)) allowed.add(address);
       if (!isGivenAddress(url, allowed)) throw new DomainError(422, 'WEB_READ_NOT_GIVEN', WEB_READ_WORDS.not_given);
-      // Refused here, before a rate is spent, and again where the row is written (in the run's lock, so parallel calls cannot pass it).
-      if (await rows.askedCount(run.id, asked) >= WEB_READS_PER_RUN) throw new DomainError(429, 'WEB_READ_RUN_LIMIT', WEB_READ_WORDS.run_limit);
       // Each address is written down, with the run checked live again, BEFORE its request goes out (the first and each redirect hop): a run
-      // that is stopped sends nothing more, and one that is stopped while the site answers still lists what it sent. The run's limit is
-      // counted in the same locked transaction as the first row, so parallel calls cannot pass it.
+      // that is stopped sends nothing more, and one that is stopped while the site answers still lists what it sent.
       const ids: string[] = [];
       let read: Awaited<ReturnType<WebReader['read']>>;
       try {
         read = await reader.read(claims.ownerUserId, url, { beforeRequest: (address) => withAgentConnection(db, claims, 'read', run.projectId, async ({ tx }) => {
-          const written = personalRunWebReadRows(tx);
-          if (!ids.length && await written.askedCount(run.id, asked) >= WEB_READS_PER_RUN) throw new DomainError(429, 'WEB_READ_RUN_LIMIT', WEB_READ_WORDS.run_limit);
-          ids.push(await written.add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked', seen: [] }));
+          ids.push(await personalRunWebReadRows(tx).add(run.id, { url: asked, finalUrl: address, title: null, outcome: 'asked', seen: [] }));
         }) });
       } catch (error) {
         // Stopped between two hops: the ones already sent were redirected on.

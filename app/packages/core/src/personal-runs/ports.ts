@@ -459,7 +459,7 @@ export interface PersonalComputeRequest {
   turns?: readonly PersonalTurn[];
   /**
    * Offer the provider's own built-in web search (#954, C-29): only with `tools`, only while the operator's switch is on, and only
-   * to a provider that has one (`AI_PROVIDERS[kind].searchesWeb`); at most `WEB_SEARCHES_PER_REQUEST` searches. Absent: no search.
+   * to a provider that has one (`AI_PROVIDERS[kind].searchesWeb`); as many searches as the question needs (#1113). Absent: no search.
    */
   webSearch?: true;
 }

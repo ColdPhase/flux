@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, WEB_SEARCHES_PER_REQUEST } from '@flux/contracts';
+import { AI_PROVIDERS } from '@flux/contracts';
 import type { PersonalCompute, PersonalComputeResult } from '@flux/core';
 import { chatFailureOf, MalformedResponseError, ProviderHttpError } from './chat-completions.js';
 import { openAiSearchRefusal, SearchRefusedError } from './errors.js';
@@ -19,7 +19,8 @@ import { responsesInput, responsesReplay, responsesText, responsesToolCalls, res
 
 /**
  * OpenAI's own web search (#954, C-29), on its cached index only (`external_web_access: false`): no live page request leaves on the
- * agent's word except through Flux's `flux_read_web`, whose addresses C-30 bounds. At most `WEB_SEARCHES_PER_REQUEST` calls a request.
+ * agent's word except through Flux's `flux_read_web`, whose addresses C-30 bounds. No `max_tool_calls`: the calls of a request are not
+ * limited (founder direction 2026-11-09, #1113), and each is charged as counted.
  */
 export const OPENAI_WEB_SEARCH_TOOL = { type: 'web_search', external_web_access: false } as const;
 
@@ -50,7 +51,7 @@ export async function openAiResponse(fetch: GuardedFetch, request: ResponsesRequ
     store: false,
     ...(tools ? { tools: [...responsesTools(tools), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])] } : {}),
     // Every address a search returned is listed, so the run may read it (C-30).
-    ...(search ? { include: ['web_search_call.action.sources'], max_tool_calls: WEB_SEARCHES_PER_REQUEST } : {}),
+    ...(search ? { include: ['web_search_call.action.sources'] } : {}),
   };
   // The trailing slashes of the base go without a regular expression (no backtracking on a long run of them).
   let base = request.baseUrl;

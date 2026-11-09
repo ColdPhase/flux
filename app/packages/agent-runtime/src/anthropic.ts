@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AI_PROVIDERS, WEB_SEARCHES_PER_REQUEST } from '@flux/contracts';
+import { AI_PROVIDERS } from '@flux/contracts';
 import { WebSearchRefusedError, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult } from '@flux/core';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
@@ -42,8 +42,9 @@ function stopReason(value: Anthropic.StopReason | null): StopReason {
     case 'refusal': return 'refusal';
     // `tool_use` is read by the caller, which checks that tools were offered and that a call is complete.
     case 'tool_use': return 'tool_use';
-    // `pause_turn` belongs to the server tools: only the web search is ever offered (#954), at most 5 searches a run, far below the
-    // server's own loop of 10, so a pause is not continued: the text so far is the answer.
+    // `pause_turn` belongs to the server tools: only the web search is ever offered (#954). It is not continued: the text so far is the
+    // answer. Searches are no longer limited (#1113), so a request that searches ten times in one turn can pause at the server's own loop
+    // limit; a model that searches a little at a time, one request after another, does not.
     default: return 'end_turn';
   }
 }
@@ -71,11 +72,11 @@ export function failureOf(error: unknown, signal: AbortSignal): Extract<Personal
 
 /**
  * Anthropic's own web search (#954, C-29): the basic `web_search_20250305`, which every Claude model and platform has (dynamic
- * filtering runs the search from code execution, needs Claude 4.6 or later and is not offered on every platform). `max_uses` counts
- * the searches of the whole turn, and every request of a run's tool loop continues that turn (docs.claude.com web search tool, read
- * 2026-11-08), so a run makes at most 5. No domain list and no location: the agent searches the whole web, like a person would.
+ * filtering runs the search from code execution, needs Claude 4.6 or later and is not offered on every platform). No `max_uses`: a run
+ * searches as much as its question needs (founder direction 2026-11-09, #1113), and each search is charged as the response reports it.
+ * No domain list and no location: the agent searches the whole web, like a person would.
  */
-export const ANTHROPIC_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: WEB_SEARCHES_PER_REQUEST } as const;
+export const ANTHROPIC_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search' } as const;
 
 /** The tools of a request on the wire: the Flux tools, and Anthropic's own web search when the run is offered it. */
 const toolsOf = (request: PersonalComputeRequest) => request.tools?.length

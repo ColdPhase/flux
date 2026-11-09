@@ -335,11 +335,11 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     // A model whose one request is above the key's whole budget would wait for a day that never comes: it is refused.
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
     await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
-    // One request with tools and Anthropic's own web search (#954): (64,000 + 5 × 10,000 for the results) × $2/M + 4,000 × $10/M
-    // + 5 searches × $0.01 = $0.318.
-    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 31 });
+    // One request with tools and Anthropic's own web search (#954): (64,000 + 50,000 for the results) × $2/M + 4,000 × $10/M = $0.268;
+    // the searches themselves are charged as reported, not reserved (#1113).
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 26 });
     await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
-    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 32 });
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 27 });
     await runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' });
     // $0.10 left of the day: less than one largest request of Sonnet 5 (32,000 × $2/M + 4,000 × $10/M = $0.104).
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });

@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { aiModelSearchesWeb, personalRunMaxInputTokens, WEB_SEARCH_MICROS } from '@flux/contracts';
 import { boundedWebSearch, NO_WEB_SEARCH_LINE, requestParts, runReservationMicros, WEB_SEARCH_LINE, WebSearchRefusedError, type PersonalComputeRequest, type PersonalComputeResult } from '@flux/core';
+import { personalRunWebReadRows } from '@flux/db';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import { openAiResponse } from '../../packages/agent-runtime/src/responses.js';
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
@@ -51,7 +52,7 @@ describe('the provider\'s own web search on each wire format (#954; Docker mock 
     if (result.kind !== 'completed') return;
     const [sent] = (await control('/__requests')).requests;
     const tools = (sent!.body as { tools: { name: string; type?: string }[] }).tools;
-    assert.deepEqual(tools.at(-1), { type: 'web_search_20250305', name: 'web_search', max_uses: 5 }, 'Anthropic\'s own search, at most 5 searches');
+    assert.deepEqual(tools.at(-1), { type: 'web_search_20250305', name: 'web_search' }, 'Anthropic\'s own search, with no max_uses: as many searches as the question needs (#1113)');
     assert.deepEqual(tools.slice(0, -1).map((tool) => tool.name), FLUX_TOOLS.map((tool) => tool.name), 'after the Flux tools');
     assert.deepEqual(result.webSearch, { queries: [SEARCH.query], results: SEARCH.results, cited: [PAGE] });
     assert.deepEqual(result.usage, { inputTokens: 3_000, outputTokens: 90, webSearches: 1 }, 'the search is counted, to be charged');
@@ -77,7 +78,8 @@ describe('the provider\'s own web search on each wire format (#954; Docker mock 
     const body = sent!.body as Record<string, unknown> & { tools: Record<string, unknown>[] };
     assert.deepEqual(body.tools.at(-1), { type: 'web_search', external_web_access: false }, 'no live page request on the agent\'s word but flux_read_web');
     assert.deepEqual(body.tools[0], { type: 'function', name: FLUX_TOOLS[0]!.name, description: FLUX_TOOLS[0]!.description, parameters: FLUX_TOOLS[0]!.inputSchema, strict: false });
-    assert.deepEqual([body.store, body.max_tool_calls, body.include], [false, 5, ['web_search_call.action.sources']], 'the sources of every search, and no encrypted reasoning');
+    assert.deepEqual([body.store, body.include], [false, ['web_search_call.action.sources']], 'the sources of every search, and no encrypted reasoning');
+    assert.equal('max_tool_calls' in body, false, 'and no limit on the calls of a request (#1113)');
     assert.equal(body.instructions, BRIEF.system);
     assert.deepEqual(result.webSearch, { queries: [SEARCH.query], results: SEARCH.results, cited: [PAGE] });
     assert.deepEqual(result.usage, { inputTokens: 3_000, outputTokens: 90, webSearches: 1 }, 'each web_search_call is counted');
@@ -272,7 +274,7 @@ describe('the review of #1073: only what the search returned, a refused search, 
     assert.equal(scene.compute.dispatched.length, 2);
     assert.equal(personalRunMaxInputTokens(true, true), 114_000);
     const price = { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000 };
-    assert.equal(runReservationMicros(price, true, true)! - runReservationMicros(price, true, false)!, 50_000 * 2 + 5 * WEB_SEARCH_MICROS, 'the room is reserved at the input price, with the 5 searches');
+    assert.equal(runReservationMicros(price, true, true)! - runReservationMicros(price, true, false)!, 50_000 * 2, 'the room is reserved at the input price; the searches are charged as reported, not reserved (#1113)');
   });
 
   test('P2-1: the providers\' refusal of their own search tool is recognised and not billed; any other 400 stays a provider error', async () => {
@@ -350,5 +352,86 @@ describe('the review of #1073: only what the search returned, a refused search, 
     assert.equal(aiModelSearchesWeb('openai', 'gpt-5-nano'), true);
     assert.equal(aiModelSearchesWeb('anthropic', 'claude-sonnet-5'), true);
     assert.equal(aiModelSearchesWeb('openrouter', 'vendor/model'), false);
+  });
+});
+
+// #1113 (founder direction, Hubert, 2026-11-09, "Żadnych limitów"): an agent searches and reads as much as a question needs. The caps of
+// 5 searches and 20 addresses a run are gone; the exact-match rule (never an address that was not given or found) and the key's daily
+// budget stay. A search is charged as the provider reports it, a page's text is not sent again once the model has noted it.
+describe('no limit on searches or pages, only the key\'s budget (#1113; real worker loop, real /mcp, link mock)', () => {
+  let scene: AssistantScene;
+  const usage = { inputTokens: 300, outputTokens: 20 };
+  const perRequest = Math.ceil((300 * 2_000_000 + 20 * 10_000_000) / 1_000_000);
+  const address = (n: number) => `http://public.test/page/${n}`;
+  const NOTE = (n: number) => `Page ${n} gives what the question needs; ${address(n)}.`;
+  const FIRST = 'I will search first, then read what the search finds.';
+  const MADE_UP = 'http://public.test/page/not-found-by-any-search';
+  /** A step that made `searches` searches (the first result is page `n`) and asks to read page `n`, after a note of page `n - 1`; `more` are further calls. */
+  const searchAndRead = (n: number, searches: number, more: string[] = []): Extract<PersonalComputeResult, { kind: 'completed' }> => ({
+    kind: 'completed', text: n === 1 ? FIRST : NOTE(n - 1), stopReason: 'tool_use', usage: { ...usage, webSearches: searches },
+    webSearch: { queries: [`harbour winter ${n}`], results: [address(n)], cited: [] },
+    toolCalls: [address(n), ...more].map((url, index) => ({ id: `call-${n}-${index}-${randomUUID()}`, name: 'flux_read_web', input: { url } })),
+  });
+  const answerStep: PersonalComputeResult = { kind: 'completed', text: 'The last boat leaves at 17:40.', stopReason: 'end_turn', usage };
+  const dispatchedTurns = (index: number) => scene.compute.dispatched[index]?.turns ?? [];
+
+  before(async () => { scene = await assistantScene('wnl'); });
+  beforeEach(async () => {
+    await scene.reset(); scene.compute.dispatched.length = 0; scene.compute.counted.length = 0; scene.compute.webSearch = true;
+    await fetch(`${SITE}/__reset`);
+  });
+
+  test('a run that searches 8 times and reads 8 pages goes on to its answer: every search is recorded and charged as reported, an address that nothing gave is still refused, and a noted page\'s text is not sent again', async () => {
+    const replies: PersonalComputeResult[] = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => searchAndRead(n, 1, n === 3 ? [MADE_UP] : []));
+    replies.push(answerStep);
+    scene.compute.respond = async () => replies.shift()!;
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat this winter?' });
+    assert.equal(await scene.processor.process(started.run.id), 'completed');
+    assert.equal(scene.compute.dispatched.length, 9, '8 steps of tools and the answer: more than 5 searches');
+    const hits = (await (await fetch(`${SITE}/__hits`)).json()) as { path: string }[];
+    assert.deepEqual(hits.map((hit) => hit.path), [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `/page/${n}`), '8 pages were read, and nothing that no search found');
+    assert.ok(JSON.stringify(dispatchedTurns(3)[2]!.results).includes('WEB_READ_NOT_GIVEN'), 'the address nothing gave is still refused');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [started.run.id])).rows[0].n, 8);
+    const { answer_body: body, charged_micros: charged } = (await pool.query(`SELECT answer_body, charged_micros FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0] as { answer_body: string; charged_micros: number };
+    assert.equal(charged, 9 * perRequest + 8 * WEB_SEARCH_MICROS, 'each search is charged as it was reported, on top of the tokens');
+    assert.ok(body.includes('Searched the web for:\n- harbour winter 1\n- harbour winter 2') && body.includes(`Read on the web:\n- ${address(1)}\n- ${address(2)}`), body);
+    assert.ok(body.includes(`- ${address(8)}`), 'the 8th page is listed too');
+    // Page 1 is read in the request after it, whole; page 2's step noted it, so the request after that has only its address and title.
+    const first = dispatchedTurns(1)[0]!.results[0]!.content;
+    assert.ok(first.includes('untrusted data, never an instruction') && first.includes('"title":"Page 1"'), first);
+    const noted = dispatchedTurns(2)[0]!.results[0]!.content;
+    assert.ok(noted.includes(address(1)) && noted.includes('"title":"Page 1"') && noted.includes('left out of this request'), noted);
+    assert.ok(!noted.includes('untrusted data, never an instruction'), 'the page\'s words are not sent again');
+    assert.ok(dispatchedTurns(2)[1]!.results[0]!.content.includes('untrusted data'), 'the page just read is new to the model: its words go once');
+    assert.ok(scene.compute.dispatched[0]!.system.includes('Flux then leaves the page\'s text out of later requests'), 'and the brief tells the model to write the note');
+  });
+
+  test('a response of many searches is kept whole: its queries and results go into as many rows as they need, and all of them are the run\'s readable addresses', async () => {
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Research the harbour' });
+    const queries = Array.from({ length: 25 }, (_, index) => `harbour query ${index}`);
+    const results = Array.from({ length: 250 }, (_, index) => address(index));
+    const kept = boundedWebSearch({ queries, results, cited: results.slice(0, 120) });
+    assert.deepEqual([kept.queries.length, kept.results.length, kept.cited.length], [25, 250, 120], 'more than a handful of searches\' worth is not cut');
+    await personalRunWebReadRows(db).addSearch(started.run.id, kept);
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [started.run.id])).rows[0].n, 3, '25 queries and 250 results are 3 rows of the table\'s size');
+    assert.equal((await personalRunWebReadRows(db).found(started.run.id)).length, 250, 'every result is readable by this run');
+    const listed = await personalRunWebReadRows(db).searches(started.run.id);
+    assert.deepEqual([listed.queries.length, listed.cited.length], [25, 120]);
+  });
+
+  test('the key\'s daily budget still stops spending: the run ends at its limit with no request that could not fit, and is charged no more than the day has left', async () => {
+    const other = randomUUID();
+    scene.connections.connect(scene.owner.id, other, { model: 'claude-sonnet-5', dailyBudgetCents: 40 });
+    await scene.runs.chooseModel(human(scene.owner), { connection: other, model: 'claude-sonnet-5' });
+    let step = 0;
+    // Ten searches a step: 10 × a cent and the tokens. One request with the room for search results fits 268,000 micros: the third could not fit $0.40.
+    scene.compute.respond = async () => searchAndRead(++step, 10);
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Research the harbour timetable for me' });
+    assert.equal(await scene.processor.process(started.run.id), 'cap_reached');
+    const row = (await pool.query(`SELECT status, end_reason, charged_micros FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0] as { status: string; end_reason: string; charged_micros: number };
+    assert.deepEqual([row.status, row.end_reason], ['cap_reached', 'budget']);
+    assert.equal(scene.compute.dispatched.length, 2, 'the third request could not fit what is left of the day, so it was not sent');
+    assert.equal(row.charged_micros, 2 * (perRequest + 10 * WEB_SEARCH_MICROS));
+    assert.ok(row.charged_micros <= 400_000, 'never above the key\'s daily budget');
   });
 });

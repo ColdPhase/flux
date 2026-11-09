@@ -179,14 +179,15 @@ export function tablePrice(provider: AiProviderKind, model: string): AiPriceTabl
  * What one search of the provider's built-in web search costs (#954): $10 per 1,000 searches on Anthropic (docs.claude.com web search
  * tool, read 2026-11-08) and $10 per 1,000 calls of OpenAI's `web_search` (developers.openai.com pricing, read 2026-11-08), on top of
  * the result tokens, which the provider counts as input. A search that failed is not billed by Anthropic; Flux counts every one.
+ * There is no limit on the searches of a request or a run (founder direction, Hubert, 2026-11-09, #1113): each is charged as the
+ * provider reports it, and the key's daily budget is what stops spending.
  */
 export const WEB_SEARCH_MICROS = 10_000;
-/** The most searches one request may make (Anthropic's `max_uses`, OpenAI's `max_tool_calls`), and so what every such request reserves. */
-export const WEB_SEARCHES_PER_REQUEST = 5;
 
 /**
  * The most one request can cost at `price` (PROV-3): maximum input tokens × input price + maximum
- * output tokens × output price, in micro-dollars, rounded up, and each web search it may make (#954).
+ * output tokens × output price, in micro-dollars, rounded up, and `webSearches` searches at `WEB_SEARCH_MICROS` each. A reservation
+ * counts none (the searches of a request are not bounded, #1113); a charge counts the ones the provider reported.
  */
 export function maxRequestMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number {
   return Math.ceil((maxInputTokens * price.inputMicrosPerMTok + maxOutputTokens * price.outputMicrosPerMTok) / 1_000_000) + webSearches * WEB_SEARCH_MICROS;
@@ -205,10 +206,6 @@ export const AI_MODELS_WITHOUT_WEB_SEARCH: readonly { provider: AiProviderKind; 
 /** Whether a run on this provider and model may be offered the provider's built-in web search (#954). */
 export const aiModelSearchesWeb = (provider: AiProviderKind, model: string): boolean =>
   AI_PROVIDERS[provider].searchesWeb && !AI_MODELS_WITHOUT_WEB_SEARCH.some((entry) => entry.provider === provider && entry.model === model);
-
-/** The searches a request of a run with tools on this provider may make, and so reserves (#954): none without a built-in search. */
-export const webSearchesReserved = (provider: AiProviderKind | null | undefined, tools: boolean): number =>
-  tools && provider && AI_PROVIDERS[provider].searchesWeb ? WEB_SEARCHES_PER_REQUEST : 0;
 
 /** `POST /api/v1/ai-model-lists`: the provider's models, fetched by the server without a key. */
 export const AI_MODEL_LISTS_PATH = '/api/v1/ai-model-lists';

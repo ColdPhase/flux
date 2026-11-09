@@ -124,12 +124,12 @@ row would under-reserve, so for those models the owner enters the price.
 - Usage is charged at the connection's price, or reconciled at the cost the provider reported in
   the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
 - A search of the provider's own web search (#954) is charged `WEB_SEARCH_MICROS` ($0.01; Anthropic and
-  OpenAI both list $10 per 1,000, read 2026-11-08) on top of the tokens, and a request that offers it
-  reserves 5 (`WEB_SEARCHES_PER_REQUEST`). A response that reports more searches than its request
-  offered is outside its bounds (a lost response). Such a request also has room for 5 searches' results in its
-  input bound (`WEB_SEARCH_INPUT_TOKENS`, 10,000 each, Flux's assumption), reserved at the input price. A key's
-  budget must hold one request with its searches when its provider has a search. A refused search is not billed
-  and the request is sent once more without it.
+  OpenAI both list $10 per 1,000, read 2026-11-08) on top of the tokens, as the provider reports it. There is no limit on the searches of a request
+  or a run (#1113), so none is reserved. A response that reports searches when its request offered none is outside its bounds (a lost response),
+  and so is one whose cost passes what the run has left. A request that offers the search has room for its results in its input bound
+  (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, Flux's assumption), reserved at the input price; the input a request that searched reports is
+  held to the run's money, not to that bound. A key's budget must hold one request with that room when its provider has a search. A refused
+  search is not billed and the request is sent once more without it.
 - The charge never exceeds the reservation (`boundedUsageMicros`). Usage above the request's token
   limits, or a cost above its reservation, is not stored: a personal run ends `provider_failed`
   with cost `unknown` and its reservation counted, and a comparison ends `unknown`

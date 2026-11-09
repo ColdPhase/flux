@@ -296,7 +296,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
-| Web | Search with the provider's own web search tool, and read pages (`flux_read_web`) of addresses it was given or found by its own search in the same run, always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
+| Web | Search with the provider's own web search tool, and read pages (`flux_read_web`) of addresses it was given or found by its own search in the same run, as much as a question needs (no limit on either, founder direction 2026-11-09), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Not allowed | Code, email, other apps |
 
 Code changes come only from the owner's own Claude Code or Codex on their computer
@@ -311,7 +311,12 @@ search, and the agent's brief says so; nothing fails. What goes out on a read is
 something to a site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its
 conversation as they were when the run began (never what an agent wrote, such as its question to another agent), on a page it read
 in the same run, or among the results its own web search returned in the same run (never an address the model chose to open). It never makes one up, so nothing it knows can be put
-into one; it can still choose among the given ones, so one run asks for at most 20 ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+into one; it can still choose among the given ones, and how many a run reads is not limited ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+**Accepted risk** (founder, Hubert, 2026-11-09, #1113, "Żadnych limitów"): because an agent searches and reads as much as a question needs, a malicious
+page with many links can leak what the agent knows through which of those links it chooses to open; exact matching stops anything being put into an
+address, not the choice. The defence is the one above, and the list of every address the server asked for. The key's daily budget is what stops
+spending: each search is charged as the provider reports it. On the owner's API key a page's text is sent to the model once and, once the model has
+noted it, left out of later requests, so a long read fits; the Claude Code and Codex engines manage their own context.
 A test shows that web content cannot bypass an approval and that an agent which obeys a page cannot send what it knows to a site (#918,
 #953), and that a search result is an address for its own run only (#954). The server reads the page, not the agent's process, so the
 runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the server asked for,
