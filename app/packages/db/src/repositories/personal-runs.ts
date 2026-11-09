@@ -4,6 +4,7 @@ import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 import { personalRunWebReadRows } from './personal-run-web-reads.js';
 import { apiKeySpendToday } from './api-key-spend.js';
@@ -340,16 +341,22 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages written in the people's conversations of a space, oldest first: what its main conversation says (#842). */
     async spaceMessages(projectId: string, limit: number) {
       const m = schema.projectMessages;
-      // #1064: each message with the opening words of its thread (the conversation's first message, unless its author deleted it).
-      const thread = sql<string | null>`(SELECT left(o.body, 120) FROM project_messages o WHERE o.conversation_id = ${m.conversationId} AND o.sequence = 1 AND o.removed_at IS NULL)`;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
-        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, conversationId: m.conversationId, thread,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, conversationId: m.conversationId,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
         .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(and(eq(m.projectId, projectId), isNull(m.removedAt))).orderBy(desc(m.createdAt), desc(m.id)).limit(limit);
+      // #1064, #1099: each message with the opening words of its thread (the conversation's first message, unless its author deleted it).
+      // The body is sealed in an encrypted space (F-030 AC-5), so SQL never computes over it: the opening messages are read as rows,
+      // opened through the sealing path, and cut here.
+      const conversations = [...new Set(rows.map((row) => row.conversationId))];
+      const openings = conversations.length ? await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, conversationId: m.conversationId, body: m.body })
+        .from(m).where(and(inArray(m.conversationId, conversations), eq(m.sequence, 1), isNull(m.removedAt)))) : [];
+      const opening = new Map(openings.map((row) => [row.conversationId, row.body.slice(0, 120)]));
       return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, editedAt, ...row }, index) => ({ ...row, sequence: index + 1, edited: editedAt !== null,
+        thread: opening.get(row.conversationId) ?? null,
         ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
           : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
