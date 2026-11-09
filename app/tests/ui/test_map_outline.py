@@ -229,7 +229,7 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.row(page, 1)).to_have_accessible_name(f"problem {LABELS[1]}")
         # AC-3: linked tasks are a chip at the row's end with a state glyph and number; it opens every task.
         chip = self.row(page, 4).locator(".sk-work")
-        expect(chip).to_have_text(re.compile(r"^#\d+ Open \+1$"))
+        expect(chip).to_have_text(re.compile(r"^#\d+ To do \+1$"))
         expect(chip).to_have_accessible_name(f"2 tasks linked to “{LABELS[4][:47]}…”")
         self.assertGreater(chip.bounding_box()["x"], self.row(page, 4).locator(".sk-outline-title").bounding_box()["x"])
         chip.click()

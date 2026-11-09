@@ -55,21 +55,23 @@ class MapLayoutJourney(unittest.TestCase):
     def scene(self, page):
         project = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/projects',
             {'name': 'Quiet gesture lamp', 'visibility': 'restricted'}, 201)['id']
-        tasks = []
-        for title, status, blocker in (
-            ('Compare the ToF sensor with the radar prototype', 'in_progress', None),
-            ('Check long-distance gesture reliability', 'open', None),
-            ('Try the low-light receiver trace', 'blocked', 'Waiting for the sensor delivery'),
-        ):
-            tasks.append(self.api(page.context, 'POST', f'/api/v1/projects/{project}/work',
-                {'title': title, 'status': status, **({'blocker': blocker} if blocker else {})}, 201))
         sketch = self.api(page.context, 'POST', f'/api/v1/workspaces/{self.workspace}/sketches',
             {'title': 'Bedside interaction directions', 'scope': 'project', 'projectId': project}, 201)['id']
+        thoughts = []
         for text, x, y in (
             ('Capture a gesture without recording camera images', 0, 0),
             ('Compare the distance sensor with the radar prototype', 300, 180),
         ):
-            self.api(page.context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', {'text': text, 'x': x, 'y': y}, 201)
+            thoughts.append(self.api(page.context, 'POST', f'/api/v1/sketches/{sketch}/thoughts', {'text': text, 'x': x, 'y': y}, 201)['thought']['id'])
+        tasks = []
+        for title, status, blocker, source in (
+            ('Compare the ToF sensor with the radar prototype', 'in_progress', None, None),
+            ('Check long-distance gesture reliability', 'open', None, thoughts[1]),
+            ('Try the low-light receiver trace', 'blocked', 'Waiting for the sensor delivery', None),
+        ):
+            tasks.append(self.api(page.context, 'POST', f'/api/v1/projects/{project}/work',
+                {'title': title, 'status': status, **({'blocker': blocker} if blocker else {}),
+                 **({'sources': [{'type': 'thought', 'id': source}]} if source else {})}, 201))
         page.goto(f'/projects/{project}/map/{sketch}')
         expect(page.locator('.sk-node')).to_have_count(2)
         return tasks[1]
@@ -93,9 +95,10 @@ class MapLayoutJourney(unittest.TestCase):
         self.assertTrue(page.locator('.sk-help').text_content().strip(), 'the keyboard help has text')
 
     def open_task(self, page, task):
-        """The project's open task from Details (#340: the computer's header has no state line)."""
-        open_details(page)
-        page.locator('#details').get_by_role('button', name=re.compile(re.escape(task['title']))).first.click()
+        """The task in Details, opened as the map opens it: from the count on the thought it was made from (a space's own Details list no
+        tasks, Tasks does). Opening a task from the count changes nothing on the map."""
+        page.get_by_role('button', name=re.compile(r'^1 task linked to')).click()
+        page.get_by_role('dialog').locator(f'.sk-task[data-work-id="{task["id"]}"]').click()
         expect(page.locator('#details').get_by_role('heading', name=task['title'], exact=True)).to_be_visible()
 
     def test_01_task_details_and_the_one_row_header_keep_the_complete_hint_visible(self):
@@ -136,7 +139,9 @@ class MapLayoutJourney(unittest.TestCase):
         expect(page.locator('.sk-node')).to_have_count(3)
         page.get_by_role('button', name='Zoom in', exact=True).click()
         canvas = page.locator('.sk-canvas')
-        camera = canvas.evaluate('el => { el.scrollLeft = 80; el.scrollTop = 100; return {left:el.scrollLeft,top:el.scrollTop}; }')
+        # The camera is somewhere away from the map's corner, with the count of the task's thought in view (a click on it must not move the map).
+        page.get_by_role('button', name=re.compile(r'^1 task linked to')).scroll_into_view_if_needed()
+        camera = canvas.evaluate('el => ({left: el.scrollLeft, top: el.scrollTop})')
         level = page.locator('.sk-zoom__level').get_attribute('aria-label')
         self.assertGreater(camera['left'], 0)
         self.assertGreater(camera['top'], 0)
@@ -153,7 +158,8 @@ class MapLayoutJourney(unittest.TestCase):
         open_details(page)
         expect(page.locator('#details .ui-panel__body')).to_be_focused()
         expect(node).to_have_attribute('aria-pressed', 'true')
-        page.get_by_role('button', name='Close details', exact=True).click()
+        # The space's own panel is headed "Space details" and closes with "Close space details"; a task's panel keeps "Details" (#1058).
+        page.get_by_role('button', name='Close space details', exact=True).click()
         expect(node).to_have_attribute('aria-pressed', 'true')
         page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
