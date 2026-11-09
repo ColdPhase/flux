@@ -138,8 +138,7 @@ describe('the brief of every run (#1064)', () => {
 
   test('every message carries its author and its time in the owner\'s zone; the request comes last, with who asked and when', () => {
     const { request } = buildBrief(base);
-    assert.ok(request.includes('<message ref="S1" from="Ada Nowak" at="2026-11-06 09:14">The camera fails below 5 lux.</message>'));
-    assert.ok(request.includes('<message ref="S1" from="Ada Nowak" by="person" at="2026-11-06 09:14">'));
+    assert.ok(request.includes('<message ref="S1" from="Ada Nowak" by="person" at="2026-11-06 09:14">The camera fails below 5 lux.</message>'));
     assert.ok(request.includes('<message ref="S2" from="Fieldbot (Jonas\'s agent)" by="agent" at="2026-11-06 09:20" kind="came_of_it">'));
     // #1160: an answer Jonas posted with Show everyone is his, with the agent it came from, in the words the Flux tools use too.
     assert.ok(request.includes('from="Jonas Berg · via Assistant" by="person" at="2026-11-07 16:02" edited="yes">'));
@@ -147,7 +146,7 @@ describe('the brief of every run (#1064)', () => {
     assert.ok(request.endsWith('<request from="Ada Nowak" at="2026-11-08 10:01">Co ustaliliśmy w sprawie kamery?</request>'));
     assert.ok(request.indexOf('<conversation>') < request.indexOf('<request'), 'the long content first, the request last');
     const { request: inNewYork } = buildBrief({ ...base, timeZone: 'America/New_York' });
-    assert.ok(inNewYork.includes('from="Ada Nowak" at="2026-11-06 03:14"'), 'times follow the owner\'s zone');
+    assert.ok(inNewYork.includes('from="Ada Nowak" by="person" at="2026-11-06 03:14"'), 'times follow the owner\'s zone');
     assert.match(buildBrief({ ...base, timeZone: 'Not/AZone' }).system, /in Ada Nowak's time zone, UTC\./, 'an unknown zone is UTC');
   });
 
