@@ -143,7 +143,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
   }
   /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
   async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
-    const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.decidedBy].filter((id): id is string => !!id)));
+    const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.toldUserId, row.decidedBy].filter((id): id is string => !!id)));
     const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
     const units = await rows().unitStates(list.flatMap((row) => { const plan = undoOf(row)?.plan; return plan?.kind === 'handoff' ? [plan.unitId] : []; }));
@@ -152,7 +152,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const words = assistantChangeWords(row.operation, assistantWorkChangeArgs(args.changes ?? {}));
       const phrase = `${words.phrase} ${words.noun}`;
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
-      const tells = row.state === 'waiting' && row.waitReason === 'tells' && row.otherUserId ? { id: row.otherUserId, name: names.get(row.otherUserId) ?? '' } : null;
+      const tells = row.state === 'waiting' && row.toldUserId ? { id: row.toldUserId, name: names.get(row.toldUserId) ?? '' } : null;
       return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: threadLineRemoved(row, names) ?? (hideState(row) ? null : handoffLine(row, units)) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,

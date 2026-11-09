@@ -1,0 +1,4 @@
+/* Long words an agent would send someone: three lines, then "Show all" (#1089). */
+.clamped-words { display: block; overflow-wrap: anywhere; }
+.clamped-words--closed { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+.clamped-words__more { margin-top: 2px; }

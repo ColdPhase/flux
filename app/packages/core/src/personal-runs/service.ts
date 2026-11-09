@@ -728,6 +728,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         await agents.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await agents.get(owner, input.agentId)) throw new ConflictError('This agent is already set up', 'PERSONAL_RUN_ALREADY_ENABLED');
+        // A local client's identity stays the client's (LC-2): its lines notify as its person's, which a server agent's never do (#1089, AG-4).
+        if (await agents.isLocalClient(input.agentId)) throw new ConflictError('This agent is a local client\'s. Make a new agent instead', 'AGENT_IS_LOCAL_CLIENT');
         const chosen = await modelFor(owner, input.connection, input.model, ' Nothing was turned on.');
         return agents.ensure(owner, workspaceId, input.agentId, { ...placement(chosen.item, chosen.model), instructions: input.instructions, colour: null });
       });

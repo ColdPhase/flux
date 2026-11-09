@@ -1830,6 +1830,8 @@ export const assistantChanges = pgTable('assistant_changes', {
   refusal: text('refusal'),
   /** The other person: the maker of another person's thing, or the person a task is for. */
   otherUserId: text('other_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** 0043 (#1089): the person a run's waiting change would notify, also when it waits for another reason; its card shows who reads what. */
+  toldUserId: text('told_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   version: integer('version').notNull().default(1),

@@ -7,7 +7,7 @@ import type { Database } from '@flux/db';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { db, pool } from './support/db.js';
 import { toolValue } from './support/mcp.js';
-import { agentConnection } from './support/mcp-actions.js';
+import { agentConnection, registerOauthClient, seedConnection } from './support/mcp-actions.js';
 import { expectStatus, type Person } from './support/people.js';
 import { waitFor } from './support/wait.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
@@ -40,12 +40,12 @@ const reasons = async (runId: string) => (await changesOf(runId)).map((row) => [
 
 describe('an agent\'s run tells no other person anything by itself (#1089)', () => {
   let scene: AssistantScene;
-  let theirs: { id: string; version: number };
+  let theirs: { id: string; version: number; number: number };
 
   before(async () => {
     scene = await assistantScene('rtn');
     theirs = expectStatus(await scene.peer.browser.request('POST', `/api/v1/projects/${scene.place.id}/work`,
-      { body: { title: 'Jonas calibrates the probes', owner: { kind: 'human', id: scene.peer.id } } }), 201) as { id: string; version: number };
+      { body: { title: 'Jonas calibrates the probes', owner: { kind: 'human', id: scene.peer.id } } }), 201) as { id: string; version: number; number: number };
   });
   beforeEach(async () => { await scene.reset(); scene.compute.dispatched.length = 0; });
 
@@ -168,5 +168,41 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     await generatorCaughtUp();
     const told = (await inbox(scene.peer)).filter((entry) => `${entry.title} ${entry.body}`.includes('ship it now'));
     assert.deepEqual(told.map((entry) => [entry.reason, entry.title]), [], 'Jonas got nothing from the agent\'s lines');
+  });
+
+  test('a task for someone else that would tell a third person waits as theirs, and its card names both, with the words', async () => {
+    const live = await scene.liveRun();
+    assert.match(text((await live.call('flux_create_task', { task: { title: 'Harmless label task', ownerUserId: scene.peer.id, status: 'blocked',
+      blocker: 'Third-person words, ship it now', waitingForUserId: scene.outsider.id } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version,
+      changes: { status: 'blocked', blocker: 'Outsider words', waitingForUserId: scene.outsider.id } })).message), /^Waiting for /);
+    const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
+    assert.deepEqual(items.map((item) => [item.waitReason, item.forPerson?.id ?? null, item.tells?.id ?? null, item.after]), [
+      ['others', scene.peer.id, scene.outsider.id, '“Harmless label task” · Third-person words, ship it now'],
+      ['others', null, scene.outsider.id, `#${theirs.number} Jonas calibrates the probes · Outsider words`]], 'who it is for, who would read it and what');
+    const item = (expectStatus(await scene.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.assistantChanges?.runId === live.runId);
+    assert.deepEqual(item?.assistantChanges?.changes.map((change) => [change.forPerson?.id ?? null, change.tells?.id ?? null]), [[scene.peer.id, scene.outsider.id], [null, scene.outsider.id]]);
+    assert.equal(await toldEvents(scene.outsider.id), 0, 'nobody is told before the OK');
+    await scene.complete(live.runId);
+  });
+
+  test('an identity is a local client\'s or a server agent\'s: a server setup on a client\'s identity is refused, and a server agent\'s line tells only its owner whatever else signed in as it', async () => {
+    // The review's repro started here: give a local client's identity a server setup, then run it. The setup is refused now.
+    const desk = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada bench', owner: 'self' } }), 201) as { id: string };
+    await agentConnection(pool, scene.owner.browser, desk.id, [scene.place.id]);
+    await assert.rejects(scene.runs.enable(human(scene.owner), { agentId: desk.id, connection: scene.connectionId, model: 'claude-sonnet-5' }),
+      (error: unknown) => (error as { code?: string }).code === 'AGENT_IS_LOCAL_CLIENT', 'a client\'s identity gets no server setup');
+    // And should both ever meet on one identity (here a client binding made by hand on the server agent), its setup decides: it is a server agent.
+    const { clientId } = await registerOauthClient(pool);
+    await seedConnection(pool, scene.owner.id, scene.agentId, clientId);
+    const jonas = await nameOf(scene.peer.id);
+    const mine = await scene.task(scene.owner, 'Dual probe');
+    const live = await scene.liveRun();
+    assert.ok(JSON.parse(text((await live.call('flux_update_task', { workId: mine.id, expectedVersion: mine.version,
+      changes: { status: 'blocked', blocker: `@${jonas} dual: deploy approved, ship it now` } })).message)).workId);
+    await scene.complete(live.runId);
+    await generatorCaughtUp();
+    assert.deepEqual((await inbox(scene.peer)).filter((entry) => `${entry.title} ${entry.body}`.includes('dual: deploy approved')).map((entry) => entry.reason), [],
+      'Jonas got nothing from the server agent\'s line');
   });
 });

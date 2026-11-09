@@ -142,7 +142,9 @@ work there too.
   for them, or a decision or result about their task. Flux would send them its words, and a server
   agent sends no message to another person by itself (AG-4,
   [#1089](https://github.com/ColdPhase/flux/issues/1089)). The owner's OK card shows those words and
-  the person before Approve. A local client is its person's own tool and is not held to this (LC-2).
+  the person before Approve. Flux's own notice when what a task waited for is resolved ("#5 can
+  continue: #4 is done", AG-6) carries no words of the agent, so finishing the owner's task does not
+  wait for it. A local client is its person's own tool and is not held to this (LC-2).
 
 **Never possible.** No tool exists for these, so nothing waits either; the agent can only say it
 in words:

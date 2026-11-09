@@ -609,7 +609,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
               preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId } } : call,
-              beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'tells' ? told : target.maker, createdAt: new Date() });
+              beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'tells' ? told : target.maker,
+              // Who would read what, for the card, also on a task for someone else that would tell a third person (#1089).
+              toldUserId: told && told !== target.maker ? told : null, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
