@@ -92,7 +92,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   const waits = panel.getByRole('region', { name: 'Waits for' });
   assert.match(await waits.getByRole('status').innerText(), /Waiting on 1 of 2 prerequisites\. It can start when every one is done/);
   assert.deepEqual((await waits.getByRole('button').allInnerTexts()).map((text) => text.replace(/\s+/g, ' ').trim()).sort(),
-    ['Calibrate the sensor Done', 'Order the replacement lens Open · waiting']);
+    ['Calibrate the sensor Done', 'Order the replacement lens To do · waiting']);
   const intent = panel.locator('.wd-plan');
   assert.match(await intent.innerText(), /plan revision 1 as measure-low-light/);
   assert.equal(await intent.getByRole('link').getAttribute('href'), `/materials/${plan.materialId}/versions/${plan.version}`);
@@ -100,7 +100,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
 
   // A start with an open prerequisite is refused in plain words and changes nothing.
   await panel.getByRole('button', { name: 'Status', exact: true }).click();
-  await panel.getByRole('menuitemradio', { name: 'In progress' }).click();
+  await panel.getByRole('menuitemradio', { name: 'Doing' }).click();
   await panel.getByRole('alert').filter({ hasText: 'every task it waits for is done' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'open');
 
@@ -120,11 +120,11 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   await heading(page).filter({ hasText: 'Measure gestures at 5 lux' }).waitFor();
   await page.locator('.details.wd').getByRole('region', { name: 'Waits for' }).getByRole('status').filter({ hasText: 'Every prerequisite is done.' }).waitFor();
   await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).click();
-  await page.locator('.details.wd').getByRole('menuitemradio', { name: 'In progress' }).click();
-  await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).filter({ hasText: 'In progress' }).waitFor();
+  await page.locator('.details.wd').getByRole('menuitemradio', { name: 'Doing' }).click();
+  await page.locator('.details.wd').getByRole('button', { name: 'Status', exact: true }).filter({ hasText: 'Doing' }).waitFor();
   assert.equal(((expectStatus(await owner.browser.request('GET', `/api/v1/work/${planned.id}`), 200)) as WorkItem).status, 'in_progress');
 
-  // A viewer on a phone reads the same plan without any control, and the page does not scroll sideways.
+  // A member on a phone reads the same plan (a space has no read-only person since #903, so Status is theirs too), and the page does not scroll sideways.
   const phone = await signedIn(reader, 390, 844);
   const view = await phone.newPage();
   view.on('pageerror', (error) => errors.push(error.message));
@@ -133,7 +133,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   const small = view.locator('.details.wd');
   await small.getByRole('region', { name: 'Done when' }).waitFor();
   assert.equal(await small.getByRole('region', { name: 'Done when' }).locator('li').count(), 3);
-  assert.equal(await small.getByLabel('Status').count(), 0, 'a viewer cannot change it');
+  assert.equal(await small.getByRole('button', { name: 'Status', exact: true }).count(), 1, 'a member can change it');
   // The page never scrolls sideways and the text of every new part stays inside the panel (a row's hover highlight may bleed 6px, as elsewhere).
   const overflow = await view.evaluate(() => {
     const panel = (document.querySelector('.details.wd') as HTMLElement).getBoundingClientRect();

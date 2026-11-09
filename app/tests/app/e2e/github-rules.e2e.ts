@@ -144,13 +144,13 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
 
   // A person changes the status by hand: the rule pauses until someone resumes it.
   await details(page).getByRole('button', { name: 'Status', exact: true }).click();
-  await page.getByRole('menuitemradio', { name: 'In progress' }).click();
+  await page.getByRole('menuitemradio', { name: 'Doing' }).click();
   await details(page).getByText('Paused because someone changed the status or blocker by hand.', { exact: false }).waitFor();
   await evidence(page, 'desktop-paused');
   await details(page).getByRole('button', { name: 'Resume' }).click();
   await details(page).getByText('Paused because', { exact: false }).waitFor({ state: 'detached' });
 
-  // Every required PR merged: Ready to close, and a reader without GitHub access sees the same task state.
+  // Every required PR merged: Ready to close, and a member without GitHub access sees the same task state.
   provider.now = { state: 'closed', merged: true, checks: [check('success')] }; await settle(binding);
   const phone = await open(owner, link, true);
   const ready = details(phone).getByRole('button', { name: 'Mark done' });
@@ -164,8 +164,10 @@ test('task Details: turn the rule on, see sourced automatic changes, resume afte
   await evidence(phone, 'phone-ready');
   const reader = await open(viewer, link);
   await details(reader).getByText('Ready to close.', { exact: true }).waitFor();
-  assert.equal(await details(reader).getByRole('button', { name: 'Mark done' }).count(), 0, 'a viewer cannot finish it');
-  assert.equal(await details(reader).getByRole('switch').count(), 0, 'a viewer cannot change the rule');
+  // A space has no read-only person since #903 (Member and Admin): a member with no GitHub account connected sees the same state and,
+  // like anyone who can edit the task, may finish it or change the rule.
+  assert.equal(await details(reader).getByRole('button', { name: 'Mark done' }).count(), 1, 'a member can finish it');
+  assert.equal(await details(reader).getByRole('switch', { name: 'Let linked PRs move this task' }).count(), 1, 'a member can change the rule');
   assert.equal(await details(reader).getByText('Keep a manual off switch when calibration fails · ', { exact: false }).count(), 0);
   assert.match(await details(reader).getByRole('list', { name: 'Changes by GitHub rule' }).innerText(), /Every required PR is merged · ready to close/);
   await evidence(reader, 'desktop-reader');
