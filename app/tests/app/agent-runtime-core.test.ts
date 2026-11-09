@@ -466,6 +466,18 @@ describe('sign-in to Claude Code (T4 #279)', () => {
     assert.equal(lost.connections.claude_code?.payer, null);
   });
 
+  test('a guest of the company is shown none of their place or sign-ins; they are kept and shown again as a member (#1059)', async () => {
+    const { runtime } = await owned();
+    const shown = await record(runtime, 'claude_account', facts('ada@example.org'));
+    assert.equal(shown.binding?.state, 'active');
+    assert.equal(shown.connections.claude_code?.state, 'signed_in');
+    const hidden = await runtime.status('ada', { hidden: true });
+    assert.deepEqual([hidden.binding, hidden.lastRelease, hidden.connections, hidden.auth], [null, null, { claude_code: null, codex: null }, {}]);
+    assert.deepEqual([hidden.enabled, hidden.pool, hidden.clients], [shown.enabled, shown.pool, shown.clients], 'what is the instance\'s stays');
+    const back = await runtime.status('ada');
+    assert.deepEqual([back.binding, back.connections], [shown.binding, shown.connections], 'nothing was removed: the same place and sign-in are back');
+  });
+
   test('a later sign-in to a different account shows a notice until dismissed; the same account does not', async () => {
     const { runtime } = await owned();
     const observe = (account: string) => record(runtime, 'claude_account', facts(account));

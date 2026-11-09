@@ -4,6 +4,7 @@ import type { AssistantJobSchedule } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { notificationRows } from './push.js';
+import { companyGuestSql, isCompanyGuest } from './access.js';
 
 // Drizzle rows of "On a schedule" (migration 0109, F-027 A8 #408). They satisfy `AssistantJobRepository` of
 // packages/core/src/assistant structurally and make no access decisions: the core use cases ask the access policy first.
@@ -20,9 +21,14 @@ type JobChanges = Partial<Pick<JobRow, 'projectId' | 'title' | 'text' | 'timeZon
 const toJob = (row: JobRow) => ({ ...row, schedule: row.schedule as unknown as AssistantJobSchedule });
 
 export function assistantJobRows(db: DbExecutor) {
-  async function find(id: string, options: { lock?: boolean } = {}) {
+  /**
+   * `visibleToOwner`: the lookup of the owner's own screen. A guest of the company has none: their schedules are kept but hidden and
+   * refused until they are a member again (#1059, C-50). The worker's lookups (settling a firing, the tick) leave it off and still find them.
+   */
+  async function find(id: string, options: { lock?: boolean; visibleToOwner?: boolean } = {}) {
     const query = db.select({ job: j, projectName: schema.projects.name }).from(j)
-      .innerJoin(schema.projects, and(eq(schema.projects.workspaceId, j.workspaceId), eq(schema.projects.id, j.projectId))).where(eq(j.id, id));
+      .innerJoin(schema.projects, and(eq(schema.projects.workspaceId, j.workspaceId), eq(schema.projects.id, j.projectId)))
+      .where(and(eq(j.id, id), options.visibleToOwner ? sql`NOT ${companyGuestSql(j.ownerUserId)}` : undefined));
     const [row] = options.lock ? await query.for('update', { of: j }) : await query;
     return row ? { ...toJob(row.job), projectName: row.projectName } : null;
   }
@@ -30,10 +36,13 @@ export function assistantJobRows(db: DbExecutor) {
     async list(ownerUserId: string, workspaceId: string) {
       const rows = await db.select({ job: j, projectName: schema.projects.name }).from(j)
         .innerJoin(schema.projects, and(eq(schema.projects.workspaceId, j.workspaceId), eq(schema.projects.id, j.projectId)))
-        .where(and(eq(j.ownerUserId, ownerUserId), eq(j.workspaceId, workspaceId), isNull(j.deletedAt))).orderBy(asc(j.createdAt), asc(j.id));
+        .where(and(eq(j.ownerUserId, ownerUserId), eq(j.workspaceId, workspaceId), isNull(j.deletedAt), sql`NOT ${companyGuestSql(j.ownerUserId)}`))
+        .orderBy(asc(j.createdAt), asc(j.id));
       return rows.map((row) => ({ ...toJob(row.job), projectName: row.projectName }));
     },
     find,
+    /** Whether the owner is a guest of the company now (a plain read: the tick is the only caller, and it moves a schedule on either way). */
+    ownerIsGuest: (ownerUserId: string) => isCompanyGuest(db, ownerUserId),
     async countActive(ownerUserId: string) {
       const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(j).where(and(eq(j.ownerUserId, ownerUserId), isNull(j.deletedAt)));
       return row?.total ?? 0;

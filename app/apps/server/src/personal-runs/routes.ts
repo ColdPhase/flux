@@ -41,8 +41,8 @@ import {
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { conversationUseCases, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
-import type { Database } from '@flux/db';
+import { conversationUseCases, ForbiddenError, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
+import { isCompanyGuest, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
@@ -90,8 +90,13 @@ const runsQuery = { type: 'object', additionalProperties: false, properties: { l
 const retry = { type: 'object', required: ['clientRunId'], additionalProperties: false, properties: { clientRunId: { type: 'string' } } } as const;
 const decide = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
 
-/** Stored responses of these commands are the caller's own state; the principal scopes the key. */
-const ownState: ReplayCheck = async () => undefined;
+/**
+ * Stored responses of these commands are the caller's own state; the principal scopes the key. A guest of the company finds none of it (their
+ * AI is kept, hidden and refused until they are a member again, C-50, #1059), so a stored response is not replayed to them.
+ */
+const ownState: ReplayCheck = async (principal, _body, db) => {
+  if (principal.kind === 'human' && await isCompanyGuest(db, principal.id)) throw new ForbiddenError('A guest has no AI', 'GUEST_NO_AI');
+};
 
 /**
  * `/api/v1` personal assistant routes (#68, O-008). Each handler resolves the current session and

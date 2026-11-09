@@ -2,7 +2,7 @@ import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { assignmentNotificationActive, assignmentNotificationsReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
-import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './space-ai.js';
+import { hiddenNotice, notificationHiddenWhileAiOff } from './space-ai.js';
 
 /**
  * Drizzle persistence adapters for notifications and Web Push (issues #41, #46). They satisfy
@@ -99,7 +99,7 @@ export function notificationRows(db: DbExecutor) {
     },
     async findForRecipient(userId: string, id: string) {
       const [row] = await db.select({ notification: n }).from(n)
-        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`));
+        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenNotice(n)}`));
       return row ? (await withHistories([row]))[0]! : null;
     },
     async workspaceIdsForRecipient(userId: string) {
@@ -108,18 +108,18 @@ export function notificationRows(db: DbExecutor) {
     async listForRecipient(userId: string, audience: SQL, limit: number) {
       // Rows kept only for push or email (the person turned the inbox off for that reason) stay out.
       const rows = await db.select({ notification: n }).from(n)
-        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenWhileAiOff(n)}`))
+        .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenNotice(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
       return withHistories(rows);
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,
-        sql`NOT ${hiddenWhileAiOff(n)}`));
+        sql`NOT ${hiddenNotice(n)}`));
       return row?.unread ?? 0;
     },
     async markRead(userId: string, id: string) {
       const [row] = await db.update(n).set({ readAt: sql`coalesce(${n.readAt}, now())` })
-        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`)).returning({ readAt: n.readAt });
+        .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenNotice(n)}`)).returning({ readAt: n.readAt });
       return row?.readAt ?? null;
     },
   };

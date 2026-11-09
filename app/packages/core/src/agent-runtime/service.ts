@@ -74,7 +74,11 @@ export function usageView(usage: RuntimeUsageRow | null, now = Date.now()): Agen
 }
 
 export interface AgentRuntimeUseCases {
-  status(ownerUserId: string): Promise<AgentRuntimeStatus>;
+  /**
+   * `hidden`: the owner is a guest of the company. Their place and sign-ins are kept but hidden and refused until they are a member
+   * again (AG-2, C-50, #1059), so the status carries what is the instance's and nothing of theirs.
+   */
+  status(ownerUserId: string, options?: { hidden?: boolean }): Promise<AgentRuntimeStatus>;
   /** Gives the owner their place in the runtime (idempotent), or makes it again after *Sign in again*. */
   bind(ownerUserId: string): Promise<AgentRuntimeStatus>;
   /** *Remove runtime*: the worker signs out and deletes the directory. */
@@ -119,9 +123,10 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   };
   const unavailable = () => new ServiceUnavailableError('The auth operation could not be confirmed. Runtime use is disabled while its storage is safely recovered; both clients may need to sign in again', AGENT_RUNTIME_ERRORS.unavailable);
 
-  async function status(ownerUserId: string): Promise<AgentRuntimeStatus> {
+  async function status(ownerUserId: string, { hidden = false }: { hidden?: boolean } = {}): Promise<AgentRuntimeStatus> {
     if (!enabled) return off();
-    const view = await store.ownerView(ownerUserId);
+    const read = await store.ownerView(ownerUserId);
+    const view = hidden ? { ...read, binding: null, lastRelease: null, auth: [] } : read;
     const pool = view.slots.ready > 0 ? 'available' : 'starting';
     const connections = noConnections();
     if (view.binding) for (const row of await store.connections(ownerUserId)) if (row.bindingId === view.binding.id) connections[row.client] = connectionView(row);

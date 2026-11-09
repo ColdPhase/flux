@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, backgroundComputeConnectionsPath } from '@flux/contracts';
+import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_CONSOLE_RESUME_PATH, AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH,
+  AGENT_RUNTIME_SIGN_OUT_PATH, backgroundComputeConnectionsPath } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, person, workspace as createWorkspace, type Person } from './support/people.js';
 
@@ -46,6 +47,22 @@ describe('a guest has no AI (#959, #968)', () => {
       const allowed = await member.browser.request('POST', path, body ? { body } : {});
       assert.notEqual(codeOf(allowed), 'GUEST_NO_AI', `${path}: a member meets whatever else is true, never the guest rule`);
     }
+  });
+
+  test('a guest cannot sign a plan out, check it, dismiss its notice, remove the runtime or resume a sign-in; a member is not refused for being one (#1059)', async () => {
+    const client = { client: 'claude_code' };
+    const changes = [['POST', AGENT_RUNTIME_SIGN_OUT_PATH, client], ['POST', AGENT_RUNTIME_CHECK_PATH, client], ['POST', AGENT_RUNTIME_NOTICE_PATH, client],
+      ['POST', AGENT_RUNTIME_CONSOLE_RESUME_PATH, client], ['DELETE', AGENT_RUNTIME_BINDING_PATH, undefined]] as const;
+    for (const [method, path, body] of changes) {
+      const refused = await guest.browser.request(method, path, body ? { body } : {});
+      assert.equal(refused.status, 403, `${method} ${path}: ${refused.text}`);
+      assert.equal(codeOf(refused), 'GUEST_NO_AI', `${method} ${path}`);
+      const allowed = await member.browser.request(method, path, body ? { body } : {});
+      assert.notEqual(codeOf(allowed), 'GUEST_NO_AI', `${method} ${path}: a member meets whatever else is true, never the guest rule`);
+    }
+    // Reading the status is not refused: it shows a guest no place and no sign-in, as for someone who has none.
+    const status = expectStatus(await guest.browser.request('GET', AGENT_RUNTIME_PATH), 200) as { binding: unknown; connections: Record<string, unknown>; lastRelease: unknown };
+    assert.deepEqual([status.binding, status.lastRelease, status.connections], [null, null, { claude_code: null, codex: null }]);
   });
 
   test('someone who belongs to no company is not called a guest', async () => {

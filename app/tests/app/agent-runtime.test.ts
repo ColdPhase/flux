@@ -169,6 +169,46 @@ describe('the PostgreSQL store under the owner use cases', () => {
   });
 });
 
+describe('the idle policy and a guest (#1090)', () => {
+  const config: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreedOn: null, idleDays: 30, manager: { url: 'http://unused:1', secret: 'x'.repeat(32) } };
+  const slot = `runtime-${700 + Math.floor(Math.random() * 90)}`;
+  const dirs: string[] = [];
+  const boot = randomUUID();
+  const manager: RuntimeManagerPort = {
+    async slots() { return { ok: true, value: [{ slot, reachable: true as const, bootId: boot, bindings: [...dirs], other: 0, capacity: 2, running: [] }] }; },
+    async bind(_slot, id) { dirs.push(id); return { ok: true, value: undefined }; },
+    async release(_slot, id) { dirs.splice(dirs.indexOf(id), 1); return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: [] } }; },
+    async status() { return { ok: true, value: { signedIn: false, facts: null, bootId: boot } }; },
+    async logout() { return { ok: true, value: { logout: 'ok', bootId: boot } }; },
+  };
+  const store = agentRuntimeStore(db);
+
+  test('a guest\'s unused place is kept, and the member\'s is released, after the idle days', async () => {
+    const company = (await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company')).rows[0]!.id;
+    const [guest, member] = await Promise.all([insertedHuman('runtime-idle-guest'), insertedHuman('runtime-idle-member')]);
+    try {
+      await pool.query('INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, $3, $2), ($1, $4, $5, $4)', [company, guest.id, 'guest', member.id, 'member']);
+      await reconcileAgentRuntime({ config, store, manager });
+      const runtime = agentRuntimeUseCases(config, store, manager);
+      await runtime.bind(guest.id); await runtime.bind(member.id);
+      await pool.query(`UPDATE agent_runtime_bindings SET last_used_at = now() - interval '40 days', created_at = now() - interval '41 days' WHERE owner_user_id = ANY($1)`, [[guest.id, member.id]]);
+      const report = await reconcileAgentRuntime({ config, store, manager });
+      assert.equal(report.idle, 1, 'one place is released as idle');
+      const states = await pool.query<{ owner_user_id: string; state: string }>('SELECT owner_user_id, state FROM agent_runtime_bindings WHERE owner_user_id = ANY($1)', [[guest.id, member.id]]);
+      const stateOf = (id: string) => states.rows.find((row) => row.owner_user_id === id)?.state;
+      assert.equal(stateOf(guest.id), 'active', 'the guest\'s place is kept: it is not signed out');
+      assert.notEqual(stateOf(member.id), 'active', 'the member\'s is released');
+      // As a member again, the place is the same one and is subject to the policy again.
+      await pool.query('UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2', [company, guest.id, 'member']);
+      assert.equal((await store.idleBindings(new Date(Date.now() - 30 * 86_400_000))).some((binding) => binding.ownerUserId === guest.id), true);
+    } finally {
+      await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = ANY($2)', [company, [guest.id, member.id]]);
+      await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);
+      await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
+    }
+  });
+});
+
 describe('purge records confirmed and unconfirmed vendor logout', () => {
   for (const confirmed of [undefined, false, true]) {
     test(`owner history reports signOutFailed=${confirmed !== true} after ${String(confirmed)} cleanup`, async () => {

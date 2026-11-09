@@ -3,7 +3,7 @@ import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   conversationAssistantChangesPath, WORK_LIMITS, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantChangeRows, changeGroup, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { assistantChangeRows, changeGroup, isCompanyGuest, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
   type Principal } from '@flux/core';
 import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
@@ -111,6 +111,14 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (principal.kind !== 'human' || !principal.id) throw missing();
     return principal.id;
   };
+  /**
+   * A guest of the company finds none of the changes their assistant made or still has waiting: they are kept, hidden and refused until
+   * the person is a member again (AG-2, C-50, #1059). Said for the owner's own routes only; an editor who may take back what was done
+   * keeps that right.
+   */
+  async function ownerIsNotAGuest(userId: string) {
+    if (await isCompanyGuest(db as DbExecutor, userId)) throw missing();
+  }
   /** Whether the viewer may take a change back: the owner, or anyone who may edit in its project (AG-3 "Undo"). */
   async function undoers(principal: Principal | null, list: AssistantChangeRow[]): Promise<(row: AssistantChangeRow) => boolean> {
     const projects = new Map<string, boolean>();
@@ -159,6 +167,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (!isUuid(changeId)) throw missing();
     const row = await rows().find(changeId);
     if (!row || row.ownerUserId !== userId) throw missing();
+    await ownerIsNotAGuest(userId);
     return row;
   }
   /**
@@ -171,6 +180,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const row = await rows().find(changeId);
     if (!row) throw missing();
     if (row.ownerUserId !== userId) await mayEdit(principal, row);
+    else await ownerIsNotAGuest(userId);
     return row;
   }
   /**
@@ -196,6 +206,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const list = await rows().forRun(runId);
     if (!list.length) throw missing();
     if (list[0]!.ownerUserId === userId) {
+      await ownerIsNotAGuest(userId);
       // The owner's own group, minus the removals made where they can no longer write (#961). Every other change stays: its Undo asks the
       // domain for their rights now and, when they have none, is reported with the rest as "changed since".
       const stillWritable = new Map<string, boolean>();
@@ -214,6 +225,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (!isUuid(runId)) throw missing();
     const list = await rows().forRun(runId);
     if (!list.length || list[0]!.ownerUserId !== userId) throw missing();
+    await ownerIsNotAGuest(userId);
     return list;
   }
   const refuse = (row: AssistantChangeRow, refusal: string) => db.transaction(async (tx) => {
@@ -273,17 +285,19 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const place = await rows().conversationPlace(conversationId);
       const access = place ? await evaluateProject(principal, 'project.read', place.projectId, accessReader(db)) : null;
       if (!access?.allowed) throw missing();
-      // A guest has no AI (AG-2): a change still waiting is not offered to them, since its Approve could only fail and close it. The row
-      // stays waiting, so it is offered again if they become a member again.
-      const guest = access.actor?.role === 'guest';
+      // A guest has no AI (AG-2, C-50): a change still waiting is not offered to them, since its Approve could only fail and close it, and nothing
+      // else of their assistant's own (a refusal, a skip) is listed either; only what was done is, as it is for everyone. The rows stay as they
+      // are, so they are offered again if the person becomes a member again.
+      const guest = access.actor?.role === 'guest' || await isCompanyGuest(db as DbExecutor, userId);
       const list = (await rows().forConversationAll(conversationId))
-        .filter((row) => isDone(row) || row.ownerUserId === userId && !(guest && row.state === 'waiting'));
+        .filter((row) => isDone(row) || row.ownerUserId === userId && !guest);
       return { items: await view(list, await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       // A run that made no change has an empty list for its asker, not a 404 (#842: the private answer asks for it every time); anyone else gets the 404.
       if (isUuid(runId) && !(await rows().forRun(runId)).length) {
         if ((await rows().runOwner(runId)) !== owner(principal)) throw missing();
+        await ownerIsNotAGuest(owner(principal));
         return { items: [] };
       }
       const all = await ownRun(principal, runId);

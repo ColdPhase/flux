@@ -140,5 +140,6 @@ export interface AgentRuntimeStore {
   completeRelease(bindingId: string, logoutFailed: boolean): Promise<void>;
   /** Drops a `binding` reservation older than `olderThan` (an interrupted bind). */
   dropStaleReservation(bindingId: string, olderThan: Date): Promise<boolean>;
+  /** Active places unused since `before`, except a guest of the company's: theirs is kept, hidden, until they are a member again (C-50, #1090). */
   idleBindings(before: Date): Promise<RuntimeBindingRow[]>;
 }

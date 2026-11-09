@@ -110,13 +110,19 @@ export interface JobDeps {
 export async function fireJob(ports: AssistantJobPorts, startBackground: JobDeps['startBackground'], job: JobRecord, firedAt: Date, by: AssistantJobRunTrigger,
   options: { late?: boolean } = {}): Promise<JobRunRecord | null> {
   const row = await ports.jobs.insertRun({ id: randomUUID(), jobId: job.id, ownerUserId: job.ownerUserId, firedAt, firedBy: by, state: 'running', resultLine: '' });
-  const end = (record: JobRunRecord, state: 'skipped' | 'failed', line: string) =>
-    ports.jobs.updateRun(record.id, { state, resultLine: line, finishedAt: new Date() });
+  // A firing that did not start ends here, never through `settleOne`, so its history is kept to the newest rows here (#1059): an hourly
+  // schedule that is skipped every time must not collect a week of rows nobody trims.
+  const end = async (record: JobRunRecord, state: 'skipped' | 'failed', line: string) => {
+    const ended = await ports.jobs.updateRun(record.id, { state, resultLine: line, finishedAt: new Date() });
+    await ports.jobs.trimRuns(job.id, ASSISTANT_JOB_LIMITS.history);
+    return ended;
+  };
   if (!row) {
     // Another worker fired this very time, or an earlier run of the schedule is still working.
     if (await ports.jobs.runExists(job.id, firedAt, by)) return null;
     const skipped = await ports.jobs.insertRun({ id: randomUUID(), jobId: job.id, ownerUserId: job.ownerUserId, firedAt, firedBy: by, state: 'skipped',
       resultLine: 'Skipped: the last run is still working', finishedAt: new Date() });
+    await ports.jobs.trimRuns(job.id, ASSISTANT_JOB_LIMITS.history);
     return skipped;
   }
   if (options.late) return end(row, 'skipped', `Skipped: Flux was off at ${clockIn(firedAt, job.timeZone)}`);
@@ -212,7 +218,8 @@ async function createIn(ports: AssistantJobPorts, principal: Principal, input: C
 
 async function ownJob(ports: AssistantJobPorts, principal: Principal, workspaceId: string, ownerUserId: string, jobId: string, lock = false) {
   ownerOf(principal, workspaceId, ownerUserId);
-  const record = isId(jobId) ? await ports.jobs.find(jobId.toLowerCase(), { lock }) : null;
+  // A guest of the company finds none of their schedules (they are kept until the person is a member again, #1059, C-50).
+  const record = isId(jobId) ? await ports.jobs.find(jobId.toLowerCase(), { lock, visibleToOwner: true }) : null;
   if (!record || record.ownerUserId !== principal.id || record.workspaceId !== workspaceId) throw notFound();
   return record;
 }

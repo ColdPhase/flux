@@ -1,6 +1,7 @@
 import { sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import type { AiScopeKind } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
+import { companyGuestSql } from './access.js';
 
 /**
  * SQL for the AI switch of a space (F-037, #874, AG-10; it replaces the workspace AI lock of F-029). These fragments make no
@@ -50,9 +51,23 @@ export function hiddenWhileAiOff(n: { sourceType: SQLWrapper; sourceId: SQLWrapp
   return sql<boolean>`(${n.aiOrigin} AND ${n.sourceType} = 'project' AND ${currentAiEpoch(n.sourceId)} IS NULL)`;
 }
 
+/**
+ * The notices of a person's own assistant stay with the person's AI, which is kept but hidden while they are a guest of the company (C-50,
+ * #1059): the one kind written without a reason about a space, with AI origin, is a paused schedule (`assistantJobRows.notify`). Every other
+ * AI-origin row (an agent's message, an assistant's suggestion) is about shared work and stays for a guest who can read it.
+ */
+export function assistantNoticeOfGuest(n: { userId: SQLWrapper; sourceType: SQLWrapper; aiOrigin: SQLWrapper; reason: SQLWrapper }): SQL<boolean> {
+  return sql<boolean>`(${n.aiOrigin} AND ${n.sourceType} = 'project' AND ${n.reason} IS NULL AND ${companyGuestSql(n.userId)})`;
+}
+
+/** Whether the Inbox, its count and the pushes and e-mails leave a notification out: AI is off in its space, or it is a guest's own assistant's notice. */
+export function hiddenNotice(n: { userId: SQLWrapper; sourceType: SQLWrapper; sourceId: SQLWrapper; aiOrigin: SQLWrapper; reason: SQLWrapper }): SQL<boolean> {
+  return sql<boolean>`(${hiddenWhileAiOff(n)} OR ${assistantNoticeOfGuest(n)})`;
+}
+
 /** The same decision for one notification row. */
 export async function notificationHiddenWhileAiOff(db: DbExecutor, notificationId: string): Promise<boolean> {
-  const result = await db.execute<{ hidden: boolean }>(sql`SELECT ${hiddenWhileAiOff({ sourceType: sql`n.source_type`, sourceId: sql`n.source_id`, aiOrigin: sql`n.ai_origin` })} AS hidden
+  const result = await db.execute<{ hidden: boolean }>(sql`SELECT ${hiddenNotice({ userId: sql`n.user_id`, sourceType: sql`n.source_type`, sourceId: sql`n.source_id`, aiOrigin: sql`n.ai_origin`, reason: sql`n.reason` })} AS hidden
     FROM notifications n WHERE n.id = ${notificationId}`);
   return result.rows[0]?.hidden === true;
 }

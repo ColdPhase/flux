@@ -345,6 +345,18 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM assistant_job_runs WHERE job_id = $1`, [job.id])).rows[0].n), 20);
   });
 
+  test('a firing that did not start keeps the history to the newest 20 too (#1059)', async () => {
+    const job = await created({ schedule: daily(9) });
+    for (let index = 0; index < 25; index++) await pool.query(`INSERT INTO assistant_job_runs (id, job_id, owner_user_id, fired_at, fired_by, state, result_line, finished_at)
+      VALUES ($1, $2, $3, $4, 'schedule', 'skipped', 'Skipped: Flux was off at 9:00', now())`, [randomUUID(), job.id, owner.id, new Date(Date.UTC(2026, 0, 1 + index, 9))]);
+    // The worker is back 20 minutes late: the firing is skipped at once and never reaches the settling that trims.
+    await tick(new Date(tomorrowAt(9).getTime() + 20 * MINUTE));
+    const rows = await firings(job.id);
+    assert.equal(rows.length, 20, 'a skipped firing does not grow the history past its limit');
+    assert.equal(rows.at(-1)!.result_line, 'Skipped: Flux was off at 9:00');
+    assert.ok(new Date((await pool.query(`SELECT max(fired_at) AS at FROM assistant_job_runs WHERE job_id = $1`, [job.id])).rows[0].at).getTime() >= tomorrowAt(9).getTime(), 'the newest firing is kept');
+  });
+
   test('#843: no runs a day of Flux\'s own: a schedule that already ran many times today fires again, and so do two schedules at once', async () => {
     const job = await created({ schedule: daily(9) });
     for (let index = 0; index < 30; index++) await pool.query(`INSERT INTO assistant_job_runs (id, job_id, owner_user_id, fired_at, fired_by, state, result_line, finished_at)

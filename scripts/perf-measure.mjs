@@ -146,7 +146,7 @@ function viewPlan(ids) {
       get('project sketches', `/api/v1/workspaces/${ws}/sketches?limit=20&offset=0&projectId=${p}`),
       get('project docs', `/api/v1/projects/${p}/docs?limit=100&offset=0`)],
     [get('work summary', `/api/v1/projects/${p}/work-summary`),
-      get('needs you', `/api/v1/return?${query({ place: 'project', id: p, scope: 'all', from: 'last-visit' })}`)],
+      get('needs you', `/api/v1/return?${query({ place: 'project', id: p })}`)],
   ];
   const [associations] = chunks(ids.rootMessageIds);
   const [references] = chunks(ids.noticeRefs);

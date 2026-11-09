@@ -198,7 +198,13 @@ export interface PersonalRunRepository {
   /** The project of a conversation, whoever may read it; callers must authorize before using it. */
   locateConversation(conversationId: string): Promise<{ workspaceId: string; projectId: string } | null>;
   runByClientId(ownerUserId: string, clientRunId: string): Promise<RunRecord | null>;
-  findRun(id: string, options?: { lock?: boolean }): Promise<RunRecord | null>;
+  /**
+   * With `visibleToOwner`, as the owner's own screen reads it: a guest of the company finds none of their runs (they are kept, hidden and
+   * refused until the person is a member again, C-50, #1059). The worker's and the system's lookups leave it off.
+   */
+  findRun(id: string, options?: { lock?: boolean; visibleToOwner?: boolean }): Promise<RunRecord | null>;
+  /** Whether the owner is a guest of the company now: their keys and plan sign-in are kept, but the assistant's status and model list show none (C-50, #1059). */
+  ownerIsGuest(ownerUserId: string): Promise<boolean>;
   /** The owner's working runs and queued requests that are not paused by a limit (AST-6 queue). */
   inFlightCount(ownerUserId: string): Promise<number>;
   /** How many changes this run made or left waiting: what a second try would repeat. */
