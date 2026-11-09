@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import {
   AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath,
-  conversationAssistantRunsPath, MY_AGENTS_PATH, taskAgentPath, workItemPath, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus,
+  conversationAssistantRunsPath, dmAssistantRunsPath, MY_AGENTS_PATH, taskAgentPath, workItemPath, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus,
   type AssistantRun, type TaskAgentState, type WorkItem,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
@@ -233,6 +233,38 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const refreshed = (await journal()).some((entry) => entry.kind === 'refresh' && entry.detail?.known === true);
     if (client === 'codex') assert.ok(refreshed, 'Codex refreshed its access token at the mock issuer');
     print({ ENGINE: engine, RUN: run.id, TOOLS: offered.length, MCP_BYTES: row.mcp_result_bytes, ...(client === 'codex' ? { REFRESHED: refreshed } : {}) });
+  },
+
+  /**
+   * #1155: a direct-message ask is minted one tool, `flux_read_web`. With the operator's web switch off (the script restarts the API and
+   * the worker with it off before this step) the server defines no tool for it, so its list is empty. The real CLI starts with the
+   * connected Flux server and no Flux tool, the model is offered none, and the run answers: it does not end `unavailable` because
+   * its list "could not be read".
+   */
+  async 'empty-tools'(engine) {
+    const { who, client, cli } = ENGINES[engine as Engine];
+    const someone = await owner(who);
+    const other = await owner(who === 'ada' ? 'bo' : 'ada');
+    const { workspaceId } = await load();
+    const opened = await someone.browser.request('POST', `/api/v1/workspaces/${workspaceId}/dms`, { body: { participantIds: [other.id] } });
+    assert.ok(opened.status === 200 || opened.status === 201, `a direct message opens: ${opened.status}`);
+    const dm = opened.json as { id: string };
+    await script(client, [{ text: 'Nothing to look up: here is my answer.' }]);
+    const from = await lastEntry();
+    const started = expectStatus(await someone.browser.request('POST', dmAssistantRunsPath(dm.id),
+      { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is a lux?' } }), 202) as AssistantRun;
+    const row = await until('the run to end', () => runRow(started.id), (current) => !['queued', 'reading', 'dispatching'].includes(current.status), 240);
+    assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null], JSON.stringify(row));
+    assert.deepEqual(row.run_tools, ['flux_read_web'], 'a direct-message ask is minted this one tool');
+    assert.ok(row.answer_body, 'the answer is committed');
+    // Every request the model got: the mock records one with no Flux tool at all as a `side` request (Claude Code), so both kinds count.
+    const asked = (await journalSince(from)).filter((entry) => entry.client === client && (entry.kind === 'main' || entry.kind === 'side'));
+    assert.ok(asked.length >= 1, 'the model was asked');
+    for (const entry of asked) {
+      assert.deepEqual(fluxTools(entry), [], `the server defines no tool for it, so the model is offered none: ${JSON.stringify(entry.tools)}`);
+      assert.deepEqual(otherTools(entry, client), [], `and nothing else that acts: ${JSON.stringify(entry.tools)}`);
+    }
+    print({ ENGINE: engine, RUN: started.id, CLIENT: cli, REQUESTS: asked.length, TOOLS: 0 });
   },
 
   /**
