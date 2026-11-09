@@ -1,4 +1,4 @@
-import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { artifactUseRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   createSketchUseCases,
   ForbiddenError,
@@ -92,9 +92,9 @@ export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
         async thought(before,after){
           if(before&&before.text===after.text)return;
           const recipients=await canonicalArtifactTaskIds(tx,scope,{kind:'thought',id:after.id});
-          await artifactResetRows(tx).record(scope,{kind:'thought',id:after.id,revision:String(after.version)},recipients,retained);
+          await artifactUseRows(tx).record(scope,{kind:'thought',id:after.id,revision:String(after.version)},recipients,retained);
         },
-        file:(fileId)=>artifactResetRows(tx).publishedFile(scope,fileId,retained),
+        file:(fileId)=>artifactUseRows(tx).publishedFile(scope,fileId,retained),
       };
     }},
     events: { record: async (principal, workspaceId, kind, sketchId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, sketchId, data); } },

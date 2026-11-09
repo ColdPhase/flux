@@ -4,7 +4,7 @@ import * as schema from '../schema.js';
 import { openRows, sealFor } from '../sealing.js';
 import type { MessageFile } from '@flux/contracts';
 import { taskUseRows, type TaskUseFence } from './task-use.js';
-import { artifactResetRows } from './artifact-resets.js';
+import { artifactUseRows } from './artifact-use.js';
 import { fileRows } from './files.js';
 import type { DbExecutor } from './push.js';
 
@@ -28,14 +28,13 @@ export function taskDiscussionRows(db: DbExecutor) {
   const m = schema.projectMessages;
   const c = schema.projectConversations;
   const b = schema.projectTaskDiscussions;
-  // Agent threads carry their task directly; the historical people discussion keeps its binding.
   const boundTask = async (conversationId: string) => {
-    const [row] = await db.select({ workId: sql<string | null>`COALESCE(${c.workId}, ${b.workId})` }).from(c)
+    const [row] = await db.select({ workId: b.workId }).from(c)
       .leftJoin(b, eq(b.conversationId, c.id)).where(eq(c.id, conversationId));
     return row?.workId ?? null;
   };
   return {
-    /** The task a conversation belongs to: its people discussion (the binding) or, for an agents' thread, its own task; null for any other. */
+    /** The task whose discussion this conversation is (its binding), or null for any other conversation of the space. */
     taskOf: boundTask,
     async lockCommand(projectId: string, author: Actor, commandId: string) {
       // Shared namespace with ordinary conversation sends. Collisions merely serialize.
@@ -44,6 +43,13 @@ export function taskDiscussionRows(db: DbExecutor) {
     async existingMessage(projectId: string, author: Actor, commandId: string) {
       const [row] = await openRows(db, 'project_messages', await db.select().from(m).where(and(eq(m.projectId, projectId), author.kind === 'human' ? eq(m.authorId, author.id) : eq(m.authorAgentId, author.id), eq(m.clientMessageId, commandId))));
       return row ? message(row, (await fileRows(db).messageFiles([row.id])).get(row.id)) : null;
+    },
+    /** Whether the message is in the discussion of this task, within this scope. */
+    async containsMessage(workId: string, messageId: string, within: { workspaceId: string; projectId: string }) {
+      const [row] = await db.select({ id: m.id }).from(m).innerJoin(b, eq(b.conversationId, m.conversationId))
+        .where(and(eq(m.id, messageId), eq(m.workspaceId, within.workspaceId), eq(m.projectId, within.projectId),
+          eq(b.workId, workId), eq(b.workspaceId, within.workspaceId), eq(b.projectId, within.projectId))).for('share');
+      return !!row;
     },
     async findBinding(workId: string) {
       const [row] = await db.select().from(b).where(eq(b.workId, workId));
@@ -64,6 +70,17 @@ export function taskDiscussionRows(db: DbExecutor) {
       const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
       return rows.map((row) => message(row, files.get(row.id)));
     },
+    /**
+     * How many agent messages (at most `limit`) the conversation has had since a person last wrote in it (C-51). A line Flux wrote for an
+     * agent (`by_flux`) is skipped: it neither counts nor ends the run. A removed message keeps its author, so deleting gives no turn back.
+     */
+    async trailingAgentMessages(conversationId: string, limit: number) {
+      const result = await db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM (SELECT 1 FROM project_messages a
+        WHERE a.conversation_id = ${conversationId} AND a.author_agent_id IS NOT NULL AND NOT a.by_flux
+          AND a.sequence > COALESCE((SELECT max(p.sequence) FROM project_messages p WHERE p.conversation_id = ${conversationId} AND p.author_id IS NOT NULL), 0)
+        LIMIT ${limit}) agent_run`);
+      return Number(result.rows[0]?.n ?? 0);
+    },
     async sourceExists(projectId: string, source: Source) {
       const v = schema.projectMaterialVersions;
       const [row] = await db.select({ id: v.materialId }).from(v).where(and(eq(v.projectId, projectId),
@@ -78,7 +95,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     /** Called in a transaction after current access and the shared command lock. */
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
-        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[]; via?: string | null }, preparedMessageId?: string) {
+        kind?: MessageRow['contributionKind']; resultId?: string | null; files?: MessageFile[]; via?: string | null; byFlux?: boolean }, preparedMessageId?: string) {
       const workId = await boundTask(conversation.id);
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
@@ -88,7 +105,8 @@ export function taskDiscussionRows(db: DbExecutor) {
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
         sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null, via: input.via ?? null })).returning();
+        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', resultId: input.resultId ?? null, via: input.via ?? null,
+        byFlux: author.kind === 'agent' && input.byFlux === true })).returning();
       // F-030: the stored row may be sealed; the caller gets what it wrote.
       const row = stored && { ...stored, body: input.body, requestFingerprint: input.fingerprint };
       for (const [position, file] of (input.files ?? []).entries()) {
@@ -115,7 +133,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     },
     async publishFiles(scope:{workspaceId:string;projectId:string},messageId:string,retained:Pick<TaskUseFence,'ids'|'mark'>){
       for(const file of (await fileRows(db).messageFiles([messageId])).get(messageId)??[])
-        await artifactResetRows(db).publishedFile(scope,file.id,retained);
+        await artifactUseRows(db).publishedFile(scope,file.id,retained);
     },
     async bind(input: { workId: string; workspaceId: string; projectId: string; conversationId: string; rootMessageId: string }) {
       await db.insert(b).values(input);

@@ -54,15 +54,15 @@ export function projectExportRows(db: DbExecutor) {
     return materials.map((row) => ({ row, versions: versions.get(row.id) ?? [] }));
   }
 
-  async function conversations(projectId: string, space: 'people' | 'agents') {
-      const conversations = await db.select().from(c).where(and(eq(c.projectId, projectId), eq(c.space, space))).orderBy(asc(c.createdAt), asc(c.id));
+  async function conversations(projectId: string) {
+      const conversations = await db.select().from(c).where(eq(c.projectId, projectId)).orderBy(asc(c.createdAt), asc(c.id));
       if (!conversations.length) return [];
       const messageRows = await openRows(db, 'project_messages', await db.select().from(msg).where(and(eq(msg.projectId, projectId), inArray(msg.conversationId, conversations.map(row => row.id))))
         .orderBy(asc(msg.conversationId), asc(msg.sequence)));
       const messages = groupBy(messageRows, (row) => row.conversationId);
       const files = await fileRows(db).messageFiles(messageRows.map(row => row.id));
       return conversations.map((row) => ({
-        id: row.id, ...(space === 'agents' ? { workId: row.workId! } : {}), createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
+        id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt),
         messages: (messages.get(row.id) ?? []).map((message) => ({
           ...(files.get(message.id)?.length ? { files: files.get(message.id) } : {}),
           id: message.id, sequence: message.sequence, author: creator(message.authorId, message.authorAgentId), body: message.body,
@@ -105,8 +105,7 @@ export function projectExportRows(db: DbExecutor) {
         .where(eq(schema.workspaceMembers.workspaceId, workspaceId));
     },
 
-    conversations: (projectId: string) => conversations(projectId, 'people'),
-    agentThreads: async (projectId: string) => (await conversations(projectId, 'agents')).map((row) => ({ ...row, workId: row.workId! })),
+    conversations,
 
     async materials(projectId: string) {
       return (await versioned(projectId, 'material')).map(({ row, versions }) => ({

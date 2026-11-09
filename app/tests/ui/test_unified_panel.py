@@ -114,7 +114,7 @@ class UnifiedPanel(unittest.TestCase):
                 content, side = page.locator("#content").bounding_box(), panel.bounding_box()
                 self.assertGreater(side["x"], content["x"] + 300, "the panel sits to the right of the work")
                 self.assertLessEqual(side["width"], 460)
-                self.assertEqual(page.evaluate("document.querySelectorAll('.thread--docked, .thread--sheet, .agents-thread-pane, .agents-thread-sheet, .sk-tasks-sheet').length"), 0, "no other drawer or sheet for these objects")
+                self.assertEqual(page.evaluate("document.querySelectorAll('.thread--docked, .thread--sheet, .sk-tasks-sheet').length"), 0, "no other drawer or sheet for these objects")
                 panel.locator(".ui-panel__body").focus()
                 page.keyboard.press("Escape")
                 expect(page.locator("aside.ui-panel")).to_have_count(0)

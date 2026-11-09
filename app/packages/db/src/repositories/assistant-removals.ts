@@ -80,9 +80,8 @@ export function assistantRemovalRows(db: DbExecutor) {
     if (!message) return gone();
     if (message.removedAt) return { ok: false, why: 'gone', reason: 'Already removed' };
     // A reply is posted under the conversation's lock; holding it here orders this Undo against a reply that arrives now.
-    const conversation = await first<{ space: string }>(db, sql`SELECT space FROM project_conversations WHERE id = ${message.conversationId} FOR UPDATE`);
+    await db.execute(sql`SELECT 1 FROM project_conversations WHERE id = ${message.conversationId} FOR UPDATE`);
     if (agentId !== null && (message.authorAgentId !== agentId || message.files > 0)) return foreign();
-    if (conversation?.space === 'agents') return foreign();
     if (!byOwner) {
       if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages WHERE conversation_id = ${message.conversationId} AND sequence > ${message.sequence} AND removed_at IS NULL) AS found`))
         return used(REMOVAL_REASONS.replies);
@@ -107,7 +106,7 @@ export function assistantRemovalRows(db: DbExecutor) {
     /** Whether a posted message is the assistant's own, in a people's conversation: only then does its change offer an Undo. */
     async messageIsUndoable(messageId: string, agentId: string): Promise<boolean> {
       return yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages m JOIN project_conversations c ON c.id = m.conversation_id
-        WHERE m.id = ${messageId} AND m.author_agent_id = ${agentId} AND m.attachment_count = 0 AND c.space = 'people') AS found`);
+        WHERE m.id = ${messageId} AND m.author_agent_id = ${agentId} AND m.attachment_count = 0) AS found`);
     },
 
     /** Whether a message sits in a task's discussion: a line an agent put there is its owner's to delete (TA-3, #938), whichever agent it was. */

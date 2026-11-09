@@ -3,8 +3,9 @@ import { randomUUID } from 'node:crypto';
 import type { CreatedThought, Sketch, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
 import { actionScene } from './mcp-actions.js';
-import { expect } from './mcp.js';
-import { fillThread, type ThreadNativeScene } from './internal-agent-threads.js';
+import { expect, toolValue } from './mcp.js';
+
+type Scene = Awaited<ReturnType<typeof actionScene>>;
 
 // One project with data in every feature, erased in one transaction (#530 / 0098, #551 / 0101).
 
@@ -38,7 +39,7 @@ export async function projectReferences(projectId: string) {
  */
 export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'project_task_activity'] as const;
 
-export async function upload(f: ThreadNativeScene, text: string) {
+export async function upload(f: Scene, text: string) {
   const response = await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=erasure.txt`, f.owner.base), {
     method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: f.owner.cookieHeader(), origin: f.owner.defaultOrigin }, body: text,
   });
@@ -46,16 +47,17 @@ export async function upload(f: ThreadNativeScene, text: string) {
   return await response.json() as { id: string };
 }
 
-/** One project with every installed artifact kind, a real thread (native turns and a human boundary) and resets. */
+/** One project with every installed artifact kind and a task whose discussion holds an agent's message and a person's. */
 export async function fullProject() {
   const f = await actionScene(pool);
   const created = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Erased with its project' } }), 201) as unknown as WorkItem;
   // A due date makes the task's activity (#488, migration 0112) part of the scene: its rows erase with the task.
   const task = expect(await f.owner.request('PATCH', `/api/v1/work/${created.id}`,
     { body: { dueOn: '2026-12-01', clientCommandId: randomUUID() }, headers: { 'if-match': `"${created.version}"` } }), 200) as unknown as WorkItem;
-  await fillThread(f, task.id);
-  expect(await f.owner.request('POST', `/api/v1/work/${task.id}/agent-thread`,
-    { body: { body: 'A person answers in the thread.', clientMessageId: randomUUID() } }), 201);
+  toolValue(await f.tool('flux_discuss_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(),
+    peerRequestClass: 'execute', sources: [], taskId: task.id, body: 'One measured observation.' }));
+  expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`,
+    { body: { body: 'A person answers in the discussion.', clientMessageId: randomUUID() } }), 201);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
     { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.` } }), 201);
   expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,

@@ -73,7 +73,7 @@ export function nativeActionExecutor(db: Database, claims: FluxMcpClaims): Execu
  * only then is the single final event batch flushed. A retry with the same command ID returns the stored outcome without a second
  * effect or event.
  */
-export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1'): Execute<CoordinationActionInput> {
+export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-discussion/v1'): Execute<CoordinationActionInput> {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: CoordinationActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
     const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, clientCommandId: input.clientCommandId,

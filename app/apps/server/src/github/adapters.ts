@@ -1,4 +1,4 @@
-import { artifactResetRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader, type Database, type Transaction } from '@flux/db';
+import { artifactUseRows, githubRows, prepareCanonicalArtifactTasks, TaskUseRefusal, type TaskUseFence, accessReader, type Database, type Transaction } from '@flux/db';
 import {
   directPrerequisiteIds, enforce, evaluateProject, GITHUB_RULE_AUTOMATION, githubRuleUseCases, githubUseCases, ServiceUnavailableError, sortedIds,
   unmetPrerequisites, type GithubPorts, type GithubProvider, type GithubTasks, type GithubTaskState, type GithubUnitOfWork, type WorkRecord,
@@ -61,7 +61,7 @@ function githubPorts(tx: Transaction, session: TransactionEventSession, provider
     const stored=await rows.linkAt(link.id);
     if(!binding||!stored||binding.projectId!==link.projectId||binding.workspaceId!==link.workspaceId||stored.pullId!==link.facts.pullId
       ||binding.state!=='active'||link.state!=='current'||!/^([0-9a-f]{40}|[0-9a-f]{64})$/.test(link.facts.headSha))return;
-    await artifactResetRows(tx).record(link,{kind:'github_pr',
+    await artifactUseRows(tx).record(link,{kind:'github_pr',
       id:link.bindingId+':'+binding.repositoryId+':'+stored.pullId+':'+link.taskId,revision:link.facts.headSha},[link.taskId],retained.fence);
   };
   const canonicalRows={...rows,

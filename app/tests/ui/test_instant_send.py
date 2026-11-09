@@ -194,7 +194,7 @@ class InstantSendJourney(unittest.TestCase):
         at_once = page.evaluate(SCROLLERS)
         self.assertLess(delay, 100, "the message shows within 100 ms of the tap (HIG-59)")
         if announcer:
-            # Announced once, politely (HIG-71); Agents' thread list is itself the live region.
+            # Announced once, politely (HIG-71); the task's activity list is itself the live region.
             expect(page.locator("[data-send-announcer]").filter(has_text="Sending…")).to_have_count(1)
         else:
             expect(scope.locator("ol[aria-live='polite']")).to_have_count(1)

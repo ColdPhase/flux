@@ -59,7 +59,7 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 export type StreamEntry =
   | { kind: 'root'; key: string; at: string; root: ConversationRoot }
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
-  | { kind: 'object'; key: string; at: string; object: ObjectNotice; thread?: ConversationRoot };
+  | { kind: 'object'; key: string; at: string; object: ObjectNotice };
 
 /** The decision or result an entry announces, for the line that follows it. */
 const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
@@ -73,20 +73,12 @@ const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root:
 export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, objects: ObjectNotice[] = []): StreamEntry[] {
   const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
   const shownObjects = objects.filter((object) => from === null || object.createdAt >= from);
-  // A result recorded on a task with no discussion yet opens that task's thread with its contribution (#763 A1). The
-  // stream shows it once, as the result's line and card, and the line names the task ("on #9") to open that thread.
-  const recorded = new Set(shownObjects.flatMap((object) => object.kind === 'result.recorded' ? [object.resultId] : []));
-  const resultOf = (root: ConversationRoot) => root.task && root.message.contribution?.kind === 'result' && recorded.has(root.message.contribution.resultId)
-    ? root.message.contribution.resultId : null;
-  const threads = new Map(roots.flatMap((root) => { const id = resultOf(root); return id ? [[id, root] as const] : []; }));
+  // A task's discussion is not a root of the stream (#868): a task event is one line here, and the discussion is in the task.
   const entries: StreamEntry[] = [
-    ...roots.filter((root) => !resultOf(root)).map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
+    ...roots.map((root) => ({ kind: 'root' as const, key: root.conversationId, at: root.message.createdAt, root })),
     ...notices.filter((notice) => from === null || notice.createdAt >= from)
       .map((notice) => ({ kind: 'notice' as const, key: `notice-${notice.id}`, at: notice.createdAt, notice })),
-    ...shownObjects.map((object) => {
-      const thread = object.kind === 'result.recorded' ? threads.get(object.resultId) : undefined;
-      return { kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object, ...(thread ? { thread } : {}) };
-    }),
+    ...shownObjects.map((object) => ({ kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object })),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at) || ORDER[a.kind] - ORDER[b.kind]);
 }
@@ -340,8 +332,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // discussed-task chips name. This view keeps its own reading position (below); the reads never move it.
   const rootIds = useMemo(() => roots.map((root) => root.message.id), [roots]);
   const messageWork = useMessageWorkRead(meId, project.id, `stream:${project.id}`, rootIds, feedRef, feedNode);
-  const referenceIds = useMemo(() => [...new Set([...notices.map((notice) => `work:${notice.workId}`),
-    ...roots.flatMap((root) => root.task ? [`work:${root.task.workId}`] : [])])].sort(), [notices, roots]);
+  const referenceIds = useMemo(() => [...new Set(notices.map((notice) => `work:${notice.workId}`))].sort(), [notices]);
   const referenceWork = useReferenceWork(meId, project.id, referenceIds, feedNode, true);
   // A read refused because access ended reloads the route (onDenied); other failures keep the stream readable.
   const deniedRef = useRef(onDenied);
@@ -369,8 +360,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const receiptTick = useReceiptTick(receiptRuns.length > 0);
   const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: revealed, feed: feedRef,
-    ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id]
-      : entry.kind === 'object' && entry.thread && entry.thread.message.authorId !== meId ? [entry.thread.message.id] : []), depend: entries.length });
+    ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
   const columnRef = useRef<HTMLDivElement>(null);
   // A short stream sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
@@ -654,8 +644,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
                   follows={!divider && followsProposal(entry.object, previousObject(display[index - 1]))}
-                  observeId={entry.thread && entry.thread.message.authorId !== meId ? entry.thread.message.id : undefined}
-                  task={entry.thread?.task ? { number: entry.thread.task.number, title: entry.thread.task.title, replies: entry.thread.replyCount, open: entry.thread.conversationId === openId, onOpen: () => openRoot(entry.thread!, false) } : undefined}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
@@ -668,7 +656,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const groupLast = !sameMessageAuthor(root.message, nextMessage);
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
-                  taskRow={root.task ? referenceWork.rows.get(`work:${root.task.workId}`) ?? null : null}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   observed={root.message.authorId !== meId} seenBy={(seen.get(root.message.id) ?? []).map((person) => person.name)}
                   onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId })} onDenied={onDenied} />];
@@ -822,7 +809,7 @@ function UnreadDivider() {
 type RootItemProps = {
   continued?: boolean; groupLast?: boolean;
   root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
-  messageWork: MessageWorkRead; taskRow: NativeWorkRow | null;
+  messageWork: MessageWorkRead;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
   /** Another person's root is watched for viewing receipts; `seenBy` names who observed every root of this author run. */
   observed?: boolean; seenBy?: readonly string[];
@@ -859,7 +846,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
     const queued = props as QueuedRootProps;
     return pendingMessageRow({ place: 'stream', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { root, project, owners, meId, messageWork, taskRow, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
+  const { root, project, owners, meId, messageWork, open, arrived, makeWork, onOpen, onOpenResult, onDenied } = stored;
   const mine = message.authorId === meId;
   return (
     <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
@@ -873,7 +860,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
-        <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
+        <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message.sourceDeleted ? <DeletedSourceCitation /> : null}
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />

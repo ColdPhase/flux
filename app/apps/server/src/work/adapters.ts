@@ -1,4 +1,4 @@
-import { agentStopRows, artifactResetRows, githubRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
+import { agentStopRows, artifactUseRows, githubRows, workRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
 import {
   createWorkContributions,
   createWorkUseCases,
@@ -20,7 +20,7 @@ export function workRepository(tx: DbExecutor): WorkRepository {
   const rows = workRows(tx);
   return {
     ...rows,
-    resetArtifact: (scope,boundary,retained)=>artifactResetRows(tx).canonical(scope,
+    artifactUsed: (scope,boundary,retained)=>artifactUseRows(tx).canonical(scope,
       {kind:boundary.kind,id:boundary.id},boundary,retained),
     /** A person's change of Owner ends a local client's hold with the stop's own rows (#985): slots first, then the task, then its units. */
     lockAgentSlots: (workspaceId, agentId) => agentStopRows(tx).lockSlots(workspaceId, agentId),

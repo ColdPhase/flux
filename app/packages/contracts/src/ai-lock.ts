@@ -122,9 +122,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   [`POST ${AGENT_RUNTIME_SIGN_OUT_PATH}`]: exempt(REDUCES),
   [`POST ${AGENT_RUNTIME_CHECK_PATH}`]: exempt(ACCOUNT),
   [`POST ${AGENT_RUNTIME_NOTICE_PATH}`]: exempt(ACCOUNT),
-  // Co-work (#153) and agent threads.
-  'GET /api/v1/work/:workId/agent-thread': exempt('Existing agent-thread messages stay readable as history'),
-  'POST /api/v1/work/:workId/agent-thread': gated('params', 'workId', 'work'),
 };
 
 /**

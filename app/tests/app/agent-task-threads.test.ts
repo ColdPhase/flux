@@ -5,6 +5,7 @@ import { assistantChangeActionPath, assistantRunChangesActionPath, conversationA
   type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type TaskAgentState, type TaskDiscussion, type WorkDetailProjection, type WorkItem } from '@flux/contracts';
 import { agentLabel, answerLines, askableLines, MAX_EXCHANGE_TURNS, resolveAsked, takeAsk, taskAgentState, type Askable, type Principal, type TaskAgentFacts } from '@flux/core';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { db, pool } from './support/db.js';
 import { eventNow, withFault } from './support/db-faults.js';
 import { assistantScene, text, result, type AssistantScene } from './support/assistant-scene.js';
@@ -366,6 +367,30 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     await waitFor(async () => (await readTask(itself.task.id)).owner?.kind === 'human', 'the task to go back to Ada');
     assert.ok((await thread(itself.task.id)).includes(`I can't ask Planner (${names.jonas}'s agent): they are not in this task. This needs a person.`), 'an agent is not offered itself');
     assert.deepEqual(await answerRuns(itself.task.id), []);
+  });
+
+  test('C-51: after five agent messages in a row a run\'s report is still posted, and it gives no agent another turn', async () => {
+    const task = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${space.id}/work`, { body: { title: 'Compare the two barrels' } }), 201) as WorkItem;
+    expectStatus(await maja.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Please compare them', clientMessageId: randomUUID() } }), 201);
+    const planner: Principal = { kind: 'agent', id: agents.jonas! };
+    const write = (body: string) => taskDiscussionUseCases(db).contribute(planner, task.id, { body, clientMessageId: randomUUID() });
+    const limited = (error: unknown) => (error as { code?: string }).code === 'AGENT_TURN_LIMIT';
+    for (let i = 1; i <= 5; i++) await write(`Earlier agent line ${i}`);
+    await assert.rejects(write('A sixth line'), limited, 'the agent\'s own sixth message waits for a person');
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    const started = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { ownerUserId: jonas.id, agentId: agents.jonas!, workId: task.id, projectId: space.id,
+      conversationId: talk.conversationId!, prompt: `Task #${task.number}: Compare the two barrels`, clientRunId: randomUUID() }));
+    assert.ok(started.started, JSON.stringify(started));
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, agents.jonas]);
+    // The run ends: the drain posts its report as Planner's line, and the task follows "What it may do" as after any report.
+    await complete(started.run.id, 'The north barrel reads full at 92 cm.');
+    await waitFor(async () => (await readTask(task.id)).owner?.kind !== 'agent' || (await readTask(task.id)).status === 'done', 'the run\'s end to be handled');
+    const lines = await thread(task.id);
+    assert.deepEqual(lines.slice(-2), ['Earlier agent line 5', 'The north barrel reads full at 92 cm.'], lines.join(' | '));
+    // The report is Flux's line for the agent: it was not counted against the five, and it does not give a tool another turn either.
+    await assert.rejects(write('Still the sixth'), limited);
+    expectStatus(await maja.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Thanks, go on', clientMessageId: randomUUID() } }), 201);
+    assert.equal((await write('After a person')).body, 'After a person');
   });
 });
 

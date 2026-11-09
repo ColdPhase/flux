@@ -111,7 +111,7 @@ async function assertAuthorColumn(row: Locator, width: number) {
   }
   const geometry = await row.evaluate((el) => {
     const face = el.querySelector<HTMLElement>(':scope > :is(.ui-avatar, .author-face), :scope > .thread__root-meta > :is(.ui-avatar, .author-face)')!;
-    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta, .agents-msg__meta')!;
+    const meta = el.querySelector<HTMLElement>('.project-convo__message-meta, .thread__root-meta, .convo-notice__meta')!;
     const r = el.getBoundingClientRect();
     const f = face.getBoundingClientRect();
     const m = meta.getBoundingClientRect();
@@ -415,7 +415,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
         const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
         // The board's transparent stretched task button owns hits over its metadata.
         // Accept that same card/row hit surface, but reject a different overlay or panel.
-        const surface = label.closest('.tb-card, .ws-item, .wd-activity, .details, .agents-msg');
+        const surface = label.closest('.tb-card, .ws-item, .wd-activity, .details');
         return { text: label.innerText, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
           inViewport: rect.x >= 0 && rect.y >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
           uncovered: !!hit && (hit === label || label.contains(hit) || !!surface?.contains(hit)),
@@ -478,19 +478,6 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await page.locator('.details .agent-for').waitFor();
     assert.equal(await page.locator('.details .agent-for').innerText(), 'for Scoped Casey');
     await capture('scoped-owner-decision-details', '.details .agent-for');
-    await page.keyboard.press('Escape');
-    await page.locator('#details').waitFor({ state: 'detached' });
-    // The agents' thread is a row in the task's Details (a space has no Agents view, #857): open it there.
-    await page.goto(`/projects/${place.id}/tasks?open=work:${task.id}`);
-    await page.getByRole('button', { name: /^Agents’ thread/ }).click();
-    await page.locator('.agents-msg__meta .agent-for').waitFor();
-    assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
-    await assertAuthorColumn(page.locator('.agents-msg').first(), 1440);
-    const messageBody = await page.locator('.agents-msg__body').first().boundingBox();
-    const messageMeta = await page.locator('.agents-msg__meta').first().boundingBox();
-    assert.ok(messageBody && messageMeta && Math.abs(messageBody.x - messageMeta.x) <= 1,
-      'the actual Agents reply starts in its author content column');
-    await capture('scoped-owner-agents-thread', '.agents-msg__meta .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
     await page.goto(`/projects/${place.id}/tasks`);

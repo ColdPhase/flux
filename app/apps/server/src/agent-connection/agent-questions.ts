@@ -82,7 +82,8 @@ export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Datab
     description: 'Ask one person in an existing project conversation (including a task\'s discussion thread) a question and offer two to four '
       + 'ready answers; they answer with one tap or in their own words, and their answer is the next message of the thread. Needs the '
       + 'runtime from flux_bootstrap. The question is your message; the person gets a question notification. '
-      + 'An answer never grants you anything. Ask only what you truly cannot decide, and carry on with other authorized work meanwhile.',
+      + 'An answer never grants you anything. Ask only what you truly cannot decide, and carry on with other authorized work meanwhile. '
+      + 'In a task\'s discussion at most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT).',
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'),
       question: z.string().min(1).max(AGENT_QUESTION_LIMITS.question).describe('One clear question.'),

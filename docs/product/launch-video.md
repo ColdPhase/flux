@@ -35,8 +35,8 @@ than was checked:
   steps were walked with Claude Code and Codex on 2026-10-23 and 2026-10-30 (see the
   [time to first run](../development/time-to-first-run.md) sections of those dates).
 - **Tier B, not checked on the demo project.** Shot 7, "hand a task to the agent and see someone resume it".
-  The Agents tab, the two-step hand-off and the agent's thread have browser tests with fixtures
-  (`app/tests/ui/test_agents_handoff.py`, `test_agent_threads.py`), and `./scripts/check_mcp_clients.sh`
+  The Agents tab and the two-step hand-off have browser tests with fixtures
+  (`app/tests/ui/test_agents_handoff.py`), and `./scripts/check_mcp_clients.sh`
   runs real Claude Code and Codex with scripted models. A real Codex (0.160.1) and a real Claude Code
   (2.1.285) ran Start, a changed plan and Resume with their own accounts
   ([#751](https://github.com/ColdPhase/flux/pull/751), `docs/development/evidence/160-workflow/`), but that

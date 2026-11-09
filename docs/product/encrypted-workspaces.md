@@ -728,11 +728,10 @@ enum, boolean or timestamp (V). One registry, `SEALED_COLUMNS` in `packages/db/s
 holds every S and D entry with its field name and identity columns. `VISIBLE_COLUMNS` holds every
 text or jsonb V column of these tables with a one-line reason.
 
-**The registry is checked against the live database, not `schema.ts`.** Sixteen tables exist only in
-migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_webhook_events`,
-`cowork_review_verdicts`, `agent_thread_artifact_boundaries`, `agent_thread_artifact_mutations`,
-`agent_thread_artifact_resets`, `agent_thread_guard_events` and seven `agent_runtime_*` tables
-(found by comparing `CREATE TABLE` in `packages/db/migrations` with `schema.ts`, 2026-10-23; `cowork_review_verdicts` went in #973). The
+**The registry is checked against the live database, not `schema.ts`.** Eleven tables exist only in
+migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_webhook_events` and seven `agent_runtime_*` tables
+(found by comparing `CREATE TABLE` in `packages/db/migrations` with `schema.ts`, 2026-10-23; `cowork_review_verdicts` went in #973 and the
+`agent_thread_*` tables in #868). The
 [registry test](#tests-and-acceptance-criteria) reads `information_schema.tables` and `columns` for
 the `public` schema after all migrations. It requires every table to be in `TABLE_CLASSES` as
 **content** (columns classified as above), **account** (user, session, OAuth, push and preference
@@ -790,7 +789,7 @@ refuse AI work. Its `ai_work_admission` trigger (0115) guards only six tables (`
 `proactive_comparison_outbox`, `assistant_reaction_events`, `cowork_requests`, `cowork_units`,
 `agent_runtime_sessions`). S1 therefore adds `sealed_workspace_no_ai`, a `BEFORE INSERT` trigger on
 **every table of class AI** that can carry content or name a workspace: `agents`, `agent_*`,
-`agent_thread_*`, `agent_runtime_*` (those with a workspace), `assistant_*`, `cowork_*`,
+`agent_runtime_*` (those with a workspace), `assistant_*`, `cowork_*`,
 `personal_run*`, `proactive_comparison_*`, `agent_proposals`, `agent_questions`,
 `assistant_join_question_identity_snapshots` and `background_compute_connections` where it names a
 workspace. It raises `WORKSPACE_ENCRYPTED_AI_OFF` when the row's workspace (direct or through its
@@ -1159,7 +1158,7 @@ an **encrypted index at rest, decrypted into RAM**:
   operator the SQL path uses (`title %> query`, `word_similarity` at `pg_trgm.word_similarity_threshold`, 0.6; the earlier
   text said 0.3, which is the threshold of the other operator). It is the best share of the query's trigrams in a continuous
   extent of the title's trigrams, found through a trigram posting list so only titles that share enough trigrams are compared.
-  A task reverted at creation (#238) and a task agent thread's messages are not findable, as in SQL.
+  A task reverted at creation (#238) is not findable, as in SQL.
 - **Access before ranking.** The visible audience keys come from `policySearchAccess` on every request,
   as today. The in-RAM lookup reads only the partitions of those keys, so hidden rows never become
   candidates. The `EXPLAIN (BUFFERS)` saturation property applies to the SQL part. For the in-RAM part

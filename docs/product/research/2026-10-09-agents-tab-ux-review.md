@@ -905,7 +905,7 @@ Issue-sized body, ready to file in milestone 2:
 >     - a unique partial index on `(work_id) where space = 'agents'`.
 >   - `FLUX_SCHEMA_VERSION` equals the highest numbered migration actually present,
 >     including the reserved 0082. The reverse refuses while an agents-space conversation
->     exists. The accepted clarification is in [the implementation contract](../../development/agent-threads.md).
+>     exists. The accepted clarification is in the implementation contract (removed in #868 with the agents’ thread).
 >   - The thread is created on the first post. Concurrent first posts create one thread.
 >     `created_by` follows the rule that `flux_start_conversation` uses for agent-started
 >     conversations.

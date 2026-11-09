@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AgentCommandReceipt, AgentExecutionCommand, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, agentThreadGuardRows, accessReader, type Transaction } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, taskDiscussionRows, accessReader, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normalizeAgentExecution, validateAgentPostconditions,
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
   type NormalizedAgentExecutionCommand } from '@flux/core';
@@ -32,10 +32,10 @@ function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
 }
 /** One trusted port bound to this exact caller-owned TX. It never commits, flushes events or opens a receipt TX. */
 export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClaims,
-  domain: AgentExecutionDomainChecks = {}, privateTarget?: 'task-agent-thread/v1'): AgentExecutionPort<Transaction> {
+  domain: AgentExecutionDomainChecks = {}, privateTarget?: 'task-discussion/v1'): AgentExecutionPort<Transaction> {
   claims = Object.freeze({ ...claims });
   const rows = agentExecutionRows(tx);
-  const threadRows = agentThreadGuardRows(tx);
+  const discussionRows = taskDiscussionRows(tx);
   const handles = new WeakMap<AgentExecutionScope<Transaction>, Prepared>();
   const recheck = async (prepared: Prepared) => {
     const { command, runtime, context } = prepared;
@@ -80,7 +80,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         : condition.kind === 'cowork.unit_state'
         ? !!domain.coordinationUnitPostcondition && await domain.coordinationUnitPostcondition(tx, prepared.context, prepared.command, condition)
         : privateTarget && condition.kind === 'message'
-        ? await threadRows.containsMessage(prepared.command.objectId!, condition.id,
+        ? await discussionRows.containsMessage(prepared.command.objectId!, condition.id,
           { workspaceId: prepared.context.workspaceId, projectId: prepared.command.projectId })
         : await rows.nativePostcondition(prepared.context.workspaceId, prepared.command.projectId, condition,
           CONTAINED.includes(prepared.command.operation) ? prepared.command.objectId ?? undefined : undefined);

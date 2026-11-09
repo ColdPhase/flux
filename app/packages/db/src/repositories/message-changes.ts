@@ -24,8 +24,8 @@ const f = schema.projectFiles;
 const r = schema.messageReferences;
 const dm = schema.dmMessages;
 
-/** A project message, opened, and the conversation it sits in. */
-export type LockedProjectMessage = Omit<typeof m.$inferSelect, 'requestFingerprint'> & { space: string };
+/** A project message, opened. */
+export type LockedProjectMessage = Omit<typeof m.$inferSelect, 'requestFingerprint'>;
 
 /**
  * The notices that carried a message's words to people go with it. A reply notice also quotes the opening message of its
@@ -62,9 +62,8 @@ export function messageChangeRows(db: DbExecutor) {
     async lockProject(conversationId: string, messageId: string): Promise<LockedProjectMessage | null> {
       const [row] = await db.select().from(m).where(and(eq(m.id, messageId), eq(m.conversationId, conversationId))).for('update');
       if (!row) return null;
-      const [conversation] = await db.select({ space: schema.projectConversations.space }).from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
       const [opened] = await openRows(db, 'project_messages', [row]);
-      return { ...opened!, space: conversation?.space ?? 'people' };
+      return opened!;
     },
 
     /** Overwrites the words. Returns the new `edited_at`. */

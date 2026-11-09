@@ -842,8 +842,8 @@ class AdaptiveMatrix(AdaptiveBase):
                        for body in ("Can we test the lamp tonight?", "Yes, after seven.")]
         # A private reply thread on the first direct message: its root and one reply.
         fx.api(colleague, "POST", f"/api/v1/dms/{dm}/threads/{dm_messages[0]}/replies", {"body": "I will bring the spare driver.", "clientMessageId": str(uuid.uuid4())})
-        # A task whose thread holds its first contribution and one reply, for the Agents view's task thread. It lives in a
-        # project of its own: a task thread is also a root of its project's conversation, and test_08 counts that stream.
+        # A task whose thread holds its first contribution and one reply, for the task panel. It lives in a
+        # project of its own, so test_08's count of its stream is not changed by it.
         tasks = fx.api(person, "POST", f"/api/v1/workspaces/{workspace}/projects", {"name": "Short task thread", "visibility": "restricted"})["id"]
         task = fx.api(person, "POST", f"/api/v1/projects/{tasks}/work", {"title": "Mount the lamp sensor"})["id"]
         for body in ("Mount it under the shelf, cable to the left.", "The bracket is in the second drawer."):
@@ -873,7 +873,7 @@ class AdaptiveMatrix(AdaptiveBase):
 
     def test_09_a_short_thread_and_a_short_direct_message_stay_connected_to_their_fields(self) -> None:
         """ADAPT-2: the same holds for a thread (its root and one reply), a direct message (two messages), a direct
-        message's private reply thread (its root and one reply) and the Agents view's task thread (two messages): the newest
+        message's private reply thread (its root and one reply) and a task's discussion in its panel (two messages): the newest
         message sits against its field."""
         world = self.short_world()
         gaps = {"thread": {}, "direct message": {}, "direct message thread": {}}

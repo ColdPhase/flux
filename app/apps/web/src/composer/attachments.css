@@ -34,10 +34,9 @@ a.file-row:hover .file-row__act { color: var(--t1); }
 .is-mine > .message-bubble .msg-quote { color: var(--t1); }
 .is-mine > .message-bubble .msg-quote__author { color: var(--t1); }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card) { min-width: 0; max-width: 100%; margin: 0; }
-.is-mine > .message-bubble, .agents-msg--own > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
+.is-mine > .message-bubble { border-radius: var(--r-lg) 6px var(--r-lg) var(--r-lg); background-color: var(--inv); background-image: var(--grad-inv); color: var(--oninv); }
 @media (max-width: 760px) { .message-bubble { padding: 11px 14px; } }
 /* A wrapper alone does not turn legacy unframed text-only excerpts into cards. */
-.agents-msg:not(.agents-msg--own) > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .wd-pending__item > .message-bubble:not(:has(.message-files)):not(.photo-grid + .message-bubble),
 .details__sec > .message-bubble { padding: 0; border-radius: 0; background: none; box-shadow: none; color: inherit; }
 
@@ -212,7 +211,7 @@ span.photo-grid__open { cursor: default; }
 
 /* Spokój: every conversation uses this bubble, including files, photos and references. */
 .message-bubble { color: var(--t1); box-shadow: inset 0 0 0 1px var(--line); }
-.is-mine > .message-bubble, .agents-msg--own > .message-bubble { background: var(--own); color: var(--t1); box-shadow: none; }
+.is-mine > .message-bubble { background: var(--own); color: var(--t1); box-shadow: none; }
 .message-bubble:has(.message-files, .link-preview, .link-previews:not(:empty), .ws-chip, .wiki-card, .photo-grid) { width: max-content; min-width: min(100%, 300px); max-width: 100%; }
 .message-bubble > :is(.message-files, .link-previews, .ws-attach, .wiki-card, .photo-grid) { width: 100%; }
 .message-bubble .photo-grid { margin: 0; max-width: 100%; }

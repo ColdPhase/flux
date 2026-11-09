@@ -64,9 +64,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   /**
    * An agent's line in the task's discussion. A line that is the content of a run (its report, its question, its answer) is also that
    * run's change, so its owner can delete it at any time, whoever answered it since (TA-3, #923, #938); a status line is not.
+   * Flux writes these lines for the agent (`byFlux`): they are bounded by the run and by TA-3's exchange limit, so the five-in-a-row
+   * limit of the discussion never refuses one and does not count it (C-51). A report after five agent messages is still posted.
    */
   async function say(tx: Transaction, work: WorkRecord, as: string, body: string, key: string, madeBy?: RunRow) {
-    const message = await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(agent(as), work.id, { body, clientMessageId: uuidFrom(`agent-task:${key}`) }));
+    const message = await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(agent(as), work.id,
+      { body, clientMessageId: uuidFrom(`agent-task:${key}`) }, { byFlux: true }));
     if (message && madeBy) await recordPost(tx, madeBy, message, key);
   }
 

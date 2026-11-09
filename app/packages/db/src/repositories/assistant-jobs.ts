@@ -136,12 +136,12 @@ export function assistantJobRows(db: DbExecutor) {
     /** The project's latest conversation of people: where a silent run is anchored. */
     async anchorConversation(projectId: string) {
       const c = schema.projectConversations;
-      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.projectId, projectId), eq(c.space, 'people'))).orderBy(desc(c.createdAt), desc(c.id)).limit(1);
+      const [row] = await db.select({ id: c.id }).from(c).where(eq(c.projectId, projectId)).orderBy(desc(c.createdAt), desc(c.id)).limit(1);
       return row?.id ?? null;
     },
     async conversationInProject(projectId: string, conversationId: string) {
       const c = schema.projectConversations;
-      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.id, conversationId), eq(c.projectId, projectId), eq(c.space, 'people')));
+      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.id, conversationId), eq(c.projectId, projectId)));
       return Boolean(row);
     },
   };

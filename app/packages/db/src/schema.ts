@@ -603,17 +603,10 @@ export const projectConversations = pgTable('project_conversations', {
   projectId: uuid('project_id').notNull(),
   createdBy: text('created_by'),
   createdByAgentId: uuid('created_by_agent_id'),
-  /** #400: ordinary history remains people; a task's agent thread has its exact task audience. */
-  space: text('space', { enum: ['people', 'agents'] }).notNull().default('people'),
-  workId: uuid('work_id'),
   nextSequence: integer('next_sequence').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.workspaceId, table.projectId, table.id),
-  uniqueIndex('project_conversations_agent_work_idx').on(table.workId).where(sql`${table.space} = 'agents'`),
-  check('project_conversations_agent_work_check', sql`(${table.space} = 'agents') = (${table.workId} IS NOT NULL)`),
-  foreignKey({ name: 'project_conversations_agent_work_fk', columns: [table.workspaceId, table.projectId, table.workId],
-    foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_conversation_exact_actor', sql`num_nonnulls(${table.createdBy}, ${table.createdByAgentId}) = 1`),
@@ -692,6 +685,11 @@ export const projectMessages = pgTable('project_messages', {
   removedAt: timestamp('removed_at', { withTimezone: true }),
   /** The author changed the words after sending them (migration 0029, #1006); the earlier words are not kept. */
   editedAt: timestamp('edited_at', { withTimezone: true }),
+  /**
+   * Flux wrote this line for an in-app agent: its run report, its question to another agent, the answer or a status line (migration
+   * 0040, C-51). The five-in-a-row limit of a task's discussion neither counts nor refuses it; only an agent's line can be one.
+   */
+  byFlux: boolean('by_flux').notNull().default(false),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
@@ -709,6 +707,7 @@ export const projectMessages = pgTable('project_messages', {
   check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
   check('project_message_attachment_count', sql`${table.attachmentCount} BETWEEN 0 AND 10`),
   check('project_message_body_or_attachments', sql`length(btrim(${table.body})) <= 100000 AND (length(btrim(${table.body})) >= 1 OR ${table.attachmentCount} > 0)`),
+  check('project_message_by_flux_agent', sql`NOT ${table.byFlux} OR ${table.authorAgentId} IS NOT NULL`),
 ]);
 
 /**

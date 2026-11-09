@@ -5,7 +5,7 @@ Not part of normal test_*.py discovery. Run it through the pinned UI stack with 
 three agent connections, a ten-root conversation, a linked map, tasks, a Wiki page), then adds a short task thread and a direct
 message with a private reply thread, so the review sees short work streams on tall screens too.
 
-Surfaces: the project conversation, the map, the tasks board, the Wiki page, the Agents view with a task's thread open, and a
+Surfaces: the project conversation, the map, the tasks board, the Wiki page, a task's panel with its discussion, and a
 direct message with its reply thread open. Windows: 320×568, 390×844 (phones, touch), 820×1180 (tablet, touch), 1440×900,
 2560×1440 and 3440×1440 (mouse), at device pixel ratio 1. Each file is `<surface>-<width>x<height>-<theme>.png`.
 Emulated viewports in headless Chromium or WebKit (FLUX_UI_BROWSER), not devices. The screenshots prove nothing about
@@ -61,7 +61,7 @@ class AdaptiveReviewShots(unittest.TestCase):
             ("map", f"/projects/{p}/map/{self.ids['sketch']}", ".sk-node"),
             ("tasks", f"/projects/{p}/tasks", ".tb-board, .ws-task"),
             ("wiki", f"/projects/{p}/docs/{self.ids['doc']}", "h2"),
-            ("tasks-details", f"/projects/{p}/tasks?open=work:{self.task}", ".agents-msg"),
+            ("tasks-details", f"/projects/{p}/tasks?open=work:{self.task}", ".wd-act__item--message"),
             ("dm-thread", f"/dm/{self.dm}?thread={self.dm_root}", "[data-dm-thread] .thread__list > li"),
         ]
 

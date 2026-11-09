@@ -456,7 +456,7 @@ function AppLayoutContent() {
     let timer = 0;
     const field = (el: EventTarget | null) => el instanceof HTMLTextAreaElement || (el instanceof HTMLElement && el.isContentEditable)
       || (el instanceof HTMLInputElement && !['checkbox', 'radio', 'file', 'range', 'button', 'submit', 'reset', 'color'].includes(el.type));
-    const group = (el: EventTarget | null) => (el instanceof Element ? el.closest('.composer, .agents-composer, form') : null);
+    const group = (el: EventTarget | null) => (el instanceof Element ? el.closest('.composer, form') : null);
     const onIn = (event: FocusEvent) => {
       if (field(event.target)) { window.clearTimeout(timer); app.dataset.typing = 'true'; }
       else if (app.dataset.typing && group(event.target)) window.clearTimeout(timer);

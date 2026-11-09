@@ -126,8 +126,10 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.deepEqual(conversation.messages.map((m) => m.body), [c.message, c.reply, c.large], side);
       assert.equal(conversation.firstMessageBody, c.message);
       const roots = expectStatus(await ben.browser.request('GET', `/api/v1/projects/${id.project}/conversation-roots`), 200) as { roots: { message: { body: string } }[] };
-      // The move into Blocked posts its reason into the task's discussion, which is a root of its own.
-      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message, c.blocker]);
+      // The move into Blocked posts its reason into the task's discussion, which is read in the task and is no root of the stream (#868).
+      assert.deepEqual(roots.roots.map((root) => root.message.body), [c.message]);
+      const talk = expectStatus(await ben.browser.request('GET', `/api/v1/work/${id.task}/discussion`), 200) as { messages: { body: string }[] };
+      assert.deepEqual(talk.messages.map((m) => m.body), [c.blocker], `${side}: the discussion of the task`);
       const dm = expectStatus(await ben.browser.request('GET', `/api/v1/dms/${id.dm}`), 200) as { title: string | null; messages: { body: string }[] };
       assert.deepEqual({ title: dm.title, bodies: dm.messages.map((m) => m.body) }, { title: c.dmTitle, bodies: [c.dmMessage] }, side);
       const dms = expectStatus(await ben.browser.request('GET', `/api/v1/workspaces/${side === 'A' ? A : B}/dms`), 200) as { items: { title: string | null; lastMessageBody?: string | null }[] };
@@ -555,11 +557,6 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.equal((await ben.browser.request('GET', `/api/v1/decisions/${ids.A.decision}`)).status, 423);
     expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
     assert.equal((await send()).status, 201);
-  });
-
-  test('creating a decision in A works: the agent-thread witnesses skip a sealed workspace (no 409 WORKSPACE_ENCRYPTED_AI_OFF)', async () => {
-    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM agent_thread_artifact_mutations WHERE workspace_id = $1`, [A])).rows[0].n, 0);
-    assert.ok((await pool.query(`SELECT count(*)::int AS n FROM agent_thread_artifact_mutations WHERE workspace_id = $1`, [B])).rows[0].n > 0, 'B is witnessed as before');
   });
 
   test('a write the application did not seal is refused by the backstop for A, never stored; the same write passes for B', async () => {

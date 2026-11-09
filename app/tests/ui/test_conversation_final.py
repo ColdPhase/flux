@@ -683,8 +683,8 @@ class ConversationFinal(unittest.TestCase):
         self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", posted["messages"][0]["id"]), "the divider is right above the first unread message")
 
     def test_17_a_result_on_a_task_without_a_discussion_shows_once(self) -> None:
-        """#763 A1: a result recorded on a task that had no discussion yet is one line and one card in the stream; the
-        line names the task, which opens that task's discussion with the result in it."""
+        """#763 A1, #868: a result recorded on a task that had no discussion yet is one line and one card in the stream, and no message
+        or thread there; its contribution is in the task's discussion, in the task."""
         page = self.page("ada")
         pid = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Results once", "visibility": "restricted"})["id"]
         task = self.api(page, "POST", f"/api/v1/projects/{pid}/work", {"title": "Try the resistive probes from the old kit", "clientCommandId": str(uuid.uuid4())})
@@ -695,10 +695,9 @@ class ConversationFinal(unittest.TestCase):
         expect(page.get_by_role("button", name=re.compile(r"^Open result Resistive probes corrode"))).to_have_count(1)
         expect(page.locator(".project-convo__message")).to_have_count(0)
         expect(page.locator(".project-convo__contribution")).to_have_count(0)
-        expect(line.locator(".convo-notice__what")).to_have_text(f"recorded a negative result on #{task['number']}")
-        line.get_by_role("button", name=re.compile(rf"^Open the discussion of task #{task['number']}")).click()
-        thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
-        expect(thread.get_by_text("Resistive probes corrode within three weeks").first).to_be_visible()
+        expect(line.locator(".convo-notice__what")).to_have_text("recorded a negative result")
+        page.goto(f"/projects/{pid}/tasks?open=work:{task['id']}")
+        expect(page.get_by_role("list", name="Task activity").get_by_text("Resistive probes corrode within three weeks").first).to_be_visible()
 
 
 if __name__ == "__main__":
