@@ -98,6 +98,11 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
     assert.deepEqual([afterBlocker.root?.body, afterBlocker.root?.contribution, afterBlocker.root?.authorId],
       ['Waiting for the replacement hinge', { kind: 'blocker' }, writer.id]);
     const path = `/projects/${place.id}/conversations/${afterBlocker.conversationId}`;
+    // The status line saved before the reason says none, so the reason is shown in the task's Activity, marked (#1146).
+    const savedLine = page.getByRole('list', { name: 'Task activity' }).locator(`[data-message-id="${afterBlocker.rootMessageId}"]`);
+    await savedLine.waitFor();
+    assert.match(await savedLine.innerText(), /Waiting for the replacement hinge/);
+    assert.equal(await savedLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
 
     // 2. The line saved at Done ("What came of it") appears in the same conversation, once, with exactly the saved text.
     const finishedStatus = page.waitForResponse((response) => response.request().method() === 'PATCH' && new URL(response.url()).pathname === `/api/v1/work/${task.id}`);
@@ -125,13 +130,17 @@ test('a saved blocker, what came of a finished task and a handoff appear as mark
 
     // 4. Every contribution is shown in the task's discussion, for another member of the space, and the lines of an effect carry their kind.
     // The discussion is read in the task's Details (#868, #1048); a link to one of its messages opens it as a thread beside the stream,
-    // whose opening message is the blocker. That opening message draws no marker (its kind is asserted on the wire above).
+    // whose opening message is the blocker; the blocker's reason is also a marked line of the Details' Activity (#1146).
     const evidence = process.env.FLUX_E2E_EVIDENCE_DIR;
     for (const width of [1280, 390]) {
       const readerPage = await (await signedIn(reader, width)).newPage();
       readerPage.on('pageerror', (error) => errors.push(error.message));
       await readerPage.goto(`/projects/${place.id}/tasks?open=work:${task.id}`);
       const activity = readerPage.getByRole('list', { name: 'Task activity' });
+      const blockerLine = activity.locator(`[data-message-id="${afterBlocker.rootMessageId}"]`);
+      await blockerLine.waitFor();
+      assert.match(await blockerLine.innerText(), /Waiting for the replacement hinge/);
+      assert.equal(await blockerLine.locator('[data-contribution="blocker"]').innerText(), 'Saved as the task blocker');
       const cameOfItLine = activity.locator(`[data-message-id="${afterResult.messages[1]!.id}"]`);
       await cameOfItLine.waitFor();
       assert.match(await cameOfItLine.innerText(), /The new hinge holds at 40 N/);

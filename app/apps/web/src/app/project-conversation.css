@@ -37,7 +37,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 8px; }
 .project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
 .project-convo__composer .composer__audience > span { min-width: 0; overflow-wrap: anywhere; }
-.project-convo__read-only { padding: 8px 0; font-size: var(--fs-sm); color: var(--t2); line-height: 1.5; }
 .project-convo__current-thread { display: none; }
 /* Sources: saved text and links, opened from the composer and cited in one step. */
 .project-convo__materials { margin-bottom: 8px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), 0 6px 18px rgb(0 0 0 / .06); }
@@ -52,11 +51,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__material strong { display: block; font-weight: 500; }
 .project-convo__material small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .project-convo__material .ui-btn--link { flex: none; padding-inline: 0; }
-.project-convo__sources-btn { position: relative; width: auto; gap: 5px; padding: 0 8px; margin-left: -8px; font-size: var(--fs-xs); font-weight: 500; }
-.project-convo__sources-btn.composer__ask { display: inline-flex; align-items: center; }
-.project-convo__sources-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
-.project-convo__sources-n { font-family: var(--mono); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--sub); font-size: var(--fs-glyph); font-weight: 600; line-height: 16px; text-align: center; color: var(--t2); font-variant-numeric: tabular-nums; }
-.project-convo__sources-btn svg { flex: none; }
 .project-convo__citation { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--t2); padding: 4px 4px 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 6px; }
 .project-convo__citation button { min-width: 28px; min-height: 28px; }
 .project-convo__error { color: var(--t1); font-size: var(--fs-sm); margin-top: 6px; }
@@ -88,8 +82,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__publication { padding: 9px; border-radius: var(--r-sm); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); }
 .project-convo__person { color: inherit; text-decoration: none; border-radius: 4px; }
 .project-convo__person:hover { text-decoration: underline; text-underline-offset: 2px; }
-/* Ask my assistant (#68) sits after Sources; only Sources pulls into the box's padding. */
-.project-convo__sources-btn + .composer__ask { margin-left: 0; }
 
 /* F-026: a 32px author face and 12px gap on the author's side. Each
    bubble is only as wide as its content (up to 560px), so its actions stay beside it. */

@@ -149,9 +149,10 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     const out: Line[] = [];
     for (const entry of changes ?? []) out.push({ kind: 'change', key: `change-${entry.id}`, at: entry.at, entry });
     for (const message of messages) {
-      // The reason a task was blocked with is also contributed to its discussion; the change line already says it.
+      // The reason a task was blocked with is also contributed to its discussion. The change line already says it only when it was
+      // saved with the status, in one request; a reason saved after the status (the unified panel's Edit) is on no line but this message.
       const said = message.contribution?.kind === 'blocker' && (changes ?? []).some((entry) => entry.kind === 'status' && entry.status?.to === 'blocked'
-        && Math.abs(Date.parse(entry.at) - Date.parse(message.createdAt)) < 15_000);
+        && entry.status.blocker === message.body && Math.abs(Date.parse(entry.at) - Date.parse(message.createdAt)) < 15_000);
       if (!said) out.push({ kind: 'message', key: `message-${message.id}`, at: message.createdAt, message });
     }
     if (item.lifecycle?.state === 'creation_reverted') out.push({ kind: 'reverted', key: 'reverted', at: item.lifecycle.revertedAt, actor: item.lifecycle.revertedBy });

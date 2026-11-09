@@ -87,9 +87,6 @@ function watchErrors(page: Page) {
   });
   page.on('requestfinished', (request) => pending.delete(request));
   page.on('requestfailed', (request) => pending.delete(request));
-  // Chromium reports a fetch finished only once the page has read its body, and the app never reads the sign-out answer
-  // (signOutDevice checks its status only). A write is done when it is answered; only reads are waited for.
-  page.on('response', (response) => { if (response.request().method() !== 'GET') pending.delete(response.request()); });
   page.on('pageerror', (error) => { pageErrors.push(error.message); console.error(`pageerror at ${page.url()}: ${error.message}`); });
 }
 const disconnected = new WeakSet<BrowserContext>();

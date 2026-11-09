@@ -9,7 +9,7 @@ import { assessReceiverQuality, readReceiverSample, RECEIVER_QUALITY_LIMITS } fr
 import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
 import { mediaPage } from '../support/live-sfu.js';
 import { connect, dtlsSrtpViolations, dtlsTransports, markResourcePhase, receiverReports,
-  selectedCandidates } from '../support/live-turn.js';
+  selectedCandidates, waitForPage } from '../support/live-turn.js';
 
 let browser: Browser | undefined;
 after(async () => browser?.close());
@@ -88,7 +88,7 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
         }
       }
     });
-    await memberPage.waitForFunction(async () => {
+    await waitForPage(memberPage, async () => {
       const pcs = (window as Window & { fluxPcs?: RTCPeerConnection[] }).fluxPcs ?? [];
       for (const pc of pcs) {
         const stats = await pc.getStats();
@@ -103,7 +103,7 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
         }
       }
       return false;
-    }, undefined, { timeout: 20_000 });
+    }, 20_000);
 
     const ownerCandidates = await selectedCandidates(ownerPage);
     const memberCandidates = await selectedCandidates(memberPage);
@@ -619,14 +619,14 @@ test('isolated headed Chromium publishes real display capture and virtual camera
               document.body.append(video);
             }
       });
-      await viewerPage.waitForFunction(async () => {
+      await waitForPage(viewerPage, async () => {
         const w = window as Window & { fluxPcs?: RTCPeerConnection[] };
         const stats = (await Promise.all((w.fluxPcs ?? []).map((pc) => pc.getStats())))
           .flatMap((report) => [...report.values()]);
         return stats.filter((item) => item.type === 'inbound-rtp' && item.kind === 'video' &&
           item.framesDecoded > 0).length >= 2 && stats.some((item) =>
           item.type === 'inbound-rtp' && item.kind === 'audio' && item.packetsReceived >= 3);
-      }, undefined, { timeout: 40_000 });
+      }, 40_000);
       await viewerPage.screenshot({ path: '/artifacts/isolated-device-viewer.png', fullPage: true });
       const publisherCandidates = await selectedCandidates(publisherPage);
       const viewerCandidates = await selectedCandidates(viewerPage);

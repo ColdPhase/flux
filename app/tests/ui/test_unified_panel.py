@@ -296,6 +296,32 @@ class UnifiedPanel(unittest.TestCase):
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("blocked", "Waiting for the label printer to arrive"))
 
+    def test_07b_a_blocker_saved_after_the_status_shows_its_reason_in_the_activity(self):
+        # The panel saves the status first and the reason after Edit: the status line says no reason, so Activity shows the message (#1146).
+        task = self.new_task("Fit the hinge")
+        page = self.page()
+        panel = self.open_task(page, task)
+        panel.get_by_role("button", name="Status", exact=True).click()
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Blocked").click()
+        card = panel.get_by_role("region", name="Blocker")
+        card.get_by_role("button", name="Edit", exact=True).click()
+        card.get_by_label("What is it waiting for?").fill("Waiting for the replacement hinge")
+        card.get_by_role("button", name="Save").click()
+        activity = panel.get_by_role("list", name="Task activity")
+        reason = activity.locator("li[data-message-id]")
+        expect(reason).to_have_count(1)
+        expect(reason).to_contain_text("Waiting for the replacement hinge")
+        expect(reason.locator("[data-contribution='blocker']")).to_have_text("Saved as the task blocker")
+        expect(activity).to_contain_text("marked it blocked")
+        items = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")["items"]
+        self.assertEqual([(item["status"]["to"], item["status"]["blocker"]) for item in items if item["kind"] == "status"], [("blocked", None)])
+        # Saved together with the status, in one request, the status line says the reason and the message is not shown twice.
+        together = self.new_task("Fit the second hinge", blocker="Waiting for the supplier")
+        panel = self.open_task(page, together)
+        expect(panel.get_by_role("link", name="Open in Conversation")).to_be_visible()  # the discussion is read: the reason is in it
+        expect(panel.get_by_role("list", name="Task activity")).to_contain_text("marked it blocked: Waiting for the supplier")
+        expect(panel.get_by_role("list", name="Task activity").locator("li[data-message-id]")).to_have_count(0)
+
     def test_08_the_composer_writes_to_the_activity_with_its_author_and_time(self):
         task = self.new_task("Choose the mast height")
         page = self.page()
