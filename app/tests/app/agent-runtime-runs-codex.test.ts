@@ -213,6 +213,12 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
       assert.equal(await processor.process(started.run.id), status, name || 'max_turns');
       assert.deepEqual([(await row(started.run.id)).end_reason, (await row(started.run.id)).answer_body], [reason, null], name || 'max_turns');
       assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, `${name}: never rerun`);
+      if (name === 'run_expired_login') {
+        // #1129: the dead sign-in shows *Sign in again* in Settings too, so no next run starts on it; the owner signs in again.
+        const signIn = await pool.query<{ state: string }>(`SELECT state FROM agent_runtime_connections WHERE owner_user_id = $1 AND client = 'codex'`, [owner.id]);
+        assert.equal(signIn.rows[0]?.state, 'sign_in_again');
+        await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now() WHERE owner_user_id = $1 AND client = 'codex'`, [owner.id]);
+      }
     }
     assert.equal(compute.dispatched.length, 0);
   });

@@ -312,6 +312,12 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       if (name === 'run_plan_limit') assert.equal((stored.plan_limit_resets_at as Date).toISOString(), new Date(1791374400 * 1000).toISOString());
       // Never rerun: the run is final and no second CLI start was recorded for it.
       assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, name);
+      if (name === 'run_expired_login') {
+        // #1129: the dead sign-in shows *Sign in again* in Settings too, so no next run starts on it; the owner signs in again.
+        const signIn = await pool.query<{ state: string }>(`SELECT state FROM agent_runtime_connections WHERE owner_user_id = $1 AND client = 'claude_code'`, [owner.id]);
+        assert.equal(signIn.rows[0]?.state, 'sign_in_again');
+        await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now() WHERE owner_user_id = $1 AND client = 'claude_code'`, [owner.id]);
+      }
     }
     assert.equal(compute.dispatched.length, 0, 'no API key request was ever made');
   });
