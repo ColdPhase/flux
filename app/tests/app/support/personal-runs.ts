@@ -63,10 +63,13 @@ export class FakeConnections implements PersonalConnectionLookup {
 
 export type Responder = (request: PersonalComputeRequest, signal: AbortSignal) => Promise<PersonalComputeResult>;
 
-/** Echoes its input by default, so a leaked token would show in the dispatched input and the answer. */
+/**
+ * Echoes its input by default, so a leaked token would show in the dispatched input and the answer. It cites every source it was given
+ * (`ref="S<n>"` in the brief, #1064), as a model that used them all would.
+ */
 export const echo: Responder = async (request) => ({
   kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: Math.ceil(request.input.length / 4), outputTokens: 120 },
-  text: `Fact: the conversation reports a low-light failure [S1]. Echo of what I was given:\n${request.input}`,
+  text: `Fact: the conversation reports a low-light failure [S1]. Drawn from ${[...request.input.matchAll(/ ref="(S\d+)"/g)].map((match) => `[${match[1]}]`).join(' ') || 'nothing'}. Echo of what I was given:\n${request.input}`,
 });
 
 /** A fake provider that records every counted and dispatched request. */

@@ -416,6 +416,43 @@ opening the chat sets (`POST /api/v1/agent-chats/:agentId/read`); `GET /api/v1/a
 for a run outside a space), then the run row. Dismiss and `markShown` take only the run row; Show everyone posts in its own transaction
 before it.
 
+## The brief (#1064)
+
+Every run is told what to do by one builder, `buildBrief` in `app/packages/core/src/personal-runs/brief.ts`, for every place (`/ai` in a
+space's thread, task discussion or main conversation, a DM and its threads, the agent's private chat, a task run, an answer to another agent,
+a schedule's run) and for both engines. An API-key run sends its `system` as the system prompt and its `request` as the one user message;
+the owner's Claude Code or Codex gets `runtimeBrief`, the same two texts in that order, on standard input. The runtime appends only a short,
+place-neutral line to the CLI's own system prompt (`RUN_BRIEF`), and the MCP route's run instructions are place-neutral too. The full text of
+each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what a model reads shows as a diff in review (rewrite them with
+`FLUX_WRITE_BRIEF_SNAPSHOTS=<dir>` on `ai-brief.test.ts`).
+
+- **System**: who the agent is and whose (names the owner gave: the agent's and their own), where it was asked (the kind of place only),
+  the time now in the owner's time zone (`personTimeZone`, the zone a schedule they ask for runs in); who reads the answer and so what it may
+  use of Flux (AG-4, C-37); how to answer (in the asker's language, short plain text as the card shows it, written so the asker can post it
+  as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, `[S<n>]` marks where
+  sources are numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
+  as what the conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the
+  no-posting rule of #1063 (`NO_POSTING_LINE`) whenever the run has change tools, the web rule of C-30 when `flux_read_web` is listed; the
+  schedule block for `/ai` in a space and the result block for a schedule's run; what is data, with what a message's `via`, `kind`,
+  `edited` and "(agent)" mean; and last what the owner gave the agent (C-7, C-8).
+- **Request**: `<place …/>` with the names of the space, the task or the DM's people; for a task run the whole task (outcome, done-when,
+  prerequisites, due day, blocker); the space's open tasks and the place's messages, each with its mark, author, time, `kind`, `via`,
+  `edited`, attachments by name, and in a space's main conversation the opening words of its thread where the thread changes; a line that says when older messages
+  were left out (the window reads one message more than it gives, and the fit that drops the oldest ones says so too); the chat's latest
+  exchanges; then the request, the schedule's instruction, the task's assignment or the other agent's question, last.
+- **Rules of the text.** Nothing other people wrote is in `system`: a space's or task's name, a message, a DM's other people. Content is
+  fenced in tags with `<` and `>` escaped, so a message cannot close its tag or forge the request; `&` stays, so an address is read exactly
+  as a person wrote it (C-30). The `<ask>` block of a task run's assignment stays as written. The old "Label statements as Fact,
+  Interpretation or Proposal" is gone.
+- **The engines differ only in what each can do.** An API-key run is given the place's messages and open tasks as numbered sources it
+  cites. The CLI reads a space itself with the Flux tools (it is told the ids and where to start), and is given a DM's messages and a chat's
+  turns, without marks. The worker reads the brief's names for the CLI after the same place checks as an API-key run's read
+  (`brief-facts.ts`); if that read fails, the brief goes without the names (the agent's instructions and memory are read on their own) and
+  the tools and the commit's checks still decide.
+
+What a run may read and change is decided by the server, never by the brief: the audience of each place, deleted messages, encrypted spaces,
+guests and the address rule are unchanged.
+
 ## WebSocket commands
 
 Not planned (founder direction 2026-10-16, [#68](https://github.com/ColdPhase/flux/issues/68)).
@@ -599,7 +636,10 @@ people, plus owner-only progress events (audience rows and live streams of the o
 a project member and the workspace owner) and a failed preflight count. It sends HTTP
 requests to the API container's production composition and drives dispatch in-process
 with the fakes. `app/tests/app/personal-runs-core.test.ts` checks the pure output and cost
-rules. `app/tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
+rules. `app/tests/app/ai-brief.test.ts` pins the brief of every place and engine and checks the asker's name, time, zone, language
+rule, message authors and times, the fences and the note about older messages; `app/tests/app/ai-brief-replay.test.ts` sends it through the
+real adapters of both wire formats to the provider mock and checks what Flux makes of a scripted answer (marks, a made-up mark, a proposal,
+a secret, Show everyone). `app/tests/app/personal-runs-anthropic.test.ts` checks the adapter against a local mock
 HTTP server (request shape, key, retries off, abort, timeout, counting, usage, error
 mapping, limits, environment isolation) and the composition guards. Run them through
 `./scripts/check_application.sh`.

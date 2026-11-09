@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { tablePrice, type AiProviderKind } from '@flux/contracts';
-import { costMicros, SYSTEM_PROMPT, type PersonalCompute, type PersonalComputeRequest } from '@flux/core';
+import { costMicros, type PersonalCompute, type PersonalComputeRequest } from '@flux/core';
+import { BRIEF } from './support/brief.js';
 import { listProviderModels, parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
@@ -42,8 +43,8 @@ const personal = (wire: WireCase, timeoutMs = 2_000): PersonalCompute => provide
   enabled: true, resolveKey: resolveKeyFor(wire.key), policy, baseUrls: NAMED_BASE_URLS, timeoutMs, maxResponseBytes: 1_000_000 });
 const request = (wire: WireCase, overrides: Partial<PersonalComputeRequest> = {}): PersonalComputeRequest => ({
   connection: { id: 'connection-1', keyRef: 'owner-key-ref', provider: wire.provider, baseUrl: wire.connectionBaseUrl },
-  model: wire.model, maxTokens: 1_500, effort: 'low', system: SYSTEM_PROMPT,
-  input: 'Task: Answer the request.\nRequest: Where are we?\n\nSources:\n[S1] Message 1 by Kai: Camera fails below 5 lux', ...overrides,
+  model: wire.model, maxTokens: 1_500, effort: 'low', system: BRIEF.system,
+  input: BRIEF.request, ...overrides,
 });
 
 async function control(path: string, body?: unknown) {
@@ -92,7 +93,7 @@ for (const wire of WIRES) {
       // The same prompt assembly on both wire formats: one system prompt and one user input.
       const messages = body.messages as Array<{ role: string; content: string }>;
       const [system, user] = wire.wire === 'anthropic' ? [body.system, messages[0]?.content] : [messages[0]?.content, messages[1]?.content];
-      assert.deepEqual([system, user, messages.length], [SYSTEM_PROMPT, request(wire).input, wire.wire === 'anthropic' ? 1 : 2]);
+      assert.deepEqual([system, user, messages.length], [BRIEF.system, request(wire).input, wire.wire === 'anthropic' ? 1 : 2]);
       assert.equal(result.kind === 'completed' && costMicros(result.usage, PRICE), 1_200 * 2 + 80 * 10, 'usage × the connection price');
       assert.equal(JSON.stringify(result).includes(wire.key), false);
     });

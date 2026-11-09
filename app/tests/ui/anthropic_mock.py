@@ -30,17 +30,18 @@ requests: list[dict] = []
 
 
 def labels(text: str) -> dict[str, str]:
-    """Source labels of the adapter's input, e.g. `[S3] Message 2 by …` or `[S5] Open work item …`."""
+    """Source labels of the adapter's input (#1064), e.g. `<message ref="S3" …>` or `<task ref="S5" …>`, in the order they were numbered."""
     found = {"first": "", "second": "", "message": "", "work": "", "works": ""}
+    tagged = sorted(re.findall(r'<(message|task|selected_thought) ref="(S\d+)"', text), key=lambda item: int(item[1][1:]))
     messages = 0
-    for label, rest in re.findall(r"^\[(S\d+)\] (.*)$", text, flags=re.M):
+    for kind, label in tagged:
         found["first"] = found["first"] or f"[{label}]"
-        if rest.startswith("Message "):
+        if kind == "message":
             found["message"] = f"[{label}]"
             messages += 1
             if messages == 2:
                 found["second"] = f"[{label}]"
-        if rest.startswith("Open work item"):
+        if kind == "task":
             found["works"] += f"[{label}] "
             if not found["work"]:
                 found["work"] = label

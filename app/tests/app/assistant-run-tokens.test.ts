@@ -376,18 +376,26 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(fullOutcome, 'input_too_large');
     assert.ok(compute.dispatched.length > 100, 'over a hundred turns fit within the tool-run input bound with every tool on');
     compute.dispatched = [];
-    // Only read: a shorter list, and the bound on steps comes first.
+    // Only read: a shorter list, and the bound on steps comes first. The brief of #1064 (who asks, where, when, how to answer) fills
+    // about 2 KB more of every request, so in this loop of empty calls 200 steps no longer fit the 64,000-byte input bound (about 195
+    // do); the steps are bounded here through the test seam, and the production bound of 200 is checked with fake tools in
+    // personal-runs-tools.test.ts.
+    const STEPS = 120;
+    const stepped = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
+      tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens, maxTurns: STEPS });
     await setMayDo('read');
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
     const started = await ask();
-    const outcome = await processor.process(started.run.id);
+    const outcome = await stepped.process(started.run.id);
     const sizes = compute.dispatched.map((request) => JSON.stringify(request.tools ?? []).length);
     await setMayDo('act');
+    assert.ok(STEPS < PERSONAL_RUN_LIMITS.maxTurns);
     assert.equal(outcome, 'cap_reached');
-    assert.equal(compute.dispatched.length, PERSONAL_RUN_LIMITS.maxTurns, `tool definitions on the wire: ${sizes.join(', ')} bytes`);
+    assert.equal(compute.dispatched.length, STEPS, `tool definitions on the wire: ${sizes.join(', ')} bytes`);
+    assert.ok(sizes.every((size) => size < fullBytes), 'Only read lists fewer tools');
     const last = compute.dispatched.at(-1)!;
-    assert.equal(last.turns!.length, PERSONAL_RUN_LIMITS.maxTurns - 1);
+    assert.equal(last.turns!.length, STEPS - 1);
     assert.ok(last.turns!.every((turn) => turn.results[0]!.isError === false && turn.results[0]!.content.includes(place.id)), 'each call was answered by the real route');
   });
 

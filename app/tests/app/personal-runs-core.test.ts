@@ -7,9 +7,9 @@ import { costMicros, parseOutput, runReservationMicros, withoutCitationMarks, ty
 // Pure output and cost rules of personal runs (#68, O-008 §3/§5). No database, no provider.
 
 const workId = randomUUID();
-const sources: SuppliedSource[] = [
-  { label: 'S1', ref: { type: 'message', id: randomUUID(), revision: 1 }, text: 'Message 1' },
-  { label: 'S2', ref: { type: 'work', id: workId, revision: 3 }, text: 'Open work item' },
+const sources: Pick<SuppliedSource, 'label' | 'ref'>[] = [
+  { label: 'S1', ref: { type: 'message', id: randomUUID(), revision: 1 } },
+  { label: 'S2', ref: { type: 'work', id: workId, revision: 3 } },
 ];
 
 describe('personal run output rules', () => {
@@ -21,6 +21,16 @@ describe('personal run output rules', () => {
     const both = parseOutput('Work [S2] then talk [S1] and work again [S2].', sources, true);
     assert.deepEqual(both.sources, [sources[1]!.ref, sources[0]!.ref]);
     assert.equal(both.body, 'Work [1] then talk [2] and work again [1].');
+  });
+
+  test('a proposal block is found by position: an unclosed one stays text, and many openings stay fast (#1064, CodeQL)', () => {
+    const unclosed = parseOutput('Answer [S1] <proposal>{"fact": "f"', sources, true);
+    assert.deepEqual([unclosed.proposal, unclosed.body], [null, 'Answer [1] <proposal>{"fact": "f"']);
+    const first = parseOutput('A <proposal>x</proposal> B <proposal>y</proposal>', sources, false);
+    assert.equal(first.body, 'A  B <proposal>y</proposal>', 'only the first block is taken out, as before');
+    const started = Date.now();
+    parseOutput('<proposal>a'.repeat(50_000), sources, true);
+    assert.ok(Date.now() - started < 2_000, 'no slow pattern over the model\'s text');
   });
 
   test('a proposal may finish only a supplied work item and is dropped when malformed', () => {

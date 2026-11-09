@@ -3,7 +3,8 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
-import { costMicros, SYSTEM_PROMPT, type PersonalComputeRequest } from '@flux/core';
+import { costMicros, type PersonalComputeRequest } from '@flux/core';
+import { BRIEF } from './support/brief.js';
 import { anthropicPersonalCompute, parsePrivateTargets } from '../../packages/agent-runtime/src/index.js';
 import { personalRunServerComposition } from '../../apps/server/src/personal-runs/composition.js';
 import { personalRunWorkerComposition } from '../../apps/worker/src/personal-runs/composition.js';
@@ -49,7 +50,7 @@ const apiError = (type: string) => ({ type: 'error', error: { type, message: `sc
 
 const request: PersonalComputeRequest = {
   connection: { id: 'connection-1', keyRef: KEY_REF, provider: 'anthropic', baseUrl: null }, model: 'claude-sonnet-5', maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
-  effort: PERSONAL_RUN_LIMITS.effort, system: SYSTEM_PROMPT, input: 'Task: Answer the request.\nRequest: Where are we?\n\nSources:\n[S1] Message 1 by Kai: Camera fails below 5 lux',
+  effort: PERSONAL_RUN_LIMITS.effort, system: BRIEF.system, input: BRIEF.request,
 };
 const resolved: string[] = [];
 const compute = () => anthropicPersonalCompute({
@@ -74,7 +75,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(sent!.headers['x-api-key'], KEY);
     assert.equal(sent!.headers.authorization, undefined, 'no other credential is sent');
     assert.deepEqual(sent!.body, {
-      model: 'claude-sonnet-5', max_tokens: 4000, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-5', max_tokens: 4000, system: BRIEF.system,
       messages: [{ role: 'user', content: request.input }], output_config: { effort: 'low' },
     }, 'no tools, hosted search, MCP or streaming');
     assert.deepEqual(resolved, [KEY_REF]);
@@ -100,7 +101,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.path, '/v1/messages/count_tokens');
     assert.equal(seen[0]!.headers['x-api-key'], KEY);
-    assert.deepEqual(seen[0]!.body, { model: 'claude-sonnet-5', system: SYSTEM_PROMPT, messages: [{ role: 'user', content: request.input }] });
+    assert.deepEqual(seen[0]!.body, { model: 'claude-sonnet-5', system: BRIEF.system, messages: [{ role: 'user', content: request.input }] });
     handler = (_seen, response) => json(response, 500, apiError('api_error'));
     await assert.rejects(compute().countInputTokens!(request));
     assert.equal(seen.length, 2, 'a failed count is not retried');

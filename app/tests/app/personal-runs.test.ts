@@ -245,7 +245,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     const mapRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'What next?', target: { type: 'thought', sketchId: projectSketch.id, thoughtId: projectSketch.thoughtId } });
     assert.equal(await processor.process(mapRun.run.id), 'completed');
-    assert.match(compute.dispatched.at(-1)!.input, /Selected map thought: ToF sensor: swipe \+ hold/);
+    assert.match(compute.dispatched.at(-1)!.input, /<selected_thought ref="S1">ToF sensor: swipe \+ hold<\/selected_thought>/);
   });
 
   test('AC-2: denied, stopped-before-read, capped and revoked runs cost zero; a retry key never charges twice', async () => {
@@ -441,7 +441,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   });
 
   test('AC-6: nothing leaves for preflight counting once the grant, a Stop or a deletion of the agent arrives after the read', async () => {
-    const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`Request: ${prompt}`)).length;
+    const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`>${prompt}</request>`)).length;
     const dispatched = compute.dispatched.length;
     const cases: [string, (runId: string) => Promise<unknown>, string, () => Promise<unknown>][] = [
       ['grant revoked', () => keepHubertOut(), 'denied', () => letHubertBack()],
@@ -478,7 +478,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
   test('AC-7: only a person with authority accepts an assistant proposal; the result records who drafted it', async () => {
     compute.respond = async (request) => {
-      const label = /\[(S\d+)\] Open work item "Camera in low light"/.exec(request.input)![1];
+      const label = /<task ref="(S\d+)" number="\d+" status="[^"]+" title="Camera in low light"/.exec(request.input)![1];
       return { kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
         text: `Fact: the camera failed below 5 lux [S1].\n<proposal>${JSON.stringify({ fact: 'Camera fails below 5 lux', interpretation: 'Exposure is too short',
           title: 'Camera fails in low light', finding: 'negative', evidence: 'Low-light test, 20 gestures', finishes: label })}</proposal>` };
@@ -551,7 +551,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     // Continuing it is the owner's new, separately charged run with the earlier answer as input.
     const continued = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Continue', continuesRunId: truncated.run.id });
     assert.equal(await processor.process(continued.run.id), 'completed');
-    assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer, to continue/);
+    assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer to this request was cut off\. Continue it from where it stopped, without repeating it:\n<earlier_answer>/);
   });
 
   test('progress: every state change of a run reaches only its owner; the others hear nothing, not even that an assistant worked (#842)', async () => {

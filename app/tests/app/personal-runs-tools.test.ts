@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  createPersonalRunProcessor, privateSystemPrompt,
+  createPersonalRunProcessor,
   type PersonalComputeResult, type PersonalTool, type PersonalToolCall, type PersonalToolHost, type PersonalToolSession, type Principal,
 } from '@flux/core';
 import { PERSONAL_RUN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
@@ -128,7 +128,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     assert.equal(session.closed, 1);
     // Each request carried the tools and the earlier turns with their results.
     assert.deepEqual(compute.dispatched[0]!.tools, FLUX_TOOLS);
-    assert.equal(compute.dispatched[0]!.system, privateSystemPrompt('space', true));
+    assert.match(compute.dispatched[0]!.system, /\nFlux tools\nYou may call the Flux tools to read more of this space \(space id /, 'the brief of a private answer with its tools (#1064)');
     assert.deepEqual(compute.dispatched[2]!.turns!.map((turn) => turn.results[0]!.content), ['done call-1', 'done call-2']);
     assert.deepEqual(compute.dispatched[2]!.turns![0]!.replay, { turn: 1 }, 'the provider\'s own assistant message goes back unchanged');
   });
@@ -184,7 +184,8 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
       assert.equal(compute.dispatched.length, 1, 'one request');
       assert.equal('tools' in compute.dispatched[0]!, false, 'no tools on the request');
       assert.equal('turns' in compute.dispatched[0]!, false);
-      assert.equal(compute.dispatched[0]!.system, privateSystemPrompt('space', false), 'the brief of a private answer, without the tool paragraph');
+      assert.match(compute.dispatched[0]!.system, /\nFlux tools\nYou have no Flux tools in this run: use what is below\./, 'the brief of a private answer, without the tools (#1064)');
+      assert.ok(!compute.dispatched[0]!.system.includes('You may call the Flux tools'));
       assert.equal(opened, 0, 'the run\'s tools were never even opened');
       assert.equal(session.changes.length, 0);
       assert.equal((await row(started.run.id)).charged_micros, 900 * 2 + 30 * 10);

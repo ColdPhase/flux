@@ -123,7 +123,8 @@ describe('a file-only message in every consumer that quotes it', () => {
     assert.equal(await processor.process(run.id), 'completed');
     assert.equal(compute.dispatched.length, 1);
     const input = compute.dispatched[0]!.input;
-    assert.ok(input.includes(`Attached files (contents not included): findings.txt (${file.size} bytes; file ${file.id})`), input);
+    assert.ok(input.includes(`<attachment name="findings.txt" bytes="${file.size}"/>`), input);
+    assert.match(compute.dispatched[0]!.system, /You cannot open attached files; you see only their names\./, 'the model is told it cannot open them (#1064)');
     assert.equal(input.includes(SECRET), false, 'the file bytes never reach the provider input');
   });
 });

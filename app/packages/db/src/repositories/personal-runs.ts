@@ -321,12 +321,13 @@ export function personalRunRows(db: DbExecutor) {
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(and(eq(m.conversationId, conversationId), isNull(m.removedAt))).orderBy(desc(m.sequence)).limit(limit);
       const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
-      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }) => ({ ...row,
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, editedAt, ...row }) => ({ ...row, edited: editedAt !== null,
         ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
           : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
         ...(files.get(row.id)?.length ? { files: files.get(row.id) } : {}),
@@ -337,13 +338,16 @@ export function personalRunRows(db: DbExecutor) {
     /** The latest `limit` messages written in the people's conversations of a space, oldest first: what its main conversation says (#842). */
     async spaceMessages(projectId: string, limit: number) {
       const m = schema.projectMessages;
+      // #1064: each message with the opening words of its thread (the conversation's first message, unless its author deleted it).
+      const thread = sql<string | null>`(SELECT left(o.body, 120) FROM project_messages o WHERE o.conversation_id = ${m.conversationId} AND o.sequence = 1 AND o.removed_at IS NULL)`;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
+        createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, thread,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
         .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
         .where(and(eq(m.projectId, projectId), isNull(m.removedAt))).orderBy(desc(m.createdAt), desc(m.id)).limit(limit);
-      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }, index) => ({ ...row, sequence: index + 1,
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, editedAt, ...row }, index) => ({ ...row, sequence: index + 1, edited: editedAt !== null,
         ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
           : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
@@ -356,11 +360,11 @@ export function personalRunRows(db: DbExecutor) {
      */
     async dmMessages(dmId: string, limit: number, threadRootId: string | null = null) {
       const m = schema.dmMessages;
-      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, authorId: m.authorId, authorName: schema.authUsers.name })
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, createdAt: m.createdAt, editedAt: m.editedAt, via: m.via, authorId: m.authorId, authorName: schema.authUsers.name })
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.removedAt), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
         .orderBy(desc(m.sequence)).limit(limit);
-      return rows.reverse().map(({ authorId, authorName, ...row }) => ({ ...row, author: { kind: 'human' as const, id: authorId }, authorName }));
+      return rows.reverse().map(({ authorId, authorName, editedAt, ...row }) => ({ ...row, edited: editedAt !== null, author: { kind: 'human' as const, id: authorId }, authorName }));
     },
 
     /** The last `limit` exchanges of an agent's private chat before this run: what was asked and what it answered. */
@@ -432,9 +436,34 @@ export function personalRunRows(db: DbExecutor) {
     /** Unfinished, unparked work of the project, newest first. */
     async openWork(projectId: string, limit: number) {
       const w = schema.projectWorkItems;
-      return db.select({ id: w.id, version: w.version, title: w.title, outcome: w.outcome, status: w.status }).from(w)
+      return db.select({ id: w.id, version: w.version, number: w.number, title: w.title, outcome: w.outcome, status: w.status }).from(w)
         .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`, sql`${w.parkedByDecisionId} IS NULL`))
         .orderBy(desc(w.createdAt), desc(w.id)).limit(limit);
+    },
+
+    /** The names of a run's place (#1064): the space, the task its conversation discusses, a DM's people. */
+    async placeNames(place: { projectId: string | null; conversationId: string | null; dmId: string | null }) {
+      const [space] = place.projectId === null ? [] : await db.select({ name: schema.projects.name }).from(schema.projects).where(eq(schema.projects.id, place.projectId));
+      const b = schema.projectTaskDiscussions;
+      const w = schema.projectWorkItems;
+      const [task] = place.conversationId === null ? [] : await db.select({ number: w.number, title: w.title }).from(b)
+        .innerJoin(w, eq(w.id, b.workId)).where(eq(b.conversationId, place.conversationId));
+      const people = place.dmId === null ? [] : await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.dmParticipants)
+        .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.dmParticipants.userId)).where(eq(schema.dmParticipants.dmId, place.dmId))
+        .orderBy(asc(schema.dmParticipants.joinedAt), asc(schema.authUsers.id));
+      return { spaceName: space?.name ?? null, task: task ?? null, people };
+    },
+
+    /** A task as a run on it is told it (#1064): number, title, state, outcome, done-when, prerequisites, due day and blocker. */
+    async taskBrief(workId: string) {
+      const w = schema.projectWorkItems;
+      const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, status: w.status, outcome: w.outcome,
+        criteria: w.criteria, dueOn: w.dueOn, blocker: w.blocker }).from(w).where(eq(w.id, workId));
+      if (!row) return null;
+      const d = schema.projectTaskDependencies;
+      const prerequisites = await db.select({ number: w.number, title: w.title, status: w.status }).from(d).innerJoin(w, eq(w.id, d.prerequisiteId))
+        .where(and(eq(d.taskId, workId), eq(d.projectId, row.projectId))).orderBy(asc(w.number));
+      return { ...row, criteria: row.criteria ?? [], prerequisites };
     },
 
     async thought(sketchId: string, thoughtId: string) {
