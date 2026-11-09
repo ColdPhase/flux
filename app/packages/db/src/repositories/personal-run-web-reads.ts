@@ -89,10 +89,15 @@ export function personalRunWebReadRows(db: DbExecutor) {
         SELECT r.id, ${body}, ${sql.param([...kept.addresses])}::text[] FROM personal_runs r
         WHERE r.id = ${runId} AND r.status IN ('reading', 'dispatching') FOR SHARE OF r`);
     },
-    /** All the private text the run has read, for the check of an address it asks for. */
+    /**
+     * All the private text the run has read, for the check of an address it asks for. The links come joined by the database and are split
+     * natively (#1136): parsing tens of thousands of array elements in JavaScript would hold the API's event loop. A compared link never
+     * holds a control character, so the unit separator cannot occur in one.
+     */
     async privateTexts(runId: string): Promise<{ body: string; addresses: string[] }[]> {
       const p = schema.personalRunPrivateTexts;
-      return db.select({ body: p.body, addresses: p.addresses }).from(p).where(eq(p.runId, runId));
+      const rows = await db.select({ body: p.body, addresses: sql<string>`array_to_string(${p.addresses}, E'\x1f')` }).from(p).where(eq(p.runId, runId));
+      return rows.map((row) => ({ body: row.body, addresses: row.addresses ? row.addresses.split('\x1f') : [] }));
     },
   };
 }

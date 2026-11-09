@@ -70,7 +70,6 @@ export function messageReferenceRows(db: DbExecutor) {
       return { ...fields, text: opened!.text, sketchTitle: openField('sketches', 'title', [fields.sketchId], fields.sketchTitle, seal)!, author: actorOf(userId, agentId) };
     },
 
-    /** A project message or, failing that, a direct message with this id; null for any other id. */
     /**
      * Whether an agent's message was written by an agent that runs on the server (#1136, C-30): one with a server setup, whatever else signed
      * in as it, or one with no local client. A local client writes as its person (LC-2). The same rule tells who an agent's line notifies.
@@ -82,6 +81,7 @@ export function messageReferenceRows(db: DbExecutor) {
         .where(and(eq(schema.agentConnections.agentId, agentId), ne(schema.agentConnections.computeSource, 'owner_assistant'))).limit(1);
       return !client;
     },
+    /** A project message or, failing that, a direct message with this id; null for any other id. */
     async message(id: string, workspaceId: string): Promise<LocatedMessage | null> {
       const m = schema.projectMessages;
       const [project] = await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, projectName: schema.projects.name,
