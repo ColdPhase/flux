@@ -19,7 +19,7 @@ import { emailUnitOfWork, smtpNotificationMailer } from '../../apps/worker/src/n
 import { PgBoss } from 'pg-boss';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
-import { EVENTS_CHANNEL, notificationEmailRows } from '@flux/db';
+import { EVENTS_CHANNEL, notificationAddressRows, notificationEmailRows } from '@flux/db';
 import { connectionString, db, pool } from './support/db.js';
 import { Browser, mailpitUrl, publicOrigin, register, signIn } from './support/http.js';
 import { addMember, expectStatus, password, person, project, removeMember, workspace, type Person } from './support/people.js';
@@ -147,6 +147,29 @@ describe('the address limit counts mailboxes (#1070)', () => {
     assert.equal(addressLimitKey('+only@example.org'), '+only@example.org', 'a local part that starts with + is kept whole');
     assert.equal(addressLimitKey('jose\u0301+x@example.org'), 'jos\u00e9@example.org');
     assert.equal(normalizeEmail('Name+News@Example.ORG'), 'Name+News@example.org');
+  });
+});
+
+describe('an address slot is given back in its own window (#1110)', () => {
+  test('the hour turning between the reservation and the give-back leaves the new hour alone', async () => {
+    const rows = notificationAddressRows(db);
+    const hash = `limit-${randomUUID()}`;
+    const limits = { perWindow: 3, windowSeconds: 3600 };
+    const sent = async () => Number((await pool.query('SELECT sent FROM notification_address_sends WHERE address_hash = $1', [hash])).rows[0]?.sent);
+    const first = await rows.reserveAddressSend(hash, limits);
+    assert.ok(first.allowed);
+    // The hour turns: the row's window is two hours old, so the next reservation starts a new one.
+    await pool.query("UPDATE notification_address_sends SET window_start = now() - interval '2 hours' WHERE address_hash = $1", [hash]);
+    const second = await rows.reserveAddressSend(hash, limits);
+    assert.ok(second.allowed);
+    assert.equal(await sent(), 1, 'one send in the new hour');
+    assert.notEqual(first.window, second.window);
+    await rows.releaseAddressSend(hash, first.window);
+    assert.equal(await sent(), 1, 'the old hour\'s slot is not the new hour\'s to give back');
+    await rows.releaseAddressSend(hash, second.window);
+    assert.equal(await sent(), 0, 'the new hour\'s own slot is');
+    await rows.releaseAddressSend(hash, second.window);
+    assert.equal(await sent(), 0, 'and never goes below none');
   });
 });
 

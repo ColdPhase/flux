@@ -27,8 +27,8 @@ export interface PaneCore {
   aiOff: boolean;
   /** The person is a guest in the company: no AI at all (AG-2), whatever the space's switch says. */
   guest: boolean;
-  /** "Only you and Kai", and the same without "only you two" for the assistant's line. */
-  audience: string; audienceShort: string;
+  /** The people the space was added to: "You", "Kai and you" (`audienceLine`). */
+  audience: string;
   /**
    * The stream and the thread are two panes on one route: the stream's revalidation changes the router's
    * state every 15 s. Read the latest revalidate through a ref, so this pane's own refresh (and its 15 s
@@ -49,11 +49,11 @@ export function usePaneCore(data: ProjectData, variant: 'stream' | 'thread'): Pa
   const guest = workspace?.role === 'guest';
   const aiOff = useSpaceAi(project.id).blocked || guest;
   const outside = reachableSpaces.find((space) => space.id === project.id)?.member === false;
-  const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
+  const audience = audienceLine(people, me.user.id);
   return {
     me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: true, aiOff, outside,
     place: { kind: 'space', projectId: project.id, conversationId: conversation?.id ?? null }, guest,
-    audience, audienceShort: audience.replace(/ · only you two$/, ''), revalidateRef,
+    audience, revalidateRef,
   };
 }
 

@@ -137,7 +137,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
     if (!target.allowed) throw new AddressLimitError(target.retryAfterSeconds);
     const person = await ports.addresses.reserveVerificationSend(userId, VERIFICATION_LIMITS);
     if (!person.allowed) {
-      await ports.addresses.releaseAddressSend(hash);
+      await ports.addresses.releaseAddressSend(hash, target.window);
       throw new TooSoonError(person.retryAfterSeconds);
     }
   }

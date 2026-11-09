@@ -266,7 +266,9 @@ class ConnectedFlow(unittest.TestCase):
         doc = page.request.get(f"/api/v1/docs/{self.ids['doc']}").json()
         body = doc["body"]
         self.assertLess(body.index(f"flux:decision/{self.ids['d_sat']}"), body.index("## Still open"), "the card is under Pickup, not under Still open")
-        # The action toast leaves on its own (CW-5).
+        # The action toast leaves on its own (CW-5). The tap left the emulated pointer where the toast has since appeared, and a toast under
+        # the pointer waits (hover); a finger has no such pointer, so it moves off before the wait (#1106).
+        page.mouse.move(2, 2)
         expect(toast).to_have_count(0, timeout=12000)
 
     # ---------------------------------------------------------------- CW-4, CW-14, CW-16: the Wiki

@@ -400,14 +400,15 @@ export function notificationAddressRows(db: DbExecutor) {
           sent = CASE WHEN ${v}.window_start <= now() - ${window} THEN 1 ELSE ${v}.sent + 1 END,
           last_sent_at = now()
         WHERE ${v}.window_start <= now() - ${window} OR ${v}.sent < ${limits.perWindow}
-        RETURNING address_hash`);
-      if (reserved.rows.length) return { allowed: true as const };
+        RETURNING window_start::text AS reserved_window`);
+      if (reserved.rows.length) return { allowed: true as const, window: String(reserved.rows[0]!.reserved_window) };
       const [row] = await db.select().from(v).where(eq(v.addressHash, addressHash));
       return { allowed: false as const, retryAfterSeconds: retryAfter(row, { cooldownSeconds: 0, ...limits }) };
     },
-    async releaseAddressSend(addressHash: string) {
+    async releaseAddressSend(addressHash: string, window: string) {
       const v = schema.notificationAddressSends;
-      await db.update(v).set({ sent: sql`greatest(${v.sent} - 1, 0)` }).where(eq(v.addressHash, addressHash));
+      // Only the window the slot was reserved in: the hour may have turned since, and then there is nothing of it to give back.
+      await db.update(v).set({ sent: sql`greatest(${v.sent} - 1, 0)` }).where(and(eq(v.addressHash, addressHash), sql`${v.windowStart} = ${window}::timestamptz`));
     },
     async issueToken(addressId: string, tokenHash: string, expiresAt: Date) {
       await db.delete(t).where(eq(t.addressId, addressId));

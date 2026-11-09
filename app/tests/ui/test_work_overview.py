@@ -141,7 +141,7 @@ class OverviewWorkJourney(unittest.TestCase):
                     expect(context).to_be_visible()
                     expect(context).to_contain_text("Library lighting measurements")
                     expect(context).to_contain_text("Compare the earliest measurements before ordering another sensor.")
-                    expect(context).to_contain_text("Only you")
+                    expect(context).to_contain_text("You")
                     context_box=context.bounding_box();body_box=page.locator("#details .ui-panel__body").bounding_box()
                     assert context_box and body_box
                     self.assertLessEqual(context_box["y"]+context_box["height"],body_box["y"]+1,"owning context remains above the scrolled source body")

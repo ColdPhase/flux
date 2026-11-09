@@ -551,8 +551,7 @@ function AppLayoutContent() {
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
   ] : null;
   const places = phonePlaces(location.pathname, inboxUnread);
-  const audienceOpen = project?.project.visibility === 'workspace';
-  const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
+  const audience = project ? audienceLine(project.people, me.user.id) : 'People with space access';
   // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
   const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
   // A task or decision opens in the one detail panel with its kind as a chip (F-026 S4).

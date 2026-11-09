@@ -111,11 +111,11 @@ apart and at most 5 per rolling hour, `notification_verification_sends`), and pe
 per rolling hour, `notification_address_sends`, kept under a SHA-256 of the address's key, so no readable address is
 stored; #1056). That key is the address in Unicode normal form C, in lower case and without a `+tag` in its local part, so
 `name+a@…` and `name+b@…` count as one address (the stored address keeps its tag; #1070). The address's limit is checked first: when
-it refuses, the person's own cooldown is not spent, and when the person's refuses, the address's slot is given back. A refusal by
+it refuses, the person's own cooldown is not spent, and when the person's refuses, the address's slot is given back, in the window it was reserved in only (an hour that has turned since has nothing to give back). A refusal by
 the person's limit is `429 VERIFICATION_RECENTLY_SENT`, by the address's `429 ADDRESS_CONFIRMATION_LIMIT` (it blames nobody; other
 accounts may have used the address's links), both with `Retry-After`. An address is compared in Unicode normal form C and
 without regard to letter case, so a composed and a decomposed letter are one address, also when a message's copies are
-matched to one mailbox before sending and when an identity provider reports the sign-in address. An address id that is not a UUID
+matched to one mailbox before sending and when an identity provider reports the sign-in address or another account's address is looked up (Better Auth accepts only ASCII addresses at password sign-up, so a decomposed letter can only come from a provider). An address id that is not a UUID
 answers `404`, like an id that is not the person's. `POST …/verify` takes the token, signed in as the account that added the address (anyone else, a
 used or an expired token get the same `400 VERIFICATION_INVALID`) and answers the settings with `confirmed`, the
 address. The sign-in address, an address already in the list (any letter case) or a sixth extra address answers `409`

@@ -35,10 +35,13 @@ export const releasedEmail = (userId: string) => `unverified-${userId}@invalid`;
 
 export function createEmailClaims(db: Database, now: () => Date = () => new Date()) {
   return {
-    /** Who, other than this provider identity itself, holds the address. */
+    /**
+     * Who, other than this provider identity itself, holds the address. An address is compared in Unicode normal form C and lower case:
+     * Better Auth accepts only ASCII addresses at password sign-up, so a letter typed decomposed can only come from a provider (#1110).
+     */
     async holder(providerId: string, subject: string, email: string): Promise<EmailHolder> {
       const [user] = await db.select({ id: schema.authUsers.id, verified: schema.authUsers.emailVerified }).from(schema.authUsers)
-        .where(eq(sql`lower(${schema.authUsers.email})`, email.trim().toLowerCase()));
+        .where(eq(sql`lower(normalize(${schema.authUsers.email}, NFC))`, email.trim().normalize('NFC').toLowerCase()));
       if (!user) return { kind: 'none' };
       const [own] = await db.select({ id: schema.authAccounts.id }).from(schema.authAccounts)
         .where(and(eq(schema.authAccounts.providerId, providerId), eq(schema.authAccounts.accountId, subject), eq(schema.authAccounts.userId, user.id)));
@@ -51,7 +54,7 @@ export function createEmailClaims(db: Database, now: () => Date = () => new Date
     async open(providerId: string, subject: string, email: string, heldBy: string): Promise<string> {
       const token = randomBytes(32).toString('base64url');
       await db.insert(schema.authEmailClaims).values({
-        id: randomUUID(), tokenHash: hash(token), providerId, subject, email: email.trim().toLowerCase(), heldBy,
+        id: randomUUID(), tokenHash: hash(token), providerId, subject, email: email.trim().normalize('NFC').toLowerCase(), heldBy,
         expiresAt: new Date(now().getTime() + CLAIM_TTL_MS),
       });
       return token;
@@ -73,7 +76,7 @@ export function createEmailClaims(db: Database, now: () => Date = () => new Date
         if (!row || row.state !== 'pending') return { refused: 'unknown' as const };
         if (row.expiresAt <= now()) return { refused: 'expired' as const };
         const [holder] = await tx.select().from(schema.authUsers).where(eq(schema.authUsers.id, row.heldBy)).for('update');
-        if (!holder || holder.email.toLowerCase() !== row.email) return { refused: 'changed' as const };
+        if (!holder || holder.email.normalize('NFC').toLowerCase() !== row.email) return { refused: 'changed' as const };
         if (await isHeld(tx, holder.id, holder.emailVerified)) return { refused: 'held' as const };
         const released = releasedEmail(holder.id);
         await tx.update(schema.authUsers).set({ email: released, updatedAt: now() }).where(eq(schema.authUsers.id, holder.id));
