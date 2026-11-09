@@ -34,7 +34,8 @@ const MESSAGES: SuppliedSource[] = [
   message('S4', { body: INJECTION, authorName: 'Kai Weber', createdAt: new Date('2026-11-07T15:30:00Z') }),
 ];
 const MAIN: SuppliedSource[] = MESSAGES.map((source, index) => source.item.kind === 'message'
-  ? { ...source, item: { kind: 'message', message: { ...source.item.message, thread: index < 3 ? 'The camera fails below 5 lux.' : 'Lunch order for Friday: who wants what? Please answer by Thursday noon, the shop needs to know by then.' } } } : source);
+  ? { ...source, item: { kind: 'message', message: { ...source.item.message, conversationId: index < 3 ? 'c-camera' : 'c-lunch',
+    thread: index < 3 ? 'The camera fails below 5 lux.' : 'Lunch order for Friday: who wants what? Please answer by Thursday noon, the shop needs to know by then.' } } } : source);
 const OPEN_TASKS: SuppliedSource[] = [
   { label: 'S5', ref: { type: 'work', id: TASK_ID, revision: 3 }, item: { kind: 'task', number: 12, title: 'Calibrate north barrel', status: 'in_progress', outcome: 'Readings within 2% of the reference' } },
   { label: 'S6', ref: { type: 'work', id: 'w-14', revision: 1 }, item: { kind: 'task', number: 14, title: 'Order ToF sensor', status: 'open', outcome: '' } },
@@ -185,13 +186,23 @@ describe('the brief of every run (#1064)', () => {
     for (const input of [base, dm]) {
       const { system } = buildBrief(input);
       assert.match(system, /So, of Flux, use only /);
-      assert.ok(system.includes('Ada Nowak may post your answer as their own message, so write it as they could send it: no "You asked…" and no lead-in such as "Here is a reply:". When asked to draft a message, give only the text to send.'));
+      assert.ok(system.includes('Ada Nowak may post your answer as their own message, so write it as they could send it: no "You asked…" and no lead-in such as "Here is a reply:". When asked to draft, post or send a message, give only the text to send: Ada Nowak posts it with Show everyone.'));
+      assert.ok(system.includes('A message you draft for someone else is in the language Ada Nowak asks for, else in the language that person writes in.'));
       assert.ok(system.includes('In <conversation>, via="…" marks an AI answer its author chose to post, not their own words;'));
     }
     assert.match(buildBrief(chat).system, /<chat> holds your earlier exchanges with Ada Nowak, as context for this message\./);
     assert.ok(!buildBrief(CASES['runtime-space-thread']!).system.includes('via="…"'), 'no legend where no conversation is given');
     const main = buildBrief(CASES['space-main-conversation']!).request;
     assert.equal(main.match(/<message ref="S\d+" thread="/g)?.length, 2, 'a thread is named when it changes, not on every message');
+    // Delta review of #1077 (P3-1): the thread changes by its conversation, not its words; a deleted opening still names a new thread.
+    const thread = (label: string, conversationId: string, words: string | null) => {
+      const source = message(label, { body: `In ${conversationId}`, authorName: 'Kai Weber', createdAt: new Date('2026-11-07T10:00:00Z') });
+      return { ...source, item: { kind: 'message' as const, message: { ...(source.item as { message: MessageSource }).message, conversationId, thread: words } } };
+    };
+    const labelled = buildBrief({ ...base, place: space(null), sources: [thread('S1', 'c-1', 'Lunch?'), thread('S2', 'c-1', 'Lunch?'), thread('S3', 'c-2', 'Lunch?'),
+      thread('S4', 'c-3', null), thread('S5', 'c-3', null)] }).request;
+    assert.deepEqual([...labelled.matchAll(/<message ref="(S\d)"(?: thread="([^"]*)")?/g)].map((match) => [match[1], match[2] ?? null]),
+      [['S1', 'Lunch?'], ['S2', null], ['S3', 'Lunch?'], ['S4', '(opening message deleted)'], ['S5', null]]);
     assert.match(buildBrief(base).system, /<schedule>/, '/ai in a space may prepare a schedule');
     assert.ok(!/<schedule>/.test(buildBrief(dm).system) && !/<schedule>/.test(buildBrief(scheduled).system), 'nowhere else (AG-9: a schedule never makes one)');
     assert.match(buildBrief(scheduled).system, /reply exactly: Done: nothing to change/);
