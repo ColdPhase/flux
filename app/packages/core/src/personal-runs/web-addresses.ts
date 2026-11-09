@@ -322,14 +322,18 @@ const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.len
  * Object storage's path-style hosts, where the bucket is the path's first part: S3 (`s3.amazonaws.com`, `s3.<region>.amazonaws.com`,
  * `s3-<region>.amazonaws.com`) and Google Cloud Storage (`storage.googleapis.com`).
  */
-const S3_PATH_STYLE = /^(?:s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com|storage\.googleapis\.com)(?::\d+)?$/;
+function pathStyleStorage(host: string): boolean {
+  // Plain string checks, no pattern with repeated parts: a host is the agent's to choose (CodeQL: no backtracking on `s3------…`).
+  const name = host.replace(/:\d+$/, '');
+  return name === 'storage.googleapis.com' || (name.endsWith('.amazonaws.com') && (name.startsWith('s3.') || name.startsWith('s3-')));
+}
 /**
  * The site a compared address without its scheme belongs to: its host (and port); on object storage's path-style hosts, the host and the bucket (#1144):
  * `s3.amazonaws.com/acme` and `s3.amazonaws.com/evil-bucket` are two owners, and a bucket's owner reads its access logs.
  */
 function siteOf(address: string): string {
   const host = /^[^/?#\s]*/.exec(address)![0];
-  if (!S3_PATH_STYLE.test(host)) return host;
+  if (!pathStyleStorage(host)) return host;
   return host + (/^\/[^/?#\s]*/.exec(address.slice(host.length))?.[0] ?? '');
 }
 /**
