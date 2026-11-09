@@ -163,7 +163,8 @@ describe('real requests racing a reset (the running API containers)', () => {
       stop = true;
       await Promise.all(loops);
       assert.ok(won.length > 0, 'the sign-ins were running');
-      console.log(`sign-ins with the old password won ${won.length}, then were answered ${[...refused].join(', ')}`);
+      // A sign-in that lost is answered "Invalid email or password" (401), or with the generic error when it lost inside the database statement (500).
+      for (const status of refused) assert.ok(status === 401 || status === 500, `a sign-in that lost was answered ${status}`);
       assert.equal(await sessionCount(userId), 0, 'no session of the old password outlives the reset');
       for (const browser of won.slice(-8)) assert.equal((await browser.request('GET', '/api/v1/me')).status, 401);
       await makeAccountWait(email, `signin ${round}`);
