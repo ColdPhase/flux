@@ -113,7 +113,7 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
     const run = await scene.liveRun(undefined, 'Find out when the last boat leaves');
     for (const url of [at('/read/timetable'), at('/read/hidden'), `${at('/read/second')}?d=hello%20there`])
       assert.equal(result((await reading(run, url)).message)?.isError, undefined, url);
-    assert.deepEqual((await hits('/')).map((hit) => hit.path), ['/read/timetable', '/read/hidden', '/read/second']);
+    assert.deepEqual((await hits('/')).map((hit) => hit.path), ['/read/timetable', '/read/hidden', '/read/second?d=hello%20there']);
     await scene.complete(run.runId);
   });
 
@@ -131,7 +131,7 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
       `${at('/read/collect')}?d=${encodeURIComponent(encodeURIComponent('buy Harbour Co shares'))}`, `${at('/read/collect')}/HARBOUR%20CO%20SHARES`]) {
       const refused = await reading(run, url);
       assert.equal(code(refused.message), 'WEB_READ_PRIVATE_TEXT', url);
-      assert.match(text(refused.message), /words you read in Flux.*It carries "/s, 'the agent is told why');
+      assert.match((JSON.parse(text(refused.message)) as { error: string }).error, /words you read in Flux.*It carries "[^"]{12}"/s, 'the agent is told why, and which words');
     }
     assert.deepEqual(await hits('/'), [], 'nothing went to the site');
     assert.equal(result((await reading(run, at('/read/notes'))).message)?.isError, undefined, 'the address the person wrote in the message still opens');
