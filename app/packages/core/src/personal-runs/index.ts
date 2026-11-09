@@ -13,5 +13,7 @@ export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnecti
 export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, runtimeModelFlag } from './model.js';
 export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
+export { answerCleaner, type AnswerCleaner } from './answer-addresses.js';
+export { answerWithSchedule } from './schedule-request.js';
 export { answerWithWebSources, endedWithWebSources, webSourcesLine, WEB_SOURCES_HEADINGS } from './web-sources.js';
-export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, joinsAddress, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';

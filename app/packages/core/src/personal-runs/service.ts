@@ -1,3 +1,4 @@
+import { joinsAddress } from './web-addresses.js';
 import { budgetLine } from '../assistant/job-result.js';
 import type { AgentSetup } from '../assistant/ports.js';
 import { randomUUID } from 'node:crypto';
@@ -187,11 +188,13 @@ async function webSourcesOf(ports: PersonalRunPorts, record: RunRecord): Promise
  */
 export function withoutCitationMarks(body: string, sources: number): string {
   const valid = (number: string) => Number(number) >= 1 && Number(number) <= sources;
-  const taken = body.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, index) => (index % 2 ? part : part
-    .replace(/[ \t]\[(\d{1,3})\]/g, (mark, number: string) => (valid(number) ? '' : mark))
+  const taken = (gap: string) => body.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, index) => (index % 2 ? part : part
+    .replace(/[ \t]\[(\d{1,3})\]/g, (mark, number: string) => (valid(number) ? gap : mark))
     .replace(/(^|\n)\[(\d{1,3})\][ \t]?/g, (mark, before: string, number: string) => (valid(number) ? before : mark))
-    .replace(/([.,;:!?…"”’])\[(\d{1,3})\]/g, (mark, before: string, number: string) => (valid(number) ? before : mark)))).join('').trim();
-  return taken || body;
+    .replace(/([.,;:!?…"”’])\[(\d{1,3})\]/g, (mark, before: string, number: string) => (valid(number) ? `${before}${gap}` : mark)))).join('').trim();
+  // A mark taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
+  const plain = taken('');
+  return (joinsAddress(body, plain) ? taken(' ') : plain) || body;
 }
 
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {

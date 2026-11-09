@@ -1,3 +1,4 @@
+import { joinsAddress } from './web-addresses.js';
 import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
@@ -194,14 +195,19 @@ export function parseOutput(text: string, sources: readonly Pick<SuppliedSource,
   // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
   // reader can open exactly the cited object. Labels of sources that were not supplied are
   // removed: they point at nothing the audience could open.
-  const cited = new Map<string, AssistantSourceRef>();
-  const body = raw.replace(/\s?\[(S\d{1,3})\]/g, (marker, label: string) => {
-    const source = byLabel.get(label);
-    // The space before a mark goes with it; a line break stays, so a mark at the start of a line does not join the line above.
-    const before = marker.startsWith('\n') ? '\n' : '';
-    if (!source) return before;
-    if (!cited.has(label)) cited.set(label, source.ref);
-    return `${marker.startsWith(' ') ? ' ' : before}[${[...cited.keys()].indexOf(label) + 1}]`;
-  }).trim();
-  return { body, sources: [...cited.values()] };
+  const marked = (separator: boolean) => {
+    const cited = new Map<string, AssistantSourceRef>();
+    const body = raw.replace(/\s?\[(S\d{1,3})\]/g, (marker, label: string) => {
+      const source = byLabel.get(label);
+      // The space before a mark goes with it; a line break stays, so a mark at the start of a line does not join the line above.
+      const before = marker.startsWith('\n') ? '\n' : '';
+      if (!source) return before || (separator ? ' ' : '');
+      if (!cited.has(label)) cited.set(label, source.ref);
+      return `${marker.startsWith(' ') ? ' ' : before}[${[...cited.keys()].indexOf(label) + 1}]`;
+    }).trim();
+    return { body, sources: [...cited.values()] };
+  };
+  // A mark taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
+  const plain = marked(false);
+  return joinsAddress(raw, plain.body) ? marked(true) : plain;
 }

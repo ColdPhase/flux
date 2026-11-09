@@ -15,7 +15,7 @@ import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
 import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
-import { answerWithoutPrivateAddresses } from './answer-addresses.js';
+import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
@@ -351,8 +351,6 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // Every search the CLI reported is written before the run's end is.
       await recorded;
       await hooks.afterDispatch?.(run);
-      // An address in the answer that carries private text the run read is left out before the answer is stored (#1143, C-30).
-      if (end.kind === 'answer') end = { ...end, text: await answerWithoutPrivateAddresses(uow, run.id, end.text) };
 
       return uow.run(async (ports) => {
         const located = await ports.runs.findRun(run.id);
@@ -379,9 +377,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // AIM-3 "Committed answer": token patterns and the exact run token become "[removed: looked like a secret]".
         const redacted = redactSecrets(end.text, [grant.token]);
         const agent: Principal = { kind: 'agent', id: run.agentId };
-        // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned them.
-        if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(redacted.text, WEB_SEARCH_BOUNDS.cited) }));
-        const words = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, redacted.text));
+        // The answer's final text, cleaned while the run's kept text still exists (#1143, #1149, C-30): after its schedule block is taken out
+        // (and the schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
+        const cleaner = answerCleaner(() => ports.runs.privateTexts(run.id));
+        const answer = await cleaner.cleanAnswer(await answerWithSchedule(ports, run, redacted.text, cleaner));
+        // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned
+        // them; those of the cleaned answer, so an address left out is never listed.
+        if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(answer, WEB_SEARCH_BOUNDS.cited) }));
+        const words = await answerWithWebSources(ports, run, answer, cleaner.listed);
         const status = await save(ended('completed', null, {
           ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,
           committedAt: new Date(),

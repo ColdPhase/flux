@@ -49,8 +49,13 @@ export function webSourcesLine(reads: readonly { finalUrl: string; outcome: stri
 }
 
 /** The answer with the run's searches and the addresses it asked for at its end. */
-export async function answerWithWebSources(ports: PersonalRunPorts, run: Pick<RunRecord, 'id'>, answer: string): Promise<string> {
-  const line = webSourcesLine(await ports.runs.webReads(run.id), await ports.runs.webSearches(run.id));
+export async function answerWithWebSources(ports: PersonalRunPorts, run: Pick<RunRecord, 'id'>, answer: string,
+  listed: { read(address: string): Promise<string>; cited(address: string): Promise<string> } = { read: async (address) => address, cited: async (address) => address }): Promise<string> {
+  // Each address as the stored answer may hold it (#1149, `AnswerCleaner.listed`): listed always, but never as a link a later run would take
+  // as written when the writing run could not have opened it as one.
+  const reads = await Promise.all((await ports.runs.webReads(run.id)).map(async (item) => ({ ...item, finalUrl: await listed.read(item.finalUrl) })));
+  const searches = await ports.runs.webSearches(run.id);
+  const line = webSourcesLine(reads, { ...searches, cited: await Promise.all(searches.cited.map((address) => listed.cited(address))) });
   return line ? `${answer.trimEnd()}\n\n${line}` : answer;
 }
 
