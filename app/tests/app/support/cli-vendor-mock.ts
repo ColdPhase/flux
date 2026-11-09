@@ -13,7 +13,6 @@ import { randomBytes } from 'node:crypto';
  *     GET /cli/openai/v1/responses with `Upgrade: websocket` → 426 (Codex falls back to HTTP at once), POST …/responses (SSE)
  *     POST /cli/auth/api/accounts/deviceauth/usercode, …/deviceauth/token, /cli/auth/oauth/token, /cli/auth/oauth/revoke
  *     GET /cli/chatgpt/backend-api/wham/usage
- *   A minimal MCP server for Codex runs started outside Flux (app/tests/cli-runtime/codex-contract.mjs): POST /cli/mcp
  *   Control: POST /__cli/script { client, steps, usage, accessLifetimeSeconds, revokeRefreshTokens }, POST /__cli/approve,
  *   GET /__cli/journal, POST /__cli/reset
  *
@@ -90,16 +89,20 @@ const textOf = (content: unknown): string => typeof content === 'string' ? conte
  */
 const jwt = (claims: Json) => `${[{ alg: 'none', typ: 'JWT' }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString('base64url')).join('.')}.not-signed`;
 const PLAN_CLAIMS = { chatgpt_plan_type: 'plus', chatgpt_user_id: 'user-mock-1', chatgpt_account_id: 'acct-mock-1' };
-function issueTokens() {
+/**
+ * `lifetime`: a sign-in's access token lives `accessLifetimeSeconds` (a short one makes the CLI refresh it); a refreshed one an hour, as
+ * a token inside Codex's five-minute refresh window would be refreshed again at once, without end (observed 2026-11-09).
+ */
+function issueTokens(lifetime: number) {
   const now = Math.floor(Date.now() / 1000);
   const refresh = `rt-mock-${randomBytes(6).toString('hex')}`;
   state.refreshTokens.add(refresh);
   return {
     id_token: jwt({ iss: 'https://auth.openai.com', sub: 'user-mock-1', email: 'plan-person@example.test', iat: now, exp: now + 3600, 'https://api.openai.com/auth': PLAN_CLAIMS }),
-    access_token: jwt({ iss: 'https://auth.openai.com', sub: 'user-mock-1', iat: now, exp: now + state.accessLifetimeSeconds, 'https://api.openai.com/auth': PLAN_CLAIMS,
+    access_token: jwt({ iss: 'https://auth.openai.com', sub: 'user-mock-1', iat: now, exp: now + lifetime, 'https://api.openai.com/auth': PLAN_CLAIMS,
       jti: randomBytes(6).toString('hex') }),
     refresh_token: refresh,
-    token_type: 'Bearer', expires_in: state.accessLifetimeSeconds,
+    token_type: 'Bearer', expires_in: lifetime,
   };
 }
 
@@ -191,7 +194,7 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
   const model = typeof body.model === 'string' ? body.model : '';
   const { step, index } = nextStep('codex');
   record({ client: 'codex', kind: 'main', path, credential: bearer, model, tools, results, step: index,
-    detail: { account: request.headers['chatgpt-account-id'] ?? null } });
+    detail: { account: request.headers['chatgpt-account-id'] ?? null, encoding: request.headers['content-encoding'] ?? null } });
   if ('error' in step) return json(response, step.error.status, step.error.body, step.error.headers);
   const responseId = `resp_mock_${counter}`;
   const events: [string, unknown][] = [['response.created', { type: 'response.created', response: { id: responseId } }]];
@@ -246,13 +249,13 @@ function issuer(response: http.ServerResponse, path: string, body: Json, raw: st
     const fields = typeof body.grant_type === 'string' ? body : form;
     if (fields.grant_type === 'authorization_code' && state.codes.delete(String(fields.code ?? ''))) {
       record({ client: 'issuer', kind: 'code_exchange', path, credential: null });
-      return json(response, 200, issueTokens());
+      return json(response, 200, issueTokens(state.accessLifetimeSeconds));
     }
     if (fields.grant_type === 'refresh_token') {
       const known = state.refreshTokens.delete(String(fields.refresh_token ?? ''));
       record({ client: 'issuer', kind: 'refresh', path, credential: null, detail: { known } });
       if (!known) return json(response, 401, { error: { code: 'refresh_token_invalidated', message: 'Your refresh token has already been used to generate a new access token. Please try signing in again.' } });
-      return json(response, 200, issueTokens());
+      return json(response, 200, issueTokens(3600));
     }
     return json(response, 400, { error: 'invalid_grant' });
   }
@@ -274,22 +277,6 @@ function chatgpt(request: http.IncomingMessage, response: http.ServerResponse, p
       credits: null, additional_rate_limits: null });
   }
   return json(response, 404, { error: 'not found' });
-}
-
-/** Streamable HTTP MCP, JSON answers only: whatever tool Codex lists is there, and every call answers one line of text. */
-function mcp(request: http.IncomingMessage, response: http.ServerResponse, body: Json) {
-  if (request.method !== 'POST') { response.writeHead(request.method === 'DELETE' ? 200 : 405); response.end(); return; }
-  if (body.id === undefined) { response.writeHead(202); response.end(); return; }
-  const reply = (result: unknown) => json(response, 200, { jsonrpc: '2.0', id: body.id, result }, { 'mcp-session-id': 'cli-mock-session' });
-  const params = (body.params && typeof body.params === 'object' ? body.params : {}) as Json;
-  if (body.method === 'initialize') return reply({ protocolVersion: params.protocolVersion ?? '2025-06-18', capabilities: { tools: {} }, serverInfo: { name: 'flux', version: 'mock' } });
-  if (body.method === 'tools/list') return reply({ tools: ['flux_get_conversation', 'flux_create_task', 'flux_read_web'].map((name) => ({ name, description: name,
-    inputSchema: { type: 'object', properties: {}, additionalProperties: true } })) });
-  if (body.method === 'tools/call') {
-    record({ client: 'codex', kind: 'mcp_call', path: '/cli/mcp', credential: null, detail: { tool: params.name } });
-    return reply({ content: [{ type: 'text', text: 'Camera fails below 5 lux' }], isError: false });
-  }
-  return reply({});
 }
 
 /** Handles `/cli/…` and `/__cli/…`; false for any other path (the adapter suite's routes). */
@@ -334,7 +321,6 @@ export function handleCliVendor(request: http.IncomingMessage, response: http.Se
     if (rest === '/v1/responses' && request.method === 'POST') { codexResponses(request, response, rest, fields); return true; }
   }
   if (path.startsWith('/cli/auth/')) { issuer(response, path.slice('/cli/auth'.length), fields, raw); return true; }
-  if (path === '/cli/mcp') { mcp(request, response, fields); return true; }
   if (path.startsWith('/cli/chatgpt/backend-api/')) { chatgpt(request, response, path.slice('/cli/chatgpt/backend-api'.length)); return true; }
   // Anything else, such as Codex's model list (`/cli/openai/v1/models`): 404, so each CLI keeps its own pinned model catalog.
   record({ client: 'other', kind: 'not_found', path, credential: null });

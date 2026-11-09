@@ -2,7 +2,7 @@ import { RUN_CAP_BOUNDS, createRuntimeManagerClient, streamManagerRun, type Mana
 import {
   clientAvailability, type AgentRuntimeConfig, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
 } from '@flux/core';
-import { personalRuntimeRow, recordRuntimeUsage, touchRuntimeBinding, type Database } from '@flux/db';
+import { markRuntimeSignInAgain, personalRuntimeRow, recordRuntimeUsage, touchRuntimeBinding, type Database } from '@flux/db';
 
 // The worker's side of a personal run on the owner's own Claude Code or Codex (F-022 AIM-3 "Run", #280, #281): it asks
 // runtime-manager to run the CLI in the owner's own slot and binding directory, read from the database for
@@ -74,6 +74,8 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database,
             // A finished run shows the plan is usable again, even before the reset it stated.
             : result.outcome === 'completed' ? { leftPercent: null, window: null, resetsAt: null, limitReached: false } : null;
         if (usage) await recordRuntimeUsage(db, target.bindingId, client, usage).catch(() => undefined);
+        // #1129: the CLI said its login no longer works; its status may still report one (a revoked key or token), so Settings says so.
+        if (result.outcome === 'sign_in_again') await markRuntimeSignInAgain(db, target.bindingId, client).catch(() => undefined);
       }
       return endOf(outcome);
     },

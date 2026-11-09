@@ -6,7 +6,7 @@ import { openAppServer, readRateLimits, readUsage, type UsageReading } from './a
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, type Person } from './process.js';
-import { CLAUDE_WEB_SEARCH_TOOL, cliEnvironment, CODEX_FEATURE_REVIEW, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
+import { CLAUDE_WEB_SEARCH_TOOL, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
 
 // One run of the owner's CLI in their binding directory (F-022 AIM-3 "Run" and "Hardening", T5 #280).
 //
@@ -92,7 +92,10 @@ export function stopPersonRuns(config: SupervisorConfig, bindingId: string): voi
  * reset time is NOT parsed from the text (local wording); the app-server read supplies it (step two).
  */
 export function classifyCodexError(text: string): RunOutcome {
-  if (/hit your usage limit|usage limit reached|quota exceeded|upgrade to plus/i.test(text)) return 'plan_limit';
+  // #1129 (observed with the pinned CLI, 2026-11-09): "Codex ran out of room in the model's context window. Start a new thread …".
+  if (/ran out of room in the model.s context window|context_length_exceeded/i.test(text)) return 'input_too_large';
+  // An API rate limit Codex gave up on: "exceeded retry limit, last status: 429 Too Many Requests" (codex-rs codex-api/src/api_bridge.rs).
+  if (/hit your usage limit|usage limit reached|quota exceeded|upgrade to plus|last status: 429\b/i.test(text)) return 'plan_limit';
   if (/sign in again|refresh token|not logged in|unexpected status 401|\b401 unauthorized|token could not be refreshed/i.test(text)) return 'sign_in_again';
   if (MODEL_NOT_ACCEPTED.test(text)) return 'model_unavailable';
   if (/usage policy|refus|content policy|safety/i.test(text)) return 'refused';
@@ -107,13 +110,25 @@ export function classifyCodexError(text: string): RunOutcome {
  */
 export const MODEL_NOT_ACCEPTED = /issue with the selected model|may not have access to (it|this model)|model_not_found|\bmodel\b[^.\n]{0,80}\b(does not exist|do not have access|is not supported|is not available)\b/i;
 
-/** The CLI's error result in plain categories (wording first verified against a real account in T10). */
-export function classifyError(text: string): { outcome: RunOutcome; resetsAt: string | null } {
-  if (/usage limit reached|limit reached|hit your limit|out of extra usage/i.test(text)) {
+/**
+ * The CLI's error result in plain categories. `facts` are the stream's own structured fields where Claude Code gives them: the last
+ * `assistant` event's `error` (`rate_limit`, `authentication_failed`, `billing_error`, `invalid_request`, …) and the result's
+ * `terminal_reason` (`prompt_too_long`, `api_error`, …). Texts observed with the pinned 2.1.285 against the vendor mock (#1129, 2026-11-09):
+ * "API Error: Request rejected (429) · …", "Prompt is too long · the request is ~… tokens (limit …)", "Invalid API key · Fix external
+ * API key". A plan's own limit ("You've hit your session limit · resets 3:45pm", composed from `You've hit your <name> limit`, strings
+ * of the binary) appears only signed in with a plan, so it is unverified here.
+ */
+export function classifyError(text: string, facts: { error?: string | null; terminalReason?: string | null } = {}): { outcome: RunOutcome; resetsAt: string | null } {
+  if (facts.terminalReason === 'prompt_too_long' || /^prompt is too long\b/im.test(text)) return { outcome: 'input_too_large', resetsAt: null };
+  // "Server is temporarily limiting requests (not your usage limit)": the vendor's own capacity, not the person's limit.
+  if (/not your usage limit/i.test(text)) return { outcome: 'crashed', resetsAt: null };
+  if (facts.error === 'rate_limit' || facts.error === 'billing_error'
+    || /usage limit reached|limit reached|hit your (?:[\w'’-]+ ){0,3}(?:limit|budget)|out of extra usage|request rejected \(429\)/i.test(text)) {
     const epoch = /\|(\d{9,11})\b/.exec(text);
     return { outcome: 'plan_limit', resetsAt: epoch ? new Date(Number(epoch[1]) * 1000).toISOString() : null };
   }
-  if (/please run \/login|not logged in|oauth token (has )?expired|token has expired|invalid api key|authentication_error|authentication[_ ]failed|401\b/i.test(text)) {
+  if (facts.error === 'authentication_failed'
+    || /please run \/login|not logged in|oauth token (has )?expired|oauth token revoked|token has expired|invalid api key|authentication_error|authentication[_ ]failed|401\b/i.test(text)) {
     return { outcome: 'sign_in_again', resetsAt: null };
   }
   if (MODEL_NOT_ACCEPTED.test(text)) return { outcome: 'model_unavailable', resetsAt: null };
@@ -155,6 +170,9 @@ export function searchResultAddresses(result: unknown): string[] {
  */
 export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string): boolean {
   if (!isObject(config)) return false;
+  // #1127: Flux's reviewed model catalog (plain tools, no code mode or sub-agents) is the one in effect, and the Flux tools' approval is
+  // left to Flux (`default_tools_approval_mode`, checked with the server below).
+  if (config.model_catalog_json !== CODEX_MODEL_CATALOG) return false;
   const features = isObject(config.features) ? config.features : {};
   for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off' && features[key] !== false) return false;
   if (config.web_search !== 'disabled') return false;
@@ -162,7 +180,7 @@ export function effectiveConfigHolds(config: unknown, tools: readonly string[], 
   if (!servers || Object.keys(servers).length !== 1 || !isObject(servers.flux)) return false;
   const flux = servers.flux;
   const listed = Array.isArray(flux.enabled_tools) ? flux.enabled_tools : null;
-  return flux.url === mcpUrl && flux.bearer_token_env_var === 'FLUX_RUN_TOKEN' && flux.required === true && !!listed
+  return flux.url === mcpUrl && flux.bearer_token_env_var === 'FLUX_RUN_TOKEN' && flux.required === true && flux.default_tools_approval_mode === 'approve' && !!listed
     && listed.length === tools.length && listed.every((tool, index) => tool === tools[index]);
 }
 
@@ -276,6 +294,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     // Codex: the last agent message is the answer; each Flux tool call counts as a turn (F-022 "Caps").
     let lastMessage: string | null = null;
     let failure: string | null = null;
+    /** Claude Code: the `error` category of the last `assistant` event, if any (#1129). */
+    let lastError: string | null = null;
     const toolItems = new Set<string>();
     const handleCodex = (event: Record<string, unknown>) => {
       if (outcome) return;
@@ -345,6 +365,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       }
       if (event.type === 'assistant') {
         turns += 1;
+        // #1129: an API error's category, on the synthetic message the CLI writes for it.
+        if (typeof event.error === 'string' && /^[a-z_]{1,40}$/.test(event.error)) lastError = event.error;
         const content = (event.message as { content?: unknown } | undefined)?.content;
         for (const block of Array.isArray(content) ? content : []) {
           if (!block || typeof block !== 'object' || (block as { type?: unknown }).type !== 'tool_use') continue;
@@ -393,7 +415,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         } else if (event.subtype === 'error_max_turns') {
           outcome = 'max_turns';
         } else {
-          const classified = classifyError(text);
+          const classified = classifyError(text, { error: lastError, terminalReason: typeof event.terminal_reason === 'string' ? event.terminal_reason : null });
           outcome = classified.outcome;
           resetsAt = classified.resetsAt;
         }

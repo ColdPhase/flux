@@ -67,9 +67,11 @@ const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 const used: RunChanges = { costState: 'unknown', chargedMicros: 0 };
 
 /** How each end of the CLI is recorded: its status, and the reason when the status alone does not say. */
-function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable', planResetsAt: Date | null | undefined): RunChanges {
+function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable' | 'input_too_large', planResetsAt: Date | null | undefined): RunChanges {
   switch (reason) {
     case 'stopped': return ended('stopped', 'before_commit', used);
+    // #1129: longer than the model's context window, as an API-key run that does not fit: the same status and words.
+    case 'input_too_large': return ended('input_too_large', null, used);
     case 'unavailable': return ended('unavailable', 'before_dispatch', used);
     case 'sign_in_again': case 'local_tool': case 'slot_busy': case 'model_unavailable':
       return ended('unavailable', null, { ...used, endReason: reason });

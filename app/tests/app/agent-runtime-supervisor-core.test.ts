@@ -10,7 +10,7 @@ import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordU
 import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
-import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
+import { CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
@@ -501,6 +501,28 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.equal(classifyError('Something else went wrong').outcome, 'crashed');
   });
 
+  test('#1129: the pinned CLIs\' own texts and stream fields for a 429, an over-long prompt and a dead sign-in (observed 2026-11-09)', () => {
+    // Claude Code 2.1.285 against the vendor mock (scripts/check_cli_runtime.sh): the result text, the `assistant` event's `error`, the `terminal_reason`.
+    assert.deepEqual(classifyError('API Error: Request rejected (429) · Number of request tokens has exceeded your per-minute rate limit', { error: 'rate_limit', terminalReason: 'api_error' }),
+      { outcome: 'plan_limit', resetsAt: null });
+    assert.equal(classifyError('API Error: Request rejected (429) · anything').outcome, 'plan_limit', 'the text alone too');
+    assert.equal(classifyError('Prompt is too long · the request is ~250123 tokens (limit 200000) but this conversation is only ~150 tokens', { error: 'invalid_request', terminalReason: 'prompt_too_long' }).outcome,
+      'input_too_large');
+    assert.equal(classifyError('Something new', { terminalReason: 'prompt_too_long' }).outcome, 'input_too_large');
+    assert.equal(classifyError('Invalid API key · Fix external API key', { error: 'authentication_failed', terminalReason: 'api_error' }).outcome, 'sign_in_again');
+    assert.equal(classifyError('Failed to authenticate: OAuth token revoked. Please run /login').outcome, 'sign_in_again');
+    // A plan's own limits (strings of the 2.1.285 binary: `You've hit your <name> limit`; seen only signed in with a plan).
+    for (const text of ['You\'ve hit your session limit · resets 3:45pm', 'You’ve hit your weekly limit · resets Mon 9am', 'You\'ve hit your monthly spend limit.',
+      'You\'ve hit your team\'s shared budget. /model to switch models.'])
+      assert.equal(classifyError(text).outcome, 'plan_limit', text);
+    // The vendor's own capacity is not the person's limit.
+    assert.equal(classifyError('API Error: Server is temporarily limiting requests (not your usage limit)', { error: 'rate_limit' }).outcome, 'crashed');
+    // Codex rust-v0.160.1.
+    assert.equal(classifyCodexError('Codex ran out of room in the model\'s context window. Start a new thread or clear earlier history before retrying.'), 'input_too_large');
+    assert.equal(classifyCodexError('exceeded retry limit, last status: 429 Too Many Requests, request id: req_1'), 'plan_limit');
+    assert.equal(classifyCodexError('Your access token could not be refreshed because your refresh token was revoked. Please log out and sign in again.'), 'sign_in_again');
+  });
+
   test('AST-11: a model the account cannot use is its own outcome, for both CLIs', () => {
     assert.equal(classifyError('There\'s an issue with the selected model (opus). It may not exist or you may not have access to it. Run /model to pick a different model.').outcome, 'model_unavailable');
     assert.equal(classifyCodexError('The model `gpt-6-astra` does not exist or you do not have access to it.'), 'model_unavailable');
@@ -582,8 +604,13 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     const tools = ['flux_list_contexts', 'flux_get_doc'];
     const url = 'http://runtime-egress:8080/mcp';
     const config = { features: Object.fromEntries(Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => [key, false])),
-      web_search: 'disabled', mcp_servers: { flux: { url, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: tools } } };
+      web_search: 'disabled', model_catalog_json: CODEX_MODEL_CATALOG,
+      mcp_servers: { flux: { url, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: tools, default_tools_approval_mode: 'approve' } } };
     assert.equal(effectiveConfigHolds(config, tools, url), true);
+    // #1127: the vendor's own catalog (code mode only) is not Flux's, and Codex itself asking before a Flux tool would refuse it in `exec`.
+    assert.equal(effectiveConfigHolds({ ...config, model_catalog_json: undefined }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, model_catalog_json: '/tmp/models.json' }, tools, url), false);
+    assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, default_tools_approval_mode: 'auto' } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, features: { ...config.features, shell_tool: true } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { ...config.mcp_servers, github: { url: 'https://x' } } }, tools, url), false);
@@ -608,6 +635,27 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     const argv = codexRunOverrides(['flux_get_doc'], 'http://x:8080/mcp', 'brief');
     assert.ok(argv.includes('web_search="disabled"') && argv.includes('mcp_servers.flux.required=true') && argv.includes('mcp_servers.flux.enabled_tools=["flux_get_doc"]'));
     assert.ok(!argv.some((value) => value.startsWith('tools.view_image')), '`tools.view_image` is not a key of the pinned Codex; features.view_image is');
+    assert.ok(argv.includes(`model_catalog_json=${JSON.stringify(CODEX_MODEL_CATALOG)}`) && argv.includes('tools.experimental_request_user_input.enabled=false')
+      && argv.includes('mcp_servers.flux.default_tools_approval_mode="approve"'), '#1127');
+  });
+
+  test('#1127: Flux\'s Codex model catalog gives every model plain tools, no sub-agents, no file edits, shell, tool search or extra tools', () => {
+    // The shape of the pinned catalog (codex-rs models-manager/models.json at rust-v0.160.1): Flux's models are `code_mode_only`, `v2`.
+    const vendor = { models: [
+      { slug: 'gpt-6.1-sol', tool_mode: 'code_mode_only', multi_agent_version: 'v2', multi_agent_reasoning_effort: 'xhigh', apply_patch_tool_type: 'freeform',
+        shell_type: 'shell_command', supports_search_tool: true, experimental_supported_tools: ['send_user_message_async', 'clock'], context_window: 272000,
+        model_messages: { instructions_template: 'the vendor\'s' } },
+      { slug: 'gpt-5.5', tool_mode: null } ] };
+    const catalog = fluxCodexCatalog(vendor);
+    assert.deepEqual(catalog.models.map((model) => model.slug), ['gpt-6.1-sol', 'gpt-5.5']);
+    for (const model of catalog.models) {
+      assert.deepEqual({ tool_mode: model.tool_mode, multi_agent_version: model.multi_agent_version, multi_agent_reasoning_effort: model.multi_agent_reasoning_effort,
+        experimental_supported_tools: model.experimental_supported_tools, apply_patch_tool_type: model.apply_patch_tool_type, shell_type: model.shell_type,
+        supports_search_tool: model.supports_search_tool }, { ...CODEX_MODEL_REVIEW, experimental_supported_tools: [] });
+    }
+    assert.equal(catalog.models[0]!.context_window, 272000, 'everything else stays the vendor\'s');
+    assert.deepEqual(catalog.models[0]!.model_messages, { instructions_template: 'the vendor\'s' });
+    for (const junk of [null, {}, { models: [] }, { models: [{}] }, { models: 'x' }]) assert.throws(() => fluxCodexCatalog(junk), /Not a Codex model catalog/);
   });
 
   test('the app-server client sends only initialize, config/read and account/rateLimits/read; command/exec is refused before it is written', async () => {

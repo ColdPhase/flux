@@ -4,11 +4,11 @@
 # vendor mock instead of any account or key (providermock, app/tests/app/support/cli-vendor-mock.ts). What differs from production
 # is listed in docker/compose.cli-runtime.test.yaml; the runtime's egress has no way out, so no vendor host can be reached.
 #
-# Covered: on Claude Code an /ai run and an agent task run that call Flux's MCP tools (read a conversation and a task, create a task
-# and a subtask, flux_read_web), its own WebSearch with result addresses, a 429, an over-long prompt and a revoked key; on Codex the
-# ChatGPT device sign-in through Flux's console against a mock issuer, an /ai run (today stopped as a local tool, #1127), sign-out
-# with revocation, and, started as the supervisor starts it, a token refresh, the usage limit with its reset time, an over-long
-# prompt, a revoked sign-in and a web_search item through Flux's own classifier; no vendor credential in the database or the logs. Assertions are on Flux's side effects, never on model text.
+# Covered, on each engine: an /ai run and an agent task run that call Flux's MCP tools (read a conversation and a task, create a task
+# and a subtask, flux_read_web), the CLIs' own texts for an over-long request, a limit and a revoked sign-in, and what Flux records for
+# each; on Claude Code its own WebSearch with result addresses; on Codex the ChatGPT device sign-in through Flux's console against a
+# mock issuer, a token refresh, the usage limit's reset time, and sign-out with revocation; no vendor credential in the database or
+# the logs. Codex's own web search is left to #1065, which changes it (the mock already answers a `search` step with a web_search_call). Assertions are on Flux's side effects, never on model text.
 # Not covered (needs a real account, see docs/agents/evaluation.md): the Claude plan sign-in and plan-limit texts, real model quality.
 #
 # Needs internet only to build the images and for Flux's own installer to download the pinned Claude Code (downloads.claude.ai,
@@ -123,41 +123,44 @@ claude_key_for "$ada_binding" "$claude_key"
 check claude-check
 
 step "5. Claude Code /ai: read the conversation, create a task, read a page (Flux MCP through runtime-egress)"
-check claude-ai
+check ai claude
 
 step "6. Claude Code's own WebSearch: recorded before its results are read; flux_read_web reads a result"
 check claude-search
 
 step "7. Claude Code agent task run: the task's discussion, a subtask, the agent's report"
-check claude-task
+check task claude
 
-step "8. Claude Code API errors with the CLI's own texts"
-# Today Flux records a 429 and an over-long prompt as a crash (#1129); the step fails when that changes.
-check claude-error rate_limit crashed
-check claude-error context crashed
+step "8. Claude Code API errors with the CLI's own texts: an over-long prompt, a 429 (#1129)"
+check error claude context
+check error claude limit
 
-step "9. Claude Code with a revoked key: the run ends 'sign in again'; then a good key again"
-# Today Settings keeps showing "signed in" after such a run (the CLI's status still reports the key, #1129).
+step "9. Claude Code with a revoked key: the run and Settings say sign in again; a good key and a status check set it right"
 claude_key_for "$ada_binding" "$revoked_key"
-check claude-expired
+check revoked claude
 claude_key_for "$ada_binding" "$claude_key"
 check claude-check
 
 step "10. Codex: ChatGPT device sign-in through Flux's console against the mock issuer"
 check codex-sign-in
 
-step "11. Codex /ai (#1127: the real Codex offers no Flux tool and is stopped as a local tool)"
-check codex-ai
+step "11. Codex /ai with Flux's tools, plain tools from Flux's model catalog (#1127); the access token refreshed"
+check ai codex
 
-step "11b. Codex as the supervisor starts it, outside a Flux run (what #1127 keeps a run from reaching)"
-# A refresh, the usage limit with the reset time read by Flux's own app-server client, an over-long prompt, a web_search item and a
-# revoked sign-in, each through Flux's own classifier (app/tests/cli-runtime/codex-contract.mjs), under a user id no person has.
-docker exec -u 3999:3999 -w /tmp "$(slot_cid)" node /opt/flux-cli-mock/codex-contract.mjs
+step "12. Codex agent task run"
+check task codex
 
-step "12. Codex sign-out: its own logout revokes the token at the issuer; Flux deletes the login"
+step "13. Codex API errors with the CLI's own texts: context window, the usage limit with its reset time (#1129)"
+check error codex context
+check error codex limit
+
+step "14. Codex with its sign-in revoked at the issuer: the refresh fails; the run and Settings say sign in again"
+check revoked codex
+
+step "15. Codex sign-out: its own logout revokes the token at the issuer; Flux deletes the login"
 check codex-sign-out
 
-step "13. No vendor credential in the database or any service log; runtime-egress opened no tunnel"
+step "16. No vendor credential in the database or any service log; runtime-egress opened no tunnel"
 out=$(check no-secret "$claude_key" "$revoked_key"); printf '%s\n' "$out" | grep -v '^CREDENTIALS='
 $compose logs --no-color > "$background_secret_dir/logs.txt" 2>/dev/null
 [ -s "$background_secret_dir/logs.txt" ] || fail "control: no logs were read"

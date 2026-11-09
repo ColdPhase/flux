@@ -600,7 +600,7 @@ export type PersonalRuntimeEvent =
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =
   | { kind: 'answer'; text: string; turns: number }
-  | { kind: 'ended'; reason: AssistantRunEndReason | 'stopped' | 'unavailable'; planResetsAt?: Date | null };
+  | { kind: 'ended'; reason: AssistantRunEndReason | 'stopped' | 'unavailable' | 'input_too_large'; planResetsAt?: Date | null };
 
 export interface PersonalRuntimeRunRequest {
   runId: string;

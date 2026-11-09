@@ -138,17 +138,61 @@ export const CODEX_FEATURE_REVIEW: Record<string, { action: 'off'; staysOn?: str
   guardian_reuse_parent_compaction: { action: 'kept', why: 'applies only to guardian reviews, which guardian_approval=false turns off' },
 };
 
+/**
+ * Flux's copy of the pinned Codex's model catalog, in the runtime image (docker/Dockerfile `codex-catalog`), passed to every Codex
+ * run as `model_catalog_json` (#1127). The pinned catalog (codex-rs `models-manager/models.json` at rust-v0.160.1, sha256 fd219bd9…,
+ * read 2026-11-09) gives every model Flux offers `tool_mode: "code_mode_only"`: Codex then offers MCP tools only inside its code mode
+ * `exec` tool, which needs the code-mode host Flux keeps off (RT-5: no code execution), so a run had no Flux tool at all and its first
+ * JSONL item was an `error`. `requested_tool_mode` (codex-rs core/src/tools/mod.rs) takes the catalog's `tool_mode` before any
+ * feature, and nothing but a catalog sets it; a configured catalog is authoritative, so ChatGPT's live catalog cannot replace it
+ * (model-provider/src/provider.rs `create_models_manager`: a `StaticModelsManager`).
+ */
+export const CODEX_MODEL_CATALOG = '/opt/flux-runtime/codex/models.json';
+
+/**
+ * What Flux sets in every entry of that catalog, and why (#1127). Everything else (instructions, context window, reasoning levels)
+ * stays the vendor's. Checked against the real pinned CLI (scripts/check_cli_runtime.sh): the model is offered exactly the run's Flux
+ * tools in the `mcp__flux` namespace plus Codex's own MCP resource readers, whose calls are `mcp_tool_call` items of the `codex`
+ * server, which the run reader stops.
+ */
+export const CODEX_MODEL_REVIEW = {
+  /** Flux's MCP tools as plain function tools, not inside code mode's `exec` (codex-rs core/src/tools/spec_plan.rs). */
+  tool_mode: 'direct',
+  /** `v2` offers the `collaboration` tools (spawn_agent, send_message, …) whatever `features.multi_agent` says: no sub-agents. */
+  multi_agent_version: null, multi_agent_reasoning_effort: null,
+  /** `send_user_message_async` and `clock`. */
+  experimental_supported_tools: [],
+  /** No file edits, no shell, no tool search; web search stays `web_search="disabled"`. */
+  apply_patch_tool_type: null, shell_type: 'disabled', supports_search_tool: false,
+} as const;
+
+/** The vendor catalog with Flux's review applied to every model; anything that is not a catalog is refused. */
+export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unknown>[] } {
+  const models = typeof vendor === 'object' && vendor !== null && Array.isArray((vendor as { models?: unknown }).models) ? (vendor as { models: unknown[] }).models : null;
+  if (!models?.length || !models.every((model) => typeof model === 'object' && model !== null && typeof (model as { slug?: unknown }).slug === 'string')) {
+    throw new Error('Not a Codex model catalog');
+  }
+  return { ...(vendor as object), models: models.map((model) => ({ ...(model as Record<string, unknown>), ...CODEX_MODEL_REVIEW })) };
+}
+
 /** The `-c` overrides of a Codex run, in order. Values are TOML: strings as JSON strings, the tool list as an array. */
 export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string): string[] {
   if (!tools.length) throw new Error('A Codex run needs a non-empty tool list');
   const features = Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => `features.${key}=false`);
   return [
     ...features, 'web_search="disabled"', 'analytics.enabled=false', 'check_for_update_on_startup=false',
+    // #1127: Flux's reviewed catalog (direct tools, no sub-agents), and no `request_user_input` (nobody answers a run's questions).
+    `model_catalog_json=${JSON.stringify(CODEX_MODEL_CATALOG)}`,
+    'tools.experimental_request_user_input.enabled=false',
     `developer_instructions=${JSON.stringify(brief)}`,
     `mcp_servers.flux.url=${JSON.stringify(mcpUrl)}`,
     'mcp_servers.flux.bearer_token_env_var="FLUX_RUN_TOKEN"',
     'mcp_servers.flux.required=true',
     `mcp_servers.flux.enabled_tools=${JSON.stringify(tools)}`,
+    // Flux decides what waits for the owner (F-036 AG-3), as Claude Code's `--permission-mode dontAsk` with `--allowedTools` leaves it to
+    // Flux: without this, `codex exec` (approval policy never) refuses every Flux tool that is not read-only (codex-rs
+    // core/src/mcp_tool_call.rs `request_mcp_tool_user_approval`).
+    'mcp_servers.flux.default_tools_approval_mode="approve"',
   ].flatMap((value) => ['-c', value]);
 }
 

@@ -86,6 +86,23 @@ async function askAi(someone: Person, conversationId: string, prompt: string): P
 }
 
 const mainRequests = (entries: CliJournalEntry[], client: 'claude' | 'codex') => entries.filter((entry) => entry.client === client && entry.kind === 'main');
+/** The Flux tools a model request offered, by Flux's name (Claude Code: `mcp__flux__x`; Codex: `x` in the `mcp__flux` namespace). */
+const fluxTools = (entry: CliJournalEntry) => (entry.tools ?? []).flatMap((name) => /^mcp__flux(?:__|\.)(flux_[a-z_]+)$/.exec(name)?.[1] ?? []).sort();
+/**
+ * What else a request offered beyond the CLI's allowed own tools: Claude Code's `WebSearch` and `EndConversation`; Codex's MCP resource
+ * readers, whose calls are `codex` server items the run reader stops (#1127).
+ */
+const ALLOWED_OWN: Record<'claude' | 'codex', string[]> = {
+  claude: ['WebSearch', 'EndConversation'],
+  codex: ['functions.list_mcp_resources', 'functions.list_mcp_resource_templates', 'functions.read_mcp_resource'],
+};
+const otherTools = (entry: CliJournalEntry, client: 'claude' | 'codex') => (entry.tools ?? []).filter((name) => !/^mcp__flux(?:__|\.)flux_/.test(name) && !ALLOWED_OWN[client].includes(name));
+type Engine = 'claude' | 'codex';
+/** Each engine's person in this check, the mock's client and Flux's name for the CLI. */
+const ENGINES: Record<Engine, { who: string; client: 'claude' | 'codex'; cli: 'claude_code' | 'codex' }> = {
+  claude: { who: 'ada', client: 'claude', cli: 'claude_code' },
+  codex: { who: 'bo', client: 'codex', cli: 'codex' },
+};
 function print(values: Record<string, unknown>) { for (const [key, value] of Object.entries(values)) console.log(`${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`); }
 
 /** One console attach: Codex's device sign-in, approved at the mock issuer once the CLI printed its code (the person approved it). */
@@ -168,24 +185,25 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   },
 
   /**
-   * `/ai` on Claude Code: the model reads the conversation, creates a task and reads a page the request named, through Flux's MCP
-   * route with the run token. Flux records the tools, the MCP result bytes, the change with its Undo row and the web read, and
-   * commits the answer.
+   * `/ai`: the model reads the conversation, creates a task and reads a page the request named, through Flux's MCP route with the run
+   * token. Flux records the tools, the MCP result bytes, the change with its Undo row and the web read, and commits the answer. On Codex
+   * (#1127) the sign-in's access token, which the device sign-in left about to expire, is refreshed at the issuer.
    */
-  async 'claude-ai'() {
-    const ada = await owner('ada');
+  async ai(engine) {
+    const { who, client, cli } = ENGINES[engine as Engine];
+    const someone = await owner(who);
     const { projectId, conversationId } = await load();
     const title = `Check the camera below 5 lux ${randomUUID().slice(0, 6)}`;
-    await script('claude', [
+    await script(client, [
       { tool: 'flux_get_conversation', args: { projectId, id: conversationId } },
       { tool: 'flux_create_task', args: { projectId, clientCommandId: randomUUID(), task: { title } } },
       { tool: 'flux_read_web', args: { url: PAGE.second } },
       { text: 'Done: I read the thread and the page, and made a task.' },
     ]);
     const from = await lastEntry();
-    const run = await askAi(ada, conversationId!, `Summarise this thread, make a task to check the camera, and read ${PAGE.second}`);
+    const run = await askAi(someone, conversationId!, `Summarise this thread, make a task to check the camera, and read ${PAGE.second}`);
     assert.equal(run.status, 'completed', JSON.stringify(run));
-    assert.equal(run.runtimeClient, 'claude_code');
+    assert.equal(run.runtimeClient, cli);
     const row = await runRow(run.id);
     assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null]);
     for (const tool of ['flux_get_conversation', 'flux_create_task', 'flux_read_web']) assert.ok(row.run_tools.includes(tool), `the run token granted ${tool}: ${row.run_tools.join(',')}`);
@@ -198,16 +216,22 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.deepEqual(task.rows[0], { title, project_id: projectId });
     const reads = await pool.query<{ url: string; outcome: string }>(`SELECT url, outcome FROM personal_run_web_reads WHERE run_id = $1`, [run.id]);
     assert.deepEqual(reads.rows, [{ url: PAGE.second, outcome: 'read' }]);
-    // The mock: the model was offered Flux's tools and got Flux's real answers back (the conversation, the task, the page).
-    const main = mainRequests(await journalSince(from), 'claude');
+    // The mock: the model was offered exactly Flux's tools by name and got Flux's real answers back (the conversation, the task, the page).
+    const entries = await journalSince(from);
+    const main = mainRequests(entries, client);
     assert.equal(main.length, 4, `four model turns: ${JSON.stringify(main.map((entry) => entry.step))}`);
-    assert.ok(main[0]!.tools!.includes('mcp__flux__flux_get_conversation') && !main[0]!.tools!.includes('WebFetch'), JSON.stringify(main[0]!.tools));
+    const offered = fluxTools(main[0]!);
+    assert.deepEqual(offered, [...row.run_tools].sort(), `the model is offered exactly the run's Flux tools: ${JSON.stringify(main[0]!.tools)}`);
+    assert.deepEqual(otherTools(main[0]!, client), [], `and nothing else that acts: ${JSON.stringify(main[0]!.tools)}`);
     const results = main.at(-1)!.results!;
     assert.equal(results.length, 3);
     assert.ok(results[0]!.includes(CONVERSATION_TEXT), `the conversation came back: ${results[0]!.slice(0, 300)}`);
     assert.ok(results[1]!.includes(changes.rows[0]!.object_id), `the created task's receipt came back: ${results[1]!.slice(0, 300)}`);
     assert.ok(results[2]!.includes('Another page with its own words'), `the page came back: ${results[2]!.slice(0, 300)}`);
-    print({ CLAUDE_AI_RUN: run.id, TOOLS: row.run_tools.length, MCP_BYTES: row.mcp_result_bytes });
+    // The device sign-in left an access token about to expire: Codex refreshed it at the issuer (at the latest for this run).
+    const refreshed = (await journal()).some((entry) => entry.kind === 'refresh' && entry.detail?.known === true);
+    if (client === 'codex') assert.ok(refreshed, 'Codex refreshed its access token at the mock issuer');
+    print({ ENGINE: engine, RUN: run.id, TOOLS: offered.length, MCP_BYTES: row.mcp_result_bytes, ...(client === 'codex' ? { REFRESHED: refreshed } : {}) });
   },
 
   /**
@@ -237,24 +261,25 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   },
 
   /**
-   * An agent task run on Claude Code: Ada gives a task to her agent; the worker runs it in the runtime, the model reads the task's
-   * discussion and makes a subtask, and the agent's report lands in the task's discussion.
+   * An agent task run: the owner gives a task to their agent; the worker runs it in the runtime, the model reads the task's discussion and
+   * makes a subtask, and the agent's report lands in the task's discussion.
    */
-  async 'claude-task'() {
-    const ada = await owner('ada');
+  async task(engine) {
+    const { who, client } = ENGINES[engine as Engine];
+    const someone = await owner(who);
     const { projectId, agents } = await load();
-    const parent = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${projectId}/work`,
-      { body: { title: 'Find out why the camera fails in the dark' } }), 201) as WorkItem;
+    const parent = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${projectId}/work`,
+      { body: { title: `Find out why the camera fails in the dark (${engine})` } }), 201) as WorkItem;
     const subtask = `Measure lux at the door ${randomUUID().slice(0, 6)}`;
-    await script('claude', [
+    await script(client, [
       { tool: 'flux_get_task_discussion', args: { taskId: parent.id } },
       { tool: 'flux_create_task', args: { projectId, clientCommandId: randomUUID(), task: { title: subtask, parentTaskId: parent.id } } },
       { text: 'I made a subtask to measure the light at the door.' },
     ]);
     const from = await lastEntry();
-    // Only now does Ada give it to her agent (the Owner field): the run may start at once, and the script is already set.
-    expectStatus(await ada.browser.request('PATCH', workItemPath(parent.id), { body: { owner: { kind: 'agent', id: agents!.ada } }, headers: { 'if-match': `"${parent.version}"` } }), 200);
-    const line = await until('the agent to finish the task', async () => expectStatus(await ada.browser.request('GET', taskAgentPath(parent.id)), 200) as TaskAgentState,
+    // Only now does the owner give it to their agent (the Owner field): the run may start at once, and the script is already set.
+    expectStatus(await someone.browser.request('PATCH', workItemPath(parent.id), { body: { owner: { kind: 'agent', id: agents![who] } }, headers: { 'if-match': `"${parent.version}"` } }), 200);
+    const line = await until('the agent to finish the task', async () => expectStatus(await someone.browser.request('GET', taskAgentPath(parent.id)), 200) as TaskAgentState,
       (state) => state.line !== null && !['waiting_for_room', 'working'].includes(state.line), 240);
     assert.ok(line.runId, JSON.stringify(line));
     const row = await runRow(line.runId);
@@ -269,51 +294,71 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const child = await pool.query<{ title: string }>(`SELECT w.title FROM project_object_links l JOIN project_work_items w ON w.id = l.from_id
       WHERE l.role = 'part_of' AND l.to_type = 'work' AND l.to_id = $1 AND l.from_id = $2`, [parent.id, made.object_id]);
     assert.deepEqual(child.rows, [{ title: subtask }], 'the subtask is part of the task');
-    const main = mainRequests(await journalSince(from), 'claude');
-    assert.ok(main[0]!.tools!.includes('mcp__flux__flux_get_task_discussion'), JSON.stringify(main[0]!.tools));
+    const main = mainRequests(await journalSince(from), client);
+    assert.ok(fluxTools(main[0]!).includes('flux_get_task_discussion'), JSON.stringify(main[0]!.tools));
     assert.ok(main.at(-1)!.results!.some((result) => result.includes(made.object_id)), 'the created subtask\'s receipt came back to the model');
-    print({ CLAUDE_TASK_RUN: row.id, TASK_LINE: line.line });
+    print({ ENGINE: engine, TASK_RUN: row.id, TASK_LINE: line.line });
   },
 
   /**
-   * The CLI's own error texts, from the API errors the mock returns: what Flux records for the run. `rate_limit` is a 429 of the
-   * Messages API, `context` the API's "prompt is too long". Expected reasons are what Flux does today (#1129).
+   * The CLIs' own texts for API errors the mock returns, and what Flux records (#1129): a limit pauses the request until it resets (a
+   * new queued run tries again by itself), an over-long request is "too long for one request", and nothing is committed.
    */
-  async 'claude-error'(kind, expected) {
-    const ada = await owner('ada');
+  async error(engine, kind) {
+    const { who, client, cli } = ENGINES[engine as Engine];
+    const someone = await owner(who);
     const { conversationId } = await load();
-    const errors: Record<string, CliStep> = {
-      rate_limit: { error: { status: 429, headers: { 'retry-after': '60', 'x-should-retry': 'false' },
+    const resetsAt = Math.floor(Date.now() / 1000) + 2 * 3600;
+    const steps: Record<string, CliStep> = client === 'claude' ? {
+      limit: { error: { status: 429, headers: { 'retry-after': '60', 'x-should-retry': 'false' },
         body: { type: 'error', error: { type: 'rate_limit_error', message: 'Number of request tokens has exceeded your per-minute rate limit' } } } },
       context: { error: { status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'prompt is too long: 250123 tokens > 200000 maximum' } } } },
+    } : {
+      limit: { error: { status: 429, body: { error: { type: 'usage_limit_reached', message: 'The usage limit has been reached', plan_type: 'plus', resets_at: resetsAt } } } },
+      context: { failed: { code: 'context_length_exceeded', message: 'Your input exceeds the context window of this model.' } },
     };
-    await script('claude', [errors[kind!]!]);
-    const run = await askAi(ada, conversationId!, 'What is the camera\'s lux threshold?');
+    await script(client, [steps[kind!]!], client === 'codex' ? { usage: { usedPercent: kind === 'limit' ? 100 : 12, resetsAt } } : {});
+    const run = await askAi(someone, conversationId!, 'What is the camera\'s lux threshold?');
     const row = await runRow(run.id);
     assert.equal(row.answer_body, null, 'nothing is committed');
-    assert.equal(row.end_reason, expected, `${kind}: Flux recorded ${row.status}/${row.end_reason}`);
-    assert.equal((await runtimeStatus(ada)).connections.claude_code?.state, 'signed_in', 'the sign-in is untouched');
-    print({ KIND: kind, STATUS: row.status, END_REASON: row.end_reason });
+    if (kind === 'context') {
+      assert.deepEqual([row.status, row.end_reason], ['input_too_large', null], JSON.stringify(row));
+    } else {
+      assert.deepEqual([row.status, row.end_reason], ['unavailable', 'plan_limit'], JSON.stringify(row));
+      // Codex: the reset time read through Flux's app-server client from the plan's usage; Claude Code's 429 names none.
+      assert.equal(row.plan_limit_resets_at?.toISOString() ?? null, client === 'codex' ? new Date(resetsAt * 1000).toISOString() : null);
+      const resumed = await pool.query<{ status: string }>(`SELECT status FROM personal_runs WHERE retry_of_run_id = $1`, [run.id]);
+      assert.deepEqual(resumed.rows, [{ status: 'queued' }], 'the request waits to start again by itself');
+      // It would start again at the reset (or in two hours): out of the way of the next steps.
+      await pool.query(`UPDATE personal_runs SET status = 'stopped', stopped_at_stage = 'before_read', completed_at = now() WHERE retry_of_run_id = $1`, [run.id]);
+    }
+    assert.equal((await runtimeStatus(someone)).connections[cli]?.state, 'signed_in', 'the sign-in is untouched');
+    print({ ENGINE: engine, KIND: kind, STATUS: row.status, END_REASON: row.end_reason, RESETS_AT: row.plan_limit_resets_at?.toISOString() ?? null });
   },
 
   /**
-   * Ada's key was revoked (the script wrote a refused one): the run ends "sign in again" for her to see. Her sign-in in Settings stays
-   * "signed in" today, since the CLI's own status still reports the key (#1129); the step fails when that changes.
+   * A dead sign-in (#1129): Claude Code's key was revoked (the script wrote one the mock refuses); Codex's tokens were revoked at the
+   * issuer, so its refresh fails. The run ends "sign in again", and Settings says so too, although the CLI's own status still reports a
+   * login; a status check or a new sign-in sets it right.
    */
-  async 'claude-expired'() {
-    const ada = await owner('ada');
+  async revoked(engine) {
+    const { who, client, cli } = ENGINES[engine as Engine];
+    const someone = await owner(who);
     const { conversationId } = await load();
-    await script('claude', [{ text: 'never reached' }]);
+    const expired: CliStep = { error: { status: 401, body: { error: { message: 'Your authentication token has expired. Please try signing in again.', type: 'invalid_request_error', code: 'token_expired' } } } };
+    if (client === 'codex') await script('codex', [expired, expired, expired, expired], { revokeRefreshTokens: true });
+    else await script('claude', [{ text: 'never reached' }]);
     const from = await lastEntry();
-    const run = await askAi(ada, conversationId!, 'What is the camera\'s lux threshold?');
+    const run = await askAi(someone, conversationId!, 'What is the camera\'s lux threshold?');
     const row = await runRow(run.id);
-    assert.equal(row.end_reason, 'sign_in_again', JSON.stringify(row));
+    assert.deepEqual([row.status, row.end_reason, row.answer_body], ['unavailable', 'sign_in_again', null], JSON.stringify(row));
     assert.equal(run.endReason, 'sign_in_again', 'the owner sees why');
-    assert.equal(row.answer_body, null);
-    assert.ok((await journalSince(from)).some((entry) => entry.kind === 'refused_key'), 'the API refused the key');
-    const view = await runtimeStatus(ada);
-    assert.equal(view.connections.claude_code?.state, 'signed_in', 'today Settings still says signed in');
-    print({ END_REASON: row.end_reason, CLAUDE: view.connections.claude_code?.state });
+    const entries = await journalSince(from);
+    assert.ok(entries.some((entry) => client === 'claude' ? entry.kind === 'refused_key' : entry.kind === 'refresh' && entry.detail?.known === false),
+      'the vendor refused the sign-in');
+    const view = await runtimeStatus(someone);
+    assert.equal(view.connections[cli]?.state, 'sign_in_again', 'Settings asks to sign in again');
+    print({ ENGINE: engine, END_REASON: row.end_reason, SETTINGS: view.connections[cli]?.state });
   },
 
   /** Codex's ChatGPT device sign-in through Flux's console, against the mock issuer: device code, approval, code exchange, status. */
@@ -329,32 +374,17 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.equal(run.messages.filter((message) => message.t === 'device').length, 0, 'no card for a page that is not OpenAI\'s');
     assert.ok(run.output.includes('/cli/auth/codex/device'), 'the CLI printed the issuer\'s device page');
     const issuer = (await journalSince(from)).filter((entry) => entry.client === 'issuer').map((entry) => entry.kind);
-    assert.deepEqual(issuer, ['usercode', 'device_approved', 'code_exchange'], JSON.stringify(issuer));
+    // A sign-in over an earlier one first revokes it, as the CLI clears its login before a new one.
+    assert.deepEqual(issuer.filter((kind) => kind !== 'revoke').slice(0, 3), ['usercode', 'device_approved', 'code_exchange'], JSON.stringify(issuer));
     const status = await runtimeStatus(bo);
     assert.equal(status.connections.codex?.state, 'signed_in');
     assert.equal(status.connections.codex?.payer, 'chatgpt_plan');
     const { agents } = await load();
-    expectStatus(await bo.browser.request('POST', MY_AGENTS_PATH, { body: { agentId: agents!.bo, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } }), 201);
+    const mine = expectStatus(await bo.browser.request('GET', MY_AGENTS_PATH), 200) as { items: { id: string }[] };
+    if (!mine.items.some((item) => item.id === agents!.bo)) {
+      expectStatus(await bo.browser.request('POST', MY_AGENTS_PATH, { body: { agentId: agents!.bo, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } }), 201);
+    }
     print({ CODEX: status.connections.codex?.state, PAYER: status.connections.codex?.payer });
-  },
-
-  /**
-   * `/ai` on Codex. Today the real pinned Codex offers the model no Flux tool and its first JSONL item is an `error` ("Code Mode is
-   * unavailable…": every model Flux offers is `code_mode_only` in its catalog), so Flux stops it as a local tool with nothing committed
-   * (#1127). This step asserts that, so it fails, and must be rewritten, once #1127 is fixed.
-   */
-  async 'codex-ai'() {
-    const bo = await owner('bo');
-    const { conversationId, projectId } = await load();
-    await script('codex', [
-      { tool: 'flux_get_conversation', args: { projectId, id: conversationId } },
-      { text: 'Done.' },
-    ], { accessLifetimeSeconds: 3600 });
-    const run = await askAi(bo, conversationId!, 'Summarise this thread.');
-    assert.equal(run.runtimeClient, 'codex');
-    const row = await runRow(run.id);
-    assert.deepEqual([row.engine, row.end_reason, row.mcp_result_bytes, row.answer_body], ['runtime', 'local_tool', 0, null], `#1127: ${JSON.stringify(row)}`);
-    print({ CODEX_AI_RUN: run.id, STATUS: row.status, END_REASON: row.end_reason, KNOWN: '#1127' });
   },
 
   /** Sign-out runs Codex's own logout, which revokes the token at the issuer, and Flux deletes the login. */
