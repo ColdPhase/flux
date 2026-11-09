@@ -212,9 +212,11 @@ Flux's records and plain properties of an answer (its language, a fact, a source
 every attempt; an `outcome` check on one of `FLUX_AI_ATTEMPTS` (default 2). Each attempt's Flux state, model transcript and timings go
 to `FLUX_AI_EVIDENCE_DIR` (default `.worktrees/ai-real-model-evidence/<time>` of the main checkout).
 
-The model is configurable. By default it is the `strata` container on Hubert's host (llama.cpp-based, ROCm on the RX 7900 XTX,
-Qwen3.8-Flash-Next IQ3_S, its saved preset's 131,072-token context): the script starts it only with 52 GB of RAM available, attaches
-it to the stack's network, reads its local key without printing it, and stops it again afterwards. `FLUX_AI_MODEL_URL` (and
+The model is configurable. By default it is the `strata` container on Hubert's host (llama.cpp-based, ROCm on the RX 7900 XTX;
+image `ghcr.io/niko1221/strata:0.2.9-rocm-gfx110x@sha256:dc06cc82…`, model `qwen3.8-flash-next-iq3_s`, shards sha256 `4c1eb2ce…` and
+`316b46f3…`, its saved preset's 131,072-token context, read 2026-11-09): the script starts it only with 52 GiB of RAM available
+(`FLUX_AI_MODEL_MIN_AVAILABLE_GB`; its experts take a fixed 46.8 GiB of pinned host RAM, which context and `PARALLEL` do not change),
+attaches it to the stack's network, reads its local key without printing it, and stops it again afterwards. `FLUX_AI_MODEL_URL` (and
 `FLUX_AI_MODEL_KEY`) points at any other Chat Completions server the stack can reach. Run it alone; a local model is slow.
 
 Tell a Flux finding from a small model's weakness before reporting a failure: a confusing brief, tool description or error text, a

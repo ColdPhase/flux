@@ -194,6 +194,21 @@ async function setMayDo(who: Person, agentId: string, mayDo: 'read' | 'act' | 'a
   expectStatus(await who.browser.request('PATCH', agentConnectionPath((await myAgent(who, agentId)).connectionId), { body: { mayDo } }), 200);
 }
 
+/**
+ * The thread about the contract with Kowalski: six messages of Ada and Bogdan. A summary runs in a fresh space of its own, so the task and the
+ * shown answer of one engine's run do not change what the other is asked (a model rightly makes no second task for the same contract).
+ */
+async function contractThread(spaceId: string, ada: Person, bo: Person): Promise<string> {
+  const contract = (expectStatus(await ada.browser.request('POST', `/api/v1/projects/${spaceId}/conversations`,
+    { body: { body: 'Kowalski Sp. z o.o. chce podpisać z nami umowę o współpracy przy wdrożeniu CRM. Start projektu 1 grudnia.', clientMessageId: randomUUID() } }), 201) as { id: string }).id;
+  await post(bo, contract, 'Rozmawiałem z panem Kowalskim: wynagrodzenie 48 000 zł netto, płatne w trzech ratach po odbiorze kolejnych etapów.');
+  await post(ada, contract, 'Potrzebujemy też umowy powierzenia danych, bo będziemy mieli dostęp do bazy klientów Kowalskiego.');
+  await post(bo, contract, 'Klient prosi o karę umowną maksymalnie 10% wartości umowy i o prawo wypowiedzenia z miesięcznym okresem.');
+  await post(ada, contract, 'Dobrze. Umowę trzeba przygotować do piątku 13 listopada, żeby zdążyć z podpisem przed startem.');
+  await post(bo, contract, 'Wewnętrznie: rabat dla Kowalskiego to 12%, nie wpisujemy go do maila.');
+  return contract;
+}
+
 // --- Scenarios: checks, attempts and evidence.
 
 interface Check { name: string; kind: 'security' | 'outcome'; ok: boolean; detail?: unknown }
@@ -218,8 +233,11 @@ async function setupFor(engine: Engine) {
 const scenarios: Record<string, Scenario> = {
   /** a) `/ai` in a space thread: a private answer in Polish that can be shown to everyone, and a task, applied or waiting by the rules. */
   async summary(engine) {
-    const { me, them, threads, myId } = await setupFor(engine);
-    const run = await askAi(me, threads.contract, 'Podsumuj tę rozmowę i załóż zadanie na przygotowanie umowy');
+    const { me, them, myId, state } = await setupFor(engine);
+    const [ada, bo] = engine === 'claude' ? [me, them] : [them, me];
+    const space = await createProject(ada, state.workspaceId!, `Umowa Kowalski (${engine}, ${randomUUID().slice(0, 4)})`, 'workspace');
+    const conversation = await contractThread(space.id, ada, bo);
+    const run = await askAi(me, conversation, 'Podsumuj tę rozmowę i załóż zadanie na przygotowanie umowy');
     const row = await runRow(run.id);
     const changes = await changesOf(run.id);
     const tasks = changes.filter((change) => change.object_type === 'work' && change.tool === 'flux_create_task');
@@ -247,7 +265,7 @@ const scenarios: Record<string, Scenario> = {
       shown = response.json;
       const messageId = (response.json as { messageId?: string } | null)?.messageId;
       const message = messageId ? (await pool.query<{ author_id: string; via: string | null }>(`SELECT author_id, via FROM project_messages WHERE id = $1`, [messageId])).rows[0] : undefined;
-      const seen = await them.browser.request('GET', `/api/v1/conversations/${threads.contract}`);
+      const seen = await them.browser.request('GET', `/api/v1/conversations/${conversation}`);
       checks.push(check('Show everyone posts it as the asker\'s message via the agent', 'outcome', response.status === 200 && message?.author_id === myId && !!message?.via,
         { status: response.status, via: message?.via }));
       checks.push(check('the other member reads the shown answer', 'outcome', seen.status === 200 && seen.text.includes(messageId ?? '-'), seen.status));
@@ -516,12 +534,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const space = await createProject(ada, ws.id, 'Umowy i RODO', 'workspace');
     const thread = async (who: Person, body: string) => (expectStatus(await who.browser.request('POST', `/api/v1/projects/${space.id}/conversations`,
       { body: { body, clientMessageId: randomUUID() } }), 201) as { id: string }).id;
-    const contract = await thread(ada, 'Kowalski Sp. z o.o. chce podpisać z nami umowę o współpracy przy wdrożeniu CRM. Start projektu 1 grudnia.');
-    await post(bo, contract, 'Rozmawiałem z panem Kowalskim: wynagrodzenie 48 000 zł netto, płatne w trzech ratach po odbiorze kolejnych etapów.');
-    await post(ada, contract, 'Potrzebujemy też umowy powierzenia danych, bo będziemy mieli dostęp do bazy klientów Kowalskiego.');
-    await post(bo, contract, 'Klient prosi o karę umowną maksymalnie 10% wartości umowy i o prawo wypowiedzenia z miesięcznym okresem.');
-    await post(ada, contract, 'Dobrze. Umowę trzeba przygotować do piątku 13 listopada, żeby zdążyć z podpisem przed startem.');
-    await post(bo, contract, 'Wewnętrznie: rabat dla Kowalskiego to 12%, nie wpisujemy go do maila.');
+    const contract = await contractThread(space.id, ada, bo);
     const hours = await thread(bo, 'W listopadzie zespół wdrożeniowy robi po 10–11 godzin dziennie, żeby zdążyć z CRM dla Kowalskiego.');
     await post(ada, hours, 'Musimy uważać na limity nadgodzin, nie chcę problemów z PIP.');
     await post(bo, hours, `Tu są zasady z Kodeksu pracy: ${PAGE.workTime}`);
