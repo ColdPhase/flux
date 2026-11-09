@@ -223,6 +223,16 @@ describe('work, decisions and results in a project', () => {
     assert.equal(json<WorkItem>(await get(viewer, `/api/v1/work/${experiment.id}`), 200).cameOfIt, line, 'every reader of the project reads it');
   });
 
+  test('a related link connects a task to a source version, is refused for outsiders and tells the stream', async () => {
+    const task = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Compare two lenses', owner: { kind: 'human', id: partner.id } }), 201);
+    const link = { from: { type: 'work', id: task.id }, to: { type: 'material', id: material.materialId, version: 1 } };
+    const linked = json<{ role: string; from: { type: string; id: string } }>(await post(owner, `/api/v1/projects/${lamp.id}/links`, link), 201);
+    assert.deepEqual([linked.role, linked.from], ['related', { type: 'work', id: task.id }]);
+    assert.equal((await post(outsider, `/api/v1/projects/${lamp.id}/links`, link)).status, 404);
+    assert.equal((await post(owner, `/api/v1/projects/${lamp.id}/links`, { from: { type: 'result', id: task.id }, to: link.to })).status, 400, 'a result is not an object any more');
+    assert.ok((await pool.query(`SELECT 1 FROM events WHERE object_id = $1 AND kind = 'project.link_created.v1'`, [lamp.id])).rowCount);
+  });
+
   test('finishing with a line is fenced by the version its author saw and never reverses a disposition', async () => {
     const messages = async () => (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id = $1', [lamp.id])).rows[0].n as number;
     const finish = (work: WorkItem, expectedVersion: number | undefined, line = 'Finding') => patch(partner, `/api/v1/work/${work.id}`,

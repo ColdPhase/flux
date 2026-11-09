@@ -369,7 +369,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     await Promise.race([started, pending]); selection.messageIds[0] = zeroMessageId; selection.relation = 'source'; release();
     const counts = await pending;
-    assert.equal(counts.items[0]?.value.messageId, conversation.messages[0]!.id); assert.equal(counts.items[0]?.value.edges, 4);
+    assert.equal(counts.items[0]?.value.messageId, conversation.messages[0]!.id); assert.equal(counts.items[0]?.value.edges, 3);
     let enteredRelations!: () => void, releaseRelations!: () => void;
     const startedRelations = new Promise<void>((resolve) => { enteredRelations = resolve; }), gateRelations = new Promise<void>((resolve) => { releaseRelations = resolve; });
     const refs = [{ kind: 'work' as const, id: main.id }];
@@ -381,6 +381,6 @@ describe('bounded native work reads through HTTP and current native fences', () 
       return nativeWorkVisibilityRows(held).relations(projectId, refs);
     }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
     await Promise.race([startedRelations, pendingRelations]); refs.push({ kind: 'work', id: randomUUID() }); releaseRelations();
-    const relations = await pendingRelations; assert.equal(relations.length, 1); assert.equal(relations[0]?.edges, 7);
+    const relations = await pendingRelations; assert.equal(relations.length, 1); assert.equal(relations[0]?.edges, 6);
   });
 });

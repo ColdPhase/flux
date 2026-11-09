@@ -119,3 +119,6 @@ END $function$;
 -- Event data in an encrypted workspace: the words of results and of the assistant's proposals go.
 DELETE FROM public.event_data_tokens WHERE token IN ('about', 'result');
 DELETE FROM public.event_data_keys WHERE key IN ('resultId', 'proposalId');
+
+-- The two account-scoped commands of the assistant's proposals (accept and dismiss) are gone with them.
+DELETE FROM public.idempotency_account_operations WHERE operation IN ('POST /api/v1/assistant-proposals/:proposalId/accept', 'POST /api/v1/assistant-proposals/:proposalId/dismiss');

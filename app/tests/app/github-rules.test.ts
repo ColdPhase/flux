@@ -200,7 +200,7 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     const another = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Another task' } }), 201) as WorkItem;
     const other = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Still waits for another task',
       owner: { kind: 'human', id: writer.id }, status: 'blocked', waitingOn: { kind: 'task', id: another.id } } }), 201) as WorkItem;
-    fixture.set(REPO, 60, { state: 'closed', merged: true });
+    fixture.set(REPO, 86, { state: 'closed', merged: true });
     await github.link(actor(owner), task.id, { bindingId: binding.id, number: 60, role: 'required_output' });
     await enable(owner, task);
     await settle(binding);
@@ -217,7 +217,7 @@ describe('linked PRs move the same Flux task (#74 G-1a)', () => {
     await waitFor(async () => (await inbox(writer)).find((item) => item.title === `#${waiting.number} can continue: #${finished.number} is done`), 'the owner hears the task can continue');
     assert.equal((await work(owner, other)).status, 'blocked', 'a task that waits for something else stays blocked');
     // A late delivery of the same merged pull request changes nothing and says nothing a second time.
-    await webhook('pull_request', pullEvent('reopened', REPO, 60)); await settle(binding);
+    await webhook('pull_request', pullEvent('reopened', REPO, 86)); await settle(binding);
     assert.equal((await work(owner, waiting)).version, resumed.version);
     const again = (expectStatus(await owner.browser.request('GET', `/api/v1/projects/${place.id}/task-notices?limit=100`), 200) as { items: TaskCreationNotice[] }).items.filter((line) => line.kind === 'task.resumed');
     assert.equal(again.length, 1);
