@@ -139,8 +139,6 @@ function placeOf(el: HTMLElement): ReadingPlace {
 
 function parsePlace(raw: string): ReadingPlace | null {
   if (!raw) return null;
-  // Positions saved before anchors were kept are plain pixel offsets.
-  if (/^\d+$/.test(raw)) return { top: Number(raw), anchor: null, offset: 0 };
   try {
     const place = JSON.parse(raw) as Partial<ReadingPlace>;
     return typeof place.top === 'number' ? { top: place.top, anchor: typeof place.anchor === 'string' ? place.anchor : null, offset: Number(place.offset) || 0 } : null;

@@ -7,7 +7,7 @@ This guide is for two readers:
 - **operators**, who run the instance those integrations connect to.
 
 The decision behind it is
-[O-010, public extension contracts of v0.1](../product/extension-contracts.md),
+[O-010, public extension contracts](../product/extension-contracts.md),
 proposed on 2026-10-05.
 
 ## What you can rely on in v0.1
@@ -23,17 +23,18 @@ SSH/paste-back/callback guidance under #310/#152; a fully unattended CI or
 header-only consumer that cannot complete supported OAuth is not advertised.
 Revisit one through an admitted bounded authority/compatibility contract.
 
-Flux 0.1 has two public extension contracts. Each one has a version number, a
-compatibility promise and a snapshot that the test suite compares with the
-running application.
+Flux has two public extension contracts. Each one has a version number and one
+current snapshot that the test suite compares with the running application.
+**Until the first public release nothing is kept compatible:** a change edits the
+contract in place, so an integration is built against the Flux release it runs
+against ([the rule](../product/extension-contracts.md#no-compatibility-before-the-first-public-release)).
 
 | Contract | Use it for | Version to check | Pinned snapshot |
 | --- | --- | --- | --- |
-| **EXT-1** MCP tool contract 1 | Agents and scripts that read a project and act in it on behalf of one person | `trusted.playbook.toolContractVersion` returned by `flux_bootstrap` | [`mcp-tools.v1.json`](../../app/tests/app/contracts/mcp-tools.v1.json) |
-| **EXT-2** project export format 1 | Archives, reports and moving a project's work to other tools | `formatVersion` in `project.json`, and in `manifest.json` of a bundle | [`project-export.v1.json`](../../app/tests/app/contracts/project-export.v1.json) |
+| **EXT-1** MCP tool contract | Agents and scripts that read a project and act in it on behalf of one person | `trusted.playbook.toolContractVersion` returned by `flux_bootstrap` | [`mcp-tools.json`](../../app/tests/app/contracts/mcp-tools.json) |
+| **EXT-2** project export format | Archives, reports and moving a project's work to other tools | `formatVersion` in `project.json`, and in `manifest.json` of a bundle | [`project-export.json`](../../app/tests/app/contracts/project-export.json) |
 
-The rest of Flux carries no compatibility promise in v0.1 and can change in any
-release:
+The rest of Flux carries no contract and can change in any release:
 
 - the `/api/v1` HTTP routes other than export;
 - the WebSocket stream and its event kinds;
@@ -45,29 +46,20 @@ integrations beyond the export route, no supported SDK, no plugins and no export
 re-import. These are deferred, each
 with a condition, in [the deferral table](../product/extension-contracts.md#deferred-scope-record-for-249).
 
-## Compatibility rules
+## Reading the contracts
 
-A version number changes only when a change is **breaking**. Within one version,
-a later release may make **additive** changes:
-
-| | Additive: same version | Breaking: new version |
-| --- | --- | --- |
-| **MCP tools (inputs you send)** | A new tool, prompt or resource. A new optional argument. A wider type, enum or bound. A removed pattern or format restriction. New wording. | A removed or renamed tool, prompt, argument or resource. A removed or newly required argument. A narrower type, enum, bound, pattern or format. A changed operation, peer-request classes or annotation. A changed error envelope. A removed listed error code or bootstrap key. |
-| **Export (documents you read)** | A new field, even a required one. A new enum value. A tighter bound. A new bundle file. New wording. | A removed or renamed field. A field that becomes optional or nullable. A changed type, constant, pattern or format. A removed enum value. A removed or renamed bundle file. A changed manifest identification. |
-
-To keep working across additive changes, an integration must:
+Nothing is kept compatible before the first public release, so a release can change
+either contract. The [changelog](../../CHANGELOG.md) lists the changes. To keep an
+integration robust, it should:
 
 - ignore fields, tools, prompts and resources it does not know;
 - treat an enum value it does not know as "unknown", not as an error;
 - treat an error code it does not know as a general failure, and report it;
 - not depend on tool descriptions or other wording;
-- stop and report when the version it reads is higher than the one it was built
-  for.
+- stop and report when the version it reads is not the one it was built for.
 
 A Flux server serves **one** tool contract version and writes **one** export
-format version. When a release moves a contract to a new version, the
-[changelog](../../CHANGELOG.md) says so. Clients built for the old version must
-then be updated.
+format version.
 
 ## EXT-1: connect an MCP client
 
@@ -170,7 +162,7 @@ The owner revokes a connection on the **Connect agent** page.
   - Check `format` (`flux.project-export`) and `formatVersion` before reading
     further.
 - **Read it with the rules above.** Ignore unknown fields, and treat unknown enum
-  values as unknown. Format 1 has no re-import
+  values as unknown. The format has no re-import
   (`provenance.reimportSupported: false`).
 - **Failures.** A missing session gets 401. A project you cannot see gets 404. A
   project you cannot manage gets 403. A missing or corrupt stored file aborts the
@@ -204,32 +196,27 @@ The owner revokes a connection on the **Connect agent** page.
 ## For Flux maintainers: changing a contract
 
 `app/tests/app/extension-contracts.test.ts` compares the running application with
-`app/tests/app/contracts/<contract>.v<N>.json`. On any difference it fails and
-lists each change as additive or breaking. The comparison rules are in
-`app/tests/app/support/contract-compat.ts`. The failure ends with a line
+the one current snapshot, `app/tests/app/contracts/<contract>.json`. On any difference
+it fails and lists every changed path
+(`app/tests/app/support/contract-snapshot.ts`). The failure ends with a line
 `CONTRACT-SNAPSHOT <file> <json>` that holds the running contract.
 
-1. **Additive change.** Replace the snapshot of the current version in the same
-   PR. Save the JSON from that line in canonical form, for example:
+1. **Change the contract.** Edit the snapshot in place in the same PR. Save the JSON
+   from that line in canonical form, for example:
 
    ```sh
-   grep -o 'CONTRACT-SNAPSHOT mcp-tools.v1.json .*' test.log | cut -d' ' -f3- \
+   grep -o 'CONTRACT-SNAPSHOT mcp-tools.json .*' test.log | cut -d' ' -f3- \
      | python3 -c 'import json,sys; print(json.dumps(json.load(sys.stdin), indent=2, sort_keys=True, ensure_ascii=False))' \
-     > app/tests/app/contracts/mcp-tools.v1.json
+     > app/tests/app/contracts/mcp-tools.json
    ```
 
-2. **Breaking change.** Do not edit the existing snapshot.
-   - Bump the version: `toolContractVersion` in
-     `app/packages/core/src/agent-connection/playbook.ts`, or
-     `PROJECT_EXPORT_FORMAT_VERSION` together with the schema id in
-     `app/packages/contracts/src/export.ts`.
-   - Add the new snapshot and keep the old one. The test fails if an older
-     snapshot is missing.
-   - Update the [decision](../product/extension-contracts.md), this guide and the
-     changelog.
-3. **Review.** A reviewer treats any edit that removes or narrows something in an
-   existing `*.v<N>.json` as a contract change that needs a new version. The test
-   cannot see repository history.
+2. **No version bump, no older snapshot.** Nothing is kept compatible before the
+   first public release. `toolContractVersion` (in
+   `app/packages/core/src/agent-connection/playbook.ts`) and
+   `PROJECT_EXPORT_FORMAT_VERSION` (in `app/packages/contracts/src/export.ts`) stay
+   as they are.
+3. **Review.** The snapshot diff is the review surface. Add a changelog entry in
+   `changes/` for what people or operators see.
 
 Tool descriptions and `description` keywords are left out of the snapshot. They
 guide models and may change freely. Titles, names, schemas, scopes and

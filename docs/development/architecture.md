@@ -93,6 +93,17 @@ are the only places that choose concrete adapters and wire them together.
   event, outbox, job) run in one transaction owned by the use case or by an
   adapter method designed for it, not split across callers.
 
+## No compatibility before the first public release
+
+Until the first public release nothing is kept compatible (founder direction, Hubert,
+2026-11-09; the rule is recorded once in
+[extension contracts](../product/extension-contracts.md#no-compatibility-before-the-first-public-release)).
+Change the one current version in place. Do not add a version bump, an alias, a
+redirect from an old address or name, an old field or format kept "for compatibility",
+a reader of an older stored shape, or a snapshot of an older contract, and do not
+write comments that promise any of them. The application has no installs and no data
+to convert. A contract test checks the current shape only.
+
 ## Tests
 
 | Kind | Location | Runs in |

@@ -238,8 +238,6 @@ describe('live media admission (#128)', () => {
     assert.equal(config.mediaUrl, 'wss://flux.example.org/media');
     assert.equal(config.signalUrl, 'ws://livekit:7880');
     assert.equal(liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'https://sfu.internal.example' }, gateOrigin).mediaUrl, 'ws://127.0.0.1:18128/media');
-    assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://livekit:7880', FLUX_LIVEKIT_WS_URL: 'wss://sfu.example.org' }, gateOrigin),
-      /FLUX_LIVEKIT_WS_URL is no longer used/);
     assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://sfu.example.org' }, gateOrigin), /HTTPS/);
     assert.throws(() => liveMediaConfig({ ...env, FLUX_LIVEKIT_API_URL: 'http://127.0.0.1:7880', NODE_ENV: 'production',
       FLUX_LIVEKIT_ALLOW_INSECURE_LOCAL: 'true' }, gateOrigin), /HTTPS/);

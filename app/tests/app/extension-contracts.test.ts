@@ -8,17 +8,16 @@ import { PROJECT_EXPORT_BUNDLE_QUERY, PROJECT_EXPORT_FORMAT, PROJECT_EXPORT_FORM
   PROJECT_EXPORT_SCHEMA_ID, projectExportPath, type ProjectExport, type ProjectExportManifest } from '@flux/contracts';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { COWORK_PLAYBOOK, renderCoworkPlaybook } from '@flux/core';
-import { assertPinned, compareExact, compareKeyed, compareSchema, compareSet, contractReport, structural,
-  type ContractChange } from './support/contract-compat.js';
+import { assertPinned, contractReport, differences, structural } from './support/contract-snapshot.js';
 import { pool } from './support/db.js';
 import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { expect, mcp, toolValue } from './support/mcp.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 
-// Public extension contracts of v0.1 (O-010, #251, docs/product/extension-contracts.md):
-// EXT-1 the MCP tool contract and EXT-2 the project export format, each pinned to a
-// versioned snapshot in tests/app/contracts/. A breaking change fails unless the
-// contract version is bumped and a new snapshot is added.
+// Public extension contracts (O-010, #251, docs/product/extension-contracts.md): EXT-1 the MCP
+// tool contract and EXT-2 the project export format, each pinned to its one current snapshot in
+// tests/app/contracts/. A change to either fails until the snapshot is edited in the same PR;
+// nothing is kept compatible before the first public release.
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- snapshot JSON is untyped
 type Json = any;
@@ -45,46 +44,6 @@ const sorted = (values: Iterable<string>) => [...values].sort();
 const names = (value: Json) => sorted(Object.keys(value ?? {}));
 
 // --- EXT-1: MCP tool contract ---------------------------------------------------------------
-
-/** A new prompt argument is additive only when it is optional. */
-function promptArguments(before: Json[], after: Json[], path: string): ContractChange[] {
-  return compareKeyed(before, after, (argument: Json) => argument.name, path, (a, b, at) => a.required === b.required ? []
-    : [{ path: at, kind: b.required ? 'breaking' : 'additive', detail: b.required ? 'now required' : 'no longer required' }])
-    .map((change) => change.detail === 'added' && after.find((argument) => `${path}.${argument.name}` === change.path)?.required
-      ? { ...change, kind: 'breaking' as const, detail: 'added as required' } : change);
-}
-
-function compareMcp(before: Json, after: Json): ContractChange[] {
-  const text = (a: Json, b: Json, at: string): ContractChange[] => a === b ? [] : [{ path: at, kind: 'additive', detail: 'text changed' }];
-  return [
-    ...compareExact(before.contract, after.contract, 'contract'),
-    ...compareExact(before.toolContractVersion, after.toolContractVersion, 'toolContractVersion'),
-    ...compareExact(before.endpoint, after.endpoint, 'endpoint'),
-    ...compareExact(before.protectedResource?.resource, after.protectedResource?.resource, 'protectedResource.resource'),
-    ...compareSet(before.protectedResource?.scopes, after.protectedResource?.scopes, 'protectedResource.scopes'),
-    ...compareKeyed(before.tools ?? [], after.tools ?? [], (tool: Json) => tool.name, 'tools', (a, b, at) => [
-      ...text(a.title, b.title, `${at}.title`),
-      ...compareExact(a.operation, b.operation, `${at}.operation`),
-      ...compareExact(a.classes, b.classes, `${at}.classes`),
-      ...compareExact(a.annotations, b.annotations, `${at}.annotations`),
-      ...compareSchema(a.inputSchema, b.inputSchema, 'input', `${at}.inputSchema`),
-    ]),
-    ...compareKeyed(before.prompts ?? [], after.prompts ?? [], (prompt: Json) => prompt.name, 'prompts', (a, b, at) => [
-      ...text(a.title, b.title, `${at}.title`),
-      ...promptArguments(a.arguments ?? [], b.arguments ?? [], `${at}.arguments`),
-    ]),
-    ...compareKeyed(before.resources ?? [], after.resources ?? [], (resource: Json) => resource.name, 'resources', (a, b, at) => [
-      ...compareExact(a.uri, b.uri, `${at}.uri`), ...compareExact(a.mimeType, b.mimeType, `${at}.mimeType`)]),
-    ...compareKeyed(before.resourceTemplates ?? [], after.resourceTemplates ?? [], (resource: Json) => resource.name, 'resourceTemplates', (a, b, at) => [
-      ...compareExact(a.uriTemplate, b.uriTemplate, `${at}.uriTemplate`), ...compareExact(a.mimeType, b.mimeType, `${at}.mimeType`)]),
-    ...compareExact(before.errorEnvelope, after.errorEnvelope, 'errorEnvelope'),
-    ...compareSet(before.errorCodes, after.errorCodes, 'errorCodes'),
-    ...compareExact(before.bootstrap?.contractVersion, after.bootstrap?.contractVersion, 'bootstrap.contractVersion'),
-    ...compareSet(before.bootstrap?.keys, after.bootstrap?.keys, 'bootstrap.keys'),
-    ...compareSet(before.bootstrap?.trusted, after.bootstrap?.trusted, 'bootstrap.trusted'),
-    ...compareSet(before.bootstrap?.capability, after.bootstrap?.capability, 'bootstrap.capability'),
-  ];
-}
 
 async function connectedAgent() {
   const { browser: owner } = await register(uniqueEmail('contracts'), 'correct horse battery staple');
@@ -135,7 +94,7 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
   const capabilities = new Map((bootstrap.capabilities as Json[]).map((row) => [row.name, row]));
   assert.deepEqual(sorted(capabilities.keys()), sorted(tools.map((tool) => tool.name)), 'bootstrap capabilities name exactly the listed tools');
   assert.equal((bootstrap.trusted as Json).playbook.toolContractVersion, COWORK_PLAYBOOK.toolContractVersion,
-    'bootstrap reports the tool contract version the snapshot is keyed by');
+    'bootstrap reports the current tool contract version');
 
   // A refused call shows the error envelope: an agent set to Only read (#859; there are no scopes to be refused for).
   const reader = await connectedAgent();
@@ -181,17 +140,6 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
 
 // --- EXT-2: project export format --------------------------------------------------------------
 
-function compareExport(before: Json, after: Json): ContractChange[] {
-  return [
-    ...['contract', 'format', 'formatVersion', 'schemaId', 'path', 'bundleQuery'].flatMap((key) => compareExact(before[key], after[key], key)),
-    ...['root', 'contentType', 'manifestFormat', 'manifestFormatVersion'].flatMap((key) => compareExact(before.bundle?.[key], after.bundle?.[key], `bundle.${key}`)),
-    ...compareSet(before.bundle?.paths, after.bundle?.paths, 'bundle.paths'),
-    ...compareSet(before.bundle?.manifestKeys, after.bundle?.manifestKeys, 'bundle.manifestKeys'),
-    ...compareSet(before.bundle?.manifestFileKeys, after.bundle?.manifestFileKeys, 'bundle.manifestFileKeys'),
-    ...compareSchema(before.schema, after.schema, 'output', 'schema'),
-  ];
-}
-
 /** Reads a ustar archive: path → content. */
 function untar(archive: Buffer) {
   const files = new Map<string, Buffer>();
@@ -232,7 +180,7 @@ async function liveExportContract() {
   const read = (path: string) => JSON.parse(files.get(`${bundleRoot}/${path}`)!.toString('utf8')) as Json;
   const manifest = read('manifest.json') as ProjectExportManifest;
   const document = read('project.json') as ProjectExport;
-  assert.equal(document.formatVersion, PROJECT_EXPORT_FORMAT_VERSION, 'a real export carries the pinned format version');
+  assert.equal(document.formatVersion, PROJECT_EXPORT_FORMAT_VERSION, 'a real export carries the current format version');
   assert.deepEqual(read('schema/project-export.v1.schema.json'), JSON.parse(JSON.stringify(PROJECT_EXPORT_JSON_SCHEMA)));
   const normalize = (path: string) => path.replace(/^docs\/[^/]+\.md$/, 'docs/{docId}.md').replace(/^files\/[^/]+$/, 'files/{fileId}');
   return {
@@ -258,81 +206,49 @@ async function liveExportContract() {
 // --- Tests -----------------------------------------------------------------------------------------
 
 describe('public extension contracts (O-010)', () => {
-  test('EXT-1: the MCP tool contract matches its versioned snapshot', async () => {
-    const version = COWORK_PLAYBOOK.toolContractVersion;
+  test('EXT-1: the MCP tool contract matches its snapshot', async () => {
     let snapshotCodes: string[] = [];
-    try { snapshotCodes = JSON.parse(readFileSync(new URL(`./contracts/mcp-tools.v${version}.json`, import.meta.url), 'utf8')).errorCodes ?? []; }
+    try { snapshotCodes = JSON.parse(readFileSync(new URL('./contracts/mcp-tools.json', import.meta.url), 'utf8')).errorCodes ?? []; }
     catch { /* a missing snapshot is reported by assertPinned */ }
     const live = await liveMcpContract(snapshotCodes);
     assert.ok(live.tools.length > 0 && live.tools.every((tool) => tool.name.startsWith('flux_') && !('requiredScope' in tool)), 'every tool is a flux_ tool and none names a scope');
-    assertPinned('mcp-tools', version, live, compareMcp);
+    assertPinned('mcp-tools', live);
   });
 
-  test('EXT-2: the project export format matches its versioned snapshot', async () => {
+  test('EXT-2: the project export format matches its snapshot', async () => {
     assert.equal(PROJECT_EXPORT_FORMAT, 'flux.project-export');
     assert.equal(PROJECT_EXPORT_SCHEMA_ID, `https://flux.coldphase.dev/schemas/project-export.v${PROJECT_EXPORT_FORMAT_VERSION}.json`,
       'the schema id names the format version');
     const live = await liveExportContract();
-    assertPinned('project-export', PROJECT_EXPORT_FORMAT_VERSION, live, compareExport);
+    assertPinned('project-export', live);
   });
 
-  test('the classifier treats inputs and outputs in opposite directions and names every change', () => {
-    const base = { type: 'object', additionalProperties: false, required: ['id'],
-      properties: { id: { type: 'string', format: 'uuid' }, status: { enum: ['open', 'done'] }, note: { type: 'string', maxLength: 100 } } };
-    const kinds = (changes: ContractChange[]) => changes.map((change) => `${change.kind} ${change.path}: ${change.detail}`);
-    const edit = (patch: (copy: Json) => void) => { const copy = structuredClone(base) as Json; patch(copy); return copy; };
+  test('a difference names every changed path, and a missing snapshot is reported', () => {
+    const tool = (name: string, operation: string | null = null) => ({ name, title: name, operation, classes: [], annotations: null,
+      inputSchema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'] } });
+    const snapshot = { contract: 'flux.mcp-tools', tools: [tool('flux_get_work'), tool('flux_list_work')] };
 
-    // Input (MCP arguments): the new schema must accept everything the old one accepted.
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.extra = { type: 'string' }; }), 'input')), ['additive $.properties.extra: property added']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.extra = { type: 'string' }; s.required.push('extra'); }), 'input')),
-      ['breaking $.properties.extra: now required', 'additive $.properties.extra: property added']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { delete s.properties.note; }), 'input')), ['breaking $.properties.note: property removed']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.status.enum.push('blocked'); }), 'input')),
-      ['additive $.properties.status.enum: enum values added: ["blocked"]']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.status.enum = ['open']; }), 'input')),
-      ['breaking $.properties.status.enum: enum values removed: ["done"]']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.note.maxLength = 50; }), 'input')), ['breaking $.properties.note.maxLength: maxLength 100 → 50']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.note.maxLength = 500; }), 'input')), ['additive $.properties.note.maxLength: maxLength 100 → 500']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.note.pattern = '^a'; }), 'input')), ['breaking $.properties.note.pattern: pattern constraint added']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.id.type = 'integer'; }), 'input')), ['breaking $.properties.id.type: type "string" → "integer"']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.required = []; }), 'input')), ['additive $.properties.id: no longer required']);
+    assert.deepEqual(differences(snapshot, structuredClone(snapshot)), [], 'an equal contract has no difference');
+    const renamed = { ...snapshot, tools: [tool('flux_read_work'), tool('flux_list_work')] };
+    assert.deepEqual(differences(snapshot, renamed), [
+      `$.tools[flux_get_work]: ${JSON.stringify(tool('flux_get_work'))} → missing`,
+      `$.tools[flux_read_work]: missing → ${JSON.stringify(tool('flux_read_work'))}`]);
+    const reworked = { ...snapshot, tools: [tool('flux_get_work', 'work.update'), tool('flux_list_work')] };
+    assert.deepEqual(differences(snapshot, reworked), ['$.tools[flux_get_work].operation: null → "work.update"']);
+    const required = structuredClone(snapshot);
+    required.tools[1]!.inputSchema.required = [];
+    assert.deepEqual(differences(snapshot, required), ['$.tools[flux_list_work].inputSchema.required[0]: "projectId" → missing']);
 
-    // Output (export documents): the new output must keep every old guarantee for a reader that ignores unknown fields.
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.extra = { type: 'string' }; s.required.push('extra'); }), 'output')),
-      ['additive $.properties.extra: now required', 'additive $.properties.extra: property added']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.required = []; }), 'output')), ['breaking $.properties.id: no longer required']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { delete s.properties.note; }), 'output')), ['breaking $.properties.note: property removed']);
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.status.enum.push('blocked'); }), 'output')),
-      ['additive $.properties.status.enum: enum values added: ["blocked"]']);
-    assert.ok(kinds(compareSchema(base, edit((s) => { s.properties.id = { anyOf: [{ type: 'string', format: 'uuid' }, { type: 'null' }] }; }), 'output'))
-      .some((line) => line.startsWith('breaking $.properties.id.type')), 'a field that becomes nullable breaks readers');
-    assert.deepEqual(kinds(compareSchema(base, edit((s) => { s.properties.note.maxLength = 500; }), 'output')), ['breaking $.properties.note.maxLength: maxLength 100 → 500']);
-    assert.deepEqual(kinds(compareSchema(base, { ...base, title: 'Renamed' }, 'output')), ['additive $.title: text changed']);
+    const report = contractReport('mcp-tools', snapshot, reworked)!;
+    assert.match(report, /^The running mcp-tools contract differs from tests\/app\/contracts\/mcp-tools\.json\. Replace the snapshot in the same PR/);
+    assert.ok(report.includes('  $.tools[flux_get_work].operation: null → "work.update"'), 'the report lists the changed path');
+    assert.ok(report.endsWith(`CONTRACT-SNAPSHOT mcp-tools.json ${JSON.stringify(reworked)}`), 'the report carries the running contract');
+    assert.equal(contractReport('mcp-tools', snapshot, structuredClone(snapshot)), null, 'an equal contract passes');
+    assert.match(contractReport('mcp-tools', null, snapshot)!, /^No snapshot tests\/app\/contracts\/mcp-tools\.json for mcp-tools\./);
+    assert.throws(() => assertPinned('no-such-contract', snapshot), /No snapshot tests\/app\/contracts\/no-such-contract\.json/);
 
     // `structural` drops description keywords but keeps a property that is named `description`.
     assert.deepEqual(structural({ type: 'object', description: 'gone', required: ['b', 'a'], properties: { description: { type: 'string', description: 'gone' } } }),
       { type: 'object', required: ['a', 'b'], properties: { description: { type: 'string' } } });
-  });
-
-  test('a renamed tool, a changed operation and a missing snapshot fail with the version advice', () => {
-    const tool = (name: string, operation: string | null = null) => ({ name, title: name, operation, classes: [], annotations: null,
-      inputSchema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'] } });
-    const snapshot = { contract: 'flux.mcp-tools', toolContractVersion: 1, tools: [tool('flux_get_work'), tool('flux_list_work')] };
-    const renamed = { ...snapshot, tools: [tool('flux_read_work'), tool('flux_list_work')] };
-    const changes = compareMcp(snapshot, renamed);
-    assert.deepEqual(changes.map((change) => `${change.kind} ${change.path}`), ['breaking tools.flux_get_work', 'additive tools.flux_read_work']);
-    const report = contractReport('mcp-tools', 1, snapshot, renamed, changes)!;
-    assert.match(report, /^BREAKING change to mcp-tools version 1\. Do not edit tests\/app\/contracts\/mcp-tools\.v1\.json: bump the version to 2/);
-    assert.ok(report.includes('CONTRACT-SNAPSHOT mcp-tools.v1.json {'), 'the report carries the running contract');
-
-    const reworked = { ...snapshot, tools: [tool('flux_get_work', 'work.update'), tool('flux_list_work')] };
-    assert.deepEqual(compareMcp(snapshot, reworked).map((change) => `${change.kind} ${change.path}`), ['breaking tools.flux_get_work.operation']);
-
-    const added = { ...snapshot, tools: [...snapshot.tools, tool('flux_get_widget')] };
-    assert.match(contractReport('mcp-tools', 1, snapshot, added, compareMcp(snapshot, added))!, /^Additive change to mcp-tools version 1\. Replace /);
-    assert.equal(contractReport('mcp-tools', 1, snapshot, structuredClone(snapshot), []), null, 'an equal contract passes');
-    assert.match(contractReport('mcp-tools', 2, null, snapshot, [])!, /^No snapshot tests\/app\/contracts\/mcp-tools\.v2\.json/);
-    assert.throws(() => assertPinned('mcp-tools', 4, snapshot, compareMcp), /the snapshot of version 3 must stay/,
-      'a bumped version keeps every older snapshot');
   });
 });

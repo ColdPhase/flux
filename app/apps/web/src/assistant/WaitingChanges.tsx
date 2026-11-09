@@ -131,8 +131,7 @@ function ChangeLine({ changes, onChanged, meId, standalone, here }: { changes: A
 
 /** Who would read what, for a change that would notify people (#1089, #1102): "Jonas and Maja would read: …", in three lines with "Show all". */
 function ToldWords({ change }: { change: AssistantChange }) {
-  // A change read before #1102 (a cached page) may carry no list: nobody is named then.
-  const told = change.tells ?? [];
+  const told = change.tells;
   if (!told.length || !change.after) return null;
   return <div className="assistant-waiting__said"><span>{peopleNamed(told)} would read:</span> <ClampedWords text={change.after} /></div>;
 }

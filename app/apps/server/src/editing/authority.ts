@@ -42,9 +42,7 @@ export function wikiAuthority(database: { pool: Pick<ReturnType<typeof createDat
       || typeof value.body !== 'string' || value.body.length > 100_000 || !Number.isSafeInteger(value.sequence)
       || typeof value.checkpoint !== 'string' || !Array.isArray(value.nodes) || !Array.isArray(value.deleted)
       || !Array.isArray(value.splits) || !value.enrollments || typeof value.enrollments !== 'object') throw new Error('Invalid stored live codec');
-    // States written before 0084 also carried receipts and a journal; both live in the immutable log rows.
-    const state = { ...value } as CodecState & { receipts?: unknown; journal?: unknown };
-    delete state.receipts; delete state.journal;
+    const state = { ...value } as CodecState;
     if (runtime.stateCharge(state) > 8 * 1024 * 1024) throw new ServiceUnavailableError('This room reached its bounded codec capacity', 'EDITING_ROOM_CAPACITY');
     return state;
   }

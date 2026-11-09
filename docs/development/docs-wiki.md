@@ -61,8 +61,7 @@ history say a restore that was no restore, or a version it did not replace.
 A cause names no more than a kind and a version or file name; it adds nothing else to the page. The same
 cause is accepted on the live save (`POST /api/v1/docs/:docId/live/save`), except `import`. Agents and the
 assistant reach the same commands through MCP: an agent may say why in its own words (`reason`), and an
-assistant's version reads "Asked by Ada: …" (F-036). Undo writes its own sentence. Export format 1 keeps
-`state` on each doc version, always `published`, because removing a field needs a new `formatVersion`.
+assistant's version reads "Asked by Ada: …" (F-036). Undo writes its own sentence.
 
 ## Markdown and safety
 

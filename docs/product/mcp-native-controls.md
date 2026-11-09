@@ -202,10 +202,9 @@ A native result-only test cannot complete the required code review/fix/merge pat
 This proposal changes no current supported/client-ready claim. Independent public
 contract evaluation must accept the exact enrollment/bootstrap/context/epoch/
 transition/lock/refusal boundary above before dependent adapter/domain code.
-New required input/scope/class/annotation restrictions on old **unmanaged** inputs
-are forbidden under EXT-1 v1; use its compatibility classifier/snapshots. Preserve
-all old names/resources/URIs/keys/errors, including historical playbook resources.
-If a real breaking change is needed, return a versioned independent amendment.
+Nothing is kept compatible before the first public release
+([extension contracts](extension-contracts.md#no-compatibility-before-the-first-public-release)):
+a change to EXT-1 edits its one current snapshot in place.
 
 Mandatory actual proof in both wire eras and real pinned clients:
 

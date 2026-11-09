@@ -6,10 +6,9 @@ import type { AgentInstructionReference } from '@flux/contracts';
  * content: the MCP prompts and resource render it, and bootstrap returns its version and digest.
  * It names only tools that the MCP server actually registers. A provider that does not exist yet
  * (coordination, verified repository context) is declared as a requirement, never described as working;
- * bootstrap's gaps say which ones this server lacks. The approved project policy of 1.1.0 (#160) went in 1.11.0 (#855); standing grants went in 1.12.0 (#859); scopes went in 1.13.0 (#859: a refusal is never for a missing scope).
- * Since 1.2.0 every registered tool is declared by a module, including the wiki, conversation and map reads and writes
- * (#160). Since 1.3.0 the co-work modules name unit creation, unit claim, renewal, release with a checkpoint, completion
- * and transfer, and request claim/decline (#153); the inbox, sending requests and server recovery are still a gap.
+ * bootstrap's gaps say which ones this server lacks. Every registered tool is declared by a module, including the wiki,
+ * conversation and map reads and writes (#160); the co-work modules name unit creation, unit claim, renewal, release with a
+ * checkpoint, completion and transfer (#153). The playbook has one current version: nothing before the first public release is kept.
  */
 export type CoworkProvider = 'coordination' | 'repository_references';
 export interface CoworkPlaybookModule {

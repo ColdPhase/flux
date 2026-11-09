@@ -51,7 +51,7 @@ JSON-only export carries metadata, while the bundle carries the bytes as well.
 
 A task's discussion is a conversation of the project, so it is in the `conversations` array with the others, agents' messages included (a task has one discussion, #868).
 
-Format `flux.project-export`, `formatVersion` 1. The TypeScript types (`ProjectExport`) and the
+Format `flux.project-export`, `formatVersion` 1 (the one current format). The TypeScript types (`ProjectExport`) and the
 JSON Schema (`PROJECT_EXPORT_JSON_SCHEMA`) are in
 [`app/packages/contracts/src/export.ts`](../../app/packages/contracts/src/export.ts) (Apache-2.0); the
 application tests validate real exports against the schema. Timestamps are ISO 8601 UTC.
@@ -64,13 +64,13 @@ names.
 | `provenance` | `exportedBy` (with name), `instanceOrigin` (`FLUX_PUBLIC_ORIGIN`), database `schemaVersion`, `reimportSupported: false`. |
 | `excluded` | The list below, repeated in every export. |
 | `project` | Id, name, visibility, creation time, workspace id and name. |
-| `people` | Everyone who can read the project now, with `access` (`manager` or `contributor`; format 1's schema still lists `viewer`, which a space no longer has) and `workspaceRole`, decided by the access policy. |
-| `grants` | Explicit project grants (`manager` or `contributor`; format 1's schema still lists `viewer` and `denied`, which no grant has any more). |
+| `people` | Everyone who can read the project now, with `access` (`manager` or `contributor`) and `workspaceRole`, decided by the access policy. |
+| `grants` | Explicit project grants (`manager` or `contributor`). |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
 | `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, the "what came of it" line or a public handoff also has `contribution` (`{ "kind": "blocker" \| "handoff" \| "came_of_it" }`); ordinary messages omit it. A message its author posted through a local client or with Show everyone also has `via`, the client's or assistant's name ("Claude Code"); the author stays the person. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
-| `docs` | Docs with every version: title, Markdown text, `state` (always `published` since v0.2: a page has no Draft, and format 1 keeps the field because removing it needs a new `formatVersion`), reason, author, time, and `file` (the Markdown file of the current text). |
+| `docs` | Docs with every version: title, Markdown text, reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions` | All fields: status, blocker, whether it was dropped and what came of it, owner, who proposed and who accepted, supersession. |
 | `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
@@ -82,11 +82,11 @@ names.
 - direct messages;
 - private sketches;
 - images placed on map thoughts: the thought and its caption are exported, the image
-  is not in format version 1; a full backup keeps it;
+  is not in the export; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
 - approved project policies for agents: a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
-  instance), and pending agent proposals, which are not part of format version 1;
+  instance), and pending agent proposals, which are not part of the export;
 - events, idempotency records and other internal rows.
 
 Links whose target the export leaves out are dropped, so an export never names an object it does not
@@ -100,17 +100,15 @@ id appears.
 
 ## Compatibility
 
-Format 1 is a public extension contract of v0.1 ([O-010 EXT-2](../product/extension-contracts.md#ext-2--project-export-format-1)).
-Within one `formatVersion`, a release may add fields (even required ones) and enum values; readers
-ignore unknown fields and treat an unknown enum value as unknown. Removing, renaming or making a
-field optional, changing its type or meaning, removing an enum value, removing or renaming a bundle
-file, or changing the manifest identification needs a new `formatVersion`. The JSON Schema rejects unknown top-level
-keys so that a change to the format cannot go unnoticed in the tests, and
+The export is a public extension contract ([O-010 EXT-2](../product/extension-contracts.md#ext-2--project-export-format)),
+and nothing is kept compatible before the first public release
+([rule](../product/extension-contracts.md#no-compatibility-before-the-first-public-release)):
+a change edits the one current format in place, with no version bump and no reading of an
+older format. `formatVersion` names that current format. Readers should ignore unknown fields
+and treat an unknown enum value as unknown. The JSON Schema rejects unknown top-level keys so
+that a change to the format cannot go unnoticed in the tests, and
 `app/tests/app/extension-contracts.test.ts` pins the schema and bundle layout to
-`app/tests/app/contracts/project-export.v1.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
-Before the first release nothing reads an export yet, so a removal is edited into format 1 in place (founder direction, 2026-11-09, no
-backward compatibility): `results`, the `result` object, the `result` contribution and the link role `about` went with the Result
-object (#1054), and `project-export.v1.json` was edited to match.
+`app/tests/app/contracts/project-export.json`. See [integrations](../integrations/README.md#ext-2-read-a-project-export).
 
 Task creation Undo keeps every task in the export. Each task carries `lifecycle` (active, or creation
 reverted with the notice, time and actor) and `creationHistory` (trusted origin, immutable baseline, first persisted

@@ -27,7 +27,6 @@ export FLUX_IMAGE_TAG="$project"
 export FLUX_LIVEKIT_API_KEY=fluxturntestingkey
 export FLUX_LIVEKIT_API_SECRET=fluxturntestingsecretwithatleast32characters
 export FLUX_LIVEKIT_API_URL=http://livekit:7880
-export FLUX_LIVEKIT_WS_URL=ws://livekit:7880
 export FLUX_LIVEKIT_PUBLIC_IP=127.0.0.1
 export FLUX_LIVEKIT_DOMAIN=livekit
 export FLUX_LIVEKIT_TURN_DOMAIN=turn.flux.test

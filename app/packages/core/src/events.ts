@@ -89,7 +89,7 @@ export async function recordEvents(ports: EventPorts, intents: readonly EventInt
   return prepared.map(({ id }) => id);
 }
 
-/** Single-event compatibility entry; the same final-write ordering applies. */
+/** One event; the same final-write ordering applies. */
 export async function recordEvent(ports: EventPorts, principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>) {
   return (await recordEvents(ports, [{ principal, workspaceId, kind, objectId, data }]))[0]!;
 }

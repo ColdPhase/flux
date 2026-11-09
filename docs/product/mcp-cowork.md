@@ -149,8 +149,8 @@ Kept from CO-3, [O-011](decisions.md) and [F-033](decisions.md):
   closed).
 - Workspace-owned agents: every agent belongs to one person.
 
-Removing scopes and switches changes EXT-1 ([O-010](extension-contracts.md)). Contract 2 is not
-published until v0.2 ships, so #859 changes contract 2 and its snapshot instead of starting a third.
+Removing scopes and switches changes EXT-1 ([O-010](extension-contracts.md)): #859 edits the
+contract's one current snapshot in place.
 
 ## Evidence
 

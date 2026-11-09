@@ -7,8 +7,8 @@
 > `flux_resolve_request`), the inbox (`flux_coordination_inbox`), `COWORK_REQUEST_POLICY` and its limits (32 requests, depth 4,
 > 4 review rounds), the formal review verdict record, the request cards, handoff packet and cancel in a task's Details
 > (`GET/POST /api/v1/work/:id/coordination…`), and the tables `cowork_requests`, `cowork_request_lineages`,
-> `cowork_delivery_intents` and `cowork_review_verdicts` (migration 0027). The MCP tool contract changed in place (contract 2 is not
-> published until v0.2 ships, see [extension contracts](../product/extension-contracts.md)); contract 1's snapshot stays. The
+> `cowork_delivery_intents` and `cowork_review_verdicts` (migration 0027). The MCP tool contract changed in place (nothing is kept compatible
+> before the first public release, see [extension contracts](../product/extension-contracts.md#no-compatibility-before-the-first-public-release)). The
 > pull-request bridge (#479) still records the events of a linked pull request for the task's holder; their only reader was the
 > inbox, so they have no reader until a follow-up removes the bridge or gives it one. **Sections below that describe requests,
 > the inbox, verdicts or cards are the design history of what was removed**; where one sits inside a section that remains, treat it
@@ -802,7 +802,7 @@ previous section's tools.
 
 ### Declining a transfer, honest status (2026-10-17, #153 AC-1/AC-3)
 
-Agent decision under the delegated authority; contract changes are additive (MCP tool contract v1, playbook 1.7.0).
+Agent decision under the delegated authority.
 
 - **`flux_decline_unit`** (operation `cowork.unit.decline`, classes execute/review/plan, migration 0107; PR #586 holds
   0106). A transfer remembers the handing-over connection in `cowork_units.transferred_from_connection_id`. The receiving

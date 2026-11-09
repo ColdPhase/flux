@@ -29,7 +29,7 @@ export function placeOfPath(pathname: string): RecentPlace | null {
   if (path === '/tasks') return { key: 'home:tasks', path };
   if (/^\/map(\/[^/]+)?$/.test(path)) return { key: 'sketchbook', path };
   if (/^\/inbox(\/[^/]+)?$/.test(path)) return { key: 'inbox', path: '/inbox' };
-  const dm = /^\/dm\/([^/]+)(?:\/sketches(?:\/[^/]+)?)?$/.exec(path);
+  const dm = /^\/dm\/([^/]+)$/.exec(path);
   if (dm) return dm[1] === 'new' ? null : { key: `dm:${dm[1]}`, path: `/dm/${dm[1]}` };
   const project = /^\/projects\/([^/]+)(\/.*)?$/.exec(path);
   if (!project || project[1] === 'new') return null;

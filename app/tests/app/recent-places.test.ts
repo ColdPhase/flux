@@ -27,14 +27,13 @@ test('a doc version folds into its doc, and the Wiki is one place', () => {
 test('editors, history, live sessions, settings, setup and unknown addresses are not places', () => {
   for (const path of [`/projects/${P}/docs/new`, `/projects/${P}/docs/d1/edit`, `/projects/${P}/docs/d1/history`, `/projects/${P}/live/s1`,
     `/projects/${P}/github`, `/projects/${P}/nowhere`, '/projects/new', '/projects', '/dm/new', '/search', '/settings', '/settings/appearance',
-    '/materials/m1', '/nowhere', '/sign-in']) {
+    '/materials/m1', '/dm/d1/sketches/s1', '/nowhere', '/sign-in']) {
     assert.equal(placeOfPath(path), null, path);
   }
 });
 
 test('a direct message, the Inbox and Home are one place each', () => {
   assert.deepEqual(placeOfPath('/dm/d1'), { key: 'dm:d1', path: '/dm/d1' });
-  assert.deepEqual(placeOfPath('/dm/d1/sketches/s1'), { key: 'dm:d1', path: '/dm/d1' });
   assert.deepEqual(placeOfPath('/inbox/n1'), { key: 'inbox', path: '/inbox' });
   assert.deepEqual(placeOfPath('/'), { key: 'home', path: '/' });
   assert.equal(key('/tasks'), 'home:tasks');

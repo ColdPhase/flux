@@ -119,7 +119,7 @@ export function projectExportRows(db: DbExecutor) {
         // A doc and its versions may be agent-written under a standing grant (#152, migration 0043).
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
         versions: versions.map((version) => ({
-          version: version.version, title: version.title, body: version.body, state: 'published' as const, reason: version.reason,
+          version: version.version, title: version.title, body: version.body, reason: version.reason,
           author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt),
         })),
       }));

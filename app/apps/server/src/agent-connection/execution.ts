@@ -94,7 +94,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       command = normalizeAgentExecution(input);
       if (privateTarget) {
         if (command.operation !== 'conversation.reply') throw denied();
-        // Server-selected only: old v1 fingerprints are unchanged. The task target never
+        // Server-selected only. The task target never
         // becomes a conversation UUID after creation, including on a stored receipt replay.
         command = { ...command, fingerprint: createHash('sha256').update(JSON.stringify([privateTarget, command.fingerprint])).digest('hex') };
       }

@@ -100,7 +100,7 @@ function retireDrafts() {
     try {
       const target = storage();
       for (const key of Object.keys(target)) {
-        if (key.startsWith(PREFIX) || key.startsWith('flux:draft:') || key.startsWith('flux.project-composer.') || key.startsWith('flux.dm-composer.')) target.removeItem(key);
+        if (key.startsWith(PREFIX) || key.startsWith('flux:draft:')) target.removeItem(key);
       }
     } catch { /* Memory still clears; this visit never reimports a retired session's records. */ }
   }
@@ -183,30 +183,6 @@ function load(key: string, accountId: string, projectId: string, context: string
             && ['uploading', 'sending', 'waiting', 'failed'].includes(item.state) && typeof item.at === 'string')
             // An outcome a reload interrupted is unknown: it is sent again, with the same id, when it can be.
             .map((item) => ({ ...item, cites: item.cites ?? [], files: interrupted(item.files), state: item.state === 'failed' ? 'failed' : 'waiting' }));
-        }
-      }
-    } else if (!retiredStorage && context.startsWith('dm:')) {
-      // The earlier direct-message composer kept its text and retry id in this tab.
-      const oldKey = `flux.dm-composer.${accountId}.${context.slice('dm:'.length)}`;
-      const body = sessionStorage.getItem(oldKey);
-      if (body) {
-        draft.body = body;
-        const saved = JSON.parse(sessionStorage.getItem(`${oldKey}.pending`) ?? 'null') as { body?: string; clientMessageId?: string } | null;
-        if (saved?.body === body.trim() && uuid(saved.clientMessageId)) { draft.commandId = saved.clientMessageId; draft.unconfirmed = true; }
-      }
-    } else if (!retiredStorage) {
-      // Preserve existing text/retry identities while moving the three old composers into one record.
-      const oldKey = context.startsWith('task:') ? `flux:draft:${accountId}:${context}` : `flux.project-composer.${accountId}.${projectId}.${context === 'new' ? 'new' : context.replace(/^conversation:/, '')}`;
-      const body = context.startsWith('task:') ? localStorage.getItem(oldKey) : sessionStorage.getItem(oldKey);
-      if (body && !context.startsWith('helper:')) {
-        draft.body = body;
-        const raw = context.startsWith('task:') ? localStorage.getItem(`${oldKey}:pending`) : sessionStorage.getItem(`${oldKey}.pending`);
-        if (raw) {
-          const saved = JSON.parse(raw) as { body?: string; id?: string; command?: SendMessageCommand; citation?: DraftReference };
-          if ((saved.command?.body ?? saved.body) === body.trim() && uuid(saved.command?.clientMessageId ?? saved.id)) {
-            draft.commandId = (saved.command?.clientMessageId ?? saved.id)!; draft.unconfirmed = true;
-            if (saved.citation) draft.references = [saved.citation];
-          }
         }
       }
     }

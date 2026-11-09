@@ -23,7 +23,7 @@ remain runtime gates. The peer checked contracts, primary sources and static
 checks, not a new Docker pass.
 
 This is the accepted bounded contract amendment to [F-016](mcp-cowork.md), [CW-1](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md)
-and the wire admission of [EXT-1](extension-contracts.md#ext-1--mcp-tool-contract-1).
+and the wire admission of [EXT-1](extension-contracts.md#ext-1--mcp-tool-contract).
 It retains [F-024](mcp-identity.md), every existing #460/#152/#160 criterion,
 and the normal built-in **Connect → authorize → Start/Resume** outcome. The #466 record itself contains no application change. The pinned research main `97574742` rejected legacy `2025-06-18`. [PR #467](https://github.com/ColdPhase/flux/pull/467) implements PC-1–PC-5; its runtime and full-client acceptance is separate (see PC-5).
 
@@ -127,8 +127,9 @@ tool error envelopes/codes and bootstrap keys. Preserve selected-project reads,
 pagination/cursors, trusted bootstrap, playbook
 version/digest, resources and Start/Resume prompt arguments and payloads.
 Transport-specific framing/metadata may differ; authorized domain semantics may
-not. Any actual breaking EXT-1 change requires its existing versioned decision
-and snapshot process, not an undocumented shim.
+not. A change of EXT-1 edits its one current snapshot in place
+([no compatibility before the first public release](extension-contracts.md#no-compatibility-before-the-first-public-release)),
+never a shim for one wire era.
 
 Writes retain existing `clientCommandId` idempotency, same-input receipt replay,
 changed-input conflict, source-version checks and persisted actor/connection

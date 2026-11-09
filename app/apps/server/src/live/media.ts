@@ -84,8 +84,6 @@ export function liveMediaConfig(env: NodeJS.ProcessEnv, publicOrigin: string): L
   const apiUrl = env.FLUX_LIVEKIT_API_URL;
   const apiKey = env.FLUX_LIVEKIT_API_KEY;
   const apiSecret = env.FLUX_LIVEKIT_API_SECRET;
-  if (env.FLUX_LIVEKIT_WS_URL)
-    throw new Error('FLUX_LIVEKIT_WS_URL is no longer used: browsers signal through <FLUX_PUBLIC_ORIGIN>/media, and the SFU signal port must stay private (docs/development/live-sessions.md)');
   if (!apiUrl || !apiKey || !apiSecret)
     throw new Error('Live media requires FLUX_LIVEKIT_API_URL, FLUX_LIVEKIT_API_KEY and FLUX_LIVEKIT_API_SECRET');
   if (!/^[A-Za-z0-9_-]{8,128}$/.test(apiKey) || !/^[A-Za-z0-9_-]{32,128}$/.test(apiSecret))
@@ -259,7 +257,7 @@ export function createLiveMedia(config: LiveMediaConfig): LiveMediaAdapter {
 
 export function createLiveMediaFromEnv(env: NodeJS.ProcessEnv, publicOrigin: string):
   { media: LiveMediaAdapter; mediaUrl: string; config: LiveMediaConfig } | null {
-  if (!env.FLUX_LIVEKIT_API_URL && !env.FLUX_LIVEKIT_WS_URL && !env.FLUX_LIVEKIT_API_KEY && !env.FLUX_LIVEKIT_API_SECRET)
+  if (!env.FLUX_LIVEKIT_API_URL && !env.FLUX_LIVEKIT_API_KEY && !env.FLUX_LIVEKIT_API_SECRET)
     return null;
   const config = liveMediaConfig(env, publicOrigin);
   return { media: createLiveMedia(config), mediaUrl: config.mediaUrl, config };

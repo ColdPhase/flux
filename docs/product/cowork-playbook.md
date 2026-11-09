@@ -10,25 +10,23 @@ product content for implementers; adding it does not implement delivery. Tool na
 adapter packaging must be bound to implemented, versioned capabilities in #152/
 #153/#160. Do not expose placeholders or unsupported actions as working tools.
 Keep one canonical content source; generate native wrappers without diverging
-workflow copies. Record version/digest, compatible tool contract and change notes.
+workflow copies. Record the version, digest and tool contract.
 
-**Shipped content (2026-10-02).** The canonical bundle the server delivers is
+**Shipped content.** The canonical bundle the server delivers is
 `COWORK_PLAYBOOK` in `app/packages/core/src/agent-connection/playbook.ts`
-(`flux.cowork` 1.3.0). It adapts this seed to the tools that actually exist and
+(`flux.cowork`, one current version). It adapts this seed to the tools that actually exist and
 declares, per module, the tools and providers it needs; coordination and verified
-repository context are named as requirements, never as working features. Since 1.1.0
-(2026-10-03) the approved project policy exists and orient/plan reads it. Since 1.2.0
-(2026-10-05) every tool the server registers is declared by a module, including the
-wiki, conversation and map reads and writes. Since 1.3.0 (2026-10-06) agents take a task with the co-work unit tool,
-claim, renew, release (with a checkpoint), complete and transfer their units, and pick up or decline a request addressed
-to them; the inbox, sending requests and server recovery are still named as gaps. Since 1.4.0 (2026-10-06) an agent can undo
-creating its own task while nobody has used or changed it (#238). Since 1.5.0 (2026-10-17, #153) agents send requests,
-read their inbox and resolve a request by naming an existing record as evidence, with a pinned verdict for a review. 1.6.0 (2026-10-17) carries both that change and the task's agents' thread
-tools (#400, PR #582). 1.7.0 (2026-10-17, #153) adds declining a transferred unit and deferring a queued request with a reason.
-1.8.0 (2026-10-18, #152/#160) discovers the connection's existing work through opt-in bootstrap recovery and stores canonical
-source coverage and missing context in its existing release checkpoint for changed-plan reanalysis. 1.9.0 (2026-10-30, #160 AC-5)
-explains `COWORK_PAUSED` (a person paused the work, so the agent releases with a checkpoint and waits for Resume; there is no Pause any more, #985, playbook 1.16.0) and the inbox's `providerEvents` from linked pull requests (#479). 1.10.0 (2026-10-30, #160 AC-3) adds `flux_link_pull_request`: the agent links the pull request it produced to the task it holds, under its `work.update` grant. This page remains the design rationale; change the shipped text in
-that module, with a new version. Delivery is described in
+repository context are named as requirements, never as working features. Every tool the
+server registers is declared by a module. Agents take a task with the co-work unit tool,
+claim, renew, release (with a checkpoint), complete, transfer and decline their units; they
+discover their existing work through opt-in bootstrap recovery and store source coverage and
+missing context in the release checkpoint for changed-plan reanalysis; they undo creating
+their own task while nobody has used or changed it (#238); and they link the pull request they
+produced to the task they hold (`flux_link_pull_request`). This page remains the design
+rationale; change the shipped text in that module. Earlier texts are not kept: nothing is
+compatible before the first public release
+([rule](extension-contracts.md#no-compatibility-before-the-first-public-release)).
+Delivery is described in
 [agent connection](../development/agent-connection.md#built-in-co-work-playbook-160).
 
 ## Internal payload for the built-in Start / Resume action
