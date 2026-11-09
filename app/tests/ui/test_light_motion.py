@@ -659,8 +659,9 @@ class LightMotionJourney(unittest.TestCase):
         held: list = []
         gate = {"on": True}
 
+        # The thread's own read and the space's: the space is often answered from what the tab kept a moment ago (#862), the thread never.
         def hold(route):
-            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/projects/[^/?]+(\?.*)?$", route.request.url):
+            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/(projects|conversations)/[^/?]+(\?.*)?$", route.request.url):
                 held.append(route)
             else:
                 route.fallback()
@@ -673,6 +674,11 @@ class LightMotionJourney(unittest.TestCase):
         expect(panel).to_be_visible()
         appeared = page.evaluate("performance.now() - window.__t0")
         self.assertLess(appeared, 300, f"the panel is up within a few frames of the press, not after the thread's reads ({appeared:.0f} ms)")
+        # The thread's own read starts a moment after the press, once the space it is in was answered (from what the tab kept, #862).
+        for _ in range(50):
+            if held:
+                break
+            page.wait_for_timeout(20)
         self.assertTrue(held, "the thread's reads are being waited for")
         self.assertGreaterEqual(panel.locator(".thread__opening .opening__row").count(), 2, "with the thread's loading rows")
         self.assertEqual(panel.locator(".ui-spin").count(), 0)
@@ -699,8 +705,9 @@ class LightMotionJourney(unittest.TestCase):
         held: list = []
         gate = {"on": True}
 
+        # The thread's own read and the space's: the space is often answered from what the tab kept a moment ago (#862), the thread never.
         def hold(route):
-            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/projects/[^/?]+(\?.*)?$", route.request.url):
+            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/(projects|conversations)/[^/?]+(\?.*)?$", route.request.url):
                 held.append(route)
             else:
                 route.fallback()
