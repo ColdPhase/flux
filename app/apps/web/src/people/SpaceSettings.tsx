@@ -188,7 +188,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
           <h2>Space settings</h2>
           <p>{encrypted ? 'Only the people added here see this space, and only its admins hold the keys. Not even the company’s admins can open it.'
             : everyone ? `Everyone in ${companyName} is in this space. Admins of the space and of the company can change this page.`
-              : 'Only people added here see this space. Admins of the space and of the company can change this page.'}</p>
+              : 'Only people added here, and the company’s owners and admins, can open this space. Admins of the space and of the company can change this page.'}</p>
         </div>
 
         <h3 className="sset-sec">Name</h3>

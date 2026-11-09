@@ -205,4 +205,17 @@ describe('A local client\'s task, page and map changes show their change line an
     const seen = await linesOf(jonas, 'map', mapId);
     assert.deepEqual(seen.map((item) => item.undoable), [false, true, false, true]);
   });
+  test('a client\'s move on a map reads "Moved 1 thought", not "Moved thought 1 thought" (#1116)', async () => {
+    const created = toolValue(await f.tool('flux_create_map', { ...base(), title: 'Moving map' }));
+    const mapId = String(created.mapId);
+    const first = toolValue(await f.tool('flux_add_thought', { ...base(), mapId, thought: { text: 'One', x: 0, y: 0 } }));
+    const second = toolValue(await f.tool('flux_add_thought', { ...base(), mapId, thought: { text: 'Two', x: 240, y: 0 } }));
+    const versions = new Map(((await sketch(mapId)) as unknown as { thoughts: { id: string; version: number }[] }).thoughts.map((item) => [item.id, item.version]));
+    toolValue(await f.tool('flux_move_thoughts', { ...base(), mapId, moves: [{ id: String(first.thoughtId), x: 40, y: 40, expectedVersion: versions.get(String(first.thoughtId))! }] }));
+    toolValue(await f.tool('flux_move_thoughts', { ...base(), mapId, moves: [
+      { id: String(first.thoughtId), x: 80, y: 80, expectedVersion: versions.get(String(first.thoughtId))! + 1 },
+      { id: String(second.thoughtId), x: 300, y: 80, expectedVersion: versions.get(String(second.thoughtId))! }] }));
+    const moves = (await linesOf(ada, 'map', mapId)).filter((item) => item.operation === 'map.positions.update');
+    assert.deepEqual(moves.map((item) => item.done), ['moved 1 thought', 'moved 2 thoughts']);
+  });
 });

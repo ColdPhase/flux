@@ -193,7 +193,7 @@ class SpaceSettings(unittest.TestCase):
         page.goto(f"/projects/{pid}")
         self.settings(page)
         expect(page).to_have_url(re.compile(rf"/projects/{pid}/settings$"))
-        expect(page.get_by_text("Only people added here see this space.")).to_be_visible()
+        expect(page.get_by_text("Only people added here, and the company’s owners and admins, can open this space.")).to_be_visible()
         # The name, with Change.
         page.get_by_role("button", name=f"Change the name of {SPACE}").click()
         page.get_by_label("Space name").fill("Kiln firmware")

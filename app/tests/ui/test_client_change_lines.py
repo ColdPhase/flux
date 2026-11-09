@@ -26,7 +26,8 @@ from test_scenarios import McpAgent
 
 PASSWORD = "a calm home for the garden"
 STAMP = int(time.time() * 1000)
-PEOPLE = {"ada": ("Ada Kowalska", f"ada.cl+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.cl+{STAMP}@example.test")}
+PEOPLE = {"ada": ("Ada Kowalska", f"ada.cl+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.cl+{STAMP}@example.test"),
+          "gus": ("Gus Lindqvist", f"gus.cl+{STAMP}@example.test")}
 
 
 def shot(page: Page, name: str) -> None:
@@ -119,7 +120,11 @@ class ClientChangeLines(unittest.TestCase):
         ids = type(self).ids
         ws = self.api("ada", "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, status=201)
         self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
+        # A guest of the company who can read the space (LC-2: everyone who can read the object sees the line, #1116).
+        self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["gus"][1], "role": "guest"}, status=201)
         project = self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "workspace"}, status=201)
+        # A guest sees only the spaces they were added to.
+        self.api("ada", "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": ids["gus"]}, "role": "contributor"}, status=201)
         # Ada's own client signs in with one click on the consent page (#859), which makes its agent and connection.
         type(self).agent = McpAgent(self, "ada", project["id"])
         ids.update(workspace=ws["id"], project=project["id"])
@@ -147,6 +152,8 @@ class ClientChangeLines(unittest.TestCase):
         line.scroll_into_view_if_needed()
         self.no_sideways_scroll(page)
         shot(page, f"task-line-{label}")
+        # The change is said once: by its line with Undo. The timeline below does not name it again as "Claude Code [Agent] for Ada" (#1116).
+        expect(panel.locator(".wd-act")).not_to_contain_text("Claude Code")
 
         # Jonas, who reads the space, sees the same line.
         jonas = self.page("jonas", phone=phone)
@@ -157,6 +164,7 @@ class ClientChangeLines(unittest.TestCase):
         undo.click()
         expect(line.locator("s")).to_contain_text(f"Moved #{number} to Doing")
         expect(line).to_contain_text("Undone by Ada")
+        expect(line).not_to_contain_text("Ada Kowalska")  # the first name, as the guide says (#1116)
         expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
         self.assertEqual(self.read_task(task["id"])["status"], "open")
         shot(page, f"task-undone-{label}")
@@ -181,6 +189,20 @@ class ClientChangeLines(unittest.TestCase):
 
     def test_02_task_390(self) -> None:
         self.check_task(True)
+
+    def test_07_a_guest_who_can_read_the_space_sees_the_line_as_everyone_does(self) -> None:
+        # #1116: the server lists a local client's changes for everyone who can read the object, a guest of the company included (LC-2), and the
+        # page hid them from guests. A guest has no AI of their own; what was done to the page they read is on it.
+        task = self.task("Calibrate the probes for the guest to read")
+        self.agent.tool("flux_update_task", self.command(workId=task["id"], expectedVersion=task["version"], changes={"status": "in_progress"}))
+        self.assertEqual(self.api("gus", "GET", f"/api/v1/workspaces/{self.ids['workspace']}", status=200)["role"], "guest", "the person is a guest of the company")
+        guest = self.page("gus")
+        guest.goto(f"/projects/{self.ids['project']}/tasks?open=work:{task['id']}")
+        line = guest.locator("#details .client-changes[data-client-changes='work'] .assistant-message")
+        expect(line).to_contain_text(f"Moved #{task['number']} to Doing")
+        expect(line).to_contain_text("Ada · via Claude Code")
+        # The timeline does not name the same change a second time, under another name (#1116).
+        expect(guest.locator("#details .wd-act")).not_to_contain_text("Claude Code")
 
     # ---------------------------------------------------------------- a Wiki page
 

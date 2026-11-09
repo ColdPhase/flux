@@ -569,8 +569,13 @@ the composer. The right-hand phone above shows the sheet.
     none gets its first one as the thought arrives. The thought keeps its text, shape and size and lands under
     what is already on that map. A connection between two thoughts that move together goes along; one to a thought
     that stays is left behind, and the window says so. The toast "Moved to <space>" has Undo, which puts the thought
-    back where it was and draws those connections again. Moving needs the right to change that space's map. A
-    thought with an image cannot move (My map has none).
+    back where it was and draws those connections again; it stands above the map's toolbar while it shows and the
+    status line does not say it again (#1116). Moving needs the right to change that space's map. A
+    thought with an image cannot move (My map has none). The space's first map is made in the same change as the
+    move, so a move that fails leaves no empty map, and the window lists every map of the space, not the first 50.
+    A moved thought is a new thought with a new id on the map it arrives on (a map keeps every id it has held), so a
+    link copied before the move, or before an Undo, does not select it any more: the link names a thought, and the
+    thought that comes back is a new one (recorded in #1116, not changed).
   - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
     open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
@@ -695,7 +700,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   stays disabled until the code is downloaded. A note explains that after each server restart an
   admin of the space unlocks it.
 - **Space settings** (⋯ › Settings) use direction A:
-  - "Only people added here see this space."
+  - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row.
   - The AI switch.

@@ -90,6 +90,14 @@ class TaskStatuses(unittest.TestCase):
                 task = self.task(title, "open")
                 page = self.page(phone); panel = self.panel(page, task)
                 self.choose_state(page, panel, "Done")
+                if phone:
+                    # #1116: the "#1 done · Undo" toast is above the sheet's lowest rows, and covers neither of the two controls Done brings.
+                    toast = page.locator(".ui-toast"); expect(toast).to_be_visible(); page.wait_for_timeout(700)
+                    shut = toast.bounding_box()
+                    for control in (panel.locator(".wd-came__dropped"), panel.get_by_role("button", name="What came of it, add a line")):
+                        box = control.bounding_box()
+                        self.assertFalse(box["x"] < shut["x"] + shut["width"] and shut["x"] < box["x"] + box["width"]
+                                         and box["y"] < shut["y"] + shut["height"] and shut["y"] < box["y"] + box["height"], f"the toast {shut} covers {box}")
                 panel.get_by_role("checkbox", name="Dropped, not finished").click()
                 expect(panel.get_by_role("checkbox", name="Dropped, not finished")).to_be_checked()
                 expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done · dropped")
