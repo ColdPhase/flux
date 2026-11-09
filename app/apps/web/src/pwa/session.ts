@@ -11,5 +11,7 @@ import { disablePushNotifications } from './push.js';
 export async function signOutDevice(): Promise<void> {
   await disablePushNotifications().catch(() => undefined);
   const response = await send(AUTH_SIGN_OUT_PATH, { method: 'POST', body: {} });
+  // The answer is read to its end: Chromium reports a fetch as finished only once its body is read. Its text does not matter.
+  await response.text().catch(() => undefined);
   if (!response.ok) throw new Error(`Sign-out failed (${response.status})`);
 }

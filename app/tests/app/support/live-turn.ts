@@ -1,4 +1,5 @@
 import { appendFileSync } from 'node:fs';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { Page } from 'playwright';
 import type { LiveJoinGrant } from '@flux/contracts';
 import type { RtcStatsRecord } from '../../../apps/web/src/live/receiver-quality.js';
@@ -7,6 +8,18 @@ import { publicOrigin } from './http.js';
 export function markResourcePhase(phase: string): void {
   appendFileSync('/artifacts/livekit-phases.jsonl',
     `${JSON.stringify({ timestampUtc: new Date().toISOString(), phase })}\n`);
+}
+
+/**
+ * Waits until `ready`, run in the page, answers true. `page.waitForFunction` takes the Promise of an async predicate as its
+ * answer, which is truthy, so a wait on `getStats()` there returns at once; the page is asked again here until the answer is true.
+ */
+export async function waitForPage(page: Page, ready: () => Promise<boolean>, timeout: number): Promise<void> {
+  const deadline = Date.now() + timeout;
+  while (!await page.evaluate(ready)) {
+    if (Date.now() > deadline) throw new Error(`The page was not ready within ${timeout} ms`);
+    await delay(250);
+  }
 }
 
 type CandidateEvidence = { candidateType: string; protocol: string; relayProtocol?: string;
