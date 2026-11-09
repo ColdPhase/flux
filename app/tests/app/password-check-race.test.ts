@@ -147,12 +147,13 @@ describe('real requests racing a reset (the running API containers)', () => {
       const userId = await userIdOf(email);
       const token = await resetToken(email, owner);
       const won: Browser[] = [];
+      const refused = new Set<number>();
       let stop = false;
       // Someone who knows the old password signs in again and again, from several requests at once, while the owner resets.
       const loop = async () => {
         while (!stop) {
           const { browser, response } = await signIn(email, password);
-          if (response.status !== 200) return;
+          if (response.status !== 200) { refused.add(response.status); return; }
           won.push(browser);
         }
       };
@@ -162,6 +163,7 @@ describe('real requests racing a reset (the running API containers)', () => {
       stop = true;
       await Promise.all(loops);
       assert.ok(won.length > 0, 'the sign-ins were running');
+      console.log(`sign-ins with the old password won ${won.length}, then were answered ${[...refused].join(', ')}`);
       assert.equal(await sessionCount(userId), 0, 'no session of the old password outlives the reset');
       for (const browser of won.slice(-8)) assert.equal((await browser.request('GET', '/api/v1/me')).status, 401);
       await makeAccountWait(email, `signin ${round}`);
