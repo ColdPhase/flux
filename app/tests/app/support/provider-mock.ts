@@ -1,4 +1,6 @@
 import http from 'node:http';
+import zlib from 'node:zlib';
+import { handleCliVendor } from './cli-vendor-mock.js';
 
 /**
  * TEST ONLY (#179, F-020 PROV-6): a local stand-in for the two AI wire formats, run as the Compose
@@ -13,6 +15,7 @@ import http from 'node:http';
  *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
  *   GET  /__requests                                                 what the adapters sent
  *   POST /__reset, GET /__health
+ *   /cli/…, /__cli/…                                                the REAL Claude Code and Codex of the runtime (#1125, cli-vendor-mock.ts)
  *
  * Modes: `success`, `truncated`, `refusal`, `status` (HTTP `status`, with an error body that echoes
  * the received key, to prove adapters never surface error bodies), `hang` (never answers),
@@ -98,10 +101,18 @@ const server = http.createServer((request, response) => {
     const url = new URL(request.url ?? '/', 'http://providermock');
     // The Anthropic SDK with a bare origin as its base URL (the worker's FLUX_TEST_ANTHROPIC_URL) sends /v1/messages.
     if (url.pathname.startsWith('/v1/messages')) url.pathname = `/anthropic${url.pathname}`;
-    const raw = Buffer.concat(chunks).toString('utf8');
+    // Codex compresses its requests in ChatGPT mode (its `enable_request_compression` feature, #1125): read them as the vendor would.
+    const bytes = Buffer.concat(chunks);
+    const encoding = String(request.headers['content-encoding'] ?? '').toLowerCase();
+    let raw: string;
+    try {
+      raw = (encoding === 'zstd' ? zlib.zstdDecompressSync(bytes) : encoding === 'gzip' ? zlib.gunzipSync(bytes) : encoding === 'br' ? zlib.brotliDecompressSync(bytes)
+        : encoding === 'deflate' ? zlib.inflateSync(bytes) : bytes).toString('utf8');
+    } catch { raw = bytes.toString('utf8'); }
     let body: unknown = null;
     try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
     if (url.pathname === '/__health') return json(response, 200, { ok: true });
+    if (handleCliVendor(request, response, url, raw, body)) return;
     if (url.pathname === '/__requests') return json(response, 200, { requests });
     if (url.pathname === '/__reset') {
       requests.length = 0; scripts.anthropic = { ...DEFAULT }; scripts.openai = { ...DEFAULT };

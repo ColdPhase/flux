@@ -144,6 +144,15 @@ export async function touchRuntimeBinding(db: DbExecutor, bindingId: string): Pr
 }
 
 /**
+ * A run whose CLI said its sign-in no longer works (#1129): that sign-in shows *Sign in again* until the owner signs in again, or a status
+ * check finds it working. Only a signed-in connection of that CLI changes.
+ */
+export async function markRuntimeSignInAgain(db: DbExecutor, bindingId: string, client: 'claude_code' | 'codex'): Promise<void> {
+  await db.execute(sql`UPDATE agent_runtime_connections SET state = 'sign_in_again', signed_in_at = NULL
+    WHERE binding_id = ${bindingId} AND client = ${client} AND state = 'signed_in' AND revoked_at IS NULL`);
+}
+
+/**
  * The provider's remaining usage of a plan, as a run just saw it (#854): Codex's own rate-limit read, or a limit the run
  * met. Display facts only (a share, a window, a time), on the owner's signed-in connection of that CLI.
  */

@@ -108,6 +108,7 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
     return state('stopped', `Stopped by ${by?.id === viewerId ? 'you' : by?.name ?? 'someone'}${whereNow()}`, { stoppedBy: by });
   }
   if (!holds) return none();
-  const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here' : 'Couldn\'t finish';
+  const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here'
+    : run.status === 'input_too_large' ? 'Too much to read at once' : 'Couldn\'t finish';
   return state('failed', reason, { canTryAgain: mine, canTakeBack: mine, canStop: false });
 }

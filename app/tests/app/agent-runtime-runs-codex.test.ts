@@ -9,7 +9,7 @@ import { createPersonalRunProcessor, noPersonalConnections, NO_WEB_SEARCH_LINE, 
 import { callSupervisor } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { RUN_BRIEF } from '../../apps/runtime/src/supervisor/run.js';
-import { CODEX_FEATURE_REVIEW } from '../../apps/runtime/src/supervisor/templates.js';
+import { CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG } from '../../apps/runtime/src/supervisor/templates.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRuntimeAvailability } from '../../apps/server/src/personal-runs/runtime.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -134,7 +134,11 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(run.overrides.analytics.enabled, false);
     assert.equal(run.overrides.developer_instructions, RUN_BRIEF);
     assert.deepEqual(Object.keys(run.overrides.mcp_servers), ['flux']);
-    assert.deepEqual(run.overrides.mcp_servers.flux, { url: `${apiUrl}/mcp`, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: run.allowed });
+    assert.deepEqual(run.overrides.mcp_servers.flux, { url: `${apiUrl}/mcp`, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: run.allowed,
+      default_tools_approval_mode: 'approve' });
+    // #1127: Flux's model catalog (plain tools, no code mode or sub-agents), and no request_user_input.
+    assert.equal(run.overrides.model_catalog_json, CODEX_MODEL_CATALOG);
+    assert.equal(run.overrides.tools.experimental_request_user_input.enabled, false);
     assert.ok(run.allowed.length > 0);
     assert.deepEqual([...listed.tools].sort(), [...run.allowed].sort(), 'the route listed exactly the run\'s tools');
     assert.equal(run.authorization, 'run_token');
@@ -209,6 +213,12 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
       assert.equal(await processor.process(started.run.id), status, name || 'max_turns');
       assert.deepEqual([(await row(started.run.id)).end_reason, (await row(started.run.id)).answer_body], [reason, null], name || 'max_turns');
       assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, `${name}: never rerun`);
+      if (name === 'run_expired_login') {
+        // #1129: the dead sign-in shows *Sign in again* in Settings too, so no next run starts on it; the owner signs in again.
+        const signIn = await pool.query<{ state: string }>(`SELECT state FROM agent_runtime_connections WHERE owner_user_id = $1 AND client = 'codex'`, [owner.id]);
+        assert.equal(signIn.rows[0]?.state, 'sign_in_again');
+        await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now() WHERE owner_user_id = $1 AND client = 'codex'`, [owner.id]);
+      }
     }
     assert.equal(compute.dispatched.length, 0);
   });

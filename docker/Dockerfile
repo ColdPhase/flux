@@ -122,8 +122,27 @@ COPY --from=codex /codex /usr/local/bin/codex
 COPY --from=codex-host /codex-code-mode-host /usr/local/bin/codex-code-mode-host
 ENV PATH="/opt/flux-tools/claude/bin:$PATH"
 
+# The pinned Codex's own model catalog (codex-rs/models-manager/models.json at rust-v0.160.1, the file built into that binary; sha256
+# checked 2026-11-09), rewritten with the tool settings Flux reviewed (apps/runtime/src/supervisor/templates.ts CODEX_MODEL_REVIEW, #1127):
+# every Codex run passes it as `model_catalog_json`, so Flux's MCP tools reach the model as plain tools, without code mode or sub-agents.
+FROM build AS codex-catalog
+ADD --checksum=sha256:fd219bd9f061278275f528939f82f54d2eb97df4b25c23b022adbe48813d920b https://raw.githubusercontent.com/openai/codex/rust-v0.160.1/codex-rs/models-manager/models.json /codex-vendor-models.json
+RUN node apps/runtime/dist/install/codex-catalog.js /codex-vendor-models.json /codex-models.json
+
 FROM agent-runtime-base AS agent-runtime
 COPY --from=codex /codex /opt/flux-runtime/codex/bin/codex
+COPY --from=codex-catalog /codex-models.json /opt/flux-runtime/codex/models.json
+
+# TEST ONLY (#1125, scripts/check_cli_runtime.sh): the runtime image above with its REAL pinned Codex behind a wrapper that points
+# its vendor hosts at the local mock, plus the Claude Code wrapper and the install step that puts it in the tools volume
+# (app/tests/cli-runtime). The supervisor, its templates and the binaries are the ones above. Never deployed.
+FROM agent-runtime AS agent-runtime-cli-mock
+USER root
+COPY tests/cli-runtime/ /opt/flux-cli-mock/
+RUN mv /opt/flux-runtime/codex/bin/codex /opt/flux-cli-mock/codex \
+  && install -m 0755 /opt/flux-cli-mock/codex.sh /opt/flux-runtime/codex/bin/codex \
+  && chmod 0755 /opt/flux-cli-mock/claude.sh /opt/flux-cli-mock/install.sh
+USER node
 
 # The one-shot installer needs gpg to check Anthropic's signed release manifest; slots do not.
 FROM agent-runtime AS agent-runtime-install

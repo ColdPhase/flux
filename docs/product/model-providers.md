@@ -54,7 +54,11 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   it. Otherwise the line says "Plan limits apply". It is never shown as zero.
 - **A plan at its limit.** The agent pauses with one line, for example "Claude limit reached,
   resumes at 14:00", or without a time when the provider gives none, and resumes by itself after
-  the reset (a request waits for it in the queue).
+  the reset (a request waits for it in the queue). On a CLI in the runtime this includes the API's
+  own rate limit (Claude Code's "Request rejected (429)", Codex's 429s), not the vendor's "not your
+  usage limit" capacity message ([#1129](https://github.com/ColdPhase/flux/issues/1129)). A request
+  longer than the model's context window ends "This conversation is too long for one request", as
+  on an API key.
   It never switches to another connection or provider, and there is no switch button. A request
   that already changed something is not run again: it ends with the line and how many changes
   were made. When Anthropic's monthly API credits run out, "API requests stop until your next monthly credits

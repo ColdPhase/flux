@@ -133,9 +133,16 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   API-key run lists its searches and citations.
 - **Codex** runs with `--ignore-user-config`, every reviewed default-on feature switched off by
   `-c` (shell, apps, hooks, goals, plugins, memories and the rest of the reviewed list), Flux as
-  the only, required MCP server with exactly the run's tools, and no persistence. A preflight reads
+  the only, required MCP server with exactly the run's tools, and no persistence. **Its model
+  catalog is Flux's copy of the pinned one** ([#1127](https://github.com/ColdPhase/flux/issues/1127)):
+  the pinned catalog makes every model Flux offers `code_mode_only`, which hides MCP tools inside
+  code mode's JavaScript `exec` tool, so Flux's copy gives them plain tools (`tool_mode: direct`)
+  and no sub-agents, file edits, shell, tool search or experimental tools; everything else stays
+  the vendor's. Flux's tools need no approval in Codex (Flux decides what waits for the owner,
+  AG-3, as with Claude Code's `dontAsk`), and Codex's `request_user_input` is off. A preflight reads
   the effective configuration, and the run's own JSONL is the authoritative check: any item other
-  than a message, reasoning or an allowed Flux tool call stops the CLI with nothing committed.
+  than a message, reasoning or an allowed Flux tool call stops the CLI with nothing committed (a
+  call to Codex's own MCP resource readers, which stay offered, is such an item).
   **Codex's `web_search` stays disabled** (decided for #1065, 2026-11-09): its `web_search` item
   (codex-rs `exec_events.rs` at the pinned rust-v0.160.1) carries the query and the action (a search,
   or a page the model chose to open), never the result addresses, so Flux could neither make them the
@@ -157,6 +164,10 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   only. Nothing of it is stored or logged.
 - A pending sign-in survives a reload for the same owner and session, within a 15-minute maximum.
   Cancel, sign-out, revocation and process loss end it.
+- **A sign-in that stops working** ([#1129](https://github.com/ColdPhase/flux/issues/1129)): when a
+  run's CLI says its login no longer works (a revoked key or token, a refresh the vendor refuses),
+  the run ends *Sign in again* and so does that sign-in in Settings, even while the CLI's own status
+  still reports a login. Signing in again, or a status check that finds it working, sets it back.
 - **Before every plan sign-in** Flux says: the server's operator can technically read the runtime's
   storage, so sign in only where you trust the operator; and the vendors recommend API keys for
   products and automation and may restrict this use without notice.
