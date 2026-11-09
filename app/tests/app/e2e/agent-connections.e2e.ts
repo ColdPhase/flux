@@ -42,9 +42,12 @@ test('a client signs in with one click: Deny makes nothing, Allow makes one conn
     [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1,$2,$3,now())',
       [randomUUID(), clientId, `${origin}/mcp`]);
-    const connections = async () => (await pool.query('SELECT id, name, client_designation, may_do, revoked_at FROM agent_connections WHERE client_designation = \'claude_code\'')).rows as
+    // Only this person's connections and agents: the API suite and earlier steps run on the same database and leave their own
+    // Claude Code connections and agents behind, so a count of every one of them is not about this sign-in.
+    const ownerId = (await pool.query('SELECT id FROM auth_users WHERE email = $1', [email])).rows[0].id as string;
+    const connections = async () => (await pool.query('SELECT id, name, client_designation, may_do, revoked_at FROM agent_connections WHERE owner_user_id = $1', [ownerId])).rows as
       { id: string; name: string; client_designation: string; may_do: string; revoked_at: Date | null }[];
-    const agents = async () => Number((await pool.query('SELECT count(*)::int AS n FROM agents WHERE name = \'Claude Code\'')).rows[0].n);
+    const agents = async () => Number((await pool.query('SELECT count(*)::int AS n FROM agents WHERE owner_user_id = $1', [ownerId])).rows[0].n);
     function authorization() {
       const verifier = randomBytes(32).toString('base64url');
       const query = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code',
@@ -105,7 +108,7 @@ test('a client signs in with one click: Deny makes nothing, Allow makes one conn
     const [claimsA, claimsB] = await Promise.all([exchange(pageA, authB), exchange(pageB, authC)]);
     const made = await connections();
     assert.equal(made.length, 1, 'two Allows of one client by one person are one connection');
-    assert.deepEqual([made[0]!.name, made[0]!.may_do, made[0]!.revoked_at], ['Claude Code on this computer', 'act', null]);
+    assert.deepEqual([made[0]!.name, made[0]!.client_designation, made[0]!.may_do, made[0]!.revoked_at], ['Claude Code on this computer', 'claude_code', 'act', null]);
     assert.equal(await agents(), 1);
     assert.deepEqual([claimsA.flux_connection_id, claimsB.flux_connection_id], [made[0]!.id, made[0]!.id]);
 
