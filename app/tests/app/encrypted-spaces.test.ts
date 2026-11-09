@@ -273,4 +273,23 @@ describe('an encrypted space of the company', () => {
     expectStatus(await restore(tom), 201);
     assert.equal(await roleIn(space, tom.id), 'member');
   });
+
+  test('every way out of an encrypted space tells the person alone: removed by its owner, made a company guest, removed from the company (#862)', async () => {
+    const [kept, guested, gone] = await Promise.all(['Spaces Kept Out', 'Spaces Made Guest', 'Spaces Gone With Company'].map(person));
+    for (const who of [kept, guested, gone]) await join(who, 'member');
+    const space = made(await create(ada, { name: 'Ways out', people: [kept.id, guested.id, gone.id], recoveryCode: makeCode() })).workspace.id;
+    /** The `workspace.access_ended.v1` events of a workspace, each with its audience. */
+    const ended = async (workspaceId: string) => (await pool.query<{ recipients: string[]; data: Record<string, unknown> }>(
+      `SELECT e.data, array_agg(a.recipient ORDER BY a.recipient) AS recipients FROM events e JOIN event_audience a ON a.event_id = e.id
+       WHERE e.kind = 'workspace.access_ended.v1' AND e.workspace_id = $1 AND e.object_id = $1 GROUP BY e.id, e.data, e.seq ORDER BY e.seq`, [workspaceId])).rows;
+    expectStatus(await ada.browser.request('DELETE', `/api/v1/workspaces/${space}/members/${kept.id}`), 204);
+    expectStatus(await admin.browser.request('PATCH', `/api/v1/workspaces/${companyId}/members/${guested.id}`, { body: { role: 'guest' } }), 200);
+    expectStatus(await admin.browser.request('DELETE', `/api/v1/workspaces/${companyId}/members/${gone.id}`), 204);
+    assert.deepEqual((await ended(space)).map((row) => row.recipients), [[`human:${kept.id}`], [`human:${guested.id}`], [`human:${gone.id}`]],
+      'one for each, in order, each for that person alone');
+    assert.ok((await ended(space)).every((row) => Object.keys(row.data).length === 0), 'ids only');
+    assert.ok((await ended(companyId)).some((row) => row.recipients.length === 1 && row.recipients[0] === `human:${gone.id}`), 'and the company\'s own, for the person who left it');
+    assert.equal(await roleIn(space, kept.id), null);
+    await pool.query("UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2", [companyId, guested.id]);
+  });
 });

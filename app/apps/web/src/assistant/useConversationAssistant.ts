@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantChange, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import {
   askAssistant, dismissAnswer, getAssistantStatus, getRun, listAnswers, listPlaceRuns, retryRun, showAnswer, stopRun,
   type AskPlace,
@@ -137,7 +137,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   useEffect(() => { workingRef.current = mine.filter(isWorking); });
   useEffect(() => {
     if (!working) return;
-    const timer = window.setInterval(() => { for (const run of workingRef.current) getRun(run.id).then(take).catch(() => undefined); }, 4000);
+    const timer = window.setInterval(() => { if (streamLive()) return; for (const run of workingRef.current) getRun(run.id).then(take).catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
   }, [working, take]);
 

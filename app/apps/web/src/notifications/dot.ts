@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED } from './api';
 import { getNeedsYou } from './needsYou';
 
@@ -26,7 +26,8 @@ export function useInboxDot(identity: string, pathname: string): number {
     const onFocus = () => refresh();
     window.addEventListener(INBOX_CHANGED, refresh);
     window.addEventListener('focus', onFocus);
-    const interval = setInterval(refresh, 120_000);
+    // Only while the live stream is down (#862); while it is open, an event reads after a short pause (below).
+    const interval = setInterval(() => { if (!streamLive()) refresh(); }, 120_000);
     return () => {
       window.removeEventListener(INBOX_CHANGED, refresh);
       window.removeEventListener('focus', onFocus);
@@ -34,6 +35,7 @@ export function useInboxDot(identity: string, pathname: string): number {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [refresh]);
-  useStreamEvents(identity, soon, refresh);
+  // Someone seeing a message changes nothing that waits for this person (#862).
+  useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, refresh);
   return unread?.identity === identity ? unread.count : 0;
 }

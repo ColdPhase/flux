@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import type { LivePresentation, LiveSession, ProjectPerson } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
+import { streamLive } from '../api/stream';
 import { useToast } from '../ui';
 import { listProjectPeople } from '../project/data';
 import { anchorLabel, anchorPath, sameContext, resolveFragment, type LiveAnchor, type Presentable, type ResolvedFragment } from './anchors';
@@ -506,9 +507,14 @@ export function useProjectSessions(projectId: string | undefined, enabled: boole
   useEffect(() => {
     if (!projectId || !key || !enabled) return;
     const controller = new AbortController();
-    const load = () => discoverSessions(projectId, controller.signal).then((page) => { sessionsSeen.set(key, page.items); setLoaded({ key, items: page.items }); }, () => undefined);
+    let last = 0;
+    const load = () => { last = Date.now(); return discoverSessions(projectId, controller.signal).then((page) => { sessionsSeen.set(key, page.items); setLoaded({ key, items: page.items }); }, () => undefined); };
     void load();
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') void load(); }, 12_000);
+    // A call starting sends no event, so this looks every 12 s; every 30 s while the live stream is open (#862: an open tab asks at most a
+    // few times a minute), where an invitation to a call arrives as an event anyway.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible' && (!streamLive() || Date.now() - last >= 30_000)) void load();
+    }, 12_000);
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [projectId, key, enabled, tick, phase]);
   // What the header already read is there when a row of More mounts with its menu, so a call in the space is never missed

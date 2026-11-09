@@ -357,7 +357,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     : { id: null, authorId: `~${entry.key}`, createdAt: entry.at }),
     ...outbox.pending.map((item) => ({ id: null, authorId: meId, createdAt: item.at }))];
   const receiptRuns = ownRuns(receiptLines, meId, stream.hasOlder);
-  const receiptTick = useReceiptTick(receiptRuns.length > 0);
+  const receiptTick = useReceiptTick(receiptRuns.length > 0, meId, project.id);
   const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: revealed, feed: feedRef,
     ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });

@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router';
 import { ASSISTANT_RUN_CHANGED_EVENT } from '@flux/contracts';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { listAgentChats } from './api';
 
 // The unread dot of an agent's private chat (#919, F-036 AG-7): its answers and its reports (one line when a run on a task ends)
@@ -36,7 +36,8 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', visible);
-    const interval = setInterval(visible, 120_000);
+    // Only while the live stream is down (#862); while it is open, a run's event reads (below).
+    const interval = setInterval(() => { if (!streamLive()) visible(); }, 120_000);
     return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); clearInterval(interval); if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   }, [refresh]);
   useStreamEvents(identity, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT && document.visibilityState === 'visible') soon(); }, refresh);

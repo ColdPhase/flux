@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { RECEIPT_LIMITS, type DmPerson, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
 import { sameMessageAuthor } from './messageParts';
+import { streamLive, useStreamEvents } from '../api/stream';
 
 /**
  * Viewing receipts for a private conversation (#534). What counts as "observed": a message written by someone else
@@ -127,13 +128,22 @@ export function useReceipts({ scope, fetchReceipts, runs, tick }: {
 
 const EMPTY = new Map<string, DmPerson[]>();
 
-/** A tick every few seconds while the page is visible, for surfaces whose receipts have no live event (the project's conversation). */
-export function useReceiptTick(enabled: boolean, ms = 8000) {
+/**
+ * When a space's "Seen by" is read again (#862): when someone sees the person's messages there for the first time, the server tells the
+ * author (`project.messages_observed.v1`); a tick every few seconds is the fallback while the live stream is down.
+ */
+export function useReceiptTick(enabled: boolean, identity: string, projectId: string, ms = 8000) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!enabled) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') setTick((value) => value + 1); }, ms);
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !streamLive()) setTick((value) => value + 1); }, ms);
     return () => window.clearInterval(timer);
   }, [enabled, ms]);
+  useStreamEvents(identity, (event) => {
+    if (enabled && event.kind === MESSAGES_OBSERVED && event.objectId === projectId) setTick((value) => value + 1);
+  }, () => { if (enabled) setTick((value) => value + 1); });
   return tick;
 }
+
+/** Someone saw messages of a space for the first time; it reaches their authors only (#862). */
+export const MESSAGES_OBSERVED = 'project.messages_observed.v1';
