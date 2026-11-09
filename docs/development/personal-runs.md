@@ -250,7 +250,12 @@ pages, founder direction 2026-11-09, #1113).
   address; if the run cannot read it yet and has a search in progress (`searching`), it polls every 100 ms until none
   is (at most `SEARCH_WAIT_MS`, 30 s) and checks again. Claude Code hands Flux no citations: at the commit, the
   addresses the answer names (`addressesIn`) are written as the run's cited row, and `searches` lists those its search
-  returned under "Found on the web:". Codex's `web_search` stays disabled: its item carries no results. Local clients
+  returned under "Found on the web:". The tool's own result asks the model to cite its sources as Markdown links, which an
+  answer shown as plain text would show raw, so the brief's `RUNTIME_WEB_SEARCH_LINE` says not to (#1116). A search whose tool
+  use has no string id cannot be matched to a result: the slot sends its `found` at once, with no addresses, so no read waits
+  for it. A `user` event that carries several tool results (a CLI running tools in parallel) is not read as a search's: each
+  of its searches is `found` with no addresses (fail safe: nothing becomes readable; checking a real plan's parallel results
+  is for release acceptance). Codex's `web_search` stays disabled: its item carries no results. Local clients
   use their own tools.
 - **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
   `/ai` answer.
