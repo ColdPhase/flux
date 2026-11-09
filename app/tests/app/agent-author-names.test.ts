@@ -91,7 +91,7 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
     for (const from of ['from="Ada Nowak"', 'from="Jonas Berg"', 'from="Gita Gość"', 'from="Jonas Berg · via Asystent"']) assert.ok(input.includes(from), from);
     assert.equal(input.match(/from="Former member"/g)?.length, 2);
     assert.ok(!input.includes('Lena') && !input.includes('Gerd'), 'who left is not named');
-    assert.ok(input.includes('Your own messages are those of "Asystent (Ada\'s agent)".'), 'the reader is told its own label');
+    assert.ok(scene.compute.dispatched[0]!.system.includes('Your own messages are those of "Asystent (Ada\'s agent)".'), 'the reader is told its own label');
   });
 
   test('a task\'s discussion and its tasks name an agent with whose it is; an agent whose owner left is a former member\'s', async () => {
@@ -173,12 +173,10 @@ describe('#1160 and #1161: who wrote what, a task for a person by name, and its 
       assert.match(refusal.error, /dueOn must be a calendar date as YYYY-MM-DD/, wrong);
     }
     assert.equal(failure((await run.call('flux_create_task', { task: { title: 'Never made', dueOn: '2026-13-01' } })).message).code, 'INVALID_INPUT');
-    // Under Ask me first a wrong date is refused before anything waits.
+    // Under Ask me first (read at each call) a wrong date is refused before anything waits.
     await scene.setMayDo('ask');
-    const asking = await scene.liveRun();
-    failure((await asking.call('flux_update_task', { workId: made.workId, expectedVersion: moved.version, changes: { dueOn: '2026-02-30' } })).message);
-    assert.deepEqual((await changesOf(asking.runId)).filter((row) => row.state === 'waiting'), [], 'nothing waits for a date that cannot be set');
-    await scene.complete(asking.runId);
+    failure((await run.call('flux_update_task', { workId: made.workId, expectedVersion: moved.version, changes: { dueOn: '2026-02-30' } })).message);
+    assert.deepEqual((await changesOf(run.runId)).filter((row) => row.state === 'waiting'), [], 'nothing waits for a date that cannot be set');
     await scene.setMayDo('act');
     // Undo puts the earlier day back.
     expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(change.id, 'undo'), { body: {} }), 200);
