@@ -429,26 +429,40 @@ class AssistantUndo(unittest.TestCase):
         page = self.page()
         run_id = self.ids["run"]
         working = self._run(run_id, "reading", "Tidy the project")
-        calls = {"n": 0}
+        died = {**working, "status": "provider_failed", "endReason": "crashed", "completedAt": NOW}
+        state = {"run": working}
+        # An open tab reads a run again when the live stream says it changed, not on a timer (#862, #1101). The stack has no assistant, so
+        # the run is stubbed and the stream is answered here, never connected to the server: the test sends the event the server records
+        # when a run's status changes (`assistant_run.changed.v1`, to its owner only).
+        streams: list = []
+        page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda route: streams.append(route))
         page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(
-            status=200, content_type="application/json", body=json.dumps({"items": [working], "total": 1, "limit": 10, "offset": 0})))
-
-        def read(route: Route) -> None:
-            calls["n"] += 1
-            body = working if calls["n"] < 2 else {**working, "status": "provider_failed", "endReason": "crashed", "completedAt": NOW}
-            route.fulfill(status=200, content_type="application/json", body=json.dumps(body))
-        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), read)
+            status=200, content_type="application/json", body=json.dumps({"items": [state["run"]], "total": 1, "limit": 10, "offset": 0})))
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(state["run"])))
         changes = [self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed one", done="added task Committed one", runState="failed"),
                    self.applied(objectId=str(uuid.uuid4()), objectTitle="Committed two", done="added task Committed two", runState="failed")]
         self.stub_undo(page, changes, [])
         self.open_conversation(page)
+        ended = page.locator(".assistant-working")
+        expect(ended).to_contain_text("Working")
+        # The run ends: its owner is told over the stream, and the tab reads the run once more.
+        for _ in range(100):
+            if streams:
+                break
+            page.wait_for_timeout(100)
+        self.assertTrue(streams, "the page opened its live stream")
+        state["run"] = died
+        streams[-1].send(json.dumps({"type": "event", "cursor": "c1", "id": str(uuid.uuid4()), "kind": "assistant_run.changed.v1", "workspaceId": died["workspaceId"],
+                                     "objectType": "assistant_run", "objectId": run_id, "createdAt": NOW}))
         message = page.locator(".assistant-message")
         expect(message.locator(".assistant-message__line")).to_contain_text("Added task Committed one · added task Committed two")
         expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(1)
-        ended = page.locator(".assistant-working")
-        expect(ended).to_contain_text("2 changes were made before it ended.", timeout=20000)
+        expect(ended).to_contain_text("2 changes were made before it ended.")
         expect(ended).not_to_contain_text("Nothing was posted")
         shot(page, "assistant-undo-1440-light-dead-run")
+        # No handler may still be reading when the context closes (as in test 05).
+        page.unroute_all(behavior="ignoreErrors")
 
 
 if __name__ == "__main__":
