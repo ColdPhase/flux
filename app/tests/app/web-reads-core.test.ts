@@ -65,13 +65,13 @@ describe('the text of a page for an agent', () => {
 describe('the reader', () => {
   const ok = async (address: string) => ({ ok: true as const, url: address, html: '<title>T</title><p>Words.</p>', type: 'text/html' });
 
-  test('is off unless the operator turned it on, and then reads nothing and fetches nothing', async () => {
+  test('is on unless the operator turns it off (#954, C-29), and off it reads nothing and fetches nothing', async () => {
     let fetched = 0;
     const off = webReader({ enabled: false, fetch: async (address) => { fetched++; return ok(address); } });
     assert.deepEqual(await off.read('ada', 'https://example.org/'), { ok: false, reason: 'off', requested: [] });
     assert.equal(fetched, 0);
     const env = (extra: Record<string, string> = {}) => ({ ...process.env, ...extra });
-    assert.equal(loadWebReadsConfig(env({ FLUX_WEB_READS: '' })).enabled, false, 'off is the default');
+    assert.equal(loadWebReadsConfig(env({ FLUX_WEB_READS: '' })).enabled, true, 'on is the default');
     assert.equal(loadWebReadsConfig(env({ FLUX_WEB_READS: 'off' })).enabled, false);
     assert.equal(loadWebReadsConfig(env({ FLUX_WEB_READS: 'on' })).enabled, true);
     assert.throws(() => loadWebReadsConfig(env({ FLUX_WEB_READS: 'sometimes' })), /FLUX_WEB_READS must be on or off/);
@@ -145,7 +145,10 @@ describe('the addresses a run asked for, in its answer', () => {
     assert.equal(takeAsk('I read it.\n<ask>{"agent": "Fieldbot", "quest').body, 'I read it.', 'and with none there is nothing to keep');
     const failed = webSourcesLine([{ finalUrl: 'https://example.org/n', outcome: 'status' }]);
     assert.equal(takeAsk(`Report\n<ask>unfinished\n\n${failed}`).body, `Report\n\n${failed}`);
-    assert.deepEqual([...WEB_SOURCES_HEADINGS], ['Read on the web:', 'Requested, not read:']);
+    assert.deepEqual([...WEB_SOURCES_HEADINGS], ['Searched the web for:', 'Found on the web:', 'Read on the web:', 'Requested, not read:']);
+    // A block that starts with the searches (#954) is found and kept the same way.
+    const searched = webSourcesLine([], { queries: ['ferry times'], cited: ['https://example.org/ferry'] });
+    assert.equal(takeAsk(`Report\n<ask>unfinished\n\n${searched}`).body, `Report\n\n${searched}`);
   });
 });
 

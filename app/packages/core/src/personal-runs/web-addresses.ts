@@ -67,3 +67,31 @@ export function givenAddresses(texts: readonly string[]): Set<string> {
   for (const text of texts) for (const address of addressesIn(text)) given.add(address);
   return given;
 }
+
+/** The most queries, results and cited addresses kept of one response of the provider's web search (#954). */
+export const WEB_SEARCH_BOUNDS = { queries: 10, query: 300, results: 100, cited: 100 } as const;
+
+/**
+ * What one response of the provider's built-in web search brought, as Flux keeps it (#954, C-30): the queries as plain one-line text
+ * (control characters gone, at most 300 characters), the result and cited addresses normalized like any address (web addresses only,
+ * no fragment, at most `ADDRESS_MAX` long), each once and bounded. What is not a web address is dropped, never kept.
+ */
+export function boundedWebSearch(found: { queries: readonly unknown[]; results: readonly unknown[]; cited: readonly unknown[] }) {
+  const addresses = (values: readonly unknown[], most: number) => {
+    const kept = new Set<string>();
+    for (const value of values) {
+      const address = typeof value === 'string' ? normalizedAddress(value) : null;
+      if (address) kept.add(address);
+      if (kept.size >= most) break;
+    }
+    return [...kept];
+  };
+  const queries = new Set<string>();
+  for (const value of found.queries) {
+    // eslint-disable-next-line no-control-regex
+    const query = typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, WEB_SEARCH_BOUNDS.query) : '';
+    if (query) queries.add(query);
+    if (queries.size >= WEB_SEARCH_BOUNDS.queries) break;
+  }
+  return { queries: [...queries], results: addresses(found.results, WEB_SEARCH_BOUNDS.results), cited: addresses(found.cited, WEB_SEARCH_BOUNDS.cited) };
+}

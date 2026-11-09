@@ -5,7 +5,7 @@ import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import { guardedFetch } from './guarded-fetch.js';
 import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolver } from './limits.js';
 
-// The Chat Completions adapter behind core's `PersonalCompute` port (F-020, #179): OpenAI,
+// The Chat Completions adapter behind core's `PersonalCompute` port (F-020, #179; OpenAI went to the Responses API in #954):
 // OpenRouter, Gemini's OpenAI-compatible endpoint and any OpenAI-compatible server. It matches the
 // Anthropic adapter: one bounded request with the same prompt, output bound and no tools, no
 // retries, abort through the AbortSignal, an explicit base URL, the guarded transport, and the same

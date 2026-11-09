@@ -8,7 +8,9 @@ next answers through `POST /__script` and read what the adapter sent through `GE
 Script fields (all optional): `rules` (a list of `{"match": "...", "text": "..."}`: the first whose `match` is in the request answers
 with its `text` instead of `text`, so one script can answer several runs differently), `text` (a template; `{first}`, `{message}` and `{work}` become the
 source labels found in the request input; `{second}` is the second message), `delay` (seconds before answering), `status` (an HTTP
-error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`.
+error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`, `search` (#954: `{"query": "...", "results": [url, ...],
+"cite": url}` answers with Anthropic's own web search in its documented shape: a `server_tool_use` block, a `web_search_tool_result` block and
+the text split around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1).
 """
 
 from __future__ import annotations
@@ -22,7 +24,21 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FIXTURE_KEY = "flux-test-fixture-not-a-provider-key"
 DEFAULT = {"text": "Fact: the camera fails below 5 lux {first}. Interpretation: the ToF sensor is the better next test {message}.",
-           "delay": 0.0, "status": None, "stop_reason": "end_turn", "input_tokens": None, "output_tokens": 120}
+           "delay": 0.0, "status": None, "stop_reason": "end_turn", "input_tokens": None, "output_tokens": 120, "search": None}
+
+
+def searched(search: dict, text: str) -> list[dict]:
+    """The content blocks of an answer that searched the web (docs.claude.com web search tool, read 2026-11-08)."""
+    return [
+        {"type": "text", "text": "I will search the web for that."},
+        {"type": "server_tool_use", "id": "srvtoolu_ui_mock_1", "name": "web_search", "input": {"query": search["query"]}},
+        {"type": "web_search_tool_result", "tool_use_id": "srvtoolu_ui_mock_1", "content": [
+            {"type": "web_search_result", "url": url, "title": f"Result {index + 1}", "encrypted_content": f"enc-{index}", "page_age": "November 1, 2026"}
+            for index, url in enumerate(search["results"])]},
+        {"type": "text", "text": "Based on the search, "},
+        {"type": "text", "text": text, "citations": [{"type": "web_search_result_location", "url": search["cite"], "title": "Cited page",
+                                                       "encrypted_index": "enc-index", "cited_text": "cited words"}]},
+    ]
 
 lock = threading.Lock()
 script: dict = dict(DEFAULT)
@@ -103,10 +119,14 @@ class Handler(BaseHTTPRequestHandler):
                 wanted = str(rule.get("text", ""))
                 break
         text = wanted.format(**labels(text_in))
+        search = current.get("search") if any(tool.get("name") == "web_search" for tool in body.get("tools") or []) else None
+        usage = {"input_tokens": current["input_tokens"] or max(1, len(text_in) // 4), "output_tokens": current["output_tokens"]}
+        if search:
+            usage["server_tool_use"] = {"web_search_requests": 1}
         return self.reply(200, {
             "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
-            "content": [{"type": "text", "text": text}], "stop_reason": current["stop_reason"], "stop_sequence": None,
-            "usage": {"input_tokens": current["input_tokens"] or max(1, len(text_in) // 4), "output_tokens": current["output_tokens"]},
+            "content": searched(search, text) if search else [{"type": "text", "text": text}], "stop_reason": current["stop_reason"], "stop_sequence": None,
+            "usage": usage,
         })
 
 

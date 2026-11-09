@@ -116,7 +116,7 @@ the variable.
 | [`FLUX_VAPID_PUBLIC_KEY`](#flux_vapid_public_key) | Web Push | empty |
 | [`FLUX_VAPID_SUBJECT`](#flux_vapid_subject) | Web Push | empty |
 | [`FLUX_WAIT_TIMEOUT`](#flux_wait_timeout) | Source checkout, launcher and checks | `300` |
-| [`FLUX_WEB_READS`](#flux_web_reads) | AI providers | `off` |
+| [`FLUX_WEB_READS`](#flux_web_reads) | AI providers | `on` |
 | [`FLUX_WORKER_MEMORY`](#flux_worker_memory) | Memory limits | `512m` |
 | [`POSTGRES_DB`](#postgres_db) | Database | `flux` |
 | [`POSTGRES_PASSWORD`](#postgres_password) | Database | **required** |
@@ -408,9 +408,9 @@ Owners connect their own AI provider in **Settings → AI**. These switches deci
 
 ### `FLUX_WEB_READS`
 
-**Type** `on`, `off` · **Default** `off` · **Used by** api (release, source)
+**Type** `on`, `off` · **Default** `on` · **Used by** api, worker (release, source)
 
-`on` lets the server read a public web page for an agent that asks for it (the `flux_read_web` tool of a server agent's run, read-only, GET only), with the guard of link cards: public `http(s)` addresses on default ports, three redirects at most, bounded in time and size. An address is a way to send something to a site, so an agent may read only an address it was given (written by a person in the request, in the task or its conversation, or on a page it read), at most 20 a run; it cannot make one up, and what another agent wrote gives none. Each address is written down before the request goes out, and the run lists every address the server asked for, those that failed too, under its answer or, when it ends without one, in its end line. A read tells the site this server's address, and the open web can try to instruct an agent: rights, waits and Undo are the defence. Other values stop the API. Example: `on`.
+On by default (founder direction 2026-11-08, C-29): a server agent's run reads public web pages and searches the web. `off` turns both off. Reading is Flux's `flux_read_web` tool (read-only, GET only), with the guard of link cards: public `http(s)` addresses on default ports, three redirects at most, bounded in time and size. Searching is the provider's own built-in search on the owner's key, with no other account (Anthropic's `web_search`, OpenAI's Responses `web_search` on its cached index; $0.01 a search, counted in the key's daily budget); other providers and the Claude Code and Codex runtime have none. An address is a way to send something to a site, so an agent may read only an address it was given (written by a person in the request, in the task or its conversation), found on a page it read, or returned by its own search in the same run, at most 20 a run; it cannot make one up, and what another agent wrote gives none. Each address is written down before the request goes out, and the run lists its searches, the addresses its answer cites and every address the server asked for, those that failed too, under its answer or, when it ends without one, in its end line. A read tells the site this server's address, a search sends the agent's query to the provider's search partner, and the open web can try to instruct an agent: rights, waits and Undo are the defence. Other values stop the API and the worker. Example: `off`.
 
 ### `FLUX_BACKGROUND_KEY_HOST_FILE`
 

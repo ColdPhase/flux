@@ -58,7 +58,8 @@ const ASKABLE = 'Task #12: Calibrate north barrel\nAgents of other people in thi
 const space = (conversationId: string | null, task: { number: number; title: string } | null = null) =>
   ({ kind: 'space' as const, spaceId: SPACE_ID, spaceName: 'Field sensors', conversationId, task });
 const base: BriefInput = {
-  engine: 'server', kind: 'ask', silent: false, tools: [...READS, ...CHANGES, ...WEB], agentName: 'Assistant', ownerName: OWNER, now: NOW, timeZone: 'Europe/Warsaw',
+  // An API-key run on a provider with its own web search, as a new install has it (#954, C-29); the CLI's engine never has one.
+  engine: 'server', kind: 'ask', silent: false, tools: [...READS, ...CHANGES, ...WEB], webSearch: true, agentName: 'Assistant', ownerName: OWNER, now: NOW, timeZone: 'Europe/Warsaw',
   place: space(THREAD_ID), task: null, scheduleTitle: null,
   agent: { name: 'Assistant', instructions: 'Answer briefly. Use metric units.', memory: ['The north barrel is the reference barrel.'] },
   prompt: 'Co ustaliliśmy w sprawie kamery?', requestedAt: new Date('2026-11-08T09:01:30Z'), sources: [...MESSAGES, ...OPEN_TASKS], leftOut: false, turns: [], earlier: null, thought: null,
@@ -74,6 +75,7 @@ const scheduled = { ...base, kind: 'scheduled' as const, scheduleTitle: 'Morning
 const CASES: Record<string, BriefInput> = {
   'space-thread': base,
   'space-thread-no-tools': { ...base, tools: [] },
+  'space-thread-no-search': { ...base, webSearch: false },
   'space-thread-only-read': { ...base, tools: [...READS, ...WEB] },
   'space-task-discussion-summary': { ...base, kind: 'summarize', place: space(THREAD_ID, { number: 12, title: 'Calibrate north barrel' }), prompt: 'Summarise this' },
   'space-main-conversation': { ...base, place: space(null), sources: [...MAIN, ...OPEN_TASKS], leftOut: true, prompt: 'What is new since Friday?' },

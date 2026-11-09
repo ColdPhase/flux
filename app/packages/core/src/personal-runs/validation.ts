@@ -5,6 +5,7 @@ import {
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
   WORK_LIMITS,
+  WEB_SEARCHES_PER_REQUEST,
   type AiConnectionRef,
   type AiPrice,
   type AssistantRunKind,
@@ -152,10 +153,10 @@ export function runTokensWithinLimits(usage: PersonalComputeUsage): boolean {
 /**
  * What one request reserves (PROV-3): its largest possible cost at the connection's price, or null
  * when the connection has no known price and cannot be used. A run with tools (#484) has the larger
- * input bound.
+ * input bound, and when it is offered its provider's own web search (#954) the searches one request may make and the room for their results.
  */
-export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools = false): number | null {
-  return requestReservationMicros(price, personalRunMaxInputTokens(tools), PERSONAL_RUN_LIMITS.maxOutputTokens);
+export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools = false, webSearch = false): number | null {
+  return requestReservationMicros(price, personalRunMaxInputTokens(tools, webSearch), PERSONAL_RUN_LIMITS.maxOutputTokens, tools && webSearch ? WEB_SEARCHES_PER_REQUEST : 0);
 }
 
 /**
@@ -165,8 +166,8 @@ export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' |
  * without a known price.
  */
 export function budgetedReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools: boolean, leftMicros: number,
-  turns: number = PERSONAL_RUN_LIMITS.maxTurns): number | 'budget' | null {
-  const one = runReservationMicros(price, tools);
+  turns: number = PERSONAL_RUN_LIMITS.maxTurns, webSearch = false): number | 'budget' | null {
+  const one = runReservationMicros(price, tools, webSearch);
   if (one === null) return null;
   if (one > leftMicros) return 'budget';
   return tools ? Math.min(one * Math.max(1, Math.floor(turns)), leftMicros) : one;

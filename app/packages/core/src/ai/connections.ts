@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, type AiPrice, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, WEB_SEARCHES_PER_REQUEST, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -42,8 +42,10 @@ const budgetProblem = 'The daily budget is whole cents from $0.10 to $1,000';
  * A budget below one request at the price of a model that runs on the key would wait for a day that never comes (#854): it is
  * refused when saved. `model` names the assistant's model when that is the one that does not fit (#909).
  */
-function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, model: string | null = null) {
-  const largest = requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxToolInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
+function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, provider: AiProviderKind, checked: string, model: string | null = null) {
+  // With the provider's own web search a request may also make its searches and carry their results (#954); a model never offered it does not.
+  const searches = aiModelSearchesWeb(provider, checked) ? WEB_SEARCHES_PER_REQUEST : 0;
+  const largest = requestReservationMicros(price, personalRunMaxInputTokens(true, searches > 0), PERSONAL_RUN_LIMITS.maxOutputTokens, searches);
   if (largest !== null && largest > budgetCents * 10_000)
     throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }
@@ -107,7 +109,7 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       }
       // PROV-3: Flux's dated table or the owner's price; a provider's listing is never a price source.
       const price = resolveConnectionPrice({ provider: input.provider, model, ownerPrice: input.price });
-      assertBudgetFitsRequest(price, input.dailyBudgetCents);
+      assertBudgetFitsRequest(price, input.dailyBudgetCents, input.provider, model);
       const id = randomUUID();
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);
@@ -129,14 +131,14 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         const cents = change.dailyBudgetCents;
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
         if (key) {
-          assertBudgetFitsRequest(key.price, cents);
+          assertBudgetFitsRequest(key.price, cents, key.provider, key.model);
           // An agent may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
           // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The models are
           // read again inside the change, under the lock a model change also takes first (#915).
           guard = (models) => {
             for (const model of models) {
               const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
-              if (price) assertBudgetFitsRequest(price, cents, model);
+              if (price) assertBudgetFitsRequest(price, cents, key.provider, model, model);
             }
           };
         }

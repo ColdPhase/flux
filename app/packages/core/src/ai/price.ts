@@ -20,24 +20,30 @@ export function resolveConnectionPrice(input: {
   return null;
 }
 
-/** The PROV-3 reservation of one request in micro-dollars, or null without a known price. */
-export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, maxInputTokens: number, maxOutputTokens: number): number | null {
-  return price ? maxRequestMicros(price, maxInputTokens, maxOutputTokens) : null;
+/** The PROV-3 reservation of one request in micro-dollars, with the web searches it may make (#954), or null without a known price. */
+export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number | null {
+  return price ? maxRequestMicros(price, maxInputTokens, maxOutputTokens, webSearches) : null;
 }
 
 /**
  * Micro-dollars of one completed request, for reconciliation only: the provider-reported cost when
  * the response carries one, otherwise the reported tokens at the connection's price, rounded up.
  */
-export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null }): number {
+export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number }): number {
   if (typeof usage.reportedCostMicros === 'number' && Number.isSafeInteger(usage.reportedCostMicros) && usage.reportedCostMicros >= 0) return usage.reportedCostMicros;
-  return maxRequestMicros(price, usage.inputTokens, usage.outputTokens);
+  // Each search of the provider's built-in web search is billed on top of its tokens (#954).
+  return maxRequestMicros(price, usage.inputTokens, usage.outputTokens, usage.webSearches ?? 0);
 }
 
-/** Whether both reported token counts are whole, non-negative and within the request's limits. */
-export function usageTokensWithin(usage: { inputTokens: number; outputTokens: number }, bounds: { maxInputTokens: number; maxOutputTokens: number }): boolean {
+/**
+ * Whether both reported token counts are whole, non-negative and within the request's limits, and so is the number of web searches
+ * (#954): none unless the request offered the search, never more than it allowed.
+ */
+export function usageTokensWithin(usage: { inputTokens: number; outputTokens: number; webSearches?: number },
+  bounds: { maxInputTokens: number; maxOutputTokens: number; maxWebSearches?: number }): boolean {
   const within = (tokens: number, max: number) => Number.isSafeInteger(tokens) && tokens >= 0 && tokens <= max;
-  return within(usage.inputTokens, bounds.maxInputTokens) && within(usage.outputTokens, bounds.maxOutputTokens);
+  return within(usage.inputTokens, bounds.maxInputTokens) && within(usage.outputTokens, bounds.maxOutputTokens)
+    && within(usage.webSearches ?? 0, bounds.maxWebSearches ?? 0);
 }
 
 /**
@@ -47,8 +53,8 @@ export function usageTokensWithin(usage: { inputTokens: number; outputTokens: nu
  * keeps the reservation counted as `unknown` and withholds the result (PROV-3).
  */
 export function boundedUsageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>,
-  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null },
-  bounds: { maxInputTokens: number; maxOutputTokens: number; reservedMicros: number }): number | null {
+  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number },
+  bounds: { maxInputTokens: number; maxOutputTokens: number; maxWebSearches?: number; reservedMicros: number }): number | null {
   if (!usageTokensWithin(usage, bounds)) return null;
   const charge = usageMicros(price, usage);
   return Number.isSafeInteger(charge) && charge >= 0 && charge <= bounds.reservedMicros ? charge : null;

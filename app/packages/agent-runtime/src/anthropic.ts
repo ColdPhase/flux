@@ -1,15 +1,17 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { AI_PROVIDERS } from '@flux/contracts';
-import type { PersonalCompute, PersonalComputeResult } from '@flux/core';
+import { AI_PROVIDERS, WEB_SEARCHES_PER_REQUEST } from '@flux/contracts';
+import { WebSearchRefusedError, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult } from '@flux/core';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import { endpointRefusal, guardedFetch } from './guarded-fetch.js';
 import { checkRequestLimits, PersonalKeyUnavailableError, type PersonalKeyResolver } from './limits.js';
-import { anthropicMessages, anthropicToolCalls, anthropicTools } from './tool-wire.js';
+import { anthropicSearchRefusal } from './errors.js';
+import { anthropicMessages, anthropicText, anthropicToolCalls, anthropicTools, anthropicWebSearch } from './tool-wire.js';
 
 // The Anthropic Messages adapter behind core's `PersonalCompute` port (#68, O-008 §3–§4; F-020).
 // One run is one Messages request on the connection's model with `max_tokens` 1500, low effort and
 // no tools (with `request.tools`, F-027 AST-8, one turn of the worker's loop: the Flux tools in
-// `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice`); the optional preflight uses the token-counting endpoint, which may only raise the Flux
+// `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice`; with `request.webSearch`, #954, also Anthropic's own
+// `web_search` server tool); the optional preflight uses the token-counting endpoint, which may only raise the Flux
 // estimate. The SDK's automatic retries are off, a stop aborts the HTTP request through the
 // AbortSignal, the transport is the guarded fetch every adapter uses, and every failure maps to
 // the port's closed set of reasons with a billing hint. The key is resolved from the connection's
@@ -40,7 +42,8 @@ function stopReason(value: Anthropic.StopReason | null): StopReason {
     case 'refusal': return 'refusal';
     // `tool_use` is read by the caller, which checks that tools were offered and that a call is complete.
     case 'tool_use': return 'tool_use';
-    // `pause_turn` belongs to hosted tools, which are never offered; the text so far is the answer.
+    // `pause_turn` belongs to the server tools: only the web search is ever offered (#954), at most 5 searches a run, far below the
+    // server's own loop of 10, so a pause is not continued: the text so far is the answer.
     default: return 'end_turn';
   }
 }
@@ -66,6 +69,18 @@ export function failureOf(error: unknown, signal: AbortSignal): Extract<Personal
   return { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
 }
 
+/**
+ * Anthropic's own web search (#954, C-29): the basic `web_search_20250305`, which every Claude model and platform has (dynamic
+ * filtering runs the search from code execution, needs Claude 4.6 or later and is not offered on every platform). `max_uses` counts
+ * the searches of the whole turn, and every request of a run's tool loop continues that turn (docs.claude.com web search tool, read
+ * 2026-11-08), so a run makes at most 5. No domain list and no location: the agent searches the whole web, like a person would.
+ */
+export const ANTHROPIC_WEB_SEARCH_TOOL = { type: 'web_search_20250305', name: 'web_search', max_uses: WEB_SEARCHES_PER_REQUEST } as const;
+
+/** The tools of a request on the wire: the Flux tools, and Anthropic's own web search when the run is offered it. */
+const toolsOf = (request: PersonalComputeRequest) => request.tools?.length
+  ? { tools: [...anthropicTools(request.tools), ...(request.webSearch ? [ANTHROPIC_WEB_SEARCH_TOOL] : [])] as unknown as Anthropic.Tool[] } : {};
+
 export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PROVIDERS.anthropic.baseUrl!, timeoutMs = 120_000,
   policy = PUBLIC_ONLY, maxResponseBytes = 1_000_000 }: AnthropicPersonalComputeOptions): PersonalCompute {
   // The SDK's own timeout fires first and maps to `timeout`; the transport's is a backstop.
@@ -83,11 +98,18 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
     async countInputTokens(request) {
       checkRequestLimits(request, 'anthropic_messages');
       const api = await client(request.connection.keyRef);
-      const counted = await api.messages.countTokens({
-        model: request.model, system: request.system, messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
-        ...(request.tools?.length ? { tools: anthropicTools(request.tools) as unknown as Anthropic.Tool[] } : {}),
-      });
-      return counted.input_tokens;
+      try {
+        const counted = await api.messages.countTokens({
+          model: request.model, system: request.system, messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
+          ...toolsOf(request),
+        });
+        return counted.input_tokens;
+      } catch (error) {
+        // The count carries the search tool too, so an organization that turned search off refuses it here first (#954, the review of
+        // #1073): the caller counts again without the search.
+        if (request.webSearch && error instanceof Anthropic.BadRequestError && anthropicSearchRefusal(error.error)) throw new WebSearchRefusedError();
+        throw error;
+      }
     },
 
     async dispatch(request, signal) {
@@ -99,23 +121,31 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
           max_tokens: request.maxTokens,
           system: request.system,
           messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
-          ...(request.tools?.length ? { tools: anthropicTools(request.tools) as unknown as Anthropic.Tool[] } : {}),
+          ...toolsOf(request),
           output_config: { effort: request.effort },
         }, { signal });
-        const text = message.content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n').trim();
+        const text = anthropicText(message.content);
         // No caching is requested, so these should be zero. If a workspace default caches anyway, they
         // are counted conservatively in base-input equivalents: a read as full input (priced 0.1x) and a
         // 5-minute write at 1.25x (pricing page, checked 2026-09-30).
         const usage = message.usage;
         const inputTokens = usage.input_tokens + Math.ceil((usage.cache_creation_input_tokens ?? 0) * 1.25) + (usage.cache_read_input_tokens ?? 0);
         if (!Number.isSafeInteger(inputTokens) || !Number.isSafeInteger(usage.output_tokens)) throw new Error('The provider reported no usable usage');
+        // Each search is billed on top of the tokens (#954); a count that is not a whole number is no usable usage either.
+        const webSearches = (usage as { server_tool_use?: { web_search_requests?: unknown } | null }).server_tool_use?.web_search_requests ?? 0;
+        if (typeof webSearches !== 'number' || !Number.isSafeInteger(webSearches) || webSearches < 0) throw new Error('The provider reported no usable usage');
+        const found = request.webSearch ? anthropicWebSearch(message.content) : undefined;
         // A call counts only when tools were offered and the answer stopped to use them: one cut off
         // by `max_tokens` can hold a partial `tool_use` block, which is never executable.
         const calls = request.tools?.length && message.stop_reason === 'tool_use' ? anthropicToolCalls(message.content) : [];
         const reason: StopReason = calls.length ? 'tool_use' : message.stop_reason === 'tool_use' ? 'end_turn' : stopReason(message.stop_reason);
-        return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens },
-          ...(calls.length ? { toolCalls: calls, replay: message.content } : {}) };
+        return { kind: 'completed', text, stopReason: reason, usage: { inputTokens, outputTokens: usage.output_tokens, ...(webSearches ? { webSearches } : {}) },
+          ...(calls.length ? { toolCalls: calls, replay: message.content } : {}), ...(found ? { webSearch: found } : {}) };
       } catch (error) {
+        // An organization whose admin turned web search off refuses every request that offers it with a 400 (#954): not billed, and
+        // the tool loop sends the request again without the search.
+        if (request.webSearch && error instanceof Anthropic.BadRequestError && anthropicSearchRefusal(error.error))
+          return { kind: 'failed', reason: 'provider_error', billed: 'none', searchRefused: true };
         return failureOf(error, signal);
       }
     },

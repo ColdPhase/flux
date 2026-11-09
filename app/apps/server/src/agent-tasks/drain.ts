@@ -302,10 +302,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     if (!run || (run.kind !== 'task' && run.kind !== 'task_answer') || !run.workId) return;
     const work = await workRows(tx).findWork(run.workId, { lock: true });
     if (!work) return;
-    // A run that ended without an answer still says the web addresses it asked for (#953), whoever holds the task now: the discussion is
+    // A run that ended without an answer still says the web addresses it asked for (#953) and what it searched (#954), whoever holds the task now: the discussion is
     // where the people of the task read what the agent did, and nothing else would show them.
     if (run.status !== 'completed' && run.status !== 'truncated' && run.endReason !== 'ai_off') {
-      const line = webSourcesLine(await personalRunWebReadRows(tx).forRun(run.id));
+      const line = webSourcesLine(await personalRunWebReadRows(tx).forRun(run.id), await personalRunWebReadRows(tx).searches(run.id));
       if (line) await say(tx, work, run.agentId, line, `web:${run.id}`);
     }
     if (FINISHED.has(work.status)) return;

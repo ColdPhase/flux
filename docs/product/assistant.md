@@ -279,23 +279,30 @@ Server agents act only inside Flux, with their owner's rights:
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
-| Web | Read-only page reading (`flux_read_web`) of addresses it was given, always citing the sources; never post or fill in anything. Web search is not built yet |
+| Web | Search with the provider's own web search tool, and read pages (`flux_read_web`) of addresses it was given or found by its own search in the same run, always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Not allowed | Code, email, other apps |
 
 Code changes come only from the owner's own Claude Code or Codex on their computer
 ([local Claude Code and Codex](mcp-cowork.md)).
 
-**Web content and prompt injection.** Web pages are untrusted input, like project content and
-other people's messages. The defence is in the rules, not in the model's obedience: only the
-owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo,
-and nothing is posted or filled in on the web. The one thing that goes out is a read, and an address is a way to send something to a
-site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its conversation as they were when the run
-began (never what an agent wrote, such as its question to another agent), or on a page it read in the same run. It never makes one up, so nothing it knows can be put into one; it can still choose among the
-given ones, so one run asks for at most 20 ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+**Web content and prompt injection.** Web pages and search results are untrusted input, like project content and
+other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
+owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo, and nothing is posted or filled in on
+the web. **Search** (founder direction, Hubert, 2026-11-08, #954) is the provider's own built-in tool on the owner's connection, with
+no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`. A provider or wire format without one has no
+search, and the agent's brief says so; nothing fails. What goes out on a read is an address, and an address is a way to send
+something to a site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its
+conversation as they were when the run began (never what an agent wrote, such as its question to another agent), on a page it read
+in the same run, or among the results its own web search returned in the same run (never an address the model chose to open). It never makes one up, so nothing it knows can be put
+into one; it can still choose among the given ones, so one run asks for at most 20 ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 A test shows that web content cannot bypass an approval and that an agent which obeys a page cannot send what it knows to a site (#918,
-#953). The server reads the page, not the agent's process, so the runtime's egress stays closed to the web
-([network](ai-modes.md#rt-4--network)); the run lists every address the server asked for, those that failed too, in Flux's own
-words, written down before each request goes out: under its answer, or in its end line when it ends without one. It is off until the operator turns it on (`FLUX_WEB_READS`, [C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)); a local client reads the web with its own tools and does not get the tool. Another person's task title that becomes a run's request is the same kind of input: data, never an
+#953), and that a search result is an address for its own run only (#954). The server reads the page, not the agent's process, so the
+runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the server asked for,
+those that failed too, in Flux's own words, written down before each request goes out, and its searches and the addresses its answer
+cites: under its answer, or in its end line when it ends without one. Reading and searching are on by default; the operator turns both
+off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
+local client reads and searches the web with its own tools and does not get the tool; agents on the Claude Code and Codex runtime have
+no search yet (#1065). Another person's task title that becomes a run's request is the same kind of input: data, never an
 instruction.
 
 ## AG-9 — Schedules

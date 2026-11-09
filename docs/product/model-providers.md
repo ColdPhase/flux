@@ -99,11 +99,17 @@ Kept from PROV-4:
 - One set of rules for every provider and model: the same Flux tools, "What it may do", waits,
   Undo, attribution and failures ([agents](assistant.md)). No Flux feature is reserved to a vendor.
 - Adapters translate only the wire format, stop reasons, usage and errors into one shared result
-  set. Provider-hosted tools stay off; how web reading is provided on each engine is settled in
-  #856 under AG-8.
+  set. Provider-hosted tools stay off, with one exception: the provider's own built-in **web search**
+  (Anthropic's `web_search` server tool; OpenAI's `web_search` tool, for which Flux speaks OpenAI's
+  Responses API), offered to a run with tools while the operator's `FLUX_WEB_READS` is on (AG-8, C-29,
+  founder direction 2026-11-08, #954). A wire format without one (Chat Completions: OpenRouter,
+  Gemini's compatible endpoint, OpenAI-compatible servers) has no search and its brief says so. Each
+  search counts $0.01 in the key's daily budget (both vendors' price, read 2026-11-08) and every
+  request that offers it reserves 5. Page reading is Flux's own `flux_read_web` on every engine.
 - The UI names the chosen provider and model neutrally, for example "OpenRouter · model-id".
 - **Evidence (PROV-6, kept).** One adapter contract suite runs identically in Docker against mock
-  servers for each wire format (Anthropic Messages; OpenAI-compatible Chat Completions). A named
+  servers for each wire format (Anthropic Messages; OpenAI Responses; OpenAI-compatible Chat
+  Completions), built-in search results included. A named
   provider without a dated real-key smoke test is reported unverified, not passed.
 
 ## What went away in v0.2

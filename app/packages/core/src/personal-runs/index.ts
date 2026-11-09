@@ -6,7 +6,7 @@ export { reportTaskRun } from './task-report.js';
 export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros } from './validation.js';
-export { buildBrief, NO_POSTING_LINE, runtimeBrief, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
+export { buildBrief, NO_POSTING_LINE, NO_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { announce as announceRunProgress } from './progress.js';
 export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections } from './test-fixture.js';
@@ -14,4 +14,4 @@ export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, r
 export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerWithWebSources, endedWithWebSources, webSourcesLine, WEB_SOURCES_HEADINGS } from './web-sources.js';
-export { ADDRESS_MAX, ADDRESSES_PER_TEXT, WEB_READS_PER_RUN, addressesIn, givenAddresses, isGivenAddress, normalizedAddress } from './web-addresses.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, WEB_READS_PER_RUN, addressesIn, boundedWebSearch, givenAddresses, isGivenAddress, normalizedAddress } from './web-addresses.js';

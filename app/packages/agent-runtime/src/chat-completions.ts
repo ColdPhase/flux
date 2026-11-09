@@ -4,7 +4,7 @@ import { MalformedResponseError } from './errors.js';
 import { endpointRefusal, ResponseTooLargeError, type GuardedFetch } from './guarded-fetch.js';
 import { chatMessages, chatToolCalls, chatTools } from './tool-wire.js';
 
-// The OpenAI-compatible Chat Completions wire format (F-020): OpenAI, OpenRouter, Gemini's
+// The OpenAI-compatible Chat Completions wire format (F-020): OpenRouter, Gemini's (OpenAI itself speaks the Responses API since #954)
 // OpenAI-compatible endpoint and self-hosted servers (Ollama, vLLM, LM Studio, gateways). A small
 // fetch client instead of a vendor SDK: one POST per request with no retries, an explicit base URL
 // (no environment variable is read, so none can redirect a key), the guarded transport, and a
@@ -83,7 +83,10 @@ export async function chatCompletion(fetch: GuardedFetch, request: ChatRequest):
   if (request.schema) body.response_format = { type: 'json_schema', json_schema: { name: request.schema.name, strict: true, schema: request.schema.schema } };
   // OpenRouter reports each response's cost in `usage.cost` (its usage accounting).
   if (AI_PROVIDERS[request.provider].reportsCost) body.usage = { include: true };
-  const response = await fetch(`${request.baseUrl.replace(/\/+$/, '')}/chat/completions`, {
+  // The trailing slashes of the base go without a regular expression (no backtracking on a long run of them).
+  let base = request.baseUrl;
+  while (base.endsWith('/')) base = base.slice(0, -1);
+  const response = await fetch(`${base}/chat/completions`, {
     method: 'POST', signal: request.signal,
     headers: { 'content-type': 'application/json', accept: 'application/json', authorization: `Bearer ${request.apiKey}` },
     body: JSON.stringify(body),

@@ -268,8 +268,8 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.deepEqual(choice.groups.map((group) => group.connection), [first, second], 'one group per connection, the first made first');
     assert.deepEqual(choice.default, { connection: first, model: 'llama3.1:8b' }, 'Connect AI\'s default is the connection made first');
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']], 'an own endpoint offers only its own model');
-    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6.1-sol', false], ['gpt-6-sol', true], ['gpt-6-astra', false]],
-      'GPT-6.1 Sol and GPT-6 Astra can answer but can\'t make changes on Chat Completions (AST-8.3)');
+    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6.1-sol', true], ['gpt-6-sol', true], ['gpt-6-astra', true]],
+      'GPT-6.1 Sol and GPT-6 Astra call tools on the Responses API, which Flux speaks to OpenAI since #954');
   });
 
   test('AST-11.2: only the owner reads or changes the model; anyone else gets their own empty answer or a refusal', async () => {
@@ -335,7 +335,11 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     // A model whose one request is above the key's whole budget would wait for a day that never comes: it is refused.
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
     await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
-    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 20 });
+    // One request with tools and Anthropic's own web search (#954): (64,000 + 5 × 10,000 for the results) × $2/M + 4,000 × $10/M
+    // + 5 searches × $0.01 = $0.318.
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 31 });
+    await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 32 });
     await runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' });
     // $0.10 left of the day: less than one largest request of Sonnet 5 (32,000 × $2/M + 4,000 × $10/M = $0.104).
     connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });

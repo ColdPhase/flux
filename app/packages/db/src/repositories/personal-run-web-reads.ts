@@ -53,6 +53,39 @@ export function personalRunWebReadRows(db: DbExecutor) {
       return result.rows.flatMap((row) => (row.text ? [row.text] : []));
     },
     /**
+     * What one provider answer's built-in web search brought to the run (#954, C-30), already normalized and bounded by core
+     * (`boundedWebSearch`). Written by the worker before any tool call of that answer runs, so its results are readable addresses at once.
+     */
+    async addSearch(runId: string, found: { queries: readonly string[]; results: readonly string[]; cited: readonly string[] }) {
+      if (!found.queries.length && !found.results.length && !found.cited.length) return;
+      const s = schema.personalRunWebSearches;
+      await db.insert(s).values({ runId, queries: found.queries.slice(0, 10).map((query) => query.slice(0, 300)),
+        results: found.results.slice(0, 100).map((address) => address.slice(0, 2048)), cited: found.cited.slice(0, 100).map((address) => address.slice(0, 2048)) });
+    },
+    /**
+     * The run's searches (#954): their queries and the addresses its answers cited, each once, in the order found. A cited address
+     * counts only when one of the run's searches returned it: a citation the model wrote to anything else is not a source.
+     */
+    async searches(runId: string): Promise<{ queries: string[]; cited: string[] }> {
+      const s = schema.personalRunWebSearches;
+      const rows = await db.select({ queries: s.queries, results: s.results, cited: s.cited }).from(s).where(eq(s.runId, runId)).orderBy(asc(s.searchedAt), asc(s.id));
+      const queries = new Set<string>();
+      const results = new Set(rows.flatMap((row) => row.results));
+      const cited = new Set<string>();
+      for (const row of rows) { for (const query of row.queries) queries.add(query); for (const address of row.cited) if (results.has(address)) cited.add(address); }
+      return { queries: [...queries], cited: [...cited] };
+    },
+    /**
+     * The addresses the run's own web search returned (#954, C-30), exact and already normalized, of this run only. With `given` they
+     * are the addresses `flux_read_web` may read. A cited address adds nothing: one the search returned is here already, and any other
+     * would be an address the model chose.
+     */
+    async found(runId: string): Promise<string[]> {
+      const result = await db.execute<{ address: string }>(sql`
+        SELECT DISTINCT unnest(s.results) AS address FROM personal_run_web_searches s WHERE s.run_id = ${runId}::uuid`);
+      return result.rows.map((row) => row.address);
+    },
+    /**
      * The text a person wrote that a run may be given when it starts (#953, C-30): the task's title, outcome and criteria when a person
      * made the task and no agent has written them since, and the last 100 messages of the run's place that a person wrote and that were not
      * taken back: the conversation's, the space's people's conversations for its main conversation, a DM's text messages (not its "used AI"

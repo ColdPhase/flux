@@ -189,11 +189,34 @@ describe('wire details beyond the shared contract', () => {
     const compatible = await personal(WIRES[1]!).dispatch(request(WIRES[1]!), new AbortController().signal);
     assert.deepEqual(compatible.kind === 'completed' && compatible.usage, { inputTokens: 1_200, outputTokens: 80 });
     await control('/__reset', {});
+    // OpenAI itself is spoken over the Responses API (#954): the brief is `instructions`, the output bound `max_output_tokens`
+    // (it includes reasoning tokens), nothing is stored at OpenAI, and a request without tools has neither tools nor search.
     const openAiWire = { ...openai('openai'), key: `sk-proj-${'owner-budget-key-'.repeat(3)}OA01` };
-    await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
-    const body = (await sent('openai'))[0]!.body as Record<string, unknown>;
-    assert.equal(body.max_completion_tokens, 1_500, 'OpenAI\'s field includes reasoning tokens');
-    assert.equal(body.max_tokens, undefined);
+    const answered = await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
+    assert.deepEqual(answered.kind === 'completed' && [answered.text, answered.stopReason, answered.usage], ['Fact: the camera fails below 5 lux [S1].', 'end_turn', { inputTokens: 1_200, outputTokens: 80 }]);
+    const [one] = await sent('openai');
+    assert.equal(one!.path, '/openai/v1/responses');
+    const body = one!.body as Record<string, unknown>;
+    assert.deepEqual([body.max_output_tokens, body.store, body.instructions, body.max_tokens, body.max_completion_tokens, 'tools' in body, 'include' in body],
+      [1_500, false, BRIEF.system, undefined, undefined, false, false]);
+    assert.deepEqual(body.input, [{ role: 'user', content: request(openAiWire).input }]);
+  });
+
+  test('the Responses API maps a cut-off answer and a refusal like every wire format (#954)', async () => {
+    const openAiWire = { ...openai('openai'), key: `sk-proj-${'owner-budget-key-'.repeat(3)}OA02` };
+    await script('openai', { mode: 'truncated' });
+    const cut = await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
+    assert.equal(cut.kind === 'completed' && cut.stopReason, 'max_tokens');
+    await script('openai', { mode: 'refusal' });
+    const refused = await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
+    assert.deepEqual(refused.kind === 'completed' && [refused.stopReason, refused.text], ['refusal', '']);
+    await script('openai', { mode: 'status', status: 429 });
+    const limited = await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
+    assert.deepEqual(limited, { kind: 'failed', reason: 'rate_limited', billed: 'unknown' });
+    await script('openai', { mode: 'malformed' });
+    const malformed = await personal(openAiWire).dispatch(request(openAiWire, { model: 'gpt-model' }), new AbortController().signal);
+    assert.deepEqual(malformed, { kind: 'failed', reason: 'provider_error', billed: 'unknown' });
+    assert.ok(!printed.some((line) => line.includes(openAiWire.key)), 'the key is never printed');
   });
 
   test('only the Anthropic wire format counts tokens; the registry returns null elsewhere', async () => {

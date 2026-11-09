@@ -221,6 +221,8 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
+    webSearches: (runId: string) => personalRunWebReadRows(db).searches(runId),
+    addWebSearch: (runId: string, found: { queries: string[]; results: string[]; cited: string[] }) => personalRunWebReadRows(db).addSearch(runId, found),
     personTexts: (place: { projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId: string | null }, workId: string | null) => personalRunWebReadRows(db).personTexts(place, workId),
 
     // A run in a direct message or a chat reads no task graph and holds no lock (#842); one in a space holds its graph after the owner's lock (#921).

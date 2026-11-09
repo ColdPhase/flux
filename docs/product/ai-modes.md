@@ -102,6 +102,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     Flux server runs (GET only, public addresses only, the same guard as API base URLs and link cards:
     [CA-4](model-providers.md#ca-4--key-custody-and-endpoints)), so a CLI's own web tools stay off and the egress is not widened to
     every public host, which a TLS tunnel could not hold to read-only. Nothing is posted or submitted.
+    The provider's built-in web search that a run on an API key has (AG-8, #954) is not offered here
+    yet: both CLIs' search tools stay off, because Flux could not yet record their results as the run's
+    addresses (C-30) and list them as sources (#1065).
 - The egress's request parser is size-bounded, minimal and fuzz-tested.
 
 ## RT-5 — Tools: only Flux tools and reading the web
@@ -221,8 +224,9 @@ operator decides for their server through the operator step (RT-9).
 7. **Sign-in methods.** Every `claude auth login` method is offered, but a pasted setup token is
    refused because it is a Claude account credential. Whether Anthropic reads that as restricting a
    method is unknown.
-8. **Web reading.** Egress beyond the vendors' hosts, prompt injection from any page, and an address that carries what the agent knows to
-   a site. The defence is AG-2, AG-3 and AG-8 (an agent reads only addresses it was given, C-30), and the tests in #856 and #953.
+8. **Web reading and search.** Egress beyond the vendors' hosts, prompt injection from any page or search result, and an address that
+   carries what the agent knows to a site. The defence is AG-2, AG-3 and AG-8 (an agent reads only addresses it was given or found by its
+   own search in the same run, C-30), and the tests in #856, #953 and #954.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract
    test, the start-up and JSONL checks, and honest *Sign in again* and *Provider refused* states.

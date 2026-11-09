@@ -8,8 +8,9 @@ import http from 'node:http';
  *
  *   POST /anthropic/v1/messages, /anthropic/v1/messages/count_tokens   Anthropic Messages
  *   POST /openai/v1/chat/completions, GET /openai/v1/models          OpenAI-compatible Chat Completions
+ *   POST /openai/v1/responses                                        OpenAI's Responses API (#954)
  *   GET  /openrouter/v1/models                                       a priced model list (OpenRouter's shape)
- *   POST /__script { wire, mode, text, usage, cost, status, delayMs }   the next answers of one wire format
+ *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
  *   GET  /__requests                                                 what the adapters sent
  *   POST /__reset, GET /__health
  *
@@ -17,17 +18,23 @@ import http from 'node:http';
  * the received key, to prove adapters never surface error bodies), `hang` (never answers),
  * `malformed` (2xx that is not JSON), `no_usage`, `redirect` (302 to /__redirected, which records a
  * hit), `oversized` (2 MB body).
+ *
+ * `search` (#954): the answer also carries the provider's own web search in its wire format: `{ query, results: [url…], cite: url }`
+ * becomes a `server_tool_use` and a `web_search_tool_result` block and a text block citing `cite` (`web_search_result_location`), with
+ * `usage.server_tool_use.web_search_requests: 1` on Anthropic; a `web_search_call` item with `action.sources` and a message whose
+ * `output_text` has a `url_citation` annotation on the Responses API. `errorMessage` gives a `status` answer the provider's own words.
  */
 
 type Wire = 'anthropic' | 'openai';
 type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized';
-interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number }
+interface Search { query: string; results: string[]; cite: string }
+interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null }
 export interface RecordedProviderRequest {
   wire: Wire | 'other'; method: string; path: string; key: string | null; headers: Record<string, string | string[] | undefined>;
   body: unknown; aborted: boolean; at: number;
 }
 
-const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0 };
+const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null };
 const scripts: Record<Wire, Script> = { anthropic: { ...DEFAULT }, openai: { ...DEFAULT } };
 const requests: RecordedProviderRequest[] = [];
 
@@ -39,9 +46,40 @@ function json(response: http.ServerResponse, status: number, body: unknown, head
 
 function anthropicAnswer(script: Script, body: { model?: string }) {
   const stop = script.mode === 'truncated' ? 'max_tokens' : script.mode === 'refusal' ? 'refusal' : 'end_turn';
+  const search = script.search;
+  // The documented shape of a search (docs.claude.com web search tool, read 2026-11-08): the query, the results with their encrypted
+  // content, then the answer split around the cited sentence.
+  const searched = search ? [
+    { type: 'text', text: 'I will search for that.' },
+    { type: 'server_tool_use', id: 'srvtoolu_mock_1', name: 'web_search', input: { query: search.query } },
+    { type: 'web_search_tool_result', tool_use_id: 'srvtoolu_mock_1', content: search.results.map((url, index) => ({
+      type: 'web_search_result', url, title: `Result ${index + 1}`, encrypted_content: `enc-${index}`, page_age: 'November 1, 2026' })) },
+    { type: 'text', text: 'Based on the search, ' },
+    { type: 'text', text: script.text, citations: [{ type: 'web_search_result_location', url: search.cite, title: 'Cited page', encrypted_index: 'enc-index', cited_text: 'cited words' }] },
+    { type: 'text', text: ' That is all.' },
+  ] : [{ type: 'text', text: script.text }];
   return { id: `msg_${Date.now()}`, type: 'message', role: 'assistant', model: body.model,
-    content: script.mode === 'refusal' ? [] : [{ type: 'text', text: script.text }], stop_reason: stop, stop_sequence: null,
-    ...(script.mode === 'no_usage' ? {} : { usage: { input_tokens: script.usage.input, output_tokens: script.usage.output } }) };
+    content: script.mode === 'refusal' ? [] : searched, stop_reason: stop, stop_sequence: null,
+    ...(script.mode === 'no_usage' ? {} : { usage: { input_tokens: script.usage.input, output_tokens: script.usage.output,
+      ...(search ? { server_tool_use: { web_search_requests: 1 } } : {}) } }) };
+}
+
+/** The Responses API's documented shape (developers.openai.com, read 2026-11-08): output items, `status`, `usage.input_tokens`. */
+function responsesAnswer(script: Script, body: { model?: string }) {
+  const search = script.search;
+  const refusal = script.mode === 'refusal';
+  const message = { id: 'msg_mock_1', type: 'message', status: 'completed', role: 'assistant', content: refusal
+    ? [{ type: 'refusal', refusal: 'I can’t help with that.' }]
+    : [{ type: 'output_text', text: script.text, annotations: search ? [{ type: 'url_citation', start_index: 0, end_index: script.text.length, url: search.cite, title: 'Cited page' }] : [] }] };
+  return { id: `resp_${Date.now()}`, object: 'response', model: body.model,
+    status: script.mode === 'truncated' ? 'incomplete' : 'completed',
+    incomplete_details: script.mode === 'truncated' ? { reason: 'max_output_tokens' } : null,
+    output: [
+      ...(search ? [{ id: 'ws_mock_1', type: 'web_search_call', status: 'completed', action: { type: 'search', query: search.query,
+        sources: search.results.map((url) => ({ type: 'url', url })) } }] : []),
+      message,
+    ],
+    ...(script.mode === 'no_usage' ? {} : { usage: { input_tokens: script.usage.input, output_tokens: script.usage.output, total_tokens: script.usage.input + script.usage.output } }) };
 }
 
 function openAiAnswer(script: Script, body: { model?: string }) {
@@ -98,15 +136,18 @@ const server = http.createServer((request, response) => {
     const script = scripts[wire];
     const answer = () => {
       if (script.mode === 'hang') return;
+      // `errorMessage` (#954): the provider's own words of a refusal, e.g. a web search that is not enabled.
       if (script.mode === 'status') return json(response, script.status, wire === 'anthropic'
-        ? { type: 'error', error: { type: 'api_error', message: `scripted failure for key ${key}` } }
-        : { error: { message: `scripted failure for key ${key}`, type: 'server_error' } }, { 'retry-after': '0', 'x-should-retry': 'true' });
+        ? { type: 'error', error: { type: script.errorMessage ? 'invalid_request_error' : 'api_error', message: script.errorMessage ?? `scripted failure for key ${key}` } }
+        : { error: { message: script.errorMessage ?? `scripted failure for key ${key}`, type: script.errorMessage ? 'invalid_request_error' : 'server_error' } },
+        script.errorMessage ? {} : { 'retry-after': '0', 'x-should-retry': 'true' });
       if (script.mode === 'redirect') { response.writeHead(302, { location: 'http://providermock:8095/__redirected' }); return response.end(); }
       if (script.mode === 'malformed') { response.writeHead(200, { 'content-type': 'application/json' }); return response.end(`not json {${key}`); }
       if (script.mode === 'oversized') return json(response, 200, { padding: 'x'.repeat(2_000_000) });
       if (url.pathname === '/anthropic/v1/messages/count_tokens') return json(response, 200, { input_tokens: Math.max(1, Math.ceil(raw.length / 4)) });
       if (url.pathname === '/anthropic/v1/messages') return json(response, 200, anthropicAnswer(script, body as { model?: string }));
       if (url.pathname === '/openai/v1/chat/completions') return json(response, 200, openAiAnswer(script, body as { model?: string }));
+      if (url.pathname === '/openai/v1/responses') return json(response, 200, responsesAnswer(script, body as { model?: string }));
       return json(response, 404, { error: 'not found' });
     };
     if (script.delayMs) setTimeout(answer, script.delayMs); else answer();

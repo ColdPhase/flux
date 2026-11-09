@@ -25,7 +25,7 @@ const ai = [
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking', 'assistant_proposals',
   'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots',
-  'cowork_units', 'personal_run_web_reads',
+  'cowork_units', 'personal_run_web_reads', 'personal_run_web_searches',
   'personal_runs',
 ] as const;
 const account = [

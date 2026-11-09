@@ -8,6 +8,9 @@ import type { PersonalTool } from '@flux/core';
 //   OpenAI Chat         https://developers.openai.com/api/docs/guides/function-calling and OpenRouter's
 //                       tool-calling guide (assistant `tool_calls` with a JSON-string `arguments`,
 //                       `finish_reason: "tool_calls"`, `role: "tool"` results with `tool_call_id`)
+//   OpenAI Responses    https://developers.openai.com/api/docs/guides/function-calling, read 2026-11-08 (#954):
+//                       `output` items, a `function_call` with `call_id` and a JSON-string `arguments`,
+//                       results as `function_call_output` input items
 // They are DOCUMENTED-SHAPE fixtures, not recordings from a live account: no real vendor account, key
 // or spend exists in this repository's tests. What a real provider returns beyond these shapes is
 // unverified. The Gemini thought-signature field (`extra_content.google.thought_signature`) is NOT
@@ -79,7 +82,25 @@ export const ANTHROPIC_FINAL = {
   stop_reason: 'end_turn', stop_sequence: null, usage: { input_tokens: 2_100, output_tokens: 31 },
 };
 
-// --- Chat Completions (OpenAI, OpenRouter, Gemini's compatible endpoint, self-hosted) ------------
+// --- OpenAI Responses (#954) ---------------------------------------------------------------------
+
+export const RESPONSES_TOOL_CALLS = {
+  id: 'resp_67ccd2bed1ec8190', object: 'response', created_at: 1_790_000_000, status: 'completed', model: 'gpt-5.4',
+  output: [
+    { id: 'rs_67ccd2bf17f0', type: 'reasoning', summary: [], encrypted_content: 'gAAAAAB-test-not-a-real-one' },
+    { id: 'fc_12345xyz', call_id: 'call_12345xyz', type: 'function_call', name: 'flux_list_work', arguments: JSON.stringify({ projectId: PROJECT_ID }), status: 'completed' },
+  ],
+  usage: { input_tokens: 1_850, output_tokens: 42, total_tokens: 1_892 },
+};
+
+export const RESPONSES_FINAL = {
+  id: 'resp_final', object: 'response', created_at: 1_790_000_010, status: 'completed', model: 'gpt-5.4',
+  output: [{ id: 'msg_final', type: 'message', status: 'completed', role: 'assistant',
+    content: [{ type: 'output_text', text: 'Fact: one item is open: Camera in low light [S1].', annotations: [] }] }],
+  usage: { input_tokens: 2_100, output_tokens: 31, total_tokens: 2_131 },
+};
+
+// --- Chat Completions (OpenRouter, Gemini's compatible endpoint, self-hosted) ---------------------
 
 const chatCall = (id: string, args: string, extra: Record<string, unknown> = {}) =>
   ({ id, type: 'function', function: { name: 'flux_list_work', arguments: args }, ...extra });
@@ -135,7 +156,7 @@ export interface ToolWireCase {
   name: string;
   provider: AiProviderKind;
   model: string;
-  wire: 'anthropic' | 'chat';
+  wire: 'anthropic' | 'responses' | 'chat';
   toolCalls: unknown;
   /** The provider's own assistant message of the tool turn, as the adapter must send it back. */
   assistantMessage: unknown;
@@ -148,8 +169,10 @@ export interface ToolWireCase {
 export const TOOL_WIRE_CASES: ToolWireCase[] = [
   { name: 'Anthropic Messages', provider: 'anthropic', model: 'claude-sonnet-5', wire: 'anthropic', toolCalls: ANTHROPIC_TOOL_USE,
     assistantMessage: ANTHROPIC_TOOL_USE.content, final: ANTHROPIC_FINAL, inputTokens: 1_850, outputTokens: 64 },
-  { name: 'OpenAI Chat Completions', provider: 'openai', model: 'gpt-5.4', wire: 'chat', toolCalls: CHAT_TOOL_CALLS,
-    assistantMessage: CHAT_TOOL_CALLS.choices[0]!.message, final: CHAT_FINAL, inputTokens: 1_850, outputTokens: 42 },
+  // On the Responses API what goes back is the model's function call as it wrote it, without its item id, and not the reasoning (#1073).
+  { name: 'OpenAI Responses', provider: 'openai', model: 'gpt-5.4', wire: 'responses', toolCalls: RESPONSES_TOOL_CALLS,
+    assistantMessage: [{ type: 'function_call', call_id: 'call_12345xyz', name: 'flux_list_work', arguments: JSON.stringify({ projectId: PROJECT_ID }) }],
+    final: RESPONSES_FINAL, inputTokens: 1_850, outputTokens: 42 },
   { name: 'OpenRouter', provider: 'openrouter', model: 'vendor/model-with-tools', wire: 'chat', toolCalls: OPENROUTER_TOOL_CALLS,
     assistantMessage: OPENROUTER_TOOL_CALLS.choices[0]!.message, final: CHAT_FINAL, inputTokens: 1_850, outputTokens: 42, reportedCostMicros: 4_200 },
   { name: 'Gemini (OpenAI-compatible endpoint)', provider: 'gemini', model: 'gemini-3.5-flash', wire: 'chat', toolCalls: GEMINI_TOOL_CALLS,

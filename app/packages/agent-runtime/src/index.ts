@@ -1,5 +1,6 @@
 export { anthropicPersonalCompute, failureOf, PersonalKeyUnavailableError, type AnthropicPersonalComputeOptions, type PersonalKeyResolver } from './anthropic.js';
 export { openAiCompatiblePersonalCompute, type OpenAiCompatiblePersonalComputeOptions } from './openai-compatible.js';
+export { openAiResponsesPersonalCompute, type OpenAiResponsesPersonalComputeOptions } from './responses.js';
 export { providerPersonalCompute, wireOf, type ProviderRegistryOptions } from './registry.js';
 export { chatBaseUrl, chatCompletion, chatFailureOf, MalformedResponseError, ProviderHttpError } from './chat-completions.js';
 export { aiEndpointPolicyFromEnv, checkEndpoint, classifyAddress, EndpointRefusedError, guardedLookup, literalRefusal, parsePrivateTargets,

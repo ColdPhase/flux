@@ -1,5 +1,5 @@
 import type { Page, PageQuery, VersionPrecondition } from './access.js';
-import type { AiProviderKind } from './ai-providers.js';
+import { WEB_SEARCHES_PER_REQUEST, type AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
 import type { ResultFinding } from './work.js';
 
@@ -167,8 +167,20 @@ export const PERSONAL_RUN_LIMITS = {
   prompt: 4_000,
 } as const;
 
-/** The input bound of one request of a run: the larger one when the run can call tools (#484). */
-export const personalRunMaxInputTokens = (tools: boolean): number => (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens : PERSONAL_RUN_LIMITS.maxInputTokens);
+/**
+ * What the results of one search of the provider's built-in web search may add to the input of a request (#954): the provider counts
+ * them as input in the request that searched and, on Anthropic, in every later request of the run, which carries them back. Flux's
+ * assumption, to be checked against real keys: OpenAI bills its mini models a fixed block of 8,000 input tokens a search
+ * (developers.openai.com pricing, read 2026-11-08), and no vendor states a size for the others.
+ */
+export const WEB_SEARCH_INPUT_TOKENS = 10_000;
+
+/**
+ * The input bound of one request of a run: the larger one when the run can call tools (#484), and with the room for the results of
+ * the searches a request may hold when the run is offered its provider's web search (#954).
+ */
+export const personalRunMaxInputTokens = (tools: boolean, webSearch = false): number =>
+  (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens + (webSearch ? WEB_SEARCHES_PER_REQUEST * WEB_SEARCH_INPUT_TOKENS : 0) : PERSONAL_RUN_LIMITS.maxInputTokens);
 
 /**
  * One of a person's Connect AI connections (#854): their Claude plan (`claude_plan`), their ChatGPT plan (`chatgpt_plan`)

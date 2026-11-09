@@ -42,7 +42,7 @@ connection lookup is still `noPersonalConnections`.
 | `app/apps/worker/src/personal-runs/` | The `personal-run.dispatch.v1` handler and its composition (`composition.ts`). The queue never retries a job (`PERSONAL_RUN_QUEUE`). |
 | `app/packages/core/src/personal-runs/progress.ts` | Owner-only progress events (`assistant_run.changed.v1`). |
 | `app/packages/core/src/access/policy.ts` (`evaluateAssistantRun`) | The `assistant_run` object: its only reader is the run's owner. |
-| `app/packages/agent-runtime/src/anthropic.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (`@anthropic-ai/sdk` 0.129.0, pinned; a fetch client for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. |
+| `app/packages/agent-runtime/src/anthropic.ts`, `responses.ts`, `openai-compatible.ts`, `registry.ts` | The adapters behind `PersonalCompute`, one per wire format (`@anthropic-ai/sdk` 0.129.0, pinned; fetch clients for OpenAI's Responses API and for Chat Completions), and `providerPersonalCompute`, which picks one by the connection's provider. |
 | `app/apps/web/src/assistant/` | The UI (AC-8): ask mode, working line, answers, proposals, settings. |
 | `app/packages/core/src/personal-runs/test-fixture.ts`, `app/tests/ui/anthropic_mock.py` | TEST ONLY: fixture key connections and the mock provider of the browser suite. |
 
@@ -76,8 +76,8 @@ $3/$15 "will not occur"). Check again when production dispatch is switched on.
 
 `providerPersonalCompute({ enabled, resolveKey, policy, ... })` in `@flux/agent-runtime` picks
 the adapter of the connection's wire format: `anthropicPersonalCompute` for Anthropic Messages,
-`openAiCompatiblePersonalCompute` for OpenAI, OpenRouter, Gemini's compatible endpoint and
-OpenAI-compatible servers. Both use the guarded transport, refuse a request outside the O-008
+`openAiResponsesPersonalCompute` for OpenAI (the Responses API, #954), and `openAiCompatiblePersonalCompute`
+for OpenRouter, Gemini's compatible endpoint and OpenAI-compatible servers. All use the guarded transport, refuse a request outside the O-008
 limits before a key is resolved, send no tools unless the run offers its Flux tools (see
 [Tool loop](#tool-loop-f-027-ast-8-406-first-part)) and never retry; the Chat Completions details are
 in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
@@ -132,8 +132,8 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   is resolved.
 - **No-tools model** (AST-8.3). `connectionCallsTools`: false when the owner marked the model
   (`PersonalConnection.toolCalling === false`) or Flux's dated table `AI_MODELS_WITHOUT_TOOL_CALLING`
-  lists it. OpenAI's function-calling guide (read 2026-10-11) says GPT-6 Astra and GPT-6.1 Sol need
-  the Responses API for tool calling, which Flux does not speak yet, so they answer in one request.
+  lists it. The table is empty since #954: OpenAI's function-calling guide (read 2026-10-11) says GPT-6
+  Astra and GPT-6.1 Sol need the Responses API for tool calling, which Flux now speaks to OpenAI.
   Persisting the owner's mark and the account row's "This model can answer but can't make changes"
   are not part of this change.
 - **Reservation** (#854). `budgetedReservationMicros`: when the worker claims the run, turns × the
@@ -166,6 +166,61 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   fixtures in `support/provider-tool-fixtures.ts`, a local mock server), `personal-runs-tool-loop-core.test.ts`
   (reservation, reconciliation and the loop with fakes) and `personal-runs-tools.test.ts` (AST-8.2 and AST-8.3
   through the real worker and database, with a fake provider and a fake tool session).
+
+## Web search (#954)
+
+Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 and C-30 (founder direction 2026-11-08).
+
+- **What is offered.** A run with tools (`session` non-null) on a provider with its own search
+  (`AI_PROVIDERS[kind].searchesWeb`: Anthropic, OpenAI), while the worker's `FLUX_WEB_READS` is on (the
+  default; `webSearchSwitch`, the same variable the API reads for `flux_read_web`), gets
+  `PersonalComputeRequest.webSearch`. The Anthropic adapter adds `{ type: 'web_search_20250305', name:
+  'web_search', max_uses: 5 }` (the basic version every model and platform has; `max_uses` counts the whole
+  turn, which the loop's requests continue); the Responses adapter adds `{ type: 'web_search',
+  external_web_access: false }` with `max_tool_calls: 5` and `include: ['web_search_call.action.sources']`.
+  Chat Completions has none, and `checkRequestLimits` refuses `webSearch` there or without tools. A model in
+  `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
+  its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
+  addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise, and always on the CLI's engine, #1065).
+- **A refused search.** When the provider refuses the tool, recognised only from the error's own `type` and `message`
+  (`anthropicSearchRefusal`: a 400 `invalid_request_error` saying web search is not enabled, an organization whose admin
+  turned it off; `openAiSearchRefusal`: a 400 `invalid_request_error` saying the tool `web_search` is not supported, a model
+  without it), the adapter returns `searchRefused` with `billed: 'none'`; the loop sends the same request once more
+  without the search (`withoutSearch`: the brief built again with `webSearch: false`) in the same turn. Anthropic's token
+  count carries the search tool too: a refusal there throws `WebSearchRefusedError`, and the preflight `fit` and the
+  loop's count count again without the search. Either way the worker does not offer the search to that key's model for
+  6 hours (`searchRefusedUntil`, in memory), and a Connect AI budget is checked without search room for a model in
+  `AI_MODELS_WITHOUT_WEB_SEARCH`.
+- **What comes back.** The adapters read the provider's structured answer, never the model's words:
+  Anthropic's `server_tool_use` queries, `web_search_tool_result` addresses and `web_search_result_location`
+  citations; OpenAI's `search` actions' queries and `action.sources` and the message's `url_citation`
+  annotations (`WebSearchFound`). An `open_page` or `find_in_page` action's address is the model's choice and is
+  never taken (the review of #1073). Usage gains `webSearches` (Anthropic's
+  `usage.server_tool_use.web_search_requests`, OpenAI's number of `web_search_call` items). The replay of a
+  turn carries Anthropic's own blocks unchanged (it needs the results' `encrypted_content`); on OpenAI it is the
+  model's words and its function calls without item ids (`responsesReplay`): no reasoning is carried between
+  turns and no encrypted reasoning is asked for.
+  A `pause_turn` is not continued: at most 5 searches stay far below the server's own loop of 10.
+- **Before the calls.** The loop awaits `onWebSearch` for every response that searched or cites, before
+  any call of that response runs; the processor writes `personal_run_web_searches` (`boundedWebSearch`:
+  normalized web addresses only, each once, at most 100 results and 100 cited, 10 queries of 300
+  characters). `flux_read_web` then allows the run's `given` texts, the addresses on pages it read, and the
+  run's own search `results` (`found`), exactly; another run never sees them. A cited address is listed only
+  when the run's search returned it, and gives nothing more. The 20-address limit counts them too.
+- **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
+  byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
+  it. A request that offers search has room for 5 searches' results (`WEB_SEARCH_INPUT_TOKENS`, 10,000 each, an
+  assumption) in its input bound, its reconciliation and its reservation (`personalRunMaxInputTokens(true, true)`).
+- **Sources.** `webSourcesLine` lists "Searched the web for:" (queries) and "Found on the web:" (cited
+  addresses) before "Read on the web:" and "Requested, not read:", at most 20 of each search list, under the
+  answer or in the end line (the run view's `webSources`, and the task's discussion).
+- **Money.** Each search is charged `WEB_SEARCH_MICROS` on top of its tokens; a request offered the search
+  reserves 5 of them (`nextRequestFits`, `budgetedReservationMicros`), and a response that reports more
+  searches than it was offered is outside its bounds. A key's budget is refused when saved if it cannot hold
+  one request with its searches on a provider that has a search.
+- **Not here.** The Claude Code and Codex runtime have no search yet (#1065); local clients use their own tools.
+- **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
+  `/ai` answer.
 
 ## Run token and the worker's MCP client (F-027 A2 and A6, #280, #484)
 
@@ -383,8 +438,8 @@ A run belongs to a **place** (`projectId`, `conversationId` and `dmId` on `perso
 | --- | --- | --- | --- | --- |
 | A conversation, thread or task thread of a space | `project_id`, `conversation_id` | the people who read the space | the conversation and the space's open work | the space's, as before |
 | A space's main conversation | `project_id` | the same | the latest messages of the space's conversations and its open work | the space's |
-| A direct message | `dm_id` | the DM's participants | the DM's latest messages, given in the request | `flux_read_web` only |
-| A thread of a direct message (#1016) | `dm_id`, `dm_thread_root_id` | the DM's participants | the thread's root and replies, given in the request | `flux_read_web` only |
+| A direct message | `dm_id` | the DM's participants | the DM's latest messages, given in the request | `flux_read_web` and the provider's web search only |
+| A thread of a direct message (#1016) | `dm_id`, `dm_thread_root_id` | the DM's participants | the thread's root and replies, given in the request | `flux_read_web` and the provider's web search only |
 | An agent's private chat | none | its owner | the chat's earlier turns, and what the owner can see through the tools | every read tool of the owner's reach, no change tool |
 
 Only a run in a space has an AI epoch and is held to the space's switch (`place.ts`); a run in a DM is held to its owner still taking part
@@ -543,7 +598,8 @@ overnight counts when it runs, and `largest_request_micros`. Each turn keeps wha
 in `charged_micros`, so a run lost with its worker counts that and one more request, not its whole
 reservation. A connection without a price is `PERSONAL_RUN_PRICE_UNKNOWN` / `price_unknown`.
 Usage is charged at the connection's price, or at the provider-reported cost when the response
-carries one (OpenRouter).
+carries one (OpenRouter), and each search of the provider's own web search at $0.01 on top, with 5
+searches reserved for each request that offers it (#954).
 
 ## HTTP API
 

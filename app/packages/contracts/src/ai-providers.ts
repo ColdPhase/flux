@@ -3,14 +3,15 @@
  *
  * An owner's connection names a provider kind, a model, a base URL (fixed for the named
  * providers, owner-set for an OpenAI-compatible endpoint) and a price per 1M tokens. Every
- * provider goes through the same Flux code path; only the wire format differs. Two wire formats
- * cover all five kinds: Anthropic Messages, and OpenAI-compatible Chat Completions (OpenAI,
- * OpenRouter, Gemini's compatible endpoint and self-hosted servers).
+ * provider goes through the same Flux code path; only the wire format differs. Three wire formats
+ * cover all five kinds: Anthropic Messages, OpenAI's Responses API (#954: its tool calling and its
+ * built-in web search), and OpenAI-compatible Chat Completions (OpenRouter, Gemini's compatible
+ * endpoint and self-hosted servers).
  */
 
 export const AI_PROVIDER_KINDS = ['anthropic', 'openai', 'openrouter', 'gemini', 'openai_compatible'] as const;
 export type AiProviderKind = (typeof AI_PROVIDER_KINDS)[number];
-export type AiWireFormat = 'anthropic_messages' | 'openai_chat_completions';
+export type AiWireFormat = 'anthropic_messages' | 'openai_responses' | 'openai_chat_completions';
 
 export interface AiProviderInfo {
   kind: AiProviderKind;
@@ -31,48 +32,51 @@ export interface AiProviderInfo {
    * run's actual charge; it never raises or bypasses the reservation (PROV-3).
    */
   reportsCost: boolean;
+  /**
+   * Whether the provider has its own built-in web search on the wire format Flux speaks to it (#954, C-29): Anthropic's `web_search`
+   * server tool, OpenAI's Responses `web_search` tool. A run with tools is offered it while the operator's `FLUX_WEB_READS` is on;
+   * a provider without one simply has no search.
+   */
+  searchesWeb: boolean;
 }
 
 /**
  * Base URLs are the providers' documented public API roots. Chat Completions requests go to
- * `<baseUrl>/chat/completions`; Anthropic requests to `<baseUrl>/v1/messages`.
+ * `<baseUrl>/chat/completions`, OpenAI's to `<baseUrl>/responses`; Anthropic requests to `<baseUrl>/v1/messages`.
  */
 export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   anthropic: {
     kind: 'anthropic', label: 'Anthropic', wire: 'anthropic_messages', baseUrl: 'https://api.anthropic.com',
-    keyHint: 'An Anthropic API key beginning with sk-ant-.', keylessModelList: false, reportsCost: false,
+    keyHint: 'An Anthropic API key beginning with sk-ant-.', keylessModelList: false, reportsCost: false, searchesWeb: true,
   },
   openai: {
-    kind: 'openai', label: 'OpenAI', wire: 'openai_chat_completions', baseUrl: 'https://api.openai.com/v1',
-    keyHint: 'An OpenAI project or service-account key beginning with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false,
+    kind: 'openai', label: 'OpenAI', wire: 'openai_responses', baseUrl: 'https://api.openai.com/v1',
+    keyHint: 'An OpenAI project or service-account key beginning with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false, searchesWeb: true,
   },
   openrouter: {
     kind: 'openrouter', label: 'OpenRouter', wire: 'openai_chat_completions', baseUrl: 'https://openrouter.ai/api/v1',
-    keyHint: 'An OpenRouter key beginning with sk-or-.', keylessModelList: true, reportsCost: true,
+    keyHint: 'An OpenRouter key beginning with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false,
   },
   gemini: {
     kind: 'gemini', label: 'Google Gemini', wire: 'openai_chat_completions', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false,
+    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false,
   },
   openai_compatible: {
     kind: 'openai_compatible', label: 'OpenAI-compatible endpoint', wire: 'openai_chat_completions', baseUrl: null,
-    keyHint: 'The key your endpoint expects. If it needs none, enter any placeholder of at least 8 characters.', keylessModelList: true, reportsCost: false,
+    keyHint: 'The key your endpoint expects. If it needs none, enter any placeholder of at least 8 characters.', keylessModelList: true, reportsCost: false, searchesWeb: false,
   },
 };
 
 /**
  * Models Flux knows cannot make tool calls on the wire format Flux speaks to their provider (F-027
- * AST-8: such a connection answers in one request and cannot change anything). OpenAI's function
- * calling guide (developers.openai.com/api/docs/guides/function-calling, read 2026-10-11) says GPT-6
- * Astra and GPT-6.1 Sol "require the Responses API for tool calling" and do not support Chat
- * Completions for it; Flux's OpenAI adapter is Chat Completions. An absent model is not marked: a
- * provider that cannot call tools refuses the request and the run fails closed. This is a dated
- * table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date.
+ * AST-8: such a connection answers in one request and cannot change anything). An absent model is
+ * not marked: a provider that cannot call tools refuses the request and the run fails closed. This
+ * is a dated table like `AI_PRICE_TABLE`; recheck a row before relying on it after its date. It is
+ * empty since #954: GPT-6 Astra and GPT-6.1 Sol, which OpenAI's function calling guide (read
+ * 2026-10-11) says "require the Responses API for tool calling", call tools now that Flux speaks the
+ * Responses API to OpenAI.
  */
-export const AI_MODELS_WITHOUT_TOOL_CALLING: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [
-  { provider: 'openai', model: 'gpt-6-astra', checkedOn: '2026-10-11', reason: 'requires the Responses API for tool calling' },
-  { provider: 'openai', model: 'gpt-6.1-sol', checkedOn: '2026-10-11', reason: 'requires the Responses API for tool calling' },
-];
+export const AI_MODELS_WITHOUT_TOOL_CALLING: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [];
 
 /** False when Flux knows the model cannot call tools on its wire format (see {@link AI_MODELS_WITHOUT_TOOL_CALLING}). */
 export const aiModelCallsTools = (provider: AiProviderKind, model: string): boolean =>
@@ -172,12 +176,39 @@ export function tablePrice(provider: AiProviderKind, model: string): AiPriceTabl
 }
 
 /**
- * The most one request can cost at `price` (PROV-3): maximum input tokens × input price + maximum
- * output tokens × output price, in micro-dollars, rounded up.
+ * What one search of the provider's built-in web search costs (#954): $10 per 1,000 searches on Anthropic (docs.claude.com web search
+ * tool, read 2026-11-08) and $10 per 1,000 calls of OpenAI's `web_search` (developers.openai.com pricing, read 2026-11-08), on top of
+ * the result tokens, which the provider counts as input. A search that failed is not billed by Anthropic; Flux counts every one.
  */
-export function maxRequestMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, maxInputTokens: number, maxOutputTokens: number): number {
-  return Math.ceil((maxInputTokens * price.inputMicrosPerMTok + maxOutputTokens * price.outputMicrosPerMTok) / 1_000_000);
+export const WEB_SEARCH_MICROS = 10_000;
+/** The most searches one request may make (Anthropic's `max_uses`, OpenAI's `max_tool_calls`), and so what every such request reserves. */
+export const WEB_SEARCHES_PER_REQUEST = 5;
+
+/**
+ * The most one request can cost at `price` (PROV-3): maximum input tokens × input price + maximum
+ * output tokens × output price, in micro-dollars, rounded up, and each web search it may make (#954).
+ */
+export function maxRequestMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, maxInputTokens: number, maxOutputTokens: number, webSearches = 0): number {
+  return Math.ceil((maxInputTokens * price.inputMicrosPerMTok + maxOutputTokens * price.outputMicrosPerMTok) / 1_000_000) + webSearches * WEB_SEARCH_MICROS;
 }
+
+/**
+ * Models whose provider has a built-in web search that they cannot use (#954): a run on one is not offered the search, as on a provider
+ * without one. A dated table like `AI_MODELS_WITHOUT_TOOL_CALLING`; recheck a row before relying on it after its date. An absent model
+ * is not marked: if its provider refuses the search tool, the request is sent again once without it and the key's model is not offered
+ * it for a while (the worker remembers).
+ */
+export const AI_MODELS_WITHOUT_WEB_SEARCH: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [
+  { provider: 'openai', model: 'o3-mini', checkedOn: '2026-11-09', reason: 'its model page lists no web_search among its Responses API tools' },
+];
+
+/** Whether a run on this provider and model may be offered the provider's built-in web search (#954). */
+export const aiModelSearchesWeb = (provider: AiProviderKind, model: string): boolean =>
+  AI_PROVIDERS[provider].searchesWeb && !AI_MODELS_WITHOUT_WEB_SEARCH.some((entry) => entry.provider === provider && entry.model === model);
+
+/** The searches a request of a run with tools on this provider may make, and so reserves (#954): none without a built-in search. */
+export const webSearchesReserved = (provider: AiProviderKind | null | undefined, tools: boolean): number =>
+  tools && provider && AI_PROVIDERS[provider].searchesWeb ? WEB_SEARCHES_PER_REQUEST : 0;
 
 /** `POST /api/v1/ai-model-lists`: the provider's models, fetched by the server without a key. */
 export const AI_MODEL_LISTS_PATH = '/api/v1/ai-model-lists';
