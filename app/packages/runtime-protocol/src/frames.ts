@@ -93,7 +93,7 @@ export const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
  */
 // eslint-disable-next-line no-control-regex
 export const WEB_ADDRESS = /^https?:\/\/[^\s\u0000-\u001f\u007f]{1,2040}$/i;
-/** The most result addresses one search reports, and the longest query (the same bounds Flux keeps of a search: WEB_SEARCH_BOUNDS). */
+/** The most result addresses one search reports, and the longest query: what one `personal_run_web_searches` row holds of a search. */
 export const SEARCH_FRAME_LIMITS = { results: 100, query: 300 } as const;
 
 /**
