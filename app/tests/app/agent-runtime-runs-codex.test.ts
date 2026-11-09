@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { type Conversation, type Project, type Workspace } from '@flux/contracts';
-import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, noPersonalConnections, NO_WEB_SEARCH_LINE, REDACTED_SECRET, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { callSupervisor } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { RUN_BRIEF } from '../../apps/runtime/src/supervisor/run.js';
@@ -80,8 +80,9 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.ok((await callSupervisor({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }, { kind: 'bind', bindingId })).ok);
 
     runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
+    // The operator's web switch on, as a new install has it (C-29): Codex still gets no search (#1065, RT-5).
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
-      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
+      runtime: managerPersonalRuntime(config, db, { webSearch: true }), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
       runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10, maxTurns: 10 } });
     const status = await runs.status(human(owner));
     assert.deepEqual(status.setup.runtime, { state: 'signed_in', payer: 'chatgpt_plan', accountLabel: null, client: 'codex' }, 'the payer comes from `codex login status`');
@@ -127,7 +128,8 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off') assert.equal(run.overrides.features[key], false, key);
     for (const key of ['shell_tool', 'unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image'])
       assert.equal(run.overrides.features[key], false, `named in #281: ${key}`);
-    assert.equal(run.overrides.web_search, 'disabled');
+    assert.equal(run.overrides.web_search, 'disabled', 'with the web on too: Codex\'s search records no results Flux could check (#1065)');
+    assert.ok(run.prompt.includes(NO_WEB_SEARCH_LINE) && !run.prompt.includes('WebSearch'), 'and its brief says it has no web search');
     assert.equal(run.overrides.cli_auth_credentials_store, 'file');
     assert.equal(run.overrides.analytics.enabled, false);
     assert.equal(run.overrides.developer_instructions, RUN_BRIEF);

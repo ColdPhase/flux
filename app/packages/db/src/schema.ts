@@ -1745,13 +1745,17 @@ export const personalRunWebReads = pgTable('personal_run_web_reads', {
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('personal_run_web_reads_run_idx').on(table.runId, table.readAt)]);
 
-/** 0041 (#954): what each provider answer's built-in web search brought to a run: its queries, results and cited addresses (C-30). */
+/**
+ * 0041 (#954): what each provider answer's built-in web search brought to a run: its queries, results and cited addresses (C-30).
+ * 0046 (#1065): a Claude Code search is written when the CLI starts it, `pending` until its results come back.
+ */
 export const personalRunWebSearches = pgTable('personal_run_web_searches', {
   id: uuid('id').primaryKey().defaultRandom(),
   runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   queries: text('queries').array().notNull().default(sql`'{}'`),
   results: text('results').array().notNull().default(sql`'{}'`),
   cited: text('cited').array().notNull().default(sql`'{}'`),
+  pending: boolean('pending').notNull().default(false),
   searchedAt: timestamp('searched_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
 }, (table) => [index('personal_run_web_searches_run_idx').on(table.runId, table.searchedAt)]);
 

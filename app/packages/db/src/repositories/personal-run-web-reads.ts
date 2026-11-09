@@ -1,4 +1,4 @@
-import { asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -62,6 +62,29 @@ export function personalRunWebReadRows(db: DbExecutor) {
         queries: slice(found.queries, 10, row).map((query) => query.slice(0, 300)),
         results: slice(found.results, 100, row).map((address) => address.slice(0, 2048)),
         cited: slice(found.cited, 100, row).map((address) => address.slice(0, 2048)) })));
+    },
+    /**
+     * A search the owner's Claude Code started (#1065, C-30): written at once, with its query, as in progress. Its row id fills it in.
+     */
+    async startSearch(runId: string, query: string): Promise<string> {
+      const s = schema.personalRunWebSearches;
+      const [row] = await db.insert(s).values({ runId, queries: query ? [query.slice(0, 300)] : [], pending: true }).returning({ id: s.id });
+      return row!.id;
+    },
+    /** The results of a search in progress came back (already normalized and bounded by core): they are readable addresses from now on. */
+    async settleSearch(id: string, results: readonly string[]) {
+      const s = schema.personalRunWebSearches;
+      await db.update(s).set({ results: results.slice(0, 100).map((address) => address.slice(0, 2048)), pending: false }).where(eq(s.id, id));
+    },
+    /** The run ended: a search still in progress brought nothing (its query is still listed). */
+    async endSearches(runId: string) {
+      const s = schema.personalRunWebSearches;
+      await db.update(s).set({ pending: false }).where(and(eq(s.runId, runId), eq(s.pending, true)));
+    },
+    /** Whether the run has a search in progress, whose results may still make an address readable. */
+    async searching(runId: string): Promise<boolean> {
+      const result = await db.execute<{ busy: boolean }>(sql`SELECT EXISTS (SELECT 1 FROM personal_run_web_searches s WHERE s.run_id = ${runId}::uuid AND s.pending) AS busy`);
+      return result.rows[0]?.busy === true;
     },
     /**
      * The run's searches (#954): their queries and the addresses its answers cited, each once, in the order found. A cited address

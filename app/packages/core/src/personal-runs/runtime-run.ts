@@ -16,6 +16,7 @@ import { isAsked, isPrivateAnswer } from './ports.js';
 import { runtimeBrief, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerWithWebSources } from './web-sources.js';
+import { addressesIn, boundedWebSearch, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
 //
@@ -47,9 +48,12 @@ export interface RuntimeRunDeps {
   now?: () => number;
 }
 
-/** The CLI's start-up tool list may name only the run's exact Flux tools (and `EndConversation`), and only a connected Flux server. */
-export function localToolInInit(event: Extract<PersonalRuntimeEvent, { kind: 'init' }>, tools: readonly string[]): boolean {
-  const allowed = new Set([...tools.map((tool) => `mcp__flux__${tool}`), 'EndConversation']);
+/**
+ * The CLI's start-up tool list may name only the run's exact Flux tools (and `EndConversation`, and on Claude Code with the web on its own
+ * `WebSearch`, #1065), and only a connected Flux server.
+ */
+export function localToolInInit(event: Extract<PersonalRuntimeEvent, { kind: 'init' }>, tools: readonly string[], webSearch = false): boolean {
+  const allowed = new Set([...tools.map((tool) => `mcp__flux__${tool}`), 'EndConversation', ...(webSearch ? ['WebSearch'] : [])]);
   if (event.tools.some((tool) => !allowed.has(tool))) return true;
   return event.mcpServers.length !== 1 || event.mcpServers[0]!.name !== 'flux' || event.mcpServers[0]!.status !== 'connected';
 }
@@ -282,8 +286,32 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           }).catch(() => undefined);
         })();
       };
+      // Claude Code searches with its own WebSearch while the operator's web switch is on (#1065, C-29); Codex never does (RT-5).
+      const webSearch = runtime!.webSearch === true && (target.client ?? 'claude_code') === 'claude_code';
+      // The CLI's searches are written in the order it wrote them (C-30): the start as a search in progress, then its results. A
+      // `flux_read_web` call for an address the run cannot read yet waits while one is in progress, so a result is recorded before a
+      // call that names it is answered. A failed write only leaves the search unreadable.
+      let recorded: Promise<void> = Promise.resolve();
+      const record = (step: (ports: PersonalRunPorts) => Promise<void>) => { recorded = recorded.then(() => uow.run(step)).catch(() => undefined); };
+      const searchRows = new Map<number, string>();
+      let searched = false;
       const onEvent = (event: PersonalRuntimeEvent) => {
-        if (event.kind === 'init') { if (localToolInInit(event, grant.tools)) stop('local_tool'); return; }
+        if (event.kind === 'init') { if (localToolInInit(event, grant.tools, webSearch)) stop('local_tool'); return; }
+        if (event.kind === 'search' || event.kind === 'found') {
+          if (!webSearch) return;
+          searched = true;
+          if (event.kind === 'search') {
+            const query = boundedWebSearch({ queries: [event.query], results: [], cited: [] }).queries[0] ?? '';
+            record(async (ports) => { searchRows.set(event.n, await ports.runs.startWebSearch(run.id, query)); });
+          } else {
+            const results = boundedWebSearch({ queries: [], results: event.results, cited: [] }).results;
+            record(async (ports) => {
+              const id = searchRows.get(event.n);
+              if (id) await ports.runs.settleWebSearch(id, results); else await ports.runs.addWebSearch(run.id, { queries: [], results, cited: [] });
+            });
+          }
+          return;
+        }
         // Owner-only progress: one more Flux tool call (O-008 §4; the audience is the owner alone).
         void uow.run((ports) => ports.events.record({ kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id,
           { status: 'dispatching', step: 'tool', tool: event.name })).catch(() => undefined);
@@ -300,8 +328,10 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
+          webSearch,
         });
-        end = await runtime!.run(target, { runId: run.id, prompt, runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}) }, onEvent);
+        end = await runtime!.run(target, { runId: run.id, prompt, runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
+          ...(webSearch ? { webSearch: true as const } : {}) }, onEvent);
       } catch {
         // The stream to the slot broke: whether the CLI changed anything is unknown, and it is never rerun.
         end = { kind: 'ended', reason: 'unknown' };
@@ -310,6 +340,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         await tokens!.close(run.id).catch(() => undefined);
       }
       await stopSent;
+      // Every search the CLI reported is written before the run's end is; one whose result never came back brought nothing.
+      await recorded;
+      if (searched) await uow.run((ports) => ports.runs.endWebSearches(run.id)).catch(() => undefined);
       await hooks.afterDispatch?.(run);
 
       return uow.run(async (ports) => {
@@ -337,6 +370,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // AIM-3 "Committed answer": token patterns and the exact run token become "[removed: looked like a secret]".
         const redacted = redactSecrets(end.text, [grant.token]);
         const agent: Principal = { kind: 'agent', id: run.agentId };
+        // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned them.
+        if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(redacted.text, WEB_SEARCH_BOUNDS.cited) }));
         const words = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, redacted.text));
         const status = await save(ended('completed', null, {
           ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,

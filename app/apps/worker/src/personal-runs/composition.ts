@@ -35,16 +35,17 @@ export interface PersonalRunWorkerComposition {
   runtime: PersonalRuntime;
 }
 
-/** The run token issuer, the `server` tool host (only with the provider on) and the runtime engine. */
+/** The run token issuer, the `server` tool host (only with the provider on) and the runtime engine (Claude Code's search with the web on, #1065). */
 function runPorts(env: NodeJS.ProcessEnv, db: Database, compute: PersonalCompute, runtimeConfig: AgentRuntimeConfig) {
   const apiUrl = apiInternalUrl(env);
   const tokens = runTokenIssuer(db, apiUrl);
-  return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
+  return { tokens, runtime: managerPersonalRuntime(runtimeConfig, db, { webSearch: webSearchSwitch(env) }), ...(compute.enabled ? { tools: mcpToolHost(tokens, `${apiUrl}/mcp`) } : {}) };
 }
 
 /**
  * The operator's web switch, the same `FLUX_WEB_READS` the API reads for `flux_read_web` (#954, C-29): on unless `off`, so a run with
- * tools is offered its provider's own web search. Any other value stops the worker, as it stops the API.
+ * tools is offered its provider's own web search, and a run on the owner's Claude Code its own `WebSearch` (#1065). Any other value stops
+ * the worker, as it stops the API.
  */
 export function webSearchSwitch(env: NodeJS.ProcessEnv): boolean {
   const value = env.FLUX_WEB_READS || 'on';

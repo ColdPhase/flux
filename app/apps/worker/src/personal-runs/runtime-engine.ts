@@ -26,16 +26,26 @@ function endOf(outcome: ManagerRunOutcome): PersonalRuntimeEnd {
 }
 
 function eventOf(frame: RunFrame): PersonalRuntimeEvent {
-  return frame.e === 'init' ? { kind: 'init', tools: [...frame.tools], mcpServers: frame.servers.map((server) => ({ ...server })) } : { kind: 'tool', name: frame.name };
+  switch (frame.e) {
+    case 'init': return { kind: 'init', tools: [...frame.tools], mcpServers: frame.servers.map((server) => ({ ...server })) };
+    case 'tool': return { kind: 'tool', name: frame.name };
+    case 'search': return { kind: 'search', n: frame.n, query: frame.query };
+    case 'found': return { kind: 'found', n: frame.n, results: [...frame.results] };
+  }
 }
 
-export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database): PersonalRuntime {
+/**
+ * `webSearch`: the operator's web switch (`FLUX_WEB_READS`, C-29). On, a run on the owner's Claude Code keeps its own `WebSearch` (#1065);
+ * Codex's search stays off (RT-5).
+ */
+export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database, { webSearch = false }: { webSearch?: boolean } = {}): PersonalRuntime {
   const manager = config.manager;
   const states = clientAvailability(config);
   const enabled = !!manager && (states.claude_code === 'available' || states.codex === 'available');
   const client = manager ? createRuntimeManagerClient(manager) : null;
   return {
     enabled,
+    webSearch,
     async target(ownerUserId, cli = 'claude_code') {
       if (!enabled || states[cli] !== 'available') return { ok: false, reason: 'off' };
       const row = await personalRuntimeRow(db, ownerUserId, [cli]);
@@ -53,7 +63,8 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database)
       };
       const client = target.client ?? 'claude_code';
       const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client, runId: request.runId,
-        prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}) }, (frame) => onEvent(eventOf(frame)));
+        prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}),
+        ...(request.webSearch && client === 'claude_code' ? { webSearch: true as const } : {}) }, (frame) => onEvent(eventOf(frame)));
       // Connect AI's usage line (#854): what the provider reported (Codex's own read), or the limit the run met.
       if (outcome.ok) {
         const result = outcome.result;
