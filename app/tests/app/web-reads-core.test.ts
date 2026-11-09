@@ -651,11 +651,15 @@ describe('the final text of what a run writes, and the buckets (#1149)', () => {
   });
 
   test('Flux\'s list of the pages a run read lists one read only by its site\'s path rule defanged; a person\'s link and a redirect through one stay links', async () => {
-    const listed = answerCleaner(async () => [keptPrivateText(`${SECRET} https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit and https://doi.org/10.1145/3593013.3594067`)]).listed;
-    assert.equal(await listed('https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt'),
+    const { read, cited } = answerCleaner(async () => [keptPrivateText(`${SECRET} https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit and https://doi.org/10.1145/3593013.3594067`)]).listed;
+    assert.equal(await read('https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt'),
       'hxxps://docs[.]google[.]com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt');
     for (const kept of ['https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit', 'https://dl.acm.org/doi/10.1145/3593013.3594067', 'https://example.org/page'])
-      assert.equal(await listed(kept), kept);
+      assert.equal(await read(kept), kept);
+    // A search result is no page Flux requested: one that carries the run's private text is listed defanged, like a query.
+    assert.equal(await cited('https://news.example/search?q=buy+Harbour+Co+shares'), 'hxxps://news[.]example/search?q=buy+Harbour+Co+shares');
+    assert.equal(await cited('https://dl.acm.org/doi/10.1145/3593013.3594067'), 'hxxps://dl[.]acm[.]org/doi/10[.]1145/3593013[.]3594067', 'its writer\'s rules give it no redirect');
+    assert.equal(await cited('https://example.org/page'), 'https://example.org/page');
   });
 
   test('the path-style object storage hosts C-30 names: the bucket is part of the site', async () => {
