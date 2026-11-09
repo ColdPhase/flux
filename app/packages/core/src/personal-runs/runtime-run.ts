@@ -384,7 +384,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned
         // them; those of the cleaned answer, so an address left out is never listed.
         if (searched) await ports.runs.addWebSearch(run.id, boundedWebSearch({ queries: [], results: [], cited: addressesIn(answer, WEB_SEARCH_BOUNDS.cited) }));
-        const words = await answerWithWebSources(ports, run, answer);
+        const words = await answerWithWebSources(ports, run, answer, cleaner.listed);
         const status = await save(ended('completed', null, {
           ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,
           committedAt: new Date(),

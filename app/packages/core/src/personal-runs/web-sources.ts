@@ -49,8 +49,13 @@ export function webSourcesLine(reads: readonly { finalUrl: string; outcome: stri
 }
 
 /** The answer with the run's searches and the addresses it asked for at its end. */
-export async function answerWithWebSources(ports: PersonalRunPorts, run: Pick<RunRecord, 'id'>, answer: string): Promise<string> {
-  const line = webSourcesLine(await ports.runs.webReads(run.id), await ports.runs.webSearches(run.id));
+export async function answerWithWebSources(ports: PersonalRunPorts, run: Pick<RunRecord, 'id'>, answer: string,
+  listed: (address: string) => Promise<string> = async (address) => address): Promise<string> {
+  // Each address as the stored answer may hold it (#1149): one the run could read only by a site's path rule is listed, but not as a link a
+  // later run would take as written.
+  const reads = await Promise.all((await ports.runs.webReads(run.id)).map(async (item) => ({ ...item, finalUrl: await listed(item.finalUrl) })));
+  const searches = await ports.runs.webSearches(run.id);
+  const line = webSourcesLine(reads, { ...searches, cited: await Promise.all(searches.cited.map(listed)) });
   return line ? `${answer.trimEnd()}\n\n${line}` : answer;
 }
 

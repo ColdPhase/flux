@@ -650,6 +650,14 @@ describe('the final text of what a run writes, and the buckets (#1149)', () => {
     assert.equal(prepared!.text, `Every day open ${ADDRESS_LEFT_OUT}`);
   });
 
+  test('Flux\'s list of the pages a run read lists one read only by its site\'s path rule defanged; a person\'s link and a redirect through one stay links', async () => {
+    const listed = answerCleaner(async () => [keptPrivateText(`${SECRET} https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit and https://doi.org/10.1145/3593013.3594067`)]).listed;
+    assert.equal(await listed('https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt'),
+      'hxxps://docs[.]google[.]com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/export?format=txt');
+    for (const kept of ['https://docs.google.com/document/d/1Zq81mK2pX9aBcD3eF4gH5iJ6kL7mN8oP9qR0sT/edit', 'https://dl.acm.org/doi/10.1145/3593013.3594067', 'https://example.org/page'])
+      assert.equal(await listed(kept), kept);
+  });
+
   test('the path-style object storage hosts C-30 names: the bucket is part of the site', async () => {
     const index = await privateTextIndex([keptPrivateText(['https://storage.cloud.google.com/acme/q3.pdf?sig=9a8b7c6d5e4f30211203f4e5d6c7b8a9',
       'https://nyc3.digitaloceanspaces.com/acme/q3.pdf?sig=1b2c3d4e5f60718293a4b5c6d7e8f901', 'https://s3.us-west-1.wasabisys.com/acme/q3.pdf?sig=2c3d4e5f60718293a4b5c6d7e8f9012a',

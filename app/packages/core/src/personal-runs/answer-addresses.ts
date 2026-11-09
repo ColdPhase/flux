@@ -1,5 +1,5 @@
 import { takeAsk } from '../agent-tasks/ask.js';
-import { holdsAddress, privateTextIndex, withoutPrivateAddresses, type KeptPrivateText, type PrivateTextIndex } from './web-addresses.js';
+import { addressChain, defangedAddresses, holdsAddress, privateFragmentIn, privateTextIndex, withoutPrivateAddresses, type KeptPrivateText, type PrivateTextIndex } from './web-addresses.js';
 
 /**
  * What a run writes as text, cleaned before it is stored (#1143, #1149, C-30): each web address in it that carries private Flux text the run
@@ -14,6 +14,11 @@ export interface AnswerCleaner {
   clean(text: string): Promise<string>;
   /** The answer's final text: as `clean`, and the `<ask>` block's fields decoded, cleaned and written back as JSON. */
   cleanAnswer(text: string): Promise<string>;
+  /**
+   * An address of the sources Flux lists under the answer, as it may be stored (#1149): as it is, or defanged when what a run writes may
+   * not hold it (a page read only by its site's path rule). The owner still reads where the agent went; no later run takes it as written.
+   */
+  listed(address: string): Promise<string>;
 }
 
 export function answerCleaner(keptTexts: () => Promise<KeptPrivateText[]>): AnswerCleaner {
@@ -25,6 +30,16 @@ export function answerCleaner(keptTexts: () => Promise<KeptPrivateText[]>): Answ
   };
   return {
     clean,
+    async listed(address: string) {
+      if (!holdsAddress(address)) return address;
+      index ??= keptTexts().then((texts) => privateTextIndex(texts));
+      const kept = await index;
+      // Only what the site's path rule alone let it read (#1149): a read's rules let it open, a writer's do not. A redirect hop it read through a
+      // person's link stays a link, as before.
+      const read = await privateFragmentIn(address, kept).catch(() => 'too long');
+      if (read) return address;
+      return (await privateFragmentIn(address, kept, addressChain(), { sameSitePaths: false }).catch(() => 'too long')) ? defangedAddresses(address) : address;
+    },
     async cleanAnswer(text: string) {
       const cleaned = await clean(text);
       const start = cleaned.indexOf('<ask>');

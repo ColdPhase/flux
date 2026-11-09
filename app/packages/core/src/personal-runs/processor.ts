@@ -348,7 +348,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // The answer's final text, cleaned while the run's kept text still exists (#1143, #1149, C-30): after its marks and its schedule block are
       // taken out (and the schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
       const cleaner = answerCleaner(() => ports.runs.privateTexts(run.id));
-      parsed.body = await answerWithWebSources(ports, run, await cleaner.cleanAnswer(await answerWithSchedule(ports, run, parsed.body, cleaner)));
+      parsed.body = await answerWithWebSources(ports, run, await cleaner.cleanAnswer(await answerWithSchedule(ports, run, parsed.body, cleaner)), cleaner.listed);
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {

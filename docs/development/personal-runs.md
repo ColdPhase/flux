@@ -257,7 +257,8 @@ pages, founder direction 2026-11-09, #1113).
   writes it back. Each address that carries private text, or is too long to be read, becomes `[address left out]`
   (`withoutPrivateAddresses`, with `sameSitePaths: false`: what a run writes never gets rule (2); the change check of #1138 uses the same
   option and refuses an over-long address too). `parseOutput`, `takeScheduleBlocks`, `takeAsk` and `withoutCitationMarks` take pieces out
-  with no gap only when that joins no new address (`joinsAddress`); otherwise a space stands in their place. `webSourcesLine` lists search queries with any address in them defanged
+  with no gap only when that joins no new address (`joinsAddress`); otherwise a space stands in their place. `answerWithWebSources` lists, under an answer, a page the run could read only by rule (2) defanged (`AnswerCleaner.listed`), and
+  `webSourcesLine` lists search queries with any address in them defanged
   (`defangedAddresses`): a query is never checked, and a run without an answer has no kept text left when its end line is written. A site on object storage's
   path-style hosts (`pathStyleStorage`: the same list as C-30) is the host and the bucket (#1144, #1149). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
   search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
