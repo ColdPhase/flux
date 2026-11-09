@@ -279,7 +279,8 @@ export function workRows(db: DbExecutor) {
     /** The blocked tasks that wait for this decision or task (#868), ascending by id; the caller holds the project's graph lock. */
     async waiters(target: { kind: 'decision' | 'task'; id: string }) {
       const rows = await db.select({ id: w.id }).from(w)
-        .where(and(eq(w.status, 'blocked'), eq(target.kind === 'decision' ? w.waitingForDecisionId : w.waitingForWorkId, target.id))).orderBy(asc(w.id));
+        // A task whose creation was undone is read-only history and waits for nothing: it must not hold what it waited for (#868).
+        .where(and(eq(w.status, 'blocked'), isNull(w.creationRevertedAt), eq(target.kind === 'decision' ? w.waitingForDecisionId : w.waitingForWorkId, target.id))).orderBy(asc(w.id));
       return rows.map((row) => row.id);
     },
     /** What a task or a row names it waits for, by `kind:id`: a decision's title, a task's number and title (#868). */

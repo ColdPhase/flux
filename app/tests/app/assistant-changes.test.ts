@@ -607,6 +607,16 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const [acceptedRow] = await changesOf(accepted.runId);
     assert.equal((await undoOne(acceptedRow!.id)).message, 'Decided since. Open it');
     assert.equal(await count('project_decisions', kept.decisionId), 1);
+    // Waited for by a task since: taking the proposal back would leave that task waiting for nothing (#868).
+    const waitedFor = await liveRun();
+    const awaited = value(await waitedFor.call('flux_propose_decision', { decision: { title: 'Use a time-of-flight array', rationale: 'Wider view' } }));
+    await complete(waitedFor.runId);
+    const waiter = await task(owner, 'Order the array');
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${waiter.id}`, { body: { status: 'blocked', waitingOn: { kind: 'decision', id: awaited.decisionId }, clientCommandId: randomUUID() },
+      headers: { 'if-match': `"${waiter.version}"` } }), 200);
+    const [waitedRow] = await changesOf(waitedFor.runId);
+    assert.equal((await undoOne(waitedRow!.id)).message, 'Used since. Open it');
+    assert.equal(await count('project_decisions', awaited.decisionId), 1);
     // Cited by a task since.
     const cited = await liveRun();
     const pinned = value(await cited.call('flux_propose_decision', { decision: { title: 'Use a lidar', rationale: 'Precise' } }));
@@ -615,6 +625,20 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const [citedRow] = await changesOf(cited.runId);
     assert.equal((await undoOne(citedRow!.id)).message, 'Used since. Open it');
     assert.equal(await count('project_decisions', pinned.decisionId), 1);
+  });
+
+  test('#868 a task the assistant made that another task waits for is in use: Undo of the run refuses it', async () => {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_task', { task: { title: 'The prerequisite the agent made' } }));
+    await complete(run.runId);
+    const waiter = await task(owner, 'Waits for the agent\'s task');
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${waiter.id}`, { body: { status: 'blocked', waitingOn: { kind: 'task', id: made.workId }, clientCommandId: randomUUID() },
+      headers: { 'if-match': `"${waiter.version}"` } }), 200);
+    const [row] = await changesOf(run.runId);
+    const refused = await undoOne(row!.id);
+    assert.ok(refused.message, 'refused, in words');
+    assert.notEqual((await stateOf(row!.id)).state, 'undone', 'the task stays: something waits for it');
+    assert.equal((await pool.query('SELECT creation_reverted_at FROM project_work_items WHERE id = $1', [made.workId])).rows[0].creation_reverted_at, null);
   });
 
   test('#68 result: Undo removes the result, tombstones what it told the task and puts the finished task back; refused once replied to or the task changed', async () => {

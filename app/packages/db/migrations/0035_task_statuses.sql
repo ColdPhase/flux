@@ -1,4 +1,4 @@
--- #868 (F-038, C-51): a task has four states, and a blocked task waits for one thing.
+-- #868 (F-038, C-52): a task has four states, and a blocked task waits for one thing.
 -- #1039: a task has no parked state any more (nothing parks a task since #871), and no decision links work as "still applies".
 -- "Not pursued" is Done with a "dropped" note. Blocked waits for a person, a decision or another task and goes back to Doing
 -- by itself when that is resolved. "What came of it" is the one optional line at Done. Flux has no installations or data yet
@@ -18,18 +18,26 @@ ALTER TABLE public.github_task_rules DROP CONSTRAINT github_task_rules_expected_
 ALTER TABLE public.github_task_rules ADD CONSTRAINT github_task_rules_expected_status_check
   CHECK (expected_status = ANY (ARRAY['open'::text, 'in_progress'::text, 'blocked'::text, 'done'::text]));
 
--- A pause on a task ends when its holder changes or the task is done.
-DROP TRIGGER agent_pause_follows_hold ON public.project_work_items;
-CREATE OR REPLACE FUNCTION public.flux_agent_pause_follows_hold() RETURNS trigger
-    LANGUAGE plpgsql
-    SET search_path TO 'pg_catalog', 'public', 'pg_temp'
-    AS $$
+-- The pause trigger listed parked_at, so it goes before the column does. Pause and Resume themselves go in 0039 (#985), which drops the
+-- trigger, its function and the table; they are made again here only while that table is there, so this file works before and after it.
+DROP TRIGGER IF EXISTS agent_pause_follows_hold ON public.project_work_items;
+DO $migration$
 BEGIN
-  DELETE FROM agent_pauses p WHERE p.task_id = NEW.id
-    AND (NEW.owner_agent_id IS DISTINCT FROM p.agent_id OR NEW.status = 'done');
-  RETURN NULL;
-END $$;
-CREATE TRIGGER agent_pause_follows_hold AFTER UPDATE OF owner_agent_id, status ON public.project_work_items FOR EACH ROW EXECUTE FUNCTION public.flux_agent_pause_follows_hold();
+  IF to_regclass('public.agent_pauses') IS NOT NULL THEN
+    EXECUTE $function$
+      CREATE OR REPLACE FUNCTION public.flux_agent_pause_follows_hold() RETURNS trigger
+          LANGUAGE plpgsql
+          SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+          AS $body$
+      BEGIN
+        DELETE FROM agent_pauses p WHERE p.task_id = NEW.id
+          AND (NEW.owner_agent_id IS DISTINCT FROM p.agent_id OR NEW.status = 'done');
+        RETURN NULL;
+      END $body$
+    $function$;
+    EXECUTE 'CREATE TRIGGER agent_pause_follows_hold AFTER UPDATE OF owner_agent_id, status ON public.project_work_items FOR EACH ROW EXECUTE FUNCTION public.flux_agent_pause_follows_hold()';
+  END IF;
+END $migration$;
 
 -- No parked state (#1039): the columns, their foreign key and checks go, and so does what read them.
 CREATE OR REPLACE FUNCTION public.flux_guard_task_creation_history() RETURNS trigger
@@ -68,45 +76,7 @@ BEGIN
     NEW.title, concat_ws(E'\n', '#' || NEW.number, nullif(NEW.outcome, ''), NEW.blocker), NEW.created_by_kind, NEW.created_by_id, NEW.updated_at);
   RETURN NEW;
 END $$;
-CREATE OR REPLACE FUNCTION public.flux_artifact_task_is_direct(task uuid, boundary public.agent_thread_artifact_boundaries) RETURNS boolean
-    LANGUAGE plpgsql STABLE
-    AS $$
-BEGIN
-  IF boundary.kind IN ('doc','material') THEN RETURN EXISTS(SELECT 1 FROM project_object_links l
-    WHERE l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id AND (
-      (l.from_type='work' AND l.from_id=task AND l.to_id::text=boundary.source_id AND l.role IN ('source','related')
-        AND ((l.to_type='doc' AND boundary.kind='doc') OR(l.to_type='material' AND(l.to_version IS NULL OR l.to_version::text=boundary.revision))))
-      OR(boundary.kind='doc' AND l.from_type='doc' AND l.from_id::text=boundary.source_id AND l.to_type='work' AND l.to_id=task AND l.role IN('mentions','source'))));
-  ELSIF boundary.kind='result' THEN RETURN EXISTS(SELECT 1 FROM project_object_links l WHERE l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id
-    AND l.from_type='result' AND l.from_id::text=boundary.source_id AND l.to_type='work' AND l.to_id=task AND l.role='about');
-  ELSIF boundary.kind='decision' THEN RETURN EXISTS(SELECT 1 FROM project_object_links l WHERE l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id
-    AND l.from_type='decision' AND l.from_id::text=boundary.source_id AND l.to_type='work' AND l.to_id=task AND l.role='affects');
-  ELSIF boundary.kind='thought' THEN RETURN EXISTS(SELECT 1 FROM project_object_links l JOIN sketch_thoughts t ON t.id=l.to_id JOIN sketches s ON s.id=t.sketch_id
-    WHERE l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id AND l.from_type='work' AND l.from_id=task AND l.to_type='thought'
-      AND l.to_id::text=boundary.source_id AND l.role IN('source','related') AND t.workspace_id=boundary.workspace_id AND s.project_id=boundary.project_id AND s.scope='project');
-  ELSIF boundary.kind='file' THEN RETURN EXISTS(SELECT 1 FROM project_files f LEFT JOIN project_messages m ON m.id=f.message_id
-    LEFT JOIN project_conversations c ON c.id=m.conversation_id LEFT JOIN project_task_discussions d ON d.conversation_id=c.id
-    LEFT JOIN sketch_thoughts t ON t.id=f.thought_id LEFT JOIN sketches s ON s.id=t.sketch_id
-    WHERE f.id::text=boundary.source_id AND f.workspace_id=boundary.workspace_id AND f.project_id=boundary.project_id AND(
-      (COALESCE(c.work_id,d.work_id)=task AND m.project_id=boundary.project_id AND m.workspace_id=boundary.workspace_id AND c.project_id=boundary.project_id AND c.workspace_id=boundary.workspace_id)
-      OR(s.scope='project' AND s.project_id=boundary.project_id AND s.workspace_id=boundary.workspace_id AND EXISTS(SELECT 1 FROM project_object_links l
-        WHERE l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id AND l.from_type='work' AND l.from_id=task AND l.to_type='thought' AND l.to_id=t.id AND l.role IN('source','related')))));
-  ELSE RETURN EXISTS(SELECT 1 FROM github_task_links l JOIN github_bindings b ON b.id=l.binding_id WHERE l.task_id=task AND l.workspace_id=boundary.workspace_id AND l.project_id=boundary.project_id
-    AND l.binding_id::text || ':' || b.repository_id || ':' || l.pull_id || ':' || l.task_id::text=boundary.source_id AND l.facts->>'headSha'=boundary.revision AND l.state='current' AND b.state='active');
-  END IF;
-END $$;
-
-
---
--- Name: flux_artifact_xid_is_current(xid); Type: FUNCTION; Schema: public; Owner: -
---
-
-CREATE OR REPLACE FUNCTION public.flux_artifact_xid_is_current(source_xid xid) RETURNS boolean
-    LANGUAGE sql STABLE
-    AS $$
-  SELECT EXISTS(SELECT 1 FROM pg_locks WHERE pid=pg_backend_pid() AND locktype='transactionid'
-    AND mode='ExclusiveLock' AND transactionid=source_xid)
-$$;
+-- `flux_artifact_task_is_direct` still names the role `still_applies` in a list; no link has it any more, so it is left as it is.
 ALTER TABLE public.project_work_items DROP CONSTRAINT project_work_items_workspace_id_project_id_parked_by_decis_fkey;
 ALTER TABLE public.project_work_items DROP COLUMN parked_by_decision_id, DROP COLUMN parked_at;
 ALTER TABLE public.project_object_links DROP CONSTRAINT project_object_links_role_check;

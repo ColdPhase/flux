@@ -173,7 +173,7 @@ export function assistantRemovalRows(db: DbExecutor) {
       return { ok: true, version: doc.version };
     },
 
-    /** A decision the assistant proposed: still proposed, not edited since, not cited, not parking a task, not superseded or superseding. */
+    /** A decision the assistant proposed: still proposed, not edited since, not cited, not waited for by a task, not superseded or superseding. */
     async removeDecision(input: { decisionId: string; agentId: string; version: number | null }): Promise<Removal> {
       const decision = await first<{ id: string; projectId: string; status: string; version: number; byKind: string; byId: string }>(db, sql`
         SELECT id, project_id AS "projectId", status, version, proposed_by_kind AS "byKind", proposed_by_id AS "byId" FROM project_decisions WHERE id = ${input.decisionId} FOR UPDATE`);
@@ -184,6 +184,8 @@ export function assistantRemovalRows(db: DbExecutor) {
       if (await cited(decision.id, 'other')) return used(REMOVAL_REASONS.cited);
       if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${decision.id} AND (o.supersedes_id = ${decision.id} OR o.superseded_by_id = ${decision.id})) AS found`))
         return used(REMOVAL_REASONS.cited);
+      // A task that waits for it is a use (#868): taking the proposal back would leave that task waiting for nothing.
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_work_items WHERE waiting_for_decision_id = ${decision.id}) AS found`)) return used(REMOVAL_REASONS.cited);
       try {
         await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${decision.id}`);
         await db.execute(sql`DELETE FROM project_decisions WHERE id = ${decision.id}`);

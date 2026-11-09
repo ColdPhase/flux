@@ -246,10 +246,13 @@ async function requireWaitingOn(ports: WorkPorts, projectId: string, taskId: str
   const task = await ports.work.findWork(on.id);
   if (!task || task.projectId !== projectId || task.creationRevertedAt) throw new RuleViolationError('The task is not part of this space', 'WAITING_ON_NOT_FOUND');
   if (task.status === 'done') throw new RuleViolationError('That task is already done; there is nothing to wait for', 'WAITING_ON_RESOLVED');
-  // Walk what that task waits for in turn: back at this one would leave both blocked for good.
+  // Walk what that task waits for in turn, as far as the chain goes: back at this one would leave both blocked for good. A task waits for one
+  // thing, so the chain is a line, and the set of tasks seen ends a loop that was somehow already there.
+  const seen = new Set<string>([task.id]);
   let next = task.waitingOn;
-  for (let hops = 0; taskId && next?.kind === 'task' && hops < 50; hops++) {
+  while (taskId && next?.kind === 'task' && !seen.has(next.id)) {
     if (next.id === taskId) throw new RuleViolationError('That task is waiting for this one', 'WAITING_ON_CYCLE');
+    seen.add(next.id);
     next = (await ports.work.findWork(next.id))?.waitingOn ?? null;
   }
 }
@@ -270,7 +273,7 @@ async function resumeWaiting(ports: WorkPorts, principal: Principal, by: ActorRe
   because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<void> {
   for (const id of ids) {
     const task = await ports.work.findWork(id, { lock: true });
-    if (!task || task.status !== 'blocked' || !stillWaits(task)) continue;
+    if (!task || task.creationRevertedAt || task.status !== 'blocked' || !stillWaits(task)) continue;
     let status: 'in_progress' | 'open' = 'in_progress';
     try { await assertPrerequisitesMet(ports.work, task.workspaceId, id); } catch (error) { if (!(error instanceof ConflictError)) throw error; status = 'open'; }
     // Leaving Blocked also clears why it was blocked (a blocker is for blocked work only).
@@ -492,7 +495,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           if (decision.kind === 'replay') return presentWork(ports, produced!);
         }
         await requireDependencyTargets(ports, project, dependencyIds);
-        const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related, ...parent])])].sort();
+        // A task that something waits for is in use (#868): its creation can no longer be undone from under the one that waits.
+        const existingTargets = [...new Set([...dependencyIds, ...(waitingOn?.kind === 'task' ? [waitingOn.id] : []), ...await ports.work.taskUseTargets([...sources, ...related, ...parent])])].sort();
         const useFence = await ports.work.lockPreparedTaskUse(existingTargets);
         requireDependencyScope(useFence.projectIds, project);
 
@@ -598,7 +602,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const previous = await directPrerequisiteIds(ports.work, workspaceId, [id]);
         // Finishing a task resumes the tasks that wait for it (#868): they are found under the graph lock and locked with it.
         const waiters = changes.status === 'done' ? await ports.work.waiters({ kind: 'task', id }) : [];
-        const used = [...new Set([id, ...previous, ...(dependencyIds ?? [])])].sort();
+        // A task that something waits for is in use (#868). One that is not a task of this space is left out here and refused below, with its own reason.
+        const waitTarget = changes.waitingOn?.kind === 'task' ? await ports.work.findWork(changes.waitingOn.id) : null;
+        const waitedFor = waitTarget && waitTarget.projectId === projectId && !waitTarget.creationRevertedAt ? [waitTarget.id] : [];
+        const used = [...new Set([id, ...previous, ...(dependencyIds ?? []), ...waitedFor])].sort();
         const useFence = await ports.work.lockPreparedTaskUse([...new Set([...used, ...waiters])].sort());
         requireDependencyScope(useFence.projectIds, projectId);
         const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id))!;

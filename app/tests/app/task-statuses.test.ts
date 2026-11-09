@@ -359,6 +359,63 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal(codeOf(await send(kai, 'POST', path, undefined, at(done.version))), 'NOT_WAITING_FOR_YOU');
     });
 
+    test('a task whose creation was undone while it waited holds nothing: its decision can be accepted and its task finished', async () => {
+      const undo = async (task: WorkItem) => expectStatus(await send(ada, 'POST', `/api/v1/work/${task.id}/creation-undo`, { clientCommandId: randomUUID(), expectedVersion: task.version }), 200);
+      const decision = await propose('Waited for by an undone task');
+      const fromDecision = await create({ title: 'Undone waiter for a decision', owner: human(ada), status: 'blocked', waitingOn: { kind: 'decision', id: decision.id } });
+      assert.equal(fromDecision.creationUndo?.eligible, true);
+      await undo(fromDecision);
+      await accept(decision, ada);
+      const stayed = await read(fromDecision);
+      assert.equal(stayed.lifecycle?.state, 'creation_reverted');
+      assert.deepEqual((await lineOf(fromDecision, 'task.resumed')), [], 'read-only history is not resumed');
+      // The same with a task: the waiter's creation is undone, and the task it waited for can be finished.
+      const awaited = await create({ title: 'Awaited by an undone task', owner: human(ada) });
+      const fromTask = await create({ title: 'Undone waiter for a task', owner: human(ada), status: 'blocked', waitingOn: { kind: 'task', id: awaited.id } });
+      await undo(fromTask);
+      const finished = await patch(awaited, { status: 'done' });
+      assert.equal(finished.status, 'done');
+      // And a live waiter beside a reverted one still resumes.
+      const target = await create({ title: 'Awaited by two', owner: human(ada) });
+      const live = await create({ title: 'Live waiter', owner: human(ada), status: 'blocked', waitingOn: { kind: 'task', id: target.id } });
+      const gone = await create({ title: 'Gone waiter', owner: human(ada), status: 'blocked', waitingOn: { kind: 'task', id: target.id } });
+      await undo(gone);
+      await patch(target, { status: 'done' });
+      assert.equal((await read(live)).status, 'in_progress');
+    });
+
+    test('a task that something waits for is in use: its creation cannot be undone from under the one that waits', async () => {
+      const awaited = await create({ title: 'Awaited prerequisite', owner: human(ada) });
+      assert.equal(awaited.creationUndo?.eligible, true);
+      await create({ title: 'Waits for it', owner: human(ada), status: 'blocked', waitingOn: { kind: 'task', id: awaited.id } });
+      const now = await read(awaited);
+      assert.equal(now.creationUndo?.eligible, false);
+      assert.equal(now.creationUndo?.reason, 'task_used');
+      const refusal = await send(ada, 'POST', `/api/v1/work/${awaited.id}/creation-undo`, { clientCommandId: randomUUID(), expectedVersion: now.version });
+      assert.equal(refusal.status, 409);
+      // Naming it later by a change is a use too.
+      const other = await create({ title: 'Another prerequisite', owner: human(ada) });
+      const waiter = await create({ title: 'Waits later', owner: human(ada) });
+      await patch(waiter, { status: 'blocked', waitingOn: { kind: 'task', id: other.id } });
+      assert.equal((await read(other)).creationUndo?.reason, 'task_used');
+    });
+
+    test('a chain of waiting tasks is followed to its end: a circle is refused however long the chain is', async () => {
+      const chain: WorkItem[] = [];
+      for (let index = 0; index < 55; index++) chain.push(await create({ title: `Link ${index}`, owner: human(ada) }));
+      // Each task waits for the next one: link 0 waits for 1, 1 for 2, and so on.
+      for (let index = 0; index < chain.length - 1; index++) chain[index] = await patch(chain[index]!, { status: 'blocked', waitingOn: { kind: 'task', id: chain[index + 1]!.id } });
+      await refused(chain.at(-1)!, { status: 'blocked', waitingOn: { kind: 'task', id: chain[0]!.id } }, 422, 'WAITING_ON_CYCLE');
+    });
+
+    test('a dropped task is done, so it satisfies the prerequisites of the tasks that need it', async () => {
+      const prerequisite = await create({ title: 'Prerequisite to drop', owner: human(ada) });
+      const needs = await create({ title: 'Needs the dropped one', owner: human(ada), dependencyIds: [prerequisite.id] });
+      await refused(needs, { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');
+      await patch(prerequisite, { status: 'done', dropped: true });
+      assert.equal((await patch(needs, { status: 'in_progress' })).status, 'in_progress');
+    });
+
     test('a person who is also the owner finishing their own wait is not told of it', async () => {
       const task = await create({ title: 'Own wait', owner: human(kai), status: 'blocked', waitingFor: human(kai) });
       const done = expectStatus(await send(kai, 'POST', `/api/v1/work/${task.id}/waiting-done`, undefined, { 'If-Match': `"${task.version}"` }), 200) as WorkItem;

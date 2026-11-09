@@ -113,6 +113,10 @@ when a prerequisite is still open, since Doing needs every one done):
 | a task | that task becomes done, by `PATCH`, by a result that finishes it, or dropped | #7 is done / #7 was dropped |
 | a person | they say they are done: `POST /work/:id/waiting-done` (the Inbox item's Done, or the panel's) | Jonas is done |
 
+A task that is Blocked when its agent's run ends is left as it is (the report says "Blocked: #4 …" in the agent's chat), in both "Do it and tell me" and "Ask me first": the drain does not mark it Done or hand it back, so the tasks that wait for it do not resume on a false Done. A person's Resolve of such a task does not start the agent again; only a resolved wait does.
+
+A dropped task is `done`, so it satisfies the prerequisites of the tasks that need it. A task that something waits for is in use: naming it marks it used, so its creation cannot be undone (`task_used`) and the Undo of the agent run that made it is refused; the Undo of a run that proposed a decision a task waits for is refused the same way ("Used since"). A task whose creation was undone is read-only history: it waits for nothing, so it never holds the decision or task it named, and it is not resumed. The cycle check follows the chain to its end.
+
 Each resumed task keeps an activity entry marked `automation: 'wait_resolved'`, a `task.resumed` line in the stream ("#4 can
 continue: the decision was accepted", `reason` is the phrase), and tells its owner once: a person gets a notification of that
 sentence (`project.work_updated.v1` with `resumedFor`, `reason` and `taskId`), an agent that holds it picks it up again as when it was
