@@ -90,11 +90,12 @@ const mainRequests = (entries: CliJournalEntry[], client: 'claude' | 'codex') =>
 const fluxTools = (entry: CliJournalEntry) => (entry.tools ?? []).flatMap((name) => /^mcp__flux(?:__|\.)(flux_[a-z_]+)$/.exec(name)?.[1] ?? []).sort();
 /**
  * What else a request offered beyond the CLI's allowed own tools: Claude Code's `WebSearch` and `EndConversation`; Codex's MCP resource
- * readers, whose calls are `codex` server items the run reader stops (#1127).
+ * readers, whose calls are `codex` server items the run reader stops (#1127), and with the web on its own search (#1065): `web.run` for a
+ * Responses Lite model, the hosted `web_search` for another.
  */
 const ALLOWED_OWN: Record<'claude' | 'codex', string[]> = {
   claude: ['WebSearch', 'EndConversation'],
-  codex: ['functions.list_mcp_resources', 'functions.list_mcp_resource_templates', 'functions.read_mcp_resource'],
+  codex: ['functions.list_mcp_resources', 'functions.list_mcp_resource_templates', 'functions.read_mcp_resource', 'web.run', 'web_search'],
 };
 const otherTools = (entry: CliJournalEntry, client: 'claude' | 'codex') => (entry.tools ?? []).filter((name) => !/^mcp__flux(?:__|\.)flux_/.test(name) && !ALLOWED_OWN[client].includes(name));
 type Engine = 'claude' | 'codex';
@@ -250,14 +251,48 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const from = await lastEntry();
     const run = await askAi(ada, conversationId!, 'Search the web for the camera\'s low light threshold.');
     assert.equal(run.status, 'completed', JSON.stringify(run));
-    const searches = await pool.query<{ queries: string[]; results: string[]; pending: boolean }>(`SELECT queries, results, pending FROM personal_run_web_searches WHERE run_id = $1`, [run.id]);
-    assert.deepEqual(searches.rows, [{ queries: [query], results: [PAGE.second, PAGE.notes], pending: false }], 'the search and its result addresses are the run\'s');
+    const searches = await pool.query<{ queries: string[]; results: string[] }>(`SELECT queries, results FROM personal_run_web_searches WHERE run_id = $1 ORDER BY searched_at, id`, [run.id]);
+    assert.deepEqual(searches.rows[0], { queries: [query], results: [PAGE.second, PAGE.notes] }, 'the search and its result addresses are the run\'s');
     const reads = await pool.query<{ url: string; outcome: string }>(`SELECT url, outcome FROM personal_run_web_reads WHERE run_id = $1`, [run.id]);
     assert.deepEqual(reads.rows, [{ url: PAGE.notes, outcome: 'read' }]);
     const entries = await journalSince(from);
     assert.ok(mainRequests(entries, 'claude')[0]!.tools!.includes('WebSearch'), 'the CLI kept its own WebSearch');
     assert.equal(entries.filter((entry) => entry.kind === 'web_search').length, 1, 'the CLI ran the search through the Messages API');
     print({ CLAUDE_SEARCH_RUN: run.id, RESULTS: searches.rows[0]!.results.length });
+  },
+
+  /**
+   * Codex's own web search (#1065, C-30): Flux's run turns it on (`web_search="cached"`), the model is offered the CLI's standalone
+   * `web.run`, the CLI asks the search endpoint itself with `external_web_access: false`, and its `web_search` item's queries and search
+   * result entries are written to the run; `flux_read_web` reads one of them and the answer lists them.
+   */
+  async 'codex-search'() {
+    const bo = await owner('bo');
+    const { conversationId } = await load();
+    const query = 'camera low light lux threshold';
+    await script('codex', [
+      { search: { query, results: [{ url: PAGE.second, title: 'Second page' }, { url: PAGE.notes, title: 'Notes' }], text: 'Two pages.' } },
+      { tool: 'flux_read_web', args: { url: PAGE.notes } },
+      { text: `Done: the notes are at ${PAGE.notes}.` },
+    ]);
+    const from = await lastEntry();
+    const run = await askAi(bo, conversationId!, 'Search the web for the camera\'s low light threshold.');
+    assert.equal(run.status, 'completed', JSON.stringify(run));
+    const row = await runRow(run.id);
+    assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null]);
+    const searches = await pool.query<{ queries: string[]; results: string[] }>(`SELECT queries, results FROM personal_run_web_searches WHERE run_id = $1 ORDER BY searched_at, id`, [run.id]);
+    assert.deepEqual(searches.rows[0], { queries: [query], results: [PAGE.second, PAGE.notes] }, `the search and its result addresses are the run's: ${JSON.stringify(searches.rows)}`);
+    const reads = await pool.query<{ url: string; outcome: string }>(`SELECT url, outcome FROM personal_run_web_reads WHERE run_id = $1`, [run.id]);
+    assert.deepEqual(reads.rows, [{ url: PAGE.notes, outcome: 'read' }]);
+    assert.ok(row.answer_body?.includes(`Searched the web for:\n- ${query}`) && row.answer_body.includes(`Found on the web:\n- ${PAGE.notes}`), row.answer_body ?? '');
+    const entries = await journalSince(from);
+    const main = mainRequests(entries, 'codex');
+    assert.ok(main[0]!.tools!.includes('web.run') || main[0]!.tools!.includes('web_search'), `the CLI kept its own search: ${JSON.stringify(main[0]!.tools)}`);
+    const searched = entries.filter((entry) => entry.client === 'codex' && entry.kind === 'web_search');
+    assert.equal(searched.length, 1, 'the CLI ran the search itself against the vendor');
+    assert.equal(searched[0]!.detail?.externalWebAccess, false, 'on the cached index: no live request to a site');
+    print({ CODEX_SEARCH_RUN: run.id, OFFERED: main[0]!.tools!.filter((name) => name.startsWith('web')).join(','), RESULTS: searches.rows[0]!.results.length,
+      EXTERNAL_WEB_ACCESS: searched[0]!.detail?.externalWebAccess });
   },
 
   /**

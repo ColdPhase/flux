@@ -156,8 +156,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   `external_web_access: false` (`core/src/tools/hosted_spec.rs`). Either way no live request reaches a
   site from the runtime, the egress does not change, and a page the model asks to open is read from
   OpenAI's index (OpenAI's description of `external_web_access`, a vendor claim). **Observed with the
-  real pinned binary** (offline, a local mock as the model and the search endpoint, 2026-11-09): with
-  Flux's web-on overrides the default model was offered `web.run`; its call reached `alpha/search` with
+  real pinned binary** (offline, a local mock as the model and the search endpoint, 2026-11-09; and
+  through Flux's whole path, with Flux's model catalog of #1127, in `scripts/check_cli_runtime.sh`
+  step 12): with Flux's web-on overrides the default model was offered `web.run`; its call reached `alpha/search` with
   `external_web_access: false`; and `codex exec --json` printed the `web_search` item started with no
   query and completed with its query, action and `results` (`text_result` entries, `ref_id`
   `turn0search0` for a search result and the address itself for a page it opened). With the web off,
