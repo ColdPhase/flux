@@ -27,6 +27,12 @@ def shot(page, name):
 PASSWORD = "quiet activity in a real conversation"
 STAMP = uuid.uuid4().hex[:12]
 PEOPLE = {"alice": "Alice Rivera", "bob": "Bob Nowak", "viewer": "Nia Okafor", "outsider": "Lee Park"}
+# A sender who goes quiet is kept for 5000 ms after the last pulse and dropped on the server's next 1000 ms heartbeat, so a receiver sees the
+# notice go 5000 to 6000 ms after the pulse (docs/development/typing/2026-10-01-contract.md). The clock here starts when the notice appeared, a little
+# after the pulse, and `expect` polls only once a second at its slowest: the app, inside the contract, took 5293 ms on an idle host and was still showing
+# at 6000 ms in a 1433-test run (the same flake as 2026-10-29, docs/development/evidence/151-155-closeout). The extra 3000 ms is for that poll and a
+# loaded host; a notice that never expires still fails.
+IDLE_EXPIRY_MS = 6000 + 3000
 
 
 class TypingJourney(unittest.TestCase):
@@ -184,7 +190,7 @@ class TypingJourney(unittest.TestCase):
         self.measure("project-blur-stop", lambda: self.composer(alice).blur(), lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=750), 750)
         self.composer(alice).fill("PRIVATE-DRAFT idle author")
         expect(notice).to_contain_text("Alice Rivera", timeout=2000)
-        self.measure("project-idle-expiry", lambda: None, lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=6000), 6000)
+        self.measure("project-idle-expiry", lambda: None, lambda: expect(notice).not_to_contain_text("Alice Rivera", timeout=IDLE_EXPIRY_MS), IDLE_EXPIRY_MS)
         final = alice.request.get(f"/api/v1/conversations/{self.conversations[0]}").json()
         self.assertEqual(original["messages"], final["messages"], "typing creates no native history")
         self.assert_wire(alice, "alice")
