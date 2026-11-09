@@ -89,8 +89,6 @@ button.ws-task__glyph:active { background: var(--hov); }
 /* The pinned title paints the panel's own surface, so it is not a box of its own (#693). */
 .wd-decision-identity { position: sticky; top: -20px; z-index: 2; padding: var(--s-2) 0 var(--s-1); background: var(--panel-bg, var(--el)); border-bottom: 1px solid var(--line); }
 .ui-sheet .wd-decision-identity { top: -18px; }
-/* The Accept block is a section like the others: no surface of its own, the panel's rhythm inside it (#693). */
-.wd-accept > .wd-muted { margin-top: var(--s-2); }
 /* A form's primary action and its one line of help are a section: --s-2 between them, the section gap around (#692). */
 /* A form's primary sits at the bottom right, as in the Create window and the hand-off (SP-5, #763). */
 .wd-submit .wd-actions { margin-top: 0; justify-content: flex-end; }
@@ -200,16 +198,10 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-form > label { margin-top: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
 .wd-form textarea { width: 100%; padding: 9px 12px; border: 0; border-radius: var(--r); background: var(--el); color: var(--t1); font-size: var(--fs-base); line-height: 1.5; resize: vertical; box-shadow: inset 0 0 0 1px var(--line2); }
 .wd-form textarea:focus, .wd-form .ui-select:focus { outline: none; box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
-.wd-seg { display: flex; padding: 2px; margin-top: 6px; border-radius: var(--r); background: var(--hov); }
-.wd-seg__b { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 32px; border-radius: 6px; font-size: var(--fs-sm); font-weight: 500; color: var(--t3); cursor: pointer; transition: var(--tr); }
-.wd-seg__b input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
-.wd-seg__b:has(input:checked) { background: var(--el); color: var(--t1); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
-.wd-seg__b:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 1px; }
 .wd-check { display: flex; align-items: center; gap: 8px; margin-top: 4px; font-size: var(--fs-md); color: var(--t2); }
 
 @media (pointer: coarse) {
   .wd-link { min-height: 44px; }
-  .wd-seg__b { min-height: 44px; }
   .wd-form .ui-select, .wd-pick .ui-select { min-height: 44px; font-size: var(--fs-input-touch); }
   .wd-form textarea { font-size: var(--fs-input-touch); }
 }

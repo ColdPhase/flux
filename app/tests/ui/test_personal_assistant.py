@@ -196,7 +196,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(self.composer(page)).to_have_value("Summarize this for me")
         shot(page, "assistant-1440-not-set-up")
         bar.get_by_role("button", name="Connect your AI").click()
-        panel = page.get_by_role("complementary", name="Details")
+        panel = page.get_by_role("complementary", name="Connect your AI")  # headed by the button that opened it (#1058)
         expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
         # Details take the thread's one panel; "back" returns to the reply being written.
         panel.get_by_role("button", name="Thread").click()

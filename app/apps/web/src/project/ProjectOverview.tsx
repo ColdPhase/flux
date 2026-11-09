@@ -217,8 +217,11 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
 
       {/* Who is in the space, in one sentence; the people and the controls to change them are in its settings (F-037). */}
       <section className="details__sec ov-sec" aria-label="Space settings">
-        {/* Said only when the space is narrower than the default, everyone in the company (#871). */}
-        {project.visibility === 'workspace' ? null : <p className="access__line"><Icon name="lock" size={13} /><span>Only the people added to it can open it.</span></p>}
+        {/* A restricted space (where a new space starts, F-037) says who can open it once: the space's own head names the people in it, so
+            there the line adds only who else can, the company's owners and admins, who reach every space but an encrypted one (its people
+            are its own). A message's or a thread's panel has no such head. Everyone, open to the whole company, says nothing more (#871, #1058). */}
+        {project.visibility === 'workspace' ? null : <p className="access__line"><Icon name="lock" size={13} /><span>{encrypted ? 'Only the people added to it can open it.'
+          : projectMode ? 'The company’s owners and admins can open it too.' : 'Only the people added to the space and the company’s owners and admins can open it.'}</span></p>}
         {/* F-030 (#655): an encrypted space says so, in one line. */}
         {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
         <Link className="ov-row" to={`/projects/${project.id}/settings`} onClick={closePanel}>

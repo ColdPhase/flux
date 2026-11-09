@@ -720,7 +720,7 @@ class AppShellJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         open_details(page)
-        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
+        page.get_by_role("dialog", name=re.compile("Space details|Message info")).get_by_role("button", name=re.compile("^Close (space details|message info)$")).click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
     def test_07_phone_dark_and_narrow(self) -> None:

@@ -782,13 +782,14 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       if (cause instanceof ApiError && cause.status === 409) { setAttempt(crypto.randomUUID()); reload(); }
     } finally { setBusy(false); }
   }
-  // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it.
+  // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it. A proposed decision
+  // whose earlier one is named below does not also say "replaces an earlier decision" in its top line: it is said once (#1058).
   const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
       <div className="wd-decision-identity">
-        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{decisionLine(decision)}</Morph>{need ? <span className="nyc__chip wd-need-chip">Needs you</span> : null}</p>
+        <p className={`details__eyebrow wd-eyebrow${decision.status === 'proposed' ? ' wd-need' : ''}`}><Icon name="rule" size={13} /><Morph value={decision.status}>{earlier ? decisionLine({ ...decision, supersedes: null }) : decisionLine(decision)}</Morph>{need ? <span className="nyc__chip wd-need-chip">Needs you</span> : null}</p>
         <h3 className={`details__title${decision.status === 'superseded' ? ' wd-was' : ''}`}>{decision.title}</h3>
       </div>
       {decision.rationale ? <p className="details__lead">{decision.rationale}</p> : null}
@@ -947,8 +948,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
 
   return (
     <form className="details wd" onSubmit={(event) => void submit(event)}>
-      {/* One title (#763 B6). */}
-      <h3 className="details__title">Propose a decision</h3>
+      {/* The panel's heading is "Propose a decision" (#1058): one title (#763 B6). */}
       {contextStatus}
       {context ? <SourcePreview view={view} /> : null}
       <fieldset className="wd-form" disabled={busy}>

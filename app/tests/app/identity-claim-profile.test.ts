@@ -29,6 +29,12 @@ describe('generic OpenID Connect claims', () => {
     assert.deepEqual(profileFromClaims(issuer, { iss: `${issuer}/`, sub: 'sub-1', email: ' Alice@Acme.test ', email_verified: true, name: 'Alice' }),
       { ok: true, subject: 'sub-1', email: 'alice@acme.test', name: 'Alice' });
   });
+  test('an address the provider reports with a decomposed letter is the composed one (#1070)', () => {
+    const composed = 'jos\u00e9@acme.test';
+    const decomposed = 'jose\u0301@Acme.test';
+    assert.notEqual(composed, decomposed);
+    assert.deepEqual(profileFromClaims(issuer, { iss: issuer, sub: 'sub-2', email: decomposed, email_verified: true }), { ok: true, subject: 'sub-2', email: composed, name: null });
+  });
   test('an unverified address, another issuer, or no subject is refused', () => {
     assert.equal(profileFromClaims(issuer, { iss: issuer, sub: 'sub-1', email: 'a@acme.test', email_verified: false }).ok, false);
     assert.deepEqual(profileFromClaims(issuer, { iss: 'https://evil.example', sub: 'sub-1', email: 'a@acme.test', email_verified: true }), { ok: false, reason: 'issuer' });

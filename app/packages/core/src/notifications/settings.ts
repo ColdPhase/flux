@@ -41,15 +41,24 @@ export class MailUnavailableError extends DomainError {
 
 export class MailSendError extends DomainError {
   constructor() {
-    super(503, 'EMAIL_SEND_FAILED', 'The verification email could not be sent; try again in a moment');
+    super(503, 'EMAIL_SEND_FAILED', 'The confirmation email could not be sent; try again in a moment');
   }
 }
 
+/** The person's own limit: one link a minute, five an hour, across all of their addresses. */
 export class TooSoonError extends DomainError {
-  constructor(readonly retryAfterSeconds: number, hourly = false) {
-    super(429, 'VERIFICATION_RECENTLY_SENT', hourly || retryAfterSeconds > VERIFICATION_LIMITS.cooldownSeconds
-      ? 'Too many verification links this hour; try again later'
-      : 'A verification link was sent less than a minute ago');
+  constructor(readonly retryAfterSeconds: number) {
+    super(429, 'VERIFICATION_RECENTLY_SENT', retryAfterSeconds > VERIFICATION_LIMITS.cooldownSeconds
+      ? 'Too many confirmation links this hour; try again later'
+      : 'A confirmation link was sent less than a minute ago');
+    this.details = { retryAfterSeconds };
+  }
+}
+
+/** The address's own limit, which other accounts can have used up: it blames nobody and is not the person's cooldown (#1070). */
+export class AddressLimitError extends DomainError {
+  constructor(readonly retryAfterSeconds: number) {
+    super(429, 'ADDRESS_CONFIRMATION_LIMIT', 'No more confirmation links can be sent to this address for now; try again later');
     this.details = { retryAfterSeconds };
   }
 }
@@ -73,6 +82,19 @@ export interface Account {
 
 function addressView(record: AddressRecord): NotificationAddress {
   return { id: record.id, email: record.email, enabled: record.enabled, verified: !!record.verifiedAt, verifiedAt: record.verifiedAt?.toISOString() ?? null, sentAt: record.lastSentAt?.toISOString() ?? null };
+}
+
+/**
+ * What the address limit counts as one mailbox (#1056, #1070): the address in Unicode normal form C and lower case, without a `+tag`
+ * in its local part, so `name+a@example.org` and `name+b@example.org` are `name@example.org`. The key only; the stored address
+ * keeps its tag. A local part that starts with `+` is kept whole.
+ */
+export function addressLimitKey(email: string) {
+  const value = email.trim().normalize('NFC');
+  const at = value.lastIndexOf('@');
+  const local = value.slice(0, at);
+  const plus = local.indexOf('+');
+  return `${(plus > 0 ? local.slice(0, plus) : local).toLowerCase()}@${value.slice(at + 1).toLowerCase()}`;
 }
 
 /** Trimmed, in Unicode normal form C (é typed as one character or as e and an accent is one address, #1056), with the domain in lower case. */
@@ -105,12 +127,19 @@ export function createNotificationSettings(ports: SettingsPorts) {
     };
   }
 
-  /** One send, within the person's limit and the address's own (#1056). */
+  /**
+   * One send, within the address's limit and the person's (#1056). The address's comes first: its refusal spends nothing of the
+   * person's cooldown, and a refusal of the person gives back the address's slot, so neither counts a link that was not sent (#1070).
+   */
   async function reserveSend(userId: string, email: string) {
+    const hash = hashToken(addressLimitKey(email));
+    const target = await ports.addresses.reserveAddressSend(hash, TARGET_VERIFICATION_LIMITS);
+    if (!target.allowed) throw new AddressLimitError(target.retryAfterSeconds);
     const person = await ports.addresses.reserveVerificationSend(userId, VERIFICATION_LIMITS);
-    if (!person.allowed) throw new TooSoonError(person.retryAfterSeconds);
-    const target = await ports.addresses.reserveAddressSend(hashToken(email.toLowerCase()), TARGET_VERIFICATION_LIMITS);
-    if (!target.allowed) throw new TooSoonError(target.retryAfterSeconds, true);
+    if (!person.allowed) {
+      await ports.addresses.releaseAddressSend(hash);
+      throw new TooSoonError(person.retryAfterSeconds);
+    }
   }
 
   async function sendVerification(address: AddressRecord) {

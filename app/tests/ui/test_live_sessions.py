@@ -814,12 +814,18 @@ class LiveJourney(LiveBase):
         shot(phone, "live-phone-390-stage")
         stage.get_by_role("button", name="Back to work").click()
         # Typing with the session open keeps the draft through navigation.
-        composer_box = phone.get_by_role("textbox").last
-        composer_box.fill("Filter out gives 18 of 20 at 5 lux, writing it up now")
+        draft = "Filter out gives 18 of 20 at 5 lux, writing it up now"
+        composer_box = phone.get_by_label("Write a message", exact=True)
+        composer_box.fill(draft)
         project_view(phone, "Wiki")
         expect(phone).to_have_url(re.compile(r"/docs(/|$)"))
+        expect(phone.locator(".wiki-editor")).to_be_visible()
         project_view(phone, "Conversation")
-        expect(phone.get_by_role("textbox").last).to_have_value("Filter out gives 18 of 20 at 5 lux, writing it up now")
+        # The router keeps the Wiki on screen until the conversation has loaded, and under load that takes a moment after the tap: the
+        # last textbox then is the page's editor, and `to_have_value` does not retry on an element that is not a field ("Not an input
+        # element", #1074). Wait for the place first, then read the composer by its name.
+        expect(phone).not_to_have_url(re.compile(r"/docs(/|$)"))
+        expect(composer_box).to_have_value(draft)
         expect(self.bar(phone)).to_be_visible()
         self.assertEqual(phone.evaluate("window.__live.sockets"), 1)
 

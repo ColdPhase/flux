@@ -11,7 +11,7 @@ import {
   type UpdateNotificationPreferencesCommand,
   type VerifyNotificationAddressCommand,
 } from '@flux/contracts';
-import { TooSoonError, unsubscribe } from '@flux/core';
+import { AddressLimitError, TooSoonError, unsubscribe } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import type { SmtpConfig } from '../identity/config.js';
@@ -35,7 +35,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
   useDomainErrors(app);
   // A throttled verification send says when to try again (HTTP 429 + Retry-After).
   app.addHook('onError', async (_request, reply, error) => {
-    if (error instanceof TooSoonError) reply.header('retry-after', String(error.retryAfterSeconds));
+    if (error instanceof TooSoonError || error instanceof AddressLimitError) reply.header('retry-after', String(error.retryAfterSeconds));
   });
   const mailer = verificationMailer(smtp);
   app.addHook('onClose', async () => mailer.close());
