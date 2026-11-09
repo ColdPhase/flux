@@ -95,7 +95,7 @@ no fifth state, and no existing data to convert (migration 0035, F-038). `droppe
 task is done: a command that sets them on another state is `400`, and leaving Done clears both (what was written in the discussion
 stays). `cameOfIt` is one line of at most 500 characters (line breaks become spaces); a nonempty line is also one authored
 contribution to the task's discussion, `contribution.kind` `came_of_it`, written like a saved blocker (the same command identity,
-never twice for a retry, and not at all for an Undo's `restore`). It is sealed in an encrypted space like the blocker.
+never twice for a retry, and not at all for an Undo's `restore`). Five agent messages in a row (C-51) refuse a message, never the Done that carries the line: the line stays on the task and only the discussion message is not written. It is sealed in an encrypted space like the blocker.
 
 **One thing to wait for.** A blocked task waits for one person (`waitingFor`, #550), one decision (`waitingOn: { kind: 'decision', id }`,
 still proposed) or one other task of the space (`waitingOn: { kind: 'task', id }`, not done), never two (`400`); naming one clears the
