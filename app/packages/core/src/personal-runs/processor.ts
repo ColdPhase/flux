@@ -14,7 +14,7 @@ import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerWithWebSources } from './web-sources.js';
-import { boundedWebSearch } from './web-addresses.js';
+import { boundedWebSearch, keptPrivateText } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
@@ -433,6 +433,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (checked.connection.id !== connection.id) return end('unavailable');
       if (!fitted) return end('input_too_large');
       await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date(), answerSources: fitted.sources.map((source) => source.ref) });
+      // What the model is given is private Flux text the run read (#1065, C-30): a web address may not carry it. All it read, the fit aside.
+      const briefed = brief(read.sources, false, search);
+      await ports.runs.addPrivateText(run.id, keptPrivateText(`${briefed.system}\n${briefed.request}`));
       await taskFence?.mark();
       return { done: false as const, fitted };
     });

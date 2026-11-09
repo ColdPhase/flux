@@ -30,13 +30,13 @@ function eventOf(frame: RunFrame): PersonalRuntimeEvent {
     case 'init': return { kind: 'init', tools: [...frame.tools], mcpServers: frame.servers.map((server) => ({ ...server })) };
     case 'tool': return { kind: 'tool', name: frame.name };
     case 'search': return { kind: 'search', n: frame.n, query: frame.query };
-    case 'found': return { kind: 'found', n: frame.n, results: [...frame.results] };
+    case 'found': return { kind: 'found', n: frame.n, results: [...frame.results], queries: [...(frame.queries ?? [])] };
   }
 }
 
 /**
- * `webSearch`: the operator's web switch (`FLUX_WEB_READS`, C-29). On, a run on the owner's Claude Code keeps its own `WebSearch` (#1065);
- * Codex's search stays off (RT-5).
+ * `webSearch`: the operator's web switch (`FLUX_WEB_READS`, C-29). On, a run keeps the CLI's own web search (#1065, RT-5): Claude Code's
+ * `WebSearch`, Codex's standalone web search.
  */
 export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database, { webSearch = false }: { webSearch?: boolean } = {}): PersonalRuntime {
   const manager = config.manager;
@@ -64,7 +64,7 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database,
       const client = target.client ?? 'claude_code';
       const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client, runId: request.runId,
         prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}),
-        ...(request.webSearch && client === 'claude_code' ? { webSearch: true as const } : {}) }, (frame) => onEvent(eventOf(frame)));
+        ...(request.webSearch ? { webSearch: true as const } : {}) }, (frame) => onEvent(eventOf(frame)));
       // Connect AI's usage line (#854): what the provider reported (Codex's own read), or the limit the run met.
       if (outcome.ok) {
         const result = outcome.result;

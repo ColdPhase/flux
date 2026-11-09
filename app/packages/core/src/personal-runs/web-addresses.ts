@@ -1,12 +1,8 @@
-// Which web addresses an agent may read (#953, F-036 AG-8, coordinator default C-30). The server fetches what an agent names, so an address
-// is a way to send something to a site: `http://site/collect?d=<what the agent knows>`. An agent therefore reads only addresses it was
-// GIVEN: written in the request it answers, in the task or conversation it works in, or on a page it read in the same run. It never
-// composes one, so nothing it knows can be put into one; it can only choose among addresses that already stood there. The comparison is
-// exact (the whole address, query included; the fragment never travels and is ignored). A run reads as many of them as its question
-// needs (founder direction, Hubert, 2026-11-09, #1113): the count is not limited, and the accepted risk is that a page with many links
-// can leak what the agent knows through WHICH of the addresses it then chooses to open (decisions.md, "The risk, recorded").
-/** The most addresses a run is given when it starts, from all the texts together. */
-export const GIVEN_AT_START_MAX = 400;
+// Web addresses in a run (#918, #953, #954, #1065, F-036 AG-8, C-30). Since the founder's direction of 2026-11-09 an agent may open ANY
+// public address. An address is still a way to send something to a site (`http://site/collect?d=<what the agent knows>`), so the server
+// refuses one that carries private Flux text the run read, written into it as it was (`privateFragmentIn`): the brief tells the agent never
+// to put anything from Flux into an address, and this check stops the plain copy. What the agent rewrote, encoded or signals by which
+// address it chooses can still leave; the founder accepted that (decisions.md, "The risk, recorded").
 /** The most addresses taken from one text, and from one page's text. */
 export const ADDRESSES_PER_TEXT = 50;
 /** The longest address that is read (the tool's own bound). */
@@ -54,17 +50,63 @@ export function addressesIn(text: string, most = ADDRESSES_PER_TEXT): string[] {
   return [...found];
 }
 
-/** Whether `address` stands in one of the `given` texts. */
-export function isGivenAddress(address: string, given: ReadonlySet<string>): boolean {
-  const normalized = normalizedAddress(address);
-  return normalized !== null && given.has(normalized);
+/** How long a fragment of private Flux text is that an address may not carry (#1065, C-30), in compared characters. */
+export const PRIVATE_FRAGMENT_CHARS = 12;
+/** How many of its characters are letters or digits: punctuation and spaces alone never make a fragment. */
+const FRAGMENT_LETTERS = 6;
+
+/** Runs of percent-encoded bytes, decoded as UTF-8 (a broken sequence becomes U+FFFD, never an error). */
+const decodedOnce = (text: string) => text.replace(/(?:%[0-9a-f]{2})+/gi, (run) => Buffer.from(run.replace(/%/g, ''), 'hex').toString('utf8'));
+
+/**
+ * Text as an address and private Flux text are compared (#1065): NFKC, percent-decoded up to three times (an address encoded twice is
+ * still compared as written), `+` as a space, lower case, and each run of space characters as one space.
+ */
+export function comparableText(text: string): string {
+  let out = text.normalize('NFKC');
+  for (let pass = 0; pass < 3; pass++) {
+    const decoded = decodedOnce(out);
+    if (decoded === out) break;
+    out = decoded;
+  }
+  return out.replace(/\+/g, ' ').toLowerCase().replace(/\s+/g, ' ');
 }
 
-/** The addresses written in all of these texts. */
-export function givenAddresses(texts: readonly string[]): Set<string> {
-  const given = new Set<string>();
-  for (const text of texts) for (const address of addressesIn(text)) given.add(address);
-  return given;
+/**
+ * Private Flux text as the run keeps it for the check (#1065): comparable, without the web addresses and host names written in it (a word
+ * with `://`, or with a dot between two letters or digits, such as `a.example/x`), so an address a person wrote can still be opened.
+ */
+export function keptPrivateText(text: string): string {
+  return comparableText(text.split(/(\s+)/).map((word) => (word.includes('://') || /[\p{L}\p{N}]\.[\p{L}\p{N}]/u.test(word) ? ' ' : word)).join(''));
+}
+
+/**
+ * Whether a window of compared text can be a fragment: 12 characters with at least 6 letters or digits, of two words or more or with a
+ * digit. One long word alone ("documentation", a name) is too common to tell what a run read from what everybody writes.
+ */
+function fragmentLike(window: string): boolean {
+  return (window.match(/[\p{L}\p{N}]/gu)?.length ?? 0) >= FRAGMENT_LETTERS && /[\s\p{N}]/u.test(window);
+}
+
+/**
+ * The first fragment of private Flux text the run read (`texts`, kept by `keptPrivateText`) that `address` carries (#1065, C-30): the
+ * server refuses to open it. Null when it carries none.
+ */
+export function privateFragmentIn(address: string, texts: readonly string[]): string | null {
+  const compared = comparableText(address);
+  const windows = new Set<string>();
+  for (let at = 0; at + PRIVATE_FRAGMENT_CHARS <= compared.length; at++) {
+    const window = compared.slice(at, at + PRIVATE_FRAGMENT_CHARS);
+    if (fragmentLike(window)) windows.add(window);
+  }
+  if (!windows.size) return null;
+  for (const text of texts) {
+    for (let at = 0; at + PRIVATE_FRAGMENT_CHARS <= text.length; at++) {
+      const window = text.slice(at, at + PRIVATE_FRAGMENT_CHARS);
+      if (windows.has(window)) return window;
+    }
+  }
+  return null;
 }
 
 /**

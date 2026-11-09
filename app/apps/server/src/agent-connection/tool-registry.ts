@@ -78,11 +78,11 @@ export interface AgentToolRegistrar {
 }
 /**
  * Capability entries are written only when the corresponding real MCP tool is registered. `bound`, set for
- * a personal run's token only, sees every tool result before it is returned (F-022 "Caps"). Every tool is listed
+ * a personal run's token only, sees every tool result, and the tool's name, before it is returned (F-022 "Caps"; #1065). Every tool is listed
  * to every client: what a call may do is decided when it is made, by the owner's rights and the agent's "What it may do"
  * (an agent set to Only read gets plain words for a change), never by a scope or a switch chosen at sign-in (#859).
  */
-export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>,
+export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown, tool: string) => Promise<unknown>,
   run?: { projectId: string | null }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
@@ -121,7 +121,7 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         // its original receiver/arguments without reconstructing a conditional signature.
         const guarded = new Proxy(callback, { apply(target, receiver, args) {
           const output = dispatch.run('tool', name, () => Reflect.apply(target, receiver, args));
-          return bound ? Promise.resolve(output).then(bound) : output;
+          return bound ? Promise.resolve(output).then((result) => bound(result, name)) : output;
         } });
         const handle = server.registerTool(name, config, guarded);
         handles.set(name, handle);

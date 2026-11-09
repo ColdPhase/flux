@@ -1074,8 +1074,6 @@ export const projectWorkItems = pgTable('project_work_items', {
   creationReversionNoticeId: uuid('creation_reversion_notice_id'),
   /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
   criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
-  /** 0019 (#953): an agent wrote or edited the title, outcome or criteria; sticky. Its addresses are not given to a run. */
-  textByAgent: boolean('text_by_agent').notNull().default(false),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1625,8 +1623,6 @@ export const personalRuns = pgTable('personal_runs', {
   /** 0008 (#856): who pressed Stop, so the owner is told. */
   stopRequestedBy: text('stop_requested_by').references(() => authUsers.id, { onDelete: 'set null' }),
   prompt: text('prompt').notNull(),
-  /** 0019 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
-  given: text('given').array().notNull().default(sql`'{}'`),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
   continuesRunId: uuid('continues_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
@@ -1732,7 +1728,7 @@ export const agentTaskEvents = pgTable('agent_task_events', {
 /**
  * The addresses the server sent a request to for a run's agent (#918, migration 0013; #953, migration 0019): the run's answer ends with
  * them, the pages that came back and the others. `finalUrl` is the address requested (each redirect hop is one row), `outcome` what became
- * of it, `seen` the addresses written in the text the agent got back. The page's text is never kept.
+ * of it. The page's text is never kept.
  */
 export const personalRunWebReads = pgTable('personal_run_web_reads', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1741,13 +1737,11 @@ export const personalRunWebReads = pgTable('personal_run_web_reads', {
   finalUrl: text('final_url').notNull(),
   title: text('title'),
   outcome: text('outcome', { enum: ['asked', 'read', 'redirected', 'blocked', 'unreachable', 'timeout', 'status', 'type', 'redirects', 'invalid', 'empty'] }).notNull().default('read'),
-  seen: text('seen').array().notNull().default(sql`'{}'`),
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('personal_run_web_reads_run_idx').on(table.runId, table.readAt)]);
 
 /**
- * 0041 (#954): what each provider answer's built-in web search brought to a run: its queries, results and cited addresses (C-30).
- * 0046 (#1065): a Claude Code search is written when the CLI starts it, `pending` until its results come back.
+ * 0041 (#954): what each web search of a run brought: its queries, results and cited addresses (C-30); the CLI's searches since #1065.
  */
 export const personalRunWebSearches = pgTable('personal_run_web_searches', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -1755,9 +1749,19 @@ export const personalRunWebSearches = pgTable('personal_run_web_searches', {
   queries: text('queries').array().notNull().default(sql`'{}'`),
   results: text('results').array().notNull().default(sql`'{}'`),
   cited: text('cited').array().notNull().default(sql`'{}'`),
-  pending: boolean('pending').notNull().default(false),
   searchedAt: timestamp('searched_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
 }, (table) => [index('personal_run_web_searches_run_idx').on(table.runId, table.searchedAt)]);
+
+/**
+ * 0049 (#1065, C-30): the private Flux text a run has read (its brief, and each Flux tool result), compared-ready, so the server can refuse
+ * a web address that carries a fragment of it. Kept only for that check; deleted with the run.
+ */
+export const personalRunPrivateTexts = pgTable('personal_run_private_texts', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, (table) => [index('personal_run_private_texts_run_idx').on(table.runId)]);
 
 /** The agent change log (migration 0104, F-027 A3 #403; reasons and states of 0003, F-036 #855): one row per effect call of a run. */
 export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'skipped', 'undone', 'refused'] as const;
@@ -1824,8 +1828,6 @@ export const assistantJobs = pgTable('assistant_jobs', {
   agentId: uuid('agent_id').notNull().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   text: text('text').notNull(),
-  /** 0024 (C-30): the web addresses a run of it may read: only those its owner typed (the sentence that asked for it, or Change), never the agent's own words. */
-  given: text('given').array().notNull().default(sql`'{}'::text[]`),
   scheduleKind: text('schedule_kind', { enum: ASSISTANT_JOB_KINDS }).notNull(),
   schedule: jsonb('schedule').$type<Record<string, unknown>>().notNull(),
   timeZone: text('time_zone').notNull(),

@@ -18,8 +18,8 @@ import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // Web search for server agents (#954, founder direction 2026-11-08, C-29, C-30, AG-8): the provider's own built-in search tool
 // (Anthropic's `web_search` server tool, OpenAI's Responses `web_search`), on by default, turned off with the reading by the operator's
-// one switch. A search's results are addresses its own run may read with flux_read_web, never another run's; an address that was not
-// given (in a page not read, or made up) is still refused; and the run lists what it searched and the addresses its answer cites.
+// one switch. The run lists what it searched and the addresses its answer cites. Since #1065 (founder direction 2026-11-09, C-30) any
+// address opens, and one that carries private Flux text the run read (its brief, here) is refused.
 // The adapters run against the Docker `providermock` (the documented shapes of both wire formats), the run through the real worker
 // loop, the real /mcp route and the link mock as `public.test`. Nothing here is a provider pass: real providers are unverified.
 
@@ -129,7 +129,7 @@ describe('the provider\'s own web search on each wire format (#954; Docker mock 
   });
 });
 
-describe('a search gives addresses to its own run only (#954, C-30; real worker loop, real /mcp, link mock)', () => {
+describe('a run searches, opens any address but one that carries what it read in Flux, and lists its sources (#954, #1065, C-30; real worker loop, real /mcp, link mock)', () => {
   let scene: AssistantScene;
   const usage = { inputTokens: 300, outputTokens: 20 };
   const reads = (...urls: string[]): Extract<PersonalComputeResult, { kind: 'completed' }> => ({ kind: 'completed', text: 'reading', stopReason: 'tool_use', usage,
@@ -143,7 +143,7 @@ describe('a search gives addresses to its own run only (#954, C-30; real worker 
     await fetch(`${SITE}/__reset`);
   });
 
-  test('a result of the run\'s own search can be read; an address on no page it read, and one it makes up, are refused; the answer lists the search, the cited page and the read', async () => {
+  test('a search result and any other address open; one carrying the request\'s words is refused; the answer lists the search, the cited page and the reads', async () => {
     const found = { queries: [SEARCH.query], results: SEARCH.results, cited: [] };
     const replies: PersonalComputeResult[] = [
       // One answer that searched and, on the result, asks to read it: the search is recorded before the read runs.
@@ -152,26 +152,27 @@ describe('a search gives addresses to its own run only (#954, C-30; real worker 
       { kind: 'completed', text: 'The last boat leaves at 17:40.', stopReason: 'end_turn', usage, webSearch: { queries: [], results: [], cited: [PAGE] } },
     ];
     scene.compute.respond = async () => replies.shift()!;
-    // The request names no address: whatever the agent reads comes from its own search.
-    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat this winter?' });
+    // The request names no address; its words are private Flux text the run read (its brief), recorded by the worker before the first request.
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat this winter? Keep our private plan for the harbour to yourself.' });
     assert.equal(await scene.processor.process(started.run.id), 'completed');
     const first = scene.compute.dispatched[0]!;
     assert.equal(first.webSearch, true, 'the provider\'s own search is offered (on by default, a provider that has one)');
     assert.ok(first.system.includes(WEB_SEARCH_LINE), 'and the brief says so, with the rule for its results');
-    assert.match(first.system, /or among the results of your own web search in this run/);
-    assert.ok(!turns(1).includes('WEB_READ_NOT_GIVEN') && turns(1).includes('Harbour & Co: winter timetable'), 'the search result was read');
-    assert.equal((turns(2).match(/WEB_READ_NOT_GIVEN/g) ?? []).length, 2, 'an address it was not given and one it made up are refused');
+    assert.match(first.system, /You may open any public web address, but only what your answer needs\. Never put anything from Flux into an address/);
+    assert.ok(turns(1).includes('Harbour & Co: winter timetable'), 'the search result was read');
+    assert.ok(turns(2).includes('Plain notes'), 'an address nothing gave opens');
+    assert.equal((turns(2).match(/WEB_READ_PRIVATE_TEXT/g) ?? []).length, 1, 'one carrying the request\'s words is refused');
     const hits = (await (await fetch(`${SITE}/__hits`)).json()) as { path: string }[];
-    assert.deepEqual(hits.map((hit) => hit.path), ['/read/timetable'], 'nothing else reached any site');
+    assert.deepEqual(hits.map((hit) => hit.path), ['/read/timetable', '/read/notes'], 'nothing reached the site the words were for');
     const rows = (await pool.query(`SELECT queries, results, cited FROM personal_run_web_searches WHERE run_id = $1 ORDER BY searched_at, id`, [started.run.id])).rows;
     assert.deepEqual(rows, [{ queries: [SEARCH.query], results: SEARCH.results, cited: [] }, { queries: [], results: [], cited: [PAGE] }]);
     const { answer_body: body, charged_micros: charged } = await answerOf(started.run.id);
-    assert.ok(body.endsWith(`The last boat leaves at 17:40.\n\nSearched the web for:\n- ${SEARCH.query}\nFound on the web:\n- ${PAGE}\nRead on the web:\n- ${PAGE}`), body);
+    assert.ok(body.endsWith(`The last boat leaves at 17:40.\n\nSearched the web for:\n- ${SEARCH.query}\nFound on the web:\n- ${PAGE}\nRead on the web:\n- ${PAGE}\n- http://public.test/read/notes`), body);
     const perRequest = Math.ceil((300 * 2_000_000 + 20 * 10_000_000) / 1_000_000);
     assert.equal(charged, 3 * perRequest + WEB_SEARCH_MICROS, 'the search is charged on top of the tokens, in the key\'s daily budget');
   });
 
-  test('another run cannot read what the first run\'s search found', async () => {
+  test('another run opens the same page like any address, and lists no search of the first run', async () => {
     const replies: PersonalComputeResult[] = [
       { ...reads(PAGE), usage: { ...usage, webSearches: 1 }, webSearch: { queries: [SEARCH.query], results: [PAGE], cited: [] } },
       { kind: 'completed', text: 'Read it.', stopReason: 'end_turn', usage },
@@ -184,7 +185,7 @@ describe('a search gives addresses to its own run only (#954, C-30; real worker 
     scene.compute.respond = async () => later.shift()!;
     const other = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read the timetable again' });
     assert.equal(await scene.processor.process(other.run.id), 'completed');
-    assert.ok(turns(1).includes('WEB_READ_NOT_GIVEN'), 'the first run\'s result is not this run\'s address');
+    assert.ok(turns(1).includes('Harbour & Co: winter timetable'), 'any address opens');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [other.run.id])).rows[0].n, 0);
     assert.ok(!(await answerOf(other.run.id)).answer_body.includes('Searched the web'), 'and it lists no search of its own');
   });
@@ -244,7 +245,7 @@ describe('the review of #1073: only what the search returned, a refused search, 
     await control('/__reset', {}); await fetch(`${SITE}/__reset`);
   });
 
-  test('P1-1: an address OpenAI\'s search opened on the model\'s word (open_page, find_in_page) is no result, and reading it is refused before anything is sent', async () => {
+  test('P1-1: an address OpenAI\'s search opened on the model\'s word (open_page, find_in_page) is no result; one that carries the request\'s words is refused before anything is sent', async () => {
     const first = await openAiResponse(fakeFetch({ status: 'completed', usage: { input_tokens: 300, output_tokens: 20 }, output: [
       { id: 'ws_1', type: 'web_search_call', status: 'completed', action: { type: 'open_page', url: SECRET_URL } },
       { id: 'ws_2', type: 'web_search_call', status: 'completed', action: { type: 'find_in_page', url: SECRET_URL, pattern: 'plan' } },
@@ -254,23 +255,23 @@ describe('the review of #1073: only what the search returned, a refused search, 
     assert.equal(first.usage.webSearches, 2, 'each call is still counted');
     const replies: PersonalComputeResult[] = [first, { kind: 'completed', text: 'Done.', stopReason: 'end_turn', usage }];
     scene.compute.respond = async () => replies.shift()!;
-    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is new at the harbour?' });
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is new at the harbour? Our private plan for the harbour stays ours.' });
     assert.equal(await scene.processor.process(started.run.id), 'completed');
-    assert.ok(turns(1).includes('WEB_READ_NOT_GIVEN'), 'the read was refused');
+    assert.ok(turns(1).includes('WEB_READ_PRIVATE_TEXT'), 'the read was refused: it carries the request\'s words');
     const hits = (await (await fetch(`${SITE}/__hits`)).json()) as { path: string }[];
     assert.deepEqual(hits, [], 'nothing reached any site');
   });
 
-  test('P1-1: a citation of an address the search did not return is neither readable nor listed as a source', async () => {
+  test('P1-1: a citation of an address the search did not return is not listed as a source', async () => {
     const replies: PersonalComputeResult[] = [
       { kind: 'completed', text: 'reading', stopReason: 'tool_use', usage: { ...usage, webSearches: 1 }, webSearch: { queries: ['harbour'], results: [PAGE], cited: [SECRET_URL] },
         toolCalls: [{ id: 'call-1', name: 'flux_read_web', input: { url: SECRET_URL } }] },
       { kind: 'completed', text: 'The last boat leaves at 17:40.', stopReason: 'end_turn', usage, webSearch: { queries: [], results: [], cited: [PAGE, SECRET_URL] } },
     ];
     scene.compute.respond = async () => replies.shift()!;
-    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat?' });
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat? The private plan for the harbour is ours.' });
     assert.equal(await scene.processor.process(started.run.id), 'completed');
-    assert.ok(turns(1).includes('WEB_READ_NOT_GIVEN'));
+    assert.ok(turns(1).includes('WEB_READ_PRIVATE_TEXT'));
     assert.deepEqual((await (await fetch(`${SITE}/__hits`)).json()) as unknown[], []);
     const body = (await pool.query(`SELECT answer_body FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0].answer_body as string;
     assert.ok(body.endsWith(`Searched the web for:\n- harbour\nFound on the web:\n- ${PAGE}`), body);
@@ -381,8 +382,7 @@ describe('the review of #1073: only what the search returned, a refused search, 
 });
 
 // #1113 (founder direction, Hubert, 2026-11-09, "Żadnych limitów"): an agent searches and reads as much as a question needs. The caps of
-// 5 searches and 20 addresses a run are gone; the exact-match rule (never an address that was not given or found) and the key's daily
-// budget stay. A search is charged as the provider reports it, a page's text is not sent again once the model has noted it.
+// 5 searches and 20 addresses a run are gone, and since #1065 any address opens; the key's daily budget stays. A search is charged as the provider reports it, a page's text is not sent again once the model has noted it.
 describe('no limit on searches or pages, only the key\'s budget (#1113; real worker loop, real /mcp, link mock)', () => {
   let scene: AssistantScene;
   const usage = { inputTokens: 300, outputTokens: 20 };
@@ -406,7 +406,7 @@ describe('no limit on searches or pages, only the key\'s budget (#1113; real wor
     await fetch(`${SITE}/__reset`);
   });
 
-  test('a run that searches 8 times and reads 8 pages goes on to its answer: every search is recorded and charged as reported, an address that nothing gave is still refused, and a noted page\'s text is not sent again', async () => {
+  test('a run that searches 8 times and reads 9 pages goes on to its answer: every search is recorded and charged as reported, an address no search found opens too, and a noted page\'s text is not sent again', async () => {
     const replies: PersonalComputeResult[] = [1, 2, 3, 4, 5, 6, 7, 8].map((n) => searchAndRead(n, 1, n === 3 ? [MADE_UP] : []));
     replies.push(answerStep);
     scene.compute.respond = async () => replies.shift()!;
@@ -414,8 +414,9 @@ describe('no limit on searches or pages, only the key\'s budget (#1113; real wor
     assert.equal(await scene.processor.process(started.run.id), 'completed');
     assert.equal(scene.compute.dispatched.length, 9, '8 steps of tools and the answer: more than 5 searches');
     const hits = (await (await fetch(`${SITE}/__hits`)).json()) as { path: string }[];
-    assert.deepEqual(hits.map((hit) => hit.path), [1, 2, 3, 4, 5, 6, 7, 8].map((n) => `/page/${n}`), '8 pages were read, and nothing that no search found');
-    assert.ok(JSON.stringify(dispatchedTurns(3)[2]!.results).includes('WEB_READ_NOT_GIVEN'), 'the address nothing gave is still refused');
+    assert.deepEqual(hits.map((hit) => hit.path), ['/page/1', '/page/2', '/page/3', new URL(MADE_UP).pathname, '/page/4', '/page/5', '/page/6', '/page/7', '/page/8'],
+      'the 8 pages and the one no search found (#1065: any address opens)');
+    assert.ok(!JSON.stringify(dispatchedTurns(3)[2]!.results).includes('WEB_READ_'), 'nothing was refused');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [started.run.id])).rows[0].n, 8);
     const { answer_body: body, charged_micros: charged } = (await pool.query(`SELECT answer_body, charged_micros FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0] as { answer_body: string; charged_micros: number };
     assert.equal(charged, 9 * perRequest + 8 * WEB_SEARCH_MICROS, 'each search is charged as it was reported, on top of the tokens');
@@ -431,7 +432,7 @@ describe('no limit on searches or pages, only the key\'s budget (#1113; real wor
     assert.ok(scene.compute.dispatched[0]!.system.includes('Flux then leaves the page\'s text out of later requests'), 'and the brief tells the model to write the note');
   });
 
-  test('a response of many searches is kept whole: its queries and results go into as many rows as they need, and all of them are the run\'s readable addresses', async () => {
+  test('a response of many searches is kept whole: its queries and results go into as many rows as they need', async () => {
     const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Research the harbour' });
     const queries = Array.from({ length: 25 }, (_, index) => `harbour query ${index}`);
     const results = Array.from({ length: 250 }, (_, index) => address(index));
@@ -439,7 +440,7 @@ describe('no limit on searches or pages, only the key\'s budget (#1113; real wor
     assert.deepEqual([kept.queries.length, kept.results.length, kept.cited.length], [25, 250, 120], 'more than a handful of searches\' worth is not cut');
     await personalRunWebReadRows(db).addSearch(started.run.id, kept);
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [started.run.id])).rows[0].n, 3, '25 queries and 250 results are 3 rows of the table\'s size');
-    assert.equal((await personalRunWebReadRows(db).found(started.run.id)).length, 250, 'every result is readable by this run');
+    assert.equal((await pool.query(`SELECT sum(cardinality(results))::int AS n FROM personal_run_web_searches WHERE run_id = $1`, [started.run.id])).rows[0].n, 250, 'every result is kept');
     const listed = await personalRunWebReadRows(db).searches(started.run.id);
     assert.deepEqual([listed.queries.length, listed.cited.length], [25, 120]);
   });

@@ -182,7 +182,7 @@ pages, founder direction 2026-11-09, #1113).
   `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
   its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
   addresses in the web rule; `NO_WEB_SEARCH_LINE` otherwise). The runtime engine's brief has `RUNTIME_WEB_SEARCH_LINE`
-  on Claude Code with the switch on, and `NO_WEB_SEARCH_LINE` on Codex (see "Claude Code's own search" below).
+  on Claude Code or Codex with the switch on (see "The CLI's own search" below).
 - **A refused search.** When the provider refuses the tool, recognised only from the error's own `type` and `message`
   (`anthropicSearchRefusal`: a 400 `invalid_request_error` saying web search is not enabled, an organization whose admin
   turned it off; `openAiSearchRefusal`: a 400 `invalid_request_error` saying the tool `web_search` is not supported, a model
@@ -210,11 +210,18 @@ pages, founder direction 2026-11-09, #1113).
   any call of that response runs; the processor writes `personal_run_web_searches` (`boundedWebSearch`:
   normalized web addresses only, each once, at most 1,000 results and 1,000 cited, 100 queries of 300
   characters for one response, written in as many rows of `personal_run_web_searches` as they need, since a row holds 10 queries and 100
-  addresses; a run has as many responses as it makes requests). `flux_read_web` then allows the run's `given` texts, the addresses on pages it read, and the
-  run's own search `results` (`found`), exactly; another run never sees them. A cited address is listed only
-  when the run's search returned it, and gives nothing more. How many addresses a run reads is not limited: the exact match and the key's budget
-  are. The tool's own refusals stay: an address nothing gave (`WEB_READ_NOT_GIVEN`) and the fetcher's guard of 6 pages read at once across the
-  server (`READS_AT_ONCE`; `WEB_READ_BUSY`). There is no limit per minute (#1116): a run reads its pages one after another, as many as its question needs.
+  addresses; a run has as many responses as it makes requests). A cited address is listed only when the run's search returned it.
+- **Any address opens (#1065, founder direction 2026-11-09, C-30).** `flux_read_web` opens any public address on every engine, and refuses
+  one that carries private Flux text the run read (`privateFragmentIn`, `WEB_READ_PRIVATE_TEXT`, with the fragment in its words). The private
+  text is kept in `personal_run_private_texts` (migration 0049), compared-ready by `keptPrivateText` (NFKC, percent-decoded up to three times,
+  `+` as a space, lower case, runs of space as one; a word with `://` or a dot between two letters or digits, an address or host name a person
+  wrote, is left out so it still opens): the worker writes the brief when the run is dispatched (the API-key run's system prompt and request,
+  rendered with every source read; the CLI's text on standard input), and the API writes each Flux tool result of a run in `boundRunResult`
+  (never `flux_read_web`'s page, and never an error). A fragment is 12 compared characters with at least 6 letters or digits, of two words or
+  more or with a digit (`fragmentLike`); one long word alone is too common. The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a
+  search "use your web search, not the address of a search page"). The given-address lists (`personal_runs.given`, `assistant_jobs.given`,
+  `project_work_items.text_by_agent`, `personal_run_web_reads.seen`) are gone (0049). How many addresses a run reads is not limited, and
+  there is no limit per minute (#1116): only the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote or encoded is not caught: the founder's accepted risk.
 - **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
   byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
   it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input
@@ -237,26 +244,23 @@ pages, founder direction 2026-11-09, #1113).
   what Flux records never passes the key's day; one request's own bill can pass it by that request. A response that reports searches when none
   were offered is outside its bounds. A key's budget is refused when saved if it cannot hold one request with the room for results on a
   provider that has a search.
-- **Claude Code's own search (#1065, RT-5).** With `FLUX_WEB_READS` on, `managerPersonalRuntime(…, { webSearch })`
-  marks the runtime, and a run on Claude Code sends `webSearch: true` in the supervisor's run request (the protocol
-  refuses it for Codex). The template then keeps exactly one built-in, `--tools WebSearch`, with `WebSearch` in
-  `--allowedTools` (never `WebFetch`), and the `system/init` read-back (the slot's and `localToolInInit`) accepts it.
-  The slot reduces the stream to two closed frames: `search` (`n`, the query; from the assistant's `WebSearch` tool use)
-  and `found` (`n`, the addresses of the result entries of the `user` event's structured `tool_use_result`:
-  `searchResultAddresses`; never an address from the tool's text, which interleaves the CLI's own summary, and none
-  for an error). The worker handles them in stream order through one promise chain (`record`): `startWebSearch`
-  writes a `personal_run_web_searches` row with the query and `pending = true` (migration 0046), `settleWebSearch`
-  fills its `results` and clears `pending`, and at the end `endWebSearches` clears any left. `flux_read_web` checks the
-  address; if the run cannot read it yet and has a search in progress (`searching`), it polls every 100 ms until none
-  is (at most `SEARCH_WAIT_MS`, 30 s) and checks again. Claude Code hands Flux no citations: at the commit, the
-  addresses the answer names (`addressesIn`) are written as the run's cited row, and `searches` lists those its search
-  returned under "Found on the web:". The tool's own result asks the model to cite its sources as Markdown links, which an
-  answer shown as plain text would show raw, so the brief's `RUNTIME_WEB_SEARCH_LINE` says not to (#1116). A search whose tool
-  use has no string id cannot be matched to a result: the slot sends its `found` at once, with no addresses, so no read waits
-  for it. A `user` event that carries several tool results (a CLI running tools in parallel) is not read as a search's: each
-  of its searches is `found` with no addresses (fail safe: nothing becomes readable; checking a real plan's parallel results
-  is for release acceptance). Codex's `web_search` stays disabled: its item carries no results. Local clients
-  use their own tools.
+- **The CLI's own search (#1065, RT-5).** With `FLUX_WEB_READS` on, `managerPersonalRuntime(…, { webSearch })` marks the runtime, and a
+  run sends `webSearch: true` in the supervisor's run request. Claude Code's template then keeps exactly one built-in, `--tools WebSearch`,
+  with `WebSearch` in `--allowedTools` (never `WebFetch`), and the `system/init` read-back (the slot's and `localToolInInit`) accepts it;
+  Codex's has `web_search="cached"` instead of `"disabled"`, the preflight requires it, and the JSONL check accepts its `web_search` items.
+  The slot reduces each search to two closed frames: `search` (`n`, the query when the CLI shows it then: Claude Code's tool use) and
+  `found` (`n`, the result addresses, and for Codex the queries): Claude Code's from the result entries of the `user` event's structured
+  `tool_use_result` (`searchResultAddresses`; never an address from the tool's text, which interleaves the CLI's own summary, and none for an
+  error); Codex's from a completed item with a search action (`codexSearchFound`: its queries, and the `text_result` entries whose `ref_id`
+  is `turn<N>search<M>` when the item carries `results`, which only Codex's standalone search fills, a feature Flux leaves off). The worker
+  writes them in stream order through one promise chain (`record`): `startWebSearch` writes a `personal_run_web_searches` row,
+  `settleWebSearch` fills its results and queries. Neither CLI hands Flux citations: at the commit, the addresses the answer names
+  (`addressesIn`) are written as the run's cited row, and `searches` lists those its search returned under "Found on the web:". Claude
+  Code's tool result asks the model to cite its sources as Markdown links, which an answer shown as plain text would show raw, so the brief's
+  `RUNTIME_WEB_SEARCH_LINE` says not to (#1116). A Claude Code search whose tool use has no string id cannot be matched to a result: the slot
+  sends its `found` at once, with no addresses. A `user` event that carries several tool results (a CLI running tools in parallel) is not
+  read as a search's: each of its searches is `found` with no addresses (checking a real plan's parallel results is for release
+  acceptance). Local clients use their own tools.
 - **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
   `/ai` answer.
 
@@ -540,13 +544,7 @@ What the owner says to the agent in its chat can prepare a schedule: the chat's 
 `answerWithSchedule` takes it out and prepares the job off, and the owner's tap (`PATCH` with `enabled: true`) turns it on. `/ai` in a space and a
 schedule's own run drop the block. The routes are `/api/v1/my-agents/:agentId/schedules`.
 
-**Web addresses of a schedule (C-30).** The schedule's text is the agent's words as often as the owner's, so `startBackground` never reads it for addresses.
-A job keeps `given`: the addresses its owner typed, fixed when it is made, from the request that prepared it (the prompt of `preparedRunId`) or from the text
-of a schedule the owner made through the API. Change (`PATCH` with `text`) edits the wording only and never touches `given`: comparing the old and the new text
-cannot be made airtight, because where an address ends depends on the character after it, so to give a schedule a new address the owner asks the agent again,
-which prepares a new schedule from their words. Every firing passes `given` to the run, which reads those and what its own search returned, and nothing the agent
-wrote. A scheduled run cannot be retried (`ASSISTANT_RUN_NOT_RETRYABLE`: Run now is the way), and `givenAtStart` never reads a `scheduled` prompt, so no path
-gives a run the addresses of the schedule's text. Deleting an agent locks its schedule rows before the owner's lock (`removeAgent`), the order a firing has, and
+A scheduled run cannot be retried (`ASSISTANT_RUN_NOT_RETRYABLE`: Run now is the way). Deleting an agent locks its schedule rows before the owner's lock (`removeAgent`), the order a firing has, and
 settling a firing takes the schedule row before the firing's own, so none of the three can deadlock with another. No run is posted for its owner (#1104): a `scheduled` run is a private answer like a chat's (`isPrivateAnswer`), and there is no "silent" run (migration `0048` dropped the column). A schedule whose owner is a guest of the company
 (C-50, #1059) neither fires nor writes a history row or a chat line; its next time moves on.
 

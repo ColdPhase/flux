@@ -218,13 +218,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const place = { kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id } as const;
     const lines = async (someone: Person) => (await get<Dm>(someone, `/api/v1/dms/${dm.id}`)).messages.filter((item) => item.notice === 'ai_used').length;
     const [hubertLines, kaiLines] = [await lines(hubert), await lines(kai)];
-    // What the model is given is what gives it a web address: the thread's words, not the DM's other messages.
-    const [inThread, inMainLine] = [`https://thread.example/${randomUUID()}`, `https://main-line.example/${randomUUID()}`];
-    await reply(hubert, dm.id, dmRoot.id, `Please read ${inThread}`);
-    await post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: `Please read ${inMainLine}`, clientMessageId: randomUUID() });
     const started = await ask(place);
-    const given = (await pool.query<{ given: string[] }>('SELECT given FROM personal_runs WHERE id = $1', [started.run.id])).rows[0]!.given.join(' ');
-    assert.ok(given.includes(inThread) && !given.includes(inMainLine), 'only the thread\'s own words give an address');
     assert.deepEqual([started.run.projectId, started.run.conversationId, started.run.dmId, started.run.dmThreadRootId], [null, null, dm.id, dmRoot.id]);
     assert.deepEqual(Object.values(await row(started.run.id)).slice(0, 4), [null, null, dm.id, dmRoot.id], 'the run is stored with its thread');
     assert.equal((await row(started.run.id)).ai_epoch, null, 'a DM thread has no space, so no AI epoch');
@@ -316,31 +310,6 @@ describe('/ai everywhere, answered privately (#842)', () => {
     } finally {
       await post(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [kai.id] }, 200);
     }
-  });
-
-  test('C-30 (#953): an address in an answer a person posted with Show everyone gives nothing to the next run, in a DM, a DM thread, a thread and the main conversation', async () => {
-    const written = `https://written.example/${randomUUID()}`;
-    const shown = `https://shown.example/${randomUUID()}`;
-    const given = async (runId: string) => (await pool.query<{ given: string[] }>('SELECT given FROM personal_runs WHERE id = $1', [runId])).rows[0]!.given.join(' ');
-    compute.respond = async () => ({ kind: 'completed', text: `Fact: read ${shown}`, stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } });
-    try {
-      for (const [place, say] of [
-        [{ kind: 'dm', dmId: dm.id, threadRootId: null }, (words: string) => post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: words, clientMessageId: randomUUID() })],
-        [{ kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id }, (words: string) => reply(hubert, dm.id, dmRoot.id, words)],
-        [{ kind: 'space', projectId: lamp.id, conversationId: thread.id }, (words: string) => post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: words, clientMessageId: randomUUID() })],
-        [{ kind: 'space', projectId: lamp.id, conversationId: null }, (words: string) => post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: words, clientMessageId: randomUUID() })],
-      ] as const) {
-        await say(`Please see ${written}`);
-        const first = await ask(place, 'What should I read?');
-        await finish(first.run.id);
-        expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${first.run.id}/show`), 200);
-        const next = await ask(place, 'And now?');
-        const text = await given(next.run.id);
-        assert.ok(text.includes(written), `what a person wrote gives its address (${place.kind})`);
-        assert.ok(!text.includes(shown), `what the agent wrote and its owner posted does not (${place.kind})`);
-        await finish(next.run.id);
-      }
-    } finally { compute.respond = echo; }
   });
 
   test('the private chat with an agent belongs to no space; it remembers its turns; there is nobody to show it to', async () => {

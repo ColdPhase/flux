@@ -16,7 +16,7 @@ import { isAsked, isPrivateAnswer } from './ports.js';
 import { runtimeBrief, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerWithWebSources } from './web-sources.js';
-import { addressesIn, boundedWebSearch, WEB_SEARCH_BOUNDS } from './web-addresses.js';
+import { addressesIn, boundedWebSearch, keptPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
 //
@@ -119,7 +119,7 @@ async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt
   const resumed = await ports.runs.insertRun({
     id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, dmThreadRootId: run.dmThreadRootId, ownerUserId: run.ownerUserId,
     agentId: run.agentId, connectionId: run.connectionId, clientRunId: randomUUID(), requestFingerprint: run.requestFingerprint, kind: run.kind,
-    prompt: run.prompt, given: run.given, targetSketchId: run.targetSketchId, targetThoughtId: run.targetThoughtId, continuesRunId: run.continuesRunId, retryOfRunId: run.id,
+    prompt: run.prompt, targetSketchId: run.targetSketchId, targetThoughtId: run.targetThoughtId, continuesRunId: run.continuesRunId, retryOfRunId: run.id,
     workId: run.workId, askedByRunId: run.askedByRunId, exchangeTurn: run.exchangeTurn, reservedMicros: 0, provider: run.provider, model: run.model, aiEpoch: run.aiEpoch, engine: 'runtime',
     resumeAt: known ?? new Date(now + PLAN_RETRY_MS), endReason: 'plan_limit', planLimitResetsAt: known,
   });
@@ -288,11 +288,11 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           }).catch(() => undefined);
         })();
       };
-      // Claude Code searches with its own WebSearch while the operator's web switch is on (#1065, C-29); Codex never does (RT-5).
-      const webSearch = runtime!.webSearch === true && (target.client ?? 'claude_code') === 'claude_code';
-      // The CLI's searches are written in the order it wrote them (C-30): the start as a search in progress, then its results. A
-      // `flux_read_web` call for an address the run cannot read yet waits while one is in progress, so a result is recorded before a
-      // call that names it is answered. A failed write only leaves the search unreadable.
+      // The CLI searches with its own web search while the operator's web switch is on (#1065, C-29, RT-5): Claude Code's WebSearch,
+      // Codex's standalone web search.
+      const webSearch = runtime!.webSearch === true;
+      // The CLI's searches are written in the order it wrote them (C-30): the start with its query, then its results and, for Codex, its
+      // queries. A failed write only leaves the search unlisted.
       let recorded: Promise<void> = Promise.resolve();
       const record = (step: (ports: PersonalRunPorts) => Promise<void>) => { recorded = recorded.then(() => uow.run(step)).catch(() => undefined); };
       const searchRows = new Map<number, string>();
@@ -306,10 +306,10 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
             const query = boundedWebSearch({ queries: [event.query], results: [], cited: [] }).queries[0] ?? '';
             record(async (ports) => { searchRows.set(event.n, await ports.runs.startWebSearch(run.id, query)); });
           } else {
-            const results = boundedWebSearch({ queries: [], results: event.results, cited: [] }).results;
+            const { results, queries } = boundedWebSearch({ queries: event.queries ?? [], results: event.results, cited: [] });
             record(async (ports) => {
               const id = searchRows.get(event.n);
-              if (id) await ports.runs.settleWebSearch(id, results); else await ports.runs.addWebSearch(run.id, { queries: [], results, cited: [] });
+              if (id) await ports.runs.settleWebSearch(id, results, queries); else await ports.runs.addWebSearch(run.id, { queries, results, cited: [] });
             });
           }
           return;
@@ -332,6 +332,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch,
         });
+        // What the CLI is given is private Flux text the run read (#1065, C-30): a web address may not carry it.
+        await uow.run((ports) => ports.runs.addPrivateText(run.id, keptPrivateText(prompt)));
         end = await runtime!.run(target, { runId: run.id, prompt, runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
           ...(webSearch ? { webSearch: true as const } : {}) }, onEvent);
       } catch {
@@ -342,9 +344,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         await tokens!.close(run.id).catch(() => undefined);
       }
       await stopSent;
-      // Every search the CLI reported is written before the run's end is; one whose result never came back brought nothing.
+      // Every search the CLI reported is written before the run's end is.
       await recorded;
-      if (searched) await uow.run((ports) => ports.runs.endWebSearches(run.id)).catch(() => undefined);
       await hooks.afterDispatch?.(run);
 
       return uow.run(async (ports) => {

@@ -108,8 +108,6 @@ export interface RunRecord {
   exchangeTurn: number;
   /** 0115 (F-029): the space's AI policy epoch the run was admitted under; every later step requires it. Null outside a space (a DM, a chat). */
   aiEpoch: number | null;
-  /** 0019 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
-  given: string[];
   /** #842: Show everyone posted the answer, or Dismiss put it away. */
   shownAt: Date | null;
   dismissedAt: Date | null;
@@ -137,8 +135,6 @@ export type RunEndStatus = RunRecord['status'] | 'ai_off';
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
-    /** The web addresses the run may read from the start (#953): see `givenAtStart`. */
-    given?: string[];
     /** A paused request: queued until then, with the reason it waits (#854). */
     resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
@@ -174,16 +170,13 @@ export interface PersonalRunRepository {
   addWebSearch(runId: string, found: WebSearchFound): Promise<void>;
   /** A search the owner's Claude Code started (#1065, C-30), written as in progress with its query; returns its row. */
   startWebSearch(runId: string, query: string): Promise<string>;
-  /** The results of that search came back: normalized, bounded, readable by the run from now on. */
-  settleWebSearch(id: string, results: string[]): Promise<void>;
-  /** The run ended: a search still in progress brought nothing. */
-  endWebSearches(runId: string): Promise<void>;
+  /** The results of that search came back: normalized, bounded, readable by the run from now on; `queries` when the CLI named them only now. */
+  settleWebSearch(id: string, results: string[], queries?: string[]): Promise<void>;
   /**
-   * The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and what people wrote in
-   * the place the run is in (#842, C-30): a conversation's, the space's people's conversations for its main conversation, a DM's; a chat has none.
-   * What an agent wrote gives no address, and neither does an answer a person posted with Show everyone (`via`).
+   * Private Flux text the run read (#1065, C-30), as `keptPrivateText` keeps it: its brief when it starts, and each Flux tool result. A web
+   * address that carries a fragment of it is refused.
    */
-  personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId: string | null }, workId: string | null): Promise<string[]>;
+  addPrivateText(runId: string, body: string): Promise<void>;
   /** The task graph's lock (after the owner's, #921) for a run in a space; a run in a DM or a chat touches no task graph and holds nothing. */
   prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
@@ -597,7 +590,7 @@ export type PersonalRuntimeEvent =
   | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[] }
   | { kind: 'tool'; name: string }
   | { kind: 'search'; n: number; query: string }
-  | { kind: 'found'; n: number; results: string[] };
+  | { kind: 'found'; n: number; results: string[]; queries?: string[] };
 
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =
@@ -612,7 +605,7 @@ export interface PersonalRuntimeRunRequest {
   caps: { maxTurns: number; wallClockSeconds: number; idleSeconds: number; maxAnswerBytes: number };
   /** The model the run was sent with (F-027 AST-11), for the CLI's own model option; absent: the CLI's default. */
   model?: string;
-  /** Claude Code keeps its own `WebSearch` (#1065, C-29); never sent for Codex. */
+  /** The CLI keeps its own web search (#1065, C-29): Claude Code's `WebSearch`, Codex's standalone web search. */
   webSearch?: true;
 }
 
@@ -622,7 +615,7 @@ export interface PersonalRuntimeRunRequest {
  */
 export interface PersonalRuntime {
   readonly enabled: boolean;
-  /** The operator's web switch (`FLUX_WEB_READS`, C-29): a run on the owner's Claude Code searches with its own `WebSearch` (#1065). */
+  /** The operator's web switch (`FLUX_WEB_READS`, C-29): a run on the owner's CLI searches with the CLI's own web search (#1065). */
   readonly webSearch?: boolean;
   /** The owner's signed-in CLI of the run (Claude Code or Codex), or why it cannot run now. */
   target(ownerUserId: string, client?: PersonalRuntimeClient): Promise<{ ok: true; target: PersonalRuntimeTarget } | { ok: false; reason: 'off' | 'sign_in_again' | 'unavailable' }>;

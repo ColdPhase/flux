@@ -260,8 +260,9 @@ operator decides for their server through the operator step (RT-9).
    refused because it is a Claude account credential. Whether Anthropic reads that as restricting a
    method is unknown.
 8. **Web reading and search.** Egress beyond the vendors' hosts, prompt injection from any page or search result, and an address that
-   carries what the agent knows to a site. The defence is AG-2, AG-3 and AG-8 (an agent reads only addresses it was given or found by its
-   own search in the same run, C-30), and the tests in #856, #953 and #954.
+   carries what the agent knows to a site. Any address opens (founder direction 2026-11-09, C-30); the defence is AG-2, AG-3 and AG-8,
+   the brief's rule never to put anything from Flux into an address, the server's refusal of an address that carries private Flux text
+   the run read, and the tests in #856, #953, #954 and #1065. What the agent rewrote or encoded can still leave: accepted by the founder.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract
    test, the start-up and JSONL checks, and honest *Sign in again* and *Provider refused* states.

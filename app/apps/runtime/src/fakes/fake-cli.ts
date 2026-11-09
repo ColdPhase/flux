@@ -216,14 +216,14 @@ const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, 
 /**
  * A planned call. `WebSearch` (#1065) is Claude Code's own search: the fake answers it itself, as the real CLI does through Anthropic's
  * Messages API, with `results` as the search's entries, `summary` as the CLI's own text about them and `error` for a failed search.
- * `raceRead` names an address the fake asks `flux_read_web` for two seconds after starting the search and one second BEFORE it prints the
- * search's result, as a CLI that ran ahead of its own output would: the read must wait for the search to be recorded.
  */
 interface PlannedCall {
   name: string; args?: Record<string, unknown>;
-  results?: { title: string; url: string }[]; summary?: string; error?: boolean; raceRead?: string;
+  results?: { title: string; url: string }[]; summary?: string; error?: boolean;
   /** The search's tool use carries no id, so its result cannot be matched to it (#1116). */
   noId?: boolean;
+  /** Codex's `web_search` only: the item's action (a search of `args.query` unless given) and raw entries added to its `results`. */
+  action?: Record<string, unknown>; rawResults?: unknown[];
 }
 
 interface RunScript {
@@ -337,18 +337,6 @@ async function claudeRun(argv: string[]): Promise<number> {
     const useId = `toolu_${index + 1}`;
     if (planned.name === 'WebSearch') {
       emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', ...(planned.noId ? {} : { id: useId }), name: 'WebSearch', input: planned.args ?? {} }] } });
-      if (planned.raceRead) {
-        await pause(2_000);
-        const readId = `toolu_${index + 1}_read`;
-        emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}_read`, role: 'assistant', content: [{ type: 'tool_use', id: readId, name: 'mcp__flux__flux_read_web', input: { url: planned.raceRead } }] } });
-        const read = call('flux_read_web', { url: planned.raceRead });
-        await pause(1_000);
-        results.push(searchResult(useId, planned));
-        const answered = await read;
-        results.push(answered);
-        emit({ type: 'user', session_id: session, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: readId, content: answered.text, is_error: answered.isError }] } });
-        continue;
-      }
       await pause(50);
       results.push(searchResult(useId, planned));
       continue;
@@ -410,7 +398,8 @@ function mcpClient(url: string, headers: Record<string, string>, clientName: str
  * its `-c` options name with the bearer token from the variable they name, lists the tools `enabled_tools`
  * leaves, makes REAL MCP calls and prints `thread.started`, `turn.started`, `item.*` and `turn.completed`.
  * Like the real CLI, a tool its overrides did not switch off is used: without `features.shell_tool=false`
- * it runs a command (a `command_execution` item). Run script (`fake-run.json`) as for the fake `claude`.
+ * it runs a command (a `command_execution` item). Run script (`fake-run.json`) as for the fake `claude`; a `web_search` call is its own
+ * search (#1065), answered by the fake with the item the pinned CLI prints.
  * Scenarios: run_command_execution, run_file_change, run_web_search, run_other_mcp, run_resource_tool,
  * run_todo_list, run_plan_limit, run_expired_login, run_model_unavailable, run_hang, run_slow, run_crash, run_broken_stream,
  * run_ignore_sigint, run_big_answer, run_secret_answer, run_error_item. Without `--ephemeral` it writes a
@@ -483,7 +472,7 @@ async function codexRun(argv: string[]): Promise<number> {
   // A local tool the overrides left on, or a scenario's own: the real CLI would use it.
   if (features.shell_tool !== false || mode === 'run_command_execution') local('command_execution', { command: 'cat ~/.codex/auth.json', aggregated_output: '', exit_code: null });
   else if (mode === 'run_file_change') local('file_change', { changes: [{ path: 'notes.md', kind: 'add' }] });
-  else if (mode === 'run_web_search' || config.web_search !== 'disabled') local('web_search', { query: 'flux', action: { type: 'search', query: 'flux' } });
+  else if (mode === 'run_web_search') local('web_search', { query: 'flux', action: { type: 'search', query: 'flux' } });
   else if (mode === 'run_other_mcp') local('mcp_tool_call', { server: 'github', tool: 'search_issues', arguments: {}, result: null, error: null });
   else if (mode === 'run_resource_tool') local('mcp_tool_call', { server: 'flux', tool: 'read_mcp_resource', arguments: { server: 'flux', uri: 'flux://playbook/flux.cowork/1.0.0' }, result: null, error: null });
   else if (mode === 'run_todo_list') emit({ type: 'item.started', item: { id: next(), type: 'todo_list', items: [{ text: 'Read', completed: false }] } });
@@ -501,9 +490,26 @@ async function codexRun(argv: string[]): Promise<number> {
   };
   for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
   emit({ type: 'item.completed', item: { id: next(), type: 'reasoning', text: 'Reading the project through Flux.' } });
+  /**
+   * Codex's own search (#1065): the `web_search` item as the pinned `codex exec --json` prints it, started with no query and completed with
+   * its query and action. Only Codex's standalone web search (a feature Flux does not turn on) adds structured `results`; the fake adds
+   * them when the planned call has some (`text_result` entries, the shape of Codex's own tests, then `rawResults` as they are).
+   */
+  const webSearch = async (planned: PlannedCall) => {
+    const id = next();
+    const query = String(planned.args?.query ?? '');
+    emit({ type: 'item.started', item: { id, type: 'web_search', query: '', action: { type: 'other' } } });
+    await new Promise((wait) => setTimeout(wait, 50));
+    const entries = (planned.results ?? []).map((entry, index) => ({ type: 'text_result', ref_id: `turn0search${index}`, url: entry.url, title: entry.title, snippet: `About ${entry.title}.` }));
+    const structured = [...entries, ...(planned.rawResults ?? [])];
+    record('codex', argv, { event: 'web_search', query, results: structured.length });
+    emit({ type: 'item.completed', item: { id, type: 'web_search', query, action: planned.action ?? { type: 'search', query }, ...(structured.length ? { results: structured } : {}) } });
+    results.push({ name: 'web_search', isError: false, text: JSON.stringify(entries) });
+  };
   for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
+    if (planned.name === 'web_search') { await webSearch(planned); continue; }
     const id = next();
     const base = { id, type: 'mcp_tool_call', server: 'flux', tool: planned.name, arguments: planned.args ?? {} };
     emit({ type: 'item.started', item: { ...base, result: null, error: null, status: 'in_progress' } });

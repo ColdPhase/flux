@@ -79,9 +79,10 @@ export function loginArgv(client: RuntimeClient, method: RuntimeLoginMethod): re
  * uses its account's default, as it did before the assistant had a choice.
  */
 /**
- * `webSearch` (Claude Code only, #1065, C-29): the CLI keeps exactly one built-in tool, its own `WebSearch`, which searches at Anthropic
- * through the Messages API it already uses. `WebFetch`, which would open pages from the runtime, is never kept: pages are opened only by
- * `flux_read_web` on the Flux server (RT-4).
+ * `webSearch` (#1065, C-29: the operator's web switch is on): Claude Code keeps exactly one built-in tool, its own `WebSearch`, which
+ * searches at Anthropic through the Messages API it already uses (`WebFetch`, which would open pages from the runtime, is never kept);
+ * Codex searches with its own search on OpenAI's cached index (`codexRunOverrides`). Pages are opened only by `flux_read_web` on the Flux
+ * server (RT-4).
  */
 export interface RunTemplateInput { tools: readonly string[]; caps: RunCaps; mcpConfigPath: string; mcpUrl: string; brief: string; model?: string | undefined; webSearch?: boolean }
 
@@ -101,9 +102,9 @@ export const RUN_TEMPLATES: { [C in RuntimeClient]: (input: RunTemplateInput) =>
   // (CODEX_FEATURE_REVIEW), web search is disabled, analytics is off (so no telemetry host is needed), and
   // Flux is the only MCP server, required, with the exact non-empty tool list. The prompt is read from stdin
   // (`-`); Flux's brief is a developer message, so Codex keeps its own instructions.
-  codex: ({ tools, mcpUrl, brief, model }) => [
+  codex: ({ tools, mcpUrl, brief, model, webSearch }) => [
     'exec', '--json', '--ephemeral', '--ignore-user-config', '--sandbox', 'read-only', '--skip-git-repo-check',
-    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief), '-',
+    ...(model ? ['-m', model] : []), ...CODEX_FILE_STORE, ...codexRunOverrides(tools, mcpUrl, brief, webSearch), '-',
   ],
 };
 
@@ -162,7 +163,7 @@ export const CODEX_MODEL_REVIEW = {
   multi_agent_version: null, multi_agent_reasoning_effort: null,
   /** `send_user_message_async` and `clock`. */
   experimental_supported_tools: [],
-  /** No file edits, no shell, no tool search; web search stays `web_search="disabled"`. */
+  /** No file edits, no shell, no tool search. Web search is the run's own switch (`web_search`, #1065): cached with the web on. */
   apply_patch_tool_type: null, shell_type: 'disabled', supports_search_tool: false,
 } as const;
 
@@ -175,12 +176,19 @@ export function fluxCodexCatalog(vendor: unknown): { models: Record<string, unkn
   return { ...(vendor as object), models: models.map((model) => ({ ...(model as Record<string, unknown>), ...CODEX_MODEL_REVIEW })) };
 }
 
+/**
+ * Codex's own web search with the web on (#1065, RT-5): on OpenAI's cached index (`web_search="cached"`: `external_web_access` false, no
+ * live page request), at OpenAI through the host the CLI already uses. With the web off it is disabled. The JSONL check accepts its
+ * `web_search` items only then.
+ */
+export const CODEX_WEB_SEARCH_ON = ['web_search="cached"'] as const;
+
 /** The `-c` overrides of a Codex run, in order. Values are TOML: strings as JSON strings, the tool list as an array. */
-export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string): string[] {
+export function codexRunOverrides(tools: readonly string[], mcpUrl: string, brief: string, webSearch = false): string[] {
   if (!tools.length) throw new Error('A Codex run needs a non-empty tool list');
   const features = Object.entries(CODEX_FEATURE_REVIEW).filter(([, review]) => review.action === 'off').map(([key]) => `features.${key}=false`);
   return [
-    ...features, 'web_search="disabled"', 'analytics.enabled=false', 'check_for_update_on_startup=false',
+    ...features, ...(webSearch ? CODEX_WEB_SEARCH_ON : ['web_search="disabled"']), 'analytics.enabled=false', 'check_for_update_on_startup=false',
     // #1127: Flux's reviewed catalog (direct tools, no sub-agents), and no `request_user_input` (nobody answers a run's questions).
     `model_catalog_json=${JSON.stringify(CODEX_MODEL_CATALOG)}`,
     'tools.experimental_request_user_input.enabled=false',
