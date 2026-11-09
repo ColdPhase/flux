@@ -48,8 +48,12 @@ class DecisionTrace(unittest.TestCase):
         one = source("app/apps/web/src/app/OneConversation.tsx")
         handler = one[one.index("useStreamEvents(me.user.id"):]
         handler = handler[:handler.index("});")]
-        for kind in ("decision_(proposed|accepted)", "work_created"):
-            self.assertIn(kind, handler)
+        # Every change to the space's work, decisions or results (#862: `WORK_EVENT`), not only a new one.
+        self.assertIn("WORK_EVENT.test(event.kind)", handler)
+        stream = source("app/apps/web/src/api/stream.ts")
+        pattern = stream[stream.index("export const WORK_EVENT"):].split("\n", 1)[0]
+        for kind in ("work_", "decision_", "result_"):
+            self.assertIn(kind, pattern)
         self.assertIn("revalidator.revalidate()", handler)
         self.assertNotRegex(handler, r"event\.(title|body|data|text)")
 

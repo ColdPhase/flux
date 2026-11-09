@@ -36,6 +36,7 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
     document.addEventListener('visibilitychange', visible);
+    // Also while the live stream is open (#862): a chat read on another device sends this tab no event. Half a request a minute.
     const interval = setInterval(visible, 120_000);
     return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); clearInterval(interval); if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   }, [refresh]);

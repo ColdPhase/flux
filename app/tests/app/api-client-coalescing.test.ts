@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { forgetKeptReads, request } from '../../apps/web/src/api/client.js';
+import { forgetKeptFor, forgetKeptReads, request } from '../../apps/web/src/api/client.js';
 
 // A navigation asked for the same project and people up to four times (#850, #862 target: at most 8 requests, none repeated).
 // Reads that ask to share (the project, its people and its docs) and are of one address in flight together are one request; nothing else is shared.
 function stub(context: { mock: { method: typeof import('node:test').mock.method } }) {
-  const calls: { path: string; method: string; signal: AbortSignal | undefined; finish: (body: unknown, status?: number) => void }[] = [];
+  const calls: { path: string; method: string; signal: AbortSignal | undefined; finish: (body: unknown, status?: number) => void; done?: boolean }[] = [];
   context.mock.method(globalThis, 'fetch', (input: string | URL | Request, init: RequestInit = {}) => new Promise<Response>((resolve, reject) => {
     const call = { path: String(input), method: init.method ?? 'GET', signal: init.signal ?? undefined, finish: (body: unknown, status = 200) => resolve(new Response(JSON.stringify(body), { status })) };
     calls.push(call);
@@ -263,3 +263,43 @@ test('a fresh read drops the kept answer, so a caller that asks while it is on i
   calls[1]!.finish({ code: 'NOT_FOUND', error: 'Gone' }, 404);
   for (const read of [shell, view]) await assert.rejects(read, (error: unknown) => (error as { status?: number }).status === 404, 'neither is given the older answer');
 });
+
+test('an event forgets only the kept answers it can change: a message none, a page the docs, a run the agents\' chats, a change of access all', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const P = '11111111-1111-4111-8111-111111111111';
+  const W = '22222222-2222-4222-8222-222222222222';
+  const paths = [`/api/v1/projects/${P}`, `/api/v1/projects/${P}/people`, `/api/v1/projects/${P}/docs?limit=100&offset=0`, `/api/v1/workspaces/${W}/members`, '/api/v1/agent-chats'];
+  const keepAll = async () => {
+    const reads = paths.map((path) => request(path, { share: true, keep: 10_000 }));
+    await settle();
+    for (const call of calls.filter((item) => !item.done)) { call.done = true; call.finish({ path: call.path }); }
+    await Promise.all(reads);
+  };
+  const asked = async () => {
+    const before = calls.length;
+    const reads = paths.map((path) => request(path, { share: true, keep: 10_000 }));
+    await settle();
+    const fresh = calls.slice(before).map((call) => call.path);
+    for (const call of calls.filter((item) => !item.done)) { call.done = true; call.finish({ path: call.path }); }
+    await Promise.all(reads);
+    return fresh;
+  };
+  const event = (kind: string, objectType = 'project', objectId = P) => ({ kind, objectType, objectId, workspaceId: W });
+  await keepAll();
+  forgetKeptFor(event('project.message_sent.v1'));
+  forgetKeptFor(event('project.work_updated.v1'));
+  forgetKeptFor(event('project.messages_observed.v1'));
+  forgetKeptFor(event('dm.message_sent.v1', 'dm', randomId()));
+  assert.deepEqual(await asked(), [], 'a message, a task, a sight of a message or a direct message changes nothing kept');
+  forgetKeptFor(event('project.doc_updated.v1'));
+  assert.deepEqual(await asked(), [`/api/v1/projects/${P}/docs?limit=100&offset=0`], 'a page of the space: its pages');
+  forgetKeptFor(event('assistant_run.changed.v1', 'assistant_run', randomId()));
+  assert.deepEqual(await asked(), ['/api/v1/agent-chats'], 'an agent\'s run: the agents\' chats');
+  forgetKeptFor(event('project.grant_set.v1'));
+  assert.deepEqual((await asked()).sort(), [...paths].sort(), 'someone added to the space: everything');
+  forgetKeptFor(event('workspace.member_role_changed.v1', 'workspace', W));
+  assert.deepEqual((await asked()).sort(), [...paths].sort(), 'a change in the company: everything');
+});
+
+function randomId() { return '33333333-3333-4333-8333-333333333333'; }

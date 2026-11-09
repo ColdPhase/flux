@@ -498,6 +498,30 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       expectStatus(await seeP(kai, lamp.id, [m1.id]), 404, 'revoked: observe');
       async function outsiderObserve(who: Person) { return who.browser.request('POST', `${projectPath(lamp.id)}/observations`, { body: { messageIds: [m1.id], viewerId: jo.id } }); }
     });
+
+    test('the first sight of messages tells their authors, and nobody else, by the space\'s id (#862)', async () => {
+      const [jo, kai, lee] = await trio();
+      const room = await project(ada, ws.id, 'Observed project', 'restricted');
+      for (const who of [jo, kai, lee]) await grant(ada, room.id, who, 'contributor');
+      const mine = (await startRoot(jo, room.id, 'Jo writes')).messages[0]!;
+      const theirs = (await startRoot(lee, room.id, 'Lee writes')).messages[0]!;
+      const observed = async () => (await pool.query<{ recipients: string[]; data: Record<string, unknown> }>(
+        `SELECT e.data, array_agg(a.recipient ORDER BY a.recipient) AS recipients FROM events e JOIN event_audience a ON a.event_id = e.id
+         WHERE e.kind = 'project.messages_observed.v1' AND e.object_id = $1 GROUP BY e.id, e.data, e.seq ORDER BY e.seq`, [room.id])).rows;
+      expectStatus(await seeP(kai, room.id, [mine.id, theirs.id]), 200);
+      const [first] = await observed();
+      assert.deepEqual(first!.recipients, [`human:${jo.id}`, `human:${lee.id}`].sort(), 'the two authors, not the viewer, not the space\'s other people');
+      assert.deepEqual(first!.data, {}, 'ids only');
+      expectStatus(await seeP(kai, room.id, [mine.id]), 200);
+      assert.equal((await observed()).length, 1, 'seeing it again tells nobody');
+      expectStatus(await seeP(jo, room.id, [mine.id]), 200);
+      assert.equal((await observed()).length, 1, 'nor does an author seeing their own message');
+      // An author who can no longer read the space is not told.
+      const late = (await startRoot(lee, room.id, 'Lee again')).messages[0]!;
+      await removeFromSpace(ada, room.id, lee);
+      expectStatus(await seeP(kai, room.id, [late.id]), 200);
+      assert.equal((await observed()).length, 1, 'no event for an author outside the space');
+    });
   });
 });
 

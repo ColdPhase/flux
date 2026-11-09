@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
-import { schema, accessPorts, accessReader, type Database } from '@flux/db';
-import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, RuleViolationError, uuid, type Principal } from '@flux/core';
+import { schema, accessPorts, accessReader, type Database, type Executor } from '@flux/db';
+import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, principalKey, RuleViolationError, uuid, type Principal } from '@flux/core';
+import { eventPorts } from '../events.js';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
 // now; "Seen by" for one of their own author runs names the people who can read the project NOW and observed every
@@ -29,6 +31,22 @@ async function facts(tx: Pick<Database, 'select'>, projectId: string, list: stri
     .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), inArray(m.id, list)));
 }
 
+/**
+ * Someone saw messages of a space for the first time (#862): `project.messages_observed.v1` goes to their authors who can read the space
+ * now, and to nobody else, so an author's open page reads its "Seen by" at once instead of asking on a timer. Like every event it names
+ * the space and nothing else; who saw what is read through the receipts, with today's audience.
+ */
+async function tellAuthors(tx: Executor, principal: Principal, workspaceId: string, projectId: string, authorIds: string[]) {
+  const events = eventPorts(tx);
+  const event = { kind: OBSERVED, workspaceId, objectId: projectId };
+  // Only the authors are asked about, not the whole company: the same rule the audience of any event follows, for these few.
+  const recipients: string[] = [];
+  for (const id of new Set(authorIds)) if (await events.authorize({ kind: 'human', id }, event)) recipients.push(principalKey({ kind: 'human', id }));
+  if (recipients.length) await events.repository.insert({ id: randomUUID(), kind: OBSERVED, objectId: projectId, actorId: principalKey(principal), data: {}, workspaceId }, recipients);
+}
+
+const OBSERVED = 'project.messages_observed.v1';
+
 export function projectReceipts(db: Database) {
   return {
     async observe(principal: Principal, projectId: string, input: { messageIds?: unknown }): Promise<ObserveMessagesResult> {
@@ -45,6 +63,7 @@ export function projectReceipts(db: Database) {
         const written = await tx.insert(schema.projectMessageObservations)
           .values(others.map((messageId) => ({ workspaceId: project!.workspaceId, projectId, messageId, viewerId: principal.id }))).onConflictDoNothing()
           .returning({ id: schema.projectMessageObservations.messageId });
+        if (written.length) await tellAuthors(tx, principal, project!.workspaceId, projectId, found.filter((row) => written.some((item) => item.id === row.id)).flatMap((row) => row.authorId ? [row.authorId] : []));
         return { observed: written.length };
       });
     },

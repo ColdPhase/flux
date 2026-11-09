@@ -434,6 +434,11 @@ lets it through from their own row although they are no longer a member, and it 
 actor is stored, never sent). Their tabs forget every kept answer, read the shell again, and an open place of one of its spaces
 lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`).
 
+**Someone saw your messages (#862).** The first sight of messages in a space (`POST .../observations` that stores new
+observations) records `project.messages_observed.v1` for the authors of those messages who can read the space now, and for
+nobody else, so an author's open page reads its "Seen by" then instead of on a timer. It names the space and nothing else;
+who saw what is read through the receipts, with today's audience.
+
 The event's object type comes from the first segment of its kind: `workspace`,
 `project`, `agent`, `sketch`, `dm` or `assistant_run`. The read action for that type decides delivery:
 `workspace.read`, `project.read`, `agent.read`, `sketch.read`, `dm.read` or `assistant_run.read`. Events without a

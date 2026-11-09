@@ -133,3 +133,31 @@ test('a resync ends the sharing: events may have been missed, so a read on its w
   calls[1]!.finish({ name: 'New name' });
   await Promise.all([before, after]);
 });
+
+// #862: no timer reads while the stream is open, so a socket whose connection died unnoticed (a laptop that slept, a network that changed)
+// must not leave the tab with nothing. Coming back online, or to the page after a long time away, opens it again from its cursor.
+test('back online, or back to the page after a long time away, the stream opens again from its cursor; a short absence leaves it be', async () => {
+  stops.push(stream.subscribe('person-a', { onEvent: () => undefined }));
+  const first = FakeSocket.all.at(-1)!;
+  first.onopen?.();
+  first.event('e1');
+  window.dispatchEvent(new Event('online'));
+  const second = FakeSocket.all.at(-1)!;
+  assert.notEqual(second, first, 'a new socket');
+  assert.equal(second.url.searchParams.get('cursor'), 'cursor-e1', 'from where the old one stopped, so nothing is missed');
+  assert.equal(first.onmessage, null, 'the old socket says nothing more');
+  second.onopen?.();
+  const away = (ms: number) => {
+    const now = Date.now();
+    document.visibilityState = 'hidden';
+    document.dispatchEvent(new Event('visibilitychange'));
+    mock.method(Date, 'now', () => now + ms);
+    document.visibilityState = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+    mock.restoreAll();
+  };
+  away(5_000);
+  assert.equal(FakeSocket.all.at(-1), second, 'five seconds away: the same socket');
+  away(5 * 60_000);
+  assert.notEqual(FakeSocket.all.at(-1), second, 'five minutes away: opened again');
+});

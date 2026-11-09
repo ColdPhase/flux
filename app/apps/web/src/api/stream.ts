@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
 import { reconnectDelay } from './busy.js';
-import { forgetKeptReads } from './client.js';
+import { forgetKeptFor, forgetKeptReads } from './client.js';
 import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
@@ -27,6 +27,10 @@ export interface StreamListener {
 }
 
 interface Subscription { identity: string; listener: StreamListener }
+
+/** A tick of the sleep check, and how long away (hidden, or asleep) means the socket may be gone (#862). */
+const TICK_MS = 15_000;
+const AWAY_MS = 60_000;
 
 const subscriptions = new Set<Subscription>();
 let identity: string | null = null;
@@ -133,10 +137,10 @@ function connect() {
     if (data.type !== 'event' || seen.has(data.id)) return;
     seen.add(data.id);
     if (seen.size > 500) seen.delete(seen.values().next().value!);
-    // A change somewhere else has arrived: neither a kept answer nor a read that began before it may answer a re-read that this event
-    // causes (#1023, #862; live invalidation will name the entries instead). This is when the event arrives, not when it is delivered,
-    // so a held event (a page being left or hidden) forgets them too.
-    forgetKeptReads();
+    // A change somewhere else has arrived: neither a kept answer it can change nor a read that began before it may answer a re-read that
+    // this event causes (#1023, #862). This is when the event arrives, not when it is delivered, so a held event (a page being left or
+    // hidden) forgets them too.
+    forgetKeptFor(data);
     deliver(data);
   };
   ws.onclose = (event) => {
@@ -156,17 +160,54 @@ function connect() {
   };
 }
 
-// Back online: a reconnect waiting out its backoff happens now, not up to 15 s later.
+/**
+ * Opens the stream again now, from the last cursor, so whatever it missed is replayed (#862). For a socket the browser still reports open
+ * although its connection may be gone (a laptop that slept, a network that changed): the server's pings cannot be seen from a page, and
+ * with no timers while the stream is open, a dead one would leave the tab with nothing.
+ */
+function reopen() {
+  if (!subscriptions.size) return;
+  const old = socket;
+  socket = null;
+  if (old) { old.onopen = null; old.onmessage = null; old.onclose = null; old.close(1000); }
+  retry = 0;
+  clearTimer();
+  connect();
+}
+
 if (typeof window !== 'undefined') {
-  window.addEventListener('online', () => {
-    if (socket || !subscriptions.size) return;
-    retry = 0;
-    clearTimer();
-    connect();
+  // Back online: the connection may have changed under an open socket, and a reconnect waiting out its backoff happens now.
+  window.addEventListener('online', reopen);
+  // Back after a long time hidden, or after the machine slept (a timer that fired far later than it was set for): opened again.
+  let hiddenAt: number | null = null;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') { hiddenAt = Date.now(); return; }
+    const away = hiddenAt === null ? 0 : Date.now() - hiddenAt;
+    hiddenAt = null;
+    if (away > AWAY_MS && socket) reopen();
   });
+  let tick = Date.now();
+  const sleepCheck = setInterval(() => {
+    const late = Date.now() - tick - TICK_MS;
+    tick = Date.now();
+    if (late > AWAY_MS && socket) reopen();
+  }, TICK_MS);
+  // Outside a browser (Node runs the client in tests) a timer must not keep the process alive (#752).
+  (sleepCheck as unknown as { unref?: () => void }).unref?.();
   document.addEventListener('visibilitychange', release);
 }
 onPageLive(release);
+
+/** A change to a space's work, decisions or results: what Tasks and the space's work summary show (#862). */
+export const WORK_EVENT = /^project\.(work_|decision_|result_|assistant_change_undone|agent_stopped|question_)/;
+
+/**
+ * Whether the live stream is open now (#862). While it is, it tells every view what changed (and a reconnect replays what a drop
+ * missed), so a view reads on an event, a resync, focus or a move, never on a timer; a timer is the fallback for while it is not.
+ */
+export function streamLive(): boolean {
+  return socket !== null && typeof WebSocket !== 'undefined' && socket.readyState === WebSocket.OPEN;
+}
 
 /** One listener for the signed-in person `owner`; `useStreamEvents` is the way components use it. */
 export function subscribe(owner: string, listener: StreamListener) {

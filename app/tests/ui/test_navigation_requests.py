@@ -11,6 +11,7 @@ Chromium, 1440x900. Runs against the Compose application like the other tests/ui
 
 from __future__ import annotations
 
+import os
 import re
 import time
 import unittest
@@ -24,17 +25,19 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder, view_tab
 PASSWORD = "a light way to move around"
 STAMP = int(time.time() * 1000)
 EMAIL = f"nav.requests+{STAMP}@example.test"
-# #862: at most 8 requests per navigation and none repeated. What each navigation costs with kept reads (measured 2026-11-08 on this scene, plus
+# #862: at most 8 requests per navigation and none repeated. What each navigation costs with kept reads and live invalidation (measured 2026-11-09 on this scene, plus
 # one for a poll that lands in the quiet window) and how many addresses it sends twice; the ones above TARGET wait for the rest of the data layer.
 TARGET = 8
+# #862: an open tab nobody touches.
+IDLE_PER_MINUTE = 4
 BUDGET = {
     "Home → Inbox": (3, 0),
     "Inbox → Home": (4, 0),
-    "Home → a space (Conversation)": (16, 0),
+    "Home → a space (Conversation)": (15, 0),
     "Conversation → Tasks": (8, 0),
     "Tasks → Map": (5, 0),
-    "Map → Wiki": (6, 0),
-    "Wiki → Conversation": (16, 0),
+    "Map → Wiki": (5, 0),
+    "Wiki → Conversation": (12, 0),
     "Conversation → another space": (17, 0),
     "another space → My tasks": (5, 0),
 }
@@ -59,8 +62,7 @@ class NavigationRequests(unittest.TestCase):
         print("\nAPI requests per in-app navigation (#850):", flush=True)
         for name, count, repeated, requests in cls.report:
             print(f"  {name:<34} {count:>3}{'  (over the target of ' + str(TARGET) + ')' if count > TARGET else ''}{'  repeated: ' + ', '.join(repeated) if repeated else ''}", flush=True)
-            if count > TARGET:
-                print(f"      {'; '.join(requests)}", flush=True)
+            print(f"      {'; '.join(requests)}", flush=True)
         cls.browser.close()
         cls.pw.stop()
 
@@ -117,9 +119,26 @@ class NavigationRequests(unittest.TestCase):
         counts = Counter(seen)
         repeated = [f"{method} {path} x{n}" for (method, path), n in counts.items() if n > 1]
         # The same requests with their ids and queries taken out, so the output says what a navigation asks for.
-        kinds = Counter(f"{re.sub(r'[0-9a-f]{8}-[0-9a-f-]{27}', ':id', re.sub(r'[?].*', '', path)).removeprefix('/api/v1/')}{' x%d' % n if n > 1 else ''}" for (method, path), n in counts.items() if method == "GET")
+        kinds = Counter(f"{'' if method == 'GET' else method + ' '}{re.sub(r'[0-9a-f]{8}-[0-9a-f-]{27}', ':id', re.sub(r'[?].*', '', path)).removeprefix('/api/v1/')}{' x%d' % n if n > 1 else ''}"
+                        for (method, path), n in counts.items())
         type(self).report.append((name, len(seen), repeated, sorted(kinds)))
         return len(seen), repeated
+
+    def idle(self, page: Page, seconds: float) -> list[str]:
+        """The API requests an open, untouched tab makes in `seconds` (the live stream itself not counted)."""
+        seen: list[str] = []
+
+        def on_request(request) -> None:
+            path = request.url.removeprefix(ORIGIN)
+            if path.startswith("/api/") and not path.startswith("/api/v1/stream"):
+                seen.append(f"{request.method} {re.sub(r'[0-9a-f]{8}-[0-9a-f-]{27}', ':id', re.sub(r'[?].*', '', path)).removeprefix('/api/v1/')}")
+
+        page.on("request", on_request)
+        try:
+            page.wait_for_timeout(seconds * 1000)
+        finally:
+            page.remove_listener("request", on_request)
+        return seen
 
     def warm_page(self) -> Page:
         context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block", locale="en-GB", storage_state=self.state)
@@ -163,6 +182,26 @@ class NavigationRequests(unittest.TestCase):
             if count > allowed or len(repeated) > allowed_repeats:
                 failures.append(f"{name}: {count} requests (at most {allowed}), repeated {', '.join(repeated) or 'nothing'} (at most {allowed_repeats} addresses)")
         self.assertEqual(failures, [], "a navigation costs no more than the budget recorded for it (#850); the target it is heading for is %d requests and none repeated" % TARGET)
+
+
+    def test_03_an_open_tab_makes_at_most_four_requests_a_minute(self) -> None:
+        """#862: an open tab nobody touches asks the server at most 4 times a minute; the live stream tells it what changed."""
+        page = self.warm_page()
+        project = self.ids["project"]
+        window = float(os.environ.get("FLUX_IDLE_WINDOW_S", "60"))
+        views = [("Home", "/"), ("Inbox", "/inbox"), ("Conversation", f"/projects/{project}"), ("Tasks", f"/projects/{project}/tasks"),
+                 ("Map", f"/projects/{project}/map"), ("Wiki", f"/projects/{project}/docs")]
+        failures = []
+        print(f"\nAPI requests of an untouched tab in {window:.0f} s (#862):", flush=True)
+        for name, path in views:
+            page.goto(path)
+            page.wait_for_timeout(4000)  # what the view reads when it opens is not idle
+            seen = self.idle(page, window)
+            per_minute = len(seen) * 60 / window
+            print(f"  {name:<14} {len(seen):>3}  {'; '.join(sorted(Counter(seen)))}", flush=True)
+            if per_minute > IDLE_PER_MINUTE:
+                failures.append(f"{name}: {len(seen)} in {window:.0f} s")
+        self.assertEqual(failures, [], f"an open tab makes at most {IDLE_PER_MINUTE} requests a minute")
 
 
 if __name__ == "__main__":

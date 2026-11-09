@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { RECEIPT_LIMITS, type DmPerson, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
 import { sameMessageAuthor } from './messageParts';
+import { streamLive, useStreamEvents } from '../api/stream';
 
 /**
  * Viewing receipts for a private conversation (#534). What counts as "observed": a message written by someone else
@@ -127,13 +128,35 @@ export function useReceipts({ scope, fetchReceipts, runs, tick }: {
 
 const EMPTY = new Map<string, DmPerson[]>();
 
-/** A tick every few seconds while the page is visible, for surfaces whose receipts have no live event (the project's conversation). */
-export function useReceiptTick(enabled: boolean, ms = 8000) {
+/**
+ * When a space's "Seen by" is read again (#862): when someone sees the person's messages there for the first time, the server tells the
+ * author (`project.messages_observed.v1`); a tick every few seconds is the fallback while the live stream is down.
+ */
+export function useReceiptTick(enabled: boolean, identity: string, projectId: string, ms = 8000) {
   const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!enabled) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === 'visible') setTick((value) => value + 1); }, ms);
+    const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !streamLive()) setTick((value) => value + 1); }, ms);
     return () => window.clearInterval(timer);
   }, [enabled, ms]);
+  useEffect(() => {
+    if (!enabled) return;
+    const onFocus = () => setTick((value) => value + 1);
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [enabled]);
+  useStreamEvents(identity, (event) => {
+    if (!enabled) return;
+    // Someone saw the person's messages; or someone may no longer read the space, and "Seen by" names only those who can now.
+    if ((event.kind === MESSAGES_OBSERVED || READERS_CHANGED.has(event.kind)) && event.objectId === projectId) setTick((value) => value + 1);
+    else if (event.objectType === 'workspace' && READERS_CHANGED.has(event.kind)) setTick((value) => value + 1);
+  }, () => { if (enabled) setTick((value) => value + 1); });
   return tick;
 }
+
+/** Changes that can take a reader out of a space: "Seen by" names only people who can read it now (#534, #862). */
+const READERS_CHANGED = new Set(['project.grant_revoked.v1', 'project.grant_set.v1', 'project.access_ended.v1', 'project.deleted.v1',
+  'workspace.member_removed.v1', 'workspace.member_role_changed.v1', 'workspace.access_ended.v1']);
+
+/** Someone saw messages of a space for the first time; it reaches their authors only (#862). */
+export const MESSAGES_OBSERVED = 'project.messages_observed.v1';

@@ -7,7 +7,8 @@ import { KEEP_MS, request, responseError, send } from '../api/client.js';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, type LiveDocBootstrap, type EnrollLiveDoc, type EnrolledLiveDoc, type SaveSharedDoc, type LiveReceipt } from '@flux/contracts';
 
 export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });
-export const enrollLiveDoc = (id: string, command: EnrollLiveDoc, signal?: AbortSignal) => request<EnrolledLiveDoc>(liveDocEnrollPath(id), { method: 'POST', body: command, signal });
+/** Joining a page's live editing changes no kept read (#862: the space, its people, its pages stay as they were read). */
+export const enrollLiveDoc = (id: string, command: EnrollLiveDoc, signal?: AbortSignal) => request<EnrolledLiveDoc>(liveDocEnrollPath(id), { method: 'POST', body: command, signal, leavesReads: true });
 /** `keepalive`: the page is being left, and the version is saved anyway. */
 export const saveLiveDoc = (id: string, command: SaveSharedDoc, keepalive = false) => request<LiveReceipt>(liveDocSavePath(id), { method: 'POST', body: command, keepalive, headers: { 'idempotency-key': command.clientCommandId, 'if-match': `"${command.expectedVersion}"` } });
 

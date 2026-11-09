@@ -26,6 +26,8 @@ export function useInboxDot(identity: string, pathname: string): number {
     const onFocus = () => refresh();
     window.addEventListener(INBOX_CHANGED, refresh);
     window.addEventListener('focus', onFocus);
+    // Also while the live stream is open (#862): an item handled on another device, an item back from Later and a notification written late
+    // send this tab no event. Half a request a minute.
     const interval = setInterval(refresh, 120_000);
     return () => {
       window.removeEventListener(INBOX_CHANGED, refresh);
@@ -34,6 +36,7 @@ export function useInboxDot(identity: string, pathname: string): number {
       if (timer.current) clearTimeout(timer.current);
     };
   }, [refresh]);
-  useStreamEvents(identity, soon, refresh);
+  // Someone seeing a message changes nothing that waits for this person (#862).
+  useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, refresh);
   return unread?.identity === identity ? unread.count : 0;
 }

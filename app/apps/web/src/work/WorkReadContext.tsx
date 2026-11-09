@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useRevalidator } from 'react-router';
 import { projectWorkSummaryPath, type ProjectWorkView } from '@flux/contracts';
 import { getProjectWorkSummary } from './read-api';
+import { WORK_EVENT, streamLive, subscribe } from '../api/stream';
 import { ProjectWorkFacetStore, readStateForScope, type ReadScope, type ReadState } from './read-state';
 
 interface WorkReadContextValue { accountId: string; projectId: string | null; store: ProjectWorkFacetStore }
@@ -23,8 +24,13 @@ export function WorkReadProvider({ accountId, projectId, children }: { accountId
     const refresh = () => { if (document.visibilityState === 'visible') void store.readSummary(scope, (signal) => getProjectWorkSummary(projectId, signal)); };
     refresh();
     window.addEventListener('focus', refresh);
-    const interval = window.setInterval(refresh, 15000);
-    return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
+    // A timer only while the live stream is down (#862); while it is open, a change to this space's work reads at once.
+    const interval = window.setInterval(() => { if (!streamLive()) refresh(); }, 15000);
+    const unsubscribe = subscribe(accountId, {
+      onEvent: (event) => { if (event.objectType === 'project' && event.objectId === projectId && WORK_EVENT.test(event.kind)) refresh(); },
+      onResync: refresh,
+    });
+    return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); unsubscribe(); };
   }, [accountId, projectId, tasks, revalidator.state, store]);
   return <WorkReadContext.Provider value={value}>{children}</WorkReadContext.Provider>;
 }

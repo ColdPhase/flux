@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantRun, type OwnWorkingAgent } from '@flux/contracts';
 import { onPageLive, pageLeaving } from '../api/pageLeaving';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { listOwnRuns, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
 import { Icon, Kreska, agentHue, useToast, type KreskaExpression } from '../ui';
@@ -149,11 +149,13 @@ function useOwnWorkingAgents(identity: string) {
     };
     reload.current();
     const onFocus = () => reload.current();
-    const timer = window.setInterval(onFocus, 20_000);
+    // Only while the live stream is down (#862): while it is open, every event reads at once (below).
+    const timer = window.setInterval(() => { if (!streamLive()) onFocus(); }, 20_000);
     window.addEventListener('focus', onFocus);
     return () => { controller?.abort(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); reload.current = () => { /* unmounted */ }; };
   }, [identity, allOff]);
-  useStreamEvents(identity, () => reload.current(), () => reload.current());
+  // Someone seeing a message changes no agent's work (#862).
+  useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) reload.current(); }, () => reload.current());
   return { items: state.identity === identity ? state.items : [], reload: useCallback(() => reload.current(), []) };
 }
 
