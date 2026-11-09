@@ -20,7 +20,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | Idle: at most 100 database statements a minute | 122 | 95 | met, narrowly, see [Idle statements](#idle-statements) |
 | An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
-| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4 | not met for three moves, see [Kept reads](#kept-reads-862-the-data-layers-first-part) |
+| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files | not met, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
@@ -236,10 +236,17 @@ scene, 2026-11-09):
 | Another space → My tasks | 4 | 4 |
 
 **Inferred.**
-- The moves into a space's Conversation are still over 8. A conversation still asks for its roots, its task and decision
-  notices, its sources, its agents' questions and its work associations one by one, and entering a space also asks for the
-  space, its sketches and its work summary.
-- Folding those reads into one is the next part.
+- **Three moves into a Conversation stay above 8 for v0.2:** Home → a space 14, Wiki → Conversation 11, Conversation →
+  another space 16. Every other move is at 7 or fewer.
+- **Why.** A conversation asks for its parts one by one: its roots, its task and decision notices, its sources, its agents'
+  questions, its work associations, the agents' runs and status, and where the person left off. Entering a space also
+  asks for the space itself, which is never taken from a kept answer so a lost space says so, and for its people, pages,
+  sketches and work summary.
+- **Measured fix, parked.** Folding the reads asked for in one moment into one request (`GET /api/v1/reads`, answered
+  by each read's own route) brought the three moves to 7, 6 and 7. It was parked before release (2026-11-09) because it is
+  a new generic server surface, and because it needs a sizeable conversion of the UI tests that hold or stub single reads.
+- **For v0.3.** [#1109](https://github.com/ColdPhase/flux/issues/1109) has the gap and both options: that fold endpoint
+  (branch `claude-hubert/862-folded-reads`), or one view-shaped read per screen.
 
 ## First screen
 
