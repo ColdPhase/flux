@@ -173,6 +173,25 @@ fixed. If the evaluator edits code, another independent evaluation is needed.
 CI/branch rules enforce technical merge gates. Task labels, agent comments, and
 local test results cannot bypass required remote checks or Code Owner review.
 
+## The agents' real CLIs without an account
+
+`scripts/check_cli_runtime.sh` ([#1125](https://github.com/ColdPhase/flux/issues/1125)) runs the REAL pinned Claude Code and
+Codex inside the agent runtime image, driven by Flux (API, worker, runtime-manager, supervisor, runtime-egress `/mcp`), against a
+local vendor mock instead of any account or key (`providermock`, `app/tests/app/support/cli-vendor-mock.ts`). A TEST ONLY image
+stage wraps each binary so its model and sign-in hosts are the mock; the runtime's egress has no way out, so no vendor host can be
+reached. It asserts Flux's side effects, never model text. Run it, alone, after a change to the runtime's templates, run reader,
+error classification, sign-in console or CLI pins, and in release acceptance.
+
+| Covered without an account | Still needs a real account (release acceptance) |
+| --- | --- |
+| Claude Code: an `/ai` run and an agent task run calling Flux's MCP tools (a conversation, a task's discussion, a task and a subtask, `flux_read_web`), the run token, the change log and web reads | Claude plan sign-in (its OAuth hosts are fixed in the binary; the check signs in with an API key in the person's CLI home) |
+| Claude Code's own `WebSearch`: the search and its result addresses recorded, a result read | Claude plan limits: `You've hit your … limit` and the `anthropic-ratelimit-unified-*` headers exist only in plan (OAuth) mode |
+| Claude Code's own texts for a 429, an over-long prompt and a revoked key, and what Flux records for each ([#1129](https://github.com/ColdPhase/flux/issues/1129)) | Codex's device card: Flux draws it only for `https://auth.openai.com/codex/device`; the mock issuer's page is shown in the terminal |
+| Codex: the ChatGPT device sign-in through Flux's console (device code, approval, code exchange, status), sign-out with revocation | The path through runtime-egress's CONNECT to the vendors, and Codex's WebSocket transport (the mock answers 426) |
+| Codex: an `/ai` run as it ends today ([#1127](https://github.com/ColdPhase/flux/issues/1127)) | Real model behaviour and quality, and drift of the vendors' wording after the pinned versions |
+| Codex started exactly as the supervisor starts a run, outside Flux's run reader: a token refresh, the usage limit with the reset time read by Flux's app-server client, an over-long prompt, a revoked sign-in and a `web_search` item, each through Flux's classifier | ChatGPT's own model catalog (the mock has none, so Codex keeps its pinned one) |
+| No vendor credential in the database or the service logs | The runtime's start on a host with `kernel.yama.ptrace_scope` 0: there the check reads that one file as 1 (and says so) |
+
 ## At release acceptance
 
 Use a candidate commit from the protected base branch and the accepted release

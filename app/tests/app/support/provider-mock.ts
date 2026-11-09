@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { handleCliVendor } from './cli-vendor-mock.js';
 
 /**
  * TEST ONLY (#179, F-020 PROV-6): a local stand-in for the two AI wire formats, run as the Compose
@@ -13,6 +14,7 @@ import http from 'node:http';
  *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
  *   GET  /__requests                                                 what the adapters sent
  *   POST /__reset, GET /__health
+ *   /cli/…, /__cli/…                                                the REAL Claude Code and Codex of the runtime (#1125, cli-vendor-mock.ts)
  *
  * Modes: `success`, `truncated`, `refusal`, `status` (HTTP `status`, with an error body that echoes
  * the received key, to prove adapters never surface error bodies), `hang` (never answers),
@@ -102,6 +104,7 @@ const server = http.createServer((request, response) => {
     let body: unknown = null;
     try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
     if (url.pathname === '/__health') return json(response, 200, { ok: true });
+    if (handleCliVendor(request, response, url, raw, body)) return;
     if (url.pathname === '/__requests') return json(response, 200, { requests });
     if (url.pathname === '/__reset') {
       requests.length = 0; scripts.anthropic = { ...DEFAULT }; scripts.openai = { ...DEFAULT };

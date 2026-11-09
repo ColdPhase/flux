@@ -1,0 +1,39 @@
+# TEST ONLY (#1125): the agent runtime with the REAL pinned Claude Code and Codex against a local vendor mock. Layered by
+# scripts/check_cli_runtime.sh over compose.source.yaml, compose.source.runtime.yaml and compose.test.yaml with the `test` and
+# `runtime` profiles. Never deploy it.
+#
+# What differs from production, and nothing else:
+# - runtime-1 runs the `agent-runtime-cli-mock` stage: the same supervisor and binaries, each CLI behind a wrapper that points its
+#   model and sign-in hosts at `providermock` (app/tests/cli-runtime).
+# - providermock joins the runtime's network, so a CLI reaches it directly instead of through runtime-egress's CONNECT.
+# - runtime-egress has no way out: no vendor host is reachable at all, so anything the mock does not answer fails instead of
+#   reaching a vendor. Flux's /mcp still goes through runtime-egress, as in production.
+# - The tools volume was filled before the stack by Flux's own installer (pinned, signature-checked); runtime-install only checks
+#   the binary against the hash the installer verified and puts the wrapper in front of it.
+# - Only on a host whose kernel.yama.ptrace_scope is 0 (the supervisor refuses such a host, RT-3), the script sets
+#   FLUX_CLI_SUPERVISOR_ENTRY to app/tests/cli-runtime/supervisor-yama0.mjs, the unchanged supervisor main reading that one file as 1.
+services:
+  providermock:
+    networks: [default, runtime-1]
+  runtime-1:
+    build:
+      target: agent-runtime-cli-mock
+    image: flux-agent-runtime-cli-mock:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node", "--disable-sigusr1", "${FLUX_CLI_SUPERVISOR_ENTRY:-apps/runtime/dist/supervisor/main.js}"]
+    depends_on:
+      providermock:
+        condition: service_healthy
+  runtime-install:
+    build: !reset null
+    image: flux-agent-runtime-cli-mock:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["sh", "/opt/flux-cli-mock/install.sh"]
+  worker:
+    environment:
+      FLUX_AGENT_RUNTIME_RECONCILE_MS: "1000"
+networks:
+  runtime-egress-out:
+    internal: true
+volumes:
+  runtime-tools:
+    external: true
+    name: ${FLUX_CLI_TOOLS_VOLUME:?Set by scripts/check_cli_runtime.sh}

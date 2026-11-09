@@ -125,6 +125,17 @@ ENV PATH="/opt/flux-tools/claude/bin:$PATH"
 FROM agent-runtime-base AS agent-runtime
 COPY --from=codex /codex /opt/flux-runtime/codex/bin/codex
 
+# TEST ONLY (#1125, scripts/check_cli_runtime.sh): the runtime image above with its REAL pinned Codex behind a wrapper that points
+# its vendor hosts at the local mock, plus the Claude Code wrapper and the install step that puts it in the tools volume
+# (app/tests/cli-runtime). The supervisor, its templates and the binaries are the ones above. Never deployed.
+FROM agent-runtime AS agent-runtime-cli-mock
+USER root
+COPY tests/cli-runtime/ /opt/flux-cli-mock/
+RUN mv /opt/flux-runtime/codex/bin/codex /opt/flux-cli-mock/codex \
+  && install -m 0755 /opt/flux-cli-mock/codex.sh /opt/flux-runtime/codex/bin/codex \
+  && chmod 0755 /opt/flux-cli-mock/claude.sh /opt/flux-cli-mock/install.sh
+USER node
+
 # The one-shot installer needs gpg to check Anthropic's signed release manifest; slots do not.
 FROM agent-runtime AS agent-runtime-install
 USER root
