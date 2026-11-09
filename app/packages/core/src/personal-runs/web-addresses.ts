@@ -2,10 +2,9 @@
 // is a way to send something to a site: `http://site/collect?d=<what the agent knows>`. An agent therefore reads only addresses it was
 // GIVEN: written in the request it answers, in the task or conversation it works in, or on a page it read in the same run. It never
 // composes one, so nothing it knows can be put into one; it can only choose among addresses that already stood there. The comparison is
-// exact (the whole address, query included; the fragment never travels and is ignored). One run reads a bounded number of addresses.
-
-/** The most distinct addresses one run may ask for, so the choice among given addresses carries little and the sources line stays short. */
-export const WEB_READS_PER_RUN = 20;
+// exact (the whole address, query included; the fragment never travels and is ignored). A run reads as many of them as its question
+// needs (founder direction, Hubert, 2026-11-09, #1113): the count is not limited, and the accepted risk is that a page with many links
+// can leak what the agent knows through WHICH of the addresses it then chooses to open (decisions.md, "The risk, recorded").
 /** The most addresses a run is given when it starts, from all the texts together. */
 export const GIVEN_AT_START_MAX = 400;
 /** The most addresses taken from one text, and from one page's text. */
@@ -68,8 +67,12 @@ export function givenAddresses(texts: readonly string[]): Set<string> {
   return given;
 }
 
-/** The most queries, results and cited addresses kept of one response of the provider's web search (#954). */
-export const WEB_SEARCH_BOUNDS = { queries: 10, query: 300, results: 100, cited: 100 } as const;
+/**
+ * The most queries, results and cited addresses kept of one response of the provider's web search (#954): a sanity bound on one
+ * response, not on a run. A response of many searches (#1113) is kept whole up to these; the repository writes it in as many rows as it
+ * needs, and a run has as many responses as it makes requests.
+ */
+export const WEB_SEARCH_BOUNDS = { queries: 100, query: 300, results: 1_000, cited: 1_000 } as const;
 
 /**
  * What one response of the provider's built-in web search brought, as Flux keeps it (#954, C-30): the queries as plain one-line text

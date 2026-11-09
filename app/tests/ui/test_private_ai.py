@@ -214,7 +214,7 @@ class PrivateAiJourney(unittest.TestCase):
         self.assertNotIn("wifi.example", card.inner_text(), "a result the answer does not cite is not listed as its source")
         shot(jo, "private-ai-1440-web-search-sources")
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertIn({"type": "web_search_20250305", "name": "web_search", "max_uses": 5}, sent[-1]["body"]["tools"], "Anthropic's own search was offered")
+        self.assertIn({"type": "web_search_20250305", "name": "web_search"}, sent[-1]["body"]["tools"], "Anthropic's own search was offered, with no limit on its searches")
         card.get_by_role("button", name="Dismiss").click()
         expect(card).to_have_count(0)
 

@@ -4,7 +4,6 @@ import {
   aiModelCallsTools,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
-  WEB_SEARCHES_PER_REQUEST,
   type AiConnectionRef,
   type AiPrice,
   type AssistantRunKind,
@@ -151,10 +150,12 @@ export function runTokensWithinLimits(usage: PersonalComputeUsage): boolean {
 /**
  * What one request reserves (PROV-3): its largest possible cost at the connection's price, or null
  * when the connection has no known price and cannot be used. A run with tools (#484) has the larger
- * input bound, and when it is offered its provider's own web search (#954) the searches one request may make and the room for their results.
+ * input bound, and when it is offered its provider's own web search (#954) the room for the results of its searches. The searches
+ * themselves are not reserved (#1113): their number is not limited, so each is charged as the provider reports it, within what the
+ * run has left (`reconcileRequest`).
  */
 export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools = false, webSearch = false): number | null {
-  return requestReservationMicros(price, personalRunMaxInputTokens(tools, webSearch), PERSONAL_RUN_LIMITS.maxOutputTokens, tools && webSearch ? WEB_SEARCHES_PER_REQUEST : 0);
+  return requestReservationMicros(price, personalRunMaxInputTokens(tools, webSearch), PERSONAL_RUN_LIMITS.maxOutputTokens);
 }
 
 /**

@@ -1,5 +1,5 @@
 import type { Page, PageQuery } from './access.js';
-import { WEB_SEARCHES_PER_REQUEST, type AiProviderKind } from './ai-providers.js';
+import type { AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
 
 /**
@@ -163,19 +163,21 @@ export const PERSONAL_RUN_LIMITS = {
 } as const;
 
 /**
- * What the results of one search of the provider's built-in web search may add to the input of a request (#954): the provider counts
- * them as input in the request that searched and, on Anthropic, in every later request of the run, which carries them back. Flux's
- * assumption, to be checked against real keys: OpenAI bills its mini models a fixed block of 8,000 input tokens a search
- * (developers.openai.com pricing, read 2026-11-08), and no vendor states a size for the others.
+ * The room a request that is offered the provider's built-in web search has in its input for what its searches brought (#954, #1113):
+ * the provider counts the results as input in the request that searched and, on Anthropic, in every later request of the run, which
+ * carries them back. Searches are not counted or limited (founder direction 2026-11-09), so this is one room for the results a request
+ * carries, not a room for a number of searches. Flux's assumption, to be checked against real keys: OpenAI bills its mini models a
+ * fixed block of 8,000 input tokens a search (developers.openai.com pricing, read 2026-11-08), and no vendor states a size for the others.
  */
-export const WEB_SEARCH_INPUT_TOKENS = 10_000;
+export const WEB_SEARCH_INPUT_TOKENS = 50_000;
 
 /**
  * The input bound of one request of a run: the larger one when the run can call tools (#484), and with the room for the results of
- * the searches a request may hold when the run is offered its provider's web search (#954).
+ * its searches when the run is offered its provider's web search (#954). It bounds what Flux sends; what a request that searched
+ * reports as input is bounded by the money the run has left, not by this (a search's results are input the provider adds on its own).
  */
 export const personalRunMaxInputTokens = (tools: boolean, webSearch = false): number =>
-  (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens + (webSearch ? WEB_SEARCHES_PER_REQUEST * WEB_SEARCH_INPUT_TOKENS : 0) : PERSONAL_RUN_LIMITS.maxInputTokens);
+  (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens + (webSearch ? WEB_SEARCH_INPUT_TOKENS : 0) : PERSONAL_RUN_LIMITS.maxInputTokens);
 
 /**
  * One of a person's Connect AI connections (#854): their Claude plan (`claude_plan`), their ChatGPT plan (`chatgpt_plan`)

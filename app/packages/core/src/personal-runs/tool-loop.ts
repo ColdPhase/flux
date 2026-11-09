@@ -1,9 +1,10 @@
-import { maxRequestMicros, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, WEB_SEARCHES_PER_REQUEST, type AiPrice } from '@flux/contracts';
+import { maxRequestMicros, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { boundedUsageMicros } from '../ai/price.js';
 import type {
   PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalToolCall, PersonalToolResult, PersonalToolSession, PersonalTurn, RunEndStatus, WebSearchFound,
 } from './ports.js';
+import { notePages, notesPages, pageRead, type PageRead } from './page-notes.js';
 import { WebSearchRefusedError } from './ports.js';
 
 // The bounded tool loop of a `server` run (F-027 AST-8, PROV-3 revised 2026-10-09). The loop only
@@ -56,14 +57,17 @@ export const emptyAccount = (): RunAccount => ({ micros: 0, inputTokens: 0, outp
  * Reconciles one completed request against what is left of the run's reservation. False when the
  * reported usage is outside the request's token limits or would take the run above its
  * reservation: that request is a lost response and the account is `unknown`.
+ *
+ * `webSearch`: the request was offered the provider's own web search (#954). Its searches are not limited (#1113) and are charged as
+ * the response reports them, and what they brought is input the provider adds on its own, so such a request is held to the money the
+ * run has left and not to a count of searches or a token bound. A request that was not offered the search made none: one that reports
+ * any is out of its bounds.
  */
 export function reconcileRequest(account: RunAccount, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number },
-  price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearches = 0): boolean {
-  // `webSearches`: the searches the request offered (#954); a response that made more, or made any unoffered, is out of its bounds. A
-  // request that offered them has room for their results in its input.
+  price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearch = false): boolean {
   const micros = boundedUsageMicros(price, usage, {
-    maxInputTokens: personalRunMaxInputTokens(true, webSearches > 0), maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, maxWebSearches: webSearches,
-    reservedMicros: reservedMicros - account.micros,
+    maxInputTokens: webSearch ? Number.MAX_SAFE_INTEGER : personalRunMaxInputTokens(true), maxOutputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens,
+    maxWebSearches: webSearch ? Number.MAX_SAFE_INTEGER : 0, reservedMicros: reservedMicros - account.micros,
   });
   if (micros === null) { account.unknown = true; return false; }
   account.micros += micros;
@@ -73,9 +77,14 @@ export function reconcileRequest(account: RunAccount, usage: { inputTokens: numb
   return true;
 }
 
-/** Whether another request, at its largest possible cost (the web searches it may make included, #954), still fits what is left of the reservation. */
-export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearches = 0): boolean {
-  return account.micros + maxRequestMicros(price, personalRunMaxInputTokens(true, webSearches > 0), PERSONAL_RUN_LIMITS.maxOutputTokens, webSearches) <= reservedMicros;
+/**
+ * Whether another request, at its largest possible cost in tokens, still fits what is left of the reservation (the room for search
+ * results included when it is offered the search, #954). Its searches are not reserved (#1113): they are charged as the response
+ * reports them, out of what is left; a request whose searches take the run above its reservation is a lost response, so the daily
+ * budget is never passed, and the run is stopped here before any request that could not even carry its tokens.
+ */
+export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, reservedMicros: number, webSearch = false): boolean {
+  return account.micros + maxRequestMicros(price, personalRunMaxInputTokens(true, webSearch), PERSONAL_RUN_LIMITS.maxOutputTokens) <= reservedMicros;
 }
 
 /** Why a run stopped at one of its own limits ("Limit reached"): the turn cap, the money reservation, one request's input bound or the clock. */
@@ -149,9 +158,12 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
   const { compute, session, first, price, reservedMicros, maxTurns, deadline, now, gate, signal, onWebSearch, onSearchRefused } = options;
   const withoutSearch = options.withoutSearch ?? dropSearch;
   const account = emptyAccount();
-  let searches = first.webSearch ? WEB_SEARCHES_PER_REQUEST : 0;
+  // Whether the provider's own search is still offered: it is not once the provider refused it, and its searches are not counted (#1113).
+  let searching = first.webSearch === true;
   const offered = new Set(session.tools.map((tool) => tool.name));
   const done: PersonalTurn[] = [];
+  // The pages the model read and has not yet noted (#1113): their text goes with the next requests until a step's words note it.
+  const pages = new Map<PersonalToolResult, PageRead>();
   let base = first;
   let request = first;
   for (let turn = 1; ; turn += 1) {
@@ -163,9 +175,9 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
       result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
     }
     // The provider refused its own search tool, and nothing was billed: the same request once more without it, the same turn (#954).
-    if (result.kind === 'failed' && result.searchRefused && searches && result.billed === 'none') {
+    if (result.kind === 'failed' && result.searchRefused && searching && result.billed === 'none') {
       onSearchRefused?.();
-      searches = 0;
+      searching = false;
       base = withoutSearch(base);
       request = withoutSearch(request);
       turn -= 1;
@@ -176,9 +188,9 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
       if (result.billed !== 'none') account.unknown = true;
       return { end: { kind: 'failed', result }, account, turns: turn };
     }
-    if (!reconcileRequest(account, result.usage, price, reservedMicros, searches)) return { end: { kind: 'lost' }, account, turns: turn };
+    if (!reconcileRequest(account, result.usage, price, reservedMicros, searching)) return { end: { kind: 'lost' }, account, turns: turn };
     // What a search brought is recorded first: the calls of this response may read its results, and the answer lists them.
-    if (result.webSearch && searches) {
+    if (result.webSearch && searching) {
       try {
         await onWebSearch?.(result.webSearch);
       } catch {
@@ -191,7 +203,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
 
     // The model wants more turns: every limit is checked before anything it asked for is run.
     if (turn >= maxTurns) return { end: { kind: 'limit', limit: 'turns' }, account, turns: turn };
-    if (!nextRequestFits(account, price, reservedMicros, searches)) return { end: { kind: 'limit', limit: 'money' }, account, turns: turn };
+    if (!nextRequestFits(account, price, reservedMicros, searching)) return { end: { kind: 'limit', limit: 'money' }, account, turns: turn };
     if (now() >= deadline) return { end: { kind: 'limit', limit: 'time' }, account, turns: turn };
     const before = await gate(account.micros);
     if (before) return { end: { kind: 'halted', status: before.status }, account, turns: turn };
@@ -202,24 +214,31 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
       results.push(await runCall(session, offered, call, signal));
     }
     if (signal.aborted) return { end: { kind: 'failed', result: aborted }, account, turns: turn };
+    // The words of this step note the pages read before it (#1113): their text is not sent again. The pages this step read are new to
+    // the model, which has not seen them yet, so their text goes with the next request.
+    if (pages.size && notesPages(result.text)) notePages(done, pages);
     done.push({ text: result.text, calls, results, ...(result.replay !== undefined ? { replay: result.replay } : {}) });
+    for (const [index, call] of calls.entries()) {
+      const page = pageRead(call, results[index]!);
+      if (page) pages.set(results[index]!, page);
+    }
     request = { ...base, turns: [...done] };
 
     // The next request: the same standing checks, then its own input bound.
     const next = await gate(account.micros);
     if (next) return { end: { kind: 'halted', status: next.status }, account, turns: turn };
     let tokens = conservativeTokenEstimate(requestParts(request));
-    let maxInput = personalRunMaxInputTokens(true, searches > 0);
+    let maxInput = personalRunMaxInputTokens(true, searching);
     if (tokens <= maxInput && compute.countInputTokens) {
       try {
         tokens = boundedInputTokens(tokens, await compute.countInputTokens(request));
       } catch (error) {
         // Counting is free and sends nothing to bill: a failed count ends the run without another request. A count that refused the
         // provider's own search tool (#954) is made again without it, and the run goes on without the search.
-        if (!searches || !(error instanceof WebSearchRefusedError))
+        if (!searching || !(error instanceof WebSearchRefusedError))
           return { end: { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'none' } }, account, turns: turn };
         onSearchRefused?.();
-        searches = 0;
+        searching = false;
         base = withoutSearch(base);
         request = withoutSearch(request);
         maxInput = personalRunMaxInputTokens(true, false);

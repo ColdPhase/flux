@@ -14,7 +14,7 @@ export type WebReadOutcome = 'asked' | 'read' | 'redirected' | 'blocked' | 'unre
 /** The headings of the block Flux appends to an answer; the block starts at the first of them, after a blank line. */
 export const WEB_SOURCES_HEADINGS = ['Searched the web for:', 'Found on the web:', 'Read on the web:', 'Requested, not read:'] as const;
 
-/** The most queries and cited addresses one block lists: a run's reads are bounded by C-30 already, its searches by the budget. */
+/** The most queries and cited addresses one block lists. The pages a run read are all listed: there is no limit on how many it reads (#1113), and each is a source (AG-8). */
 const LISTED = 20;
 
 const NOT_READ: Record<Exclude<WebReadOutcome, 'read'>, string> = {

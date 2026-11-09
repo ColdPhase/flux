@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, WEB_SEARCHES_PER_REQUEST, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -43,9 +43,9 @@ const budgetProblem = 'The daily budget is whole cents from $0.10 to $1,000';
  * refused when saved. `model` names the assistant's model when that is the one that does not fit (#909).
  */
 function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, provider: AiProviderKind, checked: string, model: string | null = null) {
-  // With the provider's own web search a request may also make its searches and carry their results (#954); a model never offered it does not.
-  const searches = aiModelSearchesWeb(provider, checked) ? WEB_SEARCHES_PER_REQUEST : 0;
-  const largest = requestReservationMicros(price, personalRunMaxInputTokens(true, searches > 0), PERSONAL_RUN_LIMITS.maxOutputTokens, searches);
+  // With the provider's own web search a request has room for its results (#954); a model never offered it has none. The searches
+  // themselves are charged as reported and not reserved (#1113), so a small budget stays usable.
+  const largest = requestReservationMicros(price, personalRunMaxInputTokens(true, aiModelSearchesWeb(provider, checked)), PERSONAL_RUN_LIMITS.maxOutputTokens);
   if (largest !== null && largest > budgetCents * 10_000)
     throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }

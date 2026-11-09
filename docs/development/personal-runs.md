@@ -168,15 +168,16 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
 
 ## Web search (#954)
 
-Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 and C-30 (founder direction 2026-11-08).
+Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 and C-30 (founder direction 2026-11-08; no limit on searches or
+pages, founder direction 2026-11-09, #1113).
 
 - **What is offered.** A run with tools (`session` non-null) on a provider with its own search
   (`AI_PROVIDERS[kind].searchesWeb`: Anthropic, OpenAI), while the worker's `FLUX_WEB_READS` is on (the
   default; `webSearchSwitch`, the same variable the API reads for `flux_read_web`), gets
   `PersonalComputeRequest.webSearch`. The Anthropic adapter adds `{ type: 'web_search_20250305', name:
-  'web_search', max_uses: 5 }` (the basic version every model and platform has; `max_uses` counts the whole
-  turn, which the loop's requests continue); the Responses adapter adds `{ type: 'web_search',
-  external_web_access: false }` with `max_tool_calls: 5` and `include: ['web_search_call.action.sources']`.
+  'web_search' }` (the basic version every model and platform has; no `max_uses`: a run searches as much as its question needs, #1113);
+  the Responses adapter adds `{ type: 'web_search', external_web_access: false }` with `include: ['web_search_call.action.sources']` and no
+  `max_tool_calls`.
   Chat Completions has none, and `checkRequestLimits` refuses `webSearch` there or without tools. A model in
   `AI_MODELS_WITHOUT_WEB_SEARCH` (o3-mini, checked 2026-11-09) is not offered it. Every run with tools is told in
   its brief whether it can search (`buildBrief` with `webSearch`: `WEB_SEARCH_LINE`, and the search results as readable
@@ -199,24 +200,39 @@ Contract: [AG-8](../product/assistant.md#ag-8--what-server-agents-may-do), C-29 
   turn carries Anthropic's own blocks unchanged (it needs the results' `encrypted_content`); on OpenAI it is the
   model's words and its function calls without item ids (`responsesReplay`): no reasoning is carried between
   turns and no encrypted reasoning is asked for.
-  A `pause_turn` is not continued: at most 5 searches stay far below the server's own loop of 10.
+  A `pause_turn` is not continued: the text so far is the answer. Without `max_uses` a request that searches ten times in one turn can reach the
+  server's own loop limit and pause (unverified without a real key; a follow-up if it does).
 - **Before the calls.** The loop awaits `onWebSearch` for every response that searched or cites, before
   any call of that response runs; the processor writes `personal_run_web_searches` (`boundedWebSearch`:
-  normalized web addresses only, each once, at most 100 results and 100 cited, 10 queries of 300
-  characters). `flux_read_web` then allows the run's `given` texts, the addresses on pages it read, and the
+  normalized web addresses only, each once, at most 1,000 results and 1,000 cited, 100 queries of 300
+  characters for one response, written in as many rows of `personal_run_web_searches` as they need, since a row holds 10 queries and 100
+  addresses; a run has as many responses as it makes requests). `flux_read_web` then allows the run's `given` texts, the addresses on pages it read, and the
   run's own search `results` (`found`), exactly; another run never sees them. A cited address is listed only
-  when the run's search returned it, and gives nothing more. The 20-address limit counts them too.
+  when the run's search returned it, and gives nothing more. How many addresses a run reads is not limited: the exact match and the key's budget
+  are. The tool's own refusals stay: an address nothing gave (`WEB_READ_NOT_GIVEN`) and the server's throttle of one owner's agents
+  (`READS_PER_MINUTE` 20 page fetches a minute, `READS_AT_ONCE` 6; `WEB_READ_BUSY`), which protects the fetcher and is not a limit of a question.
 - **Input.** The estimate does not count Anthropic's opaque `encrypted_content` and `encrypted_index` byte for
   byte (`requestParts`); Anthropic's token count, which counts the results as the provider does, may only raise
-  it. A request that offers search has room for 5 searches' results (`WEB_SEARCH_INPUT_TOKENS`, 10,000 each, an
-  assumption) in its input bound, its reconciliation and its reservation (`personalRunMaxInputTokens(true, true)`).
+  it. A request that offers search has room for the results (`WEB_SEARCH_INPUT_TOKENS`, 50,000 tokens in all, an assumption) in its input
+  bound and its reservation (`personalRunMaxInputTokens(true, true)`); the searches are not counted. What a request that searched reports as
+  input is held to the money the run has left and not to that bound (`reconcileRequest`), because the provider adds the results of every round
+  of its own search loop on its own.
+- **Long research** (#1113). The tool loop keeps the pages the model read and has not noted (`page-notes.ts`: the results of `flux_read_web`
+  that are a page). When a later step's words are at least `PAGE_NOTE_MIN_CHARS` (40) characters long they are the note of every page read
+  before that step: the text of those results is replaced in the turns of every later request by the page's address and title with the line
+  that it was left out and can be read again (`notePages`, `notedPageResult`). The pages that step read are not noted yet: the model has not
+  seen them. Turns are replaced, never changed, so a request already sent keeps what it carried. The brief of an API-key run asks for the note
+  (`PAGE_NOTE_LINE`); the Claude Code and Codex engines are not touched. A page that is never noted stays in later requests, and a run that
+  outgrows the request's input bound ends at it ("Limit reached"). The provider's own search results are replayed unchanged.
 - **Sources.** `webSourcesLine` lists "Searched the web for:" (queries) and "Found on the web:" (cited
-  addresses) before "Read on the web:" and "Requested, not read:", at most 20 of each search list, under the
+  addresses) before "Read on the web:" and "Requested, not read:", at most 20 of each search list (the pages read are all listed), under the
   answer or in the end line (the run view's `webSources`, and the task's discussion).
-- **Money.** Each search is charged `WEB_SEARCH_MICROS` on top of its tokens; a request offered the search
-  reserves 5 of them (`nextRequestFits`, `budgetedReservationMicros`), and a response that reports more
-  searches than it was offered is outside its bounds. A key's budget is refused when saved if it cannot hold
-  one request with its searches on a provider that has a search.
+- **Money.** Each search is charged `WEB_SEARCH_MICROS` on top of its tokens, as the provider reports it, and none is reserved
+  (#1113): `nextRequestFits` and `budgetedReservationMicros` hold a request's tokens and the room for results, so a small budget stays usable.
+  A request whose searches take the run above its reservation is a lost response (the reservation is counted as spent, the answer withheld), so
+  what Flux records never passes the key's day; one request's own bill can pass it by that request. A response that reports searches when none
+  were offered is outside its bounds. A key's budget is refused when saved if it cannot hold one request with the room for results on a
+  provider that has a search.
 - **Not here.** The Claude Code and Codex runtime have no search yet (#1065); local clients use their own tools.
 - **Tests.** `web-search.test.ts`; the UI test `test_private_ai.py` `test_02b` shows the sources under an
   `/ai` answer.
