@@ -92,7 +92,6 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices
 
   app.post(REVOKE_OTHER_SESSIONS_PATH, async (request, reply) => {
     const context = await sessions.requirePrincipal(request);
-    const revoked = await store.deleteOthers(context.principal.id, context.sessionId);
     // Copies of the device cookie taken before now stop counting as this person's browser (#1031). A browser that already had a cookie for
     // this account keeps it, given again at the new generation (same device, so its own wait stays its own). One that has only a session
     // is given none: a session does not prove the password, and a cookie would give it a wait of its own to guess in (#990).
@@ -102,6 +101,9 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices
     const { device, seen } = await devices.check(cookie, context.user.email, context.principal.id);
     const raised = await devices.endAll(context.principal.id, { seen, sessionId: context.sessionId });
     if (device && raised !== null) reply.header('set-cookie', serializeDeviceCookie(devices, await devices.remember(cookie, context.user.email, raised)));
+    // The other sessions go after the raise, which needs this one: two sign-outs at the same moment from two sessions would otherwise each delete
+    // the other's session first, and neither would raise the generation.
+    const revoked = await store.deleteOthers(context.principal.id, context.sessionId);
     // "Sign out everywhere" also ends what a local AI client holds: someone who had this account's session could have connected one (#989).
     // The person connects their own again with one click on the consent page.
     const disconnected = await clients.disconnectClients(context.principal.id);

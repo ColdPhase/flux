@@ -47,6 +47,15 @@ export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | 
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 . scripts/database_outage.sh
 
+# No password hash may reach a log (#1088, found in the review of #1093): a failed statement is quoted with its parameters in the error that
+# drizzle throws. Better Auth's scrypt hashes are `<32 hex>:<128 hex>`; argon2 and bcrypt hashes are caught by their prefixes.
+no_password_hash_in_logs() {
+  if $compose logs --no-color api worker providermock | grep -E '[0-9a-f]{32}:[0-9a-f]{128}|[$]argon2|[$]2[aby][$]' >/dev/null; then
+    echo 'A password hash appeared in API, worker or provider-mock logs' >&2
+    exit 1
+  fi
+}
+
 # Peak memory of the run's long-lived services (F-030 S1 sets the default limits to at least twice the observed peaks).
 report_memory() {
   for service in api api2 worker keyring; do
@@ -114,6 +123,7 @@ if [ "$#" -gt 0 ]; then
     echo 'Provider key appeared in API, worker or provider-mock logs' >&2
     exit 1
   fi
+  no_password_hash_in_logs
   echo 'Named API test files only: browser, restart and unavailable-configuration checks skipped.'
   exit 0
 fi
@@ -124,6 +134,7 @@ if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-
   echo 'Provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
+no_password_hash_in_logs
 
 # Service worker registration, offline fallback and the update prompt in Chromium over HTTPS.
 run_browser e2e
@@ -200,6 +211,7 @@ if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-
   echo 'Provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
+no_password_hash_in_logs
 
 # A short database outage (#889) must not restart the API or the worker. Last, because it stops the database for a few seconds.
 $compose up -d --wait api worker keyring

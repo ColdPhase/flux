@@ -21,6 +21,13 @@ export interface SignInFacts {
   linkRejected?: boolean;
   /** With `email_claim`: the secret for the browser that completed the provider sign-in (#313). Set as a cookie by the bridge. */
   claimToken?: string;
+  /**
+   * The password hash that a password check in this request accepted (#1088), kept in memory for this request only and never put in a
+   * statement: a failed statement is quoted with its parameters in the error that drizzle throws. The session this request creates, and the
+   * change of the password it makes, carry the account's password version instead (read where the hash is still the accepted one), and the
+   * database refuses them if the version has moved: a reset that commits between the check and the write must not be outlived or undone.
+   */
+  passwordChecked?: string;
 }
 export const createSignIns = () => new AsyncLocalStorage<SignInFacts>();
 export type SignIns = ReturnType<typeof createSignIns>;
