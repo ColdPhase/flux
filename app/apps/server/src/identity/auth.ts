@@ -1,5 +1,6 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { betterAuth } from 'better-auth';
+import { verifyPassword } from 'better-auth/crypto';
 import { APIError, createAuthMiddleware, createEmailVerificationToken, getSessionFromCtx } from 'better-auth/api';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { genericOAuth, jwt } from 'better-auth/plugins';
@@ -101,6 +102,9 @@ export function withoutIdpTokens<T extends Record<string, unknown>>(account: T):
   for (const field of IDP_TOKEN_FIELDS) if (field in clean) clean[field] = null;
   return clean as T;
 }
+
+/** What a password hash is carried as to the database for the check at the write (#1088, migration 0039): a digest, so no hash is copied anywhere. */
+export const passwordDigest = (hash: string) => createHash('sha256').update(hash, 'utf8').digest('hex');
 
 /** The payload of an ID token the plugin verified before calling getUserInfo. */
 function idTokenClaims(idToken: string | undefined): Record<string, unknown> | null {
@@ -254,9 +258,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // without use (it is renewed when used after `updateAge`); the longest it can last is `sessionMaxAgeSeconds`, enforced when it is read
     // (`createSessionResolver`), because Better Auth only renews it (#993).
     session: { modelName: 'authSessions', cookieCache: { enabled: false }, expiresIn: config.sessionIdleSeconds,
-      updateAge: Math.min(86_400, Math.max(60, Math.floor(config.sessionIdleSeconds / 4))) },
+      updateAge: Math.min(86_400, Math.max(60, Math.floor(config.sessionIdleSeconds / 4))),
+      additionalFields: { passwordDigest: { type: 'string', required: false, input: false, returned: false } } },
     // A new identity never acquires an existing account by asserting the same email (#113).
-    account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true } },
+    account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true },
+      additionalFields: { passwordExpected: { type: 'string', required: false, input: false, returned: false } } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
     plugins: [
       // The OAuth tokens of the MCP plugin are signed with these keys. Better Auth would also sign a JWT on every session read for a
@@ -452,6 +458,18 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       },
       session: {
         create: {
+          // A password check that accepted a hash which has since changed (a reset came in between) creates no session: the database refuses
+          // the insert too (migration 0039), this refuses it first and cleanly (#1088).
+          before: async (session) => {
+            const checked = signIns.getStore()?.passwordChecked;
+            if (!checked) return;
+            const [credential] = await db.select({ password: schema.authAccounts.password }).from(schema.authAccounts)
+              .where(and(eq(schema.authAccounts.userId, session.userId), eq(schema.authAccounts.providerId, 'credential')));
+            if (!credential?.password || passwordDigest(credential.password) !== checked) {
+              throw new APIError('UNAUTHORIZED', { message: 'Invalid email or password', code: 'INVALID_EMAIL_OR_PASSWORD' });
+            }
+            return { data: { passwordDigest: checked } };
+          },
           // Every session records how it signed in: password, or the provider id with its IdP `sid` (#310).
           after: async (session) => {
             const sign = signIns.getStore();
@@ -473,7 +491,21 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       // verified identity; S4 keeps the refresh token in its own encrypted table (#310 AC-8).
       account: {
         create: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
-        update: { before: async (account) => ({ data: withoutIdpTokens(account) }) },
+        update: {
+          before: async (account) => {
+            const data: Record<string, unknown> = withoutIdpTokens(account);
+            const facts = signIns.getStore();
+            // A change of the password that follows a password check (change-password) is written only if the hash is still the one that was
+            // accepted, so a reset that came in between is not undone; a reset carries no check and always writes (#1088). The session the
+            // same request creates next is for the new hash.
+            if (typeof data.password === 'string' && facts?.passwordChecked) {
+              const expected = facts.passwordChecked;
+              facts.passwordChecked = passwordDigest(data.password);
+              return { data: { ...data, passwordExpected: expected } };
+            }
+            return { data };
+          },
+        },
       },
     },
     emailAndPassword: {
@@ -482,6 +514,15 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       minPasswordLength: PASSWORD_MIN_LENGTH,
       maxPasswordLength: PASSWORD_MAX_LENGTH,
       revokeSessionsOnPasswordReset: true,
+      // The check of a password remembers the hash it accepted for the writes that follow in the same request (#1088).
+      password: {
+        verify: async (input) => {
+          const accepted = await verifyPassword(input);
+          const facts = signIns.getStore();
+          if (accepted && facts) facts.passwordChecked = passwordDigest(input.hash);
+          return accepted;
+        },
+      },
       // A reset is the recovery from a stolen password or session, so it also ends what a local AI client holds and clears the account's back-off (#989, #990).
       onPasswordReset: async ({ user }, request) => {
         const disconnected = await connectionStore.disconnectClients(user.id);
