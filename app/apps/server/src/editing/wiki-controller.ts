@@ -61,6 +61,18 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     try { c.output.sendJSON({ type: 'error', code: errorCode(error), ...(commandId ? { commandId } : {}), outcome: unknown ? 'unknown' : 'refused', retryable: unknown || busy(error) }); }
     catch { c.socket.terminate(); close(c); }
   }
+  /**
+   * The page changed underneath this room: a version written outside the editor (a client's or the API's edit, a restore) starts a new
+   * generation, and this connection's generation is no longer the page's. The editor is told to read the page again, as the map's is
+   * (`map-controller.ts`): it opens the new text, or keeps its own pending text privately. Left as an error frame it showed "Sharing is
+   * not confirmed (EDITING_GENERATION_CHANGED)" and kept the old text (#1116).
+   */
+  function resync(c: Connection) {
+    if (c.closed) return;
+    try { c.output.sendJSON({ type: 'resync', reason: 'generation', generation: c.generation! }); }
+    catch { /* a closed or backpressured editor reads the page again when its connection ends */ }
+    c.socket.close(1008, 'Snapshot required'); close(c);
+  }
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
@@ -135,7 +147,8 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
         }, { previewAfterSequence: c.previewSequence, includeContent: true });} finally {releasePreparation();}
       } while (c.pendingRead && !c.closed);
     } catch (error) {
-      if (!busy(error)) fail(c, error);
+      if (errorCode(error) === 'EDITING_GENERATION_CHANGED') resync(c);
+      else if (!busy(error)) fail(c, error);
       // Periodic catch-up retries bounded capacity; it holds no additional input or promise queue.
     } finally { c.reading = false;reading--;editingResourcesChanged();completed(); }
   }
@@ -199,7 +212,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     // operation settles. The one replaceable waiting slot is independently charged.
     void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
       .then(() => { c.renewed = { key, at: started }; fanOut(c.context.target.id); })
-      .catch((error) => fail(c, error))
+      .catch((error) => { if (errorCode(error) === 'EDITING_GENERATION_CHANGED') resync(c); else fail(c, error); })
       .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
   }
   function retainCursor(c: Connection, generation: string, value: LiveCursor | null, rawBytes: number) {

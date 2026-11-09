@@ -190,7 +190,7 @@ draws it since #869: two columns only, the sidebar and the page.
   text has rested for 2 s, at most once per 30 s per person, and at once when the person leaves the
   page. Text nobody present wrote is saved by an editor alone in the room. Another person's save of
   the same head is a quiet conflict. A native write while a page is open (an agent, Add to docs)
-  starts a new generation; an editor with nothing pending opens it afresh. Without live editing
+  starts a new generation; the room tells each open editor to read the page again (`resync`, reason `generation`, then it closes the connection, as the map's room does; #1116), and an editor with nothing pending opens it afresh, one with text of its own not yet shared keeps that text privately. Without live editing
   (`FLUX_LIVE_EDITING=off`) the editor holds this tab's copy and saves it with `If-Match` 1.2 s
   after typing rests; a concurrent save shows who saved, with "Keep my text" or "Use their version"
   (the server writes the kept version's reason from the cause, naming the version it replaced), and unsaved text survives a reload of
