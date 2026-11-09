@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Conversation, Material, Page } from '@flux/contracts';
 import type { SentMessage } from '../composer/draft';
 import { fluxAnswers, onFluxAnswered } from '../composer/connection';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { listMaterials } from '../materials/api';
 import { getConversation, olderMessages } from './api';
 import { readableError } from './errors';
@@ -11,7 +11,9 @@ import { onMessageChanged } from './messageChanges';
 import type { PaneCore } from './paneCore';
 
 /** Project events that change what a conversation pane shows; the assistant's Undo (#68) can take a message back. */
-const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.message_edited.v1', 'project.message_removed.v1', 'project.assistant_change_undone.v1']);
+const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.message_edited.v1', 'project.message_removed.v1', 'project.assistant_change_undone.v1',
+  // The sources read with the replies (#862: no timer reads them any more while the stream is open).
+  'project.material_created.v1', 'project.material_updated.v1']);
 
 interface Options {
   /** Replies this person sent and the server confirmed: shown at once until a read includes them (#264). */
@@ -89,7 +91,8 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
     const onFocus = () => { void refresh(); };
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
     window.addEventListener('focus', onFocus); document.addEventListener('visibilitychange', onVisible);
-    const interval = window.setInterval(onFocus, 15000);
+    // Only while the live stream is down (#862): while it is open, a project event above reads at once.
+    const interval = window.setInterval(() => { if (!streamLive()) onFocus(); }, 15000);
     return () => { window.removeEventListener('focus', onFocus); document.removeEventListener('visibilitychange', onVisible); window.clearInterval(interval); };
   }, [refresh]);
   // The thread's size goes back to the stream (UI116-1); sequences are dense, so the newest one counts the root.

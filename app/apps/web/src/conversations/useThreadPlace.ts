@@ -68,7 +68,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     : { id: null, authorId: `~${entry.key}`, createdAt: entry.at }),
     ...outbox.pending.map((item) => ({ id: null, authorId: me.user.id, createdAt: item.at }))];
   const receiptRuns = ownRuns(receiptLines, me.user.id, !!olderCursor);
-  const receiptTick = useReceiptTick(receiptRuns.length > 0);
+  const receiptTick = useReceiptTick(receiptRuns.length > 0, me.user.id, project.id);
   const seen = useReceipts({ scope: `${project.id}/${conversation?.id ?? ''}`, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: !!conversation && revealed, feed: scrollRef,
     ids: replyEntries.flatMap((entry) => entry.type === 'message' && entry.message.authorId !== me.user.id ? [entry.message.id] : []), depend: replyEntries.length });

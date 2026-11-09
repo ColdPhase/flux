@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
 import { reconnectDelay } from './busy.js';
-import { forgetKeptReads } from './client.js';
+import { forgetKeptFor, forgetKeptReads } from './client.js';
 import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
@@ -133,10 +133,10 @@ function connect() {
     if (data.type !== 'event' || seen.has(data.id)) return;
     seen.add(data.id);
     if (seen.size > 500) seen.delete(seen.values().next().value!);
-    // A change somewhere else has arrived: neither a kept answer nor a read that began before it may answer a re-read that this event
-    // causes (#1023, #862; live invalidation will name the entries instead). This is when the event arrives, not when it is delivered,
-    // so a held event (a page being left or hidden) forgets them too.
-    forgetKeptReads();
+    // A change somewhere else has arrived: neither a kept answer it can change nor a read that began before it may answer a re-read that
+    // this event causes (#1023, #862). This is when the event arrives, not when it is delivered, so a held event (a page being left or
+    // hidden) forgets them too.
+    forgetKeptFor(data);
     deliver(data);
   };
   ws.onclose = (event) => {
@@ -167,6 +167,17 @@ if (typeof window !== 'undefined') {
   document.addEventListener('visibilitychange', release);
 }
 onPageLive(release);
+
+/** A change to a space's work, decisions or results: what Tasks and the space's work summary show (#862). */
+export const WORK_EVENT = /^project\.(work_|decision_|result_|assistant_change_undone|agent_stopped|question_)/;
+
+/**
+ * Whether the live stream is open now (#862). While it is, it tells every view what changed (and a reconnect replays what a drop
+ * missed), so a view reads on an event, a resync, focus or a move, never on a timer; a timer is the fallback for while it is not.
+ */
+export function streamLive(): boolean {
+  return socket !== null && typeof WebSocket !== 'undefined' && socket.readyState === WebSocket.OPEN;
+}
 
 /** One listener for the signed-in person `owner`; `useStreamEvents` is the way components use it. */
 export function subscribe(owner: string, listener: StreamListener) {

@@ -18,7 +18,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | --- | ---: | ---: | --- |
 | Idle: at most 2% of one core | 1.4% (api 0.30, worker 0.32, database 0.75) | 0.8% (api 0.21, worker 0.19, database 0.44) | met |
 | Idle: at most 100 database statements a minute | 122 | 95 | met, narrowly, see [Idle statements](#idle-statements) |
-| An open tab: at most 4 requests a minute | not measured here | not changed | not met, the client's polling is the data-layer batch |
+| An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4 | not met for three moves, see [Kept reads](#kept-reads-862-the-data-layers-first-part) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
@@ -185,6 +185,61 @@ Conversation read a dozen distinct things a conversation shows (`assistant-runs`
 `work-summary`, `sketches`, `return`), and the Wiki's own writes and events forget the kept project and people on the way
 back (with `needs-you` and `agent-chats`). The next parts of the data layer forget only the entries an event changes (in place of all of them) and fold the
 conversation's reads together.
+
+### Live invalidation and no idle polling (#862, the data layer's second part)
+
+**Changed.**
+- **An event forgets what it changes.** An event of the live stream forgets only the kept answers it can change
+  (`forgetKeptFor` in `api/client.ts`), and every read in flight still ends (#1023):
+  - messages, tasks, decisions, results, sources, agents' answers, Map and direct-message events forget nothing kept;
+  - a page of the Wiki forgets the space's pages;
+  - an agent's run forgets the agents' chats;
+  - anything else forgets all (a space renamed, its people or AI switch changed, a company change, an agent made or revoked).
+- **Live editing leaves kept reads.** Joining a page's live editing (`POST /docs/:id/live/enroll`) leaves kept reads alone
+  (`leavesReads`).
+- **Timers only while the stream is down.** No view reads on a timer while the live stream is open (`streamLive()` in
+  `api/stream.ts`). The 15 s refreshes of the stream, a thread, Tasks and a space's work summary, the 20 s working-agents
+  read, the 2 min Inbox and agent-dot reads, and the 4 s fallbacks while an agent works all run only while the stream is
+  down. While it is open, views read on an event, a resync, focus or a move:
+  - Tasks and the work summary now read on a change to the space's work (`WORK_EVENT`);
+  - the stream and a thread read on a new or changed source.
+- **"Seen by" is told, not polled.** The space conversation's "Seen by" asked every 8 s, because seeing a message sent no
+  event. Now the first sight of messages records `project.messages_observed.v1` for their authors who can read the space,
+  and for nobody else, and the author's page reads its receipts then.
+- **Live calls.** A call starting still sends no event, so the "live now" cue (only with LiveKit configured) looks every
+  30 s while the stream is open, every 12 s otherwise.
+
+**Observed.** `test_navigation_requests` test_03 counts the API requests of an untouched tab over 60 s (Chromium, the same
+scene, 2026-11-09):
+
+| View | `main` `e7ab062f7` | This change |
+| --- | ---: | ---: |
+| Home | 3 (working-agents) | 0 |
+| Inbox | 3 (working-agents) | 0 |
+| A space's Conversation | 70 (the whole app read again every 15 s, receipts every 8 s) | 0 |
+| Tasks | 51 (the whole app read again every 15 s) | 0 |
+| Map | 7 (work summary, working-agents) | 0 |
+| Wiki | 7 (work summary, working-agents) | 0 |
+
+**Navigation** (`test_navigation_requests`, Chromium):
+
+| Move | `main` `e7ab062f7` | This change |
+| --- | ---: | ---: |
+| Home → Inbox | 2 | 2 |
+| Inbox → Home | 3 | 3 |
+| Home → a space | 15 | 14 |
+| Conversation → Tasks | 7 | 7 |
+| Tasks → Map | 4 | 4 |
+| Map → Wiki | 5 (live editing forgot what was kept) | 4 |
+| Wiki → Conversation | 15 | 11 |
+| Conversation → another space | 16 | 16 |
+| Another space → My tasks | 4 | 4 |
+
+**Inferred.**
+- The moves into a space's Conversation are still over 8. A conversation still asks for its roots, its task and decision
+  notices, its sources, its agents' questions and its work associations one by one, and entering a space also asks for the
+  space, its sketches and its work summary.
+- Folding those reads into one is the next part.
 
 ## First screen
 

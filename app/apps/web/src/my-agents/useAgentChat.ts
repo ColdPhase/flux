@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AgentChatMessage, type AssistantRun, type PersonalAssistantStatus } from '@flux/contracts';
-import { useStreamEvents } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { askAssistant, getAssistantStatus, listPlaceRuns, retryRun, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
 import { listAgentChatMessages, readAgentChat } from './api';
@@ -42,7 +42,7 @@ export function useAgentChat(agentId: string, meId: string) {
   const working = !!runs?.some(isWorking);
   useEffect(() => {
     if (!working) return;
-    const timer = window.setInterval(refresh, 4000);
+    const timer = window.setInterval(() => { if (!streamLive()) refresh(); }, 4000);
     return () => window.clearInterval(timer);
   }, [working, refresh]);
 

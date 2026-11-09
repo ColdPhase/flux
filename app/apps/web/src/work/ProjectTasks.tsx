@@ -4,6 +4,7 @@ import { useLoaderData, useLocation, useRevalidator, useSearchParams, type Loade
 import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
+import { WORK_EVENT, streamLive, useStreamEvents } from '../api/stream';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
@@ -246,9 +247,13 @@ export function ProjectTasks() {
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
     window.addEventListener('focus', refresh);
-    const interval = window.setInterval(refresh, 15000);
+    // A timer only while the live stream is down (#862); while it is open, a change to this space's work reads at once (below).
+    const interval = window.setInterval(() => { if (!streamLive()) refresh(); }, 15000);
     return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
   }, [revalidator]);
+  useStreamEvents(me.user.id, (event) => {
+    if (event.objectType === 'project' && event.objectId === project.id && WORK_EVENT.test(event.kind) && document.visibilityState === 'visible') revalidator.revalidate();
+  }, () => revalidator.revalidate());
 
   // A stored state change shows at once; the List's own read catches up with that version.
   const work = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])

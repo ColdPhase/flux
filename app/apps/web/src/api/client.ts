@@ -99,6 +99,36 @@ export function forgetKeptReads() {
   keptGeneration += 1;
 }
 
+/** An event of the live stream, as `forgetKeptFor` reads it: its kind and what it is about, identifiers only. */
+export interface KeptEventRef { kind: string; objectType: string; objectId: string; workspaceId: string }
+
+/**
+ * The kept answers an event can change (#862), by the addresses they were read from: `null` is all of them. Messages, tasks, decisions,
+ * results, sources and agents' answers change nothing that is kept (a space, its people, the members, the space's docs, the agents' chats),
+ * so the reads a view makes on such an event are answered from what is kept where they can be; the Inbox is read once per page anyway.
+ * Anything not named here (a space renamed, its people or AI switch changed, a company change, an agent made or revoked) forgets all.
+ */
+function keptChangedBy(event: KeptEventRef): string[] | null {
+  const kind = event.kind;
+  if (/^project\.doc_/.test(kind)) return [`/api/v1/projects/${event.objectId}/docs`];
+  if (/^project\.(messages?_|conversation_created|material_|work_|decision_|result_|proposal_|question_|link_created|live_invited|assistant_|agent_stopped)/.test(kind)) return [];
+  if (/^(dm|sketch)\./.test(kind)) return [];
+  if (/^assistant_run\./.test(kind)) return ['/api/v1/agent-chats'];
+  return null;
+}
+
+/**
+ * An event of the live stream arrived (#862, #1023): every read in flight ends (it may have begun before the change), and the kept answers
+ * the event can change are forgotten, the others stay. An answer read across the event is not kept.
+ */
+export function forgetKeptFor(event: KeptEventRef) {
+  const changed = keptChangedBy(event);
+  if (changed === null) { forgetKeptReads(); return; }
+  endSharedReads();
+  keptGeneration += 1;
+  for (const path of [...kept.keys()]) if (changed.some((prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`))) kept.delete(path);
+}
+
 // What may have changed unseen is read again rather than taken from a kept answer (#862): the browser coming back online, the person
 // coming back to the tab or the window. Registered when the client loads, so before any view's own refresh on the same event.
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
