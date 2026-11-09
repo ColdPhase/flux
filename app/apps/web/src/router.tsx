@@ -5,6 +5,7 @@ import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
+import { keepPagesOnRefresh, retryKeptPagesWith } from './app/keepPage';
 import { ProjectConversation } from './conversations/ProjectConversation';
 import { projectConversationLoader, shouldRevalidateProjectConversation } from './conversations/loader';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
@@ -106,7 +107,8 @@ export const router = createBrowserRouter([
           { path: 'unsubscribe', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).UnsubscribePage })) },
         ],
       },
-      {
+      // A read that refreshes a shown page and fails to get an answer keeps the page (#1141); the sign-in routes above keep nothing.
+      keepPagesOnRefresh<RouteObject>({
         id: 'app',
         path: '/',
         loader: appLoader,
@@ -195,7 +197,8 @@ export const router = createBrowserRouter([
           { path: '*', Component: NotFoundView, handle: { notFound: true } },
           ],
         }],
-      },
+      }),
     ],
   },
 ]);
+retryKeptPagesWith(() => router.revalidate());

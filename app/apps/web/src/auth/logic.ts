@@ -21,6 +21,7 @@ import { forgetPlaces } from '../place/memory';
 import { forgetDocumentDrafts } from '../docs/drafts';
 import { forgetThoughtImages } from '../sketch/ThoughtImage';
 import { pacedShellRead } from '../app/shellPace';
+import { forgetKeptPages } from '../app/keepPage';
 
 export type FieldErrors = Partial<Record<'name' | 'email' | 'password' | 'confirm', string>>;
 
@@ -281,6 +282,7 @@ export async function signOutAction(): Promise<FormResult | Response> {
   forgetBrowserDrafts();
   forgetDocumentDrafts();
   forgetKeptReads();
+  forgetKeptPages();
   forgetThoughtImages();
   forgetPlaces();
   return redirect('/sign-in?notice=signed-out');
