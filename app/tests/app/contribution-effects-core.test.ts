@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   ConflictError, contributionIdentity, createTaskDiscussionUseCases, createWorkContributions, createWorkUseCases, derivedUuid,
-  ForbiddenError, InvalidInputError, normalizeMessage, RuleViolationError, VersionConflictError,
+  ForbiddenError, InvalidInputError, RuleViolationError, VersionConflictError,
   type ActorRef, type DiscussionMessage, type NativeCommandReceipt, type NewDiscussionMessage, type Principal,
   type TaskDiscussionPorts, type WorkAccess, type WorkPorts, type WorkRecord, type WorkRepository,
 } from '@flux/core';
@@ -396,14 +396,12 @@ describe('an explicit public handoff uses the common contribution primitive', ()
       (error) => error instanceof ConflictError && error.code === 'IDEMPOTENCY_CONFLICT', 'the kind is part of the intent');
   });
 
-  test('plain text keeps its exact wire shape and original fingerprint; only handoff may be requested directly', async () => {
+  test('plain text keeps its exact wire shape; only handoff may be requested directly', async () => {
     const w = world();
     const task = w.taskIds[0]!;
     const plain = { body: 'Plain', clientMessageId: randomUUID() };
     const text = await w.discussion.contribute(writer, task, plain);
     assert.equal(Object.hasOwn(text, 'contribution'), false, 'ordinary text carries no marker');
-    const legacy = createHash('sha256').update(JSON.stringify({ operation: 'task.contribute', workId: task, message: normalizeMessage(plain).fingerprint })).digest('hex');
-    assert.equal(w.messages[0]!.requestFingerprint, legacy, 'a plain text contribution keeps the fingerprint every stored receipt was made with');
     assert.equal(w.messages[0]!.kind, 'text');
     for (const kind of ['blocker', 'came_of_it', 'other'] as const) {
       await assert.rejects(w.discussion.contribute(writer, task, { body: 'No', clientMessageId: randomUUID(), kind } as never), InvalidInputError);

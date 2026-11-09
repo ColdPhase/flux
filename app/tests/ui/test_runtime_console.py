@@ -644,8 +644,8 @@ class RuntimeConsole(unittest.TestCase):
         self.phone_layout(page, "section.rt")
 
     @unittest.skipIf(RUNTIME, "the operator switch is off only in the check_ui stack")
-    def test_12_legacy_sign_in_route_is_lazy_and_off_server_refuses_the_start(self) -> None:
-        """Real lazy assets/redirect and refusal; offered status is a fixture, never a native login."""
+    def test_12_sign_in_route_is_lazy_and_off_server_refuses_the_start(self) -> None:
+        """Real lazy assets and refusal; offered status is a fixture, never a native login."""
         for phone in (False, True):
             for theme in ("light", "dark"):
                 with self.subTest(phone=phone, theme=theme):
@@ -662,8 +662,7 @@ class RuntimeConsole(unittest.TestCase):
                     expect(page.get_by_role("heading", name="AI", exact=True)).to_be_visible()
                     self.assertFalse(any("ClaudeCodeSignIn-" in url or "SignInConsole-" in url for url in assets),
                                      "opening Settings does not import either sign-in route or terminal")
-                    page.goto("/settings/assistant/claude-code")
-                    expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
+                    page.goto("/settings/agents/claude-code")
                     expect(page.get_by_role("button", name="Sign in with Claude", exact=True)).to_be_visible()
                     if not phone:
                         expect(page.get_by_role("heading", name="Sign in to Claude Code", exact=True)).to_be_visible()

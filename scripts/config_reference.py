@@ -386,7 +386,6 @@ NOT_SETTINGS: dict[str, str] = {
     "FLUX_RUNTIME_NOT_INSTALLED": "output marker of the runtime manager",
     "FLUX_GITHUB": "prefix in an error message",
     "FLUX_VAPID": "prefix in a message",
-    "FLUX_LIVEKIT_WS_URL": "retired: the API refuses to start when it is set (browsers signal through `/media`)",
 }
 
 # Non-FLUX names the services read. They are listed for completeness; the check confirms each still appears.

@@ -181,8 +181,7 @@ so the port is neither published nor reachable from the media network or the hos
 containers. The API reaches it as `FLUX_LIVEKIT_API_URL=http://livekit:7880`; plain HTTP is
 accepted only for that Compose service name (or loopback in development). An operator who
 runs the SFU elsewhere sets an HTTPS `FLUX_LIVEKIT_API_URL` and must keep that listener
-private in the same way. `FLUX_LIVEKIT_WS_URL` and `FLUX_LIVEKIT_SIGNAL_PORT` are gone;
-the API refuses to start if `FLUX_LIVEKIT_WS_URL` is still set. The TLS ingress serves
+private in the same way. Browsers never get the SFU's address; they signal through `<FLUX_PUBLIC_ORIGIN>/media`. The TLS ingress serves
 `/media/*` from the API like any other path; it needs WebSocket upgrades enabled. This
 changes the ingress plan for [#63](https://github.com/ColdPhase/flux/issues/63).
 

@@ -325,9 +325,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 The keys show next to their actions in menus.
 
-Existing Settings URLs remain valid entry points to the corresponding permitted section,
-directly or through a redirect to its current equivalent. Preserve Back and history without
-restoring the former appearance.
+Settings has one address per section, and no earlier address is kept: nothing is kept
+compatible before the first public release (founder direction, 2026-11-09, #1096). Preserve
+Back and history without restoring the former appearance.
 
 ## 5. Behaviour
 

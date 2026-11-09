@@ -459,8 +459,7 @@ A task has one discussion (#868), where people and agents talk about it:
   change is logged (`assistant_changes`) with no `conversation_id` and no undo record, so no change line or Undo shows in the conversation
   (`Produced.asOwner`). `flux_start_conversation` does the same. Only a task's discussion keeps the agent as the author (the check is
   `taskDiscussionRows.taskOf`), so a client's post cannot reset the five-in-a-row guard (#1091).
-- The tool replaced `flux_post_agent_thread` and `flux_get_agent_thread` in MCP tool contract version 2 (`tests/app/contracts/mcp-tools.v2.json`;
-  the version-1 snapshot stays as it was). The connection policy of an existing connection lists the new tools only after its owner enables them.
+- The tool replaced `flux_post_agent_thread` and `flux_get_agent_thread`; the tool contract is the snapshot `tests/app/contracts/mcp-tools.json`.
 
 Grants and classes:
 
@@ -518,7 +517,7 @@ Not yet agent tools:
 - A task's first discussion contribution and explicit blocker, "what came of it" or handoff
   contributions. Once a task thread exists, a reply joins it.
 
-Since 1.2.0 the built-in playbook declares these four tools and the map tools in its
+The built-in playbook declares these four tools and the map tools in its
 execute/checkpoint module, and the conversation, wiki and map reads in orient/plan (#160).
 
 ### Co-work tools (#153)
@@ -538,16 +537,14 @@ the composition does its own #152 `prepare`/`complete`, so these tools do not us
 | `flux_transfer_unit` | `cowork.unit.transfer` | execute, review, plan | Hand the unit to another eligible connection, which claims it with its own grant |
 | `flux_decline_unit` | `cowork.unit.decline` | execute, review, plan | The receiver refuses a transferred unit before claiming it; it returns paused to the prior assignee |
 
-Bootstrap no longer reports `coordination_unavailable` since units, claims and
-completion are tools. Requests between clients, the inbox and review verdicts were
-added on 2026-10-17 and removed in #973; the unit tools above are the whole
-coordination surface. Real Codex/Claude model-driven activation is still required before agent
+Bootstrap reports no `coordination_unavailable` gap, because units, claims and
+completion are tools. The unit tools above are the whole coordination surface. Real Codex/Claude model-driven activation is still required before agent
 decomposition counts as delivered.
 
 ## Built-in co-work playbook (#160)
 
-The server ships one versioned instruction bundle, `COWORK_PLAYBOOK`
-(`flux.cowork` 1.3.0, in `app/packages/core/src/agent-connection/playbook.ts`). It
+The server ships one instruction bundle with one current version, `COWORK_PLAYBOOK`
+(`flux.cowork`, in `app/packages/core/src/agent-connection/playbook.ts`). It
 has a core part and five role modules: start/resume, orient/plan,
 execute/checkpoint, hand off and block/transfer/stop. Each module
 declares the MCP tools and server providers it needs. The bundle names only tools
@@ -555,17 +552,16 @@ the MCP server registers, and every registered tool is declared by at least one
 module; `mcp-playbook.test.ts` pins both directions against `tools/list` and the
 bootstrap catalog. Where a provider does not exist
 yet (coordination, verified repository context), the text tells the agent to treat
-that step as unavailable rather than simulate it. Since 1.2.0 every registered tool is declared by a module: orient/plan lists the wiki,
-conversation and map reads (and a result read until #1054), and execute/checkpoint the doc, conversation and
-map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06,
-#153) the execute/checkpoint module takes a task with `flux_create_unit`, then
-claims, renews, releases and completes the unit; the block/transfer module
-transfers it. Versions 1.5.0 to 1.13.0 also named the request tools and the inbox;
-1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work. 1.17.0 (#868) adds `flux_discuss_task` and `flux_get_task_discussion` and drops the agents' thread; #1054 drops the result tools from the text in place, without a new version (founder, 2026-11-09).
+that step as unavailable rather than simulate it. Orient/plan lists the wiki,
+conversation and map reads, and execute/checkpoint the doc, conversation and
+map writes with the standing-grant operation each needs. The execute/checkpoint module
+takes a task with `flux_create_unit`, then claims, renews, releases and completes the unit
+(#153); the block/transfer module transfers it, and `hand_off` covers the hand-off. The
+task's discussion is read and written with `flux_discuss_task` and `flux_get_task_discussion`.
 
 Every authenticated MCP connection delivers it in three ways:
 
-- **Resource:** `flux://playbook/flux.cowork/1.3.0` (Markdown) returns the
+- **Resource:** `flux://playbook/flux.cowork/<version>` (Markdown) returns the
   rendered bundle with its digest.
 - **Prompts:** `start_work` and `resume_work` are the host-invoked Start and
   Resume actions. Claude Code, for example, lists MCP prompts as slash commands.
@@ -711,7 +707,7 @@ HTTP, all under `/api/v1`, `Idempotency-Key` accepted on the POSTs:
   leave the units alone.
 - There is no Pause and Resume of an agent's work (#985): the route `POST /projects/:projectId/agent-pauses`, the `agent_pauses` table,
   `project.agent_paused.v1`, the `paused` field of `GET /working-agents`, the `pauses` of `GET /projects/:projectId/agent-stops` and the error
-  code `COWORK_PAUSED` are removed (playbook 1.16.0). Stop is the one way a person ends an agent's work. A unit the agent itself releases
+  code `COWORK_PAUSED` are removed. Stop is the one way a person ends an agent's work. A unit the agent itself releases
   with a checkpoint is still `paused`: that is the unit's state, not a person's pause.
 - `GET /projects/:projectId/agents` (the project's connections with their state and last actions) is removed (#985): its one reader, the
   Hand-off dialog, was no longer shown (S12 has no hand-off window; the Owner field hands a task over), and it listed every connection of

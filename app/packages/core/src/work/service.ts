@@ -435,8 +435,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       // #841: a subtask is part of one task of this space; the parent does not wait for it.
       const parent: ObjectRef[] = command.parentId === undefined ? [] : [{ type: 'work', id: valid.id(command.parentId, 'parentId') }];
       const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
-      // The retry fingerprint keeps its original shape (older stored creations still match) and adds the plan
-      // fields only when present. The intent fingerprint is the canonical creation, without retry identity.
+      // The retry fingerprint holds the plan fields only when present. The intent fingerprint is the canonical creation,
+      // without retry identity.
       const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}), ...(parent.length ? { parentId: parent[0]!.id } : {}) };
       const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), ...(waitingOn ? { waitingOn } : {}), ...(dueOn ? { dueOn } : {}), sources, related, ...plan })).digest('hex') : undefined;
       const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, dueOn, sources, related, criteria, dependencyIds }) : undefined;

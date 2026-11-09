@@ -75,7 +75,6 @@ Names in the code that are not settings at all:
 | --- | --- |
 | `FLUX_AGENT_ACCESS` | output marker of the operations tool |
 | `FLUX_GITHUB` | prefix in an error message |
-| `FLUX_LIVEKIT_WS_URL` | retired: the API refuses to start when it is set (browsers signal through `/media`) |
 | `FLUX_LIVE_QUEUE` | log marker |
 | `FLUX_MCP_PROTOCOL_VERSIONS` | constant: supported MCP protocol versions |
 | `FLUX_MIGRATIONS` | output marker of the operations tool |

@@ -205,8 +205,8 @@ describe('project export', () => {
     assert.equal(data.materials[0]!.currentVersion, 2);
 
     assert.equal(data.docs.length, 1);
-    assert.deepEqual(data.docs[0]!.versions.map((version) => [version.version, version.state, version.reason, version.author.id]),
-      [[1, 'published', 'Started the page', owner.id], [2, 'published', 'Edited the text', partner.id]]);
+    assert.deepEqual(data.docs[0]!.versions.map((version) => [version.version, version.reason, version.author.id]),
+      [[1, 'Started the page', owner.id], [2, 'Edited the text', partner.id]]);
     assert.equal(data.docs[0]!.file, `docs/${doc.id}.md`);
 
     assert.equal(data.sketches.length, 1);

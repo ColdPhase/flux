@@ -83,9 +83,9 @@ test('same domain command serializes simultaneous API/helper retries without rel
   assert.equal((await f.notices()).total, 1);
 });
 
-test('no-source and legacy no-key creation are atomic; a genuine agent remains the notice creator', async () => {
+test('no-source and no-key creation are atomic; a genuine agent remains the notice creator', async () => {
   const f = await scene();
-  const legacy = expectStatus(await f.owner.browser.request('POST', f.path, { body: { title: 'Order a sample' } }), 201) as WorkItem;
+  const keyless = expectStatus(await f.owner.browser.request('POST', f.path, { body: { title: 'Order a sample' } }), 201) as WorkItem;
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, {
     body: { name: 'Measurement agent', owner: 'self' },
   }), 201) as Agent;
@@ -94,7 +94,7 @@ test('no-source and legacy no-key creation are atomic; a genuine agent remains t
     { title: 'Agent-created comparison', clientCommandId: randomUUID() });
   const page = await f.notices();
   assert.equal(page.total, 2);
-  assert.deepEqual(page.items.find((notice) => notice.workId === legacy.id)!.sources, []);
+  assert.deepEqual(page.items.find((notice) => notice.workId === keyless.id)!.sources, []);
   assert.deepEqual(page.items.find((notice) => notice.workId === created.id)!.createdBy,
     { kind: 'agent', id: agent.id, name: 'Measurement agent' });
   assert.deepEqual([(await f.counts()).messages, (await f.counts()).conversations], [2, 2]);

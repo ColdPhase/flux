@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
@@ -277,19 +277,16 @@ test('the same canonical plan intent returns the original task once; other paylo
   assert.equal(absent.error, guessed.error);
 });
 
-test('creation retries keep the stored shape for older commands and cover every plan field for new ones', async () => {
+test('creation retries cover every plan field', async () => {
   const f = await scene();
   const commandId = randomUUID();
-  const legacyBody = { title: 'Legacy shape', outcome: 'x', clientCommandId: commandId };
-  const created = await f.create(f.owner, legacyBody);
-  // A creation without plan fields is fingerprinted exactly as before this feature, so older retries still match.
-  const old = createHash('sha256').update(JSON.stringify({ title: 'Legacy shape', outcome: 'x', status: 'open', blocker: null, owner: null, sources: [], related: [] })).digest('hex');
-  assert.equal((await pool.query('SELECT request_fingerprint FROM project_work_items WHERE id=$1', [created.id])).rows[0].request_fingerprint, old);
-  sameHumanWork(await f.create(f.owner, legacyBody), created);
-  await f.fails(f.owner, { ...legacyBody, criteria: ['Now with a criterion'] }, 409, 'IDEMPOTENCY_CONFLICT');
+  const plainBody = { title: 'Plain creation', outcome: 'x', clientCommandId: commandId };
+  const created = await f.create(f.owner, plainBody);
+  sameHumanWork(await f.create(f.owner, plainBody), created);
+  await f.fails(f.owner, { ...plainBody, criteria: ['Now with a criterion'] }, 409, 'IDEMPOTENCY_CONFLICT');
   const dependency = await f.create(f.owner, { title: 'Prerequisite' });
-  await f.fails(f.owner, { ...legacyBody, dependencyIds: [dependency.id] }, 409, 'IDEMPOTENCY_CONFLICT');
-  await f.fails(f.owner, { ...legacyBody, planIntent: intentOf(f) }, 409, 'IDEMPOTENCY_CONFLICT');
+  await f.fails(f.owner, { ...plainBody, dependencyIds: [dependency.id] }, 409, 'IDEMPOTENCY_CONFLICT');
+  await f.fails(f.owner, { ...plainBody, planIntent: intentOf(f) }, 409, 'IDEMPOTENCY_CONFLICT');
   const planned = { title: 'With a plan', clientCommandId: randomUUID(), criteria: ['One'], dependencyIds: [dependency.id], planIntent: intentOf(f) };
   const first = await f.create(f.owner, planned);
   sameHumanWork(await f.create(f.owner, planned), first);

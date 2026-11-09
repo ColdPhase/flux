@@ -83,7 +83,7 @@ export function normalizeReferences(value: unknown): MessageReference[] {
 
 /**
  * A message's text, source and attachments. The text may be empty only when files are attached (#154).
- * Without attachments the fingerprint keeps its original shape, so every stored receipt still replays.
+ * Without attachments the fingerprint holds the text and source alone.
  */
 export function normalizeMessage(command: SendMessageCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('Message is required');

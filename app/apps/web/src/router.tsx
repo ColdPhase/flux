@@ -1,4 +1,4 @@
-import { Navigate, Outlet, createBrowserRouter, redirect, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
+import { Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { useEffect, useState } from 'react';
 import { markBooted } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
@@ -161,13 +161,11 @@ export const router = createBrowserRouter([
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
-          // A direct message has no maps (#866): its old Sketches addresses lead to the conversation.
-          { path: 'dm/:dmId/sketches/*', loader: ({ params }) => redirect(`/dm/${params.dmId}`) },
           // An agent is a private conversation in Messages (F-036 AG-4, #857).
           { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentConversation')).AgentConversation })) },
           { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },
           { path: 'inbox/:id', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxOpen })) },
-          // Settings (#350, F-026): every earlier address still opens its section.
+          // Settings (#350, F-026).
           {
             path: 'settings',
             ...secondary(async () => ({ Component: (await settingsPage()).SettingsLayout })),
@@ -179,7 +177,6 @@ export const router = createBrowserRouter([
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
               { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
-              { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
               // A guest has no AI (AG-2, #959): every address below leads them to the one line at Settings › AI.
               { Component: AiNotForGuests, children: [
@@ -190,8 +187,6 @@ export const router = createBrowserRouter([
                 { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
                 // One of your agents (F-036 AG-1, #857).
                 { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
-                // The schedules page that lived here is gone (#858): an agent's schedules are in its conversation. The old address leads to the agents.
-                { path: 'assistant', element: <Navigate to="/settings/agents" replace /> },
                 { path: 'ai-connections', ...secondary(async () => { const page = await import('./ai/AiKeysSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
               ] },
             ],

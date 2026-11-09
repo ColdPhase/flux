@@ -12,7 +12,7 @@ import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, WorkStatus } f
  * materials and docs with every version, project sketches with thoughts and links, work,
  * decisions with their typed links, members and roles, and who made what. It never
  * holds other projects, direct messages, private sketches, sessions,
- * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of format version 1.
+ * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of the format.
  */
 export const projectExportPath = (projectId: string) => `/api/v1/projects/${projectId}/export`;
 /** `GET projectExportPath(id)?format=bundle` answers the `application/gzip` bundle. */
@@ -21,7 +21,7 @@ export const PROJECT_EXPORT_FORMAT = 'flux.project-export';
 export const PROJECT_EXPORT_FORMAT_VERSION = 1;
 export const PROJECT_EXPORT_SCHEMA_ID = 'https://flux.coldphase.dev/schemas/project-export.v1.json';
 
-/** What format version 1 deliberately leaves out; repeated in every export. */
+/** What the format deliberately leaves out; repeated in every export. */
 export const PROJECT_EXPORT_EXCLUDED = [
   'other projects',
   'direct messages',
@@ -100,8 +100,6 @@ export interface ProjectExportDocVersion {
   version: number;
   title: string;
   body: string;
-  /** Always `published` since v0.2: a page has no Draft any more. Format 1 keeps the field, because removing it needs a new `formatVersion`. */
-  state: 'published';
   reason: string;
   author: ExportActor;
   createdAt: string;
@@ -219,7 +217,7 @@ export interface ProjectExportGithubSources {
 export interface ProjectExport {
   /** GitHub task rules, dormant. Absent when the project has none; never holds repositories. */
   githubSources?: ProjectExportGithubSources;
-  /** Published attachments only. Exact bytes are in the bundle paths. Absent in legacy file-free exports. */
+  /** Published attachments only. Exact bytes are in the bundle paths. Absent when the project has none. */
   files?: ProjectExportFile[];
   $schema: typeof PROJECT_EXPORT_SCHEMA_ID;
   format: typeof PROJECT_EXPORT_FORMAT;
@@ -230,7 +228,7 @@ export interface ProjectExport {
     /** FLUX_PUBLIC_ORIGIN of the exporting instance. */
     instanceOrigin: string | null;
     schemaVersion: number;
-    /** Always false in format version 1: there is no import yet. */
+    /** Always false: there is no import yet. */
     reimportSupported: false;
   };
   excluded: string[];
@@ -309,7 +307,7 @@ const baseExportSchema = {
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
     material: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, versions: { ...list(ref('materialVersion')), minItems: 1 } }),
-    docVersion: object({ version: count, title: text, body: text, state: { enum: ['draft', 'published'] }, reason: text, author: ref('actor'), createdAt: time }),
+    docVersion: object({ version: count, title: text, body: text, reason: text, author: ref('actor'), createdAt: time }),
     doc: object({ id, createdBy: ref('actor'), createdAt: time, currentVersion: count, file: { type: 'string', pattern: '^docs/[^/]+\\.md$' }, versions: { ...list(ref('docVersion')), minItems: 1 } }),
     thought: object({
       id, text, x: { type: 'integer' }, y: { type: 'integer' }, width: { type: 'integer' }, height: { type: 'integer' },
@@ -344,13 +342,11 @@ const baseExportSchema = {
     provenance: object({ exportedBy: ref('namedActor'), instanceOrigin: nullable(text), schemaVersion: count, reimportSupported: { const: false } }),
     excluded: list(text),
     project: object({ id, name: text, visibility: { enum: ['workspace', 'restricted'] }, createdAt: time, workspace: object({ id, name: text }) }),
-    // Format 1 is a pinned public contract (EXT-2): its enums only grow. Spaces have two roles since #903, so a new export never
-    // writes `viewer` or `denied`; they stay listed until a breaking change makes a format 2.
     people: list(object({
-      kind: { enum: ['human', 'agent'] }, id, name: text, access: { enum: ['manager', 'contributor', 'viewer'] },
+      kind: { enum: ['human', 'agent'] }, id, name: text, access: { enum: ['manager', 'contributor'] },
       workspaceRole: nullable({ enum: ['owner', 'admin', 'member', 'guest'] }),
     })),
-    grants: list(object({ principal: ref('actor'), role: { enum: ['manager', 'contributor', 'viewer', 'denied'] }, createdAt: time })),
+    grants: list(object({ principal: ref('actor'), role: { enum: ['manager', 'contributor'] }, createdAt: time })),
     actors: list(ref('namedActor')),
     conversations: list(ref('conversation')),
     materials: list(ref('material')),
