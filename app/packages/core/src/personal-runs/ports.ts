@@ -56,8 +56,6 @@ export interface RunRecord {
   requestFingerprint: string;
   kind: AssistantRunKind;
   prompt: string;
-  /** F-027 A8: a background run whose answer stays out of its conversation (kept in Recent). */
-  silent: boolean;
   targetSketchId: string | null;
   targetThoughtId: string | null;
   continuesRunId: string | null;
@@ -123,11 +121,10 @@ export function placeOf(run: Pick<RunRecord, 'projectId' | 'conversationId' | 'd
     : run.dmId !== null ? { kind: 'dm', dmId: run.dmId, threadRootId: run.dmThreadRootId } : { kind: 'chat', agentId: run.agentId };
 }
 /**
- * A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask. A task's result is posted; so is a schedule's
- * in a space, but an agent's schedule runs in its private chat (#858), where the result is a line only its owner reads.
+ * A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask, and what a schedule's run writes (#858, #1104): a schedule
+ * runs in its agent's private chat and its result is a message only its owner reads, whom Show everyone then lets share it. Only a task's result is posted.
  */
-export const isPrivateAnswer = (run: Pick<RunRecord, 'kind' | 'projectId' | 'dmId'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought'
-  || run.kind === 'scheduled' && run.projectId === null && run.dmId === null;
+export const isPrivateAnswer = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought' || run.kind === 'scheduled';
 /** A run the owner said to the agent in its chat, or `/ai` in a place: it has the chat's turns behind it. A schedule is a single instruction. */
 export const isAsked = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
 
@@ -139,14 +136,14 @@ export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
     /** The web addresses the run may read from the start (#953): see `givenAtStart`. */
     given?: string[];
     /** A paused request: queued until then, with the reason it waits (#854). */
     resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
-  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'
+  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'
   | 'shownAt' | 'dismissedAt'>>;
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
@@ -251,7 +248,7 @@ export interface PersonalRunRepository {
   lockLane(ownerUserId: string): Promise<void>;
   /** Only the owner's own runs, newest first; `place` narrows them to one place (#842). */
   listOwnRuns(ownerUserId: string, page: PageWindow, place?: RunPlaceFilter): Promise<Paged<RunRecord>>;
-  /** Committed answers of a conversation that were posted there (a schedule's), oldest first. The answer to `/ai` is its asker's alone. */
+  /** Committed answers of a conversation that were posted there, oldest first. The answer to `/ai`, to a chat and of a schedule is its owner's alone. */
   listAnswers(conversationId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Display names of people keyed by id. */
   names(userIds: string[]): Promise<Map<string, string>>;
@@ -293,7 +290,6 @@ export interface PersonalRunRepository {
    * (the agent was deleted); older isolated fake repositories may omit it.
    */
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
-  /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
   /** The "What it may do" of the owner's first agent in the workspace (F-036 AG-3); null without one. */
   assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
 }

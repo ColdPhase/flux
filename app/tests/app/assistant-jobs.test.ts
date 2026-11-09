@@ -46,8 +46,8 @@ const answer = (text: string): ((request: unknown) => Promise<PersonalComputeRes
   ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 20 }, text });
 const failing = async (): Promise<PersonalComputeResult> => ({ kind: 'failed', reason: 'provider_error', billed: 'none' });
 
-interface Row { id: string; status: string; kind: string; silent: boolean; prompt: string; project_id: string | null; conversation_id: string | null; dm_id: string | null; agent_id: string }
-const runsOf = async (jobId: string) => (await pool.query(`SELECT r.id, r.status, r.kind, r.silent, r.prompt, r.project_id, r.conversation_id, r.dm_id, r.agent_id FROM personal_runs r
+interface Row { id: string; status: string; kind: string; prompt: string; project_id: string | null; conversation_id: string | null; dm_id: string | null; agent_id: string }
+const runsOf = async (jobId: string) => (await pool.query(`SELECT r.id, r.status, r.kind, r.prompt, r.project_id, r.conversation_id, r.dm_id, r.agent_id FROM personal_runs r
   JOIN assistant_job_runs j ON j.run_id = r.id WHERE j.job_id = $1 ORDER BY r.created_at`, [jobId])).rows as Row[];
 const firings = async (jobId: string) => (await pool.query(`SELECT state, result_line, fired_by, run_id FROM assistant_job_runs WHERE job_id = $1 ORDER BY fired_at, started_at`, [jobId])).rows as
   { state: string; result_line: string; fired_by: string; run_id: string | null }[];
@@ -161,8 +161,8 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.equal(results.reduce((total, item) => total + item.fired, 0), 1, 'exactly one tick fired it');
     const [started, ...more] = await runsOf(job.id);
     assert.equal(more.length, 0, 'one run, not three');
-    assert.deepEqual([started!.kind, started!.silent, started!.prompt, started!.project_id, started!.conversation_id, started!.dm_id, started!.agent_id],
-      ['scheduled', false, 'Look at the sensor tasks', null, null, null, agentId], 'a run of the agent\'s chat: no space, no conversation');
+    assert.deepEqual([started!.kind, started!.prompt, started!.project_id, started!.conversation_id, started!.dm_id, started!.agent_id],
+      ['scheduled', 'Look at the sensor tasks', null, null, null, agentId], 'a run of the agent\'s chat: no space, no conversation');
     assert.equal((await tick(at)).fired, 0);
     assert.equal(new Date((await jobRow(job.id)).next_run_at as string).getTime(), fire.getTime() + DAY);
     compute.respond = answer('Fact: two sensor tasks are due on Friday.');
@@ -186,6 +186,10 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.equal((await chatLines(agentId)).length, 1);
     const answers = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as { items: { runId: string }[] };
     assert.equal(answers.items.some((item) => item.runId === started!.id), false);
+    // Nothing posts a schedule's result into a conversation (#1104): its answer is its owner's alone, and no event tells a space about it.
+    const ran = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${started!.id}`), 200) as { answer: { audience: { kind: string } } | null };
+    assert.equal(ran.answer?.audience.kind, 'owner', 'a schedule\'s answer is private, like a chat\'s');
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE data->>'runId' = $1 AND kind LIKE 'project.assistant%'`, [started!.id])).rows[0].n), 0, 'and the space hears nothing of it');
     // "Nothing to report" says nothing in the chat; the history says it.
     const quiet = await created({ title: 'Quiet', schedule: daily(10) });
     await cycle(1, answer('Nothing to report'));

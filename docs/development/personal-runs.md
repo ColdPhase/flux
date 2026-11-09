@@ -524,7 +524,7 @@ cannot be made airtight, because where an address ends depends on the character 
 which prepares a new schedule from their words. Every firing passes `given` to the run, which reads those and what its own search returned, and nothing the agent
 wrote. A scheduled run cannot be retried (`ASSISTANT_RUN_NOT_RETRYABLE`: Run now is the way), and `givenAtStart` never reads a `scheduled` prompt, so no path
 gives a run the addresses of the schedule's text. Deleting an agent locks its schedule rows before the owner's lock (`removeAgent`), the order a firing has, and
-settling a firing takes the schedule row before the firing's own, so none of the three can deadlock with another. A schedule whose owner is a guest of the company
+settling a firing takes the schedule row before the firing's own, so none of the three can deadlock with another. No run is posted for its owner (#1104): a `scheduled` run is a private answer like a chat's (`isPrivateAnswer`), and there is no "silent" run (migration `0048` dropped the column). A schedule whose owner is a guest of the company
 (C-50, #1059) neither fires nor writes a history row or a chat line; its next time moves on.
 
 ## The brief (#1064)

@@ -103,7 +103,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/my-agents/:agentId/assistant-runs': useCase('A private chat is in no space; whatever its agent reads is checked and gated in that space, call by call'),
   'POST /api/v1/assistant-runs/:runId/show': gated('params', 'runId', 'run'),
   'POST /api/v1/assistant-runs/:runId/dismiss': exempt(REDUCES),
-  'GET /api/v1/conversations/:conversationId/assistant-answers': exempt('Committed answers a conversation posted (a schedule\'s) are conversation history'),
+  'GET /api/v1/conversations/:conversationId/assistant-answers': exempt('Committed answers an agent posted in a conversation (a task\'s) are conversation history; a private answer is none'),
   'GET /api/v1/assistant-runs': exempt(OWN_HISTORY),
   'GET /api/v1/assistant-runs/:runId': exempt(OWN_HISTORY),
   'POST /api/v1/assistant-runs/:runId/stop': exempt(REDUCES),

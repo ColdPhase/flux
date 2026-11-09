@@ -25,7 +25,7 @@ export function useAgentChat(agentId: string, meId: string) {
       .then(async (page) => {
         const said = await listAgentChatMessages(agentId).catch(() => null);
         if (!alive) return;
-        setRuns(page.items.filter((item) => !item.silent).reverse());
+        setRuns(page.items.reverse());
         if (said) setLines(said);
         setFailed(false);
         // Opening the chat, or having it open when something arrives, reads it.

@@ -203,7 +203,7 @@ export function withoutCitationMarks(body: string, sources: number): string {
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
-    conversationId: record.conversationId, dmId: record.dmId, dmThreadRootId: record.dmThreadRootId, agentId: record.agentId, kind: record.kind, prompt: record.prompt, silent: record.silent,
+    conversationId: record.conversationId, dmId: record.dmId, dmThreadRootId: record.dmThreadRootId, agentId: record.agentId, kind: record.kind, prompt: record.prompt,
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
@@ -613,7 +613,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
       // The schedule's own text is not read for addresses (C-30): the agent may have written it. Only what its owner typed is given.
       prompt: spec.prompt, given: spec.given.slice(0, GIVEN_AT_START_MAX),
-      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: false,
+      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
       aiEpoch: null,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
       authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',

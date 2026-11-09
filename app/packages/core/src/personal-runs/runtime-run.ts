@@ -343,7 +343,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           committedAt: new Date(),
         }));
         // The answer to `/ai` and to a chat is its owner's alone: the space hears nothing until Show everyone (#842).
-        if (!run.silent && !isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
+        if (!isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
         await fence?.mark();
         return status;
       });

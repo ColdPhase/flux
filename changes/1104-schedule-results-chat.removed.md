@@ -1,0 +1,1 @@
+- A schedule's result goes only to its agent's private chat: nothing posts it into a conversation any more, and the owner shares what they choose with their own message ([#1104](https://github.com/ColdPhase/flux/issues/1104)).
