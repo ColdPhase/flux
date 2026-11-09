@@ -5,7 +5,8 @@ import { toolError } from './tool-results.js';
 // The private Flux text a run has read, as its address check reads it (#1065, #1136, C-30). One index per run, kept in this process and
 // added to as the run keeps more text: each check fetches only the rows it does not hold yet (the worker writes the brief, and any API
 // process a tool result, so the database is where they meet). Every check runs behind one gate, so parallel reads of a run, or of many
-// runs, wait their turn instead of each loading, indexing and scanning everything at once; the work inside yields to the event loop.
+// runs, wait their turn instead of each loading, indexing and scanning everything at once, and the runs take turns at it (#1144); the work
+// inside yields to the event loop.
 // A run's index goes when the run is seen to have ended (its rows are gone, or its token is refused), when it has not been used for
 // a while, or when the cache is over its bounds (least recently used first).
 
@@ -15,12 +16,32 @@ const CACHE = { runs: 16, characters: 48 << 20, idleMs: 10 * 60_000 } as const;
 interface Entry { index: PrivateTextIndex; seen: Set<string>; usedAt: number }
 const cache = new Map<string, Entry>();
 
-/** One check at a time in this process: the work at any moment is one check's, whatever the number of callers. */
-let running: Promise<unknown> = Promise.resolve();
-function gated<T>(work: () => Promise<T>): Promise<T> {
-  const turn = running.then(work, work);
-  running = turn.catch(() => undefined);
-  return turn;
+/**
+ * One check at a time in this process: the work at any moment is one check's, whatever the number of callers. The runs take turns (#1144):
+ * each run waits in its own line, and the gate serves one check of each waiting run in turn, so one run's 40 parallel reads delay another
+ * run's single read by at most one check of each, never by all 40.
+ */
+const waiting = new Map<string, (() => Promise<void>)[]>();
+let serving = false;
+function gated<T>(runId: string, work: () => Promise<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const turn = async () => { try { resolve(await work()); } catch (error) { reject(error); } };
+    const line = waiting.get(runId);
+    if (line) line.push(turn); else waiting.set(runId, [turn]);
+    if (!serving) void serve();
+  });
+}
+async function serve() {
+  serving = true;
+  // The run that has waited longest goes first, then the back of the line (a `Map` keeps the order its keys were set in).
+  for (let next = waiting.entries().next(); !next.done; next = waiting.entries().next()) {
+    const [runId, line] = next.value;
+    const turn = line.shift()!;
+    waiting.delete(runId);
+    if (line.length) waiting.set(runId, line);
+    await turn();
+  }
+  serving = false;
 }
 
 /** An index nobody checks against any more (its run ended in this process's silence) still goes after `idleMs`. */
@@ -67,7 +88,7 @@ export function forgetRunPrivateText(runId: string) { cache.delete(runId); }
  */
 export async function checkRunAddress(db: DbExecutor, runId: string, address: string, chain: AddressChain, index?: PrivateTextIndex):
   Promise<{ fragment: string | null; index: PrivateTextIndex }> {
-  return gated(async () => {
+  return gated(runId, async () => {
     const current = index ?? await synced(db, runId);
     return { fragment: await privateFragmentIn(address, current, chain), index: current };
   });
@@ -81,7 +102,7 @@ export async function checkRunAddress(db: DbExecutor, runId: string, address: st
 export async function privateAddressWritten(db: DbExecutor, runId: string, text: string): Promise<{ address: string; fragment: string } | null> {
   const addresses = writtenAddresses(text);
   if (!addresses.length) return null;
-  return gated(async () => {
+  return gated(runId, async () => {
     const index = await synced(db, runId);
     for (const address of addresses) {
       try {

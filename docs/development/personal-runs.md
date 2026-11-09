@@ -232,8 +232,8 @@ pages, founder direction 2026-11-09, #1113).
   of the event loop every few thousand links, and keeps the words and the links each once (the links in 256 small maps by hash, never one
   big map, and in one joined block per text, with where each starts and its site). An index goes when its run's rows are gone (the run
   ended), when its token is refused, after 10 minutes unused (a minute's timer checks), or least recently used first past 16 runs or 48 Mi
-  characters. **One gate** per process runs one check at a time, so parallel reads of a run, or of many, wait their turn (first come, first
-  served; fairness across runs is #1144).
+  characters. **One gate** per process runs one check at a time, so parallel reads of a run, or of many, wait their turn (the runs take turns:
+  one check of each waiting run in turn, #1144).
   **The check**, per address: an address longer than `ADDRESS_MAX` (2,048) as it is sent, a redirect hop's included, is not checked or asked
   (`AddressTooLong`, `WEB_READ_TOO_LONG`). Otherwise it is read as the server sends it (`new URL(…).href`, the parser drops tabs and line
   breaks) and with its host in Unicode, its host and path and its query each percent-decoded until they stop changing, revealed, folded and
@@ -251,7 +251,13 @@ pages, founder direction 2026-11-09, #1113).
   Each redirect hop is checked in `beforeRequest` before it is asked, under the same gate and with the read's index; the hop already sent is
   listed as redirected. **A run's change** (`tool-registry.ts`'s effect wrapper, `refusedPrivateAddress`, #1138) is checked the same way: each
   web address its arguments hold (`writtenAddresses`) against the run's index; one that carries private text refuses the change
-  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. A run's answer and its `<ask>` question are not checked when stored (#1143). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
+  (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. **A run's answer** (`answerWithoutPrivateAddresses`, #1143) is checked by the worker
+  after the run's last call and before its commit's transaction, against the run's kept text read from the database: each address in it that
+  carries private text becomes `[address left out]` (`withoutPrivateAddresses`), so the task's report line, an `<ask>` question, the chat's
+  earlier turns and a Show everyone post, all read from the stored answer, are cleaned with it. `webSourcesLine` lists search queries with
+  any address in them defanged (`defangedAddresses`): a query is never checked, and a run without an answer has no kept text left when its
+  end line is written. A site on object storage's path-style hosts (S3,
+  `storage.googleapis.com`) is the host and the bucket (#1144). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
   search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
   the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote (other words,
   hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before

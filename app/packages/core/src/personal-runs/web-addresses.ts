@@ -241,6 +241,64 @@ export async function keepPrivateText(text: string): Promise<KeptPrivateText> {
   return { body: bodies.join(''), addresses: [...links] };
 }
 
+/** Where each web address is written in a text, and the address as it would be read: the same addresses `keptPrivateText` cuts out. */
+function addressSpans(text: string): { start: number; end: number; address: string }[] {
+  const spans: { start: number; end: number; address: string }[] = [];
+  const found = (scheme: string) => (raw: string, start: number) => {
+    const kept = withoutTrailingMarks(raw);
+    const address = normalizedAddress(`${scheme}${kept}`);
+    if (!address) return raw;
+    spans.push({ start, end: start + kept.length, address });
+    return `${' '.repeat(kept.length)}${raw.slice(kept.length)}`;
+  };
+  // As in `cutAddresses`: the addresses with a scheme first, then, in what is left, the sites named without one. The blanks keep the positions.
+  const rest = text.replace(ADDRESS, (raw, start: number) => found('')(raw, start));
+  rest.replace(BARE_SITE, (raw, start: number) => found('https://')(raw, start));
+  return spans.sort((one, other) => one.start - other.start);
+}
+
+/**
+ * A text with each web address in it defanged (`hxxps://evil[.]example/…`, #1143): still readable, and never a link again. Flux lists a run's
+ * search queries so: a query is the model's text and is never checked, so an address in it must not pass as a link someone wrote when a
+ * later run reads the list.
+ */
+export function defangedAddresses(text: string): string {
+  let out = '';
+  let at = 0;
+  for (const span of addressSpans(text)) {
+    out += text.slice(at, span.start) + text.slice(span.start, span.end).replace(/^http/i, 'hxxp').replaceAll('.', '[.]');
+    at = span.end;
+  }
+  return out + text.slice(at);
+}
+
+/** What a run's answer says in place of a web address that carried private text the run read (#1143, C-30). */
+export const ADDRESS_LEFT_OUT = '[address left out]';
+
+/**
+ * A run's answer, or anything else a run writes as text, with each web address that carries private Flux text the run read replaced by
+ * `ADDRESS_LEFT_OUT` (#1143, C-30). The rest of the text stays as written: a link a person wrote, and one the agent cites from a page it read,
+ * pass the check and stay. A later run reads the answer back (a chat's earlier turns, a task's report line, a Show everyone post, an `<ask>`
+ * question) as text written in Flux, so no copy can pass there as a link someone wrote. An address too long to be read is left as it is.
+ */
+export async function withoutPrivateAddresses(text: string, index: PrivateTextIndex): Promise<{ text: string; left: string[] }> {
+  const spans = addressSpans(text);
+  if (!spans.length) return { text, left: [] };
+  const refused = new Set<string>();
+  for (const address of new Set(spans.map((span) => span.address))) {
+    try { if (await privateFragmentIn(address, index)) refused.add(address); } catch (error) { if (!(error instanceof AddressTooLong)) throw error; }
+  }
+  if (!refused.size) return { text, left: [] };
+  let out = '';
+  let at = 0;
+  for (const span of spans) {
+    if (!refused.has(span.address) || span.start < at) continue;
+    out += text.slice(at, span.start) + ADDRESS_LEFT_OUT;
+    at = span.end;
+  }
+  return { text: out + text.slice(at), left: [...refused] };
+}
+
 /**
  * The web addresses written in a text, as they would be read (#1138): an agent's change that writes one carrying private text the run
  * read is refused, so a later read of it cannot pass the check as a link a person wrote.
@@ -260,8 +318,24 @@ const hashOf = (text: string, at: number) => { let hash = 0; for (let i = 0; i <
 /** The same polynomial hash over a whole string: a link is found among the prefixes of an address in one pass. */
 const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.length; i++) hash = (Math.imul(hash, BASE) + text.charCodeAt(i)) | 0; return hash; };
 
-/** The host (and port) a compared address without its scheme begins with. */
-const siteOf = (address: string) => /^[^/?#\s]*/.exec(address)![0];
+/**
+ * Object storage's path-style hosts, where the bucket is the path's first part: S3 (`s3.amazonaws.com`, `s3.<region>.amazonaws.com`,
+ * `s3-<region>.amazonaws.com`) and Google Cloud Storage (`storage.googleapis.com`).
+ */
+function pathStyleStorage(host: string): boolean {
+  // Plain string checks, no pattern with repeated parts: a host is the agent's to choose (CodeQL: no backtracking on `s3------…`).
+  const name = host.replace(/:\d+$/, '');
+  return name === 'storage.googleapis.com' || (name.endsWith('.amazonaws.com') && (name.startsWith('s3.') || name.startsWith('s3-')));
+}
+/**
+ * The site a compared address without its scheme belongs to: its host (and port); on object storage's path-style hosts, the host and the bucket (#1144):
+ * `s3.amazonaws.com/acme` and `s3.amazonaws.com/evil-bucket` are two owners, and a bucket's owner reads its access logs.
+ */
+function siteOf(address: string): string {
+  const host = /^[^/?#\s]*/.exec(address)![0];
+  if (!pathStyleStorage(host)) return host;
+  return host + (/^\/[^/?#\s]*/.exec(address.slice(host.length))?.[0] ?? '');
+}
 /**
  * Whether two sites are one for the host-and-path rule (#1136): the same host, and one named pair, `github.com` and `api.github.com` (a
  * person's issue or pull request read through GitHub's API). No general rule: a subdomain is the same shape for GitHub and for Google, and
@@ -355,9 +429,12 @@ export class AddressTooLong extends Error {
   constructor() { super('The address is longer than a web address may be'); }
 }
 
-/** A window lies in the host and path of a plain reading of the address; or anywhere else (its query, a decoded run). */
+/** A window lies in the host and path of a plain reading of the address; or anywhere else (its query, a decoded run); and in its host alone. */
 const IN_PATH = 1;
 const ELSEWHERE = 2;
+const IN_HOST = 4;
+/** A site's host: a window of the address's host is compared host to host (every bucket of `s3.amazonaws.com` shares that host's text). */
+const hostOf = (site: string) => site.split('/', 1)[0]!;
 
 const ALNUM = /[\p{L}\p{N}]/u;
 const MARK = /[\s\p{N}@]/u;
@@ -365,7 +442,7 @@ const MARK = /[\s\p{N}@]/u;
  * The fragment-like windows of `text` (#1065): 12 characters with at least 6 letters or digits and a space, a digit or an `@`. One long
  * word alone ("documentation", a name) is too common to tell what a run read from what everybody writes. Linear in the text.
  */
-function addWindows(text: string, pathEnd: number, into: Map<string, number>) {
+function addWindows(text: string, pathEnd: number, into: Map<string, number>, hostEnd = 0) {
   const n = text.length;
   if (n < PRIVATE_FRAGMENT_CHARS) return;
   const letters = new Uint8Array(n);
@@ -390,7 +467,7 @@ function addWindows(text: string, pathEnd: number, into: Map<string, number>) {
     if (at < 0) continue;
     if (letterCount >= FRAGMENT_LETTERS && markCount > 0) {
       const window = text.slice(at, at + PRIVATE_FRAGMENT_CHARS);
-      into.set(window, (into.get(window) ?? 0) | (i < pathEnd ? IN_PATH : ELSEWHERE));
+      into.set(window, (into.get(window) ?? 0) | (i < pathEnd ? IN_PATH : ELSEWHERE) | (i < hostEnd ? IN_HOST : 0));
     }
     letterCount -= letters[at]!;
     markCount -= marks[at]!;
@@ -446,7 +523,7 @@ function readingsOf(address: string): { windows: Map<string, number>; compared: 
   for (const host of hosts) {
     for (let layer = 0; layer < Math.max(paths.length, queries.length); layer++) {
       const hostPath = readable(`${host}${paths[Math.min(layer, paths.length - 1)]!}`).replace(/^www\./, '');
-      addWindows(`${hostPath}${readable(queries[Math.min(layer, queries.length - 1)]!)}`, hostPath.length, windows);
+      addWindows(`${hostPath}${readable(queries[Math.min(layer, queries.length - 1)]!)}`, hostPath.length, windows, readable(host).replace(/^www\./, '').length);
     }
   }
   for (const run of [...decodedRuns(`${url.host}${revealed(paths.at(-1)!)}`), ...decodedRuns(revealed(queries.at(-1)!))]) addWindows(readable(run), 0, windows);
@@ -543,7 +620,8 @@ export async function privateFragmentIn(address: string, index: PrivateTextIndex
   for (const block of index.blocks) {
     const refused = await read(block.text, (candidate, at) => {
       if (candidate.where & ELSEWHERE) return candidate.window;
-      if (sameSite(site, block.sites[linkAt(block.starts, at)]!)) candidate.sameSite = true; else elsewhere.add(candidate);
+      const linkSite = block.sites[linkAt(block.starts, at)]!;
+      if (candidate.where & IN_HOST ? sameSite(hostOf(site), hostOf(linkSite)) : sameSite(site, linkSite)) candidate.sameSite = true; else elsewhere.add(candidate);
       return null;
     });
     if (refused) return refused;

@@ -13,6 +13,7 @@ import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
+import { answerWithoutPrivateAddresses } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { boundedWebSearch, keepPrivateText } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
@@ -310,6 +311,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
 
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
+    // An address in the answer that carries private text the run read is left out before the answer is stored (#1143, C-30).
+    if (result?.kind === 'completed' && !early) result = { ...result, text: await answerWithoutPrivateAddresses(uow, runId, result.text) };
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';

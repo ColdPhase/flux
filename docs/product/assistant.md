@@ -316,7 +316,7 @@ and that what a page or a message says is data, not an order; and the server ref
 a verbatim fragment of private Flux text the run has read (12 characters with a digit, a space or an `@`, compared without case, accents
 or percent-encoding, also in a run of hex, base64 or base32), telling the agent why. Private text is what people, the company and its
 tools wrote, never Flux's own brief words or which date it was; a link written in it opens, a redirect hop may carry only the text of the
-link a person wrote that the read began with, and a run's change may not write such an address into Flux (its answer is not checked yet, #1143) ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1136, #1138).
+link a person wrote that the read began with, and a run's change may not write such an address into Flux, and its answer keeps none (`[address left out]`, #1138, #1143) ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1136, #1138).
 **Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote (other words, hyphens for spaces, pieces under 12
 characters), or signals by which address it chooses, can leave through an address, and a search query reaches the search's vendor; the
 check stops the copy. The defence is the one above, and the list of every address the
