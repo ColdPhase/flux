@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH } from '@flux/contracts';
 import { agentRuntimeUseCases, reconcileAgentRuntime, type AgentRuntimeConfig, type RuntimeManagerPort } from '@flux/core';
-import { agentRuntimeOperations, agentRuntimeStore } from '@flux/db';
+import { agentRuntimeOperations, agentRuntimeStore, workspaceRepository } from '@flux/db';
 import { Browser } from './support/http.js';
 import { db, insertedHuman, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
@@ -192,15 +192,27 @@ describe('the idle policy and a guest (#1090)', () => {
       const runtime = agentRuntimeUseCases(config, store, manager);
       await runtime.bind(guest.id); await runtime.bind(member.id);
       await pool.query(`UPDATE agent_runtime_bindings SET last_used_at = now() - interval '40 days', created_at = now() - interval '41 days' WHERE owner_user_id = ANY($1)`, [[guest.id, member.id]]);
+      await pool.query(`UPDATE workspace_members SET updated_at = now() - interval '50 days' WHERE workspace_id = $1 AND user_id = ANY($2)`, [company, [guest.id, member.id]]);
       const report = await reconcileAgentRuntime({ config, store, manager });
       assert.equal(report.idle, 1, 'one place is released as idle');
       const states = await pool.query<{ owner_user_id: string; state: string }>('SELECT owner_user_id, state FROM agent_runtime_bindings WHERE owner_user_id = ANY($1)', [[guest.id, member.id]]);
       const stateOf = (id: string) => states.rows.find((row) => row.owner_user_id === id)?.state;
       assert.equal(stateOf(guest.id), 'active', 'the guest\'s place is kept: it is not signed out');
       assert.notEqual(stateOf(member.id), 'active', 'the member\'s is released');
-      // As a member again, the place is the same one and is subject to the policy again.
-      await pool.query('UPDATE workspace_members SET role = $3 WHERE workspace_id = $1 AND user_id = $2', [company, guest.id, 'member']);
-      assert.equal((await store.idleBindings(new Date(Date.now() - 30 * 86_400_000))).some((binding) => binding.ownerUserId === guest.id), true);
+      // As a member again, the place is the same one and is subject to the policy again, but its idle window starts at the return (#1095):
+      // the days spent as a guest are not idle days, so it is not released at once, and the owner is shown the day it will be.
+      const idle = async () => (await store.idleBindings(new Date(Date.now() - 30 * 86_400_000))).some((binding) => binding.ownerUserId === guest.id);
+      await workspaceRepository(db).setRole(company, guest.id, 'member');
+      assert.equal(await idle(), false, 'a guest back as a member keeps the whole window');
+      assert.equal((await reconcileAgentRuntime({ config, store, manager })).idle, 0, 'and the sweep releases nothing');
+      assert.equal((await pool.query<{ state: string }>('SELECT state FROM agent_runtime_bindings WHERE owner_user_id = $1', [guest.id])).rows[0]?.state, 'active');
+      const shown = Date.parse((await runtime.status(guest.id)).binding!.idleReleaseAt!);
+      assert.ok(shown > Date.now() + 29 * 86_400_000 && shown < Date.now() + 31 * 86_400_000, 'the date shown is 30 days after the return');
+      // The window is the later of the last use and the return: a use after the return moves it, and a long time after the return releases.
+      await pool.query(`UPDATE workspace_members SET updated_at = now() - interval '31 days' WHERE workspace_id = $1 AND user_id = $2`, [company, guest.id]);
+      assert.equal(await idle(), true, 'thirty days after the return the place is idle again');
+      await pool.query(`UPDATE agent_runtime_bindings SET last_used_at = now() - interval '1 day' WHERE owner_user_id = $1`, [guest.id]);
+      assert.equal(await idle(), false, 'a later use starts the window again');
     } finally {
       await pool.query('DELETE FROM workspace_members WHERE workspace_id = $1 AND user_id = ANY($2)', [company, [guest.id, member.id]]);
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = $1', [slot]);

@@ -81,6 +81,17 @@ export function taskDiscussionRows(db: DbExecutor) {
         LIMIT ${limit}) agent_run`);
       return Number(result.rows[0]?.n ?? 0);
     },
+    /**
+     * Marks this transaction as the owner's Approve of an agent's saved change: the line it writes is accepted whatever the agent's run of
+     * messages (C-51), since a person decided it. The mark is local to the transaction, so it can never outlive the Approve.
+     */
+    async markOwnerApproval() {
+      await db.execute(sql`SELECT set_config('flux.owner_approval', 'on', true)`);
+    },
+    async ownerApproved() {
+      const result = await db.execute<{ on: boolean }>(sql`SELECT coalesce(current_setting('flux.owner_approval', true), '') = 'on' AS on`);
+      return result.rows[0]?.on === true;
+    },
     async sourceExists(projectId: string, source: Source) {
       const v = schema.projectMaterialVersions;
       const [row] = await db.select({ id: v.materialId }).from(v).where(and(eq(v.projectId, projectId),

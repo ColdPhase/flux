@@ -17,14 +17,16 @@ export const AGENT_TURN_LIMIT = 5;
  * The one place a message is appended to a conversation of a space: a task's own writes (a direct contribution, a blocker, a result or a
  * hand-off) and the conversation store's start and reply all come here. In a task's discussion an agent's sixth message in a row is
  * refused until a person writes (`AGENT_TURN_LIMIT`, C-51), whichever tool or path wrote the five before it and whichever agents they
- * were. A line Flux writes for an agent (`byFlux`) is never refused and never counted. The caller holds the task's row lock (every
- * writer of a task's discussion takes it first), so two agents cannot both take the last turn.
+ * were. A line Flux writes for an agent (`byFlux`) is never refused and never counted. A line its owner approves (`ownerApproved`, the Approve
+ * of a change that waited for their OK, #1094) is never refused either, since a person decided it; it counts, so it gives no other agent line a
+ * turn. The caller holds the task's row lock (every writer of a task's discussion takes it first), so two agents cannot both take the last turn.
  */
 export async function appendMessage<C extends { id: string }, I extends { byFlux?: boolean }, R>(
   discussion: { taskOf(conversationId: string): Promise<string | null>; trailingAgentMessages(conversationId: string, limit: number): Promise<number>;
-    append(conversation: C, author: ActorRef, input: I): Promise<R> },
+    ownerApproved?(): Promise<boolean>; append(conversation: C, author: ActorRef, input: I): Promise<R> },
   conversation: C, author: ActorRef, input: I): Promise<R> {
   if (author.kind === 'agent' && !input.byFlux && await discussion.taskOf(conversation.id) !== null
+    && !(await discussion.ownerApproved?.())
     && await discussion.trailingAgentMessages(conversation.id, AGENT_TURN_LIMIT) >= AGENT_TURN_LIMIT)
     throw new ConflictError('Five agent messages in a row need a person\'s message first', 'AGENT_TURN_LIMIT');
   return discussion.append(conversation, author, input);

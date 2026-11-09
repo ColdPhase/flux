@@ -428,8 +428,8 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, reason |
 | `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, reason |
 | `flux_delete_doc` | `doc.delete` | the doc | Deletes one page for everyone at the version last read; always waits for the owner's OK (#941) |
-| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version. A local client's tool only: no run has it (#1063) |
-| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread. A local client's tool only: no run has it (#1063) |
+| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version. Posted as the owner, marked "via" the client (LC-2, #1091). A local client's tool only: no run has it (#1063) |
+| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread. Posted as the owner, marked "via" the client, except in a task's discussion, where it is the agent's own line (C-51). A local client's tool only: no run has it (#1063) |
 | `flux_discuss_task` | `conversation.reply` | the task | One message about a task in the task's one discussion (#868, below) |
 | `flux_ask_question` | `conversation.reply` | the conversation | A question to one person with two to four ready answers, as the agent's message plus a card (#347, below) |
 
@@ -447,10 +447,18 @@ A task has one discussion (#868), where people and agents talk about it:
   debited. Only a person's message gives an agent more. A retry with the same `clientCommandId` replays. The limit holds for every
   agent write into the discussion, not only this tool: `flux_reply_in_conversation` and `flux_ask_question` with the discussion's
   conversation, and a blocker, "what came of it" or hand-off contribution, count and are refused the same way, for every agent of every person
-  ([task discussions](task-discussions.md), C-51). Lines Flux writes for an in-app agent's run on a task are not counted.
+  ([task discussions](task-discussions.md), C-51). Lines Flux writes for an in-app agent's run on a task are not counted. A line its owner
+  approves, the Approve of a change that waited for their OK (Ask me first, or a change to another person's task), is accepted whatever the
+  count and is counted: the Approve marks its transaction (`taskDiscussionRows.markOwnerApproval`, a transaction-local setting that
+  `appendMessage` reads), so it never ends in a refusal after the agent was told it waits (#1094).
 - The line is recorded as the applied `conversation.reply` change that `flux_reply_in_conversation` records in a task's discussion
   (`plan.thread`), in the same transaction: it shows with its change and its owner deletes it with no condition (#961).
-- `flux_reply_in_conversation` into a project conversation is unchanged (contract 1).
+- `flux_reply_in_conversation` into a project conversation posts as the connection's owner, with the client's name in `via` ("Claude Code",
+  "Codex", or the connection's name without " on this computer"; at most 80 characters), through the person's own commands (`ownerUserId` of the
+  runtime, not the agent): the message is the person's, which is what `project_messages_via_check` allows, and is theirs to edit or delete. Its
+  change is logged (`assistant_changes`) with no `conversation_id` and no undo record, so no change line or Undo shows in the conversation
+  (`Produced.asOwner`). `flux_start_conversation` does the same. Only a task's discussion keeps the agent as the author (the check is
+  `taskDiscussionRows.taskOf`), so a client's post cannot reset the five-in-a-row guard (#1091).
 - The tool replaced `flux_post_agent_thread` and `flux_get_agent_thread` in MCP tool contract version 2 (`tests/app/contracts/mcp-tools.v2.json`;
   the version-1 snapshot stays as it was). The connection policy of an existing connection lists the new tools only after its owner enables them.
 

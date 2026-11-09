@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { companyGuestSql } from './access.js';
 import type { DbExecutor } from './push.js';
 import { toDecisionRecord } from './work.js';
 import { openRows } from '../sealing.js';
@@ -47,7 +48,8 @@ export function needsYouRows(db: DbExecutor) {
       const rows = await db.select({ proposal: p, agentName: schema.agents.name, title: v.title }).from(p)
         .innerJoin(schema.agents, eq(schema.agents.id, p.agentId))
         .innerJoin(v, and(eq(v.materialId, p.sourceMaterialId), eq(v.version, p.sourceMaterialVersion)))
-        .where(and(eq(p.ownerUserId, userId), eq(p.status, 'proposed'), inArray(p.projectId, projectIds)))
+        // A guest of the company has no AI (C-50): what their agents suggested is kept, hidden here, and is back when they are a member again (#1095).
+        .where(and(eq(p.ownerUserId, userId), eq(p.status, 'proposed'), inArray(p.projectId, projectIds), sql`NOT ${companyGuestSql(p.ownerUserId)}`))
         .orderBy(desc(p.createdAt)).limit(limit);
       return rows.map((row) => ({
         id: row.proposal.id, projectId: row.proposal.projectId, agentId: row.proposal.agentId, agentName: row.agentName,

@@ -20,7 +20,7 @@ const command = (projectId: string, connection: Connection, peerRequestClass: 'e
   projectId, runtimeSessionId: connection.runtimeSessionId, clientCommandId, peerRequestClass, sources: [] as { materialId: string; version: number }[] });
 const read = async (f: Scene, conversationId: string) => expect(await f.owner.request('GET', `/api/v1/conversations/${conversationId}`), 200) as unknown as Conversation;
 
-test('standing conversation grants start a project conversation and reply in a thread as the agent: one message, event and debit per command', async () => {
+test('a local client starts a project conversation and replies in a thread as its owner, marked via the client: one message and event per command', async () => {
   const f = await actionScene(pool);
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('conversation.')).map(({ name, operation, classes, available }) => ({ name, operation, classes, available })),
@@ -35,12 +35,13 @@ test('standing conversation grants start a project conversation and reply in a t
   const conversationId = String(started.conversationId);
   assert.deepEqual([started.sequence, started.replayed], [1, false]);
   let conversation = await read(f, conversationId);
-  const agent = { kind: 'agent', id: f.agentId, name: 'Planning agent' };
   const ownerId = (expect(await f.owner.request('GET', '/api/v1/me'), 200) as unknown as { user: { id: string } }).user.id;
-  assert.deepEqual([conversation.audience, conversation.createdBy, conversation.createdByActor], [{ kind: 'project', projectId: f.projectId }, null, agent]);
-  assert.deepEqual(conversation.messages.map((item) => [item.id, item.authorId, item.author, item.body, item.source]),
-    [[started.messageId, null, { ...agent, projectOwner: { kind: 'human', id: ownerId } }, 'The baseline holds at four hours.', f.source]],
-    'the agent is the real author; its current-project owner is optional read metadata');
+  // LC-2 (#1091): the client's post is its owner's own message, marked with the client's name ("Test client" here); no agent is the author.
+  assert.deepEqual([conversation.audience, conversation.createdBy, conversation.createdByActor], [{ kind: 'project', projectId: f.projectId }, ownerId, undefined]);
+  assert.deepEqual(conversation.messages.map((item) => [item.id, item.authorId, 'author' in item, item.via, item.body, item.source]),
+    [[started.messageId, ownerId, false, 'Test client', 'The baseline holds at four hours.', f.source]],
+    'the owner is the author, marked via the client');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE author_agent_id = $1', [f.agentId])).rows[0].n, 0, 'the agent wrote nothing');
   assert.deepEqual([await messages(conversationId), await messageEvents(conversationId)], [1, 1]);
 
   // A lost response is retried with the same command ID: the stored outcome, no second conversation, message, event or debit.
@@ -54,20 +55,21 @@ test('standing conversation grants start a project conversation and reply in a t
   const answered = toolValue(await f.tool('flux_reply_in_conversation', answer));
   assert.deepEqual([answered.conversationId, answered.sequence], [conversationId, 3]);
   conversation = await read(f, conversationId);
-  assert.deepEqual(conversation.messages.map((item) => [item.sequence, item.authorId === null ? 'agent' : 'human']), [[1, 'agent'], [2, 'human'], [3, 'agent']]);
+  assert.deepEqual(conversation.messages.map((item) => [item.sequence, item.authorId === ownerId, item.via ?? null]), [[1, true, 'Test client'], [2, true, null], [3, true, 'Test client']],
+    'the person\'s own reply carries no mark; the client\'s do');
   assert.deepEqual([await messages(conversationId), await messageEvents(conversationId)], [3, 3]);
   // Messages are immutable, so a retry after later activity still returns the original outcome, never a second message.
   expect(await f.owner.request('POST', `/api/v1/conversations/${conversationId}/messages`, { body: { body: 'Thanks', clientMessageId: randomUUID() } }), 201);
   assert.deepEqual(toolValue(await f.tool('flux_reply_in_conversation', answer)), { ...answered, replayed: true });
   assert.deepEqual([await messages(conversationId), await messageEvents(conversationId)], [4, 4]);
 
-  // A task's discussion is a project conversation too: the reply joins its canonical thread.
+  // A task's discussion is a project conversation too: the reply joins its canonical thread, as the agent's own line (C-51), not the owner's.
   const task = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Repeat the measurement' } }), 201);
   const root = expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`, { body: { body: 'Who repeats it?', clientMessageId: randomUUID() } }), 201) as unknown as ConversationMessage;
   const inThread = toolValue(await f.tool('flux_reply_in_conversation', { ...command(f.projectId, f, 'execute'),
     conversationId: root.conversationId, message: { body: 'I will, after the baseline.' } }));
   const discussion = expect(await f.owner.request('GET', `/api/v1/work/${task.id}/discussion`), 200) as unknown as TaskDiscussion;
-  assert.deepEqual(discussion.messages.map((item) => [item.id, item.authorId === null ? item.author.id : 'human']), [[root.id, 'human'], [inThread.messageId, f.agentId]]);
+  assert.deepEqual(discussion.messages.map((item) => [item.id, item.authorId === null ? item.author.id : 'human', item.via ?? null]), [[root.id, 'human', null], [inThread.messageId, f.agentId, null]]);
 
   // Revocation stops new replies and replays alike: a replay revalidates current authority first.
   assert.deepEqual([await messages(conversationId)], [4]);
@@ -109,7 +111,7 @@ test('conversation actions never post into a direct message, a private map, some
   assert.deepEqual(toolValue(await f.tool('flux_start_conversation', last)), { ...made, replayed: true });
 
   assert.deepEqual([await dmMessages(), await messages(a.id), await messages(b.id), await messages(hidden.id)], [1, 2, 1, 1]);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE author_agent_id=$1', [f.agentId])).rows[0].n, 2);
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1 AND via IS NOT NULL', [f.projectId])).rows[0].n, 2, 'the two posts are the owner\'s, marked via the client');
 });
 
 test('two owners and three connections stay isolated: grants, receipts, targets and revocation never cross', async () => {
@@ -129,8 +131,8 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
   const one = toolValue(await hubert.tool('flux_start_conversation', { ...command(hubert.projectId, hubert, 'plan', shared), message: { body: 'From the planning agent' } }));
   const two = toolValue(await review.tool('flux_start_conversation', { ...command(hubert.projectId, review, 'plan', shared), message: { body: 'From the review agent' } }));
   assert.notEqual(one.conversationId, two.conversationId);
-  assert.deepEqual([(await read(hubert, String(one.conversationId))).messages[0]!.author?.id, (await read(hubert, String(two.conversationId))).messages[0]!.author?.id],
-    [hubert.agentId, String(second.id)]);
+  const postedBy = async (messageId: unknown) => (await pool.query('SELECT agent_id FROM assistant_changes WHERE object_id = $1', [messageId])).rows[0].agent_id as string;
+  assert.deepEqual([await postedBy(one.messageId), await postedBy(two.messageId)], [hubert.agentId, String(second.id)], 'each post is its own connection\'s change');
   assert.deepEqual(toolValue(await hubert.tool('flux_start_conversation', { ...command(hubert.projectId, hubert, 'plan', shared),
     message: { body: 'From the planning agent' } })), { ...one, replayed: true }, 'a replay returns only its own connection\'s receipt');
   // Two connections of one agent (two of Hubert's clients) are two runtimes too: the same command ID and text
@@ -140,7 +142,7 @@ test('two owners and three connections stay isolated: grants, receipts, targets 
   assert.equal(three.replayed, false);
   assert.notEqual(three.conversationId, one.conversationId);
   assert.notEqual(three.messageId, one.messageId);
-  assert.equal((await read(hubert, String(three.conversationId))).messages[0]!.author?.id, hubert.agentId);
+  assert.equal(await postedBy(three.messageId), hubert.agentId);
 
   // A grant belongs to exactly one connection: neither Hubert's other connection nor Marek's can use it.
   assert.equal(toolFailure(await marekAgent.tool('flux_start_conversation', { ...command(hubert.projectId, marekAgent), message: { body: 'Foreign' } })).code,

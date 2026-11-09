@@ -150,9 +150,12 @@ export function pendingMessageRow({ item, place, continued = false, keyed = true
   );
 }
 
-/** Shared author-run boundaries across stream, thread and private conversation. */
-export function sameMessageAuthor(a: { authorId: string | null; createdAt: string; author?: { id?: string } } | undefined, b: { authorId: string | null; createdAt: string; author?: { id?: string } } | undefined) {
-  return !!a && !!b && (a.authorId ?? a.author?.id) === (b.authorId ?? b.author?.id)
+/**
+ * Shared author-run boundaries across stream, thread and private conversation. A message "via" a client or an assistant starts its own run: its
+ * mark is drawn with the name, so it is never hidden under the person's own message before it (#1091).
+ */
+export function sameMessageAuthor(a: { authorId: string | null; createdAt: string; via?: string; author?: { id?: string } } | undefined, b: { authorId: string | null; createdAt: string; via?: string; author?: { id?: string } } | undefined) {
+  return !!a && !!b && (a.authorId ?? a.author?.id) === (b.authorId ?? b.author?.id) && (a.via ?? null) === (b.via ?? null)
     && new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
 }
 

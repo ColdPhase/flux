@@ -73,6 +73,11 @@ export interface TaskDiscussionRepository {
    * (`byFlux`) are skipped: they neither count nor end the run.
    */
   trailingAgentMessages(conversationId: string, limit: number): Promise<number>;
+  /**
+   * Whether this transaction is the owner's Approve of an agent's saved change (#1094): that line is a person's decision, so the
+   * five-in-a-row limit does not refuse it. An entry point with no saved changes has no such transaction and may omit this.
+   */
+  ownerApproved?(): Promise<boolean>;
   createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }): Promise<DiscussionConversation>;
   append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
   bind(input: TaskDiscussionRoot): Promise<void>;

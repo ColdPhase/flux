@@ -22,6 +22,8 @@ export type RuntimeOutOfPoolReason = 'data_not_empty' | 'missing';
 export interface RuntimeSlotRow { slot: string; state: RuntimeSlotState; bootId: string | null; outOfPoolReason: RuntimeOutOfPoolReason | null; capacity: number | null }
 export interface RuntimeBindingRow {
   id: string; ownerUserId: string; slot: string; state: AgentRuntimeBindingState; createdAt: Date; lastUsedAt: Date | null;
+  /** Where the idle window starts (see `IDLE_SINCE`). */
+  idleSince: Date;
   releaseReason: AgentRuntimeReleaseReason | null;
 }
 type ReserveOutcome = { kind: 'reserved' | 'existing'; binding: RuntimeBindingRow } | { kind: 'starting' };
@@ -71,17 +73,25 @@ type Handle = Pick<NodePgDatabase<typeof schema>, 'execute' | 'transaction'>;
 type Exec = Pick<NodePgDatabase<typeof schema>, 'execute'>;
 
 type BindingRecord = { id: string; owner_user_id: string; slot: string; state: AgentRuntimeBindingState; created_at: Date | string;
-  last_used_at: Date | string | null; release_reason: AgentRuntimeReleaseReason | null };
+  last_used_at: Date | string | null; release_reason: AgentRuntimeReleaseReason | null; idle_since?: Date | string };
 type SlotRecord = { slot: string; state: RuntimeSlotRow['state']; boot_id: string | null; out_of_pool_reason: RuntimeSlotRow['outOfPoolReason']; capacity: number | null };
 
 const date = (value: Date | string) => (value instanceof Date ? value : new Date(value));
 const binding = (row: BindingRecord): RuntimeBindingRow => ({
   id: row.id, ownerUserId: row.owner_user_id, slot: row.slot, state: row.state, createdAt: date(row.created_at),
   lastUsedAt: row.last_used_at === null ? null : date(row.last_used_at), releaseReason: row.release_reason,
+  idleSince: date(row.idle_since ?? row.last_used_at ?? row.created_at),
 });
 const slotRow = (row: SlotRecord): RuntimeSlotRow => ({ slot: row.slot, state: row.state, bootId: row.boot_id, outOfPoolReason: row.out_of_pool_reason, capacity: row.capacity });
 
 const BINDING_COLUMNS = sql`id, owner_user_id, slot, state, created_at, last_used_at, release_reason`;
+/**
+ * Where a binding's idle window starts (`idle_since`): its last use, or the owner's last role change in the company if that is later.
+ * A guest's place is kept untouched while they are one (C-50), so a guest back as a member starts a new window instead of being released
+ * for the days they could not use it (#1095). Select it with `FROM agent_runtime_bindings` (the table name is not aliased).
+ */
+const IDLE_SINCE = sql`greatest(coalesce(last_used_at, created_at), coalesce((SELECT m.updated_at FROM workspace_members m
+  JOIN workspaces w ON w.id = m.workspace_id WHERE m.user_id = agent_runtime_bindings.owner_user_id AND w.company), created_at))`;
 
 type ConnectionRecord = { client: AgentRuntimeClient; binding_id: string; state: AgentRuntimeConnectionState; sign_in_method: AgentRuntimeSignInMethod | null;
   auth_method: string | null; plan_label: string | null; account_label: string | null; signed_in_at: Date | string | null;
@@ -118,7 +128,7 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
     recoverAuth: auth.uncertain,
     recoverAbandonedAuth: auth.recoverAbandoned,
     async ownerView(ownerUserId) {
-      const live = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
+      const live = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS}, ${IDLE_SINCE} AS idle_since FROM agent_runtime_bindings
         WHERE owner_user_id = ${ownerUserId} AND state <> 'released'`);
       const last = await db.execute<{ release_reason: AgentRuntimeReleaseReason; released_at: Date | string; release_logout_failed: boolean | null }>(sql`SELECT release_reason, released_at, release_logout_failed
         FROM agent_runtime_bindings WHERE owner_user_id = ${ownerUserId} AND state = 'released' AND release_reason <> 'bind_failed'
@@ -322,9 +332,9 @@ export function agentRuntimeStore(db: Handle): AgentRuntimeRows {
     },
 
     async idleBindings(before) {
-      const rows = await db.execute<BindingRecord>(sql`SELECT ${BINDING_COLUMNS} FROM agent_runtime_bindings
-        WHERE state = 'active' AND coalesce(last_used_at, created_at) < ${before.toISOString()}::timestamptz
-          AND NOT ${companyGuestSql(sql`owner_user_id`)} ORDER BY created_at LIMIT 100`);
+      const rows = await db.execute<BindingRecord>(sql`SELECT * FROM (SELECT ${BINDING_COLUMNS}, ${IDLE_SINCE} AS idle_since FROM agent_runtime_bindings
+        WHERE state = 'active' AND NOT ${companyGuestSql(sql`owner_user_id`)}) b
+        WHERE idle_since < ${before.toISOString()}::timestamptz ORDER BY created_at LIMIT 100`);
       return rows.rows.map(binding);
     },
   };

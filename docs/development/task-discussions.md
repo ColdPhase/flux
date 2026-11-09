@@ -286,8 +286,10 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   start and reply), after the task's row lock that every writer of the discussion takes, so parallel writers cannot pass it together.
   A line Flux itself writes for an in-app agent (its run report, its question to another agent, the answer, and status lines such as
   "Stopped by Maja" or "This needs a person") is marked `by_flux` (migration 0040): the run and TA-3's exchange limit bound it, so the
-  limit neither counts nor refuses it, and it does not end a run of agent messages either. A deleted message keeps its author, so a
-  delete gives no turn back.
+  limit neither counts nor refuses it, and it does not end a run of agent messages either. A line the agent's owner approves (the Approve
+  of a change that waited for their OK) is a person's decision: it is accepted whatever the count and counts, so it gives no other line a
+  turn (#1094). A local client's post in a space's conversation is its owner's own message, not an agent line, so it is outside this limit
+  (LC-2, #1091); only a task's discussion keeps the client an agent. A deleted message keeps its author, so a delete gives no turn back.
   Opening a link to a message of a task's discussion (`/projects/:id/conversations/:conversationId#message-…`) opens its thread at once;
   the stream does not read back through its older roots looking for it, since the discussion is not one of them.
 

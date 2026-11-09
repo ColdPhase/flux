@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
   type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -599,6 +599,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         } else if (authority.mayDo === 'read') {
           throw invalidated('Its "What it may do" is Only read now. Ask again');
         }
+        // The owner's Approve is a person's decision: a line it writes in a task's discussion is not refused by the five-in-a-row limit (C-51, #1094).
+        if (approval) await taskDiscussionRows(tx as DbExecutor).markOwnerApproval();
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
         let undo = target.undo;
@@ -622,9 +624,11 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           ...(approval ? { approvedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
         const after = afterVersion(produced.postconditions);
         const createdId = producedId(produced.value as Record<string, unknown>);
-        // A local client's message is where its change line shows, with Undo, for everyone who can read the conversation.
+        // A local client's line in a task's discussion is where its change line shows, with its owner's delete, for everyone who can read the
+        // conversation. Its post in a space's conversation is its owner's own message, marked "via Claude Code" (LC-2, #1091): it has no change
+        // line or Undo there, its owner edits or deletes it as their own.
         const sentTo = (produced.value as { conversationId?: unknown }).conversationId;
-        const conversationId = !runId && target.objectType === 'message' && typeof sentTo === 'string' ? { conversationId: sentTo } : {};
+        const conversationId = !runId && !produced.asOwner && target.objectType === 'message' && typeof sentTo === 'string' ? { conversationId: sentTo } : {};
         if (prepared) {
           await rows.update(prepared.id, { state: 'applied_after_wait', waitReason: null, authority: approval!.purpose, receipt, afterVersion: after,
             objectId: prepared.objectId ?? createdId, decidedBy: approval!.decidedBy, decidedAt: new Date(), ...conversationId });
