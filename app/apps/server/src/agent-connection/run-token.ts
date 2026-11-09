@@ -1,6 +1,6 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, requireSpaceAi } from '@flux/core';
-import { personalRunTokenRows, accessReader, type Database, type Transaction } from '@flux/db';
+import { DomainError, keptPrivateText, requireSpaceAi } from '@flux/core';
+import { personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
 // A personal run's MCP token at the MCP route (F-022 "Agent connection and permissions", F-027 A2/AST-8,
@@ -68,9 +68,10 @@ type ToolOutput = { content?: unknown; isError?: boolean };
 /**
  * Bounds what tools return to a run token: `RUN_TOKEN_LIMITS`, per result and per run, safety bounds (#843),
  * counted by the bytes of the result's content. A result past either bound is not returned; the run
- * records which bound it reached, and the worker ends the run in its own state.
+ * records which bound it reached, and the worker ends the run in its own state. A Flux tool's result that is returned is private Flux text
+ * the run read (#1065, C-30), kept so that a web address carrying it is refused; a web page (`flux_read_web`) is not Flux text.
  */
-export async function boundRunResult<T extends ToolOutput>(db: Database, runId: string, result: T): Promise<T | ReturnType<typeof toolError>> {
+export async function boundRunResult<T extends ToolOutput>(db: Database, runId: string, result: T, tool: string): Promise<T | ReturnType<typeof toolError>> {
   const bytes = Buffer.byteLength(JSON.stringify(result?.content ?? []), 'utf8');
   if (bytes > RUN_TOKEN_LIMITS.resultBytesPerCall) {
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'call'));
@@ -79,6 +80,10 @@ export async function boundRunResult<T extends ToolOutput>(db: Database, runId: 
   if (!await db.transaction((tx) => personalRunTokenRows(tx).addResultBytes(runId, bytes, RUN_TOKEN_LIMITS.resultBytesPerRun))) {
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'run'));
     return toolError(new DomainError(413, 'MCP_RESULTS_TOO_LARGE', 'This run has read as much as one assistant run may; the run stops'));
+  }
+  if (tool !== 'flux_read_web' && result?.isError !== true) {
+    const text = (Array.isArray(result?.content) ? result.content : []).map((part) => (typeof (part as { text?: unknown })?.text === 'string' ? (part as { text: string }).text : '')).join('\n');
+    await personalRunWebReadRows(db).addPrivateText(runId, keptPrivateText(text));
   }
   return result;
 }

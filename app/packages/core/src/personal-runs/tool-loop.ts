@@ -119,8 +119,8 @@ export interface LoopOptions {
   gate: Gate;
   signal: AbortSignal;
   /**
-   * Records what a response's web search brought (#954, C-30), awaited BEFORE any call of the same response runs: a result of the
-   * search is then an address the run's `flux_read_web` may read. Throwing ends the run like a failed request (what it cost stays).
+   * Records what a response's web search brought (#954, C-30), awaited BEFORE any call of the same response runs, so the run lists it
+   * whatever happens next. Throwing ends the run like a failed request (what it cost stays).
    */
   onWebSearch?: (found: WebSearchFound) => Promise<void>;
   /**

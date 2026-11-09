@@ -163,19 +163,42 @@ export function searchResultAddresses(result: unknown): string[] {
 }
 
 /**
+ * What a completed Codex `web_search` item found (#1065, C-30): with a search action, its queries, and, when the item carries structured
+ * `results` (the standalone `web.run` search fills them, which the pinned Codex uses for Responses Lite models, its default among them;
+ * openai/codex #32898), the addresses of the entries that are search results (`{type: "text_result", ref_id: "turn<N>search<M>", url, …}`,
+ * as the real pinned CLI printed them, 2026-11-09; a page it opened has its address as `ref_id`). An
+ * `open_page` or `find_in_page` action's address is the model's choice and is not a result, nor is an entry of another type or `ref_id`,
+ * which could be a page the model opened. At most 100 addresses, 10 queries.
+ */
+export function codexSearchFound(item: unknown): { results: string[]; queries: string[] } {
+  const action = isObject(item) && isObject(item.action) ? item.action : null;
+  if (!isObject(item) || action?.type !== 'search') return { results: [], queries: [] };
+  const asked = [...(Array.isArray(action.queries) ? action.queries : []), action.query, item.query].map(searchQuery).filter(Boolean);
+  const queries = [...new Set(asked)].slice(0, 10);
+  const found = new Set<string>();
+  for (const entry of Array.isArray(item.results) ? item.results : []) {
+    if (!isObject(entry) || entry.type !== 'text_result' || typeof entry.ref_id !== 'string' || !/^turn\d+search\d+$/.test(entry.ref_id)) continue;
+    const url = typeof entry.url === 'string' ? entry.url : '';
+    if (url.length <= 2048 && WEB_ADDRESS.test(url)) found.add(url);
+    if (found.size >= SEARCH_FRAME_LIMITS.results) break;
+  }
+  return { results: [...found], queries };
+}
+
+/**
  * The Codex preflight (F-022 "Optional preflight", kept because the pinned app-server's `config/read` merges
  * the root `-c` overrides as its session-flags layer: codex-rs `app-server/src/config_manager.rs`): the
- * effective configuration must have every reviewed feature off, web search disabled and Flux as the only
- * MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run.
+ * effective configuration must have every reviewed feature off, web search disabled, or with the web on (#1065) on the cached index, and
+ * Flux as the only MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run.
  */
-export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string): boolean {
+export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string, webSearch = false): boolean {
   if (!isObject(config)) return false;
   // #1127: Flux's reviewed model catalog (plain tools, no code mode or sub-agents) is the one in effect, and the Flux tools' approval is
   // left to Flux (`default_tools_approval_mode`, checked with the server below).
   if (config.model_catalog_json !== CODEX_MODEL_CATALOG) return false;
   const features = isObject(config.features) ? config.features : {};
   for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off' && features[key] !== false) return false;
-  if (config.web_search !== 'disabled') return false;
+  if (config.web_search !== (webSearch ? 'cached' : 'disabled')) return false;
   const servers = isObject(config.mcp_servers) ? config.mcp_servers : null;
   if (!servers || Object.keys(servers).length !== 1 || !isObject(servers.flux)) return false;
   const flux = servers.flux;
@@ -187,9 +210,10 @@ export function effectiveConfigHolds(config: unknown, tools: readonly string[], 
 async function codexPreflight(config: SupervisorConfig, dir: string, person: Person, request: RunRequest, mcpUrl: string): Promise<'ok' | 'local_tool' | 'crashed'> {
   let session;
   try {
-    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF), person });
+    const webSearch = request.webSearch === true;
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF, webSearch), person });
     const read = await session.request('config/read', {});
-    return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl) ? 'ok' : 'local_tool';
+    return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl, webSearch) ? 'ok' : 'local_tool';
   } catch {
     return 'crashed';
   } finally {
@@ -237,8 +261,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }));
   await chmod(mcpConfigPath, 0o644);
   const codex = request.client === 'codex';
-  // Claude Code's own search, with the web on (#1065); Codex's stays off whatever a request says (the protocol refuses it too).
-  const webSearch = !codex && request.webSearch === true;
+  // The CLI's own search, with the web on (#1065): Claude Code's WebSearch, Codex's web search on OpenAI's cached index.
+  const webSearch = request.webSearch === true;
   // The template by name, never by indexing with the request's value (CodeQL js/unvalidated-dynamic-method-call; the protocol checked it already).
   const input = { tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model, webSearch };
   const argv = codex ? RUN_TEMPLATES.codex(input) : RUN_TEMPLATES.claude_code(input);
@@ -322,7 +346,24 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
           }
           return;
         }
-        // command_execution, file_change, web_search, todo_list, collab_tool_call, error or anything new.
+        if (kind === 'web_search' && webSearch) {
+          // Codex's own search (#1065, C-30): reported when it is first seen, then its queries and any result addresses.
+          const id = typeof item!.id === 'string' ? item!.id : '';
+          let n = id ? searching.get(id) : undefined;
+          if (n === undefined && (!id || !started.has(id))) {
+            searches += 1;
+            n = searches;
+            if (id) { started.add(id); searching.set(id, n); }
+            send({ t: 'run', e: 'search', n, query: searchQuery(item!.query) });
+          }
+          if (type === 'item.completed' && n !== undefined) {
+            if (id) searching.delete(id);
+            const found = codexSearchFound(item);
+            send({ t: 'run', e: 'found', n, results: found.results, queries: found.queries });
+          }
+          return;
+        }
+        // command_execution, file_change, web_search (with the web off), todo_list, collab_tool_call, error or anything new.
         terminate('local_tool');
         return;
       }

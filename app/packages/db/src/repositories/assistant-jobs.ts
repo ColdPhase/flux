@@ -11,9 +11,9 @@ const j = schema.assistantJobs;
 const jr = schema.assistantJobRuns;
 type JobRow = typeof j.$inferSelect;
 type JobRunRow = typeof jr.$inferSelect;
-type NewJobRow = Pick<JobRow, 'id' | 'workspaceId' | 'ownerUserId' | 'agentId' | 'title' | 'text' | 'given' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt'>
+type NewJobRow = Pick<JobRow, 'id' | 'workspaceId' | 'ownerUserId' | 'agentId' | 'title' | 'text' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt'>
   & { schedule: AssistantJobSchedule; preparedRunId?: string | null };
-type JobChanges = Partial<Pick<JobRow, 'title' | 'text' | 'given' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt' | 'lastRunAt' | 'deletedAt'>> & { schedule?: AssistantJobSchedule };
+type JobChanges = Partial<Pick<JobRow, 'title' | 'text' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt' | 'lastRunAt' | 'deletedAt'>> & { schedule?: AssistantJobSchedule };
 
 const toJob = (row: JobRow) => ({ ...row, schedule: row.schedule as unknown as AssistantJobSchedule });
 

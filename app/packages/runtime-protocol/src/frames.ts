@@ -96,18 +96,19 @@ export const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
 // eslint-disable-next-line no-control-regex
 export const WEB_ADDRESS = /^https?:\/\/[^\s\u0000-\u001f\u007f]{1,2040}$/i;
 /** The most result addresses one search reports, and the longest query: what one `personal_run_web_searches` row holds of a search. */
-export const SEARCH_FRAME_LIMITS = { results: 100, query: 300 } as const;
+export const SEARCH_FRAME_LIMITS = { results: 100, query: 300, queries: 10 } as const;
 
 /**
- * What a run reports while it runs: the CLI's start-up lists, then each Flux tool it calls. On Claude Code with the web on (#1065, C-30)
- * also each `WebSearch`: `search` when the CLI starts it (the run's `n`th search, and its query), then `found` with the addresses its
- * result entries hold (none for an error). The worker records them in this order.
+ * What a run reports while it runs: the CLI's start-up lists, then each Flux tool it calls. With the web on (#1065, C-30) also each of
+ * the CLI's own searches: `search` when the CLI starts it (the run's `n`th search, and its query when the CLI shows it then), then
+ * `found` with the addresses its result entries hold (none for an error) and, for Codex, whose item names its queries only at the end,
+ * the queries. The worker records them in this order.
  */
 export type RunFrame =
   | { t: 'run'; e: 'init'; tools: string[]; servers: { name: string; status: string }[] }
   | { t: 'run'; e: 'tool'; name: string }
   | { t: 'run'; e: 'search'; n: number; query: string }
-  | { t: 'run'; e: 'found'; n: number; results: string[] };
+  | { t: 'run'; e: 'found'; n: number; results: string[]; queries?: string[] };
 
 export type SupervisorResult =
   | { kind: 'bind'; bindingId: string }
@@ -205,7 +206,8 @@ const FRAMES: Check<SupervisorFrame>[] = [
     servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }),
   object({ t: literal('run'), e: literal('tool'), name: str(FLUX_TOOL_NAME, 67) }),
   object({ t: literal('run'), e: literal('search'), n: int(1, Number.MAX_SAFE_INTEGER), query: text(SEARCH_FRAME_LIMITS.query) }),
-  object({ t: literal('run'), e: literal('found'), n: int(1, Number.MAX_SAFE_INTEGER), results: arrayOf(str(WEB_ADDRESS, 2048), SEARCH_FRAME_LIMITS.results) }),
+  object({ t: literal('run'), e: literal('found'), n: int(1, Number.MAX_SAFE_INTEGER), results: arrayOf(str(WEB_ADDRESS, 2048), SEARCH_FRAME_LIMITS.results) },
+    { queries: arrayOf(text(SEARCH_FRAME_LIMITS.query, 1), SEARCH_FRAME_LIMITS.queries) }),
 ] as unknown as Check<SupervisorFrame>[];
 
 /** The frame, or null when the value is not exactly one of the closed frame shapes. */

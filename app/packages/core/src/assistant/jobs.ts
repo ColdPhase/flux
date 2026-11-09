@@ -10,7 +10,6 @@ import type { BackgroundRunSpec, BackgroundStart } from '../personal-runs/servic
 import type { EnablementRecord, PersonalRunPorts } from '../personal-runs/ports.js';
 import { redactSecrets } from '../personal-runs/redaction.js';
 import { postToAgentChat } from '../personal-runs/agent-chat.js';
-import { givenAddresses } from '../personal-runs/web-addresses.js';
 import { isId } from '../work/validation.js';
 import type { AssistantJobPorts, AssistantJobUnitOfWork, JobRecord, JobRunRecord } from './jobs-ports.js';
 import { chatSchedule, clockIn } from './job-result.js';
@@ -135,7 +134,7 @@ export async function fireJob(ports: AssistantJobPorts, startBackground: JobDeps
   if (options.late) return end(row, 'skipped', `Skipped: Flux was off at ${clockIn(firedAt, job.timeZone)}`);
   await ports.runs.enablement(job.ownerUserId, { lock: true, agentId: job.agentId });
   const started = await startBackground(ports, {
-    ownerUserId: job.ownerUserId, agentId: job.agentId, kind: 'scheduled', prompt: job.text, given: job.given,
+    ownerUserId: job.ownerUserId, agentId: job.agentId, kind: 'scheduled', prompt: job.text,
     clientRunId: uuidFrom(`assistant-job:${job.id}:${firedAt.toISOString()}:${by}`), label: job.title,
   });
   if (!started.started) return end(row, started.outcome, started.line);
@@ -189,15 +188,6 @@ function firstRun(schedule: AssistantJobSchedule, timeZone: string, at: Date): D
 }
 
 /**
- * The web addresses a prepared schedule may read: those the owner typed in the request that asked for it (C-30). The text of the schedule is
- * the agent's own words, so an address the agent put there gives nothing; a run of the schedule reads only what a person wrote.
- */
-async function typedInRequest(ports: AssistantJobPorts, ownerUserId: string, runId: string | null): Promise<string[]> {
-  const run = runId ? await ports.runs.findRun(runId) : null;
-  return run && run.ownerUserId === ownerUserId && run.kind === 'ask' ? [...givenAddresses([run.prompt])] : [];
-}
-
-/**
  * Creates a schedule. `enabled` is the owner's own Turn on; a schedule prepared from a request is created off and marked
  * `prepared` by `prepare` (a request can never turn one on).
  */
@@ -210,7 +200,6 @@ async function createIn(ports: AssistantJobPorts, principal: Principal, agentId:
   if (enabled) await acceptNote(ports, principal.id, enablement, input.noteVersion);
   const record = await ports.jobs.insert({
     id: randomUUID(), workspaceId: enablement.workspaceId, ownerUserId: principal.id, agentId: enablement.agentId, ...fields,
-    given: mode === 'owner' ? [...givenAddresses([fields.text])] : await typedInRequest(ports, principal.id, preparedRunId),
     enabled, prepared: mode === 'prepared', preparedRunId, nextRunAt: enabled ? firstRun(fields.schedule, fields.timeZone, at) : null,
   });
   return viewOne(ports, record.id, at);
@@ -267,7 +256,6 @@ export function createAssistantJobs({ uow, startBackground, now: clock = () => n
         if (enabled && !record.enabled) await acceptNote(ports, principal.id, enablement, input.noteVersion);
         const changedTime = input.schedule !== undefined || input.timeZone !== undefined || (enabled && !record.enabled);
         const nextRunAt = !enabled ? null : changedTime || !record.nextRunAt ? firstRun(merged.schedule, merged.timeZone, at) : record.nextRunAt;
-        // Change edits the wording only: the web addresses a run may read were fixed when the schedule was prepared, from its owner's own words (C-30).
         const updated = await ports.jobs.update(record.id, { ...merged, enabled, nextRunAt, prepared: enabled ? false : record.prepared });
         return viewOne(ports, updated.id, at);
       });

@@ -11,7 +11,7 @@ import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
-import { classifyCodexError, classifyError, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
+import { classifyCodexError, classifyError, codexSearchFound, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
 import { statusFacts } from '../../apps/runtime/src/supervisor/status.js';
@@ -544,7 +544,7 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.ok(!RUN_TEMPLATES.codex(input).includes('-m'));
   });
 
-  test('#1065: with the web on Claude Code keeps exactly its WebSearch, named in --tools and --allowedTools, never WebFetch; Codex\'s search stays disabled', () => {
+  test('#1065: with the web on Claude Code keeps exactly its WebSearch, named in --tools and --allowedTools, never WebFetch; Codex searches on the cached index', () => {
     const input = { tools: ['flux_get_doc', 'flux_read_web'], caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 }, mcpConfigPath: '/tmp/mcp.json', mcpUrl: 'http://x:8080/mcp', brief: 'brief' };
     const on = RUN_TEMPLATES.claude_code({ ...input, webSearch: true });
     assert.deepEqual(on.slice(on.indexOf('--tools'), on.indexOf('--tools') + 3), ['--tools', 'WebSearch', '--disable-slash-commands']);
@@ -554,7 +554,9 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.deepEqual(off.slice(off.indexOf('--tools'), off.indexOf('--tools') + 2), ['--tools', ''], 'with the web off every built-in is removed, as before');
     assert.ok(!off.includes('WebSearch'));
     const codex = RUN_TEMPLATES.codex({ ...input, webSearch: true });
-    assert.ok(codex.includes('web_search="disabled"'), 'a Codex template has no search whatever it is given');
+    assert.ok(codex.includes('web_search="cached"') && !codex.includes('web_search="disabled"'), 'Codex searches on OpenAI\'s cached index');
+    assert.ok(!codex.some((arg) => /standalone|live|indexed/.test(arg)), 'never live or indexed, and no search feature of its own');
+    assert.ok(RUN_TEMPLATES.codex(input).includes('web_search="disabled"'), 'with the web off it has none');
   });
 
   test('#1065: a search\'s addresses come only from the entries of its structured result, never from the CLI\'s own summary', () => {
@@ -570,6 +572,22 @@ describe('a run\'s error results (F-022 T5; the wording is first verified agains
     assert.equal(searchQuery('  island\u0000 ferry\n\ttimetable  '), 'island ferry timetable');
     assert.equal(searchQuery('q'.repeat(400)).length, 300);
     assert.equal(searchQuery({ query: 'x' }), '');
+  });
+
+  test('#1065: a Codex web_search item gives its queries and, when it carries structured results, only its search result entries', () => {
+    const item = { id: 'item_3', type: 'web_search', query: 'island ferry', action: { type: 'search', query: 'island ferry', queries: ['island ferry', 'ferry winter'] }, results: [
+      { type: 'text_result', ref_id: 'turn0search0', url: 'https://harbour.example/timetable', title: 'Harbour' },
+      { type: 'text_result', ref_id: 'turn0view0', url: 'https://evil.example/opened', title: 'Opened' },
+      // A page `web.run` opened, as the real pinned CLI printed it (2026-11-09): its address is its `ref_id`.
+      { type: 'text_result', ref_id: 'https://evil.example/opened-by-url', url: 'https://evil.example/opened-by-url', title: 'Opened' },
+      { type: 'image_result', ref_id: 'turn0search1', url: 'https://img.example/a.png' },
+      { type: 'text_result', ref_id: 'turn1search4', url: 'javascript:alert(1)' },
+      'Links: https://evil.example/planted',
+    ] };
+    assert.deepEqual(codexSearchFound(item), { results: ['https://harbour.example/timetable'], queries: ['island ferry', 'ferry winter'] });
+    assert.deepEqual(codexSearchFound({ ...item, results: undefined }), { results: [], queries: ['island ferry', 'ferry winter'] }, 'the hosted search: queries only');
+    for (const action of [{ type: 'open_page', url: 'https://evil.example/x' }, { type: 'find_in_page', url: 'https://evil.example/x', pattern: 'p' }, { type: 'other' }])
+      assert.deepEqual(codexSearchFound({ ...item, action }), { results: [], queries: [] }, action.type);
   });
 });
 
@@ -613,6 +631,9 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, default_tools_approval_mode: 'auto' } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, features: { ...config.features, shell_tool: true } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url), false);
+    // #1065: with the web on, exactly the cached index; disabled or live is refused.
+    assert.equal(effectiveConfigHolds({ ...config, web_search: 'cached' }, tools, url, true), true);
+    for (const mode of ['disabled', 'live', 'indexed', undefined]) assert.equal(effectiveConfigHolds({ ...config, web_search: mode }, tools, url, true), false, String(mode));
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { ...config.mcp_servers, github: { url: 'https://x' } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, enabled_tools: [...tools, 'flux_create_task'] } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, required: false } } }, tools, url), false);

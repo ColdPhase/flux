@@ -205,8 +205,10 @@ is what remains, and an issue number marks a finding of this audit.
    Text from other people, web pages or GitHub can steer what it does within those rights, and a private run
    can post what it read where others see it. The waiting rules and Undo limit the damage; they do not stop it.
    This is a design-level risk, not a defect.
-4. **Web reads can carry data out in a URL** ([#953](https://github.com/ColdPhase/flux/issues/953), PR #983) until the "only addresses it
-   was given" rule lands.
+4. **Web reads can carry data out in a URL** ([#953](https://github.com/ColdPhase/flux/issues/953)). Since the founder's direction of
+   2026-11-09 (#1065, C-30) an agent may open any address; the server refuses one that carries private Flux text the run read, as it was,
+   percent-encoded or in a hex, base64 or base32 run, and each redirect hop that does; what the agent rewrote can still leave. The founder
+   accepted that risk.
 
 ## What this audit could not verify
 

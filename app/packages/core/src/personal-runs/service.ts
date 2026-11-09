@@ -46,7 +46,6 @@ import {
   apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
-import { givenAddresses, GIVEN_AT_START_MAX } from './web-addresses.js';
 import { endedWithWebSources } from './web-sources.js';
 import { unreadAgentChats } from './agent-chat.js';
 import { takeAsk } from '../agent-tasks/ask.js';
@@ -75,11 +74,6 @@ export interface BackgroundRunSpec {
   agentId: string;
   kind: 'scheduled';
   prompt: string;
-  /**
-   * The web addresses the run may read (C-30): those the schedule's owner typed. The schedule's text is written by the agent as often as by the
-   * owner, so it is never read for addresses here; the schedule keeps what the owner typed.
-   */
-  given: readonly string[];
   /** Deterministic per firing, so a repeated start returns the same run. */
   clientRunId: string;
   /** The short name the owner knows it by, for the lane's lines: "Finishing your Morning summary first" (F-027 AST-6 "Queue"). */
@@ -494,20 +488,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   }
 
   /**
-   * The web addresses a run is given when it starts (#953, C-30): written in text a person wrote, never in what an agent wrote. That is the
-   * request when the owner wrote it (a schedule's text is the agent's as often as the owner's, so a schedule keeps the addresses its owner typed
-   * and `startBackground` gives those), the task when a person made it and no agent has written it since, and the people's
-   * messages in the conversation. A task run's prompt (and the prompt of a question between agents, and of a continuation, which holds the
-   * agents' question and answer lines) is built by the server from agents' words, so it is not read for addresses. Fixed here, with the run.
-   */
-  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId?: string | null; workId?: string | null }): Promise<string[]> {
-    const texts = await ports.runs.personTexts({ projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, dmThreadRootId: run.dmThreadRootId ?? null }, run.workId ?? null);
-    // A schedule's prompt is its text, often the agent's words: its addresses are the schedule's own `given` (`startBackground`), and a retry of its run is refused.
-    if (run.kind !== 'task' && run.kind !== 'task_answer' && run.kind !== 'scheduled') texts.unshift(run.prompt);
-    return [...givenAddresses(texts)].slice(0, GIVEN_AT_START_MAX);
-  }
-
-  /**
    * The shared path of invoke, continue and retry. Order matters: identity claims, then the place, then the caller's own
    * enablement, connection, agent and the key's daily budget. Nothing is written unless every check passes; a request
    * that finds the budget used is written paused, to start by itself when the key's next day begins.
@@ -555,7 +535,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId, dmThreadRootId: place.dmThreadRootId,
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
-      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId, dmThreadRootId: place.dmThreadRootId }),
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
       continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch: place.epoch,
     });
@@ -613,8 +592,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: enablement.workspaceId, projectId: null, conversationId: null, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
-      // The schedule's own text is not read for addresses (C-30): the agent may have written it. Only what its owner typed is given.
-      prompt: spec.prompt, given: spec.given.slice(0, GIVEN_AT_START_MAX),
+      prompt: spec.prompt,
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
       aiEpoch: null,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
@@ -660,7 +638,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId: spec.agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `${kind}:${spec.workId}:${spec.clientRunId}`, kind,
-      prompt: spec.prompt, given: await givenAtStart(ports, { kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, workId: spec.workId }),
+      prompt: spec.prompt,
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
       aiEpoch: ai.epoch, workId: spec.workId, ...(spec.askedByRunId ? { askedByRunId: spec.askedByRunId } : {}), exchangeTurn: spec.exchangeTurn ?? 0,
     });
@@ -843,7 +821,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const earlier = await ownRun(ports, principal, runId);
         // A run on a task is tried again from the task (#856): it is bound to that task and its owner assignment.
         if (earlier.kind === 'task') throw new ConflictError('Try again from the task', 'ASSISTANT_RUN_NOT_RETRYABLE');
-        // A schedule's run is fired by its schedule (its web addresses are the schedule's `given`, C-30, and its result is a line of the chat): Run now is the way to run it again.
+        // A schedule's run is fired by its schedule (its result is a line of the chat): Run now is the way to run it again.
         if (earlier.kind === 'scheduled') throw new ConflictError('Run it again from its schedule', 'ASSISTANT_RUN_NOT_RETRYABLE');
         if (IN_FLIGHT.has(earlier.status)) throw new ConflictError('The run is still in progress', 'ASSISTANT_RUN_NOT_RETRYABLE');
         const started = await start(ports, principal, placeOf(earlier), retryRequest(earlier, command?.clientRunId), earlier.id);

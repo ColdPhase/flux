@@ -12,8 +12,6 @@ export interface JobRecord {
   agentId: string;
   title: string;
   text: string;
-  /** The web addresses a run of it may read (C-30): only those its owner typed, never the ones the agent wrote into `text`. */
-  given: string[];
   schedule: AssistantJobSchedule;
   timeZone: string;
   enabled: boolean;
@@ -26,9 +24,9 @@ export interface JobRecord {
   createdAt: Date;
   updatedAt: Date;
 }
-export type NewJob = Pick<JobRecord, 'id' | 'workspaceId' | 'ownerUserId' | 'agentId' | 'title' | 'text' | 'given' | 'schedule' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt'>
+export type NewJob = Pick<JobRecord, 'id' | 'workspaceId' | 'ownerUserId' | 'agentId' | 'title' | 'text' | 'schedule' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt'>
   & { preparedRunId?: string | null };
-export type JobChanges = Partial<Pick<JobRecord, 'title' | 'text' | 'given' | 'schedule' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt' | 'lastRunAt' | 'deletedAt'>>;
+export type JobChanges = Partial<Pick<JobRecord, 'title' | 'text' | 'schedule' | 'timeZone' | 'enabled' | 'prepared' | 'nextRunAt' | 'lastRunAt' | 'deletedAt'>>;
 
 export interface JobRunRecord {
   id: string;

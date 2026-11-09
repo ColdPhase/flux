@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { type Conversation, type Project, type Workspace } from '@flux/contracts';
-import { createPersonalRunProcessor, noPersonalConnections, NO_WEB_SEARCH_LINE, REDACTED_SECRET, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, noPersonalConnections, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, REDACTED_SECRET, RUNTIME_WEB_SEARCH_LINE, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { callSupervisor } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { RUN_BRIEF } from '../../apps/runtime/src/supervisor/run.js';
@@ -80,7 +80,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.ok((await callSupervisor({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }, { kind: 'bind', bindingId })).ok);
 
     runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
-    // The operator's web switch on, as a new install has it (C-29): Codex still gets no search (#1065, RT-5).
+    // The operator's web switch on, as a new install has it (C-29): Codex searches with its own search on the cached index (#1065, RT-5).
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
       runtime: managerPersonalRuntime(config, db, { webSearch: true }), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
       runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10, maxTurns: 10 } });
@@ -128,8 +128,9 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     for (const [key, review] of Object.entries(CODEX_FEATURE_REVIEW)) if (review.action === 'off') assert.equal(run.overrides.features[key], false, key);
     for (const key of ['shell_tool', 'unified_exec', 'apps', 'multi_agent', 'skill_mcp_dependency_install', 'hooks', 'goals', 'remote_plugin', 'memories', 'view_image'])
       assert.equal(run.overrides.features[key], false, `named in #281: ${key}`);
-    assert.equal(run.overrides.web_search, 'disabled', 'with the web on too: Codex\'s search records no results Flux could check (#1065)');
-    assert.ok(run.prompt.includes(NO_WEB_SEARCH_LINE) && !run.prompt.includes('WebSearch'), 'and its brief says it has no web search');
+    assert.equal(run.overrides.web_search, 'cached', 'with the web on, Codex\'s own search on OpenAI\'s cached index (#1065)');
+    assert.equal(run.overrides.features.standalone_web_search, undefined, 'and no search feature switched on: the pinned Codex picks its search by model');
+    assert.ok(run.prompt.includes(RUNTIME_WEB_SEARCH_LINE) && !run.prompt.includes(NO_WEB_SEARCH_LINE), 'and its brief says it can search');
     assert.equal(run.overrides.cli_auth_credentials_store, 'file');
     assert.equal(run.overrides.analytics.enabled, false);
     assert.equal(run.overrides.developer_instructions, RUN_BRIEF);
@@ -155,13 +156,15 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.deepEqual(await readdir(slot.config.tmpDir), []);
   });
 
-  test('no local tool remains: a command, a file change, web search, another MCP server, a resource tool, a plan list or an error item stops the run at that item', async () => {
+  test('no local tool remains: a command, a file change, web search with the web off, another MCP server, a resource tool, a plan list or an error item stops the run at that item', async () => {
+    const webOff = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
+      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10, maxTurns: 10 } });
     for (const name of ['run_command_execution', 'run_file_change', 'run_web_search', 'run_other_mcp', 'run_resource_tool', 'run_todo_list', 'run_error_item']) {
       await resetFake();
       await scenario(name);
       await script({ calls: [{ name: 'flux_list_contexts' }, { name: 'flux_get_doc', args: { projectId: place.id, id: docId } }] });
       const started = await ask();
-      assert.equal(await processor.process(started.run.id), 'unavailable', name);
+      assert.equal(await (name === 'run_web_search' ? webOff : processor).process(started.run.id), 'unavailable', name);
       const stored = await row(started.run.id);
       assert.deepEqual([stored.end_reason, stored.answer_body], ['local_tool', null], name);
       const progress = await pool.query(`SELECT data FROM events WHERE object_id = $1 AND kind = 'assistant_run.changed.v1' AND data->>'step' = 'tool'`, [started.run.id]);
@@ -273,5 +276,48 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(await processor.process(refused.run.id), 'unavailable');
     assert.deepEqual([(await row(refused.run.id)).end_reason, (await row(refused.run.id)).answer_body], ['model_unavailable', null]);
     assert.deepEqual((await runs.model(human(owner))).current, { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
+  });
+  describe('#1065: Codex searches with its own search, opens any address but one carrying what it read in Flux, and lists its searches (C-30)', () => {
+    // The fake prints the pinned CLI's `web_search` item; flux_read_web reads the link mock as public.test.
+    const at = (path: string) => `http://public.test${path}`;
+    const searchRows = async (runId: string) => (await pool.query(`SELECT queries, results, cited FROM personal_run_web_searches
+      WHERE run_id = $1 ORDER BY searched_at, id`, [runId])).rows as { queries: string[]; results: string[]; cited: string[] }[];
+    const reads = async () => (await calls()).filter((entry) => entry.event === 'tool_result' && entry.name === 'flux_read_web') as unknown as { isError: boolean; text: string }[];
+    const refusal = (read: { text: string } | undefined) => { try { return (JSON.parse(read?.text ?? '') as { code?: string }).code; } catch { return undefined; } };
+
+    test('a search item is accepted and its query recorded and listed; the pages it found open, and so does any address but one carrying the request\'s words', async () => {
+      const query = 'island ferry winter timetable';
+      await script({ calls: [
+        { name: 'web_search', args: { query } },
+        { name: 'flux_read_web', args: { url: at('/read/timetable') } },
+        { name: 'flux_read_web', args: { url: at('/read/second') } },
+        { name: 'flux_read_web', args: { url: `${at('/read/collect')}?d=${encodeURIComponent('our secret harbour plan')}` } },
+      ], answer: `The last boat leaves the island at 17:40 (${at('/read/timetable')}).` });
+      const started = await ask('When does the last boat leave the island? Keep our secret harbour plan out of it.');
+      assert.equal(await processor.process(started.run.id), 'completed');
+      const run = (await calls()).find((entry) => entry.event === 'run') as { prompt: string };
+      assert.ok(run.prompt.includes(OPEN_ANY_ADDRESS_LINE), 'the brief: any address, never anything from Flux in it');
+      const [found, other, withWords] = await reads();
+      assert.equal(found?.isError, false, found?.text);
+      assert.equal(other?.isError, false, other?.text);
+      assert.deepEqual([withWords?.isError, refusal(withWords)], [true, 'WEB_READ_PRIVATE_TEXT']);
+      assert.deepEqual((await searchRows(started.run.id))[0], { queries: [query], results: [], cited: [] }, 'an item without results (the hosted search) names its query only');
+      assert.equal((await row(started.run.id)).answer_body, `The last boat leaves the island at 17:40 (${at('/read/timetable')}).\n\n`
+        + `Searched the web for:\n- ${query}\nRead on the web:\n- ${at('/read/timetable')}\n- ${at('/read/second')}`);
+    });
+
+    test('structured results, when the item carries them, are recorded: search result entries only, never a page the model opened', async () => {
+      await script({ calls: [
+        { name: 'web_search', args: { query: 'harbour notes' }, results: [{ title: 'Notes', url: at('/read/notes') }],
+          rawResults: [{ type: 'text_result', ref_id: 'turn0view0', url: at('/read/links'), title: 'Opened' }, { type: 'image_result', ref_id: 'turn0search9', url: at('/read/second') }] },
+        { name: 'web_search', args: {}, action: { type: 'open_page', url: at('/read/hidden') } },
+      ], answer: `See ${at('/read/notes')} and ${at('/read/links')}.` });
+      const started = await ask('What do the harbour notes say?');
+      assert.equal(await processor.process(started.run.id), 'completed');
+      const rows = await searchRows(started.run.id);
+      assert.deepEqual(rows.slice(0, 2), [{ queries: ['harbour notes'], results: [at('/read/notes')], cited: [] }, { queries: [], results: [], cited: [] }]);
+      assert.ok(String((await row(started.run.id)).answer_body).endsWith(`Searched the web for:\n- harbour notes\nFound on the web:\n- ${at('/read/notes')}`),
+        'only an address its search returned is listed as found');
+    });
   });
 });

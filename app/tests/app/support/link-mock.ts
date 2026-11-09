@@ -64,6 +64,8 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
   if (path === '/cookie') { response.writeHead(302, { location: '/echo', 'set-cookie': 'session=abc123; Path=/' }); return response.end(); }
   if (path === '/echo') return html(response, page('<title>Echo</title>'));
   if (path === '/redirect-ok') return redirect(response, '/article');
+  // #1065: a site that unpacks an address it was sent (here: written backwards) and redirects to it.
+  if (path.startsWith('/unpack/')) return redirect(response, [...decodeURIComponent(path.slice(8))].reverse().join(''));
   if (path.startsWith('/hop/')) {
     const left = Number(path.slice(5));
     return left > 0 ? redirect(response, `/hop/${left - 1}`, 301 + (left % 2) * 6) : html(response, ARTICLE);

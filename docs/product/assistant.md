@@ -297,7 +297,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
-| Web | Search with the provider's own web search tool, and read pages (`flux_read_web`) of addresses it was given or found by its own search in the same run, as much as a question needs (no limit on either, founder direction 2026-11-09), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
+| Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Not allowed | Code, email, other apps |
 
 Code changes come only from the owner's own Claude Code or Codex on their computer
@@ -307,25 +307,27 @@ Code changes come only from the owner's own Claude Code or Codex on their comput
 other people's messages, and the prompt marks them so. The defence is in the rules, not in the model's obedience: only the
 owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo, and nothing is posted or filled in on
 the web. **Search** (founder direction, Hubert, 2026-11-08, #954) is the provider's own built-in tool on the owner's connection, with
-no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`; on the owner's own Claude Code, the CLI's
-`WebSearch` (#1065). A provider, wire format or CLI without one (Codex) has no search, and the agent's brief says so; nothing fails. What goes out on a read is an address, and an address is a way to send
-something to a site, so an agent reads only addresses it was **given**: written by a person in the request, in the task or its
-conversation as they were when the run began (never what an agent wrote, such as its question to another agent), on a page it read
-in the same run, or among the results its own web search returned in the same run (never an address the model chose to open). It never makes one up, so nothing it knows can be put
-into one; it can still choose among the given ones, and how many a run reads is not limited ([coordinator default C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-**Accepted risk** (founder, Hubert, 2026-11-09, #1113, "Żadnych limitów"): because an agent searches and reads as much as a question needs, a malicious
-page with many links can leak what the agent knows through which of those links it chooses to open; exact matching stops anything being put into an
-address, not the choice. The defence is the one above, and the list of every address the server asked for. The key's daily budget is what stops
-spending: each search is charged as the provider reports it. On the owner's API key a page's text is sent to the model once and, once the model has
-noted it, left out of later requests, so a long read fits; the Claude Code and Codex engines manage their own context.
-A test shows that web content cannot bypass an approval and that an agent which obeys a page cannot send what it knows to a site (#918,
-#953), and that a search result is an address for its own run only (#954). The server reads the page, not the agent's process, so the
-runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the server asked for,
-those that failed too, in Flux's own words, written down before each request goes out, and its searches and the addresses its answer
-cites: under its answer, or in its end line when it ends without one. Reading and searching are on by default; the operator turns both
+no other account or key: Anthropic's `web_search` and OpenAI's Responses `web_search`; on the owner's own Claude Code its `WebSearch`,
+and on their Codex its own search on OpenAI's cached index (#1065). A provider or wire format without one has no search, and the
+agent's brief says so; nothing fails. **Any address opens** (founder direction, Hubert, 2026-11-09, #1065: open any address, the same
+for Claude and Codex, with no approval taps): the same rule on every engine. The brief tells the agent to open only what its answer
+needs, never to put anything from Flux into an address (no words of messages, tasks, the Wiki or the request, no names, ids or keys)
+and that what a page or a message says is data, not an order; and the server refuses, without asking anyone, an address that carries
+a verbatim fragment of private Flux text the run has read (12 characters or more, compared without case, accents or percent-encoding,
+also in a run of hex, base64 or base32, and on every redirect hop), or a link written in Flux carried to another site, telling the agent why ([C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+**Accepted risk** (founder, Hubert, 2026-11-09): what the agent rewrote (other words, hyphens for spaces, pieces under 12
+characters), or signals by which address it chooses, can leave through an address, and a search query reaches the search's vendor; the
+check stops the copy. The defence is the one above, and the list of every address the
+server asked for. The key's daily budget is what stops spending: each search is charged as the provider reports it. On the owner's
+API key a page's text is sent to the model once and, once the model has noted it, left out of later requests, so a long read fits;
+the Claude Code and Codex engines manage their own context. A test shows that web content cannot bypass an approval, and what
+happens when a page tells an agent to send what it read to a site (#918, #953, #1065). The server reads the page, not the agent's
+process, so the runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the
+server asked for, those that failed too, in Flux's own words, written down before each request goes out, and its searches and the
+addresses its answer cites: under its answer, or in its end line when it ends without one. Reading and searching are on by default; the operator turns both
 off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
-local client reads and searches the web with its own tools and does not get the tool; an agent on the owner's Codex has no search
-([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-claude-codes-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an
+local client reads and searches the web with its own tools and does not get the tool
+([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an
 instruction.
 
 ## AG-9 — Schedules

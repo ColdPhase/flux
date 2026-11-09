@@ -12,13 +12,14 @@ import { randomBytes } from 'node:crypto';
  *   Codex (`openai_base_url=…/cli/openai/v1`, `chatgpt_base_url=…/cli/chatgpt/backend-api/`, `--experimental_issuer …/cli/auth`):
  *     GET /cli/openai/v1/responses with `Upgrade: websocket` → 426 (Codex falls back to HTTP at once), POST …/responses (SSE)
  *     POST /cli/auth/api/accounts/deviceauth/usercode, …/deviceauth/token, /cli/auth/oauth/token, /cli/auth/oauth/revoke
- *     GET /cli/chatgpt/backend-api/wham/usage
+ *     POST …/alpha/search (Codex's standalone web search, `web.run`), GET /cli/chatgpt/backend-api/wham/usage
  *   Control: POST /__cli/script { client, steps, usage, accessLifetimeSeconds, revokeRefreshTokens }, POST /__cli/approve,
  *   GET /__cli/journal, POST /__cli/reset
  *
  * A step is what the model does on its next main request (Claude Code: one that offers Flux's tools or `WebSearch`; Codex: every
- * `/responses`): `{ tool, args }` calls a Flux MCP tool, `{ search }` starts a search (Claude Code's `WebSearch`; a `web_search_call`
- * item for Codex), `{ text }` answers, `{ error: { status, body, headers } }` fails the request, `{ failed }` ends a Codex stream with
+ * `/responses`): `{ tool, args }` calls a Flux MCP tool, `{ search }` starts a search (Claude Code's `WebSearch`; for Codex a call of its
+ * standalone `web.run` tool when the request offers it, whose `alpha/search` request gets the search's results, else a hosted
+ * `web_search_call` item, #1065), `{ text }` answers, `{ error: { status, body, headers } }` fails the request, `{ failed }` ends a Codex stream with
  * `response.failed`. After the last step the model answers "Done.". Claude Code's side requests (no Flux tool) get a plain answer, and
  * its `WebSearch` sub-request (a `web_search_*` server tool) gets the pending search's results. An API key that starts with
  * `sk-ant-mock-expired` is refused as the API refuses a revoked key.
@@ -51,7 +52,7 @@ export interface CliJournalEntry {
 const state = {
   steps: { claude: [] as CliStep[], codex: [] as CliStep[] },
   cursor: { claude: 0, codex: 0 },
-  /** The search a Claude Code `WebSearch` started; its sub-request answers with these results. */
+  /** The search a Claude Code `WebSearch` or a Codex `web.run` call started; its sub-request answers with these results. */
   pendingSearch: null as CliSearch | null,
   journal: [] as CliJournalEntry[],
   devices: new Map<string, { userCode: string; approved: boolean; polls: number }>(),
@@ -209,6 +210,11 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
     const dot = named.lastIndexOf('.');
     item = { type: 'function_call', id: `fc_mock_${counter}`, call_id: `call_mock_${counter}`, name: named.slice(dot + 1), arguments: JSON.stringify(step.args),
       ...(dot > 0 ? { namespace: named.slice(0, dot) } : {}) };
+  } else if ('search' in step && tools.includes('web.run')) {
+    // The standalone search of a Responses Lite model (#1065): a call of `web.run`, which the CLI runs itself against `alpha/search`.
+    state.pendingSearch = step.search;
+    item = { type: 'function_call', id: `fc_mock_${counter}`, call_id: `call_mock_${counter}`, namespace: 'web', name: 'run',
+      arguments: JSON.stringify({ search_query: [{ q: step.search.query }] }) };
   } else if ('search' in step) {
     item = { type: 'web_search_call', id: `ws_mock_${counter}`, status: 'completed', action: { type: 'search', query: step.search.query,
       sources: step.search.results.map((hit) => ({ type: 'url', url: hit.url })) } };
@@ -220,6 +226,20 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
   events.push(['response.completed', { type: 'response.completed', response: { id: responseId,
     usage: { input_tokens: 25, input_tokens_details: null, output_tokens: 12, output_tokens_details: null, total_tokens: 37 } } }]);
   return sse(response, events);
+}
+
+/**
+ * Codex's standalone web search (`web.run`, codex-rs `codex-api/src/endpoint/search.rs` at rust-v0.160.1): the pending search's results as
+ * search result entries (`text_result`, `ref_id` `turn0search<N>`), and the request's own settings in the journal (`external_web_access`).
+ */
+function codexSearch(request: http.IncomingMessage, response: http.ServerResponse, path: string, body: Json) {
+  const bearer = (request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+  const search = state.pendingSearch ?? { query: 'nothing', results: [] };
+  const settings = (body.settings && typeof body.settings === 'object' ? body.settings : {}) as Json;
+  record({ client: 'codex', kind: 'web_search', path, credential: bearer, detail: { query: search.query, commands: body.commands ?? null,
+    externalWebAccess: settings.external_web_access ?? null } });
+  return json(response, 200, { output: search.text ?? `Found ${search.results.length} pages.`,
+    results: search.results.map((hit, index) => ({ type: 'text_result', ref_id: `turn0search${index}`, url: hit.url, title: hit.title, snippet: hit.title })) });
 }
 
 // --- The OpenAI sign-in issuer for `codex login --device-auth` (codex-rs login/src/device_code_auth.rs, server.rs at rust-v0.160.1).
@@ -319,7 +339,9 @@ export function handleCliVendor(request: http.IncomingMessage, response: http.Se
     // Codex's built-in provider asks for a WebSocket first; 426 makes it use HTTP at once (codex-rs core/src/client.rs).
     if (request.headers.upgrade) { record({ client: 'codex', kind: 'websocket_refused', path: rest, credential: null }); json(response, 426, { error: 'use http' }); return true; }
     if (rest === '/v1/responses' && request.method === 'POST') { codexResponses(request, response, rest, fields); return true; }
+    if (rest.endsWith('/alpha/search') && request.method === 'POST') { codexSearch(request, response, rest, fields); return true; }
   }
+  if (path.startsWith('/cli/chatgpt/') && path.endsWith('/alpha/search') && request.method === 'POST') { codexSearch(request, response, path, fields); return true; }
   if (path.startsWith('/cli/auth/')) { issuer(response, path.slice('/cli/auth'.length), fields, raw); return true; }
   if (path.startsWith('/cli/chatgpt/backend-api/')) { chatgpt(request, response, path.slice('/cli/chatgpt/backend-api'.length)); return true; }
   // Anything else, such as Codex's model list (`/cli/openai/v1/models`): 404, so each CLI keeps its own pinned model catalog.

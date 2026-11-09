@@ -50,7 +50,7 @@ export async function openAiResponse(fetch: GuardedFetch, request: ResponsesRequ
     max_output_tokens: request.maxTokens,
     store: false,
     ...(tools ? { tools: [...responsesTools(tools), ...(search ? [OPENAI_WEB_SEARCH_TOOL] : [])] } : {}),
-    // Every address a search returned is listed, so the run may read it (C-30).
+    // Every address a search returned, so a cited one is listed (C-30).
     ...(search ? { include: ['web_search_call.action.sources'] } : {}),
   };
   // The trailing slashes of the base go without a regular expression (no backtracking on a long run of them).

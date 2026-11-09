@@ -349,8 +349,8 @@ describe('no limit on searches or pages, only the budget (#1113)', () => {
     assert.ok(!content(provider, 3, 0).includes('The words') && !content(provider, 3, 1).includes('The words'));
     assert.ok(content(provider, 3, 2).includes('The words of page 3.'));
     const refused = new FakeProvider((turn) => (turn <= 2 ? step(turn, 0) : answer()));
-    await loop(refused, new FakeSession(() => ({ content: '{"code":"WEB_READ_NOT_GIVEN","error":"That address was not given to you."}', isError: true }), [...FLUX_TOOLS, READ_WEB]), { first: searching });
-    assert.ok(content(refused, 2, 0).includes('WEB_READ_NOT_GIVEN'), 'a refusal is kept as it came: it has no page to drop');
+    await loop(refused, new FakeSession(() => ({ content: '{"code":"WEB_READ_PRIVATE_TEXT","error":"That address carries words you read in Flux."}', isError: true }), [...FLUX_TOOLS, READ_WEB]), { first: searching });
+    assert.ok(content(refused, 2, 0).includes('WEB_READ_PRIVATE_TEXT'), 'a refusal is kept as it came: it has no page to drop');
     const other = new FakeProvider((turn) => (turn <= 2 ? toolUse(`c${turn}`, undefined, { name: 'flux_list_work' }) : answer()));
     await loop(other, new FakeSession(), { first: searching });
     assert.equal(content(other, 2, 0), 'ok', 'a result that is not a page is never replaced');

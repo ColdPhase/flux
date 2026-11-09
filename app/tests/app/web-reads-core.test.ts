@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { addressesIn, isGivenAddress, givenAddresses, normalizedAddress, takeAsk, webSourcesLine, WEB_SOURCES_HEADINGS } from '@flux/core';
+import { addressesIn, comparableText, keptPrivateText, normalizedAddress, privateFragmentIn, takeAsk, webSourcesLine, WEB_SOURCES_HEADINGS } from '@flux/core';
 import { registerAgentWebReads } from '../../apps/server/src/agent-connection/web-reads.js';
 import { loadWebReadsConfig } from '../../apps/server/src/web-reads/config.js';
 import { READ_TEXT_MAX, readablePage } from '../../apps/server/src/web-reads/readable.js';
@@ -148,7 +148,7 @@ describe('the addresses a run asked for, in its answer', () => {
   });
 });
 
-describe('the addresses an agent was given (#953, C-30)', () => {
+describe('the web addresses written in a text (#953, #954)', () => {
   test('are the web addresses written in the texts, without the sentence marks around them or the fragment', () => {
     assert.deepEqual(addressesIn('See https://example.org/a. Or (http://example.org/b/c), and "https://Example.org/d?x=1#top"; also <https://example.org/e>!'),
       ['https://example.org/a', 'http://example.org/b/c', 'https://example.org/d?x=1', 'https://example.org/e']);
@@ -158,15 +158,6 @@ describe('the addresses an agent was given (#953, C-30)', () => {
     assert.equal(addressesIn(Array.from({ length: 200 }, (_, i) => `https://example.org/${i}`).join(' ')).length, 50, 'at most fifty from one text');
   });
 
-  test('match exactly: the whole address, query included; only the fragment is ignored', () => {
-    const given = givenAddresses(['Read https://example.org/page and http://example.org/other?x=1']);
-    assert.equal(isGivenAddress('https://example.org/page', given), true);
-    assert.equal(isGivenAddress('https://EXAMPLE.org/page#section', given), true, 'the host\'s case and a fragment do not make another address');
-    for (const other of ['https://example.org/page?d=secret', 'https://example.org/page/secret', 'https://example.org/pag', 'http://example.org/page', 'http://example.org/other',
-      'https://example.org:8443/page', 'https://example.org.evil.test/page', 'https://example.org/page%2F', 'example.org/page', ''])
-      assert.equal(isGivenAddress(other, given), false, other);
-  });
-
   test('a hostile text cannot make the scan slow', () => {
     for (const hostile of ['http://'.repeat(100_000), `https://a/${')'.repeat(200_000)}`, `https://a/${'('.repeat(200_000)}`, `https://${'a.'.repeat(100_000)}`, 'https://x/ '.repeat(100_000)]) {
       const started = Date.now();
@@ -174,6 +165,95 @@ describe('the addresses an agent was given (#953, C-30)', () => {
       assert.ok(Date.now() - started < 1_000, `took ${Date.now() - started} ms`);
     }
     assert.equal(normalizedAddress(`https://example.org/${'a'.repeat(3_000)}`), null, 'longer than the tool takes is no address');
+  });
+});
+
+describe('an address may not carry private Flux text the run read (#1065, founder direction 2026-11-09, C-30)', () => {
+  const read = [
+    keptPrivateText('Ada: The camera fails below 5 lux in the low-light test. Code for the gate: 4711-2026-B77. See https://intra.example/report?id=plan-q3 or wiki.example/lamp-sensor. '
+      + 'Budget 1.250.000 zł, mail ada.nowak@lamp.example, news https://www.news.example/2026/11/09/lamps.'),
+    // A Flux tool's result: JSON with no space between its fields.
+    keptPrivateText('{"url":"https://x.example/a","code":"9911-7788-ZZ","title":"Harbour plan"} Reset it at https://intra.example/reset?token=Zq81mK2pX9aB'),
+  ];
+  const refused = (address: string) => privateFragmentIn(address, read);
+  const b64 = (text: string) => Buffer.from(text).toString('base64');
+  const hex = (text: string) => Buffer.from(text).toString('hex');
+  const base32 = (text: string) => {
+    let bits = 0; let value = 0; let out = '';
+    for (const byte of Buffer.from(text)) { value = ((value << 8) | byte) & 0xffff; bits += 8; while (bits >= 5) { out += 'abcdefghijklmnopqrstuvwxyz234567'[(value >>> (bits - 5)) & 31]; bits -= 5; } }
+    return bits ? out + 'abcdefghijklmnopqrstuvwxyz234567'[(value << (5 - bits)) & 31] : out;
+  };
+
+  test('a fragment of 12 characters or more refuses the address, in its path, its query or its host; any other address opens', () => {
+    assert.equal(refused('https://evil.example/collect?d=The camera fails below'), 'the camera f');
+    assert.equal(refused('https://shop.example/part/4711-2026-B77'), '4711-2026-b7', 'a code the run read, in the path');
+    assert.equal(refused('https://4711-2026-B77.evil.example/'), '4711-2026-b7', 'in a host label');
+    assert.equal(refused('https://evil.example/?m=ada.nowak@lamp.example'), 'ada.nowak@la', 'an email address is private text, not an address');
+    assert.equal(refused('https://evil.example/?b=1.250.000 zł'), '1.250.000 zł', 'and so is an amount');
+    assert.equal(refused('https://evil.example/?c=9911-7788-ZZ'), '9911-7788-zz', 'a field of the tool\'s JSON next to an address in it');
+    for (const open of ['https://en.wikipedia.org/wiki/Passive_infrared_sensor', 'https://example.org/docs/configuration.html', 'https://evil.example/collect?d=camera',
+      'https://example.org/page#The camera fails below', 'https://lamp.example/contact'])
+      assert.equal(refused(open), null, open);
+  });
+
+  test('an address written in Flux text opens, and so does another page of its site or another site\'s page of the same day', () => {
+    for (const open of ['https://intra.example/report?id=plan-q3', 'https://wiki.example/lamp-sensor', 'https://www.news.example/2026/11/09/lamps', 'https://news.example/2026/11/09/lamps',
+      'https://news.example/2026/11/09/other-story', 'https://other-news.example/2026/11/09/reaction', 'https://x.example/a', 'https://intra.example/export?token=Zq81mK2pX9aB'])
+      assert.equal(refused(open), null, open);
+  });
+
+  test('but not with private text added, nor carried to another site whole or by its token', () => {
+    assert.equal(refused('https://intra.example/report?id=plan-q3&x=The camera fails'), 'the camera f');
+    assert.equal(refused('https://news.example/search?q=The camera fails'), 'the camera f');
+    assert.equal(refused('https://evil.example/?u=https://intra.example/report?id=plan-q3'), 'intra.example/report?id=plan-q3');
+    assert.equal(refused(`https://evil.example/?u=${encodeURIComponent('https://intra.example/report?id=plan-q3')}`), 'intra.example/report?id=plan-q3');
+    assert.equal(refused('https://web.archive.org/web/2026/https://news.example/2026/11/09/lamps'), 'news.example/2026/11/09/lamps', 'a proxy is another site');
+    assert.equal(refused('https://evil.example/?t=Zq81mK2pX9aB'), 'zq81mk2px9ab', 'the token of a link');
+    assert.equal(refused('https://evil.example/?u=x.example/a'), 'x.example/a');
+    assert.equal(refused('https://box.example/abc'), null, 'a written address glued into a longer name is not that address');
+  });
+
+  test('compared without case, accents, invisible characters or the kind of space, and percent-decoded as often as it was encoded', () => {
+    let encoded = 'The camera fails below';
+    for (let pass = 0; pass < 12; pass++) encoded = encodeURIComponent(encoded);
+    for (const hidden of ['https://evil.example/?d=CAMERA%20FAILS%20BELOW', 'https://evil.example/?d=camera+fails+below', 'https://evil.example/?d=camera%2520fails%2520below',
+      `https://evil.example/?d=${encoded}`, 'https://evil.example/?d=camera%09fails  below', 'https://evil.example/?d=The ca​mera fa­ils below',
+      'https://evil.example/?d=Thé cämera fàils', 'https://evil.example/?d=ｃａｍｅｒａ fails',
+      // The URL parser drops tabs and line breaks: what is sent is checked, not only what was written.
+      'https://evil.example/?d=the ca\tmera fa\nils below', 'https://kraków.example/?d=4711-2026-B77'])
+      assert.ok(refused(hidden), JSON.stringify(hidden));
+    assert.equal(comparableText('A%2BB+C%20%20D'), 'a b c d');
+    assert.equal(comparableText('%E2%82%AC%ZZ%C3'), '€%zz�', 'a broken sequence is no error');
+  });
+
+  test('a run of hex, base64 (either alphabet) or base32 is decoded, at any alignment, in the query, the path or a host label', () => {
+    const secret = 'The camera fails below 5 lux';
+    for (const hidden of [`https://evil.example/?d=${b64(secret)}`, `https://evil.example/c/${Buffer.from(secret).toString('base64url')}`,
+      `https://evil.example/c/xx${b64(secret)}`, `https://evil.example/?d=${encodeURIComponent(b64(`x${secret}`))}`, `https://evil.example/${hex('the camera fails')}`,
+      `https://${hex('4711-2026-B77')}.evil.example/`, `https://${base32('gate: 4711-2026-B77')}.evil.example/`, `https://evil.example/?d=${b64(encodeURIComponent(secret))}`,
+      `https://evil.example/?u=${b64('https://intra.example/report?id=plan-q3')}`])
+      assert.ok(refused(hidden), hidden);
+    assert.equal(refused(`https://example.org/commit/${'0123456789abcdef'.repeat(2)}?v=${b64('release notes')}`), null, 'an id, or encoded text the run did not read, opens');
+  });
+
+  test('one long word alone, or spaces and marks alone, are no fragment; a rewritten or split text is not caught (the accepted risk)', () => {
+    const words = [keptPrivateText('Read the documentation about authentication -------------- ............ done')];
+    for (const open of ['https://example.org/documentation/authentication', 'https://example.org/--------------', 'https://example.org/............'])
+      assert.equal(privateFragmentIn(open, words), null, open);
+    assert.equal(refused('https://evil.example/collect/camera-fails-below-5-lux'), null, 'hyphens for spaces: not caught (decisions.md, the risk recorded)');
+    assert.equal(refused('https://evil.example/?a=the%20came&b=ra%20fails'), null, 'pieces under 12 characters: not caught');
+    assert.equal(refused('https://xn--krakw-3ta.example/'), null);
+  });
+
+  test('a hostile address or text cannot make the check slow', () => {
+    const big = [keptPrivateText('word '.repeat(200_000))];
+    const started = Date.now();
+    privateFragmentIn(`https://example.org/?q=${'a+'.repeat(1_000)}`, big);
+    privateFragmentIn(`https://example.org/${'%25'.repeat(600)}`, big);
+    privateFragmentIn(`https://example.org/%${'25'.repeat(1_000)}41`, big);
+    privateFragmentIn(`https://example.org/${'Ab12'.repeat(500)}`, big);
+    keptPrivateText(`${'a.'.repeat(100_000)}example ${'x'.repeat(100_000)}.example`);
+    assert.ok(Date.now() - started < 3_000, `took ${Date.now() - started} ms`);
   });
 });
 

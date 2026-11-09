@@ -60,11 +60,11 @@ describe('the supervisor\'s closed request set', () => {
     assert.equal(parseSupervisorRequest('stop', { ...valid.stop, model: 'opus' }).ok, false, 'no other request takes a model');
   });
 
-  test('#1065: a Claude Code run may keep its own web search; Codex never, and the value is only true', () => {
-    const parsed = parseSupervisorRequest('run', { ...valid.run, webSearch: true });
-    assert.equal(parsed.ok && (parsed.request as { webSearch?: boolean }).webSearch, true);
-    assert.deepEqual(parseSupervisorRequest('run', { ...valid.run, client: 'codex', webSearch: true }), { ok: false, code: 'invalid_request', field: 'webSearch' },
-      'Codex\'s search records no results Flux could check (C-30)');
+  test('#1065: a run may keep the CLI\'s own web search, Claude Code\'s or Codex\'s, and the value is only true', () => {
+    for (const client of ['claude_code', 'codex']) {
+      const parsed = parseSupervisorRequest('run', { ...valid.run, client, webSearch: true });
+      assert.equal(parsed.ok && (parsed.request as { webSearch?: boolean }).webSearch, true, client);
+    }
     for (const value of [false, 'true', 1, 'WebFetch']) assert.equal(parseSupervisorRequest('run', { ...valid.run, webSearch: value }).ok, false, String(value));
   });
 
@@ -73,6 +73,9 @@ describe('the supervisor\'s closed request set', () => {
     assert.ok(parseSupervisorFrame({ t: 'run', e: 'search', n: 1, query: 'island ferry winter timetable' }));
     assert.ok(parseSupervisorFrame({ t: 'run', e: 'found', n: 1, results: [url] }));
     assert.ok(parseSupervisorFrame({ t: 'run', e: 'found', n: 2, results: [] }), 'a failed search found nothing');
+    assert.ok(parseSupervisorFrame({ t: 'run', e: 'found', n: 3, results: [], queries: ['ferry strike', 'ferry strike today'] }), 'Codex names its queries at the end');
+    assert.equal(parseSupervisorFrame({ t: 'run', e: 'found', n: 3, results: [], queries: [''] }), null, 'never an empty query');
+    assert.equal(parseSupervisorFrame({ t: 'run', e: 'found', n: 3, results: [], queries: Array.from({ length: 11 }, (_, i) => `q${i}`) }), null, 'at most 10');
     for (const bad of [
       { t: 'run', e: 'search', n: 0, query: 'q' }, { t: 'run', e: 'search', n: 1, query: 'q'.repeat(301) }, { t: 'run', e: 'search', n: 1, query: 'a\u0000b' },
       { t: 'run', e: 'found', n: 1, results: ['javascript:alert(1)'] }, { t: 'run', e: 'found', n: 1, results: ['https://a.example/ b'] },

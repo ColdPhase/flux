@@ -129,7 +129,7 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
 
 /**
  * Under the agent's answer in its chat, as drawn: the schedule that sentence prepared, what it will do, the one tap that turns it on (AG-9 "confirms it
- * there"), and Change. The address of a page it may read is not here: only what the owner typed is given to its runs (C-30).
+ * there"), and Change.
  */
 export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state: AgentSchedulesState; agent: MyAgent }) {
   const [changing, setChanging] = useState(false);

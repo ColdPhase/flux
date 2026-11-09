@@ -15,7 +15,7 @@ export const WEB_READ_KIND: FetchKind = { accept: 'text/html,application/xhtml+x
  */
 export const READS_AT_ONCE = 6;
 
-export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'not_given';
+export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'private_text';
 /**
  * `requested` is every address the server sent a request to for this read (#953): empty when it was refused from the address alone or for
  * the rate, otherwise the address and each redirect hop, whether or not a page came back.
@@ -46,7 +46,7 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
   busy: 'Too many pages were read just now. Carry on without it, or try again later.',
   off: 'Reading the web is not turned on for this Flux.',
   empty: 'The page has no text to read.',
-  not_given: 'That address was not given to you. You can read an address that is written in the request, in the task or its conversation, on a page you read, or among the results of your own web search; you cannot make one up.',
+  private_text: 'That address carries words you read in Flux, and nothing from Flux may go into a web address. Open the page without them; to look something up, use your web search.',
 };
 
 export function webReader(options: WebReaderOptions) {

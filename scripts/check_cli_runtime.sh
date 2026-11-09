@@ -8,7 +8,7 @@
 # and a subtask, flux_read_web), the CLIs' own texts for an over-long request, a limit and a revoked sign-in, and what Flux records for
 # each; on Claude Code its own WebSearch with result addresses; on Codex the ChatGPT device sign-in through Flux's console against a
 # mock issuer, a token refresh, the usage limit's reset time, and sign-out with revocation; no vendor credential in the database or
-# the logs. Codex's own web search is left to #1065, which changes it (the mock already answers a `search` step with a web_search_call). Assertions are on Flux's side effects, never on model text.
+# the logs; on Codex its own web search (#1065: the standalone `web.run`, on the cached index) with result addresses. Assertions are on Flux's side effects, never on model text.
 # Not covered (needs a real account, see docs/agents/evaluation.md): the Claude plan sign-in and plan-limit texts, real model quality.
 #
 # Needs internet only to build the images and for Flux's own installer to download the pinned Claude Code (downloads.claude.ai,
@@ -147,20 +147,23 @@ check codex-sign-in
 step "11. Codex /ai with Flux's tools, plain tools from Flux's model catalog (#1127); the access token refreshed"
 check ai codex
 
-step "12. Codex agent task run"
+step "12. Codex's own web search (#1065): web.run on the cached index; its results recorded; flux_read_web reads a result"
+check codex-search
+
+step "13. Codex agent task run"
 check task codex
 
-step "13. Codex API errors with the CLI's own texts: context window, the usage limit with its reset time (#1129)"
+step "14. Codex API errors with the CLI's own texts: context window, the usage limit with its reset time (#1129)"
 check error codex context
 check error codex limit
 
-step "14. Codex with its sign-in revoked at the issuer: the refresh fails; the run and Settings say sign in again"
+step "15. Codex with its sign-in revoked at the issuer: the refresh fails; the run and Settings say sign in again"
 check revoked codex
 
-step "15. Codex sign-out: its own logout revokes the token at the issuer; Flux deletes the login"
+step "16. Codex sign-out: its own logout revokes the token at the issuer; Flux deletes the login"
 check codex-sign-out
 
-step "16. No vendor credential in the database or any service log; runtime-egress opened no tunnel"
+step "17. No vendor credential in the database or any service log; runtime-egress opened no tunnel"
 out=$(check no-secret "$claude_key" "$revoked_key"); printf '%s\n' "$out" | grep -v '^CREDENTIALS='
 $compose logs --no-color > "$background_secret_dir/logs.txt" 2>/dev/null
 [ -s "$background_secret_dir/logs.txt" ] || fail "control: no logs were read"

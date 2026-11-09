@@ -14,7 +14,7 @@ import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerWithWebSources } from './web-sources.js';
-import { boundedWebSearch } from './web-addresses.js';
+import { boundedWebSearch, keptPrivateText } from './web-addresses.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
@@ -433,6 +433,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (checked.connection.id !== connection.id) return end('unavailable');
       if (!fitted) return end('input_too_large');
       await updateAndAnnounce(ports, run.id, { status: 'dispatching', dispatchedAt: new Date(), answerSources: fitted.sources.map((source) => source.ref) });
+      // What the model is given is private Flux text the run read (#1065, C-30): a web address may not carry it. All it read, the fit aside.
+      const briefed = brief(read.sources, false, search);
+      await ports.runs.addPrivateText(run.id, keptPrivateText(`${briefed.system}\n${briefed.request}`));
       await taskFence?.mark();
       return { done: false as const, fitted };
     });
@@ -463,7 +466,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         loop = await runToolLoop({
           compute, session, first: ready.fitted.request, price: connection.price!, reservedMicros: run.reservedMicros,
           maxTurns: Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), deadline: now() + wallClockMs, now, gate, signal: controller.signal,
-          // A search's results are the run's readable addresses (C-30) from the moment its response is back, before its calls run.
+          // A search's queries and results are recorded (C-30) from the moment its response is back, before its calls run.
           onWebSearch: (found) => uow.run((ports) => ports.runs.addWebSearch(run.id, boundedWebSearch(found))),
           // Refused by the provider: this run goes on without the search, told so in its brief, and the key's model is not offered it for a while.
           withoutSearch: (request) => ({ ...dropSearch(request), system: brief([], false, false).system }),

@@ -331,7 +331,6 @@ export function workRows(db: DbExecutor) {
         status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null,
         waitingForDecisionId: work.waitingOn?.kind === 'decision' ? work.waitingOn.id : null, waitingForWorkId: work.waitingOn?.kind === 'task' ? work.waitingOn.id : null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
-        textByAgent: work.createdBy.kind === 'agent',
       })).returning();
       // A task made for an agent, or for a person who gave their assistant a standing instruction, is the server's to act on (#856).
       if (work.owner) await agentTaskRows(db).noteAssigned(work.id, work.owner, work.createdBy);
@@ -471,8 +470,6 @@ export function workRows(db: DbExecutor) {
         // A task that is not Done was not dropped and has nothing come of it.
         ...(changes.status !== undefined && changes.status !== 'done' ? { dropped: false, cameOfIt: null } : changes.dropped !== undefined ? { dropped: changes.dropped } : {}),
         ...(changes.dueOn !== undefined ? { dueOn: changes.dueOn } : {}),
-        // The text is no longer only a person's once an agent wrote it (#953: a task's addresses are given to a run only from a person's text).
-        ...(by.kind === 'agent' && (changes.title !== undefined || changes.outcome !== undefined || changes.criteria !== undefined) ? { textByAgent: true } : {}),
         ...ownerColumns(changes.owner),
         version: sql`${w.version} + 1`, updatedAt: new Date(),
       }).where(eq(w.id, id)).returning();
