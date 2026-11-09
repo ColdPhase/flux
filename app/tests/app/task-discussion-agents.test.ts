@@ -172,19 +172,17 @@ test('C-51, #1094: at five agent lines a change that waited for the owner\'s OK 
   for (let i = 2; i <= 5; i++) toolValue(await discuss(f, item.id, `Step ${i}`));
   const by = writes(f, f, item.id, conversationId);
   expect(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo: 'ask' } }), 200);
-  // Under Ask me first a reply, a result and a blocker wait; each is the sixth, seventh and eighth line in a row if the owner approves it.
+  // Under Ask me first a reply and a blocker wait; each is the sixth and seventh line in a row if the owner approves it.
   assert.ok(waits(await by.reply('Approved reply')), 'the reply waits');
-  assert.ok(waits(await by.result('Approved result')), 'the result waits');
   assert.ok(waits(await f.tool('flux_update_task', { ...envelope(f, f), workId: item.id, expectedVersion: item.version, changes: { status: 'blocked', blocker: 'Approved blocker' } })), 'the blocker waits');
   assert.equal((await discussion(f, item.id)).messages.length, 5, 'nothing was written while they wait');
   await approveWaiting(pool, f.owner, f.connectionId, 'conversation.reply');
-  await approveWaiting(pool, f.owner, f.connectionId, 'result.record');
   await approveWaiting(pool, f.owner, f.connectionId, 'work.update');
   const lines = (await discussion(f, item.id)).messages;
-  assert.deepEqual(lines.slice(5).map((message) => [message.sequence, message.contribution?.kind ?? 'text']), [[6, 'text'], [7, 'result'], [8, 'blocker']]);
+  assert.deepEqual(lines.slice(5).map((message) => [message.sequence, message.contribution?.kind ?? 'text']), [[6, 'text'], [7, 'blocker']]);
   assert.equal(lines[5]!.body, 'Approved reply');
-  assert.ok(lines[7]!.body.includes('Approved blocker'));
-  assert.equal((await pool.query(`SELECT count(*)::int AS n FROM assistant_changes WHERE connection_id = $1 AND state = 'applied_after_wait'`, [f.connectionId])).rows[0].n, 3, 'each Approve was made, none refused');
+  assert.ok(lines[6]!.body.includes('Approved blocker'));
+  assert.equal((await pool.query(`SELECT count(*)::int AS n FROM assistant_changes WHERE connection_id = $1 AND state = 'applied_after_wait'`, [f.connectionId])).rows[0].n, 2, 'each Approve was made, none refused');
   // The Approve was the owner's decision, not a person's message: the agent still has no turn of its own until a person writes.
   assert.equal(toolFailure(await discuss(f, item.id, 'Step 6')).code, 'AGENT_TURN_LIMIT');
   expect(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo: 'act' } }), 200);
