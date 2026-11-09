@@ -21,6 +21,7 @@ OVERLAY_BASES = {
     "compose.runtime.yaml": "compose.yaml",
     "compose.source.runtime.yaml": "compose.source.yaml",
     "compose.encryption.test.yaml": "compose.source.yaml",
+    "compose.ai-real-model.test.yaml": "compose.source.yaml",
 }
 
 
