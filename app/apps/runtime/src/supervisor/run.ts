@@ -238,6 +238,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   const allowed = new Set([...request.tools.map((tool) => `${MCP_PREFIX}${tool}`), 'EndConversation', ...(webSearch ? [CLAUDE_WEB_SEARCH_TOOL] : [])]);
   /** The run's searches the CLI started and whose result has not come back yet: tool use id → the search's number. */
   const searching = new Map<string, number>();
+  /** Every search's tool use id, so a tool use the stream shows twice is one search. */
+  const started = new Set<string>();
   let searches = 0;
 
   const result = await new Promise<Extract<SupervisorResult, { kind: 'run' }>>((resolve) => {
@@ -348,6 +350,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
           if (webSearch && name === CLAUDE_WEB_SEARCH_TOOL) {
             // The CLI starts a web search: the worker writes it as in progress before its result can come back (#1065, C-30).
             const use = block as { id?: unknown; input?: unknown };
+            if (typeof use.id === 'string') { if (started.has(use.id)) continue; started.add(use.id); }
             searches += 1;
             if (typeof use.id === 'string') searching.set(use.id, searches);
             send({ t: 'run', e: 'search', n: searches, query: searchQuery(isObject(use.input) ? use.input.query : '') });

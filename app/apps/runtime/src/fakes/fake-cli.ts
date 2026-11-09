@@ -216,7 +216,7 @@ const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, 
 /**
  * A planned call. `WebSearch` (#1065) is Claude Code's own search: the fake answers it itself, as the real CLI does through Anthropic's
  * Messages API, with `results` as the search's entries, `summary` as the CLI's own text about them and `error` for a failed search.
- * `raceRead` names an address the fake asks `flux_read_web` for one second after starting the search and one second BEFORE it prints the
+ * `raceRead` names an address the fake asks `flux_read_web` for two seconds after starting the search and one second BEFORE it prints the
  * search's result, as a CLI that ran ahead of its own output would: the read must wait for the search to be recorded.
  */
 interface PlannedCall {
@@ -336,7 +336,7 @@ async function claudeRun(argv: string[]): Promise<number> {
     if (planned.name === 'WebSearch') {
       emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', id: useId, name: 'WebSearch', input: planned.args ?? {} }] } });
       if (planned.raceRead) {
-        await pause(1_000);
+        await pause(2_000);
         const readId = `toolu_${index + 1}_read`;
         emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}_read`, role: 'assistant', content: [{ type: 'tool_use', id: readId, name: 'mcp__flux__flux_read_web', input: { url: planned.raceRead } }] } });
         const read = call('flux_read_web', { url: planned.raceRead });
