@@ -156,7 +156,7 @@ function readers(input: Placed): string[] {
   if (input.kind === 'task_answer') return ['Who reads your reply',
     `It is posted in the task's discussion for the task's people to read. Of Flux, use only what all of them can see: the task, its discussion and this space. You only read: you change nothing. ${NEVER_REVEAL(owner)}`];
   if (input.kind === 'scheduled') return ['Who reads your reply', input.silent ? `Only ${owner}.`
-    : `It is posted in a conversation of this space, for everyone who reads the space. Of Flux, use only what they can all see. ${NEVER_REVEAL(owner)}`];
+    : `Flux posts it for you in a conversation of this space, for everyone who reads the space. Of Flux, use only what they can all see. ${NEVER_REVEAL(owner)}`];
   if (place.kind === 'chat') return ['Who reads your answer',
     `Only ${owner}: nobody else reads this chat. You may use anything ${owner} can see. You change nothing in Flux from here.`];
   if (place.kind === 'dm') return ['Who reads your answer',
@@ -371,7 +371,7 @@ function conversationIntro(input: Placed, count: number): string {
   const main = place.kind === 'space' && place.conversationId === null && isAsk(input.kind);
   const of = place.kind === 'dm' ? (place.thread ? 'this thread of the direct message (its first message and the replies to it)' : 'this direct message')
     : input.kind === 'task' || input.kind === 'task_answer' || (place.kind === 'space' && place.task) ? 'the task\'s discussion'
-      : input.kind === 'scheduled' ? 'the conversation your reply is posted in'
+      : input.kind === 'scheduled' ? 'the conversation Flux posts your reply in'
         : main ? 'the space\'s conversations' : 'this thread';
   const threads = main ? '; thread="…" gives the opening words of a message\'s thread where the thread changes' : '';
   const older = input.leftOut ? ' Older messages were left out.' : '';

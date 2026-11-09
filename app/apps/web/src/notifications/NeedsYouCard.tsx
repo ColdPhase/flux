@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type R
 import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
+import { ClampedWords } from '../assistant/ClampedWords';
 
 /** How an item can be put off: tomorrow morning, next week, until its task is done, or for good. */
 export type SnoozeChoice = 'tomorrow' | 'week' | 'task' | 'decline';
@@ -22,6 +23,9 @@ export interface CardHandlers {
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
 const NOTE_ICON: Record<'question' | 'mention', IconName> = { question: 'chat', mention: 'people' };
+/** Why a run's changes wait, once each, in their own words (#1089); the general sentence only if none has words. */
+const waitReasons = (changes: readonly { line: string | null }[]) =>
+  [...new Set(changes.map((change) => change.line).filter((line): line is string => !!line))].join(' ') || 'Deleting and other people\'s things always wait for your OK.';
 
 /** "Not now" asks when it should return (F-026 S11): the menu, `1` `2` `3` and Esc. */
 export function NotNowMenu({ item, onChoose, onClose, anchors, popProps }: {
@@ -217,9 +221,14 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
               <button type="button" className="nyc__open" onClick={() => handlers.open(item)} aria-haspopup={item.kind === 'decision' || item.kind === 'blocked' ? 'dialog' : undefined}>{item.title}</button>
             </h3>
             {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
-              <li key={change.id}><span>{change.waitReason === 'removal' ? `Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}` : `${change.verb} ${change.objectTitle}`.trim()}</span>
-                {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}</li>))}</ul> : null}
-            {full && run ? <p className="nyc__reason">Deleting and other people&apos;s things always wait for your OK.</p> : null}
+              <li key={change.id}>{change.waitReason === 'removal' ? <span>{`Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}`}</span>
+                : change.tells && change.after ? <span className="nyc__waits-words"><ClampedWords text={change.forPerson ? `${change.verb} ${change.objectTitle} · ${change.after}` : `${change.verb} ${change.after}`} /></span>
+                  : <span>{`${change.verb} ${change.objectTitle}`.trim()}</span>}
+                {/* A task for someone else names them; what would tell a person names who, also when both apply (#1089). */}
+                {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}
+                {change.tells ? <span className="nyc__waits-for">tells {change.tells.name}</span> : null}</li>))}</ul> : null}
+            {/* Why they wait, in each change's own words (#1089: "It would notify Jonas…" is not "Deleting and other people's things…"). */}
+            {full && run ? <p className="nyc__reason">{waitReasons(run.changes)}</p> : null}
             {full && item.detail && item.kind !== 'blocked' && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}
             {full && item.proposal ? (
               <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">

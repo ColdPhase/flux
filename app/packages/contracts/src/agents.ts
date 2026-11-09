@@ -49,6 +49,7 @@ export interface MyAgentList { items: MyAgent[] }
  * `POST /api/v1/my-agents`. Names an existing person-owned `agentId`, or a `name` for a new one in the company's `workspaceId`
  * ("Assistant" for the first, if none is given). Without a model it runs on Connect AI's default (the connection made first, at
  * its default model). Its colour is the least used one: nothing sets it. Only the caller's own connections and models are accepted.
+ * A local client's identity gets no server setup (`AGENT_IS_LOCAL_CLIENT`, 409, #1089): an identity is a client's or a server agent's.
  */
 export interface CreateMyAgentCommand {
   agentId?: string;

@@ -125,7 +125,9 @@ export interface NeedsYouAssistantChanges {
   agentName: string;
   summary: string;
   changes: { id: string; version: number; phrase: string; verb: string; objectTitle: string; line: string | null;
-    waitReason: AssistantWaitReason | null; forPerson: { id: string; name: string } | null }[];
+    waitReason: AssistantWaitReason | null; forPerson: { id: string; name: string } | null;
+    /** A `tells` change (#1089): who would be notified, and the words they would read. */
+    tells: { id: string; name: string } | null; after: string | null }[];
 }
 
 export interface NeedsYouResponse {

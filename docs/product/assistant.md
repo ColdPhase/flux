@@ -137,6 +137,14 @@ work there too.
 - **Tasks for other people.** A subtask or task for someone else is a proposal with [Approve],
   [Edit] and [Skip], and Approve all for a group. Tasks for the owner or the owner's agents are
   created directly.
+- **Telling another person.** A server agent's change that would notify someone other than its
+  owner waits too: a task made to wait for them, new words (title or blocker) on a task that waits
+  for them, or a decision or result about their task. Flux would send them its words, and a server
+  agent sends no message to another person by itself (AG-4,
+  [#1089](https://github.com/ColdPhase/flux/issues/1089)). The owner's OK card shows those words and
+  the person before Approve. Flux's own notice when what a task waited for is resolved ("#5 can
+  continue: #4 is done", AG-6) carries no words of the agent, so finishing the owner's task does not
+  wait for it. A local client is its person's own tool and is not held to this (LC-2).
 
 **Never possible.** No tool exists for these, so nothing waits either; the agent can only say it
 in words:
@@ -151,8 +159,9 @@ in words:
   the owner edits the list (AG-1); an agent never adds to it by itself;
 - anything outside its owner's rights. The agent says so; nothing is prepared for or sent to
   another person;
-- posting in a conversation with other people, a space's or a DM; only the owner's Show everyone
-  does that (AG-4);
+- for server agents, posting in a conversation with other people, a space's or a DM; only the
+  owner's Show everyone does that (AG-4). A local client may post in a space's conversations as its
+  person, marked "via Claude Code" or "via Codex" (LC-2, Hubert, 2026-11-08);
 - for server agents, anything outside Flux except reading GitHub and the web (AG-8).
 
 **Waiting items.** A change that waits shows in the task discussion or private conversation
@@ -209,6 +218,11 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.
+  A line a server agent writes in a task's discussion (its report, a blocker, a result, its
+  question to another agent, C-51) shows there for everyone, but it notifies nobody except the
+  agent's owner, whatever it names: no mention, question or reply notification, push or email
+  ([#1089](https://github.com/ColdPhase/flux/issues/1089)). A local client writes as its person and
+  notifies like them (LC-2).
   The owner writes to people.
 
 ## AG-5 — Tasks reach agents through their owner

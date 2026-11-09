@@ -7,6 +7,7 @@ import { useShellActions } from '../app/shellContext';
 import { applyChange, editChange, listConversationChanges, listRunChanges, skipChange, undoRunChanges } from './api';
 import { RefLink } from '../place/origin';
 import { useKeepFocus } from './useKeepFocus';
+import { ClampedWords } from './ClampedWords';
 
 // An agent's message about what it changed, and what waits for its owner (F-036 AG-3, #855; mockup UndoApproval).
 // Everyone who can read the conversation sees the change line with Undo; only the owner sees what waits, and only the
@@ -120,6 +121,12 @@ function ChangeLine({ changes, onChanged, meId, standalone }: { changes: Assista
   );
 }
 
+/** Who would read what, for a change that would notify a person (#1089): "Jonas would read: …", in three lines with "Show all". */
+function ToldWords({ change }: { change: AssistantChange }) {
+  if (!change.tells || !change.after) return null;
+  return <div className="assistant-waiting__said"><span>{change.tells.name} would read:</span> <ClampedWords text={change.after} /></div>;
+}
+
 /** One waiting change as a card: a deletion asks [Delete] [Keep]; a task for another person [Approve] [Edit] [Skip]. */
 function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
   change: AssistantChange; agent: string; busy: string; onAct: (key: string, action: () => Promise<unknown>) => void;
@@ -135,6 +142,9 @@ function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
   return (
     <li className="assistant-waiting__card" data-change={change.id}>
       <p className="assistant-waiting__what">{what}</p>
+      {/* What Flux would send the person, before the OK (#1089): the title and blocker, or the decision's or result's title. On a task for
+          someone else it names the third person it would tell. Long words take three lines and "Show all". */}
+      <ToldWords change={change} />
       {change.line ? <p className="assistant-waiting__why">{change.line}</p> : null}
       {editing ? <form className="assistant-waiting__edit" onSubmit={(event) => { event.preventDefault(); onAct(`edit:${change.id}`, async () => { await editChange(change, title.trim()); onEdit(false); }); }}>
         <label className="ui-vh" htmlFor={`edit-${change.id}`}>Task title</label>
@@ -171,7 +181,7 @@ function ProposalGroup({ changes, agent, busy, onAct, editing, onEdit }: {
           </form></li>
         ) : (
           <li key={change.id} data-change={change.id}>
-            <span className="assistant-waiting__task"><b>{change.objectTitle}</b><small>for {change.forPerson?.name ?? 'someone'}</small></span>
+            <span className="assistant-waiting__task"><b>{change.objectTitle}</b><small>for {change.forPerson?.name ?? 'someone'}</small><ToldWords change={change} /></span>
             <Button variant="link" disabled={!!busy} onClick={() => onEdit(change.id)}>Edit</Button>
             <Button variant="link" busy={busy === `skip:${change.id}`} disabled={!!busy} onClick={() => onAct(`skip:${change.id}`, () => skipChange(change))}>Skip</Button>
           </li>

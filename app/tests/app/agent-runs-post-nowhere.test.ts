@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { assistantRunShowPath, taskDiscussionPath, type ShowAnswerResult, type TaskDiscussion } from '@flux/contracts';
+import { AGENT_TOOLS, assistantRunShowPath, assistantRunTools, taskDiscussionPath, type ShowAnswerResult, type TaskDiscussion } from '@flux/contracts';
 import { buildBrief, NO_POSTING_LINE, runtimeBrief, taskRunPrompt, type BriefInput, type PersonalComputeResult } from '@flux/core';
 import { assistantChangeExecutor } from '../../apps/server/src/agent-connection/assistant-changes.js';
 import { personalRunPorts } from '../../apps/server/src/personal-runs/adapters.js';
@@ -160,5 +160,18 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
       assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: Only read changes nothing`);
     }
     assert.ok(runtimeBrief({ ...base, engine: 'runtime', kind: 'task' }).includes('its tasks, Wiki pages and maps, and read its conversations'));
+    // A schedule that posts is told that Flux posts its reply for it, not that it is posted as if by itself, after "No tool posts" (#1089).
+    for (const engine of ['server', 'runtime'] as const) {
+      const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind: 'scheduled' }) : buildBrief({ ...base, kind: 'scheduled' }).system;
+      assert.match(brief, /Flux posts it for you in a conversation of this space/, engine);
+      assert.ok(!brief.includes('It is posted in a conversation'), `${engine}: no line that reads as if the run posts`);
+    }
+  });
+
+  test('no tool that writes in a conversation is in any run\'s list, whatever it may do (#1089)', () => {
+    const writes = new Set(AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && (entry.operation === 'conversation.create' || entry.operation === 'conversation.reply'))
+      .map((entry) => entry.name));
+    assert.ok(['flux_start_conversation', 'flux_reply_in_conversation', 'flux_discuss_task', 'flux_ask_question'].every((name) => writes.has(name)), [...writes].join(', '));
+    for (const mayDo of ['act', 'ask', 'read'] as const) for (const name of assistantRunTools(mayDo)) assert.ok(!writes.has(name), `${mayDo}: ${name} writes in a conversation`);
   });
 });

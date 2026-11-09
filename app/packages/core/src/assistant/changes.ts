@@ -14,20 +14,26 @@ export interface AssistantChangeFacts {
   mine: boolean;
   /** A task created for another person (its owner is someone else, or someone else's agent). */
   forOther: boolean;
+  /**
+   * A run's change would tell a person other than the owner something (#1089): a task that waits for them, or a decision or result about
+   * their task, which notifies them with its words. An agent sends no message to another person by itself (AG-3, AG-4).
+   */
+  tells?: boolean;
 }
 export type AssistantChangeOutcome = { state: 'apply' } | { state: 'waiting'; reason: AssistantWaitReason }
   | { state: 'refused'; reason: 'only_read' | 'outside_rights' };
 
 /**
  * F-036 AG-3. "Only read" changes nothing, and nothing outside the owner's rights is ever possible (no suggestion is prepared
- * for anyone). Deleting and other people's things (a task for another person included) always wait, whatever the choice; "Ask
- * me first" waits for everything else too; "Do it and tell me" applies the rest at once.
+ * for anyone). Deleting, other people's things (a task for another person included) and what would tell another person always
+ * wait, whatever the choice; "Ask me first" waits for everything else too; "Do it and tell me" applies the rest at once.
  */
 export function classifyAssistantChange(facts: AssistantChangeFacts): AssistantChangeOutcome {
   if (facts.mayDo === 'read') return { state: 'refused', reason: 'only_read' };
   if (!facts.ownerCanWrite) return { state: 'refused', reason: 'outside_rights' };
   if (facts.removal) return { state: 'waiting', reason: 'removal' };
   if (!facts.mine || facts.forOther) return { state: 'waiting', reason: 'others' };
+  if (facts.tells) return { state: 'waiting', reason: 'tells' };
   if (facts.mayDo === 'ask') return { state: 'waiting', reason: 'ask' };
   return { state: 'apply' };
 }
@@ -63,6 +69,7 @@ export function assistantWaitLine(input: AssistantWaitLineInput): string | null 
     case 'removal': return 'Deleting always waits for your OK.';
     case 'others': return input.operation === 'work.create' ? 'Tasks for other people wait for your OK.'
       : `${input.otherName ?? 'Someone else'}'s ${input.noun}: other people's things wait for your OK.`;
+    case 'tells': return `It would notify ${input.otherName ?? 'someone else'}: what tells other people waits for your OK.`;
     case 'ask': return 'Waits for your OK: you asked it to check with you first.';
     default: return null;
   }

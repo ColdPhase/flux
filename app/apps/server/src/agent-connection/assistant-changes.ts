@@ -339,6 +339,46 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
   }
 }
 
+/**
+ * The person other than the owner whom a run's change would notify (#1089; F-036 AG-3, AG-4: an agent sends no message to another person
+ * by itself): the one a task is made to wait for, the one a task goes on waiting for when its title or blocker changes (their Needs-you
+ * item shows them), or the owner of a task a decision or result is about. These are the notifications of `project.work_created`/
+ * `work_updated` (`waitingFor`) and of `project.decision_proposed`/`result_recorded` (the linked tasks' owners), and they carry the agent's
+ * words. A line the agent writes in a task's discussion (a blocker, a result) notifies nobody but its owner (`onlyNotifies`). Null when it
+ * tells nobody else. A local client is its person's own tool and may tell people (LC-2), so only a run's change waits for this.
+ */
+async function toldPerson(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>, owner: string): Promise<string | null> {
+  const rows = assistantChangeRows(tx as DbExecutor);
+  const person = (value: unknown) => {
+    const ref = value as { kind?: unknown; id?: unknown } | null | undefined;
+    return ref?.kind === 'human' && typeof ref.id === 'string' && ref.id !== owner ? ref.id : null;
+  };
+  switch (operation) {
+    case 'work.create': return person(payload.waitingFor);
+    case 'work.update': {
+      const changes = (payload.changes ?? {}) as Record<string, unknown>;
+      const work = objectId ? await rows.work(objectId) : null;
+      const named = person(changes.waitingFor);
+      // Naming a new person to wait for tells them (the work domain's `newlyWaitedOn`).
+      if (named && work?.waitingForUserId !== named) return named;
+      // New words on a task that goes on waiting for another person reach them too: their Needs-you item reads "Ada is waiting for you:
+      // #4 <title> · <blocker>" from the task as it is now. Leaving Blocked clears who it waits for, so that tells nobody.
+      const still = changes.waitingFor === undefined && (changes.status === undefined || changes.status === 'blocked') ? work?.waitingForUserId ?? null : named;
+      const reworded = (typeof changes.title === 'string' && changes.title !== work?.title) || (typeof changes.blocker === 'string' && changes.blocker !== work?.blocker);
+      return still && still !== owner && reworded ? still : null;
+    }
+    case 'result.record': case 'decision.propose': {
+      const linked = operation === 'decision.propose' ? payload.affects : [...(Array.isArray(payload.work) ? payload.work : []), (payload.finishes as { id?: unknown } | undefined)?.id];
+      for (const id of new Set((Array.isArray(linked) ? linked : []).filter((value): value is string => typeof value === 'string'))) {
+        const work = await rows.work(id);
+        if (work?.ownerUserId && work.ownerUserId !== owner) return work.ownerUserId;
+      }
+      return null;
+    }
+    default: return null;
+  }
+}
+
 /** What makes or changes a person's things. Coordination (claims, releases, units) touches none, so the waiting rule does not read it. */
 const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'result.record', 'doc.update', 'doc.delete', 'map.rename', 'map.thought.create',
   'map.thought.update', 'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete']);
@@ -548,8 +588,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
           // An agent whose "What it may do" is Only read changes nothing (F-036 AG-3).
+          const told = runId ? await toldPerson(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId) : null;
           const outcome = classifyAssistantChange({ mayDo: authority.mayDo,
-            ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther });
+            ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther, tells: told !== null });
           if (outcome.state === 'refused') {
             // Nothing is prepared for or sent to another person; the agent says so in words (F-036 AG-3 "Never possible").
             const refusal = ASSISTANT_REFUSALS[outcome.reason];
@@ -568,7 +609,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
               preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId } } : call,
-              beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
+              beforeVersion: target.beforeVersion, otherUserId: outcome.reason === 'tells' ? told : target.maker,
+              // Who would read what, for the card, also on a task for someone else that would tell a third person (#1089).
+              toldUserId: told && told !== target.maker ? told : null, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }

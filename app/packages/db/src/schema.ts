@@ -1801,7 +1801,7 @@ export const assistantProposals = pgTable('assistant_proposals', {
 
 /** The agent change log (migration 0104, F-027 A3 #403; reasons and states of 0003, F-036 #855): one row per effect call of a run. */
 export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'skipped', 'undone', 'refused'] as const;
-export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others'] as const;
+export const ASSISTANT_WAIT_REASONS = ['ask', 'removal', 'others', 'tells'] as const;
 export const assistantChanges = pgTable('assistant_changes', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -1830,6 +1830,8 @@ export const assistantChanges = pgTable('assistant_changes', {
   refusal: text('refusal'),
   /** The other person: the maker of another person's thing, or the person a task is for. */
   otherUserId: text('other_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** 0043 (#1089): the person a run's waiting change would notify, also when it waits for another reason; its card shows who reads what. */
+  toldUserId: text('told_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
   decidedBy: text('decided_by').references(() => authUsers.id, { onDelete: 'set null' }),
   decidedAt: timestamp('decided_at', { withTimezone: true }),
   version: integer('version').notNull().default(1),

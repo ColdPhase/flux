@@ -263,6 +263,90 @@ class AssistantChanges(unittest.TestCase):
             self.no_horizontal_scroll(page)
             shot(page, f"assistant-changes-390-{'dark' if dark else 'light'}-waiting")
 
+    def test_09_a_change_that_would_tell_someone_shows_the_words_and_the_person(self) -> None:
+        # #1089: a run's change that would notify another person waits; the owner reads what Flux would send, and to whom, before the OK,
+        # and the Inbox gives each change's own reason, not the sentence about deleting and other people's things.
+        page = self.page()
+        line = "It would notify Jonas Weber: what tells other people waits for your OK."
+        said = "“Order the spare probes” · Needs the budget"
+        tells = self.change(operation="work.create", objectId=None, objectTitle="Order the spare probes", waitReason="tells", phrase="add task", verb="Add",
+                            line=line, tells={"id": "jonas", "name": "Jonas Weber"}, after=said, done="added task Order the spare probes")
+        self.stub_changes(page, [tells], [])
+        self.open_conversation(page)
+        card = page.locator(f'[data-change="{tells["id"]}"]')
+        expect(card).to_contain_text("Assistant wants to add task Order the spare probes")
+        expect(card.locator(".assistant-waiting__said")).to_have_text(f"Jonas Weber would read: {said}")
+        expect(card.locator(".assistant-waiting__why")).to_have_text(line)
+        expect(card.get_by_role("button", name="Edit")).to_have_count(0)
+        self.no_horizontal_scroll(page)
+        shot(page, "assistant-changes-1440-light-tells")
+        inbox_change = {"id": tells["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order the spare probes", "line": line,
+                        "waitReason": "tells", "forPerson": None, "tells": {"id": "jonas", "name": "Jonas Weber"}, "after": said}
+        item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "1 thing waits for you", "detail": "add 1 task",
+                "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+                "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
+                "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "agentName": "Assistant", "summary": "add 1 task", "changes": [inbox_change]}}
+        queue = {"items": [item], "count": 1, "later": 0, "doneToday": 0}
+        page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(queue)))
+        page.goto("/inbox")
+        entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+        expect(entry).to_contain_text(f"Add {said}")
+        expect(entry).to_contain_text("tells Jonas Weber")
+        expect(entry.locator(".nyc__reason")).to_have_text(line)
+        expect(entry).not_to_contain_text("Deleting and other people")
+        shot(page, "assistant-changes-1440-light-inbox-tells")
+
+    def test_10_a_task_for_someone_that_would_tell_a_third_person_shows_both_and_long_words_fold(self) -> None:
+        # #1089 review: a task for Jonas that waits for Maja names both on the card and in the Inbox; long words take three lines and
+        # "Show all", on the computer and the phone.
+        long_words = "Reply with the door code and the alarm code. " * 40
+        for phone in (False, True):
+            page = self.page(phone=phone)
+            proposal = self.proposal("Harmless label task", "Jonas")
+            proposal.update(tells={"id": "maja", "name": "Maja Lind"}, after="“Harmless label task” · Third-person words, ship it now")
+            told = self.change(operation="work.create", objectId=None, objectTitle="Order the spare probes", waitReason="tells", phrase="add task", verb="Add",
+                               line="It would notify Jonas Weber: what tells other people waits for your OK.", tells={"id": "jonas", "name": "Jonas Weber"},
+                               after=f"“Order the spare probes” · {long_words.strip()}", done="added task Order the spare probes")
+            self.stub_changes(page, [proposal, told], [])
+            self.open_conversation(page)
+            both = page.locator(f'[data-change="{proposal["id"]}"]')
+            expect(both).to_contain_text("for Jonas")
+            expect(both.locator(".assistant-waiting__said")).to_contain_text("Maja Lind would read: “Harmless label task” · Third-person words, ship it now")
+            card = page.locator(f'[data-change="{told["id"]}"]')
+            more = card.get_by_role("button", name="Show all", exact=True)
+            expect(more).to_be_visible()
+            folded = card.bounding_box()
+            self.assertIsNotNone(folded)
+            self.assertLess(folded["height"], 400, f"three lines, not the whole text: {folded['height']}")
+            more.click()
+            expect(card.get_by_role("button", name="Show less", exact=True)).to_be_visible()
+            self.assertGreater(card.bounding_box()["height"], folded["height"], "Show all opens every word")
+            self.no_horizontal_scroll(page)
+            shot(page, f"assistant-changes-{'390' if phone else '1440'}-light-tells-both")
+
+            inbox = [{"id": proposal["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Harmless label task", "line": "Tasks for other people wait for your OK.",
+                      "waitReason": "others", "forPerson": {"id": "jonas", "name": "Jonas"}, "tells": {"id": "maja", "name": "Maja Lind"}, "after": proposal["after"]},
+                     {"id": told["id"], "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order the spare probes", "line": told["line"],
+                      "waitReason": "tells", "forPerson": None, "tells": {"id": "jonas", "name": "Jonas Weber"}, "after": told["after"]}]
+            item = {"key": f"assistant:{self.ids['run']}", "kind": "question", "title": "2 things wait for you", "detail": "add 2 tasks",
+                    "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+                    "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
+                    "snoozeTask": None, "assistantChanges": {"runId": self.ids["run"], "agentName": "Assistant", "summary": "add 2 tasks", "changes": inbox}}
+            queue = {"items": [item], "count": 1, "later": 0, "doneToday": 0}
+            body = json.dumps(queue)
+            page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), (lambda payload: lambda route: route.fulfill(status=200, content_type="application/json", body=payload))(body))
+            page.goto("/inbox")
+            entry = page.locator(f'[data-key="assistant:{self.ids["run"]}"]')
+            expect(entry).to_contain_text("Add Harmless label task · “Harmless label task” · Third-person words, ship it now")
+            expect(entry).to_contain_text("tells Maja Lind")
+            expect(entry).to_contain_text("tells Jonas Weber")
+            expect(entry.get_by_role("button", name="Show all", exact=True).last).to_be_visible()
+            box = entry.bounding_box()
+            self.assertIsNotNone(box)
+            self.assertLess(box["height"], 700, f"the Inbox item stays short: {box['height']}")
+            self.no_horizontal_scroll(page)
+            shot(page, f"assistant-changes-{'390' if phone else '1440'}-light-inbox-tells-both")
+
     def test_08_a_page_the_assistant_started_has_undo_and_a_refusal_opens_the_page(self) -> None:
         page = self.page()
         calls: list[tuple[str, str]] = []

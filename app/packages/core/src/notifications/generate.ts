@@ -99,7 +99,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const message = messageId ? await facts.projectMessage(messageId) : null;
       if (!message || message.projectId !== event.objectId) return [];
       const authorId = message.author.kind === 'human' ? message.author.id : null;
-      const people = [...audience].filter((userId) => userId !== authorId && reachable(userId));
+      // A server agent's line tells nobody but its owner, whatever it names (#1089, AG-4); a person's and a local client's lines are as before.
+      const people = [...audience].filter((userId) => userId !== authorId && reachable(userId)
+        && (typeof message.onlyNotifies !== 'string' || userId === message.onlyNotifies));
       const names = await facts.names([...(authorId ? [authorId] : []), ...people]);
       const author = authorId ? names.get(authorId) ?? 'Someone' : `${message.authorName ?? 'Agent'} (agent)`;
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);

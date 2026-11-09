@@ -43,7 +43,11 @@ complicated or different").
   encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
   ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
-  anything and other people's things wait for the person's OK, and the never-list holds (AG-3).
+  anything and other people's things wait for the person's OK, and the never-list holds (AG-3),
+  except posting: a local client is its person's own tool, so it may post in a space's conversations
+  as the person, marked "via Claude Code" or "via Codex" (Hubert, 2026-11-08, [#1089](https://github.com/ColdPhase/flux/issues/1089)).
+  For the same reason a change of its that would notify another person does not wait (AG-3 "Telling
+  another person" holds server agents only).
   Its changes can be taken back (Undo), but only its messages show the change line and Undo in the
   app today; a task, page or map change has none yet, and #868 tracks showing them.
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and

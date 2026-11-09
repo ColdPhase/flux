@@ -50,6 +50,8 @@
 .assistant-waiting__card { padding: 12px 14px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
 .assistant-waiting__what { margin: 0; font-size: var(--fs-md); color: var(--t1); overflow-wrap: anywhere; }
 .assistant-waiting__why, .assistant-waiting__done { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t2); overflow-wrap: anywhere; }
+/* What a `tells` change would send its person (#1089): the owner reads the words before the OK. */
+.assistant-waiting__said { margin: 4px 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--t1); overflow-wrap: anywhere; }
 .assistant-waiting__done { color: var(--t3); }
 .assistant-waiting__list { display: grid; gap: 6px; margin: 8px 0 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
 .assistant-waiting__list > li { display: flex; align-items: center; gap: 8px; min-height: 28px; }

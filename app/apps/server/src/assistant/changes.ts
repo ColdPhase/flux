@@ -86,6 +86,15 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
   if (unit.state === 'stopped') return 'Cancelled';
   return unit.state === 'completed' ? `${recipient} finished it` : `${recipient} started`;
 }
+/** What a waiting `tells` change would send its person (#1089): the task's title and blocker, or the decision's or result's title. */
+function toldWords(row: AssistantChangeRow): string | null {
+  const args = (row.preparedCommand as { args?: Record<string, Record<string, unknown> | undefined> } | null)?.args ?? {};
+  const quoted = (value: unknown) => typeof value === 'string' && value.trim() ? `“${value.trim()}”` : null;
+  const parts = row.tool === 'flux_create_task' ? [quoted(args.task?.title), args.task?.blocker]
+    : row.tool === 'flux_update_task' ? [quoted(args.changes?.title) ?? row.objectTitle, args.changes?.blocker]
+      : row.tool === 'flux_propose_decision' ? [quoted(args.decision?.title)] : row.tool === 'flux_record_result' ? [quoted(args.result?.title)] : [];
+  return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '').join(' · ') || null;
+}
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
 const isThreadLine = (row: AssistantChangeRow) => { const plan = undoOf(row)?.plan; return plan?.kind === 'removal' && plan.thread === true; };
 /** A line an agent put in a task's thread, once its owner deleted it (TA-3, #938): "Removed by Jonas", not an Undo that restores nothing. */
@@ -134,7 +143,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
   }
   /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
   async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
-    const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.decidedBy].filter((id): id is string => !!id)));
+    const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.toldUserId, row.decidedBy].filter((id): id is string => !!id)));
     const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
     const units = await rows().unitStates(list.flatMap((row) => { const plan = undoOf(row)?.plan; return plan?.kind === 'handoff' ? [plan.unitId] : []; }));
@@ -143,14 +152,15 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const words = assistantChangeWords(row.operation, assistantWorkChangeArgs(args.changes ?? {}));
       const phrase = `${words.phrase} ${words.noun}`;
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
+      const tells = row.state === 'waiting' && row.toldUserId ? { id: row.toldUserId, name: names.get(row.toldUserId) ?? '' } : null;
       return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: threadLineRemoved(row, names) ?? (hideState(row) ? null : handoffLine(row, units)) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
           otherName: row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
           decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
-        forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null,
+        forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null, tells,
         done: assistantDoneWords({ operation: row.operation, objectType: row.objectType, objectTitle: row.objectTitle, status: statusOf(row), phrase }),
-        runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
+        runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: tells ? null : undoOf(row)?.before ?? null, after: tells ? toldWords(row) : undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,

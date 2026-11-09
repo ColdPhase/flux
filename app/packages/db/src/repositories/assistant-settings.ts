@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentMayDo, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
@@ -70,6 +70,10 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
     /** The colour a new agent is given: the least used of the owner's own. */
     async nextColour(ownerUserId: string, workspaceId: string): Promise<AgentColour> {
       return nextAgentColour((await rows(ownerUserId, workspaceId)).map((row) => row.s.colour));
+    },
+    async isLocalClient(agentId: string): Promise<boolean> {
+      const [row] = await tx.select({ id: k.id }).from(k).where(and(eq(k.agentId, agentId), ne(k.computeSource, 'owner_assistant'))).limit(1);
+      return Boolean(row);
     },
     /** Gives an agent identity its AI setup and its rights connection, or sets the setup again on an agent that has them. */
     async ensure(ownerUserId: string, workspaceId: string, agentId: string, setup: AgentSetup): Promise<MyAgent> {

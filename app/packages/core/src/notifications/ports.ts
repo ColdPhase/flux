@@ -38,6 +38,12 @@ export interface ProjectMessageFacts {
   earlierAuthors: string[];
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
+  /**
+   * For a line a server agent wrote (an assistant run's blocker or result, a task's report): its owner, the only person it may notify
+   * (#1089, F-036 AG-4: an agent sends no message to another person by itself). The line still shows in the discussion. Absent for a
+   * person's line and for a local client's, which writes as its person (LC-2).
+   */
+  onlyNotifies?: string | null;
 }
 
 export interface DmMessageFacts {
