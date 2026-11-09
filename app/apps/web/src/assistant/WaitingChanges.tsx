@@ -145,7 +145,7 @@ function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
   return (
     <li className="assistant-waiting__card" data-change={change.id}>
       <p className="assistant-waiting__what">{what}</p>
-      {/* What Flux would send the person, before the OK (#1089): the title and blocker, or the decision's or result's title. On a task for
+      {/* What Flux would send the person, before the OK (#1089): the title and blocker, or the decision's title. On a task for
           someone else it names the third person it would tell. Long words take three lines and "Show all". */}
       <ToldWords change={change} />
       {change.line ? <p className="assistant-waiting__why">{change.line}</p> : null}

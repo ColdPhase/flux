@@ -149,7 +149,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   register('cowork.unit.complete').registerTool('flux_complete_unit', {
     title: 'Complete your co-work unit with its outcome',
     description: 'Finish your own unit under your live claim, naming its outcome: one exact native record that exists now (a '
-      + 'result or message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
+      + 'message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
       + 'the task or approve anything. '
       + 'Needs the runtime from flux_bootstrap. '
       + 'unit\'s role.',

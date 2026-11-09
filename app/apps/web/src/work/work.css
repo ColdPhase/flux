@@ -250,7 +250,6 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .message-bubble .ws-attach > .ws-chip::before { grid-column: 2 / 4; grid-row: 1; font-size: var(--fs-glyph); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="work"]::before { content: "Task"; }
 .message-bubble .ws-attach > .ws-chip[data-work-kind="decision"]::before { content: "Decision"; }
-.message-bubble .ws-attach > .ws-chip[data-work-kind="result"]::before { content: "Result"; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num { grid-column: 2; grid-row: 2; color: var(--t1); font-weight: 600; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__t { grid-column: 2 / 4; grid-row: 2; white-space: nowrap; font-weight: 600; }
 .message-bubble .ws-attach > .ws-chip > .ws-chip__num + .ws-chip__t { grid-column: 3; }

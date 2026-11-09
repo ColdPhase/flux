@@ -107,12 +107,12 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     await scene.complete(live.runId);
   });
 
-  test('a decision or result about several people\'s tasks names everyone it would tell on its card (#1102)', async () => {
+  test('a decision about several people\'s tasks names everyone it would tell on its card (#1102)', async () => {
     const outsiders = expectStatus(await scene.outsider.browser.request('POST', `/api/v1/projects/${scene.place.id}/work`,
       { body: { title: 'Mira sorts the cables', owner: { kind: 'human', id: scene.outsider.id } } }), 201) as { id: string };
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'One cable colour', affects: [theirs.id, outsiders.id] } })).message), /^Waiting for /);
-    assert.match(text((await live.call('flux_record_result', { result: { title: 'Cables sorted', finding: 'positive', workIds: [outsiders.id, theirs.id] } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'Cables sorted', affects: [outsiders.id, theirs.id] } })).message), /^Waiting for /);
     const [jonas, mira] = [await nameOf(scene.peer.id), await nameOf(scene.outsider.id)];
     const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
     assert.deepEqual(items.map((item) => [item.tells.map((person) => person.name), item.after, item.line]), [

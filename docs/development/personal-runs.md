@@ -428,7 +428,7 @@ else edited. Nothing that waits ever expires.
   of its thoughts do), and every work path that cites one of them re-checks its targets right after taking the same lock. (A message reference once held the cited message `FOR SHARE` through
   `lockCitable`; messages are no longer citable, #867.) A citation and the
   Undo serialize and the loser is refused (race tests in `assistant-changes.test.ts`). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with
-  Undo]"); a result also tombstones its contribution messages and puts the task it finished back; a map, a decision and a result
+  Undo]"); a map and a decision
   are deleted with the links and notices only they owned. The change row keeps who and when, a hash and length for a message, and
   the event `project.assistant_change_undone.v1` carries ids only. Refused while the workspace's AI is off (F-029, F-030).
   **A page the assistant started** (#1021) is the one exception: it is taken back by the page delete of #941 (`docs.deleteDoc`), as the owner,

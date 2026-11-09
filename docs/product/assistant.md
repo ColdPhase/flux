@@ -218,7 +218,7 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.
-  A line a server agent writes in a task's discussion (its report, a blocker, a result, its
+  A line a server agent writes in a task's discussion (its report, a blocker, what came of the task, its
   question to another agent, C-51) shows there for everyone, but it notifies nobody except the
   agent's owner, whatever it names: no mention, question or reply notification, push or email
   ([#1089](https://github.com/ColdPhase/flux/issues/1089)). A local client writes as its person and

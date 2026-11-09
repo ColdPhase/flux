@@ -74,7 +74,7 @@ names.
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions` | All fields: status, blocker, whether it was dropped and what came of it, owner, who proposed and who accepted, supersession. |
 | `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
-| `links` | Typed links (`source`, `affects`, `about`, `related`, `mentions`) whose two ends are both in the export. |
+| `links` | Typed links (`source`, `affects`, `related`, `mentions`, `part_of`) whose two ends are both in the export. |
 
 ## What is never exported
 
