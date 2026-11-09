@@ -326,7 +326,10 @@ FETCH_RECORDER = """
   const original = window.fetch;
   window.fetch = function (...args) {
     const url = String((args[0] && args[0].url) || args[0]);
-    window.__fetches.push([performance.now(), url]);
+    const at = performance.now();
+    window.__fetches.push([at, url]);
+    // Reads asked for together go as one request (#862, /api/v1/reads?path=…): each counts as asked for at that moment.
+    try { const folded = new URL(url, location.href); if (folded.pathname === '/api/v1/reads') for (const path of folded.searchParams.getAll('path')) window.__fetches.push([at, path]); } catch (e) { /* not a URL */ }
     if (leaving) { try { console.log('started-while-leaving ' + url); } catch (e) { /* the page is going away */ } }
     return original.apply(this, args);
   };

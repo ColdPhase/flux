@@ -12,10 +12,12 @@ export interface FoldedReadAnswer { status: number; body: string }
 export interface FoldedReadsResponse { answers: FoldedReadAnswer[] }
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+// What a space and its conversation read when they open, and where the person left off. The person's own lists that change on their own
+// (the Inbox, the agents' runs and status, the working agents) and a space's task list keep their own requests.
 const FOLDED = [
-  new RegExp(`^/api/v1/projects/${UUID}(?:/(?:people|docs|work-summary|work-associations|work-view|conversation-roots|task-notices|object-notices|materials|agent-questions))?$`),
+  new RegExp(`^/api/v1/projects/${UUID}(?:/(?:people|docs|work-summary|work-associations|conversation-roots|task-notices|object-notices|materials|agent-questions))?$`),
   new RegExp(`^/api/v1/workspaces/${UUID}/(?:members|sketches|work/assigned)$`),
-  /^\/api\/v1\/(?:needs-you|inbox|return|assistant-runs|personal-assistant|agent-chats|working-agents)$/,
+  /^\/api\/v1\/(?:return|agent-chats)$/,
 ];
 
 /** Whether a read is one of those folded: a JSON read of the API named above, with a plain query string and nothing that leaves the API. */
