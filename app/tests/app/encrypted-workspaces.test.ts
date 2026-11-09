@@ -493,4 +493,16 @@ describe('F-030 AI forced off', () => {
     }
     assert.equal(Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count), before, 'no run row anywhere');
   });
+
+  test('a run in a direct message of A is refused because AI is always off there, not by asking for an agent; B reaches its own checks', async () => {
+    const before = Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count);
+    for (const [ws, code] of [[A, 'WORKSPACE_ENCRYPTED_AI_OFF'], [B, 'PERSONAL_RUN_NOT_ENABLED']] as const) {
+      const opened = await ada.browser.request('POST', `/api/v1/workspaces/${ws}/dms`, { body: { participantIds: [cy.id] } });
+      assert.ok([200, 201].includes(opened.status), opened.text);
+      const dm = opened.json as { id: string };
+      const asked = await ada.browser.request('POST', `/api/v1/dms/${dm.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' } });
+      assert.deepEqual([asked.status, codeOf(asked)], [409, code], `${ws === A ? 'sealed A' : 'plain B'}: ${asked.text}`);
+    }
+    assert.equal(Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count), before, 'no run row anywhere');
+  });
 });

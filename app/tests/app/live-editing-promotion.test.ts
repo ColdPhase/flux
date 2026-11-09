@@ -128,7 +128,7 @@ test('normal install live ACK survives off/native refusal, re-enable recovery/Sa
     assert.equal(recovered.body, document.getText('body').toString());
     const saved = expectStatus(await browser.request('POST', `/api/v1/docs/${doc.id}/live/save`, { headers: { 'if-match': '"1"' }, body: {
       clientCommandId: randomUUID(), expectedVersion: 1, generation: recovered.generation, headSequence: recovered.sequence,
-      headHash: recovered.hash, reason: 'Recovered before planned disable' } }), 200) as { savedDoc: Doc };
+      headHash: recovered.hash } }), 200) as { savedDoc: Doc };
     assert.equal(saved.savedDoc.body, recovered.body); assert.equal(saved.savedDoc.version, 2);
     assert.deepEqual(saved.savedDoc.contributors?.map(actor => actor.id), [me.user.id]);
     await server.stop();

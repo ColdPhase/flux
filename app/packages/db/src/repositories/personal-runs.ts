@@ -147,6 +147,11 @@ export function personalRunRows(db: DbExecutor) {
     /** Whether the owner is a guest of the company now: their keys and plan sign-in are kept but not shown (C-50, #1059). */
     ownerIsGuest: (ownerUserId: string) => isCompanyGuest(db, ownerUserId),
 
+    async workspaceEncrypted(workspaceId: string) {
+      const [row] = await db.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.encrypted === true;
+    },
+
     /** Working runs (any kind) and the owner's own queued requests: at most one of each (AST-6 queue). Queued background runs have their own limit. */
     async inFlightCount(ownerUserId: string) {
       const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(r).where(and(eq(r.ownerUserId, ownerUserId),

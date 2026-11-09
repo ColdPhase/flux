@@ -79,13 +79,16 @@ test('editing a thought an unused AI-created task links to keeps Undo; a decisio
   assert.equal(used.undo?.reason, 'task_used');
 });
 
-/** The GitHub provider seam with one private repository the owner reaches: no vendor account, network or spend. */
+/**
+ * The GitHub provider seam with one private repository the owner reaches: no vendor account, network or spend. Its App id is this file's
+ * own: a webhook in github.test.ts, running alongside on the same database, is admitted to every active binding of its App's repository.
+ */
 class OnePull implements GithubProvider {
   constructor(readonly ownerId: string, readonly generation = randomUUID()) {}
   async repository(principal: Principal, installationId: string, repositoryId: string) {
     if (principal.id !== this.ownerId || installationId !== '555' || repositoryId !== '777') throw new NotFoundError('Repository', 'GITHUB_ACCESS_UNAVAILABLE');
     return { host: 'github.com' as const, installationId, repositoryId, owner: 'fixture', name: 'lamp', private: true, url: 'https://github.com/fixture/lamp',
-      githubUserId: '999', appId: '12345', authorizationGeneration: this.generation };
+      githubUserId: '999', appId: '13579', authorizationGeneration: this.generation };
   }
   async pull(principal: Principal, repository: { repositoryId: string }, number: number): Promise<GithubPullFacts> {
     await this.repository(principal, '555', repository.repositoryId);

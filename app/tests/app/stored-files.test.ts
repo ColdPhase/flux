@@ -165,7 +165,8 @@ test('files-only roots, ordinary replies and task replies retain exact order and
   assert.deepEqual(discussion.root, root);
   assert.deepEqual(discussion.messages, [root]);
   const roots = expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.place.id}/conversation-roots`), 200) as ConversationRootWindow;
-  assert.deepEqual(roots.roots.find((item) => item.message.id === root.id)?.message, root, 'stream root has the same ordered stored files');
+  // A task's discussion lives in the task, not among the stream's roots (#868, #1048).
+  assert.equal(roots.roots.some((item) => item.message.id === root.id || item.conversationId === root.conversationId), false);
   assert.deepEqual(roots.roots.find((item) => item.message.id === started.messages[0]!.id)?.message.files, started.messages[0]!.files);
   assert.deepEqual(expectStatus(await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand }), 201), root);
   await removeFromSpace(f.owner, f.place.id, f.writer);

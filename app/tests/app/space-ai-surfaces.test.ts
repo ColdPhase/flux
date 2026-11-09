@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import type { PgBoss } from 'pg-boss';
-import { assistantChangeActionPath, assistantRunChangesActionPath } from '@flux/contracts';
+import { assistantRunChangesActionPath, assistantRunShowPath } from '@flux/contracts';
 import { deliverNotificationEmail, type NotificationMailer } from '@flux/core';
 import { coworkUnitRows, pushDeliveryRepository } from '@flux/db';
 import { emailUnitOfWork } from '../../apps/worker/src/notifications/adapters.js';
@@ -133,15 +133,13 @@ describe('space AI switch: the remaining surfaces', () => {
 
   test('an idempotent replay of a gated command is refused while AI is off', async () => {
     const key = randomUUID();
-    // A change the assistant left waiting (deleting always waits): its owner skips it with an Idempotency-Key.
-    const page = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/docs`, { body: { title: 'Page to keep', body: 'Text' } }), 201) as { id: string; version: number };
+    // A finished run's private answer: its asker shows it to everyone with an Idempotency-Key. Show everyone is gated by the space's
+    // switch (AG-10) and stores its response; skipping a waiting change, which #1108 put here, is exempt and stores none.
     const run = await scene.liveRun();
-    assert.match(text((await run.call('flux_delete_doc', { docId: page.id, expectedVersion: page.version })).message), /^Waiting for /);
     await scene.complete(run.runId);
-    const [change] = await changesOf(run.runId);
-    const ask = () => scene.owner.browser.request('POST', assistantChangeActionPath(change!.id, 'skip'), { body: { expectedVersion: change!.version }, headers: { 'idempotency-key': key } });
+    const ask = () => scene.owner.browser.request('POST', assistantRunShowPath(run.runId), { headers: { 'idempotency-key': key } });
     const first = await ask();
-    assert.equal(first.status, 200, `the change is skipped with an Idempotency-Key: ${first.text}`);
+    assert.equal(first.status, 200, `the answer is shown with an Idempotency-Key: ${first.text}`);
     await setSpaceAi(scene.place.id, 'blocked');
     const replay = await ask();
     assert.deepEqual([replay.status, code(replay.json)], [403, 'SPACE_AI_OFF']);

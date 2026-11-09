@@ -196,6 +196,8 @@ const scenes: { assertBound(): void }[] = [];
 const verifyBindings = () => afterEach(() => { for (const made of scenes.splice(0)) made.assertBound(); });
 
 const EVENT_LAST = ['events.candidates', 'events.insert'];
+/** A removal is also told to the person it removed, by name, after the space's or company's own event (#862, #1036). */
+const AND_ACCESS_ENDED = [...EVENT_LAST, 'events.insert'];
 
 describe('workspace and membership use cases over in-memory repositories', () => {
   verifyBindings();
@@ -267,12 +269,12 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('removeMember: a person leaving needs only workspace.read; the same locks; the event last', async () => {
     const s = scene({ role: 'guest', targetRole: 'guest' });
     await removeMember(human(TARGET), WS, TARGET, s.db, s.ports);
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...AND_ACCESS_ENDED, 'commit']);
     // S2c: an owner or admin removed from a sealed workspace: the key row first, the password dropped, the removal pinned.
     const sealed = scene({ sealed: true, targetRole: 'admin' });
     await removeMember(human(OWNER), WS, TARGET, sealed.db, sealed.ports);
     assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'workspaces.lock',
-      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'workspaces.recordRemoved', 'encryption.recordRemovals', ...EVENT_LAST, 'commit']);
+      'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'workspaces.recordRemoved', 'encryption.recordRemovals', ...AND_ACCESS_ENDED, 'commit']);
     const other = scene({ role: 'guest', targetRole: 'member' });
     await assert.rejects(removeMember(human(OWNER), WS, TARGET, other.db, other.ports), ForbiddenError, 'a guest cannot remove someone else');
   });
@@ -359,7 +361,7 @@ describe('grant and agent use cases over in-memory repositories', () => {
     const s = scene();
     await revokeProjectGrant(human(OWNER), PROJECT, GRANT, s.db, s.ports);
     assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', 'access.locateProject', 'access.loadActor(lock)', 'access.lockProjectAccess', 'access.readProject', 'projects.lockGrant',
-      'projects.deleteGrant', ...EVENT_LAST, 'commit']);
+      'projects.deleteGrant', ...AND_ACCESS_ENDED, 'commit']);
   });
 
   test('createAgent: the actor under lock, the insert, the event last; an agent belongs to its person, so no space\'s switch is read', async () => {
@@ -437,7 +439,7 @@ describe('the remaining mutations, and the check that every port is bound to its
   test('leaveProject: the caller\'s own grant goes; a space keeps an admin; someone who was never added has nothing to leave; nobody leaves Everyone', async () => {
     const member = scene({ grantRole: 'contributor', visibility: 'restricted' });
     await leaveProject(human(OWNER), PROJECT, member.db, member.ports);
-    assert.deepEqual(member.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.lockGrantOf', 'projects.deleteGrant', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(member.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.lockGrantOf', 'projects.deleteGrant', ...AND_ACCESS_ENDED, 'commit']);
     const spare = scene({ grantRole: 'manager', admins: 2, visibility: 'restricted' });
     await leaveProject(human(OWNER), PROJECT, spare.db, spare.ports);
     assert.ok(spare.calls.includes('projects.deleteGrant'), 'an admin leaves when another admin stays');

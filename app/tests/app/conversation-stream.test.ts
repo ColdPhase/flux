@@ -101,7 +101,9 @@ test('conversation and material commits reach only current project readers throu
     const revokedReplay = await StreamClient.connect(partner.browser, { cursor: partnerReady.cursor });
     try {
       await revokedReplay.ready();
-      assert.equal(revokedReplay.events.some((event) => event.objectId === project.id), false, 'replay rechecks current access');
+      // Replay rechecks current access: nothing of the space reaches them, only the end of their access, told to them by name (#862, #1036).
+      assert.deepEqual(revokedReplay.events.filter((event) => event.objectId === project.id).map((event) => event.kind), ['project.access_ended.v1'],
+        'replay rechecks current access');
     } finally { await revokedReplay.close(); }
     assert.equal((await partner.browser.request('GET', `/api/v1/conversations/${thread.id}`)).status, 404);
     await post(owner.browser, `/api/v1/conversations/${thread.id}/messages`, { body: 'After revocation', clientMessageId: randomUUID() });
