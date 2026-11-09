@@ -7,8 +7,8 @@ const plain = (value: string) => value.normalize('NFD').replace(/\p{M}/gu, '').t
 
 /**
  * The person a task tool names (#1160): the task's owner or who it waits for, by their name as Flux shows it or by their user id, among the
- * people of the space (its People list, which the Owner field offers). A full name first, then one word of a name ("Bogdan" or
- * "Wiśniewski"), without case or accents. More than one fitting is refused with their names; nobody fitting is refused in the same words
+ * people of the space (its People list, which the Owner field offers). A full name, or one word of a name ("Bogdan" or "Wiśniewski"),
+ * without case or accents. More than one person fitting either way is refused with their names; nobody fitting is refused in the same words
  * whether or not such a person exists outside the space, so the answer names nobody the owner could not see there. It is read under the
  * same checks as every read (the owner's rights now, the run's place, the space's AI switch), before the change is prepared, and the change
  * keeps the id: the owner's Approve applies it to exactly that person.
@@ -19,8 +19,8 @@ export async function spacePerson(db: Database, claims: FluxMcpClaims, projectId
     const exact = people.find((person) => person.id === given.trim());
     if (exact) return exact.id;
     const wanted = plain(given);
-    const full = people.filter((person) => plain(person.name) === wanted);
-    const fits = full.length ? full : people.filter((person) => plain(person.name).split(' ').includes(wanted));
+    // A full name and one word of another person's name fit alike (#1163): "Bogdan" is ambiguous between "Bogdan" and "Bogdan Wiśniewski".
+    const fits = people.filter((person) => plain(person.name) === wanted || plain(person.name).split(' ').includes(wanted));
     if (fits.length === 1) return fits[0]!.id;
     if (fits.length > 1) throw new ConflictError(`More than one person in this space fits "${given}": ${fits.map((person) => `${person.name} (id ${person.id})`).join(', ')}. `
       + 'Give the full name, or the id.', 'PERSON_AMBIGUOUS');

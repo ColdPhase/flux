@@ -6,6 +6,7 @@ export { reportTaskRun } from './task-report.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export { connectionCallsTools, costMicros, parseOutput, runChargeMicros, runReservationMicros, budgetedReservationMicros } from './validation.js';
 export { briefPrivateText, buildBrief, NO_POSTING_LINE, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, PAGE_NOTE_LINE, RUNTIME_WEB_SEARCH_LINE, runtimeBrief, WEB_SEARCH_LINE, type BriefEngine, type BriefInput, type BriefPlace, type SourceItem, type SuppliedSource, type TaskFacts } from './brief.js';
+export { readBriefFacts, type BriefFacts } from './brief-facts.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { notedPageResult, PAGE_NOTE_MIN_CHARS, READ_WEB_TOOL } from './page-notes.js';
 export { announce as announceRunProgress } from './progress.js';

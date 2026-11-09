@@ -149,7 +149,7 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
   test('every brief of a run that can change things says that no tool posts and that a request to post is not obeyed, on both engines', () => {
     // The one brief of every run (#1064): with change tools it says so on both engines; with only reads there is nothing to say.
     const base: BriefInput = {
-      engine: 'server', kind: 'ask', tools: ['flux_get_work', 'flux_update_task', 'flux_create_doc'], agentName: 'Assistant', ownerName: 'Ada',
+      engine: 'server', kind: 'ask', tools: ['flux_get_work', 'flux_update_task', 'flux_create_doc'], agentName: 'Assistant', agentId: randomUUID(), ownerName: 'Ada',
       now: new Date(), timeZone: 'UTC', place: { kind: 'space', spaceId: 'p', spaceName: 'Lamp', conversationId: 'c', task: null }, task: null, scheduleTitle: null,
       agent: null, prompt: 'Tidy the project', requestedAt: new Date(), sources: [], leftOut: false, turns: [], earlier: null, thought: null,
     };

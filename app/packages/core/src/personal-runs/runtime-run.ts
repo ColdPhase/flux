@@ -156,7 +156,7 @@ async function runtimeContext(ports: PersonalRunPorts, run: RunRecord): Promise<
 function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext {
   return {
     brief, sources: [], leftOut: false, turns: [],
-    facts: { ownerName: 'your owner', agentName: brief?.name ?? 'Assistant', timeZone: 'UTC', task: null, scheduleTitle: null,
+    facts: { ownerName: 'your owner', agentName: brief?.name ?? 'Assistant', agentId: run.agentId, namesake: false, timeZone: 'UTC', task: null, scheduleTitle: null,
       place: run.projectId !== null ? { kind: 'space', spaceId: run.projectId, spaceName: null, conversationId: run.conversationId, task: null }
         : run.dmId !== null ? { kind: 'dm', others: [], thread: run.dmThreadRootId !== null } : { kind: 'chat' } },
   };

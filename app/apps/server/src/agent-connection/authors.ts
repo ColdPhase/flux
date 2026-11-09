@@ -1,13 +1,13 @@
 import type { ConversationMessage } from '@flux/contracts';
-import { authorLabel, evaluateProject } from '@flux/core';
-import { accessReader, schema, type Executor } from '@flux/db';
+import { authorLabel, evaluateProject, firstName, sharedFirstNames } from '@flux/core';
+import { accessReader, personalRunRows, schema, type Executor } from '@flux/db';
 import { inArray } from 'drizzle-orm';
 import { projectAuthorOwners } from '../conversation/author-owners.js';
 
 // Who wrote what, as people see it, in what the Flux tools return to an agent (#1160). A reading agent is told a person's name only when that
-// person can read the space now, which is what everyone who reads the space sees in its People list, a guest of it too (so an answer posted
-// with Show everyone names nobody its readers could not see), and an agent's owner by the same rule (`projectAuthorOwners`). A person who
-// left the company or the space is a former member, as the space's own views show them (#763 XC-2). The ids stay, for the tools that take them.
+// person can read the space now (`project.read`: its people, and the company's owners and admins, who reach every space), which is no more
+// than a member of the space sees named there, and an agent's owner by the same rule (`projectAuthorOwners`). A person who left the company
+// or the space is a former member, as the space's own views show them (#763 XC-2). The ids stay, for the tools that take them.
 
 /** The agent a read names (a message's author, a task's owner or creator, a conversation's starter): `{kind: 'agent', id, name}`. */
 type AgentRef = { kind: 'agent'; id: string; name?: string; projectOwner?: unknown };
@@ -51,7 +51,8 @@ export async function spaceReadersNamed(db: Executor, projectId: string, ids: It
 
 /**
  * Every agent a read names, named as Flux labels it: "Assistant (Ada's agent)", so that two people's agents of the same name, and another
- * person's agent and the reader itself, are never mistaken for each other (#1160). An agent whose owner cannot read the space now is
+ * person's agent and the reader itself, are never mistaken for each other (#1160); "Assistant (Ada Nowak's agent)" when someone else who can
+ * read the space is called Ada too (#1163), as the reader's brief names its own. An agent whose owner cannot read the space now is
  * "Assistant (a former member's agent)".
  */
 export async function withAgentLabels<T>(db: Executor, projectId: string, workspaceId: string, value: T): Promise<T> {
@@ -63,7 +64,13 @@ export async function withAgentLabels<T>(db: Executor, projectId: string, worksp
   for (let start = 0; start < ids.length; start += 100)
     for (const [agentId, owner] of await projectAuthorOwners(db, projectId, workspaceId, ids.slice(start, start + 100))) owners.set(agentId, owner.id);
   const names = await userNames(db, [...owners.values()]);
-  const labels = new Map([...agents].map(([id, name]) => [id, authorLabel({ kind: 'agent', name, ownerName: names.get(owners.get(id) ?? '') ?? null })]));
+  // Who else that can read the space shares an owner's first name (#1163), the rule the brief's `namesakesIn` follows.
+  const readers = [];
+  for (const person of await personalRunRows(db).namesakes(workspaceId, [...names.values()].map(firstName)))
+    if ((await evaluateProject({ kind: 'human', id: person.id }, 'project.read', projectId, accessReader(db))).allowed) readers.push(person);
+  const full = sharedFirstNames([...new Map([...[...names].map(([id, name]) => ({ id, name })), ...readers].map((person) => [person.id, person])).values()]);
+  const labels = new Map([...agents].map(([id, name]) => [id, authorLabel({ kind: 'agent', name, ownerName: names.get(owners.get(id) ?? '') ?? null,
+    full: full.has(owners.get(id) ?? '') })]));
   return relabelled(value, labels) as T;
 }
 
