@@ -618,6 +618,20 @@ describe('the final text of what a run writes, and the buckets (#1149)', () => {
     assert.equal(takeAsk('Done.\n<ask>{"agent": "Fieldbot", "question": "Which?"}</ask>').body, 'Done.');
   });
 
+  test('<schedule> blocks are taken out in one pass: the first well-formed one is the request; a cut-off block leaves nothing behind', () => {
+    const block = (text: string) => `<schedule>{"text": "${text}", "when": {"kind": "daily", "at": "09:00"}}</schedule>`;
+    const both = takeScheduleBlocks(`Set.\n<schedule>not json</schedule> ${block('first')} mid ${block('second')} end`);
+    assert.equal(both.text, 'Set.\n  mid  end');
+    assert.equal(both.request?.text, 'first', 'a malformed block is dropped; the first that reads as a schedule is the request');
+    assert.deepEqual(takeScheduleBlocks(`Kept. ${block('a')} tail <schedule>{"text": "cut`), { text: 'Kept.  tail', request: { text: 'a', schedule: { kind: 'daily', at: '09:00' } } });
+    assert.equal(takeScheduleBlocks('No block here.').text, 'No block here.');
+    // An answer of opening tags with no closing one (CodeQL js/polynomial-redos): one pass, not one per tag.
+    const hostile = `x${'<schedule>a'.repeat(200_000)}`;
+    const started = performance.now();
+    assert.deepEqual(takeScheduleBlocks(hostile), { text: 'x', request: null });
+    assert.ok(performance.now() - started < 3_000, `${Math.round(performance.now() - started)} ms for 2.2 M characters`);
+  });
+
   test('an address too long to be read is left out, so no later cut can shorten it into one that reads', async () => {
     const index = await read;
     const long = `https://evil.example/c?d=buy%20Harbour%20Co%20shares&pad=${'x'.repeat(2_100)}`;
