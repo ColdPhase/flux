@@ -3,6 +3,7 @@ import { isIPv6 } from 'node:net';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { RateLimitedError } from '@flux/core';
 import { sessionCookieName, sessionCookieToken } from '../identity/session-cookie.js';
+import { isRouted, type RoutedRequest } from './routed-path.js';
 
 /**
  * One limit on how fast anyone may call the API (#838, CodeQL `js/missing-rate-limiting`). Sign-in, sign-up and the routes that send
@@ -16,9 +17,11 @@ import { sessionCookieName, sessionCookieToken } from '../identity/session-cooki
  *   the session cookie Better Auth reads (read here the way it reads it: only its name, the first one of that name, trimmed and decoded),
  *   accepted by `requirePrincipal` with the token of the session that cookie resolved to, or the bearer of `/mcp`, accepted once the route
  *   answered it with anything but a 401. A made-up one is never accepted, and nothing else a request carries (another cookie, an
- *   `Authorization` header outside `/mcp`) can get a key accepted. An answer of 401 takes the budget away again, so a session that was signed
- *   out, revoked or expired is back with the address after one more request. The one thing this does not bound is the number of sessions a
- *   person can open (each is a sign-in, and sign-in has its own limits);
+ *   `Authorization` header outside `/mcp`) can get a key accepted. An answer of 401 takes the budget away again: signing out does not (a
+ *   signed-out session keeps its budget until its next request is answered 401, as does a revoked or an expired one), and from that
+ *   request on it is back with the address. The one thing this does not bound is the number of credentials a person can obtain: each
+ *   session is a sign-in (which has its own limits) and each `/mcp` token is one minted through an OAuth consent, and every one of them
+ *   has a budget of its own;
  * - per address, for requests that carry no credential: 600;
  * - per address, credentials not accepted yet: 1,200 requests a minute, each request counted. A flood of made-up credentials from one
  *   place is this count and nothing more, yet people behind one address are not limited together: a person is charged to the address
@@ -30,8 +33,10 @@ import { sessionCookieName, sessionCookieToken } from '../identity/session-cooki
  * every request comes from the proxy and everyone shares the two per-address budgets (docs/operations/reverse-proxy.md).
  * Memory is bounded: expired windows are dropped as the table grows and, past `maxKeys`, the oldest go first.
  *
- * Only API traffic counts (`/api/`, `/mcp`, `/health`, `/.well-known/`); the web app's own files do not. `FLUX_AUTH_RATE_LIMIT=false`
- * switches this off along with the sign-in limit (the test stacks do; a deployment never should).
+ * Only API traffic counts (`/api/`, `/mcp`, `/health`, `/.well-known/`); the web app's own files do not. What is API traffic is decided from
+ * what the router decided (the route that answers the request and its decoded path, `routed-path.ts`), never from the raw URL: the router
+ * decodes `/%61pi` and `/%6dcp` into `/api` and `/mcp` (#1047). `FLUX_AUTH_RATE_LIMIT=false` switches this off along with the sign-in
+ * limit (the test stacks do; a deployment never should).
  */
 export const API_RATE_LIMIT = { credentialPerMinute: 1_200, anonymousPerMinute: 600, newCredentialsPerMinute: 1_200, windowMs: 60_000, maxKeys: 50_000 } as const;
 
@@ -84,8 +89,8 @@ function bearerToken(authorization: string): string | null {
  * depends on the route, because that is what the route reads: `/mcp` takes the bearer of the `Authorization` header and ignores cookies,
  * every other route takes the session cookie Better Auth reads and ignores the header.
  */
-export function credentialOf(request: Pick<FastifyRequest, 'headers' | 'url'>, sessionCookie: string = sessionCookieName(false)): Credential | null {
-  if (MCP.test(request.url.split('?', 1)[0]!)) {
+export function credentialOf(request: Pick<FastifyRequest, 'headers'> & RoutedRequest, sessionCookie: string = sessionCookieName(false)): Credential | null {
+  if (isRouted(request, MCP)) {
     const authorization = request.headers.authorization;
     const token = typeof authorization === 'string' ? bearerToken(authorization) : null;
     return token ? { kind: 'bearer', key: hash(`a:${token}`) } : null;
@@ -163,7 +168,7 @@ export function useApiRateLimit(app: FastifyInstance, options: ApiRateLimitOptio
   };
 
   app.addHook('onRequest', async (request, reply) => {
-    if (!COUNTED.test(request.url.split('?', 1)[0]!)) return;
+    if (!isRouted(request, COUNTED)) return;
     const at = now();
     const credential = credentialOf(request, sessionCookie);
     const address = addressKey(request.ip);

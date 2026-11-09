@@ -81,6 +81,7 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 import { useApiRateLimit } from './http/rate-limit.js';
+import { isRouted, originFormTarget } from './http/routed-path.js';
 import { sessionCookieName } from './identity/session-cookie.js';
 import { useSecurityHeaders } from './http/security-headers.js';
 
@@ -112,7 +113,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
   // F-030: the request serializer drops query strings (a search text is content); bodies are never logged.
-  const app = Fastify({ logger: { serializers: { req: requestLogSerializer }, redact: SECRET_LOG_PATHS }, genReqId: createRequestIdGenerator(), trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
+  // `rewriteUrl`: a request in absolute-form (`GET http://host/api/v1/x`, which a server must accept) is routed, counted and answered as the
+  // origin-form request it is, so no handler (the file handler among them) reads a scheme and a host as part of the path (#1047).
+  const app = Fastify({ logger: { serializers: { req: requestLogSerializer }, redact: SECRET_LOG_PATHS }, genReqId: createRequestIdGenerator(), rewriteUrl: (request) => originFormTarget(request.url ?? '/'), trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
   // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
   useDomainErrors(app);
   // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,
@@ -340,7 +343,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const documentPolicies = loadDocumentPolicies(webRoot, identityConfig.publicOrigin, collectCspReports ? { reportUri: CSP_REPORT_PATH, allowEval: config.fixture.cspEval } : undefined);
   await fastifyStatic(app, { root: webRoot, prefix: '/', cacheControl: false, setHeaders: staticHeaders(documentPolicies), preCompressed: true });
   app.setNotFoundHandler(async (request, reply) => {
-    if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
+    if (isRouted(request, '/api/')) return reply.code(404).send({ error: 'Not Found' });
     if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });
     return reply.sendFile('index.html');
   });

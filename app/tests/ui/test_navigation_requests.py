@@ -130,7 +130,8 @@ class NavigationRequests(unittest.TestCase):
         page.wait_for_timeout(1500)
         return page
 
-    def test_02_navigations_stay_within_the_target_and_repeat_nothing(self) -> None:
+    def test_02_navigations_stay_within_their_recorded_budget(self) -> None:
+        # The budget is what each navigation costs today, not yet the target: the ones above TARGET are printed in the output and wait for the data layer.
         page = self.warm_page()
         places = page.get_by_role("navigation", name="Places")
         project = self.ids["project"]
@@ -161,7 +162,7 @@ class NavigationRequests(unittest.TestCase):
             allowed, allowed_repeats = BUDGET[name]
             if count > allowed or len(repeated) > allowed_repeats:
                 failures.append(f"{name}: {count} requests (at most {allowed}), repeated {', '.join(repeated) or 'nothing'} (at most {allowed_repeats} addresses)")
-        self.assertEqual(failures, [], "a navigation costs no more than it did when this budget was set (#850; the target is %d and none repeated)" % TARGET)
+        self.assertEqual(failures, [], "a navigation costs no more than the budget recorded for it (#850); the target it is heading for is %d requests and none repeated" % TARGET)
 
 
 if __name__ == "__main__":

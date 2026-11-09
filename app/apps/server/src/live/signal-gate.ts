@@ -4,6 +4,7 @@ import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { TokenVerifier } from 'livekit-server-sdk';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
 import type { Principal } from '@flux/core';
+import { upgradePath } from '../http/routed-path.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { MediaSocketRegistry } from './admission-revocation.js';
 import type { LiveAdmission, LiveAdmissionStore, RevokedAdmission } from './admissions.js';
@@ -160,9 +161,12 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
   }
 
   const pathOf = (url: string | undefined) => {
-    const parsed = new URL(url ?? '/', 'http://gate.invalid');
-    if (!parsed.pathname.startsWith(`${MEDIA_GATE_PATH}/`)) return null;
-    return { path: parsed.pathname.slice(MEDIA_GATE_PATH.length), query: parsed.search.slice(1), params: parsed.searchParams };
+    // The path the router reads: `/%6dedia/rtc` is `/media/rtc` to Fastify, so it is to the gate (#1047).
+    let parsed: URL;
+    try { parsed = new URL(url ?? '/', 'http://gate.invalid'); } catch { return null; }
+    const path = upgradePath(url);
+    if (path === null || !path.startsWith(`${MEDIA_GATE_PATH}/`)) return null;
+    return { path: path.slice(MEDIA_GATE_PATH.length), query: parsed.search.slice(1), params: parsed.searchParams };
   };
 
   return {
@@ -193,7 +197,8 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
         app.get(`${MEDIA_GATE_PATH}${path}`, async (request, reply) => {
           const origin = request.headers.origin;
           if (origin !== undefined && origin !== options.publicOrigin) return reply.code(403).type('text/plain').send('Forbidden');
-          const target = pathOf(request.url)!;
+          const target = pathOf(request.url);
+          if (!target) return reply.code(400).type('text/plain').send('Bad Request');
           const decision = await decide(request.headers, target.params);
           // 401 is final for the LiveKit client; it does not fall back to the v0 path or retry.
           if (!decision.admitted) return reply.code(401).type('text/plain').send('Media admission denied');

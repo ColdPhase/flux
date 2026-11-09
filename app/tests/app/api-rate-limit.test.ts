@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { Agent, request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { after, before, test } from 'node:test';
 import type { FastifyInstance } from 'fastify';
 import { AUTH_SIGN_OUT_PATH } from '@flux/contracts';
@@ -166,5 +168,92 @@ test('over https the prefixed cookie is the one that is read and accepted, and a
     assert.equal((await meAs(`__Secure-flux.session_token=junk-2.${randomUUID()}; ${person}`, '10.24.0.3', {}, secure)).statusCode, 429, 'a decoy of the name that is read is the cookie that is read: a made-up session, the address\'s count');
   } finally {
     await secure.close();
+  }
+});
+
+// What counts is what the router matched, not the raw URL (#1047): the router percent-decodes the path before it matches a route, so
+// `/%61pi/v1/me` ran `/api/v1/me` and `/%6dcp` ran `/mcp` with no count at all (700 anonymous requests, all answered; 1,300 made-up cookies, never
+// a 429). The requests go over a real socket so the path stays as a client writes it (`inject` would resolve dot segments and drop a fragment),
+// from a trusted proxy's point of view, so that each spelling has an address of its own to spend.
+test('an encoded path runs the same route and has the same budget: /%61pi, /%6dcp, mixed case, a fragment, a dot segment, double encoding (#1047)', { timeout: 300_000 }, async () => {
+  const proxied = await buildApp(loadServerConfig({ ...env, FLUX_TRUSTED_PROXIES: '127.0.0.1' }, '/nonexistent/flux_background_key'));
+  const agent = new Agent({ keepAlive: true, maxSockets: 1 });
+  try {
+    await proxied.listen({ host: '127.0.0.1', port: 0 });
+    const { port } = proxied.server.address() as AddressInfo;
+    let clients = 0;
+    /** The next client address, as a proxy in front would report it. */
+    const nextClient = () => { clients += 1; return `10.82.${clients >> 8}.${clients & 255}`; };
+    /** One GET with the path as written; `from` is the client address the proxy reports. */
+    const wire = (path: string, from: string, headers: Record<string, string> = {}) => new Promise<{ statusCode: number; type: string }>((resolve, reject) => {
+      const outgoing = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', agent, headers: { 'x-forwarded-for': from, ...headers } }, (response) => {
+        response.resume();
+        response.on('end', () => resolve({ statusCode: response.statusCode ?? 0, type: String(response.headers['content-type'] ?? '') }));
+      });
+      outgoing.on('error', reject);
+      outgoing.end();
+    });
+    const answer = async (path: string) => (await wire(path, nextClient())).statusCode;
+    const budget = API_RATE_LIMIT.anonymousPerMinute;
+    /** `path` answers `status` until the address's budget is spent, then 429. */
+    const spends = async (path: string, status: number) => {
+      const from = nextClient();
+      assert.deepEqual(await tally(budget + 3, () => wire(path, from)), [[status, budget], [429, 3]], path);
+    };
+
+    // The route's answer with the plain spelling is what every spelling of it must give, and then the same 429.
+    const routes: [plain: string, spellings: string[]][] = [
+      ['/api/v1/auth/capabilities', ['/%61pi/v1/auth/capabilities', '/%61%70%69/v1/auth/capabilities', '/api/v1/auth/capabi%6Cities', '/api/v1/auth/capabi%6cities',
+        '/%61pi/v1/auth/capabilities?x=1', '/api/v1/auth/capabilities#fragment', '/api/v1/auth/capabilities?x=1#y',
+        // Not origin-form: absolute-form is the request it names, and the router skips a first character that is not `/` (`*api/…`).
+        'http://example.test/api/v1/auth/capabilities', 'HTTP://example.test/%61pi/v1/auth/capabilities?x=1', '*api/v1/auth/capabilities', '*%61pi/v1/auth/capabilities']],
+      ['/api/v1/health', ['/api/v1/%68ealth']],
+      ['/mcp', ['/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p?x=1', 'http://example.test/%6dcp', '*mcp', '*%6dcp']],
+    ];
+    for (const [plain, spellings] of routes) {
+      const status = await answer(plain);
+      assert.notEqual(status, 429, `${plain} answers ${status}`);
+      await spends(plain, status);
+      for (const spelling of spellings) {
+        assert.equal(await answer(spelling), status, `${spelling} is the same route as ${plain}`);
+        await spends(spelling, status);
+      }
+    }
+    // (The discovery routes under /.well-known are answered by the Better Auth catch-all, which keeps a limit of its own and does not know an
+    // escaped spelling of a path: their count is in api-rate-limit-core.test.ts.)
+    // No API route answers these, and the router reads each as an /api/ path, /health or /mcp: counted as `/api/nope` is, whatever answers (the
+    // web app's file handler refuses a dot segment with a 403).
+    for (const path of ['/api/v1/nope', '/%61pi/v1/nope', '/api/v1/%2e%2e/v1/auth/capabilities', '/api/v1/./auth/capabilities', '/api/v1/auth/capabilities/',
+      '/api/v1/auth%2Fcapabilities', '/%68ealth', '/health', '/%6dcp/x', 'http://example.test/api/v1/nope', '*api/v1/nope', '*%61pi/v1/nope']) {
+      const status = await answer(path);
+      assert.ok(status === 403 || status === 404, `${path} runs no API route (${status})`);
+      await spends(path, status);
+    }
+    // An API 404 is JSON however the target is written, never the app shell.
+    for (const path of ['/api/v1/nope', '/%61pi/v1/nope', 'http://example.test/api/v1/nope', 'HTTP://example.test/%61pi/v1/nope', '*api/v1/nope', '*%61pi/v1/nope']) {
+      const answered = await wire(path, nextClient(), { accept: 'text/html' });
+      assert.equal(answered.statusCode, 404, path);
+      assert.match(answered.type, /^application\/json/, `${path}: an API 404 is JSON`);
+    }
+    // Made-up bearers on /mcp are the address's count for credentials not accepted yet (1,200); on a misread /%6dcp they would each be an
+    // anonymous request with no credential (600) or nothing at all.
+    for (const path of ['/mcp', '/%6dcp', '/%6Dcp', '/mcp#x']) {
+      const from = nextClient();
+      const answers = await tally(API_RATE_LIMIT.newCredentialsPerMinute + 3, (n) => wire(path, from, { authorization: `Bearer junk-${n}.${randomUUID()}` }));
+      assert.deepEqual(answers, [[401, API_RATE_LIMIT.newCredentialsPerMinute], [429, 3]], path);
+    }
+    // Written one way or another, a session is the same session; and a path the router does not read as /api/ never runs an API route.
+    const person = await signUp('Limit Encoded', '10.83.0.1', proxied);
+    const from = nextClient();
+    assert.equal((await wire('/api/v1/me', from, { cookie: person })).statusCode, 200);
+    assert.equal((await wire('/%61pi/v1/me', from, { cookie: person })).statusCode, 200, 'the single encoding runs the route');
+    for (const path of ['/%2561pi/v1/me', '/%2561%70%69/v1/me', '/api%2Fv1/me', '/api%2fv1/me', '//api/v1/me', '/API/v1/me', '/%41pi/v1/me', '/%2e%2e/api/v1/me', '/./api/v1/me', '/%2f%61pi/v1/me', '/x/%61pi/v1/me']) {
+      // The web app's file handler answers these: a 404, or a 403 where the path has a dot segment or `//`. Never the API route's 200.
+      const status = (await wire(path, from, { cookie: person })).statusCode;
+      assert.ok(status === 403 || status === 404, `${path} runs no route, even for a signed-in person (${status})`);
+    }
+  } finally {
+    agent.destroy();
+    await proxied.close();
   }
 });

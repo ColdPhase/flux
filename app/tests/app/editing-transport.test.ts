@@ -131,6 +131,12 @@ test('editing refusal happens before handshake and a client cannot supply anothe
   assert.equal(await refused(f.port, path, { origin: 'http://other.test' }), 403);
   assert.equal(await refused(f.port, `${path}&actor=other`, { origin }), 400);
   assert.equal(await refused(f.port, `${path}&id=${targetId}`, { origin }), 400);
+  // The router reads `/api/v1/%65diting` as the same path, so the gate owns it too: Fastify's generic fallback never completes its handshake (#1047).
+  for (const spelled of ['/api/v1/%65diting', '/%61pi/v1/editing', '/api/v%31/editing']) {
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}`, {}), 403, spelled);
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}`, { origin: 'http://other.test' }), 403, spelled);
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}&actor=other`, { origin }), 400, spelled);
+  }
   assert.equal(authorizations, 0); assert.equal(f.contexts.length, 0);
   const anonymous = await fixture(t, { resolveSession: async () => null });
   assert.equal(await refused(anonymous.port, path, { origin }), 401);
@@ -145,6 +151,52 @@ test('a session expiring during asynchronous admission sends no accepted frame',
     authorize: async () => { await delay(50); } });
   assert.equal(await refused(f.port, path, { origin }), 401);
   assert.equal(f.contexts.length, 0); assert.equal(f.received.length, 0);
+});
+
+for (const media of [false, true]) test(`editing and media sockets are the same sockets when their path is written with encoded letters, media ${media} (#1047)`, async (t) => {
+  const f = await fixture(t, { media });
+  const editing = await f.open(`/api/v1/%65diting?kind=wiki&id=${targetId}`);
+  const bytes = randomBytes(64);
+  const echoed = once(editing, 'message'); editing.send(bytes); assert.deepEqual((await echoed)[0], bytes);
+  assert.equal(f.contexts.length, 1, 'admitted as the editing socket');
+  const encoded = f.mediaPath.replace('/media/', '/%6dedia/');
+  if (media) {
+    const socket = await f.open(encoded); const reply = once(socket, 'message');
+    socket.send(Buffer.alloc(70_000)); assert.equal(((await reply)[0] as Buffer).length, 70_000, 'proxied as the media socket');
+    assert.equal(await refused(f.port, encoded, {}), 403, 'and its origin is checked');
+  } else {
+    assert.equal(await refused(f.port, encoded, { origin }), 404, 'no media gate: not a socket');
+  }
+});
+
+/** One upgrade request written by hand: `target` goes on the request line as it is. Answers its status line ('' when the server said nothing). */
+async function rawUpgrade(port: number, target: string) {
+  const socket = tcpConnect(port, '127.0.0.1'); socket.on('error', () => undefined);
+  try {
+    await once(socket, 'connect');
+    const chunks: Buffer[] = []; socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+    socket.write(`GET ${target} HTTP/1.1\r\nHost: 127.0.0.1:${port}\r\nConnection: Upgrade\r\nUpgrade: websocket\r\nOrigin: ${origin}\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${randomBytes(16).toString('base64')}\r\n\r\n`);
+    await Promise.race([once(socket, 'close').catch(() => undefined), delay(2_000)]);
+    return Buffer.concat(chunks).toString('latin1').split('\r\n', 1)[0] ?? '';
+  } finally { socket.destroy(); }
+}
+
+// Node's parser accepts `GET http://[/media/rtc` and the like, and `new URL` throws on them. Inside the upgrade listener that was the end of the
+// API process whenever live media was on (#1060 review). Nothing but a path reaches a gate now, and a gate that cannot parse a target says no.
+for (const media of [false, true]) test(`an upgrade whose target is not a path is refused with a 400 and the server goes on, media ${media} (#1047)`, async (t) => {
+  let authorizations = 0;
+  const f = await fixture(t, { media, authorize: async () => { authorizations++; } });
+  for (const target of ['http://[/media/rtc', 'http://a%zz/media/rtc', 'http://a:99999/media/rtc', 'http://1.2.3.256/media/rtc', 'http://[/api/v1/editing', 'http://[/api/v1/stream',
+    'http://h/api/v1/editing', 'http://h/%6dedia/rtc', 'ws://h/media/rtc', '*media/rtc', '*api/v1/editing', '*%6dedia/rtc/validate', 'media/rtc', '*']) {
+    assert.match(await rawUpgrade(f.port, target), /^HTTP\/1\.1 400 /, target);
+    // Still there, still checking: the same socket without an origin is refused by its gate.
+    assert.equal(await refused(f.port, path, {}), 403, `after ${target}`);
+    assert.equal(await refused(f.port, f.mediaPath, media ? {} : { origin }), media ? 403 : 404, `after ${target}`);
+  }
+  assert.equal(authorizations, 0); assert.equal(f.contexts.length, 0);
+  // A target that is a path is as before.
+  const editing = await f.open(); const echoed = once(editing, 'message'); editing.send(randomBytes(8)); await echoed;
+  assert.equal(f.contexts.length, 1);
 });
 
 test('a frame sent in the HTTP upgrade head survives asynchronous admission and synchronous handlers', async (t) => {

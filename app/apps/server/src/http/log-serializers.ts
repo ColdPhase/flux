@@ -7,9 +7,13 @@ import type { FastifyRequest } from 'fastify';
  */
 const TOKEN_IN_PATH = /(\/reset-password\/)[^/]+/gi;
 
-/** The request path without its query string, and without the token of a link that holds one in the path. */
+/**
+ * The request path without its query string, and without the token of a link that holds one in the path. The path is cut where the router
+ * cuts it, at the first `?` or `#`: Fastify reads what follows either as the query string, so a client that writes its values after a `#`
+ * would otherwise have them logged (#1047). Then the token is hidden.
+ */
 export function loggedPath(url: string | undefined) {
-  return (url ?? '').split('?')[0]!.replace(TOKEN_IN_PATH, '$1<token>');
+  return (url ?? '').split(/[?#]/, 1)[0]!.replace(TOKEN_IN_PATH, '$1<token>');
 }
 
 /**

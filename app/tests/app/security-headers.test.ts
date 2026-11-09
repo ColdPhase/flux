@@ -51,6 +51,17 @@ describe('the headers hook', () => {
     return server;
   }
 
+  test('no-store follows the route and the decoded path, not the raw URL: an encoded /api is the API (#1047)', async () => {
+    const server = await app(false);
+    try {
+      for (const url of ['/%61pi/plain', '/%61%70%69/plain', '/api/%70lain', '/%61pi/fail', '/%61pi/missing', '/api/missing%2F']) {
+        assert.equal((await server.inject(url)).headers['cache-control'], 'no-store', url);
+      }
+      assert.equal((await server.inject('/%61pi/own')).headers['cache-control'], 'private, max-age=60', 'a route that chose its own keeps it');
+      for (const url of ['/%61sset.js', '/p%61ge', '/%2561pi/plain', '/%2fapi/plain']) assert.notEqual((await server.inject(url)).headers['cache-control'], 'no-store', url);
+    } finally { await server.close(); }
+  });
+
   test('no-store on /api/ unless the route chose its own; static files and pages are left alone', async () => {
     const server = await app(false);
     try {

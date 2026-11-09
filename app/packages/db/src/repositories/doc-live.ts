@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { and, eq, gt, lte, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { docRows } from './docs.js';
+import { EDITING_CHANNEL } from './live-editing.js';
 import { openRows, sealFor } from '../sealing.js';
 import type { DbExecutor } from './push.js';
 
@@ -41,6 +42,9 @@ export function docLiveVersions(db: DbExecutor) {
       await db.update(heads).set(await sealFor(db, 'doc_live_heads', row.doc.workspaceId, { generation, sequence: 0, body: row.current.body, hash: hash(row.current.body),
         savedVersion: row.current.version, savedSequence: 0, codecState: null, snapshotSequence: 0, revision: sql`${heads.revision} + 1`,
         updatedAt: new Date() }, { docId: row.doc.id })).where(eq(heads.docId, row.doc.id));
+      // Whoever is editing this page now hears of the new generation when this transaction commits, not on their next timer read, which
+      // for an idle tab is up to about two seconds later (#1023).
+      await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL}, ${row.doc.id})`);
     },
     async bindSnapshot(row: SavedDoc, acknowledged: Pick<Head, 'generation' | 'sequence' | 'body' | 'hash' | 'savedVersion' | 'savedSequence'>) {
       const current = await locked(row.doc.id);

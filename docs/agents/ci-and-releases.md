@@ -125,15 +125,18 @@ address in `get-session`. The 503s on the GitHub routes are the App not being co
 CodeQL flags 16 route registrations that reach PostgreSQL, the keyring or an outside service with no rate limit. Sign-in, sign-up,
 password reset, invites, encryption unlock and live join already have limits of their own; for the rest the decision is **one floor
 under every API route** (`apps/server/src/http/rate-limit.ts`, registered in `app.ts`) rather than sixteen route limits:
-1,200 requests a minute per session (the cookie `flux.session_token` that Better Auth reads, or on `/mcp` the bearer), counted as the session's own only once the server has accepted it and
-taken away again by a 401; 600 per address without a credential and 1,200 a minute per address for a cookie or bearer not accepted yet (a made-up one has no budget of its own, whatever else the request carries);
+1,200 requests a minute per session (the cookie that Better Auth reads, `flux.session_token`, or `__Secure-flux.session_token` over https, or on `/mcp` the bearer), counted as the session's own only once the server has accepted it and
+taken away again by a 401 (signing out does not: a signed-out session keeps its budget until its next request is answered 401); 600 per address without a credential and 1,200 a minute per address for a cookie or bearer not accepted yet (a made-up one has no budget of its own, whatever else the request carries);
 an IPv6 address counts as its /64 and no total per address exists, so people behind one office address or one proxy are not
 limited together; fixed one-minute windows in the API process, memory-bounded, `429 RATE_LIMITED` with `Retry-After`. A person using Flux does not come near it; a runaway client or
 a flood does. `FLUX_AUTH_RATE_LIMIT=false` turns it off with the sign-in limit (the test stacks do). It covers the routes of all 16
 alerts (`/api/v1/health` and the back-channel logout answer the anonymous count; the Better Auth catch-all also keeps its own limit).
 Route-specific limits stay where a route is costly by design and already have one. CodeQL does not recognise this limiter as one, so
-the alerts are dismissed in the Security tab as "won't fix", naming `rate-limit.ts`, once the limiter is on `main`;
-`tests/app/api-rate-limit-core.test.ts` is the evidence that it holds.
+the alerts are dismissed in the Security tab as "won't fix", naming `rate-limit.ts`, once the limiter is on `main`.
+What counts as API traffic is decided from what the router decided (the route that answers the request, and its path as the router decodes it:
+`apps/server/src/http/routed-path.ts`), never from the raw URL: `/%61pi/v1/me` is `/api/v1/me` and `/%6dcp` is `/mcp` (#1047), and the
+same rule decides `no-store`, compression and the 404 answer. `tests/app/api-rate-limit-core.test.ts` (every spelling, on a socket) and
+`tests/app/api-rate-limit.test.ts` (the real server) are the evidence that it holds.
 
 ## Security scanning
 

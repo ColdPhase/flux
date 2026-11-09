@@ -34,3 +34,16 @@ test('the token of a link that sits in the path is logged as <token> (#1030)', (
   assert.equal(logged('/api/v1/search?q=reset-password/abc'), '/api/v1/search');
   assert.equal(logged(undefined), '');
 });
+
+// The router cuts the path at the first `?` or `#` and reads what follows as the query string, so the log does too (#1047).
+test('what follows a # is as much a query string as what follows a ?', () => {
+  const logged = requestLogSerializer({ method: 'GET', url: '/api/v1/search#q=private%20text&limit=20', host: 'flux.test', ip: '10.0.0.1', socket: { remotePort: 1234 } } as never);
+  assert.equal(logged.url, '/api/v1/search');
+  assert.ok(!JSON.stringify(logged).includes('private'));
+  assert.equal(requestLogSerializer({ method: 'GET', url: '/api/v1/%61x?q=1#y', host: 'h', ip: '10.0.0.1', socket: {} } as never).url, '/api/v1/%61x');
+  // Cut at the first `?` or `#`, then the token is hidden: the one does not undo the other (#1030, #1047).
+  const hidden = (url?: string) => requestLogSerializer({ method: 'GET', url, host: 'flux.test', ip: '10.0.0.1', socket: { remotePort: 1234 } } as never).url;
+  assert.equal(hidden('/api/auth/reset-password/ZkDOYS3I83T9ydUR7p2yDljZ#x?y=1'), '/api/auth/reset-password/<token>');
+  assert.equal(hidden('/api/auth/reset-password/ZkDOYS3I83T9ydUR7p2yDljZ?x=1#y'), '/api/auth/reset-password/<token>');
+  assert.equal(hidden('//api/auth/./reset-password/ZkDOYS3I83T9ydUR7p2yDljZ/#x'), '//api/auth/./reset-password/<token>/');
+});
