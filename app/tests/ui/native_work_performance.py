@@ -25,8 +25,8 @@ from playwright.sync_api import sync_playwright
 from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
 
 OUT = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
-COUNTS = {"Needs you": 1, "In progress": 300, "Blocked": 150, "Open": 470,
-          "Parked": 30, "Finished": 50, "Decisions": 2, "Results": 10}
+COUNTS = {"Needs you": 1, "In progress": 300, "Blocked": 150, "Open": 500,
+          "Finished": 50, "Decisions": 2, "Results": 10}
 UUID = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
 COLLECTION = re.compile(r"/api/v1/projects/[^/]+/(work|decisions|results|summary)$")
 CONTINUITY = ("resizePreservesDraft", "resizePreservesFocusSelection", "onlyMinePreservesDraft",
@@ -36,8 +36,8 @@ CONTINUITY = ("resizePreservesDraft", "resizePreservesFocusSelection", "onlyMine
 TASKS_READY = "() => { const add = document.querySelector('.tb-add'); return !!document.querySelector('.ws-tasks') && !!add && !add.disabled; }"
 PROBE = r"""(() => {
   const tasksReady = __TASKS_READY__;
-  const counts = {"Needs you":1,"In progress":300,"Blocked":150,"Open":470,
-    "Parked":30,"Finished":50,"Decisions":2,"Results":10};
+  const counts = {"Needs you":1,"In progress":300,"Blocked":150,"Open":500,
+    "Finished":50,"Decisions":2,"Results":10};
   const probe = window.__nativeWorkProbe = {nav:null, armed:null, sample:null};
   const rows = () => document.querySelectorAll('.ws-list > li').length;
   const pane = () => document.querySelector('.ws-tasks')?.closest('.pane-scroll');
@@ -135,7 +135,7 @@ def api(context, method, path, body=None, status=200):
 def work_digest(items):
     # Digest current native state, retaining no identity/title/authentication in reports.
     state = [{"id":i["id"],"version":i["version"],"status":i["status"],
-              "owner":i["owner"],"parked":i["parked"],"links":i["links"]} for i in items]
+              "owner":i["owner"],"links":i["links"]} for i in items]
     return hashlib.sha256(json.dumps(sorted(state,key=lambda i:i["id"]),sort_keys=True).encode()).hexdigest()
 
 
@@ -192,8 +192,7 @@ def fixture(browser):
     current = api(owner,"POST",root+"/decisions",{"title":"Use a distance sensor for the reading corner",
         "rationale":"It works in the dark without recording images.","supersedes":previous["id"],
         "affects":[item["id"] for item in work[:30]]},201)
-    api(owner,"POST",f"/api/v1/decisions/{current['id']}/accept",
-        {"expectedVersion":1,"park":[item["id"] for item in work[:30]]})
+    api(owner,"POST",f"/api/v1/decisions/{current['id']}/accept",{"expectedVersion":1})
     api(contexts[1],"POST",root+"/decisions",{"title":"Keep a manual off switch on the base",
         "rationale":"Children should be able to turn the lamp off without a gesture."},201)
     for index in range(10):
@@ -211,9 +210,7 @@ def fixture(browser):
             observed.extend(page["items"])
         assert len({item["id"] for item in observed}) == 1000
         assert Counter(item["status"] for item in observed) == {"open":500,"in_progress":300,"blocked":150,"done":50}
-        assert len([item for item in observed if item["parked"]]) == 30
         assert Counter(item["owner"]["id"] for item in observed) == {ids[0]:500,ids[1]:500}
-        assert Counter(item["owner"]["id"] for item in observed if item["parked"]) == {ids[0]:15,ids[1]:15}
         source_links = [link for item in observed for link in item["links"]
                         if link["from"]["id"] == item["id"] and link["role"] == "source"]
         assert Counter(link["to"]["type"] for link in source_links) == {"message":50,"material":50}
@@ -225,7 +222,7 @@ def fixture(browser):
         results = api(context,"GET",root+"/results?limit=100&offset=0")
         assert decisions["total"] == 3 and Counter(d["status"] for d in decisions["items"]) == {"accepted":1,"proposed":1,"superseded":1}
         assert results["total"] == 10 and Counter(r["finding"] for r in results["items"]) == {"positive":5,"negative":5}
-        per_account.append({"uniqueWork":1000,"status":{"open":500,"in_progress":300,"blocked":150,"done":50},"parked":30,"ownedWork":500,"ownedParked":15,"decisions":3,"results":10})
+        per_account.append({"uniqueWork":1000,"status":{"open":500,"in_progress":300,"blocked":150,"done":50},"ownedWork":500,"decisions":3,"results":10})
         digest = work_digest(observed)
     states = [c.storage_state() for c in contexts]
     for context in contexts: context.close()
@@ -302,7 +299,7 @@ class Traffic:
 def snapshot(page,cdp):
     dom = page.evaluate("""() => ({elements:document.querySelectorAll('*').length,
       renderedRows:document.querySelectorAll('.ws-list > li').length,
-      renderedWorkRows:document.querySelectorAll('#ws-progress .ws-list > li,#ws-blocked .ws-list > li,#ws-open .ws-list > li,#ws-parked .ws-list > li,#ws-finished .ws-list > li').length,
+      renderedWorkRows:document.querySelectorAll('#ws-progress .ws-list > li,#ws-blocked .ws-list > li,#ws-open .ws-list > li,#ws-finished .ws-list > li').length,
       viewport:{width:innerWidth,height:innerHeight,dpr:devicePixelRatio},
       overflow:document.documentElement.scrollWidth > innerWidth})""")
     try:
@@ -445,7 +442,7 @@ def run_profile(browser,data,label,viewport,cpu,report):
         mine_counts = page.evaluate("""() => Object.fromEntries([...document.querySelectorAll('.ws-view')].slice(1).map(b => [b.childNodes[0].textContent.trim(),Number(b.querySelector('.ws-view__n')?.textContent)]))""")
         item["continuity"]["onlyMineCounts"] = mine_counts
         item["continuity"]["onlyMineCountsVerified"] = item["continuity"]["onlyMineRows"]==506 and mine_counts=={
-            "Needs you":1,"In progress":150,"Blocked":75,"Open":235,"Parked":15,"Finished":25,"Results":5}
+            "Needs you":1,"In progress":150,"Blocked":75,"Open":250,"Finished":25,"Results":5}
         page.get_by_role("button", name="Mine", exact=True).click()
         page.get_by_role("navigation",name="Task views").get_by_role("button",name=re.compile("^Blocked")).click()
         item["continuity"]["viewPreservesDraft"] = draft_value(page)==draft

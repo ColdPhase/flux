@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   WORK_LIMITS,
+  waitingPhrase,
   type CreateObjectLinkCommand,
   type CreateResultCommand,
   type CreateWorkCommand,
@@ -12,6 +13,7 @@ import {
   type PageQuery,
   type ProposeDecisionCommand,
   type UpdateWorkCommand,
+  type WaitingOn,
   type WorkItem,
   type WorkObjectType,
   type WorkResult,
@@ -47,7 +49,7 @@ import { readTaskActivity } from './task-activity.js';
 // immutable plan intent. Writers that touch the graph or an intent take their locks in one order:
 // project access rows -> the plan material row -> the command identity -> the project task-graph lock
 // -> the complete task rows in ascending id -> everything else. Starting or finishing a task needs every
-// prerequisite done and unparked. Nothing infers that listed criteria are satisfied.
+// prerequisite done. Nothing infers that listed criteria are satisfied.
 //
 // Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and a
 // published result contribute through the mandatory `ports.contributions` hook, inside the same unit
@@ -59,7 +61,7 @@ import { readTaskActivity } from './task-activity.js';
 
 const LABEL: Record<WorkObjectType, string> = { work: 'Work item', decision: 'Decision', result: 'Result' };
 const CODE: Record<WorkObjectType, string> = { work: 'WORK_NOT_FOUND', decision: 'DECISION_NOT_FOUND', result: 'RESULT_NOT_FOUND' };
-const FINISHED = new Set(['done', 'not_pursued']);
+const FINISHED = new Set(['done']);
 
 const iso = (date: Date) => date.toISOString();
 const key = (actor: ActorRef) => `${actor.kind}:${actor.id}`;
@@ -103,13 +105,14 @@ export async function linkReader(repo: Pick<WorkRepository, 'links' | 'titles'>,
 const NO_PLAN: TaskPlanRecord = { prerequisites: [], planIntent: null };
 
 /** Links and names needed to present a set of records to one reader. `plans` adds the task graph of work. */
-async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false) {
+async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | null)[], plans = false, waits: readonly { kind: 'decision' | 'task'; id: string }[] = []) {
   const rules = plans && ids.length ? await ports.work.githubRules(ids) : new Map<string, GithubRuleReading>();
   const ruleAuthors = [...rules.values()].flatMap((rule): ActorRef[] => rule.authorUserId ? [{ kind: 'human', id: rule.authorUserId }] : []);
-  const [linksOf, names, planOf] = await Promise.all([
+  const [linksOf, names, planOf, waitingOn] = await Promise.all([
     linkReader(ports.work, ids),
     ports.work.names([...actors.filter((item): item is ActorRef => item !== null), ...ruleAuthors]),
     plans && ids.length ? ports.work.taskPlans(ids) : Promise.resolve(new Map<string, TaskPlanRecord>()),
+    waits.length ? ports.work.waitingTargets(waits) : Promise.resolve(new Map<string, WaitingOn>()),
   ]);
   const named = (ref: ActorRef): NamedPrincipal => ({ ...ref, name: names.get(key(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
   const base = (record: { id: string; projectId: string; workspaceId: string; createdAt: Date }) => ({
@@ -118,7 +121,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
   });
   const githubRule = (record: WorkRecord): WorkItem['githubRule'] => {
     const rule = rules.get(record.id);
-    return rule ? { ...presentGithubRule(rule, { ...record, parked: !!record.parked }),
+    return rule ? { ...presentGithubRule(rule, record),
       setUpBy: rule.authorUserId ? named({ kind: 'human', id: rule.authorUserId }) : null } : null;
   };
   return {
@@ -127,12 +130,13 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
       return {
         ...base(record), number: record.number, title: record.title, outcome: record.outcome, criteria: record.criteria, status: record.status, blocker: record.blocker,
         waitingFor: record.waitingFor ? named(record.waitingFor) : null,
+        waitingOn: record.waitingOn ? waitingOn.get(`${record.waitingOn.kind}:${record.waitingOn.id}`) ?? null : null,
+        dropped: record.dropped, cameOfIt: record.cameOfIt,
         dueOn: record.dueOn,
         dependencyIds: plan.prerequisites.map((item) => item.id),
-        prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked })),
+        prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' })),
         planIntent: plan.planIntent,
         owner: record.owner ? named(record.owner) : null,
-        parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
         lifecycle: record.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
           ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy) } : { state: 'active' },
         createdBy: named(record.createdBy), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
@@ -150,11 +154,12 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
   };
 }
 
+const waitsOf = (records: WorkRecord[]) => records.flatMap((record) => record.waitingOn ? [record.waitingOn] : []);
 const workActors = (records: WorkRecord[]) => records.flatMap((record) => [record.owner, record.waitingFor, record.createdBy, record.creationRevertedBy ?? null]);
 const decisionActors = (records: DecisionRecord[]) => records.flatMap((record) => [record.proposedBy, record.decidedBy ? { kind: 'human' as const, id: record.decidedBy } : null]);
 
 async function presentWork(ports: WorkPorts, record: WorkRecord) {
-  return (await presenter(ports, [record.id], workActors([record]), true)).work(record);
+  return (await presenter(ports, [record.id], workActors([record]), true, waitsOf([record]))).work(record);
 }
 async function presentDecision(ports: WorkPorts, record: DecisionRecord) {
   return (await presenter(ports, [record.id], decisionActors([record]))).decision(record);
@@ -225,11 +230,52 @@ async function requireWaitingFor(ports: WorkPorts, projectId: string, waitingFor
     throw new RuleViolationError('The person waited on needs current access to this space', 'WAITING_FOR_WITHOUT_ACCESS');
 }
 
+/**
+ * What a blocked task waits for besides a person (#868): a decision still proposed, or a task not yet done, of the same space; never the
+ * task itself and never a task that already waits for it, however far round. Read under the project's graph lock, so a decision that is
+ * accepted or a task that is done meanwhile is either seen here or resumes this task after it.
+ */
+async function requireWaitingOn(ports: WorkPorts, projectId: string, taskId: string | null, on: { kind: 'decision' | 'task'; id: string }) {
+  if (on.kind === 'decision') {
+    const decision = await ports.work.findDecision(on.id);
+    if (!decision || decision.projectId !== projectId) throw new RuleViolationError('The decision is not part of this space', 'WAITING_ON_NOT_FOUND');
+    if (decision.status !== 'proposed') throw new RuleViolationError('That decision is already decided; there is nothing to wait for', 'WAITING_ON_RESOLVED');
+    return;
+  }
+  if (taskId && on.id === taskId) throw new RuleViolationError('A task cannot wait for itself', 'WAITING_ON_ITSELF');
+  const task = await ports.work.findWork(on.id);
+  if (!task || task.projectId !== projectId || task.creationRevertedAt) throw new RuleViolationError('The task is not part of this space', 'WAITING_ON_NOT_FOUND');
+  if (task.status === 'done') throw new RuleViolationError('That task is already done; there is nothing to wait for', 'WAITING_ON_RESOLVED');
+  // What that task waits for in turn, as far as the chain goes: back at this one would leave both blocked for good.
+  if (taskId && await ports.work.waitsFor(task.id, taskId)) throw new RuleViolationError('That task is waiting for this one', 'WAITING_ON_CYCLE');
+}
+
 const waitingForOf = (value: unknown): ActorRef | null => {
   const person = valid.owner(value ?? null);
   if (person && person.kind !== 'human') throw new InvalidInputError('Only a person can be waited for');
   return person;
 };
+
+/**
+ * What was waited for is resolved (#868): each blocked task that still waits for it goes back to Doing by itself (To do when a prerequisite is
+ * still open, since Doing needs every prerequisite done), the stream says "#4 can continue: the decision was accepted", and its owner is
+ * told once: a person in their Inbox, an agent by taking the task up again. `ids` are the tasks found under the graph lock, locked by the
+ * caller; each is read again, locked, and left alone if it no longer waits.
+ */
+async function resumeWaiting(ports: WorkPorts, principal: Principal, by: ActorRef, ids: readonly string[], stillWaits: (task: WorkRecord) => boolean,
+  because: { said: string; token: 'decision' | 'work' | 'person'; taskId?: string }): Promise<void> {
+  for (const id of ids) {
+    const task = await ports.work.findWork(id, { lock: true });
+    if (!task || task.creationRevertedAt || task.status !== 'blocked' || !stillWaits(task)) continue;
+    let status: 'in_progress' | 'open' = 'in_progress';
+    try { await assertPrerequisitesMet(ports.work, task.workspaceId, id); } catch (error) { if (!(error instanceof ConflictError)) throw error; status = 'open'; }
+    // Leaving Blocked also clears why it was blocked (a blocker is for blocked work only).
+    const record = await ports.work.updateWork(id, { status, blocker: null }, by, 'wait_resolved');
+    await ports.work.insertTaskUpdate(record, { kind: 'task.resumed', by, waitingFor: null, reason: because.said });
+    await ports.events.record(principal, task.workspaceId, 'project.work_updated.v1', task.projectId, { workId: id,
+      ...(task.owner?.kind === 'human' ? { resumedFor: task.owner.id, reason: because.token, ...(because.taskId ? { taskId: because.taskId } : {}) } : {}) });
+  }
+}
 
 function linkRows(scope: { workspaceId: string; projectId: string }, from: NewObjectLink['from'], role: NewObjectLink['role'], targets: ObjectRef[], by: ActorRef): NewObjectLink[] {
   return targets.map((to) => ({ id: randomUUID(), ...scope, role, from, to, createdBy: by }));
@@ -273,7 +319,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       return { items: await present(ports, items), total, ...window };
     });
   }
-  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true); return items.map(view.work); };
+  const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items)); return items.map(view.work); };
   const presentDecisions = async (ports: WorkPorts, items: DecisionRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), decisionActors(items)); return items.map(view.decision); };
   const presentResults = async (ports: WorkPorts, items: ResultRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), items.map((i) => i.createdBy)); return items.map(view.result); };
 
@@ -293,7 +339,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           const record = records[index];
           const { waitingFor, reason, ...notice } = item;
           return { ...notice, createdAt: iso(item.createdAt),
-            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null } : {}),
+            ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null }
+              : item.kind === 'task.resumed' ? { reason: reason ?? null } : {}),
             lifecycle: record?.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
               ? { state: 'creation_reverted' as const, noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt),
                 revertedBy: { ...record.creationRevertedBy, name: names.get(key(record.creationRevertedBy)) ?? 'Former member' } }
@@ -390,6 +437,9 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const owner = command.owner === undefined ? null : valid.owner(command.owner);
       const waitingFor = waitingForOf(command.waitingFor);
       if (waitingFor && status !== 'blocked') throw new InvalidInputError('A person to wait for applies to blocked work only');
+      const waitingOn = command.waitingOn === undefined ? null : valid.waitingOn(command.waitingOn);
+      if (waitingOn && waitingFor) throw new InvalidInputError('A task waits for one thing');
+      if (waitingOn && status !== 'blocked') throw new InvalidInputError('Something to wait for applies to blocked work only');
       const dueOn = valid.dueOn(command.dueOn ?? null);
       const sources = valid.refs(command.sources, valid.SOURCE_TYPES, 'sources');
       const related = valid.refs(command.related, valid.ANY_TYPES, 'related');
@@ -402,7 +452,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       // The retry fingerprint keeps its original shape (older stored creations still match) and adds the plan
       // fields only when present. The intent fingerprint is the canonical creation, without retry identity.
       const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}), ...(parent.length ? { parentId: parent[0]!.id } : {}) };
-      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), ...(dueOn ? { dueOn } : {}), sources, related, ...plan })).digest('hex') : undefined;
+      const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), ...(waitingOn ? { waitingOn } : {}), ...(dueOn ? { dueOn } : {}), sources, related, ...plan })).digest('hex') : undefined;
       const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, dueOn, sources, related, criteria, dependencyIds }) : undefined;
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
@@ -429,6 +479,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await requireTargets(ports, project, [...sources, ...related, ...parent]);
         await lockProjectGraphs(ports.work, [project]);
         await requireTargets(ports, project, [...sources, ...related, ...parent]);
+        if (waitingOn) await requireWaitingOn(ports, project, null, waitingOn);
         if (planIntent) {
           const existing = await ports.work.findPlanIntent(project, planIntent);
           const produced = existing ? await ports.work.findWork(existing.taskId, { lock: true }) : null;
@@ -437,12 +488,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           if (decision.kind === 'replay') return presentWork(ports, produced!);
         }
         await requireDependencyTargets(ports, project, dependencyIds);
-        const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related, ...parent])])].sort();
+        // A task that something waits for is in use (#868): its creation can no longer be undone from under the one that waits.
+        const existingTargets = [...new Set([...dependencyIds, ...(waitingOn?.kind === 'task' ? [waitingOn.id] : []), ...await ports.work.taskUseTargets([...sources, ...related, ...parent])])].sort();
         const useFence = await ports.work.lockPreparedTaskUse(existingTargets);
         requireDependencyScope(useFence.projectIds, project);
 
         const scope = { workspaceId, projectId: project };
-        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, waitingFor, dueOn, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
+        const record = await ports.work.insertWork({ id: randomUUID(), ...scope, title, outcome, status, blocker, waitingFor, waitingOn, dueOn, owner, createdBy: by, criteria, clientCommandId, requestFingerprint });
         // A brand-new task cannot be anyone's prerequisite yet, so these edges cannot close a cycle.
         if (dependencyIds.length) {
           await ports.work.replaceDependencies(scope, record.id, dependencyIds);
@@ -484,6 +536,13 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       if (command.owner !== undefined) changes.owner = valid.owner(command.owner);
       if (command.blocker !== undefined) changes.blocker = command.blocker === null || command.blocker === '' ? null : valid.text(command.blocker, 'blocker', WORK_LIMITS.blocker) || null;
       if (command.waitingFor !== undefined) changes.waitingFor = waitingForOf(command.waitingFor);
+      if (command.waitingOn !== undefined) changes.waitingOn = valid.waitingOn(command.waitingOn);
+      if (changes.waitingFor && changes.waitingOn) throw new InvalidInputError('A task waits for one thing');
+      if (command.dropped !== undefined) {
+        if (typeof command.dropped !== 'boolean') throw new InvalidInputError('dropped must be true or false');
+        changes.dropped = command.dropped;
+      }
+      if (command.cameOfIt !== undefined) changes.cameOfIt = valid.cameOfIt(command.cameOfIt);
       if (command.dueOn !== undefined) changes.dueOn = valid.dueOn(command.dueOn);
       if (command.restore !== undefined && command.restore !== true) throw new InvalidInputError('restore can only be true');
       if (command.criteria !== undefined) changes.criteria = valid.criteria(command.criteria);
@@ -496,6 +555,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       // The exact text the person explicitly saved; undefined/cleared/empty contribute nothing.
       // An Undo puts back what was there: it never authors the same blocker again.
       const savedBlocker = command.restore ? null : changes.blocker || null;
+      // The one line at Done is also written in the task's discussion, as what came of it (#868); an Undo puts the line back without writing it again.
+      const savedCameOfIt = command.restore ? null : changes.cameOfIt || null;
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, 'work', workId, 'write');
         if (dependencyIds?.includes(id)) throw new RuleViolationError('A task cannot depend on itself', 'TASK_SELF_DEPENDENCY');
@@ -515,8 +576,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
             return presentWork(ports, current);
           }
         }
-        const contribution = savedBlocker ? await ports.contributions.prepare(principal, projectId,
-          { operation: 'work.update', commandId: clientCommandId ?? randomUUID() }, [{ workId: id, kind: 'blocker', body: savedBlocker }]) : null;
+        // A blocker is for blocked work and the line for done work, so a command has at most one of the two.
+        const contribution = savedBlocker || savedCameOfIt ? await ports.contributions.prepare(principal, projectId,
+          { operation: 'work.update', commandId: clientCommandId ?? randomUUID() },
+          [savedBlocker ? { workId: id, kind: 'blocker', body: savedBlocker } : { workId: id, kind: 'came_of_it', body: savedCameOfIt! }]) : null;
         // A person taking the task from an agent also ends a local client's hold (#936, #985). Claims take the agent's connection slots
         // before the graph and the task, so they are taken first here too. The owner is read without a lock: if it changes before the
         // task is locked, the version check below refuses the change.
@@ -530,25 +593,41 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await lockProjectGraphs(ports.work, [projectId]);
         if (dependencyIds !== undefined) await requireDependencyTargets(ports, projectId, dependencyIds);
         const previous = await directPrerequisiteIds(ports.work, workspaceId, [id]);
-        const useIds = [...new Set([id, ...previous, ...(dependencyIds ?? [])])].sort();
-        const useFence = await ports.work.lockPreparedTaskUse(useIds);
+        // Finishing a task resumes the tasks that wait for it (#868): they are found under the graph lock and locked with it.
+        const waiters = changes.status === 'done' ? await ports.work.waiters({ kind: 'task', id }) : [];
+        // A task that something waits for is in use (#868). One that is not a task of this space is left out here and refused below, with its own reason.
+        const waitTarget = changes.waitingOn?.kind === 'task' ? await ports.work.findWork(changes.waitingOn.id) : null;
+        const waitedFor = waitTarget && waitTarget.projectId === projectId && !waitTarget.creationRevertedAt ? [waitTarget.id] : [];
+        const used = [...new Set([id, ...previous, ...(dependencyIds ?? []), ...waitedFor])].sort();
+        const useFence = await ports.work.lockPreparedTaskUse([...new Set([...used, ...waiters])].sort());
         requireDependencyScope(useFence.projectIds, projectId);
         const current = contribution ? (await ports.contributions.lockTasks(contribution))[0]! : (await ports.work.findWork(id))!;
         if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
         if (ruleRevision !== undefined && ((await ports.work.githubRules([id])).get(id)?.revision ?? 0) !== ruleRevision)
           throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
-        // A person who explicitly finishes parked work with its current version also takes it
-        // out of the parked list; work is never both finished and parked.
-        if ((nextStatus === 'done' || nextStatus === 'not_pursued') && current.parked) changes.parked = null;
         if (nextStatus !== 'blocked') {
           if (changes.blocker) throw new InvalidInputError('A blocker applies to blocked work only');
           changes.blocker = null;
-          if (changes.waitingFor) throw new InvalidInputError('A person to wait for applies to blocked work only');
+          if (changes.waitingFor || changes.waitingOn) throw new InvalidInputError('Something to wait for applies to blocked work only');
           changes.waitingFor = null;
+          changes.waitingOn = null;
+        } else if (changes.waitingFor !== undefined || changes.waitingOn !== undefined) {
+          // A task waits for one thing: naming one clears the other, and clearing one leaves what the task still waits for.
+          const person = changes.waitingFor !== undefined ? changes.waitingFor : changes.waitingOn ? null : current.waitingFor;
+          const thing = changes.waitingOn !== undefined ? changes.waitingOn : changes.waitingFor ? null : current.waitingOn;
+          changes.waitingFor = person;
+          changes.waitingOn = thing;
+        }
+        if (nextStatus !== 'done') {
+          if (changes.dropped || changes.cameOfIt) throw new InvalidInputError('"Dropped" and "what came of it" apply to done work only');
+          delete changes.dropped;
+          delete changes.cameOfIt;
         }
         if (changes.owner !== undefined && !sameOwner(current.owner, changes.owner)) await requireOwner(ports, projectId, changes.owner, principal);
         if (changes.waitingFor) await requireWaitingFor(ports, projectId, changes.waitingFor);
+        if (changes.waitingOn && !(current.waitingOn?.kind === changes.waitingOn.kind && current.waitingOn.id === changes.waitingOn.id))
+          await requireWaitingOn(ports, projectId, id, changes.waitingOn);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
         const record = await ports.work.updateWork(id, changes, by, via);
         if (heldBy && current.owner?.kind === 'agent' && current.owner.id === heldBy) {
@@ -560,10 +639,14 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // never acts on finished work, and its one-tap Done is how "Ready to close" ends.
         if (overrides && !FINISHED.has(nextStatus)) await ports.work.suspendGithubRule({ id, fromStatus: current.status, status: record.status, version: record.version });
         if (dependencyIds !== undefined) await ports.work.replaceDependencies({ workspaceId, projectId }, id, dependencyIds);
-        // It starts or finishes only with every prerequisite done and unparked, and keeps that while it
+        // The tasks that waited for this one can continue now that it is done (#868).
+        if (record.status === 'done' && current.status !== 'done' && waiters.length)
+          await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'task' && task.waitingOn.id === id,
+            { said: `#${record.number} ${record.dropped ? 'was dropped' : 'is done'}`, token: 'work', taskId: id });
+        // It starts or finishes only with every prerequisite done, and keeps that while it
         // is active. The check reads the edges as just replaced; a failure rolls back the whole change.
         if (ELIGIBLE_STATUSES.has(nextStatus) && (dependencyIds !== undefined || nextStatus !== current.status)) await assertPrerequisitesMet(ports.work, workspaceId, id);
-        await useFence.mark();
+        await useFence.mark(used);
         const view = await presentWork(ports, record);
         const newOwner = changes.owner;
         const assignedTo = newOwner?.kind === 'human' && newOwner.id !== principal.id
@@ -572,13 +655,39 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const newlyWaitedOn = record.waitingFor && record.waitingFor.id !== current.waitingFor?.id && !command.restore ? record.waitingFor.id : undefined;
         await ports.events.record(principal, workspaceId, 'project.work_updated.v1', projectId, { workId: id, ...(assignedTo ? { assignedTo } : {}), ...(newlyWaitedOn ? { waitingFor: newlyWaitedOn } : {}) });
         // One short line in the project conversation when a task becomes blocked or unblocked; not for edits of the reason alone.
-        if ((current.status === 'blocked') !== (record.status === 'blocked'))
+        if ((current.status === 'blocked') !== (record.status === 'blocked')) {
+          // A task that waits for a decision or a task says so in the line, as the card does: "waiting for #7".
+          const waitedOn = record.status === 'blocked' && record.waitingOn ? (await ports.work.waitingTargets([record.waitingOn])).get(`${record.waitingOn.kind}:${record.waitingOn.id}`) : undefined;
           await ports.work.insertTaskUpdate(record, { kind: record.status === 'blocked' ? 'task.blocked' : 'task.unblocked', by,
-            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? record.blocker : null });
+            waitingFor: record.waitingFor, reason: record.status === 'blocked' ? (waitedOn ? `waiting for ${waitingPhrase(waitedOn)}` : record.blocker) : null });
+        }
         const messageIds = contribution ? await ports.contributions.append(contribution) : [];
         if (clientCommandId) await ports.work.recordNativeCommand({ workspaceId, projectId }, by,
           { operation: 'work.update', commandId: clientCommandId, fingerprint, object: { type: 'work', id, version: record.version }, messageIds });
         return view;
+      });
+    },
+
+    /**
+     * The person a blocked task waits for says they are done (#868): the task goes back to Doing by itself, the stream says "#4 can continue:
+     * Jonas is done" and its owner is told. Only that person can, and reading the space is enough: they may be asked for something without
+     * being able to change the task otherwise. A stale version is a conflict, and a task that no longer waits for them is a 409.
+     */
+    async resolveWaiting(principal: Principal, workId: string, expected: number | undefined): Promise<WorkItem> {
+      const by = actor(principal);
+      if (by.kind !== 'human') throw new ForbiddenError('Only the person a task waits for can say they are done', 'WAITING_DONE_NEEDS_PERSON');
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId } = await authorized(ports, principal, 'work', workId, 'read');
+        await lockProjectGraphs(ports.work, [projectId]);
+        await ports.work.lockPreparedTaskUse([id]);
+        const current = await ports.work.findWork(id, { lock: true });
+        if (!current) throw notFound('work');
+        if (current.version !== version) throw new VersionConflictError(current.version, await presentWork(ports, current));
+        if (current.status !== 'blocked' || current.waitingFor?.id !== by.id) throw new ConflictError('This task no longer waits for you', 'NOT_WAITING_FOR_YOU');
+        const name = (await ports.work.names([by])).get(key(by)) ?? 'Someone';
+        await resumeWaiting(ports, principal, by, [id], (task) => task.waitingFor?.id === by.id, { said: `${name} is done`, token: 'person' });
+        return presentWork(ports, (await ports.work.findWork(id))!);
       });
     },
 
@@ -617,7 +726,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
 
     /**
      * A person with write access accepts a proposal. If it replaces an accepted decision, the earlier one is
-     * marked superseded (kept, with its rationale). Nothing else changes: no task is moved or parked (#871).
+     * marked superseded (kept, with its rationale). Nothing else changes: no task is moved (#871).
      */
     async acceptDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<Decision> {
       const by = actor(principal);
@@ -629,8 +738,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const located = await ports.work.findDecision(id);
         if (!located) throw notFound('decision');
         await lockProjectGraphs(ports.work, [projectId]);
-        const useFence = await ports.work.lockPreparedTaskUse(sortedIds(
-          await ports.work.taskUseTargets([{ type: 'decision', id },...(located.supersedesId?[{type:'decision' as const,id:located.supersedesId}]:[])]), 'taskIds'));
+        // The tasks that wait for this decision (#868) go back to Doing below: found under the graph lock, locked with the others.
+        const waiters = await ports.work.waiters({ kind: 'decision', id });
+        const used = sortedIds(await ports.work.taskUseTargets([{ type: 'decision', id },...(located.supersedesId?[{type:'decision' as const,id:located.supersedesId}]:[])]), 'taskIds');
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...used, ...waiters], 'taskIds'));
         const decisionRows = new Map<string, DecisionRecord>();
         for (const decisionId of [...new Set([id, ...(located.supersedesId ? [located.supersedesId] : [])])].sort()) {
           const retained = await ports.work.findDecision(decisionId, { lock: true });
@@ -651,7 +762,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const record = await ports.work.updateDecision(id, { status: 'accepted', decidedBy: by.id, decidedAt: now });
         const scope = { workspaceId, projectId };
         await ports.work.artifactUsed?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
-        await useFence.mark();
+        await useFence.mark(used);
+        await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'decision' && task.waitingOn.id === id, { said: 'the decision was accepted', token: 'decision' });
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
         return view;
@@ -710,16 +822,15 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await lockProjectGraphs(ports.work, [project]);
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
         const directTasks = [...workIds, ...await ports.work.taskUseTargets([...sources, ...decisions])];
-        const wanted = sortedIds([...directTasks, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
+        // The tasks that wait for the task it finishes can continue (#868).
+        const waiters = finishes ? await ports.work.waiters({ kind: 'task', id: finishes.id }) : [];
+        const wanted = sortedIds([...directTasks, ...waiters, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
         const useFence = await ports.work.lockPreparedTaskUse(wanted);
         const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
-        // Finishing changes someone's work: it needs the version the author saw and a status
-        // that can become done. A parked or not-pursued item is another person's disposition.
+        // Finishing changes someone's work: it needs the version the author saw.
         const finished = finishes ? locked.find((row) => row.id === finishes!.id)! : null;
         if (finished && finishes) {
           if (finished.version !== finishes.version) throw new VersionConflictError(finished.version, await presentWork(ports, finished));
-          if (finished.parked) throw new ConflictError('Parked work must be brought back into the plan before a result finishes it', 'WORK_NOT_FINISHABLE');
-          if (finished.status === 'not_pursued') throw new ConflictError('Work that is not pursued cannot be finished by a result', 'WORK_NOT_FINISHABLE');
         }
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });
@@ -727,8 +838,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
         await ports.work.artifactUsed?.(scope,{kind:'result',id:record.id,revision:'created'},useFence);
         if (finished && finished.status !== 'done') {
-          await ports.work.updateWork(finished.id, { status: 'done', blocker: null }, by);
+          const done = await ports.work.updateWork(finished.id, { status: 'done', blocker: null }, by);
           await assertPrerequisitesMet(ports.work, workspaceId, finished.id);
+          await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'task' && task.waitingOn.id === finished.id,
+            { said: `#${done.number} is done`, token: 'work', taskId: finished.id });
         }
         await useFence.mark(directTasks);
         const view = await presentResult(ports, record);

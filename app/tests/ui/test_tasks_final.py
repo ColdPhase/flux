@@ -37,7 +37,7 @@ ENCLOSURE = "Design a weatherproof enclosure that volunteers can open without to
 BLOCKER = "the probe dimensions from the supplier"
 CALIBRATE = "Calibrate the probes at two soil depths"
 LORA = "Measure LoRa range from the far east beds"
-WORD = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done", "not_pursued": "Done"}
+WORD = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done"}
 # The phone's feedback keeps an 8 px gap above the real footer (the Create control on a project's views); the toast is
 # fixed to the viewport and the control hangs from the app's own 100dvh height. Observed on main with Playwright 1.62.0
 # WebKit (2026-10-23, #637): in the context opened at 390x844 a fixed 100dvh probe measured 843.984375 while

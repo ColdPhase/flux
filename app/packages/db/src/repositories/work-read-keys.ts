@@ -15,11 +15,10 @@ export interface NativeWorkKeyPage { items: NativeWorkReadKey[]; total: number; 
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const unfinished = sql`${w.status} IN ('open', 'in_progress', 'blocked')`;
-const parked = sql`(${w.parkedAt} IS NOT NULL AND ${w.parkedByDecisionId} IS NOT NULL)`;
 /** A task whose creation was undone (#238) is history: never in a task group, count or chooser. */
 const active = sql`${w.creationRevertedAt} IS NULL`;
-const workRank = sql`CASE WHEN ${unfinished} AND ${parked} THEN 4 WHEN ${w.status} = 'in_progress' THEN 1 WHEN ${w.status} = 'blocked' THEN 2 WHEN ${w.status} = 'open' THEN 3 ELSE 5 END`;
-const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted' THEN 6 ELSE 7 END`;
+const workRank = sql`CASE WHEN ${w.status} = 'in_progress' THEN 1 WHEN ${w.status} = 'blocked' THEN 2 WHEN ${w.status} = 'open' THEN 3 ELSE 4 END`;
+const decisionRank = sql`CASE ${d.status} WHEN 'proposed' THEN 0 WHEN 'accepted' THEN 5 ELSE 6 END`;
 
 /**
  * The chooser's title filter. In a sealed workspace (F-030) titles are envelopes, so SQL never filters them: the caller
@@ -34,8 +33,8 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
   const parts: SQL[] = [];
   if (selection.purpose === 'tasks') {
     const group = selection.group;
-    if (group === 'all' || ['in_progress', 'blocked', 'open', 'parked', 'finished'].includes(group)) {
-      const predicate = group === 'all' ? sql`true` : group === 'parked' ? sql`${unfinished} AND ${parked}` : group === 'finished' ? sql`${w.status} IN ('done', 'not_pursued')` : sql`${w.status} = ${group} AND NOT ${parked}`;
+    if (group === 'all' || ['in_progress', 'blocked', 'open', 'finished'].includes(group)) {
+      const predicate = group === 'all' ? sql`true` : group === 'finished' ? sql`${w.status} = 'done'` : sql`${w.status} = ${group}`;
       // "Mine" is the person's own tasks and those owned by their own agents (#865): an agent works for its owner.
       const owner = !selection.mine ? sql`true` : actor.kind === 'human'
         ? sql`(${w.ownerUserId} = ${actor.id} OR ${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${actor.id}))`
@@ -50,7 +49,7 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
     }
     if (!selection.workOnly && (group === 'all' || group === 'results')) {
       const mine = selection.mine ? sql`${r.createdByKind} = ${actor.kind} AND ${r.createdById} = ${actor.id}` : sql`true`;
-      parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 8 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${mine})`);
+      parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 7 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${mine})`);
     }
   } else if (selection.choice === 'accepted_decisions' || (selection.choice === 'doc_refs' && selection.kind === 'decision')) {
     const predicate = selection.choice === 'accepted_decisions' ? sql`${d.status} = 'accepted'` : sql`true`;
@@ -58,7 +57,7 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
   } else if (selection.choice === 'doc_refs' && selection.kind === 'result') {
     parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 0 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${literalTitle(sql`${r.title}`, selection.q, sql`${r.id}`, matching)})`);
   } else {
-    const predicate = selection.choice === 'doc_refs' ? sql`true` : selection.choice === 'open_work' ? sql`${unfinished} AND NOT ${parked}` : unfinished;
+    const predicate = selection.choice === 'doc_refs' ? sql`true` : unfinished;
     parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, 0 AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${literalTitle(sql`${w.title}`, selection.q, sql`${w.id}`, matching)})`);
   }
   return sql.join(parts, sql` UNION ALL `);

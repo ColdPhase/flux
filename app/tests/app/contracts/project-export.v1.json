@@ -300,7 +300,6 @@
             "enum": [
               "source",
               "affects",
-              "still_applies",
               "about",
               "related",
               "mentions",
@@ -414,7 +413,8 @@
                   "kind": {
                     "enum": [
                       "blocker",
-                      "handoff"
+                      "handoff",
+                      "came_of_it"
                     ]
                   }
                 },
@@ -952,38 +952,12 @@
               }
             ]
           },
-          "parked": {
-            "anyOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "at": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  "decisionId": {
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "at",
-                  "decisionId"
-                ],
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "status": {
             "enum": [
               "open",
               "in_progress",
               "blocked",
-              "done",
-              "not_pursued"
+              "done"
             ]
           },
           "title": {
@@ -996,19 +970,33 @@
           "version": {
             "minimum": 1,
             "type": "integer"
+          },
+          "cameOfIt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dropped": {
+            "type": "boolean"
           }
         },
         "required": [
           "blocker",
+          "cameOfIt",
           "createdAt",
           "createdBy",
           "creationHistory",
+          "dropped",
           "id",
           "lifecycle",
           "number",
           "outcome",
           "owner",
-          "parked",
           "status",
           "title",
           "updatedAt",

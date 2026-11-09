@@ -702,9 +702,11 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
   const name = creator.name ?? (creator.kind === 'agent' ? 'Agent' : FORMER_MEMBER);
   const mine = creator.kind === 'human' && creator.id === meId;
   // One short line when a task becomes blocked or unblocked (#550): "#14 blocked · waiting for Kai".
-  if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked') {
+  if (notice.kind === 'task.blocked' || notice.kind === 'task.unblocked' || notice.kind === 'task.resumed') {
     const why = notice.kind === 'task.blocked' ? (notice.waitingFor ? `waiting for ${notice.waitingFor.name}` : notice.reason?.trim() ?? '') : '';
-    const words = `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
+    // What it waited for is resolved (#868): "#4 can continue: the decision was accepted".
+    const words = notice.kind === 'task.resumed' ? `#${notice.workNumber} can continue${notice.reason ? `: ${notice.reason}` : ''}`
+      : `#${notice.workNumber} ${notice.kind === 'task.blocked' ? 'blocked' : 'unblocked'}${why ? ` · ${why.length > 80 ? `${why.slice(0, 79).trimEnd()}…` : why}` : ''}`;
     return (
       <li className="convo-notice convo-notice--update" id={`notice-${notice.id}`} data-work-id={notice.workId}>
         <AuthorFace kind={creator.kind} name={name} mine={mine} />

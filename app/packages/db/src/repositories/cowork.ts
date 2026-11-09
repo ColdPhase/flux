@@ -44,7 +44,7 @@ export function coworkUnitRows(tx: DbExecutor) {
           eq(schema.projectWorkItems.projectId, units.projectId), eq(schema.projectWorkItems.id, units.taskId)))
         .where(and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId),
           eq(units.assignmentConnectionId, scope.connectionId), inArray(units.state, ['pending', 'paused', 'claimed']),
-          sql`${schema.projectWorkItems.creationRevertedAt} IS NULL`, sql`${schema.projectWorkItems.status} NOT IN ('done', 'not_pursued')`))
+          sql`${schema.projectWorkItems.creationRevertedAt} IS NULL`, sql`${schema.projectWorkItems.status} <> 'done'`))
         .orderBy(sql`CASE WHEN ${units.state} = 'claimed' AND ${units.leaseExpiresAt} > clock_timestamp() THEN 0
           WHEN ${units.state} = 'paused' OR ${units.state} = 'claimed' THEN 1 ELSE 2 END`,
         sql`${units.updatedAt} DESC`, asc(units.id)).limit(page.limit + 1).offset(page.offset);

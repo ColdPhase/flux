@@ -1,5 +1,5 @@
 import type { ProjectAccess } from './access.js';
-import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
+import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WaitingOn, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
 
 /** Bounded native reads (#155/#151/#136). These projections are NOT full WorkItem DTOs. */
 export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/${projectId}/work-summary`;
@@ -11,7 +11,7 @@ export const projectWorkThoughtTasksPath = (projectId: string) => `/api/v1/proje
 export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, id: string) =>
   `/api/v1/projects/${projectId}/work-objects/${kind}/${id}`;
 
-export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
+export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules', 'results'] as const;
 export type WorkGroup = typeof WORK_GROUPS[number];
 export type WorkCounts = Record<WorkGroup, number>;
 export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512 } as const;
@@ -80,10 +80,14 @@ export interface WorkRowProjection extends NativeRowBase {
   blocker: string | null;
   /** The one person a blocked task waits for (#550). */
   waitingFor: NamedPrincipal | null;
+  /** The one decision or task a blocked task waits for (#868), never together with `waitingFor`. */
+  waitingOn: WaitingOn | null;
+  /** A Done task that was dropped (#868): "Done · dropped". */
+  dropped: boolean;
+  /** A Done task's one line, "what came of it" (#868); null for none. */
+  cameOfIt: string | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
   dueOn: string | null;
-  parked: WorkItem['parked'];
-  parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;
   /** #238: a task whose creation was undone appears only as history (direct reads and existing references). */
   lifecycle?: TaskLifecycle;
@@ -138,7 +142,7 @@ export interface WorkThoughtTasks {
   access: ProjectAccess;
   /** Thoughts with at least one linked task, ordered by thought id. */
   counts: { thoughtId: string; tasks: number }[];
-  /** At most 100 (thought, task) pairs: thought id, then unparked, status order, created time, id. */
+  /** At most 100 (thought, task) pairs: thought id, then status order, created time, id. */
   links: { thoughtId: string; workId: string }[];
   linkTotal: number;
   /** The distinct tasks of `links`. */
@@ -154,7 +158,7 @@ export interface ProjectWorkSummary {
   all: WorkCounts;
   mine: WorkCounts;
   workTotal: number;
-  /** Unparked open/in-progress/blocked work; the Tasks tab count. */
+  /** Open, in-progress and blocked work; the Tasks tab count. */
   unfinishedTotal: number;
 }
 
@@ -220,7 +224,7 @@ export interface WorkDetailProjection {
   access: ProjectAccess;
   object: WorkDetailObject;
   relations: WorkRelationCounts;
-  /** At most 3 actual native parked-by/earlier/later decision references. */
+  /** At most 3 actual native earlier/later decision references. */
   context: WorkReadRef[];
 }
 

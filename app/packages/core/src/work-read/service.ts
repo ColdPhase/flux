@@ -23,7 +23,7 @@ function summaryFacts(value: WorkSummaryObservation, projectId: string, observed
   requireFact(value.projectId === projectId && value.observedAt === observedAt);
   for (const group of WORK_GROUPS) requireFact(count(value.all[group]) && count(value.mine[group]) && value.mine[group] <= value.all[group]);
   requireFact(value.mine.needs === value.all.needs && value.mine.rules === 0);
-  requireFact(value.workTotal === value.all.in_progress + value.all.blocked + value.all.open + value.all.parked + value.all.finished);
+  requireFact(value.workTotal === value.all.in_progress + value.all.blocked + value.all.open + value.all.finished);
   requireFact(value.unfinishedTotal === value.all.in_progress + value.all.blocked + value.all.open);
 }
 

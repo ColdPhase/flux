@@ -43,7 +43,7 @@ const p = schema.assistantProposals;
 /** The same words as `nothingToChange` in core (a posting schedule never posts them). */
 const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
-const FINISHED_WORK: ('done' | 'not_pursued')[] = ['done', 'not_pursued'];
+const FINISHED_WORK: 'done'[] = ['done'];
 
 /**
  * A queued run left behind: not one paused until a limit resets (#854), not one waiting for room on the server (#860), and
@@ -435,11 +435,11 @@ export function personalRunRows(db: DbExecutor) {
       return row ?? null;
     },
 
-    /** Unfinished, unparked work of the project, newest first. */
+    /** Unfinished work of the project, newest first. */
     async openWork(projectId: string, limit: number) {
       const w = schema.projectWorkItems;
       return db.select({ id: w.id, version: w.version, number: w.number, title: w.title, outcome: w.outcome, status: w.status }).from(w)
-        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`, sql`${w.parkedByDecisionId} IS NULL`))
+        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`))
         .orderBy(desc(w.createdAt), desc(w.id)).limit(limit);
     },
 

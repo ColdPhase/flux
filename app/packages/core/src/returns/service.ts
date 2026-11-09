@@ -284,14 +284,13 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const newForYou = mine && (madeForYou || !!handedTo);
         const giver = handedTo && !madeForYou ? (automated(handedTo) ? 'GitHub rule' : nameOf(handedTo.actorId)) : actor;
         const due = item.dueOn ? { dueOn: item.dueOn } : {};
-        const finished = item.status === 'done' || item.status === 'not_pursued';
+        const finished = item.status === 'done';
         const source: ReturnSource = { type: 'work', id: item.id, projectId: item.projectId };
         let text: string; let detail: string | null = null;
         if (item.status === 'blocked') {
           text = `Blocked: ${item.title}`;
           detail = item.blocker?.trim() ? item.blocker.trim() : 'No reason was recorded.';
         } else if (item.status === 'done') { text = `Done: ${item.title}`; }
-        else if (item.status === 'not_pursued') { text = `Dropped: ${item.title}`; }
         else if (newForYou && !madeForYou) { text = `${giver} gave you a task: ${item.title}`; }
         else if (created) {
           text = mine ? `${actor} added a task for you: ${item.title}` : `New task: ${item.title}`;

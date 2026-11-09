@@ -21,7 +21,7 @@ export interface MaterialSource {
  * canonical result; its finding, evidence and sources come from that result's ordinary authorized API.
  */
 export type MessageContribution =
-  | { kind: 'blocker' | 'handoff' }
+  | { kind: 'blocker' | 'handoff' | 'came_of_it' }
   | { kind: 'result'; resultId: string };
 
 export interface ConversationMessageFields {

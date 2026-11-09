@@ -21,8 +21,8 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
   const log: string[] = [];
   const tasks = new Map<string, WorkRecord>();
   const taskIds = options.taskIds ?? [randomUUID(), randomUUID(), randomUUID()];
-  for (const [index, id] of taskIds.entries()) tasks.set(id, { id, workspaceId, projectId, number: index + 1, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null, waitingFor: null, dueOn: null,
-    owner: null, parked: null, createdBy: { kind: 'human', id: 'creator' }, version: 1, createdAt: at, updatedAt: at });
+  for (const [index, id] of taskIds.entries()) tasks.set(id, { id, workspaceId, projectId, number: index + 1, title: `Task ${id.slice(0, 4)}`, outcome: '', criteria: [], status: 'open', blocker: null, waitingFor: null, waitingOn: null, dropped: false, cameOfIt: null, dueOn: null,
+    owner: null, createdBy: { kind: 'human', id: 'creator' }, version: 1, createdAt: at, updatedAt: at });
   const messages: DiscussionMessage[] = [];
   const conversations = new Map<string, { id: string; workspaceId: string; projectId: string; createdBy: ActorRef; createdAt: Date }>();
   const bindings = new Map<string, { workId: string; workspaceId: string; projectId: string; conversationId: string; rootMessageId: string }>();
@@ -63,6 +63,10 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
       return row ? copy(row) : null;
     },
     async insertTaskUpdate() { /* the conversation line of a block or unblock (#550) is not part of this order */ },
+    // Nothing waits for a task or a decision in these runs (#868); the real rows are covered by task-statuses.test.ts.
+    async waiters() { return []; },
+    async waitingTargets() { return new Map(); },
+    async waitsFor() { return false; },
     async updateWork(id: string, changes: Partial<WorkRecord>) {
       log.push('work.update');
       const row = tasks.get(id)!;
@@ -105,7 +109,7 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
       return ids.filter((id) => tasks.has(id)).map((id) => ({ id, projectId }));
     },
     async prerequisiteStates(_workspace: string, id: string) {
-      return { projectId, prerequisites: (options.prerequisites?.[id] ?? []).map((prerequisite) => ({ id: prerequisite, status: tasks.get(prerequisite)!.status, parked: false })) };
+      return { projectId, prerequisites: (options.prerequisites?.[id] ?? []).map((prerequisite) => ({ id: prerequisite, status: tasks.get(prerequisite)!.status })) };
     },
     async replaceDependencies() { log.push('graph.edges'); },
   } as unknown as WorkRepository;

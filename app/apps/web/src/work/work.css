@@ -314,13 +314,18 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .wd-due-edit__field { min-height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); font: inherit; box-shadow: inset 0 0 0 1.5px var(--t1); }
 .wd-due-edit__clear { min-height: 34px; padding: 0 8px; border-radius: var(--r-sm); color: var(--t2); font-size: var(--fs-sm); }
 .wd-due-edit__clear:hover { background: var(--hov); color: var(--t1); }
+.wd-came { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; max-width: 100%; }
+.wd-came__text { max-width: 100%; text-align: left; }
+.wd-came__text span { overflow-wrap: anywhere; }
+.wd-came__field { width: 100%; min-height: 34px; padding: 0 8px; margin-left: -8px; border: 0; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); font: inherit; box-shadow: inset 0 0 0 1.5px var(--t1); }
+.wd-came__dropped { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; font-size: var(--fs-sm); color: var(--t2); cursor: pointer; }
 .wd-menu__group { margin: 6px 10px 2px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .wd-menu__list { max-height: min(320px, 50dvh); overflow-y: auto; overscroll-behavior: contain; }
 .wd-menu__item .ui-avatar { flex: none; }
 .wd-menu__item .ui-glyph { flex: none; }
 .wd-menu__item span { min-width: 0; overflow-wrap: anywhere; }
 @media (hover: none) { .wd-menu__item kbd { display: none; } }
-@media (pointer: coarse) { .wd-state { min-height: 44px; } .wd-menu__item { min-height: 44px; } .wd-due-edit__field, .wd-due-edit__clear { min-height: 44px; } }
+@media (pointer: coarse) { .wd-state { min-height: 44px; } .wd-menu__item { min-height: 44px; } .wd-due-edit__field, .wd-due-edit__clear, .wd-came__field { min-height: 44px; } .wd-came__dropped { min-height: 44px; } }
 
 /* The blocker is one card: the pill, who or what it waits for, then quiet Edit and Resolve. The field shows only while editing. */
 .wd-blocker { margin-top: 14px; padding: 10px 12px 10px 14px; border-radius: var(--r-card); background: var(--sub); }

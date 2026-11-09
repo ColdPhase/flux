@@ -149,11 +149,14 @@ export function assistantChangeRows(db: DbExecutor) {
       const w = schema.projectWorkItems;
       const [row] = await db.select({ id: w.id, projectId: w.projectId, number: w.number, title: w.title, outcome: w.outcome, status: w.status,
         blocker: w.blocker, version: w.version, ownerUserId: w.ownerUserId, criteria: w.criteria, waitingForUserId: w.waitingForUserId,
+        waitingForDecisionId: w.waitingForDecisionId, waitingForWorkId: w.waitingForWorkId, dropped: w.dropped, cameOfIt: w.cameOfIt,
         ownerAgentId: w.ownerAgentId, createdByKind: w.createdByKind, createdById: w.createdById }).from(w).where(eq(w.id, id));
       if (!row) return null;
       const d = schema.projectTaskDependencies;
       const dependencies = await db.select({ id: d.prerequisiteId }).from(d).where(and(eq(d.projectId, row.projectId), eq(d.taskId, id))).orderBy(asc(d.prerequisiteId));
-      return { ...row, dependencyIds: dependencies.map((item) => item.id) };
+      // What it waits for besides a person is one value for Undo to compare: `decision:<id>` or `task:<id>` (#868).
+      const waitingOn = row.waitingForDecisionId ? `decision:${row.waitingForDecisionId}` : row.waitingForWorkId ? `task:${row.waitingForWorkId}` : null;
+      return { ...row, waitingOn, dependencyIds: dependencies.map((item) => item.id) };
     },
     async doc(id: string) {
       return first<{ id: string; projectId: string; title: string; body: string; version: number; userId: string | null; agentId: string | null }>(db, sql`

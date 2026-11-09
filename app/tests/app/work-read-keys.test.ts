@@ -35,10 +35,11 @@ describe('bounded native PostgreSQL work key selection', () => {
       supersedesId: i === 1 ? decisions[2] : null, supersededById: i === 2 ? decisions[1] : null, supersededAt: i === 2 ? new Date(at) : null, version: i ? i + 1 : 1 })));
     await db.insert(schema.projectWorkItems).values(ids.map((id, i) => ({
       id, workspaceId, projectId, title: i === 0 ? '100%_literal' : i === 1 ? '100xxliteral' : `Work ${i}`, outcome: 'Own complete fields must not enter keys',
-      status: (['open', 'open', 'in_progress', 'blocked', 'open', 'done', 'not_pursued', 'in_progress'] as const)[i]!,
+      status: (['open', 'open', 'in_progress', 'blocked', 'open', 'done', 'done', 'in_progress'] as const)[i]!,
+      dropped: i === 6,
       blocker: i === 3 ? 'Awaiting material' : null,
       ownerUserId: i % 2 === 0 ? owner.id : other.id, createdByKind: 'human' as const, createdById: owner.id,
-      parkedAt: i === 4 || i === 7 ? new Date(at) : null, parkedByDecisionId: i === 4 || i === 7 ? decisions[1] : null, createdAt: new Date(at),
+      createdAt: new Date(at),
     })));
     await db.insert(schema.projectWorkItems).values(Array.from({ length: 110 }, (_, i) => ({ id: randomUUID(), workspaceId, projectId, title: `Additional native ${i.toString(36)}`,
       ownerUserId: other.id, createdByKind: 'human' as const, createdById: owner.id, createdAt: new Date(at) })));
@@ -68,7 +69,7 @@ describe('bounded native PostgreSQL work key selection', () => {
       cursor = keyCursor('next', page.items.at(-1)!);
     }
     assert.equal(new Set(seen.map((key) => `${key.kind}:${key.id}`)).size, 123);
-    assert.deepEqual([...new Set(seen.map((key) => key.rank))], [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.deepEqual([...new Set(seen.map((key) => key.rank))], [0, 1, 2, 3, 4, 5, 6, 7]);
     assert.equal(seen.find((key) => key.id === ids[0])?.createdAt, at);
     assert.equal(seen.find((key) => key.id === ids[1])?.createdAt, newer);
     assert.ok(seen.findIndex((key) => key.id === ids[1]) < seen.findIndex((key) => key.id === ids[0]));
@@ -80,13 +81,13 @@ describe('bounded native PostgreSQL work key selection', () => {
     assert.equal(page.total, 6); // 4 own work + project-wide proposal + own result.
     assert.deepEqual(new Set(page.items.map((key) => key.id)), new Set([ids[0], ids[2], ids[4], ids[6], decisions[0], results[0]]));
     assert.equal((await read({ purpose: 'tasks', group: 'rules', mine: true })).total, 0);
-    const parked = await read({ purpose: 'tasks', group: 'parked', mine: false });
-    assert.deepEqual(new Set(parked.items.map((key) => key.id)), new Set([ids[4], ids[7]]));
+    const blocked = await read({ purpose: 'tasks', group: 'blocked', mine: false });
+    assert.deepEqual(new Set(blocked.items.map((key) => key.id)), new Set([ids[3]]));
   });
 
   test('choice predicates retain open work, result choices, full native kinds and literal wildcard search', async () => {
     const choose = (choice: 'open_work' | 'result_work', q = ''): NativeWorkViewSelector => ({ purpose: 'choices', choice, q });
-    assert.equal((await read(choose('open_work'), 100)).total, 114);
+    assert.equal((await read(choose('open_work'), 100)).total, 116);
     assert.equal((await read(choose('result_work'), 100)).total, 116);
     const literal = await read(choose('result_work', '100%_'));
     assert.deepEqual(literal.items.map((key) => key.id), [ids[0]]);

@@ -12,7 +12,7 @@ export async function canonicalArtifactTaskIds(tx: DbExecutor, scope: ArtifactSc
   const l=schema.projectObjectLinks,w=schema.projectWorkItems;
   const material=artifact.kind==='doc'||artifact.kind==='material';
   const outgoing=artifact.kind==='result' ? and(eq(l.fromType,'result'),eq(l.fromId,artifact.id),eq(l.toType,'work'),eq(l.role,'about'))
-    : artifact.kind==='decision' ? and(eq(l.fromType,'decision'),eq(l.fromId,artifact.id),eq(l.toType,'work'),inArray(l.role,['affects','still_applies']))
+    : artifact.kind==='decision' ? and(eq(l.fromType,'decision'),eq(l.fromId,artifact.id),eq(l.toType,'work'),eq(l.role,'affects'))
     : artifact.kind==='doc' ? and(eq(l.fromType,'doc'),eq(l.fromId,artifact.id),eq(l.toType,'work'),inArray(l.role,['mentions','source'])) : undefined;
   const incoming=material ? and(eq(l.fromType,'work'),eq(l.toId,artifact.id),inArray(l.toType,['doc','material']),inArray(l.role,['source','related']),
     or(isNull(l.toVersion),artifact.version===undefined?undefined:eq(l.toVersion,artifact.version)))

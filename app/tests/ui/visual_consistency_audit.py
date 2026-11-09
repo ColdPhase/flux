@@ -132,18 +132,22 @@ def seed(browser: Browser) -> dict:
             projects[name] = call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": name, "visibility": "workspace"})["id"]
     tasks = {t["title"]: t["id"] for t in items(call(ada, "GET", f"/api/v1/projects/{garden}/work?limit=100"))}
     if SEED_MARK not in tasks:
-        def task(title, owner, status="open", blocker=None):
+        def task(title, owner, status="open", blocker=None, dropped=False):
             body = {"title": title, "owner": {"kind": "human", "id": me[owner]}, "status": status}
             if blocker:
                 body["blocker"] = blocker
-            tasks[title] = call(ada, "POST", f"/api/v1/projects/{garden}/work", body)["id"]
+            made = call(ada, "POST", f"/api/v1/projects/{garden}/work", body)
+            tasks[title] = made["id"]
+            # A dropped task is Done with a "dropped" note (#868): finished first, then dropped.
+            if dropped:
+                call(ada, "PATCH", f"/api/v1/work/{made['id']}", {"dropped": True, "expectedVersion": made["version"]})
         task(SEED_MARK, "ada", "in_progress")
         task("Design a weatherproof enclosure for the far-bed sensors", "ada", "blocked", "Waiting for the probe dimensions from the supplier")
         task("Ask the school about two more ESP32 kits", "jonas")
         task("Test the LoRa range from the far east bed through the hedge", "jonas", "done")
         task("Write the volunteer watering guide for the raised beds", "maja")
         task("Replace the corroded resistive probes in the north raised beds with capacitive ones before the volunteer weekend in May", "maja", "in_progress")
-        task("Compare frost-warning thresholds with last spring's notes", "jonas", "not_pursued")
+        task("Compare frost-warning thresholds with last spring's notes", "jonas", "done", dropped=True)
         for i in range(1, 6):
             task(f"Mount sensor {i} on bed {i * 2} and log the first reading", ["ada", "jonas", "maja"][i % 3])
         call(jonas, "POST", f"/api/v1/projects/{garden}/decisions", {

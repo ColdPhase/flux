@@ -180,7 +180,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     const blockedTask = await scene.task(scene.owner, 'Lens delivery');
     const unblock = await scene.task(scene.owner, 'Filter swap');
     const map = await scene.map(scene.owner, 'Sensor map');
-    // A task a person blocked on Jonas; the assistant's later move to In progress clears who and why, and Undo puts both back.
+    // A task a person blocked on Jonas; the assistant's later move to Doing clears who and why, and Undo puts both back.
     await scene.patchWork(scene.owner, unblock.id, unblock.version, { status: 'blocked', blocker: 'Filter on back order', waitingFor: { kind: 'human', id: scene.peer.id } });
     const unblockNow = await scene.taskRow(unblock.id);
     const live = await scene.liveRun();
@@ -197,7 +197,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.deepEqual([(await scene.taskRow(blockedTask.id)).status, (await scene.taskRow(blockedTask.id)).waiting_for_user_id], ['blocked', scene.peer.id]);
     assert.deepEqual([(await scene.taskRow(unblock.id)).status, (await scene.taskRow(unblock.id)).waiting_for_user_id, (await scene.taskRow(unblock.id)).blocker], ['in_progress', null, null]);
     const listed = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
-    assert.ok(assistantChangeLine(listed).includes(`moved #${unblock.number} to In progress`), 'the change line names the status move');
+    assert.ok(assistantChangeLine(listed).includes(`moved #${unblock.number} to Doing`), 'the change line names the status move');
     assert.ok(listed.every((change) => change.undoable), 'every one of them can be taken back');
     assert.deepEqual([listed[0]!.before, listed[0]!.after], ['no done-when', '2 done-when']);
     assert.deepEqual([listed[2]!.before, listed[2]!.after], ['no prerequisites', '1 prerequisite']);

@@ -123,34 +123,6 @@ class NativeDetailsJourney(unittest.TestCase):
         page.unroute("**/work-relations?**");panel.get_by_role("button",name="Refresh relationships",exact=True).click();self.ready(panel)
         expect(field).to_have_value("My unfinished blocker explanation is private until saved")
 
-    def test_03_finished_deep_selection_survives_all_result_choice_pages_and_failure(self):
-        for phone in (False,True):
-            with self.subTest(phone=phone):
-                page=self.page(phone);panel=self.open(page,"work",self.done["id"]);panel.get_by_role("button",name="Attach a result",exact=True).click()
-                panel=page.locator("#details .wd");self.choices_ready(panel,"Result work choices")
-                title=panel.get_by_label("Finding",exact=True);title.fill("A measured result for the earlier completed calibration")
-                field=panel.get_by_label("Evidence",exact=True);field.fill("Keep the exact measurements and this unfinished explanation")
-                select=panel.get_by_label("For work",exact=True);expect_value(select, self.done["id"])
-                nav=panel.get_by_role("navigation",name="Result work choices");seen=set()
-                while True:
-                    self.choices_ready(panel,"Result work choices")
-                    options=values(select);seen.update(value for value in options if value)
-                    self.assertLessEqual(len(options),52)
-                    if nav.get_by_role("button",name="Next",exact=True).is_disabled():break
-                    nav.get_by_role("button",name="Next",exact=True).click()
-                self.assertEqual(seen,{item["id"] for item in self.works}|{self.done["id"]})
-                expect_value(select, self.done["id"]);expect(field).to_have_value("Keep the exact measurements and this unfinished explanation")
-                self.assertEqual(title.evaluate("el=>el.tagName"),"TEXTAREA")
-                self.assertLessEqual(title.evaluate("el=>el.scrollHeight"),title.evaluate("el=>el.clientHeight"),"complete measured finding fits its multiline field")
-                shot(page,f"bounded-details-result-{'phone' if phone else 'desktop'}")
-                page.route("**/work-view?**choice=result_work**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable"}))
-                nav.get_by_role("button",name="Refresh",exact=True).click();expect(panel.get_by_role("alert")).to_contain_text("Choices could not be loaded")
-                expect_value(select, self.done["id"]);expect(title).to_have_value("A measured result for the earlier completed calibration")
-                expect(field).to_have_value("Keep the exact measurements and this unfinished explanation")
-                expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
-                page.unroute("**/work-view?**choice=result_work**");panel.get_by_role("button",name="Refresh choices",exact=True).click();self.choices_ready(panel,"Result work choices")
-                expect_value(select, self.done["id"])
-
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
         page=self.page();page.goto(f"/projects/{self.project}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
         panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
@@ -189,64 +161,10 @@ class NativeDetailsJourney(unittest.TestCase):
         accept.click()
         expect(panel).to_contain_text("Decision · accepted")
         after=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
-        self.assertEqual([(item["id"],item["version"],item["parked"]) for item in before],[(item["id"],item["version"],item["parked"]) for item in after],"no task was moved or parked")
+        self.assertEqual([(item["id"],item["version"]) for item in before],[(item["id"],item["version"]) for item in after],"no task was moved")
         self.assertFalse(any(link["role"]=="still_applies" for link in self.native("decision",self.pivot["id"])["links"]))
         self.assertEqual(self.native("decision",self.rules[0]["id"])["status"],"superseded")
         expect(panel.get_by_role("button",name=self.rules[0]["title"],exact=True)).to_be_visible()
-
-    def test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change(self):
-        work=self.works[-2];page=self.page();panel=self.open(page,"work",work["id"]);panel.get_by_role("button",name="Attach a result",exact=True).click()
-        panel=page.locator("#details .wd");self.choices_ready(panel,"Result work choices")
-        title=panel.get_by_label("Finding",exact=True);title.fill("The earlier version changed while writing this result")
-        field=panel.get_by_label("Evidence",exact=True);field.fill("The measured numbers and unfinished conclusion must survive the conflict")
-        panel.get_by_role("radio",name="Negative",exact=True).check();finish=panel.get_by_role("checkbox",name=re.compile("This finishes"));expect(finish).to_be_visible();finish.check()
-        current=self.native("work",work["id"]);api(self.ctx,"PATCH",f"/api/v1/work/{work['id']}",{"status":"not_pursued","expectedVersion":current["version"]})
-        # Force the live-refresh ordering that formerly disabled Save before it
-        # could report a conflict. The checked action still owns its old version.
-        expect(panel).to_contain_text("cannot be finished by this result")
-        expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_enabled()
-        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/results")) as conflict:
-            panel.get_by_role("button",name="Attach result",exact=True).click()
-        self.assertEqual(conflict.value.status,409)
-        self.assertEqual(conflict.value.request.post_data_json["finishes"]["expectedVersion"],current["version"])
-        expect(panel.get_by_role("alert")).to_contain_text("Someone changed this")
-        expect(panel).to_contain_text("cannot be finished by this result")
-        expect(title).to_have_value("The earlier version changed while writing this result");expect(field).to_have_value("The measured numbers and unfinished conclusion must survive the conflict")
-        expect_value(panel.get_by_label("For work",exact=True), work["id"]);expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_disabled()
-        panel.get_by_role("button",name="Attach without finishing",exact=True).click();expect(panel.get_by_role("button",name="Attach result",exact=True)).to_be_enabled()
-        panel.get_by_role("button",name="Attach result",exact=True).click();expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("earlier version changed")
-        self.assertEqual(self.native("work",work["id"])["status"],"not_pursued")
-
-    def test_07_held_native_result_cannot_replace_fresh_draft_after_a_b_a(self):
-        thread=api(self.ctx,"POST",self.root+"/conversations",{"body":"Compare these two independently owned command lifetimes.","clientMessageId":str(uuid.uuid4())},201)
-        work=[]
-        for title in ("Check the earlier command lifetime", "Check the intervening command lifetime"):
-            work.append(api(self.ctx,"POST",self.root+"/work",{"title":title,"sources":[{"type":"message","id":thread["messages"][0]["id"]}]},201))
-        page=self.page();page.goto(f"/projects/{self.project}/conversations/{thread['id']}")
-        chip=lambda item:page.locator(f"#message-{thread['messages'][0]['id']}").get_by_role("button",name=re.compile(r"^Task #\d+: " + re.escape(item['title']) + "$"))
-        chip(work[0]).click();panel=page.locator("#details .wd");self.ready(panel)
-        panel.get_by_role("button",name="Attach a result",exact=True).click();self.choices_ready(panel,"Result work choices")
-        panel.get_by_label("Finding",exact=True).fill("The old result really committed while its response waited")
-        panel.get_by_label("Evidence",exact=True).fill("Old measured evidence belongs to the old command lifetime")
-        panel.get_by_role("radio",name="Positive",exact=True).check();held=[]
-        def hold(route):
-            response=route.fetch();self.assertEqual(response.status,201);held.append((route,response));page.evaluate("window.__oldDetailCommandHeld=true")
-        page.route("**/api/v1/projects/*/results",hold)
-        panel.get_by_role("button",name="Attach result",exact=True).click();page.wait_for_function("window.__oldDetailCommandHeld===true")
-        chip(work[1]).click();expect(panel).to_have_attribute("data-detail-id",work[1]["id"]);self.ready(panel)
-        chip(work[0]).click();self.ready(panel);panel.get_by_role("button",name="Attach a result",exact=True).click();self.choices_ready(panel,"Result work choices")
-        finding=panel.get_by_label("Finding",exact=True);finding.fill("My fresh draft after reopening the same work")
-        evidence=panel.get_by_label("Evidence",exact=True);evidence.fill("Fresh unsaved measurements stay owned by the new form")
-        evidence.evaluate("el=>{el.focus();el.setSelectionRange(6,13)}")
-        route,response=held.pop();saved=response.json();route.fulfill(response=response)
-        page.wait_for_function("performance.getEntriesByType('resource').some(e=>e.name.endsWith('/results'))")
-        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
-        expect(finding).to_have_value("My fresh draft after reopening the same work")
-        expect(evidence).to_have_value("Fresh unsaved measurements stay owned by the new form")
-        self.assertEqual(evidence.evaluate("el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]"),[True,6,13])
-        self.assertEqual(self.native("result",saved["id"])["title"],"The old result really committed while its response waited")
-        expect(panel.get_by_role("alert")).to_have_count(0)
-        page.unroute("**/api/v1/projects/*/results",hold)
 
     def test_08_docked_object_links_keep_their_own_project_after_route_navigation(self):
         second=api(self.ctx,"POST",f"/api/v1/workspaces/{self.workspace}/projects",{"name":"Neighbouring workshop","visibility":"restricted"},201)["id"]
@@ -509,30 +427,6 @@ class NativeDetailsJourney(unittest.TestCase):
             panel.get_by_role("button", name="Save", exact=True).click()
         self.assertEqual(stored.value.status, 200, "a new clean blocker session uses the currently visible version")
         expect(panel.get_by_role("alert")).to_have_count(0)
-
-    def test_17_finishing_a_changed_open_task_requires_review_of_each_new_version(self):
-        task = api(self.ctx, "POST", self.root + "/work", {"title": "Review the version this result finishes"}, 201)
-        page = self.page(); panel = self.open(page, "work", task["id"])
-        panel.get_by_role("button", name="Attach a result", exact=True).click()
-        panel = page.locator("#details .wd"); self.choices_ready(panel, "Result work choices")
-        panel.get_by_label("Finding", exact=True).fill("The reviewed measurement is complete")
-        panel.get_by_label("Evidence", exact=True).fill("Two measured calibration passes")
-        panel.get_by_role("radio", name="Positive", exact=True).check()
-        panel.get_by_role("checkbox", name=re.compile("This finishes")).check()
-        submit = panel.get_by_role("button", name="Attach result", exact=True)
-        for number in (1, 2):
-            current = self.native("work", task["id"])
-            api(self.ctx, "PATCH", f"/api/v1/work/{task['id']}", {"title": f"Reviewed calibration version {number}", "expectedVersion": current["version"]})
-            expect(panel.get_by_role("checkbox", name=f"This finishes “Reviewed calibration version {number}”", exact=True)).to_be_checked()
-            with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith("/results")) as conflict:
-                submit.click()
-            self.assertEqual(conflict.value.status, 409)
-            expect(submit).to_be_disabled()
-            panel.get_by_role("button", name="Finish current version", exact=True).click()
-            expect(submit).to_be_enabled()
-        submit.click()
-        expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text("The reviewed measurement is complete")
-        self.assertEqual(self.native("work", task["id"])["status"], "done")
 
     def test_18_late_success_preserves_newer_title_and_blocker_drafts_with_their_own_base(self):
         for field_name in ("blocker", "title"):

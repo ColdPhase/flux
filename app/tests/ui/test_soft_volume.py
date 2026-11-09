@@ -26,10 +26,11 @@ DARK = {"--side": "#0b0b0b", "--bg": "#111111", "--el": "#1c1c1c", "--sub": "#24
 TOKENS = """names => Object.fromEntries(names.map(n => { const i = document.createElement('i'); i.style.color = `var(${n})`;
   document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return [n, c]; }))"""
 RGB = lambda value: f"rgb({int(value[1:3], 16)}, {int(value[3:5], 16)}, {int(value[5:7], 16)})"
-STATES = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done", "not_pursued": "Done"}
+STATES = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done"}
 TITLES = {"open": "Calibrate the topsoil probe", "in_progress": "Check the calibration batch",
-          "blocked": "Await the battery shipment", "done": "Measure ambient light",
-          "not_pursued": "Order the spare enclosure"}
+          "blocked": "Await the battery shipment", "done": "Measure ambient light"}
+# A dropped task is Done with a "dropped" note (#868): the Done glyph and the words "Done · dropped", never a fifth state.
+DROPPED_TITLE = "Order the spare enclosure"
 
 
 class SoftVolume(unittest.TestCase):
@@ -100,6 +101,9 @@ class SoftVolume(unittest.TestCase):
                 body["blocker"] = "The supplier has no stock"
             task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", body)
             type(self).ids[status] = task["id"]
+        dropped = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": DROPPED_TITLE, "status": "done"})
+        self.api(page, "PATCH", f"/api/v1/work/{dropped['id']}", {"dropped": True, "expectedVersion": dropped["version"]}, status=200)
+        type(self).ids["dropped"] = dropped["id"]
         upload = page.request.post(f"/api/v1/projects/{project['id']}/files?uploadId={uuid.uuid4()}&name=calibration.csv",
                                    data=b"lux,temperature\n5,21\n", headers={"origin": ORIGIN, "content-type": "application/octet-stream"})
         self.assertEqual(upload.status, 201, upload.text())
@@ -244,6 +248,9 @@ class SoftVolume(unittest.TestCase):
                         minimum = 3
                         value = page.evaluate(MEASURE, {"selector": f".ui-glyph--{status}", "property": "color"})
                         self.assertGreaterEqual(value["ratio"], minimum, (scheme, status, value))
+                    dropped = page.locator(f"li[data-work-id='{self.ids['dropped']}']")
+                    expect(dropped.locator(".ui-glyph--done")).to_be_visible()
+                    self.assertIn("Done · dropped", dropped.locator(".ws-item__s").inner_text())
                     shot(page, f"338-{self.engine}-task-glyphs-{'390' if phone else '1440'}-{scheme}")
 
     def test_06_own_dm_initials_are_readable(self) -> None:

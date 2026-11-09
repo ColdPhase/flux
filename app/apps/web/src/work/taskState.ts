@@ -17,7 +17,7 @@ export const STATE_KEYS: Record<string, WorkStatus> = { '1': 'open', '2': 'in_pr
 export const nextStatus = (status: WorkStatus): WorkStatus =>
   status === 'open' ? 'in_progress' : status === 'in_progress' ? 'done' : status === 'blocked' ? 'in_progress' : 'open';
 
-export type StateTarget = Pick<WorkRowProjection, 'id' | 'number' | 'title' | 'status' | 'blocker' | 'version'> & Partial<Pick<WorkRowProjection, 'waitingFor'>>;
+export type StateTarget = Pick<WorkRowProjection, 'id' | 'number' | 'title' | 'status' | 'blocker' | 'version'> & Partial<Pick<WorkRowProjection, 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt'>>;
 
 /** A state named in a sentence, as its column is: "moved to Doing", "back to To do" (#868). */
 const word = (status: WorkStatus) => STATUS_LABEL[status];
@@ -38,11 +38,15 @@ export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus
   status === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} moved to ${word(status)}`;
 
 /** What Undo sends to put a task back as it was before a state change: a put-back blocker and person are not said again. */
-export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor'>>) {
-  const blockedBack = item.status === 'blocked' && (item.blocker || item.waitingFor);
+export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt'>>) {
+  const blockedBack = item.status === 'blocked' && (item.blocker || item.waitingFor || item.waitingOn);
+  // Leaving Done clears "dropped" and its line, so they go back with the state (#868).
+  const doneBack = item.status === 'done' && (item.dropped || item.cameOfIt);
   return { status: item.status, ...(item.status === 'blocked' && item.blocker ? { blocker: item.blocker } : {}),
     ...(item.status === 'blocked' && item.waitingFor ? { waitingFor: { kind: 'human' as const, id: item.waitingFor.id } } : {}),
-    ...(blockedBack ? { restore: true as const } : {}) };
+    ...(item.status === 'blocked' && item.waitingOn ? { waitingOn: { kind: item.waitingOn.kind, id: item.waitingOn.id } } : {}),
+    ...(item.status === 'done' && item.dropped ? { dropped: true } : {}), ...(item.status === 'done' && item.cameOfIt ? { cameOfIt: item.cameOfIt } : {}),
+    ...(blockedBack || doneBack ? { restore: true as const } : {}) };
 }
 
 /**

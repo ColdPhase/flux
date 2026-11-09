@@ -83,8 +83,8 @@ test('tasks carry bounded criteria, same-project prerequisites and an immutable 
     dependencyIds: [second.id.toUpperCase(), first.id], planIntent: { ...intentOf(f), intentKey: '  decompose-measurements ' } });
   assert.deepEqual(planned.criteria, ['At least 20 gestures', 'Photograph the setup']);
   assert.deepEqual(planned.dependencyIds, [first.id, second.id].sort());
-  assert.deepEqual(planned.prerequisites.map((item) => [item.id, item.title, item.status, item.parked, item.met]).sort(),
-    [[first.id, 'Order the sensor', 'open', false, false], [second.id, 'Calibrate the sensor', 'done', false, true]].sort());
+  assert.deepEqual(planned.prerequisites.map((item) => [item.id, item.title, item.status, item.met]).sort(),
+    [[first.id, 'Order the sensor', 'open', false], [second.id, 'Calibrate the sensor', 'done', true]].sort());
   assert.deepEqual(planned.planIntent, intentOf(f));
   assert.equal(planned.createdBy.id, f.writer.id);
   assert.equal(planned.status, 'open');
@@ -162,13 +162,13 @@ test('prerequisites must be real tasks of the same project: guessed, foreign, se
   await f.patchFails(f.owner, unlinked, { dependencyIds: [t1.id] }, 409, 'TASK_DEPENDENCY_CYCLE');
 });
 
-test('starting or finishing a task needs every prerequisite done and unparked; an active task keeps that, and results cannot bypass it', async () => {
+test('starting or finishing a task needs every prerequisite done; an active task keeps that, and results cannot bypass it', async () => {
   const f = await scene();
   const prerequisite = await f.create(f.owner, { title: 'Prerequisite' });
   const task = await f.create(f.owner, { title: 'Dependent', dependencyIds: [prerequisite.id] });
   const before = await f.counts();
   const blockedStart = await f.patchFails(f.owner, task, { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');
-  assert.deepEqual(blockedStart.prerequisites, [{ id: prerequisite.id, status: 'open', parked: false }]);
+  assert.deepEqual(blockedStart.prerequisites, [{ id: prerequisite.id, status: 'open' }]);
   await f.patchFails(f.owner, task, { status: 'done' }, 409, 'TASK_PREREQUISITES_UNMET');
   assert.deepEqual(await f.read(task.id), task, 'a refused transition changes nothing, not even the version');
   // Other changes stay possible while a prerequisite is open, including blocked and not pursued.
@@ -178,8 +178,8 @@ test('starting or finishing a task needs every prerequisite done and unparked; a
   await f.fails(f.owner, { title: 'Started too early', status: 'in_progress', dependencyIds: [prerequisite.id] }, 409, 'TASK_PREREQUISITES_UNMET');
   assert.deepEqual(await f.counts(), { ...before, work: before.work, notices: before.notices, updated: before.updated + 1 });
 
-  // Every non-done state keeps it unmet: in progress, blocked and not pursued.
-  for (const status of ['in_progress', 'blocked', 'not_pursued'] as const) {
+  // Every non-done state keeps it unmet: in progress and blocked (a dropped task is Done, so it is met).
+  for (const status of ['in_progress', 'blocked'] as const) {
     const current = await f.read(prerequisite.id);
     await f.patch(f.owner, current, { status, ...(status === 'blocked' ? { blocker: 'x' } : {}) });
     await f.patchFails(f.owner, await f.read(task.id), { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');

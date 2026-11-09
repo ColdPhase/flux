@@ -210,7 +210,7 @@ class UnifiedPanel(unittest.TestCase):
                 expect(card).to_contain_text("Waiting for the probe dimensions")
                 expect(card.get_by_label("What is it waiting for?")).to_have_count(0)  # the field shows only while editing
                 actions = panel.get_by_role("group", name="Task actions")
-                for name in ("Attach a result", "Link thought"):
+                for name in ("Link thought",):
                     box = actions.get_by_role("button", name=name).bounding_box()
                     self.assertAlmostEqual(box["height"], 32, delta=1, msg=f"{name} is a small action at the 32 px control height (#789)")
                 # Empty sections are not shown, a single page has no pagination, and nothing is a select.
@@ -234,7 +234,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Calibrate the probes at two soil depths")
         page = self.page()
         panel = self.open_task(page, task)
-        names = ["Status", "Owner", "Attach a result", "Link thought", "Close details"]
+        names = ["Status", "Owner", "Link thought", "Close details"]
         before = self.positions(page, names)
         # Owner: a menu of people and agents, no select; the choice is stored.
         owner = panel.get_by_role("button", name="Owner", exact=True)
@@ -316,17 +316,16 @@ class UnifiedPanel(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks"))
         expect(panel.get_by_role("link", name="Open in Conversation")).to_be_visible()
 
-    def test_09_result_and_link_thought_are_real_actions_with_back(self):
+    def test_09_link_thought_is_a_real_action(self):
         task = self.new_task("Write the wiring notes")
         page = self.page()
         panel = self.open_task(page, task)
         panel.get_by_role("button", name="Link thought").click()
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_be_visible()
         page.keyboard.press("Escape")
-        panel.get_by_role("button", name="Attach a result").click()
-        expect(panel.get_by_role("heading", name="Record a result")).to_be_visible()
-        back = panel.get_by_role("button", name=re.compile(r"^Task #\d+$"))
-        back.click()
+        expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_have_count(0)
+        # There is no "Record a result" action in the panel (#868): what came of a task is one line at Done.
+        expect(panel.get_by_role("button", name="Attach a result")).to_have_count(0)
         expect(panel.locator(".wd[data-detail-kind='work']")).to_be_visible()
 
     # ------------------------------------------------------------------------ phone (AC-2, S10)

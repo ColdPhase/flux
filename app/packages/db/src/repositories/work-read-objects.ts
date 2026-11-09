@@ -10,7 +10,7 @@ import { nativeWorkVisibilityRows, type NativeWorkReadObject } from './work-read
 
 const w = schema.projectWorkItems, d = schema.projectDecisions, r = schema.projectResults;
 const base = (table: typeof w | typeof d | typeof r) => ({ id: table.id, workspaceId: table.workspaceId, projectId: table.projectId, title: table.title, createdAt: table.createdAt });
-const workFields = { ...base(w), number: w.number, status: w.status, blocker: w.blocker, waitingForUserId: w.waitingForUserId, dueOn: w.dueOn, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, parkedByDecisionId: w.parkedByDecisionId, parkedAt: w.parkedAt, version: w.version, updatedAt: w.updatedAt,
+const workFields = { ...base(w), number: w.number, status: w.status, blocker: w.blocker, waitingForUserId: w.waitingForUserId, waitingForDecisionId: w.waitingForDecisionId, waitingForWorkId: w.waitingForWorkId, dropped: w.dropped, cameOfIt: w.cameOfIt, dueOn: w.dueOn, ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId, version: w.version, updatedAt: w.updatedAt,
   revertedAt: w.creationRevertedAt, revertedByKind: w.creationRevertedByKind, revertedById: w.creationRevertedById, reversionNoticeId: w.creationReversionNoticeId };
 const decisionFields = { ...base(d), rationale: d.rationale, status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, decidedBy: d.decidedBy, decidedAt: d.decidedAt, supersedesId: d.supersedesId, supersededById: d.supersededById, supersededAt: d.supersededAt, version: d.version, updatedAt: d.updatedAt };
 const resultFields = { ...base(r), finding: r.finding, createdByKind: r.createdByKind, createdById: r.createdById };
@@ -69,8 +69,8 @@ export function nativeWorkObjectRows(db: DbExecutor) {
     for (const result of results) actors.push({ kind: result.createdByKind, id: result.createdById });
     const named = await names(actors);
     const facts = new Map((await nativeWorkVisibilityRows(db).relations(projectId, requested)).map((fact) => [`${fact.kind}:${fact.id}`, fact]));
-    const parkedIds = [...new Set(works.filter((work) => work.parkedAt && work.parkedByDecisionId).map((work) => work.parkedByDecisionId!))];
-    const parked = parkedIds.length ? (await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, title: d.title }).from(d).where(and(eq(d.projectId, projectId), inArray(d.id, parkedIds))))).map(({ id, title }) => ({ id, title })) : [];
+    const waitingOn = await workRows(db).waitingTargets(works.flatMap((work): { kind: 'decision' | 'task'; id: string }[] => work.waitingForDecisionId ? [{ kind: 'decision' as const, id: work.waitingForDecisionId }]
+      : work.waitingForWorkId ? [{ kind: 'task' as const, id: work.waitingForWorkId }] : []));
     const byId = new Map<string, NativeWorkRow>();
     const counts = (kind: NativeWorkReadObject['kind'], id: string) => {
       const fact = facts.get(`${kind}:${id}`);
@@ -78,13 +78,12 @@ export function nativeWorkObjectRows(db: DbExecutor) {
       return { edges: fact.edges, sourceMessages: fact.sourceMessages, sourceMaterials: fact.sourceMaterials, decisions: fact.decisions, results: fact.results };
     };
     for (const work of works) {
-      const ref = parked.find((decision) => decision.id === work.parkedByDecisionId);
       const projected: WorkRowProjection = { kind: 'work', id: work.id, number: work.number, projectId: work.projectId, workspaceId: work.workspaceId, title: work.title,
-        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named({ kind: 'human', id: work.waitingForUserId }) : null, dueOn: work.dueOn, version: work.version, ...audience(work), relations: counts('work', work.id),
+        status: work.status, blocker: work.blocker, waitingFor: work.waitingForUserId ? named({ kind: 'human', id: work.waitingForUserId }) : null,
+        waitingOn: waitingOn.get(work.waitingForDecisionId ? `decision:${work.waitingForDecisionId}` : `task:${work.waitingForWorkId}`) ?? null, dropped: work.dropped, cameOfIt: work.cameOfIt, dueOn: work.dueOn, version: work.version, ...audience(work), relations: counts('work', work.id),
         prerequisiteCounts: prerequisites.get(work.id)!,
         owner: work.ownerUserId ? named({ kind: 'human', id: work.ownerUserId }) : work.ownerAgentId ? named({ kind: 'agent', id: work.ownerAgentId }) : null,
-        parked: work.parkedAt && work.parkedByDecisionId ? { decisionId: work.parkedByDecisionId, at: iso(work.parkedAt) } : null,
-        parkedBy: ref ? { kind: 'decision', ...ref } : null, rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt),
+        rule: facts.get(`work:${work.id}`)!.rule, updatedAt: iso(work.updatedAt),
         // An existing reference to a task whose creation was undone (#238) names it as history.
         lifecycle: work.revertedAt && work.revertedByKind && work.revertedById && work.reversionNoticeId
           ? { state: 'creation_reverted', noticeId: work.reversionNoticeId, revertedAt: iso(work.revertedAt), revertedBy: named({ kind: work.revertedByKind, id: work.revertedById }) }
@@ -135,11 +134,11 @@ export function nativeWorkObjectRows(db: DbExecutor) {
         if (!own) throw new Error('Missing native work detail');
         const named = await names([{ kind: own.createdByKind, id: own.createdById }]);
         const plan = (await taskGraphRows(db).taskPlans([row.id])).get(row.id) ?? { prerequisites: [], planIntent: null };
-        const prerequisites = plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked }));
+        const prerequisites = plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' }));
         if (prerequisites.length !== row.prerequisiteCounts.total || prerequisites.filter((item) => !item.met).length !== row.prerequisiteCounts.unmet)
           throw new Error('Inconsistent native task detail');
-        const { relations: _relations, parkedBy: _parked, rule: _rule, prerequisiteCounts: _counts, ...work } = row;
-        void _relations; void _parked; void _rule; void _counts;
+        const { relations: _relations, rule: _rule, prerequisiteCounts: _counts, ...work } = row;
+        void _relations; void _rule; void _counts;
         return { ...work, kind: 'work', outcome: own.outcome, criteria: own.criteria,
           dependencyIds: prerequisites.map(({ id }) => id), prerequisites, subtasks: await subtasks(projectId, row.id), planIntent: plan.planIntent,
           createdBy: named({ kind: own.createdByKind, id: own.createdById }) };

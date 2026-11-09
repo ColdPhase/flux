@@ -35,7 +35,7 @@ import { policyWorkAccess } from '../work/access.js';
 
 const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
-const FINISHED = new Set(['done', 'not_pursued']);
+const FINISHED = new Set(['done']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
 /** The person's own line when "Give it to" could not give them the task because the agent they named has no access to this space. */
 const notTakenWords = (agentName: string) => `My agent ${agentName} can't work in this space, so it hasn't taken this task. It's still with me.`;
@@ -215,7 +215,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function assigned(tx: Transaction, event: Event) {
     const rows = agentTaskRows(tx);
     const work = await workRows(tx).findWork(event.workId, { lock: true });
-    if (!work || FINISHED.has(work.status) || work.parked) return;
+    if (!work || FINISHED.has(work.status)) return;
     if (event.ownerUserId) {
       // A person was given the task and chose an agent: their setting gives it to that agent, as them.
       if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;
@@ -321,6 +321,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (ask) return asking(tx, work, run, ask);
       const mayDo = await personalRunRows(tx).assistantMayDo(run.ownerUserId, run.workspaceId);
       const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      // A task that is Blocked when the run ends stays Blocked, with the agent, in both modes (#868, C-52): it is waiting for something, so it is
+      // not Done and not handed back, and the tasks waiting for it do not resume. When what it waits for is resolved the agent takes it up again.
+      if (current.status === 'blocked') {
+        await reportTaskRun(personalRunPorts(tx, queue), run, 'blocked');
+        return;
+      }
       // With "Do it and tell me" it marks the task Done; with "Ask me first" or "Only read" it hands it back to check (C-1), which
       // reaches its owner's Inbox as one item for the run (AG-7).
       // The agent's chat hears what became of the task, once the run's outcome is known (#919): Done, or back with the owner to check.

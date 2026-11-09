@@ -53,7 +53,7 @@ from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from app_select import choose, expect_value
+from app_select import choose
 
 from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
@@ -673,23 +673,14 @@ class ScenarioJourney:
         self.api("ada", "POST", f"/api/v1/conversations/{run['conversationId']}/messages", {"body": RUN_REPLY, "clientMessageId": str(uuid.uuid4())}, status=201)
         s.update(file=file_id, c2=run["conversationId"])
 
-        # A negative result finishes the experiment.
-        page.goto(f"/projects/{lamp}/tasks?open=work:{experiment['id']}")
-        card = page.locator(f".wd[data-detail-kind='work'][data-detail-id='{experiment['id']}']")
-        expect(card.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
-        self.tap(card.get_by_role("button", name="Attach a result", exact=True))
-        form = page.locator("#details .wd")
-        nav = form.get_by_role("navigation", name="Result work choices")
-        expect(nav).to_have_attribute("aria-busy", "false")
-        form.get_by_label("Finding", exact=True).fill(RESULT)
-        form.get_by_label("Evidence", exact=True).fill(EVIDENCE)
-        expect_value(form.get_by_label("For work", exact=True), experiment["id"])
-        form.get_by_role("radio", name="Negative", exact=True).check()
-        form.get_by_role("checkbox", name=re.compile("This finishes")).check()
-        self.tap(form.get_by_role("button", name="Attach result", exact=True))
+        # A negative result finishes the experiment. A person does not record a result in the panel (#868: what came of a task is one
+        # line at Done); an agent's tool does, through the same API, and the result opens in the panel like any object.
+        current = self.api("ada", "GET", f"/api/v1/work/{experiment['id']}", status=200)
+        result = self.api("ada", "POST", f"/api/v1/projects/{lamp}/results", {"title": RESULT, "finding": "negative", "evidence": EVIDENCE, "work": [experiment["id"]],
+                                                                              "finishes": {"id": experiment["id"], "expectedVersion": current["version"]},
+                                                                              "clientCommandId": str(uuid.uuid4())}, status=201)
+        page.goto(f"/projects/{lamp}/tasks?open=result:{result['id']}")
         expect(page.locator('.wd[data-detail-kind="result"]')).to_contain_text(RESULT)
-        results = self.api("ada", "GET", f"/api/v1/projects/{lamp}/results?limit=100", status=200)["items"]
-        result = next(item for item in results if item["title"] == RESULT)
         self.assertEqual(result["finding"], "negative")
         self.assertEqual(self.api("ada", "GET", f"/api/v1/work/{experiment['id']}", status=200)["status"], "done", "a negative finding finished the experiment")
         s["result"] = result["id"]
@@ -950,7 +941,7 @@ class ScenarioJourney:
         earlier = self.api("jonas", "GET", f"/api/v1/decisions/{s['d1']}", status=200)
         self.assertEqual((earlier["status"], earlier["decidedBy"]["id"], earlier["rationale"]), ("superseded", self.ids["ada"], WHY1), "the old rule keeps its history")
         camera = self.api("jonas", "GET", f"/api/v1/work/{s['camera_task']}", status=200)
-        self.assertIsNone(camera["parked"], "Flux moves no task when a decision is replaced (#871)")
+        self.assertNotIn("parked", camera, "a task has no parked state (#1039), and Flux moves no task when a decision is replaced (#871)")
         self.assertNotEqual(camera["status"], "done")
         self.assertFalse(any(link["role"] == "still_applies" for link in accepted["links"]))
         self.assertEqual(self.api("jonas", "GET", f"/api/v1/results/{s['result']}", status=200)["finding"], "negative", "the result survives the replacement")
@@ -1156,7 +1147,7 @@ class ScenarioJourney:
         self.assertEqual(sorted(t["text"] for t in exported["sketches"][0]["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT, VARIANT_B]))
         work = {w["title"]: w for w in exported["work"]}
         self.assertEqual(work[self.s["experiment_title"]]["status"], "done")
-        self.assertIsNone(work[CAMERA_TASK]["parked"], "a replaced decision parks nothing")
+        self.assertNotIn("parked", work[CAMERA_TASK], "a task has no parked state (#1039)")
         decisions = {d["title"]: d for d in exported["decisions"]}
         self.assertEqual((decisions[D1]["status"], decisions[D2]["status"], decisions[D3]["status"]), ("superseded", "accepted", "proposed"))
         self.assertEqual((decisions[D2]["proposedBy"]["kind"], decisions[D2]["decidedBy"]["id"]), ("agent", self.ids["jonas"]))

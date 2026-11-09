@@ -230,6 +230,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
               </dl>
             ) : null}
             {full && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
+            {full && item.blocked?.waitingDecision ? <p className="nyc__reason">Waiting for the decision {item.blocked.waitingDecision.title}</p> : null}
             {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
             {full && decision && item.decision?.supersedes ? <p className="nyc__based">This replaces the decision <b>{item.decision.supersedes}</b>.</p> : null}
             {full && decision ? (

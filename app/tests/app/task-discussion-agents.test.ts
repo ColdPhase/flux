@@ -86,6 +86,18 @@ test('the sixth agent message in a row is refused until a person writes; then it
   assert.equal(toolFailure(await discuss(f, item.id, 'Step 11')).code, 'AGENT_TURN_LIMIT');
 });
 
+test('#868: the line at Done is not refused by the five-in-a-row limit: the Done and the task\'s line stand, and no sixth message is written', async () => {
+  const f = await actionScene(pool), item = await task(f);
+  for (let i = 1; i <= 5; i++) toolValue(await discuss(f, item.id, `Step ${i}`));
+  assert.equal(toolFailure(await discuss(f, item.id, 'Step 6')).code, 'AGENT_TURN_LIMIT');
+  const done = toolValue(await f.tool('flux_update_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute',
+    sources: [], workId: item.id, expectedVersion: item.version, changes: { status: 'done', cameOfIt: 'Measured twice; it holds.' } }));
+  assert.ok(done.workId);
+  const stored = expect(await f.owner.request('GET', `/api/v1/work/${item.id}`), 200) as unknown as WorkItem;
+  assert.deepEqual([stored.status, stored.cameOfIt], ['done', 'Measured twice; it holds.']);
+  assert.equal((await discussion(f, item.id)).messages.length, 5, 'the limit still holds for messages');
+});
+
 test('flux_reply_in_conversation into a people\'s conversation keeps its contract-1 behaviour', async () => {
   const f = await actionScene(pool);
   const plain = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'Status?', clientMessageId: randomUUID() } }), 201);

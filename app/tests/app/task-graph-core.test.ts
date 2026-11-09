@@ -13,7 +13,7 @@ const id = () => randomUUID();
 const code = (expected: string) => (error: unknown) => error instanceof DomainError && error.code === expected;
 
 /** An in-memory graph: task -> its direct prerequisites. Counts reads so the traversal bound is visible. */
-function graph(edges: Record<string, string[]> = {}, states: Record<string, { status: WorkStatus; parked?: boolean }> = {}) {
+function graph(edges: Record<string, string[]> = {}, states: Record<string, { status: WorkStatus }> = {}) {
   const calls: string[][] = [];
   const locked: string[][] = [];
   const reader: TaskGraphReader = {
@@ -26,7 +26,7 @@ function graph(edges: Record<string, string[]> = {}, states: Record<string, { st
       if (!(taskId in edges) && !(taskId in states)) return null;
       return { projectId: 'p', prerequisites: (edges[taskId] ?? []).map((prerequisite): PrerequisiteState => {
         const state = states[prerequisite];
-        return { id: prerequisite, status: state?.status ?? null, parked: state?.parked ?? false };
+        return { id: prerequisite, status: state?.status ?? null };
       }) };
     },
   };
@@ -134,20 +134,20 @@ test('cycles: self, direct, indirect and long chains are refused; the walk stops
   await assert.rejects(assertNoDependencyCycle(diamond.reader, w, bottom!, [top!]), code('TASK_DEPENDENCY_CYCLE'));
 });
 
-test('a task may start only when every direct prerequisite exists, is done and is not parked', async () => {
+test('a task may start only when every direct prerequisite exists and is done', async () => {
   const w = id(); const task = id();
-  const [done, open, blocked, progress, dropped, parked, missing] = Array.from({ length: 7 }, id);
+  const [done, open, blocked, progress, missing] = Array.from({ length: 5 }, id);
   const states = { [done!]: { status: 'done' as const }, [open!]: { status: 'open' as const }, [blocked!]: { status: 'blocked' as const },
-    [progress!]: { status: 'in_progress' as const }, [dropped!]: { status: 'not_pursued' as const }, [parked!]: { status: 'done' as const, parked: true } };
+    [progress!]: { status: 'in_progress' as const } };
   await assertPrerequisitesMet(graph({ [task]: [] }).reader, w, task);
   await assertPrerequisitesMet(graph({ [task]: [done!] }, states).reader, w, task);
-  for (const [name, prerequisite] of Object.entries({ open, blocked, progress, dropped, parked, missing })) {
+  for (const [name, prerequisite] of Object.entries({ open, blocked, progress, missing })) {
     await assert.rejects(assertPrerequisitesMet(graph({ [task]: [done!, prerequisite!] }, states).reader, w, task), (error: unknown) =>
       error instanceof DomainError && error.code === 'TASK_PREREQUISITES_UNMET' && error.status === 409
       && JSON.stringify(error.details).includes(prerequisite!), name);
   }
   await assert.rejects(assertPrerequisitesMet(graph({}).reader, w, task), code('WORK_NOT_FOUND'));
-  assert.deepEqual(unmetPrerequisites([{ id: done!, status: 'done', parked: false }, { id: parked!, status: 'done', parked: true }, { id: missing!, status: null, parked: false }]).map((item) => item.id), [parked, missing]);
+  assert.deepEqual(unmetPrerequisites([{ id: done!, status: 'done' }, { id: open!, status: 'open' }, { id: missing!, status: null }]).map((item) => item.id), [open, missing]);
   assert.deepEqual([...ELIGIBLE_STATUSES].sort(), ['done', 'in_progress']);
 });
 

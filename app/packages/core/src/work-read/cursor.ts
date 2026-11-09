@@ -25,7 +25,7 @@ export function workReadScope(endpoint: string, projectId: string, principal: Pr
 function boundary(value: unknown): WorkReadBoundary {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return workReadInvalid('Invalid read boundary');
   const raw = value as Record<string, unknown>;
-  if (Object.keys(raw).sort().join(',') !== 'createdAt,id,rank' || !Number.isInteger(raw.rank) || (raw.rank as number) < 0 || (raw.rank as number) > 8) return workReadInvalid('Invalid read boundary');
+  if (Object.keys(raw).sort().join(',') !== 'createdAt,id,rank' || !Number.isInteger(raw.rank) || (raw.rank as number) < 0 || (raw.rank as number) > 7) return workReadInvalid('Invalid read boundary');
   // Validate the calendar, but retain the full input string; never use Date as the SQL key.
   if (typeof raw.createdAt !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(raw.createdAt) || raw.createdAt.startsWith('0000-')) return workReadInvalid('A full-precision native timestamp is required');
   const date = new Date(raw.createdAt);

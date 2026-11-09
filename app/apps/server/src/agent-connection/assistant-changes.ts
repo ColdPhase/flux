@@ -111,7 +111,7 @@ interface Target {
 }
 
 /** The task fields an Undo can put back (the names of `UpdateWorkCommand`, with waiting-for by user id). */
-const WORK_FIELDS = ['title', 'outcome', 'status', 'blocker', 'waitingFor', 'criteria', 'dependencyIds'];
+const WORK_FIELDS = ['title', 'outcome', 'status', 'blocker', 'waitingFor', 'waitingOn', 'dropped', 'cameOfIt', 'criteria', 'dependencyIds'];
 type WorkView = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['work']>>>;
 /** One task field as Undo compares it: the stored value, waiting-for as the person's id, prerequisites sorted. */
 const workField = (work: WorkView, key: string): unknown =>
@@ -226,10 +226,14 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const fields: Record<string, { before: unknown; after: unknown }> = {};
       for (const key of Object.keys(changes).filter((name) => WORK_FIELDS.includes(name)))
         fields[key] = { before: workField(work, key), after: key === 'waitingFor' ? (changes.waitingFor as { id?: string } | null)?.id ?? null
+          : key === 'waitingOn' ? (changes.waitingOn ? `${(changes.waitingOn as { kind: string }).kind}:${(changes.waitingOn as { id: string }).id}` : null)
           : key === 'dependencyIds' ? [...(changes.dependencyIds as string[])].sort() : changes[key] ?? null };
       // Leaving Blocked also clears why and who it waited for: Undo puts them back with the status.
       if (typeof changes.status === 'string' && changes.status !== 'blocked' && work.status === 'blocked')
-        for (const key of ['blocker', 'waitingFor']) if (!(key in fields)) fields[key] = { before: workField(work, key), after: null };
+        for (const key of ['blocker', 'waitingFor', 'waitingOn']) if (!(key in fields)) fields[key] = { before: workField(work, key), after: null };
+      // Leaving Done also clears that it was dropped and what came of it (#868).
+      if (typeof changes.status === 'string' && changes.status !== 'done' && work.status === 'done')
+        for (const key of ['dropped', 'cameOfIt']) if (!(key in fields)) fields[key] = { before: workField(work, key), after: key === 'dropped' ? false : null };
       const names = await rows.names([fields.waitingFor?.before, fields.waitingFor?.after].filter((id): id is string => typeof id === 'string'));
       const undo: UndoRecord | null = Object.keys(fields).length && Object.keys(changes).every((key) => WORK_FIELDS.includes(key))
         ? { plan: { kind: 'fields', fields }, ...fieldWords(fields, names) } : null;

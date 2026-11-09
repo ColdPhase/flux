@@ -68,7 +68,7 @@ const SIDEBAR_KEY = 'flux.sidebar';
 const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
-const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'attach-result', 'propose-decision']);
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'result', 'propose-decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', result: 'Result', 'thought-tasks': 'Tasks' };
 

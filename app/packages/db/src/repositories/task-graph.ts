@@ -50,10 +50,10 @@ export function taskGraphRows(db: DbExecutor) {
       const [task] = await db.select({ projectId: w.projectId }).from(w).where(and(eq(w.workspaceId, workspaceId), eq(w.id, taskId)));
       if (!task) return null;
       const p = alias(w, 'prerequisite');
-      const rows = await db.select({ id: e.prerequisiteId, status: p.status, parkedAt: p.parkedAt }).from(e)
+      const rows = await db.select({ id: e.prerequisiteId, status: p.status }).from(e)
         .leftJoin(p, and(eq(p.workspaceId, e.workspaceId), eq(p.projectId, e.projectId), eq(p.id, e.prerequisiteId)))
         .where(and(eq(e.workspaceId, workspaceId), eq(e.taskId, taskId))).orderBy(asc(e.prerequisiteId));
-      return { projectId: task.projectId, prerequisites: rows.map((row) => ({ id: row.id, status: row.status, parked: row.parkedAt !== null })) };
+      return { projectId: task.projectId, prerequisites: rows.map((row) => ({ id: row.id, status: row.status })) };
     },
 
     async replaceDependencies(scope: Window, taskId: string, prerequisiteIds: readonly string[]) {
@@ -63,7 +63,7 @@ export function taskGraphRows(db: DbExecutor) {
     },
 
     async taskPlans(taskIds: readonly string[]) {
-      const plans = new Map<string, { prerequisites: { id: string; title: string; status: typeof w.$inferSelect['status']; parked: boolean }[];
+      const plans = new Map<string, { prerequisites: { id: string; title: string; status: typeof w.$inferSelect['status'] }[];
         planIntent: { materialId: string; version: number; intentKey: string } | null }>();
       if (!taskIds.length) return plans;
       const entry = (id: string) => {
@@ -72,10 +72,10 @@ export function taskGraphRows(db: DbExecutor) {
         return plan;
       };
       const p = alias(w, 'prerequisite');
-      const edges = await openRows(db, 'project_work_items', await db.select({ taskId: e.taskId, id: p.id, workspaceId: p.workspaceId, title: p.title, status: p.status, parkedAt: p.parkedAt }).from(e)
+      const edges = await openRows(db, 'project_work_items', await db.select({ taskId: e.taskId, id: p.id, workspaceId: p.workspaceId, title: p.title, status: p.status }).from(e)
         .innerJoin(p, and(eq(p.workspaceId, e.workspaceId), eq(p.projectId, e.projectId), eq(p.id, e.prerequisiteId)))
         .where(inArray(e.taskId, [...taskIds])).orderBy(asc(e.taskId), asc(e.prerequisiteId)));
-      for (const edge of edges) entry(edge.taskId).prerequisites.push({ id: edge.id, title: edge.title, status: edge.status, parked: edge.parkedAt !== null });
+      for (const edge of edges) entry(edge.taskId).prerequisites.push({ id: edge.id, title: edge.title, status: edge.status });
       const intents = await db.select().from(i).where(inArray(i.taskId, [...taskIds]));
       for (const intent of intents) entry(intent.taskId).planIntent = { materialId: intent.materialId, version: intent.materialVersion, intentKey: intent.intentKey };
       return plans;

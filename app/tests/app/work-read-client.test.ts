@@ -16,7 +16,7 @@ function held<T>() {
   return { promise, resolve, reject };
 }
 function summary(open = 0): ProjectWorkSummary {
-  const counts = { needs: 0, in_progress: 0, blocked: 0, open, parked: 0, finished: 0, rules: 0, results: 0 };
+  const counts = { needs: 0, in_progress: 0, blocked: 0, open, finished: 0, rules: 0, results: 0 };
   return {
     projectId: scope.projectId, observedAt: `2026-10-01T00:00:${String(open).padStart(2, '0')}.000000Z`, access: 'contributor',
     all: { ...counts }, mine: { ...counts }, workTotal: open, unfinishedTotal: open,

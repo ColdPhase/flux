@@ -35,7 +35,7 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
       const thoughts = await visible(projectId, thoughtIds);
       if (!thoughts.length) return { visible: thoughts, counts: [], links: [], linkTotal: 0, items: [] as ThoughtTaskRow[] };
       const pairs = sql`WITH thoughts(id) AS (VALUES ${selected(thoughts)}), pairs AS (
-        SELECT DISTINCT e.to_id::text AS thought_id, o.id::text AS work_id, (o.parked_at IS NOT NULL AND o.parked_by_decision_id IS NOT NULL) AS parked,
+        SELECT DISTINCT e.to_id::text AS thought_id, o.id::text AS work_id,
           CASE o.status WHEN 'in_progress' THEN 0 WHEN 'blocked' THEN 1 WHEN 'open' THEN 2 WHEN 'done' THEN 3 ELSE 4 END AS status_rank, o.created_at
         FROM project_object_links e JOIN thoughts t ON t.id = e.to_id
         JOIN project_work_items o ON o.project_id = ${projectId}::uuid AND o.id = e.from_id AND o.creation_reverted_at IS NULL
@@ -44,7 +44,7 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
         SELECT thought_id AS "thoughtId", count(*)::int AS tasks FROM pairs GROUP BY thought_id ORDER BY thought_id COLLATE "C"`);
       const links = await db.execute<{ thoughtId: string; workId: string }>(sql`${pairs}
         SELECT thought_id AS "thoughtId", work_id AS "workId" FROM pairs
-        ORDER BY thought_id COLLATE "C", parked, status_rank, created_at, work_id COLLATE "C" LIMIT ${WINDOW}`);
+        ORDER BY thought_id COLLATE "C", status_rank, created_at, work_id COLLATE "C" LIMIT ${WINDOW}`);
       const workIds = [...new Set(links.rows.map((link) => link.workId))];
       const rows = await nativeWorkObjectRows(db).rows(projectId, workIds.map((id) => ({ kind: 'work' as const, id })));
       const creators = workIds.length ? await db.select({ id: w.id, kind: w.createdByKind, by: w.createdById }).from(w).where(and(eq(w.projectId, projectId), inArray(w.id, workIds))) : [];

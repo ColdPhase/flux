@@ -1,6 +1,6 @@
 import {
-  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectResultsPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath,
-  type CreateObjectLinkCommand, type CreateResultCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
+  decisionAcceptPath, workspaceAgentsPath, taskActivityPath, projectDecisionsPath, projectLinksPath, projectWorkPath, resultPath, workItemPath, workspaceAssignedWorkPath, taskCreationUndoPath, taskWaitingDonePath,
+  type CreateObjectLinkCommand, type CreateWorkCommand, type Decision, type ObjectLink, type Page,
   type ProposeDecisionCommand, type TaskActivityPage, type TaskActivityQuery, type UndoTaskCreationResult, type UpdateWorkCommand, type WorkItem, type WorkResult, type Agent,
 } from '@flux/contracts';
 import { request } from '../api/client.js';
@@ -32,9 +32,11 @@ export const acceptDecision = (decision: Pick<Decision, 'id' | 'version'>, idemp
 /** Connects a task to another object of its project (#289: a task made first in Tasks, linked to a map thought). */
 export const linkObjects = (projectId: string, command: CreateObjectLinkCommand, idempotencyKey: string) =>
   request<ObjectLink>(projectLinksPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const createResult = (projectId: string, command: CreateResultCommand, idempotencyKey: string) =>
-  request<WorkResult>(projectResultsPath(projectId), { method: 'POST', body: { ...command, clientCommandId: command.clientCommandId ?? idempotencyKey }, headers: key(idempotencyKey) });
 export const listAgents = (workspaceId: string, signal?: AbortSignal) => request<Agent[]>(workspaceAgentsPath(workspaceId), { signal });
+
+/** The person a blocked task waits for says they are done (#868): the task goes back to Doing by itself. */
+export const resolveWaiting = (item: Pick<WorkItem, 'id' | 'version'>, signal?: AbortSignal) =>
+  request<WorkItem>(taskWaitingDonePath(item.id), { method: 'POST', headers: ifMatch(item.version), signal });
 
 export const undoTaskCreation = (item: Pick<WorkItem, 'id' | 'version'>, clientCommandId: string, signal?: AbortSignal) =>
   request<UndoTaskCreationResult>(taskCreationUndoPath(item.id), { method: 'POST', body: { clientCommandId, expectedVersion: item.version }, signal });

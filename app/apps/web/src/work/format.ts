@@ -1,17 +1,17 @@
-import type { Decision, ObjectLink, WorkItem, WorkResult, WorkStatus } from '@flux/contracts';
+import { waitingPhrase, type Decision, type ObjectLink, type WaitingOn, type WorkItem, type WorkResult, type WorkStatus } from '@flux/contracts';
 
 /**
- * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped (`not_pursued`) is Done with a
- * "dropped" note (`DROPPED`), never a fifth state.
+ * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped is Done with a "dropped" note
+ * (`DROPPED`), never a fifth state.
  */
 export const STATUS_LABEL: Record<WorkStatus, string> = {
-  open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done', not_pursued: 'Done',
+  open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done',
 };
 /** The four states people choose from, in order (keys 1–4). */
 export const TASK_STATES = ['open', 'in_progress', 'blocked', 'done'] as const satisfies readonly WorkStatus[];
 export const DROPPED = 'dropped';
 /** The state as one phrase: "Done · dropped" for a dropped task, else its word. */
-export const statusPhrase = (status: WorkStatus) => status === 'not_pursued' ? `Done · ${DROPPED}` : STATUS_LABEL[status];
+export const statusPhrase = (item: { status: WorkStatus; dropped?: boolean }) => item.status === 'done' && item.dropped ? `Done · ${DROPPED}` : STATUS_LABEL[item.status];
 
 /** The name a task goes by on every surface (#276): its number in its project, "#12". */
 const dueFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -23,7 +23,7 @@ const day = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' 
 export const shortDate = (iso: string) => day.format(new Date(iso));
 
 export function isFinished(item: Pick<WorkItem, 'status'>) {
-  return item.status === 'done' || item.status === 'not_pursued';
+  return item.status === 'done';
 }
 
 /**
@@ -34,9 +34,9 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 export type StatePiece = { text: string; extra?: boolean };
 export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
 
-export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'>): StatePiece[] {
+export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'> & { dropped?: boolean }): StatePiece[] {
   if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'creation undone' }];
-  return [{ text: STATUS_LABEL[item.status] }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
+  return [{ text: statusPhrase(item) }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
@@ -58,16 +58,20 @@ export const resultLine = (result: Pick<WorkResult, 'finding' | 'createdBy'>) =>
  * <person> · <reason>". A reason alone reads as written when it is a sentence ("Needs the gateway first."), and after
  * "Waiting for" when it is the thing waited for ("the sensor delivery"); never "Waiting for Needs …".
  */
-export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
+export function blockedParts(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
   const reason = item.blocker?.trim() || null;
   const thing = !!reason && /^\p{Ll}/u.test(reason);
-  return { person: item.waitingFor?.name ?? null, reason, thing };
+  return { person: item.waitingFor?.name ?? null, on: item.waitingOn ? waitingPhrase(item.waitingOn) : null, reason, thing };
 }
 
-/** What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", else its reason. */
-export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
-  const { person, reason, thing } = blockedParts(item);
+/**
+ * What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", "Waiting for the decision Use LoRa for the far
+ * beds" or "Waiting for #7" (what it waits for, one thing), else its reason.
+ */
+export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null; waitingOn?: WaitingOn | null }) {
+  const { person, on, reason, thing } = blockedParts(item);
   if (person) return `Waiting for ${person}`;
+  if (on) return `Waiting for ${on}`;
   return reason && thing ? `Waiting for ${reason}` : reason;
 }
 

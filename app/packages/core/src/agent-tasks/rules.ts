@@ -96,12 +96,12 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   if (run.status === 'completed' || run.status === 'truncated') {
     if (task.status === 'done' && holds) return state('done', mine ? 'Marked done · you were told' : 'Marked done', { canTakeBack: mine });
     // Back with its owner to check only when the agent handed it back: a person who took the task back says nothing here.
-    if (!holds && facts.handedBackByAgent && task.ownerUserId === agent.owner.id && task.status !== 'done' && task.status !== 'not_pursued')
+    if (!holds && facts.handedBackByAgent && task.ownerUserId === agent.owner.id && task.status !== 'done')
       return state('handed_back', mine ? 'Back with you to check' : `Back with ${agent.owner.name} to check`, { canMarkDone: mine });
     return none();
   }
   if (run.status === 'stopped') {
-    if (task.status === 'done' || task.status === 'not_pursued') return none();
+    if (task.status === 'done') return none();
     // AI turned off in the space (C-17): the owner is told here, where they asked, because the agent can no longer write there.
     if (run.endReason === 'ai_off') return state('stopped', `Stopped: AI was turned off in this space${whereNow()}`);
     const by = run.stopRequestedBy;

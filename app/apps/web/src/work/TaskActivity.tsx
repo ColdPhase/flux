@@ -63,14 +63,15 @@ const FROM: Record<NonNullable<Source>, string> = {
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
 function changeText(entry: TaskActivityEntry): string {
-  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (the agent setting)' : '';
+  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (the agent setting)'
+    : entry.automation === 'wait_resolved' ? ' (what it waited for is resolved)' : '';
   if (entry.kind === 'status' && entry.status) {
-    const { to, blocker, waitingFor } = entry.status;
+    const { to, blocker, waitingFor, waitingOn, dropped } = entry.status;
     if (to === 'blocked') {
-      const reason = [blocker, waitingFor ? `waiting for ${waitingFor.name}` : null].filter(Boolean).join(' · ');
+      const reason = [blocker, waitingFor ? `waiting for ${waitingFor.name}` : waitingOn ? `waiting for ${waitingOn}` : null].filter(Boolean).join(' · ');
       return `marked it blocked${reason ? `: ${reason}` : ''}${rule}`;
     }
-    return to === 'not_pursued' ? `marked it done (dropped)${rule}` : `marked it ${STATUS_LABEL[to].toLowerCase()}${rule}`;
+    return to === 'done' && dropped ? `marked it done (dropped)${rule}` : `marked it ${STATUS_LABEL[to].toLowerCase()}${rule}`;
   }
   if (entry.kind === 'owner' && entry.owner) {
     const { from, to } = entry.owner;

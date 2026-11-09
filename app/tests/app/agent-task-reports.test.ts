@@ -72,6 +72,39 @@ describe('the report of a run on a task (#919)', () => {
     } finally { await scene.setMayDo('act'); }
   });
 
+  test('a task that is Blocked when the run ends stays Blocked with its agent, in both modes: the line says Blocked, and what waits for it does not resume', async () => {
+    for (const mode of ['act', 'ask'] as const) {
+      await scene.setMayDo(mode);
+      try {
+        const { task, run } = await started(`Wait for the lens ${mode}`);
+        const waiter = await scene.task(scene.owner, `Waits for the lens ${mode}`);
+        const decision = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${scene.place.id}/decisions`, { body: { title: `Which lens ${mode}` } }), 201) as { id: string };
+        // The owner blocks the agent's task on a decision while its run works, and another task waits for that task.
+        const current = await scene.taskRow(task.id);
+        expectStatus(await scene.owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: 'Waits for the lens', waitingOn: { kind: 'decision', id: decision.id }, clientCommandId: randomUUID() },
+          headers: { 'if-match': `"${current.version}"` } }), 200);
+        const waiting = expectStatus(await scene.owner.browser.request('GET', `/api/v1/work/${waiter.id}`), 200) as { version: number };
+        expectStatus(await scene.owner.browser.request('PATCH', `/api/v1/work/${waiter.id}`, { body: { status: 'blocked', waitingOn: { kind: 'task', id: task.id }, clientCommandId: randomUUID() },
+          headers: { 'if-match': `"${waiting.version}"` } }), 200);
+        await complete(run.id, 'I need the lens decision first.');
+        const line = await reportOf(run.id);
+        assert.equal(line.body, `Blocked: #${task.number} Wait for the lens ${mode}`);
+        const after = (await pool.query('SELECT status, owner_agent_id FROM project_work_items WHERE id = $1', [task.id])).rows[0] as { status: string; owner_agent_id: string | null };
+        assert.equal(after.status, 'blocked', 'not Done, and not handed back');
+        assert.equal(after.owner_agent_id, scene.agentId, 'still the agent\'s');
+        const waits = await pool.query('SELECT status FROM project_work_items WHERE id = $1', [waiter.id]);
+        assert.equal(waits.rows[0].status, 'blocked', 'what waited for it did not resume on a false Done');
+        // When what it waits for is resolved, the agent takes it up again: the same event as when it was given the task.
+        const events = async () => Number((await pool.query("SELECT count(*)::int AS n FROM agent_task_events WHERE work_id = $1 AND kind = 'assigned'", [task.id])).rows[0].n);
+        const before = await events();
+        const proposed = expectStatus(await scene.owner.browser.request('GET', `/api/v1/decisions/${decision.id}`), 200) as { version: number };
+        expectStatus(await scene.owner.browser.request('POST', `/api/v1/decisions/${decision.id}/accept`, { body: {}, headers: { 'if-match': `"${proposed.version}"` } }), 200);
+        assert.equal(await events(), before + 1);
+        assert.equal((await scene.taskRow(task.id)).status, 'in_progress');
+      } finally { await scene.setMayDo('act'); }
+    }
+  });
+
   test('the line carries the changes that stand now, only those an Undo takes back, and they stand only until they are undone', async () => {
     await scene.setMayDo('act');
     const task = await scene.task(scene.owner, 'Tidy the sensor tasks');

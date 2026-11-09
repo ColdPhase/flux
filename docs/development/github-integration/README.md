@@ -163,7 +163,7 @@ An agent links the pull request it produced to the task it holds with the MCP to
 It is the person's `link` use case with two actors: `GithubUseCases.linkForAgent(agent, owner, taskId, { pullRequestUrl, role })`
 shares `linkVerified` with `link`, so the verification and the stored link are the same code.
 
-- **Who.** The agent needs project write access and the hold (`owner_agent_id` is the agent, the task is open and not parked). Its owner needs project write access and their own GitHub authorization for this App: GitHub is asked as the
+- **Who.** The agent needs project write access and the hold (`owner_agent_id` is the agent, the task is not done). Its owner needs project write access and their own GitHub authorization for this App: GitHub is asked as the
   owner, a person, and never as the agent. The standing grant is `work.update`; the executor checks it, the runtime and the replay.
 - **Which repository.** The URL (`https://github.com/<owner>/<repository>/pull/<number>`) must match an active binding of the task's
   project. There is no repository discovery and no way for an agent to bind one (`GITHUB_REPOSITORY_NOT_BOUND`).

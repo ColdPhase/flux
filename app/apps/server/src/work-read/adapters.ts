@@ -59,7 +59,7 @@ async function withGithubRule(db: DbExecutor, object: NativeWorkDetailObject): P
   if (!rule) return { ...object, githubRule: null };
   const author = rule.authorUserId;
   const names = author ? await workRows(db).names([{ kind: 'human', id: author }]) : new Map<string, string>();
-  return { ...object, githubRule: { ...presentGithubRule(rule, { version: object.version, status: object.status, blocker: object.blocker, parked: !!object.parked }),
+  return { ...object, githubRule: { ...presentGithubRule(rule, { version: object.version, status: object.status, blocker: object.blocker }),
     setUpBy: author ? { kind: 'human', id: author, name: names.get(`human:${author}`) ?? 'Former member' } : null } };
 }
 
@@ -99,7 +99,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
       const object = await withGithubRule(db, own!);
       const [facts] = await visibility.relations(projectId, [ref]);
       if (!facts) throw new Error('Missing native detail counts');
-      const refs = object.kind === 'decision' ? [object.supersedes, object.supersededBy] : object.kind === 'work' ? [object.parked?.decisionId ?? null] : [];
+      const refs = object.kind === 'decision' ? [object.supersedes, object.supersededBy] : [];
       // #238: the facts core decides this reader's Undo eligibility from; they are not part of the projection.
       const undo = object.kind === 'work' ? await workRows(db).creationUndoFacts(object.id) ?? undefined : undefined;
       return { object, observedAt: await summary.observedAt(), relations: { edges: facts.edges, sourceMessages: facts.sourceMessages, sourceMaterials: facts.sourceMaterials, decisions: facts.decisions, results: facts.results },

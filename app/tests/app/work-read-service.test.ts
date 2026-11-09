@@ -18,11 +18,11 @@ const actor = { kind: 'human' as const, id: 'native-user' };
 const fingerprint = 'a'.repeat(64);
 const relations = { edges: 0, sourceMessages: 0, sourceMaterials: 0, decisions: 0, results: 0 };
 const row = (rowId = id): WorkRowProjection => ({ kind: 'work', id: rowId, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Native work', createdAt: at,
-  relations, prerequisiteCounts: { total: 0, unmet: 0 }, status: 'open', owner: null, blocker: null, waitingFor: null, dueOn: null, parked: null, parkedBy: null, rule: null, version: 1, updatedAt: at });
+  relations, prerequisiteCounts: { total: 0, unmet: 0 }, status: 'open', owner: null, blocker: null, waitingFor: null, waitingOn: null, dropped: false, cameOfIt: null, dueOn: null, rule: null, version: 1, updatedAt: at });
 const slice = <T>(items: T[], total = items.length, before = 0): WorkReadSlice<T> => ({ items: items.map((value, i) => ({ value, key: { rank: 0, createdAt: at, id: i ? otherId : id } })), total, before, hasBefore: before > 0, hasAfter: before + items.length < total });
 const summary = (): WorkSummaryObservation => ({ projectId, observedAt: at,
-  all: { needs: 0, in_progress: 0, blocked: 0, open: 2, parked: 0, finished: 0, rules: 0, results: 0 },
-  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, parked: 0, finished: 0, rules: 0, results: 0 }, workTotal: 2, unfinishedTotal: 2 });
+  all: { needs: 0, in_progress: 0, blocked: 0, open: 2, finished: 0, rules: 0, results: 0 },
+  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, finished: 0, rules: 0, results: 0 }, workTotal: 2, unfinishedTotal: 2 });
 
 function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFinalFence) {
   const calls: string[] = [];
@@ -144,7 +144,7 @@ test('all required selectors reach the outside fence as the original normalized 
     associationSources: async () => ({ ...slice([{ messageId, work: 0, decisions: 0, results: 0, edges: 0 }]), items: [{ key: { rank: 0, createdAt: at, id: messageId }, value: { messageId, work: 0, decisions: 0, results: 0, edges: 0 } }] }),
     associationEdges: async () => slice<ObjectLink>([]), associationEdgeTotal: async () => 0,
     relations: async () => ({ page: slice<ObjectLink>([]), observedAt: at }),
-    detail: async () => ({ object: { kind: 'work', id, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, waitingFor: null, dueOn: null, parked: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' }, githubRule: null }, observedAt: at, relations, context: [] }),
+    detail: async () => ({ object: { kind: 'work', id, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, waitingFor: null, waitingOn: null, dropped: false, cameOfIt: null, dueOn: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' }, githubRule: null }, observedAt: at, relations, context: [] }),
   }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'contributor'; } });
   await reads.detail(actor, projectId, 'work', id);
   await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));
@@ -159,7 +159,7 @@ test('incoherent native counts fail closed before publication', async () => {
     (v: WorkSummaryObservation) => { v.workTotal = 3; },
     (v: WorkSummaryObservation) => { v.unfinishedTotal = 1; },
     (v: WorkSummaryObservation) => { v.mine.open = 3; },
-    (v: WorkSummaryObservation) => { v.all.parked = -1; },
+    (v: WorkSummaryObservation) => { v.all.finished = -1; },
     (v: WorkSummaryObservation) => { v.mine.rules = 1; },
   ]) {
     const { reads, calls } = harness({ summary: async () => { const value = summary(); corrupt(value); return value; } });

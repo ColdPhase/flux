@@ -121,7 +121,7 @@ describe('work, decisions and results in a project', () => {
     // Two people change the same version at once: exactly one wins.
     const race = await Promise.all([
       patch(owner, `/api/v1/work/${work.id}`, { status: 'in_progress' }, { 'if-match': '"2"' }),
-      patch(partner, `/api/v1/work/${work.id}`, { status: 'not_pursued' }, { 'if-match': '"2"' }),
+      patch(partner, `/api/v1/work/${work.id}`, { status: 'done' }, { 'if-match': '"2"' }),
     ]);
     assert.deepEqual(race.map((response) => response.status).sort(), [200, 409]);
     const after = json<WorkItem>(await get(owner, `/api/v1/work/${work.id}`), 200);
@@ -181,19 +181,18 @@ describe('work, decisions and results in a project', () => {
     await rejects(agentWork.acceptDecision({ kind: 'agent', id: randomUUID() }, proposal.id, 1), 'DECISION_NOT_FOUND');
 
     // A person accepts the agent's proposal, which replaces the first decision. That only marks the first one replaced (#871):
-    // no task is moved, parked or linked, even by a client that still names tasks to keep or park.
+    // no task is moved or linked, even by a client that still names tasks to keep or park.
     const cameraBefore = json<WorkItem>(await get(partner, `/api/v1/work/${camera.id}`), 200);
     const enclosureBefore = json<WorkItem>(await get(partner, `/api/v1/work/${enclosure.id}`), 200);
     const replacement = json<Decision>(await post(owner, `/api/v1/decisions/${proposal.id}/accept`,
       { park: [camera.id], stillApplies: [enclosure.id] }, { 'if-match': `"${proposal.version}"` }), 200);
     assert.deepEqual([replacement.status, replacement.supersedes, replacement.decidedBy?.name], ['accepted', first.id, 'work-owner']);
-    assert.deepEqual(replacement.links.filter((link) => link.role === 'still_applies'), []);
     const history = json<Decision>(await get(partner, `/api/v1/decisions/${first.id}`), 200);
     assert.deepEqual([history.status, history.supersededBy, history.rationale, history.decidedBy?.id], ['superseded', proposal.id, 'Richest gesture set', owner.id]);
     const cameraAfter = json<WorkItem>(await get(partner, `/api/v1/work/${camera.id}`), 200);
     const enclosureAfter = json<WorkItem>(await get(partner, `/api/v1/work/${enclosure.id}`), 200);
-    assert.deepEqual([cameraAfter.version, cameraAfter.status, cameraAfter.parked], [cameraBefore.version, 'in_progress', null], 'the task the old decision affected is left to people');
-    assert.deepEqual([enclosureAfter.version, enclosureAfter.parked, enclosureAfter.links.some((link) => link.role === 'still_applies')], [enclosureBefore.version, null, false]);
+    assert.deepEqual([cameraAfter.version, cameraAfter.status], [cameraBefore.version, 'in_progress'], 'the task the old decision affected is left to people');
+    assert.deepEqual([enclosureAfter.version, enclosureAfter.links.length], [enclosureBefore.version, enclosureBefore.links.length], 'the task the new decision was said to keep is not linked to it');
 
     // Two people accept competing replacements of the same rule at once: exactly one wins.
     const a = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'PIR only', supersedes: proposal.id }), 201);
@@ -253,19 +252,19 @@ describe('work, decisions and results in a project', () => {
     assert.equal(await results(), before, 'a rejected result stores nothing');
     assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${stale.id}`), 200).status, 'in_progress');
 
-    // Not pursued: another person's decision to drop the work stays.
+    // Dropped (#868: Done with a "dropped" note): another person's decision to drop the work stays; a result that names it does not take it back.
     const dropped = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Radar module' }), 201);
-    const droppedNow = json<WorkItem>(await patch(owner, `/api/v1/work/${dropped.id}`, { status: 'not_pursued' }, { 'if-match': '"1"' }), 200);
-    const droppedFinish = await finish(droppedNow, droppedNow.version);
-    assert.deepEqual([droppedFinish.status, code(droppedFinish)], [409, 'WORK_NOT_FINISHABLE']);
-    assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${dropped.id}`), 200).status, 'not_pursued');
+    const droppedNow = json<WorkItem>(await patch(owner, `/api/v1/work/${dropped.id}`, { status: 'done', dropped: true }, { 'if-match': '"1"' }), 200);
+    json(await finish(droppedNow, droppedNow.version), 201);
+    const stillDropped = json<WorkItem>(await get(owner, `/api/v1/work/${dropped.id}`), 200);
+    assert.deepEqual([stillDropped.status, stillDropped.dropped, stillDropped.version], ['done', true, droppedNow.version]);
 
     // Work a decision change left alone finishes like any other.
     const housing = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera housing' }), 201);
     json(await finish(housing, housing.version, 'Housing not needed'), 201);
     const done = json<WorkItem>(await get(owner, `/api/v1/work/${housing.id}`), 200);
-    assert.deepEqual([done.status, done.parked], ['done', null]);
-    assert.equal(await results(), before + 1);
+    assert.equal(done.status, 'done');
+    assert.equal(await results(), before + 2, 'the result naming the dropped task and the one that finished the housing');
   });
 
   test('events reach only project readers; assigned work uses the visibility filter and access loss hides everything', async () => {
@@ -282,7 +281,7 @@ describe('work, decisions and results in a project', () => {
 
       const assigned = json<Page<WorkItem>>(await get(partner, `/api/v1/workspaces/${ws.id}/work/assigned`), 200);
       assert.ok(assigned.items.some((item) => item.id === work.id));
-      assert.ok(assigned.items.every((item) => item.owner?.id === partner.id && !['done', 'not_pursued'].includes(item.status) && !item.parked));
+      assert.ok(assigned.items.every((item) => item.owner?.id === partner.id && item.status !== 'done'));
       assert.equal(json<Page<WorkItem>>(await get(outsider, `/api/v1/workspaces/${ws.id}/work/assigned`), 200).total, 0);
 
       const grants = json<{ id: string; principal: { id: string } }[]>(await get(owner, `/api/v1/projects/${lamp.id}/grants`), 200);

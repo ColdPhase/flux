@@ -170,7 +170,7 @@ describe('space AI switch: notifications by AI origin (#642)', () => {
     const { owner, agentId } = scene;
     const workId = (await scene.task(owner, 'Recalibrate the lamp')).id;
     const [id] = await generate({ id: randomUUID(), kind: 'project.work_updated.v1', objectId: scene.place.id, actorId: `agent:${agentId}`, data: { workId, assignedTo: owner.id } }, owner, {
-      work: async () => ({ id: workId, projectId: scene.place.id, projectName: scene.place.name, title: 'Recalibrate', number: 1, ownerUserId: owner.id, waitingForUserId: null, status: 'open', blocker: null }) });
+      work: async () => ({ id: workId, projectId: scene.place.id, projectName: scene.place.name, title: 'Recalibrate', number: 1, ownerUserId: owner.id, waitingForUserId: null, status: 'open', blocker: null, dropped: false }) });
     await assertGated('work assigned by an agent', owner, scene.place.id, id!);
   });
 

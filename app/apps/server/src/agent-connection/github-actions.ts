@@ -22,7 +22,7 @@ export function registerAgentGithubActions(tools: AgentToolRegistry, db: Databas
       + '(https://github.com/<owner>/<repository>/pull/<number>). The repository must already be connected to this project by a person; '
       + 'Flux verifies the pull request with your owner\'s own GitHub authorization through its read-only App, exactly as when a person '
       + 'links it, and adds no GitHub permission. You hold the task when your owner or a project member assigned it to you and nobody '
-      + 'has stopped, parked or finished it (TASK_NOT_HELD). Needs the runtime from flux_bootstrap. '
+      + 'has stopped or finished it (TASK_NOT_HELD). Needs the runtime from flux_bootstrap. '
       + 'A required output (the default) lets the task\'s GitHub rule, if one is on, '
       + 'move the task from the pull request; a related one never does. Linking the same pull request again returns the same link. '
       + 'GITHUB_REPOSITORY_NOT_BOUND means no person has connected that repository to the project; '

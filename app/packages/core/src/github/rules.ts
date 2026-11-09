@@ -13,7 +13,7 @@ import type { GithubRuleChangeCode, GithubRuleMode, GithubTaskRule, WorkStatus }
  * |                                              | passed, prerequisites done) or Ready to close                     |
  * | A required PR is closed without merge        | blocked, "PR #42 closed without merge"; never done                |
  *
- * It never touches parked, done or not-pursued work, never clears a blocker a person wrote, never reassigns and never
+ * It never touches done work, never clears a blocker a person wrote, never reassigns and never
  * changes the audience. Related links are not inputs. A manual change of status or blocker since the rule last acted
  * suspends it; other edits (title, owner, criteria) only move the version it expects.
  */
@@ -52,10 +52,9 @@ export type GithubRuleReading = GithubRuleRecord & { repositoryUnavailable?: boo
 export interface GithubRuleTask {
   status: WorkStatus;
   blocker: string | null;
-  parked: boolean;
   version: number;
   criteria: readonly string[];
-  /** Every direct prerequisite is done and unparked: starting or finishing is allowed. */
+  /** Every direct prerequisite is done: starting or finishing is allowed. */
   prerequisitesMet: boolean;
 }
 
@@ -88,7 +87,7 @@ export type GithubRuleOutcome =
   /** `task`: the native status or blocker changes; otherwise only Ready to close or the rule's block changes. */
   | { kind: 'apply'; effect: GithubRuleEffect; task: boolean };
 
-const FINISHED: ReadonlySet<WorkStatus> = new Set(['done', 'not_pursued']);
+const FINISHED: ReadonlySet<WorkStatus> = new Set(['done']);
 export const GITHUB_CHECK_NAME_LIMIT = 200;
 
 /** Ready to close for tasks with written criteria (Flux never checks them off), Complete for the others. */
@@ -96,9 +95,9 @@ export function defaultGithubRuleMode(criteria: readonly string[]): GithubRuleMo
   return criteria.length ? 'ready' : 'complete';
 }
 
-/** A person changed the status or blocker since the rule last acted. Finished or parked work is never the rule's. */
-export function manuallyChanged(rule: Pick<GithubRuleRecord, 'expectedVersion' | 'expectedStatus' | 'expectedBlocker'>, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker' | 'parked'>) {
-  if (task.parked || FINISHED.has(task.status) || task.version === rule.expectedVersion) return false;
+/** A person changed the status or blocker since the rule last acted. Finished work is never the rule's. */
+export function manuallyChanged(rule: Pick<GithubRuleRecord, 'expectedVersion' | 'expectedStatus' | 'expectedBlocker'>, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker'>) {
+  if (FINISHED.has(task.status) || task.version === rule.expectedVersion) return false;
   return task.status !== rule.expectedStatus || task.blocker !== rule.expectedBlocker;
 }
 
@@ -106,13 +105,13 @@ export function manuallyChanged(rule: Pick<GithubRuleRecord, 'expectedVersion' |
  * The rule as its readers see it: a manual change, or a required repository whose binding is no longer active, shows
  * as suspended before anything persists it. Ready to close is offered only by an active rule on unfinished work.
  */
-export function presentGithubRule(rule: GithubRuleReading, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker' | 'parked'>): Omit<GithubTaskRule, 'setUpBy'> {
+export function presentGithubRule(rule: GithubRuleReading, task: Pick<GithubRuleTask, 'version' | 'status' | 'blocker'>): Omit<GithubTaskRule, 'setUpBy'> {
   const derived = rule.state !== 'active' ? null : rule.repositoryUnavailable ? 'repository_unavailable' as const : manuallyChanged(rule, task) ? 'manual_change' as const : null;
   const state = derived ? 'suspended' : rule.state;
   return {
     mode: rule.mode, state, suspendedReason: derived ?? rule.suspendedReason,
     expectedVersion: rule.expectedVersion, revision: rule.revision, updatedAt: rule.updatedAt.toISOString(),
-    readyToClose: state === 'active' && rule.readyToClose && !task.parked && !FINISHED.has(task.status),
+    readyToClose: state === 'active' && rule.readyToClose && !FINISHED.has(task.status),
   };
 }
 
@@ -130,7 +129,7 @@ export function githubRuleBlocker(code: 'check_failed' | 'pull_closed', pull: nu
 
 export function evaluateGithubRule(rule: Pick<GithubRuleRecord, 'state' | 'mode' | 'expectedVersion' | 'expectedStatus' | 'expectedBlocker' | 'blockedBy' | 'readyToClose'>,
   task: GithubRuleTask, required: readonly GithubRulePull[]): GithubRuleOutcome {
-  if (rule.state !== 'active' || task.parked || FINISHED.has(task.status)) return { kind: 'none', repin: false };
+  if (rule.state !== 'active' || FINISHED.has(task.status)) return { kind: 'none', repin: false };
   if (manuallyChanged(rule, task)) return { kind: 'suspend', reason: 'manual_change' };
   const repin = task.version !== rule.expectedVersion;
   // Every required link counts: one that cannot be read now leaves the task as it is (fail closed).
@@ -141,7 +140,7 @@ export function evaluateGithubRule(rule: Pick<GithubRuleRecord, 'state' | 'mode'
   const keep = (code: GithubRuleChangeCode, readyToClose: boolean, pull: GithubRulePull | null): GithubRuleEffect =>
     ({ code, status: task.status, blocker: task.blocker, blockedBy: ownsBlock ? rule.blockedBy : null, readyToClose, pull, checkName: null });
   const start = (code: GithubRuleChangeCode, pull: GithubRulePull | null, readyToClose = false): GithubRuleEffect =>
-    // Starting needs every prerequisite done and unparked, as for a person.
+    // Starting needs every prerequisite done, as for a person.
     task.status === 'open' && !task.prerequisitesMet ? keep(code, readyToClose, pull)
       : { code, status: 'in_progress', blocker: null, blockedBy: null, readyToClose, pull, checkName: null };
   let effect: GithubRuleEffect;
@@ -153,7 +152,7 @@ export function evaluateGithubRule(rule: Pick<GithubRuleRecord, 'state' | 'mode'
     const last = pulls.at(-1)!;
     // Merge alone never finishes: Complete also needs no written criteria and every merged head's checks verified.
     const finish = rule.mode === 'complete' && task.criteria.length === 0 && task.prerequisitesMet && movable && pulls.every(verified);
-    // Ready to close only where Done is allowed now: every prerequisite done and unparked.
+    // Ready to close only where Done is allowed now: every prerequisite done.
     const ready = task.prerequisitesMet;
     effect = finish ? { code: 'merged_done', status: 'done', blocker: null, blockedBy: null, readyToClose: false, pull: last, checkName: null }
       : movable ? start('merged_ready', last, ready) : keep('merged_ready', ready, last);

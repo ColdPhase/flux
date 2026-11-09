@@ -4,7 +4,7 @@ import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProje
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
-import { STATUS_LABEL, decisionLine } from '../work/format';
+import { decisionLine, statusPhrase } from '../work/format';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
@@ -129,7 +129,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
-  const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([STATUS_LABEL[item.status], item.owner ? byline(item.owner) : null, item.parked ? 'parked' : null]), open: { kind: 'work', id: item.id } });
+  const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([statusPhrase(item), item.owner ? byline(item.owner) : null]), open: { kind: 'work', id: item.id } });
   const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
   const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
   const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)];

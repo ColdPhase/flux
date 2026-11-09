@@ -1,4 +1,4 @@
-import type { AgentProjectOwner, DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
+import type { AgentProjectOwner, DecisionStatus, WaitingOn, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, TaskPlanIntent, WorkStatus } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { PlanIntentRecord, TaskGraphReader } from './task-graph.js';
 import type { GithubRuleReading } from '../github/rules.js';
@@ -28,10 +28,15 @@ export interface WorkRecord {
   blocker: string | null;
   /** The person a blocked task waits for (#550); null unless blocked. */
   waitingFor: ActorRef | null;
+  /** The decision or task a blocked task waits for (#868); null unless blocked, and never together with `waitingFor`. */
+  waitingOn: { kind: 'decision' | 'task'; id: string } | null;
+  /** Done and dropped, not finished (#868). */
+  dropped: boolean;
+  /** The one optional line at Done, "what came of it" (#868). */
+  cameOfIt: string | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
   dueOn: string | null;
   owner: ActorRef | null;
-  parked: { decisionId: string; at: Date } | null;
   /** Distinct trimmed statements; `[]` for tasks that never had any (#152). */
   criteria: string[];
   createdBy: ActorRef;
@@ -88,7 +93,7 @@ export interface ObjectLinkRecord {
 }
 
 /** A task to insert; its number is given by the database (#276). */
-export type NewWork = Omit<WorkRecord, 'number' | 'version' | 'createdAt' | 'updatedAt' | 'parked' | 'criteria'> & {
+export type NewWork = Omit<WorkRecord, 'number' | 'version' | 'createdAt' | 'updatedAt' | 'criteria' | 'dropped' | 'cameOfIt'> & {
   criteria?: string[];
   clientCommandId?: string;
   requestFingerprint?: string;
@@ -99,7 +104,7 @@ export interface TaskCreationNoticeRecord {
   projectId: string;
   workId: string;
   workTitle: string;
-  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
+  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
   workNumber: number;
   createdBy: ActorRef;
   sources: ObjectRef[];
@@ -133,11 +138,11 @@ export interface NativeCommandReceipt {
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
-export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'dueOn' | 'owner' | 'parked' | 'criteria'>>;
+export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt' | 'dueOn' | 'owner' | 'criteria'>>;
 
 /** What one change of a task's status, owner, due date or title kept (#488); the repository records it with the change. */
 export type TaskActivityDetail =
-  | { kind: 'status'; from: WorkStatus; to: WorkStatus; blocker: string | null; waitingForUserId: string | null }
+  | { kind: 'status'; from: WorkStatus; to: WorkStatus; blocker: string | null; waitingForUserId: string | null; waitingOn: string | null; dropped: boolean }
   | { kind: 'owner'; from: ActorRef | null; to: ActorRef | null }
   | { kind: 'due'; from: string | null; to: string | null }
   | { kind: 'title'; from: string; to: string };
@@ -149,12 +154,12 @@ export type TaskActivityRecord = TaskActivityDetail & {
   position: string;
   by: ActorRef;
   /** The change was made by a linked pull request's task rule on its author's behalf. */
-  automation: 'github_rule' | 'agent_rule' | 'agent_deleted' | null;
+  automation: TaskChangeVia | null;
 };
 /** Where an older page of activity starts: strictly before this entry in (time, id) order. */
 export interface TaskActivityPosition { position: string; id: string }
 /** Who a change is made by when it is a task rule acting for its author. */
-export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_deleted';
+export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;
@@ -171,7 +176,7 @@ export interface NewObjectLink {
 /** What a task presents of its plan: its direct prerequisites with their current state and its intent. */
 export interface TaskPlanRecord {
   /** Ascending by id. */
-  prerequisites: { id: string; title: string; status: WorkStatus; parked: boolean }[];
+  prerequisites: { id: string; title: string; status: WorkStatus }[];
   planIntent: TaskPlanIntent | null;
 }
 
@@ -205,7 +210,7 @@ export interface WorkRepository extends TaskGraphReader {
   locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
   /**
-   * Unfinished, unparked work owned by `owner` in the projects of `workspaceId` that pass the
+   * Unfinished work owned by `owner` in the projects of `workspaceId` that pass the
    * policy's list filter (`visibleFilter`) for `principal`, applied before the page and the total.
    */
   listAssignedVisible(principal: Principal, workspaceId: string, owner: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
@@ -221,9 +226,15 @@ export interface WorkRepository extends TaskGraphReader {
   /** Proposed and accepted decisions and recorded results of the project as one stream, newest first (#694). */
   listObjectNotices(projectId: string, page: PageWindow): Promise<Paged<ObjectNoticeRecord>>;
   /** One "blocked" or "unblocked" line of the conversation (#550), in the transaction of the change. */
-  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
+  insertTaskUpdate(work: WorkRecord, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: ActorRef; waitingFor: ActorRef | null; reason: string | null }): Promise<void>;
+  /** The blocked tasks that wait for this decision or task (#868), ascending by id. Read under the project's graph lock. */
+  waiters(target: { kind: 'decision' | 'task'; id: string }): Promise<string[]>;
+  /** Whether `start` waits, however far round, for the task `target` (#868): the chain of waits, followed to its end or to a loop. */
+  waitsFor(start: string, target: string): Promise<boolean>;
+  /** What tasks wait for besides a person, by `kind:id` (#868): a decision's title, a task's number and title. A missing one is absent. */
+  waitingTargets(refs: readonly { kind: 'decision' | 'task'; id: string }[]): Promise<Map<string, WaitingOn>>;
   /**
-   * Blocked, unfinished, unparked work in visible projects that concerns `userId`: they own it, it waits for
+   * Blocked, unfinished work in visible projects that concerns `userId`: they own it, it waits for
    * them, or an agent they own holds it (#550).
    */
   listBlockedFor(principal: Principal, workspaceId: string, userId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
@@ -338,8 +349,8 @@ export type ContributionAnchor =
   | { operation: 'result.create'; resultId: string };
 export interface ContributionDraft {
   workId: string;
-  kind: 'blocker' | 'result';
-  /** The exact authored text: the saved blocker or the result title. */
+  kind: 'blocker' | 'result' | 'came_of_it';
+  /** The exact authored text: the saved blocker, the "what came of it" line or the result title. */
   body: string;
   resultId?: string;
 }

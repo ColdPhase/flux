@@ -258,10 +258,16 @@ export function createWorkContributions(ports: TaskDiscussionPorts): WorkContrib
       const ids: string[] = [];
       for (const item of prepared.items) {
         const task = prepared.locked.find((row) => row.id === item.draft.workId)!;
-        const { message } = await appendToTask(ports, { workspaceId: task.workspaceId, projectId: prepared.projectId }, prepared.author, task.id,
-          { body: item.draft.body, clientMessageId: item.clientMessageId, fingerprint: item.fingerprint, source: null,
-            kind: item.draft.kind, resultId: item.draft.resultId ?? null });
-        ids.push(message.id);
+        try {
+          const { message } = await appendToTask(ports, { workspaceId: task.workspaceId, projectId: prepared.projectId }, prepared.author, task.id,
+            { body: item.draft.body, clientMessageId: item.clientMessageId, fingerprint: item.fingerprint, source: null,
+              kind: item.draft.kind, resultId: item.draft.resultId ?? null });
+          ids.push(message.id);
+        } catch (error) {
+          // The line at Done is also the task's own field (#868): five agent messages in a row (C-51) refuse a message, never the Done that carries it.
+          if (item.draft.kind === 'came_of_it' && error instanceof ConflictError && error.code === 'AGENT_TURN_LIMIT') continue;
+          throw error;
+        }
       }
       prepared.stage = 'appended';
       return ids;

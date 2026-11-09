@@ -19,15 +19,12 @@ const { db, pool } = createDatabase(process.env.DATABASE_URL);
 after(() => pool.end());
 const sessions = createSessionResolver(createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() }));
 const post = async <T>(who: Person, path: string, body: unknown, headers?: Record<string, string>) => expectStatus(await who.browser.request('POST', path, { body, headers }), 201) as T;
-// Nothing in Flux parks a task any more (#871); rows that still hold the legacy state are made by hand to keep their reads covered.
-const parkByHand = (ids: string[], decisionId: string) =>
-  pool.query('UPDATE project_work_items SET parked_at = now(), parked_by_decision_id = $2 WHERE id = ANY($1::uuid[])', [ids, decisionId]);
 const code = (status: number, expected: string) => (error: unknown) => error instanceof DomainError && error.status === status && error.code === expected;
 
 describe('bounded native work reads through HTTP and current native fences', () => {
   let owner: Person, other: Person, viewer: Person, outsider: Person;
   let workspaceId: string, projectId: string;
-  let conversation: Conversation, main: WorkItem, finished: WorkItem, parked: WorkItem;
+  let conversation: Conversation, main: WorkItem, finished: WorkItem;
   let oldRule: Decision, rule: Decision, result: WorkResult, material: Material;
   let sketchId: string, thoughtId: string, zeroMessageId: string;
   const base = () => `/api/v1/projects/${projectId}`;
@@ -57,33 +54,29 @@ describe('bounded native work reads through HTTP and current native fences', () 
     main = await addWork('Native main work', { outcome: 'Own full outcome', sources: [message, { type: 'material', id: material.materialId, version: 1 }, { type: 'material', id: material.materialId, version: 2 }, { type: 'thought', id: thoughtId }] });
     await post(owner, `${base()}/links`, { from: { type: 'work', id: main.id }, to: message, role: 'related' });
     finished = await addWork('Finished selected work', { status: 'done' });
-    parked = await addWork('Shelved native work', { status: 'in_progress', owner: { kind: 'human', id: other.id } });
     const proposal = await post<Decision>(other, `${base()}/decisions`, { title: 'Earlier native rule', rationale: 'Own full rationale', affects: [main.id], sources: [message] });
     oldRule = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
     const pivot = await post<Decision>(other, `${base()}/decisions`, { title: 'Current native rule', supersedes: oldRule.id });
     rule = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
-    await parkByHand([parked.id], rule.id);
     result = await post<WorkResult>(other, `${base()}/results`, { title: 'Native result', finding: 'negative', evidence: 'Own full evidence', work: [main.id], sources: [message] });
   });
 
   test('same-name humans and agents remain distinct bounded owners; view and summary share native observation', async () => {
     const summary = await get<ProjectWorkSummary>(`${base()}/work-summary`);
-    assert.deepEqual(summary.all, { needs: 0, in_progress: 4, blocked: 0, open: 1, parked: 1, finished: 1, rules: 2, results: 1 });
-    assert.equal(summary.workTotal, 7); assert.equal(summary.unfinishedTotal, 5);
+    assert.deepEqual(summary.all, { needs: 0, in_progress: 4, blocked: 0, open: 1, finished: 1, rules: 2, results: 1 });
+    assert.equal(summary.workTotal, 6); assert.equal(summary.unfinishedTotal, 5);
     assert.equal('state' in summary, false, 'the summary is counts only; nothing reads a project state from it (#962)');
     const first = await get<ProjectWorkView>(`${base()}/work-view?limit=3`, viewer);
-    assert.equal(first.items.length, 3); assert.equal(first.total, 10); assert.equal(first.summary.access, 'contributor');
+    assert.equal(first.items.length, 3); assert.equal(first.total, 9); assert.equal(first.summary.access, 'contributor');
     assert.deepEqual(first.summary.all, summary.all); assert.match(first.summary.observedAt, /\.\d{6}Z$/);
     const seen = [...first.items]; let next = first.nextCursor;
     while (next) { const page = await get<ProjectWorkView>(`${base()}/work-view?limit=3&cursor=${next}`, viewer); seen.push(...page.items); next = page.nextCursor; }
-    assert.equal(new Set(seen.map(({ kind, id }) => `${kind}:${id}`)).size, 10);
+    assert.equal(new Set(seen.map(({ kind, id }) => `${kind}:${id}`)).size, 9);
     assert.deepEqual(seen.filter(({ kind }) => kind === 'decision').map(({ id }) => id), [rule.id, oldRule.id]);
-    for (const row of seen) for (const forbidden of ['links', 'outcome', 'rationale', 'evidence', 'createdByKind', 'ownerUserId', 'parkedByDecisionId']) assert.equal(forbidden in row, false);
+    for (const row of seen) for (const forbidden of ['links', 'outcome', 'rationale', 'evidence', 'createdByKind', 'ownerUserId']) assert.equal(forbidden in row, false);
     const projected = seen.find(({ id }) => id === main.id) as WorkRowProjection;
     assert.deepEqual(projected.relations, { edges: 7, sourceMessages: 1, sourceMaterials: 2, decisions: 1, results: 1 });
     assert.equal(projected.rule?.id, oldRule.id);
-    const parkedRow = seen.find(({ id }) => id === parked.id) as WorkRowProjection;
-    assert.equal(parkedRow.parked?.decisionId, rule.id); assert.equal(parkedRow.parkedBy?.title, rule.title);
     const resultRow = seen.find(({ id }) => id === result.id)!; assert.equal('version' in resultRow, false);
     const mine = await get<ProjectWorkView>(`${base()}/work-view?mine=true`);
     // Mine is the person's own task and the two tasks of their own agents (#865); the other human's and the same-name rows stay out.
@@ -91,33 +84,27 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.equal(mine.total, 3);
   });
 
-  test('bounded counts follow open, finished and parked work through actual parking transitions', async () => {
+  test('bounded counts follow open and finished work, dropped or not', async () => {
     const isolated = await project(owner, workspaceId, 'Native retained state', 'restricted');
     const path = `/api/v1/projects/${isolated.id}`;
     const create = (title: string, status = 'open') => post<WorkItem>(owner, `${path}/work`, { title, status });
-    await create('Open A'); await create('Open B');
+    const openA = await create('Open A'), openB = await create('Open B');
     await create('Completed native work', 'done');
-    await create('Not pursued native work', 'not_pursued');
-    const parkDone = await create('Park then complete'), parkStopped = await create('Park then stop');
-    const original = await post<Decision>(owner, `${path}/decisions`, { title: 'Earlier parking direction' });
+    // A task that was dropped is Done with a "dropped" note (#868); a task is created Done first, then dropped.
+    const stopped = await create('Dropped native work', 'done');
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${stopped.id}`, { body: { status: 'done', dropped: true }, headers: { 'if-match': `"${stopped.version}"` } }), 200);
+    const original = await post<Decision>(owner, `${path}/decisions`, { title: 'Earlier direction' });
     expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${original.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
-    const proposal = await post<Decision>(owner, `${path}/decisions`, { title: 'Actual parking rule', supersedes: original.id });
-    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`,
-      { body: {}, headers: { 'if-match': '"1"' } }), 200);
-    await parkByHand([parkDone.id, parkStopped.id], proposal.id);
+    const proposal = await post<Decision>(owner, `${path}/decisions`, { title: 'Actual rule', supersedes: original.id });
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
     const observation = await get<ProjectWorkSummary>(`${path}/work-summary`);
-    assert.deepEqual([observation.all.open, observation.all.finished, observation.all.parked, observation.all.rules], [2, 2, 2, 2]);
-    for (const [item, status] of [[parkDone, 'done'], [parkStopped, 'not_pursued']] as const) {
-      const current = expectStatus(await owner.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem;
-      assert.ok(current.parked);
-      await assert.rejects(pool.query('UPDATE project_work_items SET status=$1 WHERE id=$2', [status, item.id]),
-        (error: unknown) => (error as { code?: string }).code === '23514', 'illegal parked-finished native storage remains rejected');
-      const finished = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${item.id}`,
-        { body: { status }, headers: { 'if-match': `"${current.version}"` } }), 200) as WorkItem;
-      assert.equal(finished.parked, null, 'actual native finish clears parking');
-    }
+    assert.deepEqual([observation.all.open, observation.all.finished, observation.all.rules], [2, 2, 2]);
+    // Finishing and dropping the two open tasks moves them into the finished count; nothing is left open.
+    for (const [item, dropped] of [[openA, false], [openB, true]] as const)
+      expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${item.id}`,
+        { body: { status: 'done', ...(dropped ? { dropped } : {}) }, headers: { 'if-match': `"${item.version}"` } }), 200);
     const updated = await get<ProjectWorkSummary>(`${path}/work-summary`);
-    assert.deepEqual([updated.all.open, updated.all.finished, updated.all.parked], [2, 4, 0]);
+    assert.deepEqual([updated.all.open, updated.all.finished], [0, 4]);
     expectStatus(await outsider.browser.request('GET', `${path}/work-summary`), 404);
     const mixed = await get<ProjectWorkSummary>(`${base()}/work-summary`);
     assert.equal(mixed.all.rules, 2, 'accepted plus genuine superseded history are both counted');
@@ -129,16 +116,12 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const create = (title: string, fields: Record<string, unknown> = {}) => post<WorkItem>(owner, `${path}/work`, { title, ...fields });
     const ready = await create('Ready prerequisite', { status: 'done' });
     const pending = await create('Pending prerequisite');
-    const parked = await create('Parked prerequisite');
-    const earlier = await post<Decision>(owner, `${path}/decisions`, { title: 'Initial plan direction' });
-    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${earlier.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
-    const pivot = await post<Decision>(owner, `${path}/decisions`, { title: 'Changed plan direction', supersedes: earlier.id });
-    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
-    await parkByHand([parked.id], pivot.id);
+    const third = await create('Third prerequisite');
+    await post<Decision>(owner, `${path}/decisions`, { title: 'Plan direction' });
     const plan = await post<Material>(owner, `${path}/materials`, { title: 'Exact plan source', body: 'The bounded task plan', clientMutationId: randomUUID() });
     const planIntent = { materialId: plan.materialId, version: 1, intentKey: 'bounded-task-read' };
     const planned = await create('Planned task with mixed prerequisites', { criteria: ['First native criterion', 'Second native criterion'],
-      dependencyIds: [parked.id, ready.id, pending.id], planIntent });
+      dependencyIds: [third.id, ready.id, pending.id], planIntent });
     const observe = async (total: number, unmet: number) => {
       const page = await get<ProjectWorkView>(`${path}/work-view?group=open&limit=100`);
       const row = page.items.find(({ id }) => id === planned.id) as WorkRowProjection;
@@ -149,7 +132,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
       assert.equal(detail.object.kind, 'work');
       if (detail.object.kind !== 'work') throw new Error('Wrong native detail kind');
       for (const field of ['criteria', 'dependencyIds', 'prerequisites', 'planIntent'] as const) assert.deepEqual(detail.object[field], canonical[field]);
-      assert.deepEqual(detail.object.dependencyIds, [parked.id, ready.id, pending.id].sort());
+      assert.deepEqual(detail.object.dependencyIds, [third.id, ready.id, pending.id].sort());
       assert.equal(detail.object.prerequisites.filter(({ met }) => !met).length, unmet);
       assert.deepEqual(detail.object.planIntent, planIntent);
       assert.equal('prerequisiteCounts' in detail.object, false);
@@ -170,7 +153,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
       return expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${id}`, { body: { ...command, clientCommandId: randomUUID() }, headers: { 'if-match': `"${task.version}"` } }), 200) as WorkItem;
     };
     await change(pending.id, { status: 'done' }); await observe(3, 1);
-    const unparked = await change(parked.id, { status: 'done' }); assert.equal(unparked.parked, null); await observe(3, 0);
+    await change(third.id, { status: 'done' }); await observe(3, 0);
     await change(ready.id, { status: 'open' }); await observe(3, 1);
     await assert.rejects(pool.query('INSERT INTO project_task_dependencies (workspace_id, project_id, task_id, prerequisite_id) VALUES ($1,$2,$3,$4)',
       [workspaceId, isolated.id, planned.id, main.id]), (error: unknown) => (error as { code?: string }).code === '23503');
@@ -204,7 +187,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
       if (kind === 'decision') { assert.equal(detail.object.kind === 'decision' && detail.object.supersededBy, rule.id); assert.equal(detail.context[0]?.id, rule.id); }
     }
     const choice = await get<ProjectWorkView>(`${base()}/work-view?purpose=choices&choice=result_work&selected=${finished.id}&limit=1`);
-    assert.equal(choice.total, 6); assert.equal(choice.items.length, 1); assert.equal(choice.selected?.id, finished.id);
+    assert.equal(choice.total, 5); assert.equal(choice.items.length, 1); assert.equal(choice.selected?.id, finished.id);
     assert.equal(choice.items.some(({ id }) => id === finished.id), false);
   });
 

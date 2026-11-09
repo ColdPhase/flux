@@ -5,6 +5,7 @@ import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
+import { InvalidInputError } from '@flux/core';
 import { toolError, toolResult } from './tool-results.js';
 
 const text = (maximum: number) => z.string().min(1).max(maximum);
@@ -13,6 +14,15 @@ const criteria = z.array(text(WORK_LIMITS.criterion)).max(WORK_LIMITS.criteria);
 const dependencyIds = z.array(id).max(WORK_LIMITS.dependencies);
 
 /** Native work actions through the shared one-transaction executor (`action-execution.ts`): the owner's rights, "What it may do" and the change log. */
+const waitingOnDecisionId = id.describe('Optional: the one decision (of this project, still proposed) a blocked task waits for. When it is accepted the task goes back to Doing by itself. Blocked tasks only; a task waits for one thing.');
+const waitingOnTaskId = id.describe('Optional: the one other task (of this project, not done) a blocked task waits for. When it is done the task goes back to Doing by itself. Blocked tasks only; a task waits for one thing.');
+/** The one thing a task waits for besides a person (#868), from the two ids a tool takes; `undefined` leaves it, `null` clears it. */
+function waitingOnOf(decision: string | null | undefined, task: string | null | undefined): { kind: 'decision' | 'task'; id: string } | null | undefined {
+  if (decision && task) throw new InvalidInputError('A task waits for one thing: give a decision or a task, not both');
+  if (decision) return { kind: 'decision', id: decision };
+  if (task) return { kind: 'task', id: task };
+  return decision === null || task === null ? null : undefined;
+}
 const waitingForUserId = z.string().min(1).max(200).describe('Optional: the one person a blocked task waits for, by user id. They get an Inbox item. Blocked tasks only.');
 
 export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
@@ -29,19 +39,20 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       title: text(WORK_LIMITS.title), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
       status: z.enum(WORK_STATUSES).optional(), blocker: z.string().max(WORK_LIMITS.blocker).optional(),
       ownerUserId: z.string().min(1).max(200).describe('Optional: the person responsible, by user id. A task for anyone but your owner waits for your owner\'s OK.').optional(),
-      waitingForUserId: waitingForUserId.optional(),
+      waitingForUserId: waitingForUserId.optional(), waitingOnDecisionId: waitingOnDecisionId.optional(), waitingOnTaskId: waitingOnTaskId.optional(),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
       parentTaskId: id.describe('Optional: make this a subtask of this task of the project. A subtask for another person waits for your owner\'s OK.').optional(),
       sourceMessageId: id.describe('Optional: the message of this project this task was made from. It is kept as the task\'s source, so the task opens it in context and the message shows the task.').optional(),
       planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
     }) }),
     annotations,
-  }, async ({ task: { waitingForUserId: waiting, ownerUserId, sourceMessageId, parentTaskId, ...task }, ...input }) => {
+  }, async ({ task: { waitingForUserId: waiting, waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, ownerUserId, sourceMessageId, parentTaskId, ...task }, ...input }) => {
     try {
+      const waitingOn = waitingOnOf(onDecision, onTask);
       // #844: a task made from a message keeps it as its source, for people and agents alike (the message must be in this project).
       const sources = [...(materialSources(input).sources ?? []), ...(sourceMessageId ? [{ type: 'message' as const, id: sourceMessageId }] : [])];
       const created: CreateWorkCommand = { ...task, ...(ownerUserId ? { owner: { kind: 'human', id: ownerUserId } } : {}),
-        ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...(sources.length ? { sources } : {}), ...(parentTaskId ? { parentId: parentTaskId } : {}) };
+        ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...(waitingOn ? { waitingOn } : {}), ...(sources.length ? { sources } : {}), ...(parentTaskId ? { parentId: parentTaskId } : {}) };
       return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };
@@ -51,21 +62,26 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
 
   register('work.update').registerTool('flux_update_task', {
     title: 'Change a project task',
-    description: 'Change one existing native Flux task at the exact version you last read: title, outcome, status, blocker, who it waits for (waitingForUserId, a project member; blocked tasks only), '
+    description: 'Change one existing native Flux task at the exact version you last read: title, outcome, status, blocker, who it waits for (waitingForUserId, a project member, or waitingOnDecisionId / waitingOnTaskId; blocked tasks only, one thing: the task goes back to Doing by itself when it is resolved), '
+      + 'finishing it with an optional one-line cameOfIt (dropped: true when it was dropped, not finished), '
       + 'done-when criteria (replaces the list) or prerequisites (replaces the set). '
       + 'A changed task is a version conflict; read it again. '
       + 'Starting or finishing requires every prerequisite to be done. A plan intent cannot be changed.',
     inputSchema: z.strictObject({ ...execution(), workId: id, expectedVersion: version, changes: z.strictObject({
       title: text(WORK_LIMITS.title).optional(), outcome: z.string().max(WORK_LIMITS.outcome).optional(),
       status: z.enum(WORK_STATUSES).optional(), blocker: z.string().max(WORK_LIMITS.blocker).nullable().optional(),
-      waitingForUserId: waitingForUserId.nullable().optional(),
+      waitingForUserId: waitingForUserId.nullable().optional(), waitingOnDecisionId: waitingOnDecisionId.nullable().optional(), waitingOnTaskId: waitingOnTaskId.nullable().optional(),
+      dropped: z.boolean().optional().describe('With status done: the task was dropped, not finished.'),
+      cameOfIt: z.string().max(WORK_LIMITS.cameOfIt).nullable().optional().describe('With status done: one line, what came of it. It is also written in the task\'s discussion.'),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
     }) }),
     annotations,
   }, async ({ workId, expectedVersion, changes, ...input }) => {
     try {
-      const { waitingForUserId: waiting, ...rest } = changes;
-      const update: UpdateWorkCommand = { ...rest, ...(waiting === undefined ? {} : { waitingFor: waiting === null ? null : { kind: 'human', id: waiting } }) };
+      const { waitingForUserId: waiting, waitingOnDecisionId: onDecision, waitingOnTaskId: onTask, ...rest } = changes;
+      const waitingOn = waitingOnOf(onDecision, onTask);
+      const update: UpdateWorkCommand = { ...rest, ...(waiting === undefined ? {} : { waitingFor: waiting === null ? null : { kind: 'human', id: waiting } }),
+        ...(waitingOn === undefined ? {} : { waitingOn }) };
       return toolResult(await execute(input, 'work.update', workId, { expectedVersion, changes: update } as unknown as AgentJsonValue,
         async ({ work: native, agent }) => {
           const work = await native.updateWork(agent, workId, update, expectedVersion);

@@ -18,10 +18,9 @@ export interface HeldTaskRow {
   workspaceId: string;
   number: number;
   title: string;
-  status: 'open' | 'in_progress' | 'blocked' | 'done' | 'not_pursued';
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
   version: number;
   ownerAgentId: string | null;
-  parked: boolean;
   createdByKind: 'human' | 'agent';
   createdById: string;
 }
@@ -57,7 +56,7 @@ export function agentStopRows(tx: DbExecutor) {
     },
     async task(projectId: string, taskId: string): Promise<HeldTaskRow | null> {
       const [row] = await tx.select({ id: w.id, projectId: w.projectId, workspaceId: w.workspaceId, number: w.number, title: w.title,
-        status: w.status, version: w.version, ownerAgentId: w.ownerAgentId, parked: sql<boolean>`${w.parkedAt} IS NOT NULL`,
+        status: w.status, version: w.version, ownerAgentId: w.ownerAgentId,
         createdByKind: w.createdByKind, createdById: w.createdById })
         .from(w).where(and(eq(w.projectId, projectId), eq(w.id, taskId)));
       return row ?? null;
@@ -82,7 +81,7 @@ export function agentStopRows(tx: DbExecutor) {
       const rows = await tx.select({ agentId: schema.agents.id, agentName: schema.agents.name, taskId: w.id, projectId: w.projectId, projectName: schema.projects.name,
         number: w.number, title: w.title }).from(w)
         .innerJoin(schema.agents, eq(schema.agents.id, w.ownerAgentId)).innerJoin(schema.projects, eq(schema.projects.id, w.projectId))
-        .where(and(eq(schema.agents.ownerUserId, userId), isNull(schema.agents.revokedAt), eq(w.status, 'in_progress'), isNull(w.parkedAt)))
+        .where(and(eq(schema.agents.ownerUserId, userId), isNull(schema.agents.revokedAt), eq(w.status, 'in_progress')))
         .orderBy(desc(w.updatedAt), desc(w.id)).limit(limit);
       // Online: an unrevoked connection of the agent has a session that is unexpired, on its binding's current generation, of an enabled client.
       const live = new Set<string>();

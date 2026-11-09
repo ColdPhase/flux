@@ -7,7 +7,7 @@ export const ASSIGNED_PAGE = 100;
 export type ReadAssignedPage = (limit: number, offset: number) => Promise<Page<WorkItem>>;
 
 /**
- * Work the caller owns in one workspace (open, in progress, blocked; not parked), across the
+ * Work the caller owns in one workspace (open, in progress, blocked), across the
  * projects they can read now, page by page until `total` or `cap` items (#190 HOME-2). The total
  * is always read: with no room left (`cap` 0) one row is asked for only its `total` (#211 A2.1).
  */

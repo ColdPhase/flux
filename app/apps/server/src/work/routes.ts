@@ -2,6 +2,7 @@ import { policyWorkAccess } from './access.js';
 import type { FastifyInstance } from 'fastify';
 import {
   taskCreationUndoPath,
+  taskWaitingDonePath,
   type UndoTaskCreationCommand,
   decisionAcceptPath,
   decisionPath,
@@ -42,6 +43,8 @@ const page = { type: 'object', additionalProperties: false, properties: { limit:
 const title = { type: 'string', minLength: 1, maxLength: WORK_LIMITS.title } as const;
 const principalRef = { type: ['object', 'null'], required: ['kind', 'id'], additionalProperties: false,
   properties: { kind: { type: 'string', enum: ['human', 'agent'] }, id: { type: 'string', minLength: 1 } } } as const;
+const waitingOn = { type: ['object', 'null'], required: ['kind', 'id'], additionalProperties: false,
+  properties: { kind: { type: 'string', enum: ['decision', 'task'] }, id: { type: 'string', minLength: 1 } } } as const;
 const objectRef = { type: 'object', required: ['type', 'id'], additionalProperties: false,
   properties: { type: { type: 'string', enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }, id: { type: 'string' }, version: { type: 'integer' } } } as const;
 const refs = { type: 'array', maxItems: WORK_LIMITS.links, items: objectRef } as const;
@@ -57,12 +60,13 @@ const planIntent = { type: ['object', 'null'], required: ['materialId', 'version
   properties: { materialId: { type: 'string' }, version: { type: 'integer' }, intentKey: { type: 'string' } } } as const;
 
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn,
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, waitingOn, dueOn,
   blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
   criteria, dependencyIds, planIntent, parentId: { type: 'string', format: 'uuid' },
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn, restore: { type: 'boolean', enum: [true] },
+  title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, waitingOn, dropped: { type: 'boolean' }, cameOfIt: { type: ['string', 'null'], maxLength: 2000 }, dueOn,
+  restore: { type: 'boolean', enum: [true] },
   blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, expectedVersion: version,
   expectedGithubRuleRevision: { type: 'integer', minimum: 0 },
   clientCommandId: { type: 'string', format: 'uuid' },
@@ -156,6 +160,11 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     { schema: { body: { type: 'object', additionalProperties: false, required: ['clientCommandId', 'expectedVersion'],
       properties: { clientCommandId: { type: 'string', format: 'uuid' }, expectedVersion: version } } } },
     async (request) => work.undoTaskCreation(await principal(request), request.params.workId, request.body));
+  // The person a blocked task waits for says they are done (#868): reading the space is enough, the task's version is the If-Match.
+  app.post<{ Params: { workId: string } }>(taskWaitingDonePath(':workId'), async (request, reply) => {
+    const item = await work.resolveWaiting(await principal(request), request.params.workId, expectedVersion(request));
+    return reply.header('etag', versionEtag(item)).send(item);
+  });
   app.patch<{ Params: { workId: string }; Body: UpdateWorkCommand }>(workItemPath(':workId'), { schema: { body: updateWork },
     // A plan intent is immutable: say so instead of letting the schema silently drop the field.
     preValidation: async (request) => {
