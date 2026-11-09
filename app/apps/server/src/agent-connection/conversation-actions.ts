@@ -6,8 +6,7 @@ import { taskDiscussionInEventSession } from '../work/task-discussions.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, coordinationExecutor, coordinationInput,
   nativeActionExecutor } from './action-execution.js';
 import { recordDiscussionLine } from './assistant-changes.js';
-import type { FluxMcpClaims } from './context.js';
-import type { AgentToolRegistry } from './tool-registry.js';
+import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const execution = actionInput();
@@ -42,8 +41,8 @@ async function clientMark(tx: Transaction, connectionId: string): Promise<string
  * (#36/#154), in the same one-transaction executor as the work and map actions. The audience is always the
  * project: a direct message, a private note or another project's conversation is never a target.
  */
-export function registerAgentConversationActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const execute = nativeActionExecutor(db, claims);
+export function registerAgentConversationActions(tools: AgentToolRegistry, db: Database) {
+  const execute = ({ claims }: ToolCall) => nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   const note = 'The message is attributed to this connection\'s agent, acting for its owner.';
@@ -53,7 +52,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
     title: 'Start a project conversation',
     description: `Start one new conversation in the project with its first message. ${asOwner}`,
     inputSchema: z.strictObject({ ...execution, message }), annotations,
-  }, ({ message: posted, ...input }) => run(() => execute(input, 'conversation.create', null, posted as unknown as AgentJsonValue,
+  }, ({ message: posted, ...input }, call) => run(() => execute(call)(input, 'conversation.create', null, posted as unknown as AgentJsonValue,
     async ({ conversations, transaction, runtime }) => {
       // As the owner, marked with the client (LC-2, #1091): a person's own message, so the database accepts its `via`.
       const owner: Principal = { kind: 'human', id: runtime.ownerUserId };
@@ -71,7 +70,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
       + 'In a task\'s discussion the line is this connection\'s agent\'s own, acting for its owner, and at most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT).',
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'), message }), annotations,
-  }, ({ conversationId, message: posted, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
+  }, ({ conversationId, message: posted, ...input }, call) => run(() => execute(call)(input, 'conversation.reply', conversationId,
     posted as unknown as AgentJsonValue, async ({ conversations, transaction, agent, runtime }) => {
       // A task's discussion is the agents' own talk about the task (C-51, TA-3): the line stays the agent's, counted and its owner's to delete.
       // Any other conversation is people's: the post is the owner's own message, marked with the client (LC-2, #1091).
@@ -90,7 +89,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
   // choose it. It is the agent's own talk about the task, not a change to a person's things, so it does not wait. The task discussion's
   // use case writes it as the agent, under the task's use fence, and stops the sixth agent message in a row (AGENT_TURN_LIMIT, C-51); the
   // line is recorded as the reply change flux_reply_in_conversation records, so its owner deletes it the same way (#961).
-  const executeDiscussion = coordinationExecutor(db, claims, 'task-discussion/v1');
+  const executeDiscussion = ({ claims }: ToolCall) => coordinationExecutor(db, claims, 'task-discussion/v1');
   register('conversation.reply').registerTool('flux_discuss_task', {
     title: 'Write in a task\'s discussion',
     description: 'Write one message in the one discussion of a task, where people and agents talk about it (a plan, progress, a hand-off note). '
@@ -98,13 +97,13 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
       + `${note} Needs the runtime from flux_bootstrap.`,
     inputSchema: z.strictObject({ ...coordinationInput(), taskId: id.describe('The task of this project the message is about.'),
       body: message.shape.body }), annotations,
-  }, ({ taskId, body, ...input }) => run(() => executeDiscussion(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
+  }, ({ taskId, body, ...input }, call) => run(() => executeDiscussion(call)(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
     async ({ transaction, events, agent, runtime }) => {
       const sent = await taskDiscussionInEventSession(transaction, events).contribute(agent, taskId,
         { body, clientMessageId: derivedUuid('flux.task-discussion-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
       const produced = { value: { taskId, conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
         postconditions: [{ kind: 'message' as const, id: sent.id }] };
-      await recordDiscussionLine(transaction, claims, runtime, { tool: 'flux_discuss_task', args: { ...input, taskId, body } }, input, produced);
+      await recordDiscussionLine(transaction, call.claims, runtime, { tool: 'flux_discuss_task', args: { ...input, taskId, body } }, input, produced);
       return produced;
     })));
 }

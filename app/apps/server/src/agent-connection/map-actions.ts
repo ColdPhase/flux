@@ -3,8 +3,7 @@ import { AGENT_OPERATION_CLASSES, SKETCH_LIMITS, THOUGHT_SHAPES, type AgentJsonV
   type CreateThoughtCommand, type MoveThoughtsCommand, type ThoughtShape, type UpdateThoughtCommand } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
-import type { FluxMcpClaims } from './context.js';
-import type { AgentToolRegistry } from './tool-registry.js';
+import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const execution = actionInput();
@@ -21,8 +20,8 @@ const thought = { text: z.string().min(1).max(SKETCH_LIMITS.text), x: coordinate
  * produced post-state is the changed thought(s) and the map checkpoint, so a retry after any later map
  * change is visibly stale instead of replaying over it.
  */
-export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const execute = nativeActionExecutor(db, claims);
+export function registerAgentMapActions(tools: AgentToolRegistry, db: Database) {
+  const execute = ({ claims }: ToolCall) => nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
@@ -30,7 +29,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     title: 'Create a project map',
     description: `Create one shared map in the project, visible to the project's people.`,
     inputSchema: z.strictObject({ ...execution, title: z.string().min(1).max(SKETCH_LIMITS.title) }), annotations,
-  }, ({ title, ...input }) => run(() => execute(input, 'map.create', null, { title }, async ({ maps, agent, runtime }) => {
+  }, ({ title, ...input }, call) => run(() => execute(call)(input, 'map.create', null, { title }, async ({ maps, agent, runtime }) => {
     const map = await maps.create(agent, runtime.workspaceId, { title, scope: 'project', projectId: input.projectId });
     return { value: { mapId: map.id, version: map.version }, postconditions: [{ kind: 'map', id: map.id, version: map.version }] };
   })));
@@ -39,7 +38,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     title: 'Rename a project map',
     description: `Rename one project map at the version you last read.`,
     inputSchema: z.strictObject({ ...execution, mapId, expectedVersion: version, title: z.string().min(1).max(SKETCH_LIMITS.title) }), annotations,
-  }, ({ mapId: target, expectedVersion, title, ...input }) => run(() => execute(input, 'map.rename', target, { expectedVersion, title },
+  }, ({ mapId: target, expectedVersion, title, ...input }, call) => run(() => execute(call)(input, 'map.rename', target, { expectedVersion, title },
     async ({ maps, agent }) => {
       const map = await maps.rename(agent, target, { title, expectedVersion });
       return { value: { mapId: map.id, version: map.version }, postconditions: [{ kind: 'map', id: map.id, version: map.version }] };
@@ -50,7 +49,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     description: `Add one thought at a position on a project map, optionally linked from an existing thought.`,
     inputSchema: z.strictObject({ ...execution, mapId, thought: z.strictObject({ ...thought,
       linkFrom: z.strictObject({ thoughtId: id, label: z.string().max(SKETCH_LIMITS.label).optional() }).optional() }) }), annotations,
-  }, ({ mapId: target, thought: added, ...input }) => run(() => execute(input, 'map.thought.create', target, added as unknown as AgentJsonValue,
+  }, ({ mapId: target, thought: added, ...input }, call) => run(() => execute(call)(input, 'map.thought.create', target, added as unknown as AgentJsonValue,
     async ({ maps, agent, mapCheckpoint }) => {
       const command: CreateThoughtCommand = { ...added, ...(added.linkFrom ? { linkFrom: { thoughtId: added.linkFrom.thoughtId,
         ...(added.linkFrom.label !== undefined ? { label: added.linkFrom.label } : {}) } } : {}) };
@@ -65,7 +64,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     inputSchema: z.strictObject({ ...execution, mapId, thoughtId: id, expectedVersion: version,
       changes: z.strictObject({ text: thought.text.optional(), x: coordinate.optional(), y: coordinate.optional(),
         width: thought.width, height: thought.height, shape: thought.shape }) }), annotations,
-  }, ({ mapId: target, thoughtId, expectedVersion, changes, ...input }) => run(() => execute(input, 'map.thought.update', target,
+  }, ({ mapId: target, thoughtId, expectedVersion, changes, ...input }, call) => run(() => execute(call)(input, 'map.thought.update', target,
     { thoughtId, expectedVersion, changes } as unknown as AgentJsonValue, async ({ maps, agent, mapCheckpoint }) => {
       const command: UpdateThoughtCommand = { ...changes, expectedVersion };
       const updated = await maps.updateThought(agent, target, thoughtId, command);
@@ -78,7 +77,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     description: `Remove one thought and its links at the version you last read.`,
     inputSchema: z.strictObject({ ...execution, mapId, thoughtId: id, expectedVersion: version }),
     annotations: { ...annotations, destructiveHint: true },
-  }, ({ mapId: target, thoughtId, expectedVersion, ...input }) => run(() => execute(input, 'map.thought.delete', target,
+  }, ({ mapId: target, thoughtId, expectedVersion, ...input }, call) => run(() => execute(call)(input, 'map.thought.delete', target,
     { thoughtId, expectedVersion }, async ({ maps, agent, mapCheckpoint }) => {
       await maps.removeThought(agent, target, thoughtId, expectedVersion);
       return { value: { thoughtId }, postconditions: [await mapCheckpoint(target)] };
@@ -89,7 +88,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     description: `Move up to ${SKETCH_LIMITS.moves} thoughts, each at the version you last read; any stale one moves none.`,
     inputSchema: z.strictObject({ ...execution, mapId,
       moves: z.array(z.strictObject({ id, x: coordinate, y: coordinate, expectedVersion: version })).min(1).max(SKETCH_LIMITS.moves) }), annotations,
-  }, ({ mapId: target, moves, ...input }) => run(() => execute(input, 'map.positions.update', target, { moves } as unknown as AgentJsonValue,
+  }, ({ mapId: target, moves, ...input }, call) => run(() => execute(call)(input, 'map.positions.update', target, { moves } as unknown as AgentJsonValue,
     async ({ maps, agent, mapCheckpoint }) => {
       const command: MoveThoughtsCommand = { moves };
       const moved = await maps.moveThoughts(agent, target, command);
@@ -101,7 +100,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     title: 'Link two thoughts on a project map',
     description: `Connect two thoughts of the same project map, with an optional label.`,
     inputSchema: z.strictObject({ ...execution, mapId, fromId: id, toId: id, label: z.string().max(SKETCH_LIMITS.label).optional() }), annotations,
-  }, ({ mapId: target, fromId, toId, label, ...input }) => run(() => execute(input, 'map.link.create', target,
+  }, ({ mapId: target, fromId, toId, label, ...input }, call) => run(() => execute(call)(input, 'map.link.create', target,
     { fromId, toId, ...(label !== undefined ? { label } : {}) } as AgentJsonValue, async ({ maps, agent, mapCheckpoint }) => {
       const link = await maps.addLink(agent, target, { fromId, toId, ...(label !== undefined ? { label } : {}) });
       return { value: { linkId: link.id }, postconditions: [await mapCheckpoint(target)] };
@@ -111,7 +110,7 @@ export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, 
     title: 'Remove a link between thoughts',
     description: `Remove one link between two thoughts of a project map.`,
     inputSchema: z.strictObject({ ...execution, mapId, linkId: id }), annotations: { ...annotations, destructiveHint: true },
-  }, ({ mapId: target, linkId, ...input }) => run(() => execute(input, 'map.link.delete', target, { linkId },
+  }, ({ mapId: target, linkId, ...input }, call) => run(() => execute(call)(input, 'map.link.delete', target, { linkId },
     async ({ maps, agent, mapCheckpoint }) => {
       await maps.removeLink(agent, target, linkId);
       return { value: { linkId }, postconditions: [await mapCheckpoint(target)] };

@@ -224,8 +224,8 @@ describe('one operator switch for reading and searching, on by default (#954, C-
 
   test('with the switch off flux_read_web is not offered to a run', () => {
     const omitted: string[] = [];
-    const registry = { omit: (name: string) => { omitted.push(name); }, forAccess: () => { throw new Error('nothing is registered'); } } as unknown as AgentToolRegistry;
-    registerAgentWebReads(registry, db, { ownerUserId: 'u', connectionId: 'c', clientId: null, grantReferenceId: null, run: {} as never }, { enabled: false } as never);
+    const registry = { run: true, omit: (name: string) => { omitted.push(name); }, forAccess: () => { throw new Error('nothing is registered'); } } as unknown as AgentToolRegistry;
+    registerAgentWebReads(registry, db, { enabled: false } as never);
     assert.deepEqual(omitted, ['flux_read_web']);
   });
 });

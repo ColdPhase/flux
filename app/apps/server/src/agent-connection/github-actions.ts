@@ -5,7 +5,6 @@ import type { Database } from '@flux/db';
 import { createGithubUseCasesIn, type Provider } from '../github/adapters.js';
 import { workRepository } from '../work/adapters.js';
 import { actionAnnotations as annotations, actionId as id, coordinationExecutor } from './action-execution.js';
-import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -14,8 +13,7 @@ import { toolError, toolResult } from './tool-results.js';
  * link. It is the agent's own work on the task it holds (TASK_NOT_HELD otherwise), not a change to anyone's things, so it does not
  * wait for its owner. Nothing is added on the GitHub side: the owner's own GitHub authorization verifies the PR through the read-only App.
  */
-export function registerAgentGithubActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims, github: Provider | null) {
-  const execute = coordinationExecutor(db, claims);
+export function registerAgentGithubActions(tools: AgentToolRegistry, db: Database, github: Provider | null) {
   tools.forAccess('write', { operation: 'work.update', classes: AGENT_OPERATION_CLASSES['work.update'] }).registerTool('flux_link_pull_request', {
     title: 'Link a pull request to the task you hold',
     description: 'Link the GitHub pull request you produced to the native task you hold, by its URL '
@@ -37,10 +35,10 @@ export function registerAgentGithubActions(tools: AgentToolRegistry, db: Databas
         .describe('required_output: the pull request is what the task needs. related: it only touches the task.'),
     }),
     annotations,
-  }, async ({ workId, pullRequestUrl, role, ...input }) => {
+  }, async ({ workId, pullRequestUrl, role, ...input }, { claims }) => {
     try {
       if (!github) throw new ServiceUnavailableError('GitHub App integration is unavailable', 'GITHUB_UNAVAILABLE');
-      return toolResult(await execute({ ...input, sources: [] }, 'work.update', workId, { link: { pullRequestUrl, role } } as unknown as AgentJsonValue,
+      return toolResult(await coordinationExecutor(db, claims)({ ...input, sources: [] }, 'work.update', workId, { link: { pullRequestUrl, role } } as unknown as AgentJsonValue,
         async ({ transaction, events, agent, runtime }) => {
           // The owner is the server-issued runtime's, never the tool's input.
           const link = await createGithubUseCasesIn(transaction, events, github)
