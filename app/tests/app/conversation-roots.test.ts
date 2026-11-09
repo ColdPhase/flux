@@ -115,33 +115,25 @@ describe('project conversation roots', () => {
     assert.equal(seen.length, stored.rows[0].count - 1, 'all but the root that arrived after the first read');
   });
 
-  test('a task thread root names its task; ordinary roots and undiscussed tasks do not (UI116-3)', async () => {
+  test('a task\'s discussion is not a root of the stream: the stream lists ordinary conversations only (#868)', async () => {
     const createTask = async (who: Person, title: string) => expect(await who.browser.request('POST', `/api/v1/projects/${project.id}/work`,
       { body: { title, clientCommandId: randomUUID() } }), 201) as WorkItem;
     const task = await createTask(partner, 'Measure the ToF sensor');
     await createTask(owner, 'Not discussed yet');
-    const ordinary = await start(owner, 'An ordinary root next to the task thread');
-    // The task's first genuine contribution comes from someone other than its creator.
+    const ordinary = await start(owner, 'An ordinary root next to the task discussion');
     const first = expect(await owner.browser.request('POST', `/api/v1/work/${task.id}/discussion`,
       { body: { body: 'I will measure it tonight', clientMessageId: randomUUID() } }), 201) as ConversationMessage;
     await reply(partner, first.conversationId, 'Use the dark room');
-    expect(await partner.browser.request('PATCH', `/api/v1/work/${task.id}`,
-      { body: { title: 'Measure the ToF sensor at 5 lux', expectedVersion: task.version } }), 200);
     for (const who of [owner, partner, reader]) {
       const window = expect(await roots(who, '?limit=100'), 200) as ConversationRootWindow;
-      const thread = window.roots.find((root) => root.conversationId === first.conversationId);
-      assert.ok(thread, 'the first contribution is a root of the stream');
-      assert.equal(thread.message.id, first.id);
-      assert.equal(thread.message.authorId, owner.id, 'its true author, not the task creator');
-      assert.equal(thread.replyCount, 1);
-      assert.deepEqual(thread.task, { workId: task.id, title: 'Measure the ToF sensor at 5 lux', number: task.number },
-        'the current title and the immutable number, so the chip does not grow when its row arrives (#367)');
-      const plain = window.roots.find((root) => root.conversationId === ordinary.id);
-      assert.ok(plain);
-      assert.equal('task' in plain, false);
-      assert.deepEqual(window.roots.filter((root) => root.task).map((root) => root.conversationId), [first.conversationId],
-        'a task without a contribution has no root');
+      assert.equal(window.roots.some((root) => root.conversationId === first.conversationId), false, 'the discussion lives in the task, not in the stream');
+      assert.ok(window.roots.find((root) => root.conversationId === ordinary.id), 'an ordinary conversation is a root');
+      assert.equal(window.roots.some((root) => 'task' in root), false);
     }
+    // It is still a conversation of the project that its readers can open and answer, so a link to one of its messages works.
+    const opened = expect(await reader.browser.request('GET', `/api/v1/conversations/${first.conversationId}`), 200) as Conversation;
+    assert.equal(opened.messages.length, 2);
+    assert.equal(opened.task?.workId, task.id);
   });
 
   test('bad windows are refused and another project never leaks through the cursor', async () => {

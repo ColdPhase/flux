@@ -14,7 +14,6 @@ import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { TaskAgentState } from '../agents/TaskAgentState';
-import { AgentsThreadSection } from '../agents/AgentsThreadSection';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
 import { askError, askState } from '../assistant/format';
 import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
@@ -296,7 +295,6 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         })}
       </ol>
       {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
-      <AgentsThreadSection task={{ id: item.id, number: item.number, title: item.title }} projectId={project.id} meId={me.id} revision={state.lines.length} />
     </section>
   );
 }

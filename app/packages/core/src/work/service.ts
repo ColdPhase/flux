@@ -607,7 +607,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const record = await ports.work.insertDecision({ id: randomUUID(), ...scope, title, rationale, proposedBy: by, supersedesId: supersedes });
         const from = { type: 'decision' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'affects', affects, by)]);
-        await ports.work.resetArtifact?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
+        await ports.work.artifactUsed?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
         await useFence.mark();
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_proposed.v1', project, { decisionId: record.id });
@@ -646,11 +646,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           if (!earlier || earlier.status !== 'accepted')
             throw new ConflictError('The decision this one replaces has changed; check it again', 'SUPERSEDED_DECISION_CHANGED');
           const superseded=await ports.work.updateDecision(earlier.id, { status: 'superseded', supersededById: id, supersededAt: now });
-          await ports.work.resetArtifact?.({workspaceId,projectId},{kind:'decision',id:superseded.id,revision:`${superseded.version}:${superseded.status}`},useFence);
+          await ports.work.artifactUsed?.({workspaceId,projectId},{kind:'decision',id:superseded.id,revision:`${superseded.version}:${superseded.status}`},useFence);
         }
         const record = await ports.work.updateDecision(id, { status: 'accepted', decidedBy: by.id, decidedAt: now });
         const scope = { workspaceId, projectId };
-        await ports.work.resetArtifact?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
+        await ports.work.artifactUsed?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
         await useFence.mark();
         const view = await presentDecision(ports, record);
         await ports.events.record(principal, workspaceId, 'project.decision_accepted.v1', projectId, { decisionId: id });
@@ -725,7 +725,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });
         const from = { type: 'result' as const, id: record.id };
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'about', [...workRefs(workIds), ...decisions], by)]);
-        await ports.work.resetArtifact?.(scope,{kind:'result',id:record.id,revision:'created'},useFence);
+        await ports.work.artifactUsed?.(scope,{kind:'result',id:record.id,revision:'created'},useFence);
         if (finished && finished.status !== 'done') {
           await ports.work.updateWork(finished.id, { status: 'done', blocker: null }, by);
           await assertPrerequisitesMet(ports.work, workspaceId, finished.id);

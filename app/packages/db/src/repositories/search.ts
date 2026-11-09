@@ -160,10 +160,6 @@ function hitConditions(plan: SearchPlanRows): SQL {
     sql`(sd.kind <> 'work' OR COALESCE((SELECT active_work.creation_reverted_at IS NULL FROM project_work_items active_work
       WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
-    // A task agent thread (#400) has no people-facing surface yet (its UI and agent reads are not built), so its
-    // messages are not findable. Its rows stay stored; people search never shows, ranks or pages them.
-    sql`(sd.kind <> 'message' OR NOT EXISTS (SELECT 1 FROM project_conversations agent_thread
-      WHERE agent_thread.id = (CASE WHEN sd.kind = 'message' THEN sd.parent_id::uuid END) AND agent_thread.space = 'agents'))`,
   ];
   if (plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;

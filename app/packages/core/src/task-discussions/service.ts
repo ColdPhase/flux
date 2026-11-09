@@ -9,6 +9,26 @@ import { contributionIdentity, messageContribution } from './identity.js';
 import type { DiscussionBinding, DiscussionMessage, NewDiscussionMessage, TaskDiscussionPorts, TaskDiscussionRoot, TaskDiscussionUnitOfWork } from './ports.js';
 
 const missing = () => new NotFoundError('Work item', 'WORK_NOT_FOUND');
+
+/** Agents may write this many messages in a row in a task's discussion before a person has written (a loop guard, #868, C-51). */
+export const AGENT_TURN_LIMIT = 5;
+
+/**
+ * The one place a message is appended to a conversation of a space: a task's own writes (a direct contribution, a blocker, a result or a
+ * hand-off) and the conversation store's start and reply all come here. In a task's discussion an agent's sixth message in a row is
+ * refused until a person writes (`AGENT_TURN_LIMIT`, C-51), whichever tool or path wrote the five before it and whichever agents they
+ * were. A line Flux writes for an agent (`byFlux`) is never refused and never counted. The caller holds the task's row lock (every
+ * writer of a task's discussion takes it first), so two agents cannot both take the last turn.
+ */
+export async function appendMessage<C extends { id: string }, I extends { byFlux?: boolean }, R>(
+  discussion: { taskOf(conversationId: string): Promise<string | null>; trailingAgentMessages(conversationId: string, limit: number): Promise<number>;
+    append(conversation: C, author: ActorRef, input: I): Promise<R> },
+  conversation: C, author: ActorRef, input: I): Promise<R> {
+  if (author.kind === 'agent' && !input.byFlux && await discussion.taskOf(conversation.id) !== null
+    && await discussion.trailingAgentMessages(conversation.id, AGENT_TURN_LIMIT) >= AGENT_TURN_LIMIT)
+    throw new ConflictError('Five agent messages in a row need a person\'s message first', 'AGENT_TURN_LIMIT');
+  return discussion.append(conversation, author, input);
+}
 const wire = (row: DiscussionMessage, names: Map<string, string>, owners: ReadonlyMap<string, AgentProjectOwner> = new Map()): ConversationMessage => {
   const contribution = messageContribution(row.kind, row.resultId);
   return { id: row.id, conversationId: row.conversationId,
@@ -83,7 +103,7 @@ async function appendToTask(ports: TaskDiscussionPorts, project: { workspaceId: 
     : await ports.discussion.createConversation({ id: randomUUID(), workspaceId: project.workspaceId, projectId: project.projectId, createdBy: author });
   if (!conversation || conversation.projectId !== project.projectId || conversation.workspaceId !== project.workspaceId)
     throw new Error('Task discussion conversation invariant failed');
-  const sent = await ports.discussion.append(conversation, author, input);
+  const sent = await appendMessage(ports.discussion, conversation, author, input);
   if (!binding) await ports.discussion.bind({ workId, workspaceId: project.workspaceId, projectId: project.projectId,
     conversationId: conversation.id, rootMessageId: sent.id });
   if(input.files?.length){
@@ -148,9 +168,10 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
     /**
      * Direct public contribution: ordinary text, or an explicit public handoff instruction (#154). Both use the
      * one canonical append. The handoff carries no authority; #153 supplies its own sender/claim fencing and
-     * heartbeats, acknowledgments and private logs never call this.
+     * heartbeats, acknowledgments and private logs never call this. `byFlux` is for the server's agent-task drain only, which
+     * writes an in-app agent's report, question, answer and status lines (see `NewDiscussionMessage.byFlux`); no route or tool passes it.
      */
-    async contribute(principal: Principal, workIdInput: string, command: TaskContributionCommand): Promise<ConversationMessage> {
+    async contribute(principal: Principal, workIdInput: string, command: TaskContributionCommand, options: { byFlux?: boolean } = {}): Promise<ConversationMessage> {
       const workId = id(workIdInput, 'workId');
       const kind = directKind(command?.kind);
       const input = normalizeMessage(command);
@@ -173,7 +194,9 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         }
         const fence = await ports.work.prepareTaskUse([workId]);
         if (!await ports.work.findWork(workId)) throw missing();
-        const { message, replayed } = await appendToTask(ports, project, author, workId, { ...input, kind, files },fence);
+        // The five-in-a-row limit is checked by the one append (`appendMessage`), under the fence just taken. A retry of a stored message passes.
+        const { message, replayed } = await appendToTask(ports, project, author, workId,
+          { ...input, kind, files, byFlux: author.kind === 'agent' && options.byFlux === true }, fence);
         if (!replayed) await fence.mark();
         if (!replayed && input.references.length) await ports.references!.save(message.id, project.workspaceId, input.references);
         const cited = (await ports.references?.cards(principal, project.workspaceId, [message.id]))?.get(message.id);

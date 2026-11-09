@@ -34,7 +34,7 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 39;
+export const FLUX_SCHEMA_VERSION = 40;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 
@@ -112,9 +112,8 @@ export * from './repositories/sample.js';
 export * from './repositories/fixture-oauth-clients.js';
 export * from './repositories/idempotency.js';
 export * from './repositories/events.js';
-export * from './repositories/agent-thread-guard.js';
 export * from './repositories/artifact-task-associations.js';
-export * from './repositories/artifact-resets.js';
+export * from './repositories/artifact-use.js';
 
 /** PostgreSQL channel notified (payload: seq) after an event with a workspace commits; wakes stream connections. */
 export const EVENTS_CHANNEL = 'flux_events';
@@ -213,9 +212,8 @@ export * from './repositories/files.js';
 export * from './repositories/message-references.js';
 export * from './repositories/message-changes.js';
 export * from './repositories/task-use.js';
-export * from './repositories/agent-thread-guard.js';
 export * from './repositories/artifact-task-associations.js';
-export * from './repositories/artifact-resets.js';
+export * from './repositories/artifact-use.js';
 export * from './repositories/task-targets.js';
 export * from './repositories/notification-lifecycle.js';
 export * from './repositories/agent-runtime.js';

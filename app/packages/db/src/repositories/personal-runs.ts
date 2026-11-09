@@ -339,7 +339,7 @@ export function personalRunRows(db: DbExecutor) {
         .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
         .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
-        .where(and(eq(m.projectId, projectId), eq(schema.projectConversations.space, 'people'), isNull(m.removedAt))).orderBy(desc(m.createdAt), desc(m.id)).limit(limit);
+        .where(and(eq(m.projectId, projectId), isNull(m.removedAt))).orderBy(desc(m.createdAt), desc(m.id)).limit(limit);
       return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }, index) => ({ ...row, sequence: index + 1,
         ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
           : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),

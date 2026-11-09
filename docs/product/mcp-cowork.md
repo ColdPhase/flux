@@ -54,7 +54,7 @@ complicated or different").
   change waits; the client does not retry it. What it made carries one change line with Undo on its message in the conversation
   it posted to, and an Undo takes back that change and never the client's earlier work
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-  Taking a task, claiming or releasing it, asking a question, writing in the task's agents' thread and linking a pull request are
+  Taking a task, claiming or releasing it, asking a question, writing in the task's discussion and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
   Taking back its own unused task (`flux_undo_task_creation`) is a deletion, so it waits like any deletion (AG-3). Giving a unit to
   another person's client (a new child unit or a transfer) is another person's thing: it waits like a task

@@ -1,9 +1,9 @@
-"""Every task-creation entry, by two authors, shows one root in Conversation, Tasks, Map and Agents (#154 AC-5).
+"""Every task-creation entry, by two authors, shows one line in Conversation and one discussion in Tasks and Map (#154 AC-5, #868).
 
 Entries: a message's Create task (Conversation), "+ Task" on the Tasks board, and "Create task
 from selected thoughts" on the Map. Each author creates a task, the other author writes the task's first
-message, and the four views must reach the same root: the root's message in Conversation, the Discussion
-link in Details (Tasks and Map), and the "Open in Conversation" link of the Agents thread. A first attempt
+message, and the views must reach the same root: one line for the task in Conversation (the discussion itself is not in the
+stream), and the root's message and the "Open in Conversation" link in Details (Tasks and Map). A first attempt
 that fails without saving, and a lost answer that does save, are retried from the Create window: exactly one
 task results and the command id stays the same. A source the author cannot read is refused. Runs with the
 other tests/ui modules through scripts/check_ui.sh against the running Compose application.
@@ -155,20 +155,17 @@ class TaskEntries(unittest.TestCase):
         self.assertEqual(self.task_total(), before + 1, "the retry does not create a second task")
 
     def check_views(self, who: str, work_id: str, title: str, first_word: str, root_id: str, conversation_id: str, on_map: str | None) -> None:
-        """Conversation, Tasks, the task's Details (and Map when the task has a thought) show the same root, author and one task each."""
+        """Conversation has one line for the task and no root for its discussion; Tasks, the task's Details (and Map when the task has a thought) show the same root, author and one task each."""
         creator = PEOPLE[who][0]
         root_author = PEOPLE[OTHER[who]][0]
         pid = self.ids["project"]
         thread = f"/projects/{pid}/conversations/{conversation_id}"
         page = self.page(who)
         page.goto(f"/projects/{pid}")
-        root = page.locator(f"#message-{root_id}")
-        expect(root).to_be_visible()
-        expect(root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(title) + "$"))).to_be_visible()
-        expect(root.locator(".project-convo__message-meta strong")).to_have_text(root_author)
         notices = page.locator(f".convo-notice[data-work-id='{work_id}']")
         expect(notices).to_have_count(1)
         expect(notices.locator(".convo-notice__meta strong")).to_contain_text(creator.split()[0])
+        expect(page.locator(f"#message-{root_id}")).to_have_count(0)
 
         page.goto(f"/projects/{pid}/tasks?view=board")
         cards = page.locator(".tb-card").filter(has_text=title)

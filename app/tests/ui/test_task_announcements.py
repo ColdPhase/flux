@@ -39,6 +39,8 @@ FIRST_REPLY = "Use the black cloth so the shelf does not reflect."
 LATER = "Which shop has the boards in stock this week?"
 LIVE_TASK = "Write the shop a question about delivery"
 LINKED = "Starting on the first chore: does the base need a heavier foot?"
+TASK_TALK = "Before the first chore: which glue holds the cardboard base?"
+TASK_TALK_REPLY = "Hot glue first, then a strip of tape along the seam."
 EARLY_CHORES = 10
 CHORES = 100
 LATER_NOTES = 52
@@ -102,14 +104,21 @@ class TaskAnnouncements(unittest.TestCase):
         later = start("ada", LATER)
         # Two boards with more announcements than one page (100). The ten oldest announcements arrive after
         # the stream is shown and sit between entries already on screen. On the busy board the roots also
-        # take more than one window (50), and the oldest task's discussion opened early.
+        # take more than one window (50), and an old root that a link opens is older than the newest window.
         def board(name: str, notes: int, discussed: bool) -> tuple[str, dict | None]:
             bid = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": name, "visibility": "restricted"})["id"]
             start_in = lambda body: post("ada", f"/api/v1/projects/{bid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
             chore = lambda title: post("ada", f"/api/v1/projects/{bid}/work", {"title": title, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
             start_in(f"{name}'s first idea: a list of every small job.")
             early_chores = [chore(f"Early chore {index:02}") for index in range(EARLY_CHORES)]
-            opened = post("ada", f"/api/v1/work/{early_chores[0]['id']}/discussion", {"body": LINKED, "clientMessageId": str(uuid.uuid4())}) if discussed else None
+            # An old root of the stream, older than the newest window, that a link can open (a task's discussion is no root, #868).
+            conversation = start_in(LINKED) if discussed else None
+            opened = {"conversationId": conversation["id"], "id": conversation["messages"][0]["id"]} if conversation else None
+            if discussed:
+                # And the first chore's discussion, which an Inbox or search link opens at its reply: it is older than the newest window too.
+                talk = post("ada", f"/api/v1/work/{early_chores[0]['id']}/discussion", {"body": TASK_TALK, "clientMessageId": str(uuid.uuid4())})
+                reply = post("ada", f"/api/v1/conversations/{talk['conversationId']}/messages", {"body": TASK_TALK_REPLY, "clientMessageId": str(uuid.uuid4())})
+                opened.update(task_talk=talk["conversationId"], task_reply=reply["id"])
             for index in range(CHORES):
                 chore(f"Chore {index:03}")
             for index in range(notes):
@@ -123,7 +132,7 @@ class TaskAnnouncements(unittest.TestCase):
             context.close()
         cls.ids.update(project=pid, early=early["id"], question=question["messages"][0]["id"], from_message=from_message["id"], from_message_number=from_message["number"],
                        measure=measure["id"], first=first["id"], thread=first["conversationId"], later=later["messages"][0]["id"],
-                       busy=bid, linked=linked["conversationId"], linked_root=linked["id"], short=short)
+                       busy=bid, linked=linked["conversationId"], linked_root=linked["id"], task_talk=linked["task_talk"], task_reply=linked["task_reply"], short=short)
 
     @classmethod
     def tearDownClass(cls) -> None:
@@ -176,8 +185,8 @@ class TaskAnnouncements(unittest.TestCase):
         order = self.stream_order(page)
         question = order.index(f"message-{self.ids['question']}")
         self.assertEqual(order[question:], [f"message-{self.ids['question']}", f"task:{self.ids['from_message']}", f"task:{self.ids['measure']}",
-                                            f"message-{self.ids['first']}", f"message-{self.ids['later']}"],
-                         "announcements sit in time order between the roots, and the first contribution is the task's root")
+                                            f"message-{self.ids['later']}"],
+                         "announcements sit in time order between the roots, and the first contribution is not a root of the stream (#868)")
         made = self.notice(page, self.ids["from_message"])
         expect(made).to_have_count(1)
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Jonas Berg")
@@ -202,7 +211,7 @@ class TaskAnnouncements(unittest.TestCase):
         self.assertLess(order.index(f"task:{self.ids['early']}"), order.index(f"message-{self.ids['question']}"))
         self.assertEqual(self.counts(page)[0], 3, "exactly one announcement per task")
         self.assertEqual(page.locator(".convo-notice").count(), 3)
-        page.locator(f"#message-{self.ids['first']}").scroll_into_view_if_needed()
+        expect(page.locator(f"#message-{self.ids['first']}")).to_have_count(0)
         shot(page, "task-announcements-desktop")
 
     def test_02_the_announcement_opens_that_task(self) -> None:
@@ -216,33 +225,30 @@ class TaskAnnouncements(unittest.TestCase):
         question = page.locator(f"#message-{self.ids['question']}")
         expect(question.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
 
-    def test_03_the_first_contribution_is_the_tasks_root(self) -> None:
+    def test_03_the_first_contribution_is_the_tasks_root_in_its_discussion(self) -> None:
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
-        root = page.locator(f"#message-{self.ids['first']}")
-        expect(root.locator(".project-convo__message-meta strong")).to_have_text("Jonas Berg")
-        expect(root.locator(".message-body").first).to_have_text(FIRST_WORD)
-        chip = root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(MEASURE) + "$"))
-        expect(chip).to_be_visible()
-        expect(chip).to_contain_text("To do")
-        root.get_by_role("button", name=re.compile("^1 reply")).click()
-        thread = page.locator("#thread")
-        expect(thread.locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
-        header_chip = thread.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(MEASURE) + "$"))
-        expect(header_chip).to_be_visible()
-        shot(page, "task-announcements-thread")
-        # A reply here is the task's discussion: the API's task thread has it under the same root.
-        composer = thread.get_by_label("Reply", exact=True)
+        # The stream has the task's line and no message or thread for its discussion (#868).
+        expect(self.notice(page, self.ids["measure"])).to_be_visible()
+        expect(page.locator(f"#message-{self.ids['first']}")).to_have_count(0)
+        expect(page.get_by_text(FIRST_WORD)).to_have_count(0)
+        # The discussion is in the task: its root and its reply, and the composer writes to it.
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['measure']}")
+        activity = page.locator("#details").get_by_role("list", name="Task activity")
+        root = activity.locator(f"li[data-message-id='{self.ids['first']}']")
+        expect(root).to_contain_text("Jonas")
+        expect(root).to_contain_text(FIRST_WORD)
+        expect(activity.locator("li[data-message-id]").filter(has_text=FIRST_REPLY)).to_be_visible()
+        shot(page, "task-announcements-discussion")
+        composer = page.locator("#details").get_by_label("Write to this task")
         composer.fill("Numbers at 5 lux: 97% of waves caught.")
-        thread.get_by_role("button", name="Send reply").click()
-        expect(thread.locator(".project-convo__message", has_text="Numbers at 5 lux")).to_be_visible()
-        # Sending is instant (#264): the reply shows at once and is stored a moment later.
-        expect(thread.locator("[data-client-message-id]")).to_have_count(0)
+        page.locator("#details").get_by_role("button", name="Send to task").click()
+        expect(activity.locator("li[data-message-id]").filter(has_text="Numbers at 5 lux")).to_be_visible()
+        # Sending is instant (#264): the message shows at once and is stored a moment later.
+        expect(page.locator("#details [data-client-message-id]")).to_have_count(0)
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['measure']}/discussion", status=200)
         self.assertEqual(discussion["rootMessageId"], self.ids["first"])
         self.assertEqual([message["body"] for message in discussion["messages"]][-1], "Numbers at 5 lux: 97% of waves caught.")
-        header_chip.click()
-        expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
 
     def test_04_opening_rendering_and_reloading_create_nothing(self) -> None:
         page = self.page("jonas")
@@ -257,7 +263,7 @@ class TaskAnnouncements(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['thread']}")
         expect(page.locator("#thread")).to_be_visible()
         self.assertEqual(self.counts(page), before, "no announcement, task or root comes from reading")
-        expect(page.locator(".convo-notice")).to_have_count(2)
+        expect(self.notice(page, self.ids["measure"])).to_have_count(1)
 
     def test_05_a_new_task_appears_at_the_end_for_someone_reading_it(self) -> None:
         page = self.page("ada")
@@ -485,9 +491,7 @@ class TaskAnnouncements(unittest.TestCase):
         discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['from_message']}/discussion", status=200)
         self.assertEqual([message["body"] for message in discussion["messages"]], [text], "stored exactly once")
         self.assertEqual(discussion["root"]["authorId"], self.ids["ada"])
-        root = page.locator(f"#message-{discussion['rootMessageId']}")
-        expect(root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(FROM_MESSAGE) + "$"))).to_be_visible()
-        self.assertEqual(self.counts(page), (before[0], before[1], before[2] + 1), "one new root; no announcement or task")
+        self.assertEqual(self.counts(page), before, "no root of the stream (the discussion is in the task); no announcement or task")
         cleared = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
         self.assertEqual({field: cleared[field] for field in ('version', 'body', 'files', 'references', 'unconfirmed')},
                          {'version': 1, 'body': '', 'files': [], 'references': [], 'unconfirmed': False}, "the confirmed draft is cleared")
@@ -573,6 +577,22 @@ class TaskAnnouncements(unittest.TestCase):
         assert before and loaded
         self.assertAlmostEqual(loaded["y"], before["y"], delta=2, msg="earlier roots join above the reader")
         self.held_root_stays(page, held, first, CHORES)
+
+    def test_12d_a_link_into_a_tasks_discussion_opens_its_thread_without_reading_the_stream_back(self) -> None:
+        # A task's discussion is no root of the stream (#868): an Inbox, search or "Open in Conversation" link to one of its messages opens
+        # its thread at once, and the stream stays at its newest window instead of reading every older root looking for it.
+        page = self.page("ada")
+        read_back: list[str] = []
+        page.on("request", lambda request: read_back.append(request.url) if "/conversation-roots" in request.url and "before=" in request.url else None)
+        page.goto(f"/projects/{self.ids['busy']}/conversations/{self.ids['task_talk']}#message-{self.ids['task_reply']}")
+        thread = page.locator("#thread")
+        expect(thread.locator(".project-convo__message", has_text=TASK_TALK_REPLY)).to_be_visible()
+        expect(thread.get_by_text(TASK_TALK).first).to_be_visible()
+        expect(page.locator(".project-convo__message", has_text=f"Later note {LATER_NOTES - 1:02} on the board.")).to_be_visible()
+        page.wait_for_timeout(2000)
+        self.assertEqual(read_back, [], "nothing older is read")
+        expect(page.locator(".project-convo__feed .project-convo__message", has_text=LINKED)).to_have_count(0)
+        expect(page.locator(".project-convo__feed .project-convo__message", has_text="Busy board's first idea")).to_have_count(0)
 
     def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
         page = self.page("ada")

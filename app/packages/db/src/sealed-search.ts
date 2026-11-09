@@ -465,9 +465,8 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
       for (const r of await rowsOf(db, 'projects', sql`SELECT id, workspace_id, name FROM projects WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.name), body: '' });
       break;
     case 'message':
-      // A task agent thread has no people-facing surface (#400): its messages are not findable.
       for (const r of await rowsOf(db, 'project_messages', sql`SELECT m.id, m.workspace_id, m.body FROM project_messages m
-        JOIN project_conversations c ON c.id = m.conversation_id WHERE m.id = ANY(${uuids(ids)}) AND c.space <> 'agents' AND m.removed_at IS NULL`)) {
+        WHERE m.id = ANY(${uuids(ids)}) AND m.removed_at IS NULL`)) {
         const body = str(r.body);
         found.set(String(r.id), { title: body.trim() === '' ? 'Attached files' : '', body });
       }

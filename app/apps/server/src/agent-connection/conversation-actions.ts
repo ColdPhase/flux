@@ -1,10 +1,11 @@
 import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type SendMessageCommand } from '@flux/contracts';
-import { derivedUuid, DomainError, normalizeMessage } from '@flux/core';
+import { derivedUuid } from '@flux/core';
 import type { Database } from '@flux/db';
-import { guardedAgentThreadInEventSession } from '../conversation/store.js';
+import { taskDiscussionInEventSession } from '../work/task-discussions.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, coordinationExecutor, coordinationInput,
   nativeActionExecutor } from './action-execution.js';
+import { recordDiscussionLine } from './assistant-changes.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -53,7 +54,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
   register('conversation.reply').registerTool('flux_reply_in_conversation', {
     title: 'Reply in a project conversation',
     description: 'Add one reply to an existing conversation of the project, including a task\'s discussion thread. '
-      + note,
+      + 'In a task\'s discussion at most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT). ' + note,
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'), message }), annotations,
   }, ({ conversationId, message: posted, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
@@ -63,35 +64,25 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
         postconditions: [{ kind: 'message', id: sent.id }] };
     })));
 
-  // The task's agents' thread (#400): the strict command is the reply operation's; the server selects the private task
-  // mode, so a client cannot choose it. It is the agent's own work talk, not a change to a person's things, so it does not
-  // wait. The five-turn guard debits inside the same transaction.
-  const executeThread = coordinationExecutor(db, claims, 'task-agent-thread/v1');
-  register('conversation.reply').registerTool('flux_post_agent_thread', {
-    title: 'Write to a task\'s agents\' thread',
-    description: 'Write one work message (a plan, progress, a hand-off note) in the agents\' thread of a task, visible to everyone who can read '
-      + 'the task and quiet for people unless they open it. At most five agent messages in a row without a person\'s message or a new '
-      + `artifact version or request change (AGENT_THREAD_TURN_LIMIT). ${note} Needs the runtime from flux_bootstrap.`,
+  // The task's one discussion (#868): the strict command is the reply operation's; the server selects the task target, so a client cannot
+  // choose it. It is the agent's own talk about the task, not a change to a person's things, so it does not wait. The task discussion's
+  // use case writes it as the agent, under the task's use fence, and stops the sixth agent message in a row (AGENT_TURN_LIMIT, C-51); the
+  // line is recorded as the reply change flux_reply_in_conversation records, so its owner deletes it the same way (#961).
+  const executeDiscussion = coordinationExecutor(db, claims, 'task-discussion/v1');
+  register('conversation.reply').registerTool('flux_discuss_task', {
+    title: 'Write in a task\'s discussion',
+    description: 'Write one message in the one discussion of a task, where people and agents talk about it (a plan, progress, a hand-off note). '
+      + 'Everyone who can read the task reads it. At most five agent messages in a row are accepted until a person writes (AGENT_TURN_LIMIT). '
+      + `${note} Needs the runtime from flux_bootstrap.`,
     inputSchema: z.strictObject({ ...coordinationInput(), taskId: id.describe('The task of this project the message is about.'),
-      body: message.shape.body, replyToMessageId: id.optional().describe('Accepted for compatibility; the thread is flat.') }), annotations,
-  }, ({ taskId, body, replyToMessageId: _reply, ...input }) => run(async () => {
-    void _reply;
-    try {
-      return await executeThread(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
-        async ({ transaction, events, runtime }) => {
-          const normalized = normalizeMessage({ body,
-            clientMessageId: derivedUuid('flux.agent-thread-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
-          const sent = await guardedAgentThreadInEventSession(transaction, events, runtime,
-            { clientCommandId: input.clientCommandId }, taskId, { ...normalized, projectId: input.projectId });
-          return { value: { taskId, conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
-            postconditions: [{ kind: 'message', id: sent.id }] };
-        });
-    } catch (error) {
-      for (let cause: unknown = error; cause && typeof cause === 'object'; cause = 'cause' in cause ? cause.cause : null) {
-        if ('constraint' in cause && cause.constraint === 'agent_thread_turn_limit')
-          throw new DomainError(409, 'AGENT_THREAD_TURN_LIMIT', 'Five agent messages in a row need a person\'s message, a new artifact version or a request change first');
-      }
-      throw error;
-    }
-  }));
+      body: message.shape.body }), annotations,
+  }, ({ taskId, body, ...input }) => run(() => executeDiscussion(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
+    async ({ transaction, events, agent, runtime }) => {
+      const sent = await taskDiscussionInEventSession(transaction, events).contribute(agent, taskId,
+        { body, clientMessageId: derivedUuid('flux.task-discussion-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
+      const produced = { value: { taskId, conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
+        postconditions: [{ kind: 'message' as const, id: sent.id }] };
+      await recordDiscussionLine(transaction, claims, runtime, { tool: 'flux_discuss_task', args: { ...input, taskId, body } }, input, produced);
+      return produced;
+    })));
 }

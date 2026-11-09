@@ -51,6 +51,8 @@ function world({ bound = false, visible = true, writable = true, rootSequence = 
       async findMessage(id) { return hasRoot && id === ids.root ? root : null; },
       async messages() { return [root]; },
       async sourceExists() { return true; },
+      async taskOf() { return bound ? ids.work : null; },
+      async trailingAgentMessages() { return 0; },
       async createConversation() { writes.push('createConversation'); throw new Error('a read must not create a conversation'); },
       async append() { writes.push('append'); throw new Error('a read must not append'); },
       async bind() { writes.push('bind'); },

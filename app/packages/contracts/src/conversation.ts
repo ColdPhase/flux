@@ -6,8 +6,6 @@ export const conversationPath = (conversationId: string) => `/api/v1/conversatio
 export const conversationMessagesPath = (conversationId: string) => `${conversationPath(conversationId)}/messages`;
 /** `PATCH` edits and `DELETE` removes a message its author wrote (#1006). */
 export const conversationMessagePath = (conversationId: string, messageId: string) => `${conversationMessagesPath(conversationId)}/${messageId}`;
-/** Internal app entry; public MCP exposure/version transition remains a separate #400 gate. */
-export const taskAgentThreadPath = (workId: string) => `/api/v1/work/${workId}/agent-thread`;
 export const projectMaterialsPath = (projectId: string) => `/api/v1/projects/${projectId}/materials`;
 export const materialPath = (materialId: string) => `/api/v1/materials/${materialId}`;
 export const materialVersionPath = (materialId: string, version: number) => `${materialPath(materialId)}/versions/${version}`;
@@ -153,16 +151,6 @@ export interface ConversationFields {
 }
 export type Conversation = ConversationFields & ConversationIdentity;
 
-/** An absent thread is a real empty state; reading/opening it creates no conversation. */
-export interface TaskAgentThread {
-  task: { id: string; projectId: string; number: number; title: string };
-  conversation: Conversation | null;
-  messageCount: number;
-  canWrite: boolean;
-  /** Human writes await the actual shared task-use adapter; agent writes remain guarded or closed. */
-  postingAvailable: boolean;
-}
-
 /** Stable, newest-first window returned in ascending display order. */
 export interface ConversationWindowQuery {
   /** 1–100, default 50. */
@@ -196,12 +184,6 @@ export interface ConversationRoot {
   /** Messages after the root in its thread. */
   replyCount: number;
   lastReplyAt: string | null;
-  /**
-   * Present when this root opened a task's discussion (UI116-3): the first genuine contribution to that
-   * task, which every later contribution answers. The title is the task's current one. The number is
-   * immutable, so its chip names the task as "#12" before the visible reference read answers (#367).
-   */
-  task?: { workId: string; title: string; number: number };
 }
 
 /** Stable, newest-first window of roots returned in ascending display order. */

@@ -279,17 +279,31 @@ and its real discussion under [P5](../design/final/README.md#5-behaviour):
   The live stream carries only `project.decision_proposed.v1`, `project.decision_accepted.v1`, `project.result_recorded.v1`
   and `project.work_created.v1` with the project as the object and the decision, result or task id in the stored data; the
   open conversation reads again when one arrives, so no title or text travels on the stream.
-- **The task's root.** `GET /api/v1/projects/:id/conversation-roots` adds `task: { workId, title, number }` (the current
-  title and the immutable task number, #367) to a root that opened a task's discussion. The stream and the thread header show it as the task's chip;
-  replies from the thread in the one panel use the task contribution operation and the shared task draft described below.
+- **The task's discussion is not a root (#868).** `GET /api/v1/projects/:id/conversation-roots` lists the project's conversations that
+  are not a task's discussion: a task's first contribution and its replies are read and written in the task's Details (below), and the
+  stream shows one line for each task event (the announcement, a decision, a result). A root carries no `task` field. The discussion is
+  still a conversation of the project, so `GET /api/v1/conversations/:id` opens it, with the task it belongs to, for a link to one of its
+  messages (a search result, a notification, "Open in Conversation"). Agents write in it with the same contribution, as themselves
+  (`flux_discuss_task`, [agent connection](agent-connection.md#project-wiki-docs-and-conversations)). At most five agent messages in a
+  row are accepted until a person writes (`AGENT_TURN_LIMIT`, C-51), whichever tool or path wrote them and whichever agents they were:
+  `flux_discuss_task`, `flux_reply_in_conversation` or `flux_ask_question` with the discussion's conversation, and a blocker, result or
+  hand-off contribution all count and are refused alike. The check is in the one append every message of a space goes through
+  (`appendMessage` in `packages/core/src/task-discussions/service.ts`, used by the task's own writes and by the conversation store's
+  start and reply), after the task's row lock that every writer of the discussion takes, so parallel writers cannot pass it together.
+  A line Flux itself writes for an in-app agent (its run report, its question to another agent, the answer, and status lines such as
+  "Stopped by Maja" or "This needs a person") is marked `by_flux` (migration 0040): the run and TA-3's exchange limit bound it, so the
+  limit neither counts nor refuses it, and it does not end a run of agent messages either. A deleted message keeps its author, so a
+  delete gives no turn back.
+  Opening a link to a message of a task's discussion (`/projects/:id/conversations/:conversationId#message-…`) opens its thread at once;
+  the stream does not read back through its older roots looking for it, since the discussion is not one of them.
 
 - **Details of a task (#488).** The panel's Activity is one newest-first timeline: the task's creation, its recorded
   changes (`GET /api/v1/work/:id/activity`: state, owner, due day and title, each with its author and time) and the
   messages of its discussion (`GET /api/v1/work/:id/discussion`), with "Open in Conversation" into the thread. The
   composer is at the bottom of the panel. Before anyone has written, a person who can write starts the discussion
   there with `POST /api/v1/work/:id/discussion` (`kind: 'text'`); the message then shows in the timeline. Its draft and
-  retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store: the identity the
-  Agents task composer (#183) uses, so a lost answer retried from either stores the message once.
+  retry id are the task's own, `task:<id>` and `task:<id>:pending` in the browser's draft store, so a lost answer retried from
+  anywhere stores the message once.
 
 Still open in #154: unused-AI undo and real #152/#153 clients. The shared composer and stored-file UI slice below
 requires its own commit-specific functional and visual evaluation before delivery.

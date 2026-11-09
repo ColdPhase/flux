@@ -16,7 +16,7 @@ export function useSpareHeight(feed: RefObject<HTMLElement | null>, column: RefO
     const spacer = lift.current;
     if (!box || !content || !spacer) return undefined;
     let height = 0;
-    // The feed's own vertical padding is not spare (the Agents thread's scroller has some; the conversation feeds have none).
+    // The feed's own vertical padding is not spare (a conversation feed has none).
     const padding = () => { const style = getComputedStyle(box); return (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0); };
     const spare = () => (count ? Math.max(0, Math.round(box.clientHeight - padding() - content.offsetHeight)) : 0);
     const set = (value: number) => { if (value !== height) { height = value; spacer.style.setProperty('height', `${value}px`); } };

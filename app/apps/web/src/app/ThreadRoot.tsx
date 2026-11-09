@@ -1,5 +1,5 @@
-import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
-import { DiscussedTask, MessageObjects } from '../work/inline';
+import type { ConversationMessage } from '@flux/contracts';
+import { MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { AgentAuthor, AuthorFace, DeletedSourceCitation, SourceCitation, MessageTime, ViaTag } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
@@ -8,12 +8,10 @@ import { useProjectShell } from '../project/data';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 
 /** The message the thread answers, at its top: who said it, when, and what, with its cited source. */
-export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, firstDay = null, task = null, taskRow = null, preview = null, onDenied, photo }: {
+export function ThreadRoot({ message, projectId, body, author, agentOwner = null, meId, writable, replies, firstDay = null, preview = null, onDenied, photo }: {
   message: ConversationMessage | null; projectId: string; body: string; author: string | null; agentOwner?: string | null; meId: string; writable: boolean; replies: number;
   /** The day of the first reply below: "3 replies · Today" is the one line between the root and its replies (#763 A5). */
   firstDay?: string | null;
-  /** The task whose discussion this thread is (UI116-3), and its row from the thread's visible reference read (#155). */
-  task?: { workId: string; title: string; number?: number } | null; taskRow?: NativeWorkRow | null;
   /** What was made from the root, from the thread's bounded association read (#155): the root is shown whole here. */
   preview?: MessageWorkPreview | null; onDenied: (cause: unknown) => void;
   /** Reply and Create task in the photo viewer, as this reader may use them (#348). */
@@ -33,8 +31,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
         ) : mine && message?.via ? <div className="thread__root-meta"><ViaTag via={message.via} /></div> : null}
         <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className={`message-body${message?.removedAt ? ' message-body--removed' : ''}`}><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
           <LinkPreviews body={body} projectId={projectId} messageId={message?.id ?? null} />
-          {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
-            : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
+          {message ? <MessageObjects message={message} projectId={projectId} preview={preview} /> : null}
           {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message?.sourceDeleted ? <DeletedSourceCitation /> : null}
         </MessageContent>
         {message ? <MessageTime at={message.createdAt} /> : null}

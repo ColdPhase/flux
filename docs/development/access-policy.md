@@ -654,7 +654,7 @@ outside a project never carry it.
 
 A message cites a map thought through `references: [{ kind: 'thought', id }]` on
 `POST /api/v1/projects/:id/conversations`, `POST /api/v1/conversations/:id/messages`,
-`POST /api/v1/work/:id/agent-thread` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
+`POST /api/v1/work/:id/discussion` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
 replies). At most four, distinct, each a UUID. (A message was citable too, through a `message` kind, until #867 removed the Cite
 action: the kind is refused now, and no row of it is read.) Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
 removed with it); nothing of the target is copied, so a title, an author or a place never outlives the target's own

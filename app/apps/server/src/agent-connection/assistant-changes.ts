@@ -119,7 +119,7 @@ const workField = (work: WorkView, key: string): unknown =>
 
 /**
  * What taking back a just-made map, result, decision or message needs, read from what the change really wrote (a trimmed title, the
- * task a result finished and the version it has now). Null for any other change, and for a message in a task's agents' thread.
+ * task a result finished and the version it has now). Null for any other change, and for a message in a task's discussion.
  */
 async function removalUndo(tx: Transaction, operation: string, value: Record<string, unknown>, postconditions: AgentPostcondition[], target: Target,
   agentId: string): Promise<UndoRecord | null> {
@@ -440,6 +440,35 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0,
     createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
   return { runtime, workspaceId, agentId, run, mayDo: settings.mayDo, ownerCanWrite, engine: run.engine, payer: enablement.payer };
+}
+
+/**
+ * A local client's line in a task's discussion written with flux_discuss_task (#868). That tool goes through the coordination executor,
+ * since the agent's own talk about a task never waits, so this records, in the same transaction, the applied `conversation.reply` that
+ * the change executor records for flux_reply_in_conversation into a task's discussion: the line shows in the discussion with its change
+ * and its owner deletes it with no condition, whichever of the two tools wrote it (C-51, TA-3, #961). A command ID already used for
+ * another change of this connection conflicts, and the line is not written.
+ */
+export async function recordDiscussionLine(tx: Transaction, claims: FluxMcpClaims, runtime: AuthenticatedAgentRuntime, call: AssistantCall,
+  input: { projectId: string; clientCommandId: string }, produced: Produced<{ conversationId: string; messageId: string; [key: string]: AgentJsonValue }>): Promise<void> {
+  const rows = assistantChangeRows(tx as DbExecutor);
+  const fingerprint = assistantCallFingerprint(call);
+  const stored = await rows.byConnectionCommand(claims.connectionId, input.clientCommandId);
+  if (stored) {
+    if (stored.fingerprint !== fingerprint) throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'This command ID belongs to another change');
+    return;
+  }
+  const { conversationId, messageId } = produced.value;
+  const title = redactCall(typeof call.args.body === 'string' ? call.args.body : '').slice(0, 80);
+  const removals = assistantRemovalRows(tx as DbExecutor);
+  const undo = await removals.messageIsUndoable(messageId, runtime.agentId) && await removals.messageIsInTaskThread(messageId) ? removal(title, { thread: true }) : null;
+  const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: 'owner_request', runId: null,
+    engine: 'client', payer: 'Your own client', ownerUserId: claims.ownerUserId, agentId: runtime.agentId, assistantConnectionId: claims.connectionId,
+    preparedBy: runtime.agentId } as unknown as Record<string, unknown>;
+  await rows.insert({ id: randomUUID(), workspaceId: runtime.workspaceId, projectId: input.projectId, connectionId: claims.connectionId, conversationId,
+    ownerUserId: claims.ownerUserId, agentId: runtime.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation: 'conversation.reply',
+    objectType: 'message', objectId: messageId, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call),
+    receipt, createdAt: new Date() });
 }
 
 /**

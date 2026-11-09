@@ -85,7 +85,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const arrival = useArrival();
   const [restore] = useState(() => arrival ? streamPlace(recall('stream', arrival)) : null);
   // A link names a root (or a reply in it): the stream reads back to it and shows it. A return to an entry keeps its own place instead.
-  const reveal = conversation && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
+  // A task's discussion is no root of the stream (#868): its thread opens by itself and the stream reads nothing back looking for it.
+  const reveal = conversation && !conversation.task && !state?.fromStream && !restore ? { conversationId: conversation.id, key: `${conversation.id}:${location.key}` } : null;
   const roots = useConversationRoots(project.id, data.roots, reveal?.conversationId ?? restore?.conv ?? null, onDenied);
   const notices = useTaskNotices(project.id, data.notices, roots.roots, roots.hasOlder, onDenied);
   const objects = useObjectNotices(project.id, data.objectNotices, roots.roots, roots.hasOlder, onDenied);
@@ -97,7 +98,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const root = thread ? roots.roots.find((item) => item.conversationId === thread.id) ?? null : null;
   const [endToken, setEndToken] = useState(0);
   // The control on a page opened from here names this place: a task's thread is "#12 Order sensors" (#592).
-  useOriginLabel(thread ? root?.task ? `#${root.task.number} ${root.task.title}` : 'Thread' : 'Conversation');
+  useOriginLabel(thread ? 'Thread' : 'Conversation');
 
   const author = useCallback((message: ConversationMessage) => {
     if (message.authorId === null) return agentAuthorLabel(message.author);
@@ -180,8 +181,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
-            rootHeader={({ preview, taskRow, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
+            rootHeader={({ preview, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} preview={preview} onDenied={onDenied}
               photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
         </OwnedPanelContent>) : null}
     </div>

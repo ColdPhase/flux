@@ -2,7 +2,6 @@ import type {
   ExportActor,
   ProjectExport,
   ProjectExportConversation,
-  ProjectExportAgentThread,
   ProjectExportDecision,
   ProjectExportDoc,
   ProjectExportGrant,
@@ -33,7 +32,6 @@ export interface ProjectExportRows {
   grants(projectId: string): Promise<ProjectExportGrant[]>;
   workspaceRoles(workspaceId: string): Promise<{ userId: string; role: WorkspaceRole }[]>;
   conversations(projectId: string): Promise<ProjectExportConversation[]>;
-  agentThreads?(projectId: string): Promise<ProjectExportAgentThread[]>;
   /** Materials of kind `material` with every version. */
   materials(projectId: string): Promise<ProjectExportMaterial[]>;
   /** Docs with every version. */

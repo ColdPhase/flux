@@ -7,6 +7,7 @@ import { conversationStore } from '../conversation/store.js';
 import { docUseCases } from '../docs/adapters.js';
 import { workUseCases } from '../work/adapters.js';
 import { sketchUseCases } from '../sketches/adapters.js';
+import { taskDiscussionInTransaction } from '../work/task-discussions.js';
 import { policySearchAccess, searchRepository } from '../search/adapters.js';
 import { SearchCursorCodec } from '../search/cursor.js';
 import { withAgentConnection, type FluxMcpClaims } from './context.js';
@@ -130,30 +131,17 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     return conversationUseCases(conversationStore(tx)).getConversation(principal, id, { ...query, limit: pageLimit(query.limit) });
   }));
 
-  // The task's agents' thread (#400): the same audience as the task. The task names its project, which must be a selected one.
-  server.registerTool('flux_get_agent_thread', { title: 'Read a task\'s agents\' thread',
-    description: 'Up to 50 messages; resume with afterSequence.',
-    inputSchema: z.strictObject({ taskId: z.uuid(), beforeSequence: z.int().min(1).optional(), afterSequence: z.int().min(0).optional() }), annotations },
-  async ({ taskId, beforeSequence, afterSequence }) => {
+  // The task's one discussion (#868): the same audience as the task. The task names its project, which must be a selected one.
+  server.registerTool('flux_get_task_discussion', { title: 'Read a task\'s discussion',
+    description: 'The people\'s and agents\' messages about a task, up to 50; use messagePage.nextBeforeSequence for older ones. Reading creates nothing.',
+    inputSchema: z.strictObject({ taskId: z.uuid(), limit: z.int().min(1).max(50).default(20), beforeSequence: z.int().min(1).optional() }), annotations },
+  async ({ taskId, limit, beforeSequence }) => {
     // The lookup runs inside the checked transaction (AG-10): a space with AI off answers SPACE_AI_OFF.
     return result(null, async ({ tx, principal, requireProject }) => {
       const [task] = await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
       if (!task) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
       await requireProject(task.projectId);
-      const store = conversationStore(tx);
-      const limit = pageLimit(50);
-      const first = await store.getAgentThread(principal, taskId, { limit, beforeSequence: beforeSequence ?? null } as never);
-      if (afterSequence === undefined) return { ...first, messages: first.conversation?.messages ?? [], conversation: undefined };
-      // Resume: walk back until the recorded sequence is covered, then return what follows it, oldest first.
-      let messages = first.conversation?.messages ?? [];
-      let before = first.conversation?.messagePage.nextBeforeSequence ?? null;
-      for (let pages = 0; before !== null && (messages[0]?.sequence ?? 0) > afterSequence + 1 && pages < 20; pages += 1) {
-        const older = await store.getAgentThread(principal, taskId, { limit, beforeSequence: before } as never);
-        messages = [...(older.conversation?.messages ?? []), ...messages];
-        before = older.conversation?.messagePage.nextBeforeSequence ?? null;
-      }
-      const after = messages.filter((message) => message.sequence > afterSequence);
-      return { ...first, conversation: undefined, messages: after.slice(0, limit), nextAfterSequence: after.length > limit ? after[limit - 1]!.sequence : null };
+      return taskDiscussionInTransaction(tx).getDiscussion(principal, taskId, { limit: pageLimit(limit), ...(beforeSequence === undefined ? {} : { beforeSequence }) });
     });
   });
 

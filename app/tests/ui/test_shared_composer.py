@@ -181,7 +181,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(reply["authorId"], self.people["writer"])
         self.assertEqual(reply["conversationId"], root["conversationId"])
         roots = self.api(owner, "GET", f"/api/v1/projects/{project['id']}/conversation-roots")
-        self.assertEqual(next(item["message"] for item in roots["roots"] if item["conversationId"] == root["conversationId"]), root)
+        self.assertNotIn(root["conversationId"], [item["conversationId"] for item in roots["roots"]], "the discussion is in the task, not a root of the stream (#868)")
         for item, fixture in zip(root["files"], [first, second]):
             download = writer.request.get(f"/api/v1/files/{item['id']}")
             self.assertEqual(download.status, 200)

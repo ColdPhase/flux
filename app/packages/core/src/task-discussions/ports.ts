@@ -52,6 +52,12 @@ export interface NewDiscussionMessage {
   /** Defaults to ordinary text. */
   kind?: ContributionKind;
   resultId?: string | null;
+  /**
+   * A line Flux itself writes for an agent: an in-app agent's run report, its question to another agent, the answer, or a status line
+   * ("Stopped by Maja", "This needs a person"). Those are bounded by the run and by TA-3, so the five-in-a-row limit neither counts
+   * nor refuses them (C-51). Only the server's agent-task drain sets it; no entry point a client reaches does.
+   */
+  byFlux?: boolean;
 }
 /** Rows only. Current access and the task identity are checked by the use case. */
 export interface TaskDiscussionRepository {
@@ -62,6 +68,13 @@ export interface TaskDiscussionRepository {
   findMessage(id: string): Promise<DiscussionMessage | null>;
   messages(conversationId: string, window: { limit: number; beforeSequence: number | null }): Promise<DiscussionMessage[]>;
   sourceExists(projectId: string, source: MaterialSource): Promise<boolean>;
+  /** The task whose discussion this conversation is, or null for any other conversation of the space. */
+  taskOf(conversationId: string): Promise<string | null>;
+  /**
+   * How many agent messages (at most `limit`) the conversation has had since a person last wrote in it. Lines Flux wrote for an agent
+   * (`byFlux`) are skipped: they neither count nor end the run.
+   */
+  trailingAgentMessages(conversationId: string, limit: number): Promise<number>;
   createConversation(input: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }): Promise<DiscussionConversation>;
   append(conversation: Pick<DiscussionConversation, 'id' | 'workspaceId' | 'projectId'>, author: ActorRef, input: NewDiscussionMessage): Promise<DiscussionMessage>;
   bind(input: TaskDiscussionRoot): Promise<void>;

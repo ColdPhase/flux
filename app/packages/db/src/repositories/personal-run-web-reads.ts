@@ -73,7 +73,7 @@ export function personalRunWebReadRows(db: DbExecutor) {
             ORDER BY m.sequence DESC LIMIT 100`
           : place.projectId !== null
             ? sql`SELECT m.body FROM project_messages m JOIN project_conversations c ON c.id = m.conversation_id
-              WHERE c.project_id = ${place.projectId}::uuid AND c.space = 'people' AND m.removed_at IS NULL AND m.author_agent_id IS NULL AND m.via IS NULL
+              WHERE c.project_id = ${place.projectId}::uuid AND m.removed_at IS NULL AND m.author_agent_id IS NULL AND m.via IS NULL
               ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
             : null;
       const result = await db.execute<{ text: string | null }>(messages ? sql`${task} UNION ALL (${messages})` : task);

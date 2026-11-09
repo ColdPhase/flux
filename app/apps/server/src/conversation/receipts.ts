@@ -8,7 +8,7 @@ import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoun
 // message of it. The observation row says nothing about access: the audience is read again for each answer, so a
 // grant removed later takes the person out of every answer, whatever they once saw.
 //
-// Only the people space (the stream of roots and their threads) takes part. A run is checked against the stored
+// The stream of roots and their threads takes part; a task's discussion does not. A run is checked against the stored
 // messages: one author, one level (the roots, or the replies of one conversation), nothing skipped between its ends.
 
 const missing = () => new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
@@ -26,7 +26,7 @@ async function facts(tx: Pick<Database, 'select'>, projectId: string, list: stri
   const c = schema.projectConversations;
   return tx.select({ id: m.id, authorId: m.authorId, sequence: m.sequence, conversationId: m.conversationId, conversationAt: c.createdAt }).from(m)
     .innerJoin(c, eq(c.id, m.conversationId))
-    .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(c.space, 'people'), inArray(m.id, list)));
+    .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), inArray(m.id, list)));
 }
 
 export function projectReceipts(db: Database) {
@@ -76,7 +76,9 @@ export function projectReceipts(db: Database) {
             const ordered = [...list].sort((a, b) => a.conversationAt.getTime() - b.conversationAt.getTime() || a.conversationId.localeCompare(b.conversationId));
             const first = ordered[0]!, last = ordered.at(-1)!;
             between = await tx.select({ id: m.id }).from(m).innerJoin(c, eq(c.id, m.conversationId))
-              .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(c.space, 'people'), eq(m.sequence, 1),
+              .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(m.sequence, 1),
+                // A task's discussion is not a root of the stream (#868), so it does not break a run.
+                sql`NOT EXISTS (SELECT 1 FROM project_task_discussions d WHERE d.conversation_id = ${c.id})`,
                 // Compared in SQL so the ends keep PostgreSQL's microsecond precision.
                 sql`(${c.createdAt}, ${c.id}) >= (SELECT f.created_at, f.id FROM project_conversations f WHERE f.id = ${first.conversationId})`,
                 sql`(${c.createdAt}, ${c.id}) <= (SELECT l.created_at, l.id FROM project_conversations l WHERE l.id = ${last.conversationId})`));

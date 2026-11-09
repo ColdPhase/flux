@@ -72,19 +72,19 @@ describe('space AI switch: tokens, connections and runs', () => {
     assert.ok(lists(await mcp(accessToken, 3, 'tools/list', {}, bound())), 'the connection works again once AI is on (standing configuration resumes)');
   });
 
-  test('flux_get_agent_thread reads the task inside the checked transaction: a task of a selected project is read, an unknown id is not found, a space with AI off refuses first', async () => {
-    const task = await scene.task(scene.owner, 'Agents thread task');
+  test('flux_get_task_discussion reads the task inside the checked transaction: a task of a selected project is read, an unknown id is not found, a space with AI off refuses first', async () => {
+    const task = await scene.task(scene.owner, 'Discussion task');
     const text = (message: Record<string, unknown> | null) => ((message?.result as { content?: { text?: string }[] } | undefined)?.content?.[0]?.text) ?? '';
-    const known = await mcp(accessToken, 10, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: task.id } });
+    const known = await mcp(accessToken, 10, 'tools/call', { name: 'flux_get_task_discussion', arguments: { taskId: task.id } });
     assert.equal((known.message?.result as { isError?: boolean } | undefined)?.isError ?? false, false, `control: a task of a selected project is read: ${text(known.message)}`);
-    const unknown = await mcp(accessToken, 11, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: randomUUID() } });
+    const unknown = await mcp(accessToken, 11, 'tools/call', { name: 'flux_get_task_discussion', arguments: { taskId: randomUUID() } });
     assert.equal((unknown.message?.result as { isError?: boolean } | undefined)?.isError, true, 'an unknown task is an error result');
     assert.match(text(unknown.message), /PROJECT_NOT_FOUND/);
     await setSpaceAi(scene.place.id, 'blocked');
     try {
-      const refused = await mcp(accessToken, 12, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: task.id } });
+      const refused = await mcp(accessToken, 12, 'tools/call', { name: 'flux_get_task_discussion', arguments: { taskId: task.id } });
       assert.match(JSON.stringify(refused.message), /SPACE_AI_OFF/, 'a task of the space is refused');
-      const unknownAgain = await mcp(accessToken, 13, 'tools/call', { name: 'flux_get_agent_thread', arguments: { taskId: randomUUID() } });
+      const unknownAgain = await mcp(accessToken, 13, 'tools/call', { name: 'flux_get_task_discussion', arguments: { taskId: randomUUID() } });
       assert.match(JSON.stringify(unknownAgain.message), /PROJECT_NOT_FOUND/, 'an unknown id belongs to no space and is not found');
     } finally { await setSpaceAi(scene.place.id, 'allowed'); }
   });

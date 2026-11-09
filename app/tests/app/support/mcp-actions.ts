@@ -54,7 +54,7 @@ export function waits(message: Record<string, unknown> | null): boolean {
 }
 
 /** The tools that name the runtime session of bootstrap (their receipts are bound to it), and those that name a unit's role. */
-const NAMES_RUNTIME = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request|post_agent_thread|ask_question|link_pull_request)$/;
+const NAMES_RUNTIME = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request|discuss_task|ask_question|link_pull_request)$/;
 const NAMES_ROLE = /^flux_(?:create_unit|claim_unit|renew_unit|release_unit|complete_unit|transfer_unit|decline_unit|claim_request|decline_request|resolve_request|defer_request|send_request)$/;
 /**
  * A test names the same envelope for every tool (project, runtime session, command ID, class); this keeps the fields the tool takes.

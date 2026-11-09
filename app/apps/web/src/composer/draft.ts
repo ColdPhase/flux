@@ -3,7 +3,7 @@ import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type Conversation, type Conversat
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
-import { contributeToTask, postTaskAgentThread, stageFile } from './api';
+import { contributeToTask, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 import { forgetPlaces } from '../place/memory';
@@ -194,7 +194,7 @@ function load(key: string, accountId: string, projectId: string, context: string
         const saved = JSON.parse(sessionStorage.getItem(`${oldKey}.pending`) ?? 'null') as { body?: string; clientMessageId?: string } | null;
         if (saved?.body === body.trim() && uuid(saved.clientMessageId)) { draft.commandId = saved.clientMessageId; draft.unconfirmed = true; }
       }
-    } else if (!retiredStorage && !context.startsWith('agent-thread:')) {
+    } else if (!retiredStorage) {
       // Preserve existing text/retry identities while moving the three old composers into one record.
       const oldKey = context.startsWith('task:') ? `flux:draft:${accountId}:${context}` : `flux.project-composer.${accountId}.${projectId}.${context === 'new' ? 'new' : context.replace(/^conversation:/, '')}`;
       const body = context.startsWith('task:') ? localStorage.getItem(oldKey) : sessionStorage.getItem(oldKey);
@@ -273,7 +273,6 @@ async function deliver(projectId: string, context: string, command: SendMessageC
   }
   if (context.startsWith('conversation:')) return { id: command.clientMessageId, message: await reply(context.slice('conversation:'.length), command) };
   if (context.startsWith('task:')) return { id: command.clientMessageId, message: await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' }) };
-  if (context.startsWith('agent-thread:')) return { id: command.clientMessageId, message: await postTaskAgentThread(context.slice('agent-thread:'.length), projectId, command) };
   if (context.startsWith('dm:')) {
     // `dm:<dmId>` posts to the conversation, `dm:<dmId>/<rootId>` is a private reply in that message's thread (#536).
     const [dmId, rootId] = context.slice('dm:'.length).split('/');

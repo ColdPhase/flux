@@ -431,23 +431,29 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | `flux_delete_doc` | `doc.delete` | the doc | Deletes one page for everyone at the version last read; always waits for the owner's OK (#941) |
 | `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version. A local client's tool only: no run has it (#1063) |
 | `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread. A local client's tool only: no run has it (#1063) |
-| `flux_post_agent_thread` | `conversation.reply` | the task's agents' thread | One work message about a task in its agents' thread (#400, below) |
+| `flux_discuss_task` | `conversation.reply` | the task | One message about a task in the task's one discussion (#868, below) |
 | `flux_ask_question` | `conversation.reply` | the conversation | A question to one person with two to four ready answers, as the agent's message plus a card (#347, below) |
 
-The task's agents' thread (#400, CW-2) is the place for an agent's work talk about a task:
+A task has one discussion (#868), where people and agents talk about it:
 
-- `flux_post_agent_thread {projectId, taskId, body, clientCommandId, ...}` takes the same standing-grant envelope as the other
-  actions, with `conversation.reply`. A grant can name the whole project (the thread is created on the first post) or the
-  already existing thread. The server selects the private task mode; a client cannot choose it. The task, not the caller's
-  `projectId`, determines the audience, and a mismatched project is refused.
-- `flux_get_agent_thread {taskId, beforeSequence?, afterSequence?}` reads at most 50 messages under `flux.context.read` and the
-  conversations switch, for the task's project when that project is selected for the connection. `afterSequence` resumes from the
-  last recorded sequence and returns `nextAfterSequence` when more follow.
-- At most five agent messages in a row without a person's message, a new artifact version or a request change; the sixth is
-  refused with `AGENT_THREAD_TURN_LIMIT` and nothing is written or debited. A retry with the same `clientCommandId` replays.
-- `flux_reply_in_conversation` into a people's conversation is unchanged (contract 1). Refusing it with `AGENT_THREAD_REQUIRED` waits for the accepted EXT-1 transition (#400 AC-3); the playbook only recommends the thread. Messages in the thread appear in no people's list, count or push.
-- Additive to MCP tool contract version 1 (`tests/app/contracts/mcp-tools.v1.json`): two tools and one error code (`AGENT_THREAD_TURN_LIMIT`). The
-  connection policy of an existing connection lists the new tools only after its owner enables them.
+- `flux_discuss_task {projectId, taskId, body, clientCommandId, ...}` takes the same standing-grant envelope as the other
+  actions, with `conversation.reply`. The server writes the message as the agent in the task's discussion through the same use case
+  as a person's contribution (`POST /api/v1/work/:id/discussion`), under the task's use fence, and creates the discussion on the first
+  message. A client cannot choose another target. The task, not the caller's `projectId`, determines the audience, and a mismatched
+  project is refused.
+- `flux_get_task_discussion {taskId, limit?, beforeSequence?}` reads at most 50 messages of the discussion under `flux.context.read` and
+  the conversations switch, for the task's project when that project is selected for the connection; `messagePage.nextBeforeSequence`
+  pages back. Reading creates nothing.
+- At most five agent messages in a row until a person writes; the sixth is refused with `AGENT_TURN_LIMIT` and nothing is written or
+  debited. Only a person's message gives an agent more. A retry with the same `clientCommandId` replays. The limit holds for every
+  agent write into the discussion, not only this tool: `flux_reply_in_conversation` and `flux_ask_question` with the discussion's
+  conversation, and a blocker, result or hand-off contribution, count and are refused the same way, for every agent of every person
+  ([task discussions](task-discussions.md), C-51). Lines Flux writes for an in-app agent's run on a task are not counted.
+- The line is recorded as the applied `conversation.reply` change that `flux_reply_in_conversation` records in a task's discussion
+  (`plan.thread`), in the same transaction: it shows with its change and its owner deletes it with no condition (#961).
+- `flux_reply_in_conversation` into a project conversation is unchanged (contract 1).
+- The tool replaced `flux_post_agent_thread` and `flux_get_agent_thread` in MCP tool contract version 2 (`tests/app/contracts/mcp-tools.v2.json`;
+  the version-1 snapshot stays as it was). The connection policy of an existing connection lists the new tools only after its owner enables them.
 
 Grants and classes:
 
@@ -548,7 +554,7 @@ map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
 claims, renews, releases and completes the unit; the block/transfer module
 transfers it. Versions 1.5.0 to 1.13.0 also named the request tools and the inbox;
-1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work.
+1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`. 1.16.0 (#985) removes `COWORK_PAUSED`, which named a person's pause of the work. 1.17.0 (#868) adds `flux_discuss_task` and `flux_get_task_discussion` and drops the agents' thread.
 
 Every authenticated MCP connection delivers it in three ways:
 

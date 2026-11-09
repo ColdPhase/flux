@@ -4,7 +4,7 @@ import * as schema from '../schema.js';
 import { TaskUseRefusal, type TaskUseFence } from './task-use.js';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import { prepareCanonicalArtifactTaskUse } from './artifact-task-associations.js';
-import { artifactResetRows } from './artifact-resets.js';
+import { artifactUseRows } from './artifact-use.js';
 import { EDITING_CHANNEL } from './editing-channel.js';
 import type { DbExecutor } from './push.js';
 import { openAliased, openRows, sealOf, sealRow } from '../sealing.js';
@@ -185,7 +185,7 @@ export function docRows(db: DbExecutor) {
       if(current){const version=(await openRows(db,'project_material_versions',[current.version]))[0]!;
         const [previous]=await openRows(db,'project_material_versions',await db.select().from(v).where(and(eq(v.materialId,docId),eq(v.version,version.version-1))));
         if(!previous||previous.body!==version.body)
-          await artifactResetRows(db).canonical(scope,{kind:'doc',id:docId,version:version.version},
+          await artifactUseRows(db).canonical(scope,{kind:'doc',id:docId,version:version.version},
             {kind:'doc',id:docId,revision:String(version.version)},fence);
       }
     },

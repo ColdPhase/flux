@@ -119,6 +119,8 @@ function world(options: { writable?: boolean; taskIds?: string[]; hook?: boolean
     async findMessage(id) { return messages.find((row) => row.id === id) ?? null; },
     async messages() { return [...messages].reverse(); },
     async sourceExists() { return true; },
+    async taskOf(conversationId) { return [...bindings.values()].find((binding) => binding.conversationId === conversationId)?.workId ?? null; },
+    async trailingAgentMessages() { return 0; },
     async createConversation(input) {
       log.push('conversation.create');
       const row = { ...input, createdAt: at };
