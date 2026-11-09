@@ -1,3 +1,4 @@
+import { defangedAddresses } from './web-addresses.js';
 import type { PersonalRunPorts, RunRecord } from './ports.js';
 
 // "Web: read-only page reading, always citing the sources" (F-036 AG-8, #918). Every address the Flux server sent a request to for a run is
@@ -39,7 +40,8 @@ export function webSourcesLine(reads: readonly { finalUrl: string; outcome: stri
   const other = reads.filter((item) => item.outcome !== 'read');
   const parts: string[] = [];
   const more = (count: number) => (count > LISTED ? `\n- and ${count - LISTED} more` : '');
-  if (searches.queries.length) parts.push(`${WEB_SOURCES_HEADINGS[0]}\n${searches.queries.slice(0, LISTED).map((query) => `- ${query}`).join('\n')}${more(searches.queries.length)}`);
+  // A query is the model's own text and is never checked: an address in it is listed defanged, never as a link a later run could open (#1143).
+  if (searches.queries.length) parts.push(`${WEB_SOURCES_HEADINGS[0]}\n${searches.queries.slice(0, LISTED).map((query) => `- ${defangedAddresses(query)}`).join('\n')}${more(searches.queries.length)}`);
   if (searches.cited.length) parts.push(`${WEB_SOURCES_HEADINGS[1]}\n${searches.cited.slice(0, LISTED).map((address) => `- ${address}`).join('\n')}${more(searches.cited.length)}`);
   if (read.length) parts.push(`${WEB_SOURCES_HEADINGS[2]}\n${read.map((item) => `- ${item.finalUrl}`).join('\n')}`);
   if (other.length) parts.push(`${WEB_SOURCES_HEADINGS[3]}\n${other.map((item) => `- ${item.finalUrl} (${NOT_READ[item.outcome as keyof typeof NOT_READ] ?? 'not read'})`).join('\n')}`);

@@ -254,8 +254,10 @@ pages, founder direction 2026-11-09, #1113).
   (`CHANGE_PRIVATE_ADDRESS`) before anything is prepared. **A run's answer** (`answerWithoutPrivateAddresses`, #1143) is checked by the worker
   after the run's last call and before its commit's transaction, against the run's kept text read from the database: each address in it that
   carries private text becomes `[address left out]` (`withoutPrivateAddresses`), so the task's report line, an `<ask>` question, the chat's
-  earlier turns and a Show everyone post, all read from the stored answer, are cleaned with it. A site on S3's path-style hosts is the host and
-  the bucket (#1144). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
+  earlier turns and a Show everyone post, all read from the stored answer, are cleaned with it. `webSourcesLine` lists search queries with
+  any address in them defanged (`defangedAddresses`): a query is never checked, and a run without an answer has no kept text left when its
+  end line is written. A site on object storage's path-style hosts (S3,
+  `storage.googleapis.com`) is the host and the bucket (#1144). The brief says the rule (`OPEN_ANY_ADDRESS_LINE`, and with a search "use your web
   search, not the address of a search page"). How many addresses a run reads is not limited, and there is no limit per minute (#1116): only
   the fetcher's guard of 6 pages read at once across the server (`READS_AT_ONCE`; `WEB_READ_BUSY`). What the agent rewrote (other words,
   hyphens for spaces, pieces under 12 characters) is not caught, nor a search query, which runs at the provider or the CLI's vendor before

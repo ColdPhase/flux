@@ -257,6 +257,21 @@ function addressSpans(text: string): { start: number; end: number; address: stri
   return spans.sort((one, other) => one.start - other.start);
 }
 
+/**
+ * A text with each web address in it defanged (`hxxps://evil[.]example/…`, #1143): still readable, and never a link again. Flux lists a run's
+ * search queries so: a query is the model's text and is never checked, so an address in it must not pass as a link someone wrote when a
+ * later run reads the list.
+ */
+export function defangedAddresses(text: string): string {
+  let out = '';
+  let at = 0;
+  for (const span of addressSpans(text)) {
+    out += text.slice(at, span.start) + text.slice(span.start, span.end).replace(/^http/i, 'hxxp').replaceAll('.', '[.]');
+    at = span.end;
+  }
+  return out + text.slice(at);
+}
+
 /** What a run's answer says in place of a web address that carried private text the run read (#1143, C-30). */
 export const ADDRESS_LEFT_OUT = '[address left out]';
 
@@ -303,10 +318,13 @@ const hashOf = (text: string, at: number) => { let hash = 0; for (let i = 0; i <
 /** The same polynomial hash over a whole string: a link is found among the prefixes of an address in one pass. */
 const wholeHash = (text: string) => { let hash = 0; for (let i = 0; i < text.length; i++) hash = (Math.imul(hash, BASE) + text.charCodeAt(i)) | 0; return hash; };
 
-/** S3's path-style hosts (`s3.amazonaws.com`, `s3.<region>.amazonaws.com`, `s3-<region>.amazonaws.com`), where the bucket is the path's first part. */
-const S3_PATH_STYLE = /^s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com(?::\d+)?$/;
 /**
- * The site a compared address without its scheme belongs to: its host (and port); on S3's path-style hosts, the host and the bucket (#1144):
+ * Object storage's path-style hosts, where the bucket is the path's first part: S3 (`s3.amazonaws.com`, `s3.<region>.amazonaws.com`,
+ * `s3-<region>.amazonaws.com`) and Google Cloud Storage (`storage.googleapis.com`).
+ */
+const S3_PATH_STYLE = /^(?:s3(?:[.-][a-z0-9-]+)*\.amazonaws\.com|storage\.googleapis\.com)(?::\d+)?$/;
+/**
+ * The site a compared address without its scheme belongs to: its host (and port); on object storage's path-style hosts, the host and the bucket (#1144):
  * `s3.amazonaws.com/acme` and `s3.amazonaws.com/evil-bucket` are two owners, and a bucket's owner reads its access logs.
  */
 function siteOf(address: string): string {
