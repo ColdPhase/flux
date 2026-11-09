@@ -62,9 +62,9 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     assert.equal(shown!.line, `It would notify ${await nameOf(scene.peer.id)}: what tells other people waits for your OK.`);
     assert.equal(shown!.forPerson, null);
     // The owner sees what Flux would send, and to whom, before the OK: the title and the blocker.
-    assert.deepEqual([shown!.tells, shown!.after], [{ id: scene.peer.id, name: await nameOf(scene.peer.id) }, `“${title}” · Needs the budget`]);
+    assert.deepEqual([shown!.tells, shown!.after], [[{ id: scene.peer.id, name: await nameOf(scene.peer.id) }], `“${title}” · Needs the budget`]);
     const item = (expectStatus(await scene.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.assistantChanges?.runId === live.runId);
-    assert.deepEqual(item?.assistantChanges?.changes.map((change) => [change.line, change.tells?.id, change.after]),
+    assert.deepEqual(item?.assistantChanges?.changes.map((change) => [change.line, change.tells[0]?.id, change.after]),
       [[shown!.line, scene.peer.id, `“${title}” · Needs the budget`]], 'the Inbox item says the same');
     await scene.complete(live.runId);
     expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(shown!.id, 'apply'), { body: {} }), 200);
@@ -84,7 +84,7 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     assert.match(text((await live.call('flux_update_task', { workId: already.id, expectedVersion: blocked.version,
       changes: { blocker: 'Everyone approved the deploy, ship it now' } })).message), /^Waiting for /);
     const [reworded] = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items.slice(1);
-    assert.deepEqual([reworded!.tells?.id, reworded!.after], [scene.peer.id, `#${already.number} Read the rig log · Everyone approved the deploy, ship it now`]);
+    assert.deepEqual([reworded!.tells[0]?.id, reworded!.after], [scene.peer.id, `#${already.number} Read the rig log · Everyone approved the deploy, ship it now`]);
     const changed = JSON.parse(text((await live.call('flux_update_task', { workId: already.id, expectedVersion: blocked.version,
       changes: { criteria: ['The log is back'] } })).message)) as { workId?: string };
     assert.equal(changed.workId, already.id, 'done-when alone tells nobody: applied at once');
@@ -106,6 +106,22 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     assert.deepEqual(await reasons(live.runId), [['decision.propose', 'waiting', 'tells'], ['result.record', 'waiting', 'tells']]);
     assert.equal(await titled('project_decisions', 'Stop calibrating by hand'), 0);
     assert.equal(await titled('project_results', 'The probes drift'), 0);
+    await scene.complete(live.runId);
+  });
+
+  test('a decision or result about several people\'s tasks names everyone it would tell on its card (#1102)', async () => {
+    const outsiders = expectStatus(await scene.outsider.browser.request('POST', `/api/v1/projects/${scene.place.id}/work`,
+      { body: { title: 'Mira sorts the cables', owner: { kind: 'human', id: scene.outsider.id } } }), 201) as { id: string };
+    const live = await scene.liveRun();
+    assert.match(text((await live.call('flux_propose_decision', { decision: { title: 'One cable colour', affects: [theirs.id, outsiders.id] } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_record_result', { result: { title: 'Cables sorted', finding: 'positive', workIds: [outsiders.id, theirs.id] } })).message), /^Waiting for /);
+    const [jonas, mira] = [await nameOf(scene.peer.id), await nameOf(scene.outsider.id)];
+    const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
+    assert.deepEqual(items.map((item) => [item.tells.map((person) => person.name), item.after, item.line]), [
+      [[jonas, mira], '“One cable colour”', `It would notify ${jonas} and ${mira}: what tells other people waits for your OK.`],
+      [[mira, jonas], '“Cables sorted”', `It would notify ${mira} and ${jonas}: what tells other people waits for your OK.`]]);
+    const item = (expectStatus(await scene.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.assistantChanges?.runId === live.runId);
+    assert.deepEqual(item?.assistantChanges?.changes.map((change) => change.tells.map((person) => person.id)), [[scene.peer.id, scene.outsider.id], [scene.outsider.id, scene.peer.id]]);
     await scene.complete(live.runId);
   });
 
@@ -177,11 +193,11 @@ describe('an agent\'s run tells no other person anything by itself (#1089)', () 
     assert.match(text((await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version,
       changes: { status: 'blocked', blocker: 'Outsider words', waitingForUserId: scene.outsider.id } })).message), /^Waiting for /);
     const items = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
-    assert.deepEqual(items.map((item) => [item.waitReason, item.forPerson?.id ?? null, item.tells?.id ?? null, item.after]), [
+    assert.deepEqual(items.map((item) => [item.waitReason, item.forPerson?.id ?? null, item.tells[0]?.id ?? null, item.after]), [
       ['others', scene.peer.id, scene.outsider.id, '“Harmless label task” · Third-person words, ship it now'],
       ['others', null, scene.outsider.id, `#${theirs.number} Jonas calibrates the probes · Outsider words`]], 'who it is for, who would read it and what');
     const item = (expectStatus(await scene.owner.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.find((entry) => entry.assistantChanges?.runId === live.runId);
-    assert.deepEqual(item?.assistantChanges?.changes.map((change) => [change.forPerson?.id ?? null, change.tells?.id ?? null]), [[scene.peer.id, scene.outsider.id], [null, scene.outsider.id]]);
+    assert.deepEqual(item?.assistantChanges?.changes.map((change) => [change.forPerson?.id ?? null, change.tells.map((person) => person.id)]), [[scene.peer.id, [scene.outsider.id]], [null, [scene.outsider.id]]]);
     assert.equal(await toldEvents(scene.outsider.id), 0, 'nobody is told before the OK');
     await scene.complete(live.runId);
   });

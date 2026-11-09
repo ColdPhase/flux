@@ -86,6 +86,8 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
   if (unit.state === 'stopped') return 'Cancelled';
   return unit.state === 'completed' ? `${recipient} finished it` : `${recipient} started`;
 }
+/** "Jonas", "Jonas and Maja", "Jonas, Maja and Lea". */
+const joinedNames = (names: readonly string[]) => names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
 /** What a waiting `tells` change would send its person (#1089): the task's title and blocker, or the decision's or result's title. */
 function toldWords(row: AssistantChangeRow): string | null {
   const args = (row.preparedCommand as { args?: Record<string, Record<string, unknown> | undefined> } | null)?.args ?? {};
@@ -141,9 +143,30 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || row.ownerUserId === principal.id)
       && (!REMOVAL_OPERATIONS.has(row.operation) || principal.id === row.ownerUserId) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
+  /**
+   * Everyone each waiting change would notify (#1089, #1102): the person it keeps (`told_user_id`), and for a decision or result every other
+   * owner of a task it is about, as the notification would reach them after the OK. Read now, so a task given to someone since counts.
+   */
+  async function everyoneTold(list: AssistantChangeRow[]): Promise<Map<string, string[]>> {
+    const told = new Map<string, string[]>();
+    for (const row of list) {
+      if (row.state !== 'waiting' || !row.toldUserId) continue;
+      const ids = [row.toldUserId];
+      const args = (row.preparedCommand?.args ?? {}) as { decision?: { affects?: unknown }; result?: { workIds?: unknown; finishes?: { workId?: unknown } } };
+      const linked = row.operation === 'decision.propose' ? args.decision?.affects
+        : row.operation === 'result.record' ? [...(Array.isArray(args.result?.workIds) ? args.result.workIds : []), args.result?.finishes?.workId] : [];
+      for (const workId of new Set((Array.isArray(linked) ? linked : []).filter((value): value is string => typeof value === 'string'))) {
+        const owner = (await rows().work(workId))?.ownerUserId;
+        if (owner && owner !== row.ownerUserId && owner !== row.otherUserId && !ids.includes(owner)) ids.push(owner);
+      }
+      told.set(row.id, ids);
+    }
+    return told;
+  }
   /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
   async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
-    const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.toldUserId, row.decidedBy].filter((id): id is string => !!id)));
+    const told = await everyoneTold(list);
+    const names = await rows().names([...list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.decidedBy].filter((id): id is string => !!id)), ...[...told.values()].flat()]);
     const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
     const units = await rows().unitStates(list.flatMap((row) => { const plan = undoOf(row)?.plan; return plan?.kind === 'handoff' ? [plan.unitId] : []; }));
@@ -152,15 +175,15 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const words = assistantChangeWords(row.operation, assistantWorkChangeArgs(args.changes ?? {}));
       const phrase = `${words.phrase} ${words.noun}`;
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
-      const tells = row.state === 'waiting' && row.toldUserId ? { id: row.toldUserId, name: names.get(row.toldUserId) ?? '' } : null;
+      const tells = (told.get(row.id) ?? []).map((id) => ({ id, name: names.get(id) ?? '' }));
       return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: threadLineRemoved(row, names) ?? (hideState(row) ? null : handoffLine(row, units)) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
-          otherName: row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
+          otherName: row.waitReason === 'tells' && tells.length ? joinedNames(tells.map((person) => person.name)) : row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
           decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null, tells,
         done: assistantDoneWords({ operation: row.operation, objectType: row.objectType, objectTitle: row.objectTitle, status: statusOf(row), phrase }),
-        runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: tells ? null : undoOf(row)?.before ?? null, after: tells ? toldWords(row) : undoOf(row)?.after ?? null,
+        runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: tells.length ? null : undoOf(row)?.before ?? null, after: tells.length ? toldWords(row) : undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,

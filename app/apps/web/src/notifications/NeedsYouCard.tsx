@@ -3,6 +3,7 @@ import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
 import { ClampedWords } from '../assistant/ClampedWords';
+import { peopleNamed } from '../assistant/peopleNamed';
 
 /** How an item can be put off: tomorrow morning, next week, until its task is done, or for good. */
 export type SnoozeChoice = 'tomorrow' | 'week' | 'task' | 'decline';
@@ -222,11 +223,12 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
             </h3>
             {full && run ? <ul className="nyc__waits" aria-label="What waits for you">{run.changes.map((change) => (
               <li key={change.id}>{change.waitReason === 'removal' ? <span>{`Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}`}</span>
-                : change.tells && change.after ? <span className="nyc__waits-words"><ClampedWords text={change.forPerson ? `${change.verb} ${change.objectTitle} · ${change.after}` : `${change.verb} ${change.after}`} /></span>
+                : (change.tells ?? []).length && change.after ? <span className="nyc__waits-words"><ClampedWords text={`${change.verb} ${change.after}`} /></span>
                   : <span>{`${change.verb} ${change.objectTitle}`.trim()}</span>}
-                {/* A task for someone else names them; what would tell a person names who, also when both apply (#1089). */}
+                {/* A task for someone else names them; what would tell people names who, also when both apply (#1089). The names wrap below
+                    the words when the row is narrow, so long names never squeeze the words away (#1102). */}
                 {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}
-                {change.tells ? <span className="nyc__waits-for">tells {change.tells.name}</span> : null}</li>))}</ul> : null}
+                {(change.tells ?? []).length ? <span className="nyc__waits-for">tells {peopleNamed(change.tells)}</span> : null}</li>))}</ul> : null}
             {/* Why they wait, in each change's own words (#1089: "It would notify Jonas…" is not "Deleting and other people's things…"). */}
             {full && run ? <p className="nyc__reason">{waitReasons(run.changes)}</p> : null}
             {full && item.detail && item.kind !== 'blocked' && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}

@@ -208,7 +208,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         url: head.conversationId ? `/projects/${head.projectId}/conversations/${head.conversationId}` : `/projects/${head.projectId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
         assistantChanges: { runId, agentName: head.agentName, summary: assistantChangeSummary(group),
           changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, verb: change.verb, objectTitle: change.objectTitle,
-            line: change.line, waitReason: change.waitReason, forPerson: change.forPerson, tells: change.tells, after: change.tells ? change.after : null })) },
+            line: change.line, waitReason: change.waitReason, forPerson: change.forPerson, tells: change.tells, after: change.tells.length ? change.after : null })) },
       });
     }
     return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
