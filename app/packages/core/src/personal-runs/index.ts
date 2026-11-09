@@ -14,4 +14,4 @@ export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, r
 export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
 export { answerWithWebSources, endedWithWebSources, webSourcesLine, WEB_SOURCES_HEADINGS } from './web-sources.js';
-export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, AddressTooLong, addressChain, addressesIn, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, PRIVATE_FRAGMENT_CHARS, WEB_SEARCH_BOUNDS, ADDRESS_LEFT_OUT, AddressTooLong, addressChain, addressesIn, boundedWebSearch, comparableText, keepPrivateText, keptPrivateText, normalizedAddress, privateFragmentIn, PrivateTextIndex, privateTextIndex, withoutPrivateAddresses, writtenAddresses, type AddressChain, type KeptPrivateText } from './web-addresses.js';

@@ -15,6 +15,7 @@ import { placeAllows, spaceSwitchAllows } from './place.js';
 import { isAsked, isPrivateAnswer } from './ports.js';
 import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } from './brief.js';
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
+import { answerWithoutPrivateAddresses } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
@@ -350,6 +351,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // Every search the CLI reported is written before the run's end is.
       await recorded;
       await hooks.afterDispatch?.(run);
+      // An address in the answer that carries private text the run read is left out before the answer is stored (#1143, C-30).
+      if (end.kind === 'answer') end = { ...end, text: await answerWithoutPrivateAddresses(uow, run.id, end.text) };
 
       return uow.run(async (ports) => {
         const located = await ports.runs.findRun(run.id);

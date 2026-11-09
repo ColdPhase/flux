@@ -178,6 +178,8 @@ export interface PersonalRunRepository {
    * address that carries a fragment of it is refused.
    */
   addPrivateText(runId: string, kept: KeptPrivateText): Promise<void>;
+  /** All the private text the run has kept so far (#1143): its answer's addresses are checked against it before the answer is stored. */
+  privateTexts(runId: string): Promise<KeptPrivateText[]>;
   /** The task graph's lock (after the owner's, #921) for a run in a space; a run in a DM or a chat touches no task graph and holds nothing. */
   prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
