@@ -244,7 +244,7 @@ interface RunScript {
  * answer (`{{results}}` is replaced by what the calls returned) and silent `probes` (calls made without a
  * tool-use event, as a CLI ignoring its permissions would). A `WebSearch` call is answered by the fake itself (see PlannedCall). Every
  * MCP answer is recorded in `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
- * run_plan_limit, run_plan_limit_soon (resets in two hours), run_plan_limit_no_time, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
+ * run_plan_limit, run_plan_limit_soon (resets in two hours), run_plan_limit_no_time, run_error_cleared, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
  * run_big_answer, run_secret_answer, run_broken_stream, run_ignore_sigint, run_max_turns. Without
  * `--no-session-persistence` it writes a transcript under `projects/`, as the real CLI would.
  */
@@ -301,6 +301,13 @@ async function claudeRun(argv: string[]): Promise<number> {
   // #854: a plan limit that resets two hours from now, so the request pauses and resumes by itself.
   if (mode === 'run_plan_limit_no_time') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached', num_turns: 1, session_id: session }); return 1; }
   if (mode === 'run_plan_limit_soon') { emit({ type: 'result', subtype: 'success', is_error: true, result: `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 7200}`, num_turns: 1, session_id: session }); return 1; }
+  // #1133: an API error's category on an earlier `assistant` event does not name a later, different failure.
+  if (mode === 'run_error_cleared') {
+    emit({ type: 'assistant', session_id: session, error: 'rate_limit', message: { role: 'assistant', content: [{ type: 'text', text: 'API Error: Request rejected (429)' }] } });
+    emit({ type: 'assistant', session_id: session, message: { role: 'assistant', content: [{ type: 'text', text: 'Trying again.' }] } });
+    emit({ type: 'result', subtype: 'success', is_error: true, result: 'Something else went wrong', num_turns: 2, session_id: session });
+    return 1;
+  }
   if (mode === 'run_model_unavailable') {
     emit({ type: 'result', subtype: 'success', is_error: true, result: "There's an issue with the selected model (opus). It may not exist or you may not have access to it. Run /model to pick a different model.", num_turns: 1, session_id: session });
     return 1;

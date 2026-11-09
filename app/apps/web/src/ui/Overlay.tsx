@@ -358,7 +358,9 @@ export function Overlay({ open, onClose, placement, label, labelledBy, initialFo
 
   return createPortal(
     <div ref={frameRef} className={`ui-overlay ui-overlay--${placement}`} data-state={open ? 'open' : 'closing'}>
-      <div ref={scrimRef} className="ui-scrim" onClick={() => onCloseRef.current()} aria-hidden="true" />
+      {/* A press on the scrim leaves focus where it is: the touch that opened a sheet (a long press) lifts over the scrim and its mousedown would
+          move focus to the body, where Esc no longer reaches the surface (#1133). The click on the scrim still closes. */}
+      <div ref={scrimRef} className="ui-scrim" onClick={() => onCloseRef.current()} onMouseDown={(event) => event.preventDefault()} aria-hidden="true" />
       <div
         ref={surfaceRef}
         id={bare ? undefined : id}

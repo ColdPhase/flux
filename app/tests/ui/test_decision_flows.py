@@ -142,11 +142,12 @@ class DecisionFlows(unittest.TestCase):
         expect(answer.get_by_role("button", name="Not now")).to_be_visible()
         expect(answer.get_by_role("button", name="Discuss", exact=True)).to_be_visible()
         expect(answer).to_contain_text("waiting for you")
+        # "Based on" draws after the panel does: wait for it, or the order is read before it exists (#1133).
+        expect(panel.get_by_role("heading", name="Based on")).to_be_visible()
         # The answer comes right after the reason and what it rests on, before the record rows.
         order = panel.evaluate("""(root) => [...root.children].map((el) => el.matches('.wd-decide') ? 'answer' : el.matches('.wd-rows') ? 'rows'
           : el.matches('.details__lead') ? 'lead' : el.querySelector('#wd-based') ? 'based' : null).filter(Boolean)""")
         self.assertEqual(order, ["lead", "based", "answer", "rows"])
-        expect(panel.get_by_role("heading", name="Based on")).to_be_visible()
         expect(panel.get_by_text("Agents can propose decisions; only people accept them.")).to_have_count(0)
         shot(page, "decision-flows-d1-desktop")
         # Not now asks when it should return, and takes it out of the Inbox only.
@@ -379,15 +380,29 @@ class DecisionFlows(unittest.TestCase):
                 page.wait_for_timeout(200)
                 x, found = centre(bubble)
                 self.assertAlmostEqual(found, y, delta=4, msg="the message is where the finger will be")
-                real_touch(page, x, y, hold)
-                page.wait_for_timeout(700)
-                expect(sheet).to_be_visible()
-                expect(menu).to_be_visible()
+
+                def press() -> None:
+                    # The keyboard's open and close left focus on the quiet ⋯, which grows to 44 px with its label over a small bubble (at 320 wide it
+                    # sits under the finger, and the touch would tap it instead of pressing the message): blur it, and check the finger is on the message.
+                    page.evaluate("() => document.activeElement instanceof HTMLElement && document.activeElement.blur()")
+                    self.assertIsNone(page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.closest('.msg-touch__sr')?.className ?? null", [x, y]), "the finger is on the message, not on the ⋯")
+                    real_touch(page, x, y, hold)
+                    page.wait_for_timeout(700)
+                    expect(sheet).to_be_visible()
+                    expect(menu).to_be_visible()
+
+                press()
                 expect(page.get_by_role("dialog", name="New task")).to_have_count(0)
                 expect(page.locator("#thread-composer")).to_have_count(0)
                 self.assertEqual(sheet.evaluate("el => getComputedStyle(el).outlineStyle"), "none", "a touch leaves no focus ring round the whole sheet")
+                # The release's own mousedown must not take focus out of the sheet (#1133): Esc closes it, and a second press opens it again.
+                self.assertTrue(sheet.evaluate("el => el.contains(document.activeElement)"), "focus stays in the sheet after the finger lifts")
                 if size[0] == 390 and row is None:
                     shot(page, "1013-real-long-press-390")
+                if row is None:
+                    page.keyboard.press("Escape")
+                    expect(sheet).to_have_count(0)
+                    press()
                 # The swallowed click was the only one: a tap on a row, right after, still runs it.
                 row_box = menu.get_by_role("menuitem", name="Create task", exact=True).bounding_box()
                 real_touch(page, row_box["x"] + row_box["width"] / 2, row_box["y"] + row_box["height"] / 2)

@@ -603,6 +603,20 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     assert.equal(classifyCodexError('stream disconnected before completion'), 'crashed');
   });
 
+  test('#1133: Sign in again only for a real revocation: a temporary refresh failure or a 401 from Flux\'s own /mcp is a crash', () => {
+    for (const text of ['Failed to refresh token: 503 Service Unavailable: upstream connect error',
+      'Failed to refresh token: 429 Too Many Requests: {"error":{"code":"rate_limit_exceeded"}}',
+      'required MCP servers failed to initialize: flux: Client error: HTTP status client error (401 Unauthorized) for url (http://runtime-egress:8080/mcp)',
+      'MCP client for `flux` failed to start: 401 Unauthorized']) {
+      assert.equal(classifyCodexError(text), 'crashed', text);
+    }
+    for (const text of ['Your access token could not be refreshed because your refresh token was already used. Please log out and sign in again.',
+      'Your access token could not be refreshed because your refresh token has expired. Please log out and sign in again.', 'Not logged in',
+      'unexpected status 401 Unauthorized: {"error":{"code":"invalid_api_key"}}']) {
+      assert.equal(classifyCodexError(text), 'sign_in_again', text);
+    }
+  });
+
   test('`codex login status` on stderr: ChatGPT, an API key or an access token; not logged in is signed out', () => {
     assert.deepEqual(statusFacts('codex', 0, 'Logged in using ChatGPT\n'), { signedIn: true, facts: { authMethod: 'chatgpt', plan: null, accountLabel: null, accountDigest: null } });
     assert.equal(statusFacts('codex', 0, 'Logged in using an API key - sk-proj-***\n').facts?.authMethod, 'openai_api_key');
