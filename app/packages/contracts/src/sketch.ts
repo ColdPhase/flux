@@ -199,14 +199,21 @@ export interface MovedThoughts {
 }
 /**
  * Moves thoughts from the map in the path to another map (#948: "Move to a space map" on My map, and the Undo that brings them back).
- * The caller must be able to change both maps. A moved thought is a new thought on the target map with the same text, shape and
+ * The caller must be able to change both maps, and one of them is their own My map (#1116: a space's thought is not moved to another space by
+ * someone who owns neither). A moved thought is a new thought on the target map with the same text, shape and
  * size (its id changes, because a map keeps the ids it has ever held); the original is removed in the same all-or-nothing change.
  * A connection between two moved thoughts moves with them; a connection to a thought that stays is left behind (it goes with the
  * original and is returned in `severed`, so Undo can restore it). Each thought names the version the caller saw: if one is stale
  * nothing moves and the answer is 409 {@link PositionsConflict}.
  */
 export interface MoveToMapCommand {
-  toSketchId: string;
+  /** The map to move to. Exactly one of `toSketchId` and `inSpace`. */
+  toSketchId?: string;
+  /**
+   * A space's first map, made in the same all-or-nothing change as the move: a move that fails leaves no empty map behind (#1116). The
+   * company workspace or encrypted space the space lives in, as for a new map, and the map's title (an untitled map when left out).
+   */
+  inSpace?: { workspaceId: string; projectId: string; title?: string };
   thoughts: { id: string; expectedVersion: number }[];
   /**
    * Where the top left of the moved group lands on the target map, in plane coordinates; the thoughts keep their places relative

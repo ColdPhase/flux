@@ -1,6 +1,7 @@
 import { Fragment, memo, type CSSProperties, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import type { MapPresenceSource } from '../editing/map-presence';
 import { MapCursors, MapPeople } from './MapPresence';
+import { DockRow } from './DockRow';
 import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, type LiveMapPosition, type SketchDetail, type Thought } from '@flux/contracts';
 import { Link } from 'react-router';
 import { Icon, IconButton, Sheet, StatusGlyph } from '../ui';
@@ -1088,7 +1089,7 @@ export function SketchMap(props: SketchMapProps) {
       <div className="sk-dock" ref={dockRef}>
         {!compact ? props.changes : null}
         {!compact ? (wire ? <p className="sk-hint" aria-hidden="true">{wire.over ? 'Release to link' : 'Release to add a connected thought'}</p> : props.hint) : null}
-        {props.dock ? <div className="sk-dock__row">{props.dock}</div> : null}
+        {props.dock ? <DockRow>{props.dock}</DockRow> : null}
       </div>
       {compact ? <button type="button" className="sk-edit-btn sk-map-options" aria-haspopup="dialog" aria-expanded={phoneMenuOpen && phoneMenu === 'map'} onClick={(event) => {
         event.currentTarget.focus({ preventScroll: true }); setPhoneMenu('map'); setPhoneMenuOpen(true);
