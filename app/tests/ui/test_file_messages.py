@@ -9,6 +9,7 @@ composer stages thumbnails (#348). FLUX_UI_BROWSER selects chromium (default) or
 
 from __future__ import annotations
 
+import base64
 import os
 import re
 import struct
@@ -744,6 +745,44 @@ class FilesReferencesPhotos(unittest.TestCase):
                 sent = page.locator(".project-convo__message").filter(has_text="Here are the offsets for the volunteers").last
                 expect(sent.get_by_role("list", name="2 photos").locator("img[src^='blob:']")).to_have_count(2)
                 self.assert_grid_aligned(sent)
+
+    def test_pasting_a_screenshot_or_copied_files_attaches_them_and_pasted_text_stays_text(self) -> None:
+        """Ctrl/⌘ V in the composer: a screenshot (a picture with no text) and files copied in a file manager (their names come
+        beside them) attach to the draft like the paperclip; a picture that comes with other text (a spreadsheet's cells) is a text
+        paste. The message is sent with the picture and others see it after a reload."""
+        page = self.page()
+        field = page.get_by_label("Write a message", exact=True)
+        draft = page.get_by_role("list", name="Files in your draft")
+        paste = """([items, text]) => { const t = new DataTransfer();
+          for (const [name, type, b64] of items) t.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], name, { type }));
+          if (text) t.setData('text/plain', text);
+          const event = new ClipboardEvent('paste', { clipboardData: t, bubbles: true, cancelable: true });
+          document.querySelector('textarea[aria-label="Write a message"], #project-composer').dispatchEvent(event);
+          return event.defaultPrevented; }"""
+        png = base64.b64encode(FIELD).decode()
+        # A spreadsheet's cells: text with a picture of them. The text is pasted; nothing attaches.
+        self.assertFalse(page.evaluate(paste, [[["image.png", "image/png", png]], "bed\trssi\n4\t-71"]), "a text paste keeps its default")
+        expect(draft).to_have_count(0)
+        # A screenshot: a picture called image.png and no text. It attaches under a readable name.
+        field.click()
+        self.assertTrue(page.evaluate(paste, [[["image.png", "image/png", png]], ""]))
+        expect(draft.get_by_role("listitem")).to_have_count(1)
+        expect(draft).to_contain_text(re.compile(r"Pasted image \d{4}-\d{2}-\d{2} \d{2}\.\d{2}\.png"))
+        expect(draft.locator(".composer-thumb.is-photo img[src^='blob:']")).to_have_count(1)
+        # Files copied in a file manager: their names come as the text. They attach with their own names.
+        csv = base64.b64encode(b"bed,rssi\n4,-71\n").decode()
+        self.assertTrue(page.evaluate(paste, [[["readings.csv", "text/csv", csv]], "readings.csv"]))
+        expect(draft.get_by_role("listitem")).to_have_count(2)
+        expect(draft).to_contain_text("readings.csv")
+        draft.get_by_role("button", name="Remove readings.csv").click()
+        text = f"Bed 4 after the rain {uuid.uuid4().hex[:6]}"
+        field.fill(text)
+        field.press("Enter")
+        sent = page.locator(".project-convo__message").filter(has_text=text).last
+        expect(sent.locator(".photo-grid__tile img")).to_have_count(1, timeout=15000)
+        other = self.page("jonas")
+        mine = other.locator(".project-convo__message").filter(has_text=text).last
+        expect(mine.locator(".photo-grid__tile img")).to_have_count(1, timeout=15000)
 
     def test_upload_progress_shows_a_percentage_until_sending(self) -> None:
         """#348 AC-3: a photo and a file sent while they upload show their real percentage, then "Sending" (WebKit too)."""
