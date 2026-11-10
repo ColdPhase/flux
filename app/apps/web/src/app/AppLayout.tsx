@@ -8,7 +8,7 @@ import { Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMedi
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
-import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage } from './DeferredSurfaces';
+import { DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage } from './DeferredSurfaces';
 import { BusyNotice } from './BusyNotice';
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
@@ -27,6 +27,7 @@ import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
 import '../live/live.css';
+import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
@@ -843,7 +844,8 @@ function AppLayoutContent() {
       </div>
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
-      <DeferredCreateHost request={create} onClose={() => setCreate(null)} />
+      {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
+      <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </LiveProvider>
