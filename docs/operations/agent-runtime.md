@@ -412,7 +412,8 @@ A GitHub Release carries the runtime as two more assets next to
   application image of the release; `runtime-install` and `runtime-1` run
   `ghcr.io/coldphase/flux-agent-runtime`, built for the release's platforms (`linux/amd64` for v0.1) from the accepted
   candidate by `final-release.yml` (target `agent-runtime-release` of `docker/Dockerfile`). It holds the
-  supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256),
+  supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256)
+  on the application image's Node (without npm, corepack or yarn, #1179),
   and gpg so that the same digest also runs `runtime-install`. **The one difference from the source
   runtime image** is that gpg: the source Compose keeps building the separate `agent-runtime` image
   without it. Claude Code is never in an image; the workflow fails when `claude` or anything in
