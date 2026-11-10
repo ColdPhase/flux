@@ -31,7 +31,7 @@ services:
     networks:
       internet: { ipv4_address: 203.0.113.53 }
   proxy:
-    image: caddy:2.11.8-alpine
+    image: caddy:2.11.9-alpine
     volumes:
       - ./public-sim/Caddyfile:/etc/caddy/Caddyfile:ro,z
       - ${FLUX_SIM_CERT_DIR:?}:/certs:ro,z
