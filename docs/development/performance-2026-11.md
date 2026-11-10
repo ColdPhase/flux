@@ -22,7 +22,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
-| First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 224 KB, 33 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
+| First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 241 KB, 36 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
 
 **Observed.** The host is a shared 24-core development machine with other jobs running, so wall-clock numbers (p95,
@@ -315,13 +315,15 @@ the live strip. None of those is needed to show Home, and the sign-in pages are 
   the router, so React Router runs them beside the download, never after it.
 - A failed download of the conversation's code is said inside the shell (`ConversationCodeBoundary`); every other error still
   goes on to the locked panel and the page above.
-- The Create window and the live strip are deferred surfaces (`DeferredCreateHost`, `DeferredLiveBar`), like Details and Search.
-  The live strip mounts only while there is a call or an invitation.
-- Their code, and the conversation's, is fetched while the browser is idle after the shell is up, or on the first press,
-  and the service worker precaches it. So a move into a space or a press of + Create finds the code already there.
+- The live strip is a deferred surface (`DeferredLiveBar`), like Details and Search. It mounts only while there is a call or an
+  invitation.
+- Its code, and the conversation's, is fetched while the browser is idle after the shell is up, or on the first press, and the
+  service worker precaches it. So a move into a space or a call finds the code already there.
+- The Create window stays in the first screen. Deferred, it opened a moment after the first click on a freshly loaded page, and
+  + Create is the one action of every view.
 
-**Observed after** (the same `perf-bundle.mjs` count, built from the branch): 33 files (28 JS, 5 CSS), 771 KB raw,
-**224 KB** brotli. The entry chunk is 102 KB. The precache holds 145 files.
+**Observed after** (the same count, built from the branch on `main` at `229b32483`): 36 files and **241 KB** brotli, and 224 KB
+with the Create window deferred too. The entry chunk is 112 KB.
 
 **Not changed.** The conversation is still the first screen of a space; on a cold deep link its code comes beside its reads.
 
