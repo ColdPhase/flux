@@ -320,11 +320,12 @@ class SketchJourney(unittest.TestCase):
           node.dispatchEvent(new PointerEvent('pointermove', { ...at, buttons: 1 }));
           node.dispatchEvent(new PointerEvent('pointerup', { ...at, button: 0, buttons: 0 }));
         }""", [sensor_id, x + 120, y + 80])
-        page.mouse.up()
         expect(page.locator(".sk-status")).to_contain_text("Moved “ToF distance sensor")
         self.saved(page)
         moved = {t["id"]: (t["x"], t["y"]) for t in self.stored(page)["thoughts"]}[sensor_id]
         self.assertEqual(moved, (start[0] + 120, start[1] + 80), "the release point, not the movement before it")
+        # The real button comes up only now: its click selects the thought, and the status line then says so.
+        page.mouse.up()
         # Put it back for the tests after this one.
         page.keyboard.press("Control+z")
         expect(page.locator(".sk-status")).to_contain_text("Undid")
