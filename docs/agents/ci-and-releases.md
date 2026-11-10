@@ -155,6 +155,10 @@ superseded runs, read-only tokens, and the scanner in a container pinned by dige
 same image scan on its throwaway registry, so the release workflow's gate can be tried locally. The Node image and
 pnpm version of the audit are read from `docker/Dockerfile`; Trivy is pinned in the script. Findings without a fixed
 version are listed and do not fail an image scan; an advisory without a fix still needs an allowlist entry for the audit.
+Both release images run on one Node base without npm, corepack or yarn (the `node-slim` stage), so the scan sees the
+Alpine packages, Node and the application's own production dependencies. That base is pinned by digest alone, which
+Dependabot cannot follow (in #1086 it offered the Debian `node:26` image). It is bumped by hand, to the digest of the
+current `node:24-alpine` index in every `FROM node@sha256:` line, with the tag named in the comment above them (#1179).
 
 The scans fail closed. A report that is empty, not JSON, not the scanner's report (`{}`, an error document) or lists no
 scanned target (`Results` empty for an image, no dependencies counted for the audit) is an error, never "clean", and a
