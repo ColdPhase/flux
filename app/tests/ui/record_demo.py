@@ -1,50 +1,49 @@
-"""Records the README demo GIF from the running application (#121, AC-5).
+"""Records the README demo GIF and the README stills from the running application (v0.2).
 
-Not a test: scripts/record_demo.sh seeds the `./flux demo` data (scripts/flux-demo.mjs), then
-runs this file in the pinned Playwright container. Ada Kowalska walks the core journey in one
-real browser: the return view with Jonas's new reply, the project conversation, the sketch, a task and
-a decision made from messages. Every frame is a Playwright screenshot of the real app; only a pointer is drawn
-on top so the viewer can follow the clicks. The frames become one looping GIF with Pillow.
+Not a test: scripts/record_demo.sh seeds the `./flux demo` data (scripts/flux-demo.mjs), then runs this file in the pinned
+Playwright container, against the TEST-ONLY provider mock (nothing here calls a model). It first makes the scene the media show
+(media_scene.py: the company, Ada's agents, a day of conversation, tasks, decisions, the Map and the Wiki), then Ada Kowalska walks the
+v0.2 journey in one real browser: what waits for her on Home, the question that opens the space's conversation, `/ai` asked there and the
+answer shared with Show everyone ("via Assistant"), a task made from that message, the Tasks board, the Map and the Wiki. Every frame is a
+Playwright screenshot of the real app; only a pointer is drawn on top so the viewer can follow the clicks. The frames become one looping GIF
+with Pillow.
 
-After the journey it also takes the two stills at the top of the README, each in the light and the dark theme, as
-lossless WebP (conversation-desktop.webp, conversation-desktop-dark.webp, home-phone.webp and home-phone-dark.webp): the
-decision the journey made beside the conversation on a computer, and Home on a phone, with Jonas's question waiting
-for Ada.
+After the journey it also takes the two stills at the top of the README, each in the light and the dark theme, as lossless WebP
+(conversation-desktop.webp, conversation-desktop-dark.webp, conversation-phone.webp and conversation-phone-dark.webp): the space's conversation with
+Ada's private Assistant answer and the accepted decision open beside it on a computer, and the same conversation on a phone.
 
-Input (environment): FLUX_UI_ORIGIN, FLUX_UI_UPSTREAM, FLUX_DEMO_OWNER_PASSWORD,
-FLUX_DEMO_PARTNER_PASSWORD and FLUX_UI_SCREENSHOTS (the output directory, mounted from the host).
+Input (environment): FLUX_UI_ORIGIN, FLUX_UI_UPSTREAM, FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD, FLUX_FIXTURE_TOKEN,
+FLUX_ANTHROPIC_MOCK_URL and FLUX_UI_SCREENSHOTS (the output directory, mounted from the host).
 """
 
 from __future__ import annotations
 
 import io
-import os
 import re
-import socket
-import ssl
-import subprocess
 import sys
-import tempfile
-import threading
-import urllib.parse
 import uuid
 from pathlib import Path
 
 from PIL import Image, ImageChops
-from playwright.sync_api import APIRequestContext, Locator, Page, expect, sync_playwright
+from playwright.sync_api import APIRequestContext, Browser, Locator, Page, expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
+import media_scene
+from media_common import EMAIL, PARTNER, PASSWORD, SHOTS, call, mock, project_id, sign_in, start_recording_forwarder
+from test_app_shell import ORIGIN
 
 VIEWPORT = {"width": 1280, "height": 800}
-SHOTS = Path(os.environ.get("FLUX_UI_SCREENSHOTS", "/screenshots"))
 OUT = SHOTS / "flux-demo.gif"
-EMAIL = "ada@demo.flux.test"
-PASSWORD = os.environ.get("FLUX_DEMO_OWNER_PASSWORD", "")
-PARTNER = ("jonas@demo.flux.test", os.environ.get("FLUX_DEMO_PARTNER_PASSWORD", ""))
-WORKSPACE = "Riverside Makers (demo)"
-PROJECT = "Community garden sensors"
 NEWS = "Ada, the school can lend us two ESP32 kits. Shall I pick them up on Thursday?"
 CREATE_TASK = re.compile("^Create task$")
+ASK = "What did we settle on for the first sensors, and why?"
+# The mock fills {first} and {message} with the labels of the sources it was sent, which the card shows as numbered citations.
+ANSWER = ("We settled on soil moisture first {first}. Jonas pointed out that the volunteers keep overwatering the raised beds, and that frost is only "
+          "a spring problem {message}. Two more sensors may be borrowed from the school; the far beds still need a LoRa range test.")
+TASK_TITLE = "Test LoRa range at the far beds"
+# The still's second question stays unshared: the card shows what only Ada sees, with its sources and Show everyone.
+ASK_AGAIN = "What is still open for the far beds?"
+ANSWER_AGAIN = ("Three things are open for the far beds {first}. The second antenna is not tried yet, the school has not confirmed the two ESP32 kits "
+                "{message}, and the far east bed still drops to one bar when the hedge is wet.")
 
 # A classic arrow, drawn above the page and ignored by hit testing and assistive technology.
 POINTER = """
@@ -58,71 +57,6 @@ POINTER = """
   document.body.appendChild(el);
 })()
 """
-
-
-def start_recording_forwarder() -> None:
-    """Makes ORIGIN reachable in this container, whatever it is.
-
-    A loopback http origin is the tests' own forwarder. A public-looking https origin (scripts/record_demo.sh
-    uses https://flux.example.com, so invite links and agent commands read like a real install, not
-    127.0.0.1:38910) gets its name added to /etc/hosts and a listener on the origin's port that terminates TLS
-    with a throwaway self-signed certificate and forwards to the API. The recorders then trust that certificate
-    (`ignore_https_errors`). Nothing of this leaves the container."""
-    if not ORIGIN.startswith("https://"):
-        if UPSTREAM:
-            start_forwarder(ORIGIN, UPSTREAM)
-        return
-    parts = urllib.parse.urlsplit(ORIGIN)
-    host, port = parts.hostname or "", parts.port or 443
-    with open("/etc/hosts", "a", encoding="utf-8") as hosts:
-        hosts.write(f"127.0.0.1 {host}\n")
-    folder = tempfile.mkdtemp()
-    key, cert = f"{folder}/key.pem", f"{folder}/cert.pem"
-    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", key, "-out", cert, "-days", "1",
-                    "-subj", f"/CN={host}", "-addext", f"subjectAltName=DNS:{host}"], check=True, capture_output=True)
-    tls = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    tls.load_cert_chain(cert, key)
-    upstream_host, _, upstream_port = UPSTREAM.partition(":")
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server.bind(("127.0.0.1", port))
-    server.listen(128)
-
-    def pipe(source: socket.socket, target: socket.socket) -> None:
-        try:
-            while data := source.recv(65536):
-                target.sendall(data)
-        except OSError:
-            pass
-        finally:
-            for end in (source, target):
-                try:
-                    end.shutdown(socket.SHUT_RDWR)
-                except OSError:
-                    pass
-
-    def handle(raw: socket.socket) -> None:
-        try:
-            client = tls.wrap_socket(raw, server_side=True)
-            remote = socket.create_connection((upstream_host, int(upstream_port or 80)), timeout=10)
-        except OSError:
-            raw.close()
-            return
-        remote.settimeout(None)
-        remote.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        first = threading.Thread(target=pipe, args=(client, remote), daemon=True)
-        first.start()
-        pipe(remote, client)
-        first.join()
-        client.close()
-        remote.close()
-
-    def accept() -> None:
-        while True:
-            raw, _ = server.accept()
-            threading.Thread(target=handle, args=(raw,), daemon=True).start()
-
-    threading.Thread(target=accept, daemon=True).start()
 
 
 class Recorder:
@@ -171,126 +105,117 @@ class Recorder:
             self.snap(70)
 
 
-def sign_in(request: APIRequestContext, email: str, password: str) -> None:
-    response = request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": password}, headers={"origin": ORIGIN})
-    if response.status != 200:
-        sys.exit(f"record_demo: sign-in as {email} answered {response.status}; seed the demo first")
-
-
-def api(request: APIRequestContext, method: str, path: str, body: dict | None = None):
-    response = request.fetch(f"{ORIGIN}{path}", method=method, data=body, headers={"origin": ORIGIN})
-    if response.status not in (200, 201):
-        sys.exit(f"record_demo: {method} {path} answered {response.status}: {response.text()}")
-    return response.json()
-
-
-def project_id(request: APIRequestContext) -> str:
-    workspace = next(ws for ws in api(request, "GET", "/api/v1/workspaces") if ws["name"] == WORKSPACE)
-    return next(item for item in api(request, "GET", f"/api/v1/workspaces/{workspace['id']}/projects")["items"] if item["name"] == PROJECT)["id"]
 
 
 def jonas_replies(request: APIRequestContext) -> None:
-    """Jonas answers in the project conversation while Ada is away, through the public API."""
-    conversation = api(request, "GET", f"/api/v1/projects/{project_id(request)}/conversations")["items"][0]
-    api(request, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {"body": NEWS, "clientMessageId": str(uuid.uuid4())})
+    """Jonas asks in the space's conversation while Ada is away, through the public API."""
+    conversation = call(request, "GET", f"/api/v1/projects/{project_id(request)}/conversations")["items"][0]
+    call(request, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {"body": NEWS, "clientMessageId": str(uuid.uuid4())})
 
 
 def journey(page: Page, rec: Recorder) -> None:
-    # 1. The return view: what changed since Ada left, and one next step.
+    messages = page.locator(".project-convo__message")
+    # 1. Home: what waits for Ada.
     page.goto("/")
-    since = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
-    expect(since).to_be_visible()
+    question = page.get_by_text("Basia Wrona asked you in Rain barrel monitor")
+    expect(question).to_be_visible()
     rec.hold(3000)
 
-    # 2. The project conversation, opened from that change, where Jonas and Ada chose what to measure.
-    messages = page.locator(".project-convo__message")
-    # Jonas asked Ada something, so it is her next step ("Answer Jonas's question"): the whole card opens it.
-    rec.click(since)
-    expect(messages.filter(has_text="Moisture first")).to_be_visible()
-    rec.hold(2600)
+    # 2. The space's conversation, where Basia and Jonas asked.
+    rec.click(page.get_by_role("link", name=re.compile("^Community garden sensors")).first)
+    expect(messages.filter(has_text="volunteer rota").first).to_be_visible()
+    rec.hold(2200)
 
-    # 3. The shared sketch of where the sensors go.
-    tabs = page.get_by_role("navigation", name="Space views")
-    rec.click(tabs.get_by_role("link", name=re.compile("^Map")))
-    rec.hold(900)
-    # With one map in the project the Map tab opens it directly; with several it lists them first.
-    listed = page.get_by_role("link", name=re.compile("^Where the sensors go"))
-    if listed.count():
-        rec.click(listed.first)
-    expect(page.get_by_text("Six sensors for twelve beds").first).to_be_visible()
-    rec.hold(2600)
+    # 3. `/ai` asks Ada's Assistant, which answers only to her; Show everyone posts the answer as hers, "via Assistant".
+    mock("/__script", {"reset": True, "text": ANSWER, "output_tokens": 180})
+    composer = page.locator("#project-composer")
+    rec.type(composer, f"/ai {ASK}")
+    rec.click(page.get_by_role("button", name="Send to your assistant"))
+    expect(page.locator(".assistant-working")).to_be_visible()
+    rec.hold(1400)
+    card = page.locator(".assistant-private").last
+    expect(card).to_be_visible(timeout=60000)
+    rec.hold(3600)
+    rec.click(card.get_by_role("button", name="Show everyone"))
+    shared = messages.filter(has_text="We settled on soil moisture first").last
+    expect(shared).to_be_visible()
+    rec.hold(2000)
 
-    # 4. A task, made from Jonas's message in one action.
-    rec.click(tabs.get_by_role("link", name=re.compile("^Conversation")))
-    order = messages.filter(has_text="Then let us order six")
-    # The replies live in the thread panel; open it again if the tab came back without it.
-    if not order.count():
-        rec.click(page.get_by_role("button", name=re.compile(r"^\d+ replies")).first)
-    expect(order).to_be_visible()
-    order.hover()
-    rec.click(order.get_by_role("button", name=CREATE_TASK))
-    # The one Create window opens with the message as its source (#345). It is not drawn in the GIF: a dimmed
-    # screen costs as many bytes as a whole new view, and the GIF has to stay within its allowlisted size.
+    # 4. A task from that message, in one action. The Create window is not drawn in the GIF: a dimmed screen costs as many bytes as a whole
+    # new view, and the GIF has to stay within its allowlisted size.
+    shared.hover()
+    rec.click(shared.get_by_role("button", name=CREATE_TASK))
     window = page.get_by_role("dialog", name="New task")
     expect(window).to_be_visible()
+    window.get_by_placeholder(re.compile("^What needs doing")).fill(TASK_TITLE)
     window.get_by_role("button", name=re.compile("^Create task")).click()
-    panel = page.locator("#details")
-    expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
+    expect(window).to_have_count(0)
+    expect(shared.get_by_text(TASK_TITLE)).to_be_visible()
     rec.hold(2400)
-    # "Thread" in the panel's head goes back to the messages.
-    rec.click(panel.get_by_role("button", name="Thread"))
+    # The new task opened in the panel beside the conversation: Esc closes it, and the toast leaves before the next view is drawn.
+    page.keyboard.press("Escape")
+    expect(page.locator(".ui-toast")).to_have_count(0, timeout=20000)
 
-    # 5. A decision with its reason, proposed from a message in the one Create window and accepted.
-    moisture = messages.filter(has_text="Moisture first")
-    expect(moisture).to_be_visible()
-    moisture.hover()
-    page.locator("body").press("c")  # the one Create window, on its Decision tab (#867): a message has no Propose a decision
-    rec.click(page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True))
-    window = page.get_by_role("dialog", name="New decision")
-    expect(window).to_be_visible()
-    rec.type(window.get_by_role("textbox", name="Decision", exact=True), "Measure soil moisture first; frost warnings later")
-    rec.type(window.get_by_label("Why", exact=True), "Volunteers overwater the raised beds; frost is a spring problem")
-    rec.click(window.get_by_role("button", name=re.compile("^Propose decision")))
-    # "Decision proposed" waits a few seconds for Undo; the card appears under the message when that window ends.
-    rec.hold(1200)
-    proposal = moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first"))
-    expect(proposal).to_be_visible(timeout=20000)
-    rec.click(proposal)
-    accept = panel.get_by_role("region", name="Your answer").get_by_role("button", name="Accept", exact=True)
-    expect(accept).to_be_visible()
-    rec.hold(900)
-    rec.click(accept)
-    expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
-    rec.hold(1400)
-    # End on the rule where it was decided: under Jonas's message, linked to it.
-    rec.click(panel.get_by_role("button", name="Thread"))
-    rec.point(moisture.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first)
-    rec.hold(3400)
+    # 5. The Tasks board has it, with the others.
+    tabs = page.get_by_role("navigation", name="Space views")
+    rec.click(tabs.get_by_role("link", name=re.compile("^Tasks")))
+    expect(page.get_by_role("button", name=TASK_TITLE, exact=True).first).to_be_visible()
+    rec.hold(2800)
+
+    # 6. The Map: the thoughts the conversation led to.
+    rec.click(tabs.get_by_role("link", name=re.compile("^Map")))
+    listed = page.get_by_role("link", name=re.compile("^Where the sensors go"))
+    rec.hold(700)
+    if listed.count():
+        rec.click(listed.first)
+    expect(page.get_by_text("Gateway on the shed roof").first).to_be_visible()
+    # The last thought made is selected; a click on the empty canvas puts the selection away before the picture is held.
+    page.mouse.click(700, 640)
+    rec.hold(3000)
+
+    # 7. The Wiki, where the space writes down what it knows.
+    rec.click(tabs.get_by_role("link", name=re.compile("^Wiki")))
+    expect(page.get_by_role("heading", level=1).first).to_be_visible()
+    rec.hold(2400)
 
 
-def readme_stills(browser, request: APIRequestContext) -> None:
-    """The stills at the top of the README, after the journey, in the light and the dark theme: the accepted decision
-    beside the conversation on a 1440 px computer, and Home on a 390 px phone, with the question waiting for Ada."""
-    path = f"/projects/{project_id(request)}"
+def ask_again(browser: Browser, project: str) -> None:
+    """Ada asks the Assistant once more in the space and leaves the answer where only she sees it: its card, with Show everyone, is part of the
+    desktop still."""
+    mock("/__script", {"reset": True, "text": ANSWER_AGAIN, "output_tokens": 160})
+    context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block")
+    sign_in(context.request, EMAIL, PASSWORD)
+    page = context.new_page()
+    page.goto(f"/projects/{project}")
+    composer = page.locator("#project-composer")
+    composer.click()
+    composer.fill(f"/ai {ASK_AGAIN}")
+    page.get_by_role("button", name="Send to your assistant").click()
+    expect(page.locator(".assistant-private").last).to_contain_text("Three things are open", timeout=60000)
+    context.close()
+
+
+def readme_stills(browser: Browser, ids: dict) -> None:
+    """The stills at the top of the README, after the journey, in the light and the dark theme: the space's conversation with Ada's private
+    answer from her Assistant, on a 1440 px computer with the accepted decision beside it, and on a 390 px phone."""
+    ask_again(browser, ids["project"])
     for name, options in (
         ("conversation-desktop", {"viewport": {"width": 1440, "height": 900}, "device_scale_factor": 1}),
-        ("home-phone", {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}),
+        ("conversation-phone", {"viewport": {"width": 390, "height": 844}, "device_scale_factor": 3, "is_mobile": True, "has_touch": True}),
     ):
         for scheme in ("light", "dark"):
             context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, color_scheme=scheme, locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block", **options)
             sign_in(context.request, EMAIL, PASSWORD)
             page = context.new_page()
+            page.goto(f"/projects/{ids['project']}")
+            expect(page.locator(".assistant-private").last).to_contain_text("Three things are open")
             if name == "conversation-desktop":
-                page.goto(path)
-                # The thread opens beside the conversation; its decision opens in the same panel.
-                page.get_by_role("button", name=re.compile(r"^\d+ replies")).first.click()
-                page.get_by_role("button", name=re.compile("^Decision: Measure soil moisture first")).first.click()
-                expect(page.locator("#details .wd-eyebrow")).to_contain_text("Decision · accepted")
-            else:
-                page.goto("/")
-                expect(page.get_by_text("asked you in Community garden sensors")).to_be_visible()
+                page.get_by_role("button", name=re.compile("^Open decision Measure soil moisture first")).first.click()
+                expect(page.locator("#details")).to_contain_text("Measure soil moisture first")
+                # The pointer rests in the panel's empty part, so no message shows its hover actions.
+                page.mouse.move(1210, 780)
             page.evaluate("document.fonts.ready.then(() => true)")
-            page.wait_for_timeout(800)
+            page.wait_for_timeout(1000)
             image = Image.open(io.BytesIO(page.screenshot(type="png"))).convert("RGB")
             # Lossless WebP is less than half the size of the PNG for these flat greys, and keeps the text crisp.
             image.save(SHOTS / f"{name}{'-dark' if scheme == 'dark' else ''}.webp", "WEBP", lossless=True, quality=100, method=6)
@@ -318,9 +243,10 @@ def drop_transition_frames(images: list[Image.Image], durations: list[int]) -> t
 
 # The README's demo GIF may not exceed this (scripts/docs-size-allowlist.txt, checked by scripts/check_agent_setup.py).
 GIF_LIMIT = 476206
-# Prostota's text ink, card white and page grey (docs/design/final/README.md §2, light theme). They are kept in the
-# palette whatever the median cut does, so the text stays black and the cards white in a palette this small.
-ANCHORS = ((24, 24, 27), (255, 255, 255), (244, 244, 245))
+# Prostota's text ink, card white, page grey and side grey (docs/design/final/README.md §2, light theme), and two mid greys for the Map's minimap
+# and hairlines. They are kept in the palette whatever the median cut does, so the text stays black, the cards white and every grey neutral in a
+# palette this small (without the mid greys the median cut turned the minimap brown).
+ANCHORS = ((24, 24, 27), (255, 255, 255), (244, 244, 245), (235, 235, 237), (128, 128, 130), (190, 190, 192))
 
 
 def write_gif(frames: list[tuple[bytes, int]], path: Path) -> None:
@@ -350,24 +276,16 @@ def main() -> None:
     if not PASSWORD or not PARTNER[1]:
         sys.exit("record_demo: FLUX_DEMO_OWNER_PASSWORD and FLUX_DEMO_PARTNER_PASSWORD are required")
     start_recording_forwarder()
-    expect.set_options(timeout=8000)
+    expect.set_options(timeout=10000)
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
-        context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw")
+        context = browser.new_context(base_url=ORIGIN, ignore_https_errors=True, viewport=VIEWPORT, device_scale_factor=1, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block")
         page = context.new_page()
         sign_in(page.request, EMAIL, PASSWORD)
-        # Ada's first visit sets where she left off; Jonas replies after it, so Home has news for her.
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(1500)
-        partner = browser.new_context(base_url=ORIGIN, ignore_https_errors=True)
-        sign_in(partner.request, *PARTNER)
-        jonas_replies(partner.request)
-        partner.close()
+        ids = media_scene.build(browser, context)
         rec = Recorder(page)
         journey(page, rec)
-        readme_stills(browser, page.request)
+        readme_stills(browser, ids)
         browser.close()
     write_gif(rec.frames, OUT)
     seconds = sum(ms for _, ms in rec.frames) / 1000

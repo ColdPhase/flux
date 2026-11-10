@@ -1,13 +1,19 @@
 #!/bin/sh
 # Records the README demo GIF (#121, AC-5) from the real application, in Docker only.
 # Starts the Compose app on its own project and loopback port, seeds the `./flux demo` data
-# through the public API (scripts/flux-demo.mjs), then walks the core journey in the pinned
-# Playwright container (app/tests/ui/record_demo.py). Writes docs/assets/demo/flux-demo.gif,
-# or the path given as the first argument. A second argument names a directory that also receives
-# the README stills, light and dark (conversation-desktop.webp, home-phone.webp and their -dark
-# twins), e.g. docs/assets/readme. A third argument names a directory that also receives the
-# product screens of the documentation and the README highlights (app/tests/ui/record_docs_media.py,
-# #780), e.g. docs/assets/screens.
+# through the public API (scripts/flux-demo.mjs), makes the scene the media show (a company, Ada's
+# agents, a day of conversation, tasks, decisions, the Map, the Wiki: app/tests/ui/media_scene.py), then
+# walks the v0.2 journey in the pinned Playwright container (app/tests/ui/record_demo.py). Writes
+# docs/assets/demo/flux-demo.gif, or the path given as the first argument. A second argument names a
+# directory that also receives the README stills, light and dark (conversation-desktop.webp,
+# conversation-phone.webp and their -dark twins), e.g. docs/assets/readme. A third argument names a directory
+# that also receives the product screens of the documentation and the README highlights
+# (app/tests/ui/record_docs_media.py, #780), e.g. docs/assets/screens.
+#
+# Nothing calls a model. The journey asks `/ai` and the worker answers from the TEST-ONLY provider mock
+# (tests/ui/anthropic_mock.py), through the real Anthropic adapter. The screens then come from the same
+# data with the API and worker restarted on the real connection path (no mock), so Settings names Ada's
+# key and not the test connection.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -36,6 +42,17 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_VAPID_PUBLIC_KEY="" FLUX_VAPID_PRIVATE_KEY="" FLUX_VAPID_SUBJECT=""
+# TEST ONLY: the journey's agent answers come from the Compose provider mock, and the media scene registers Ada's Claude Code through the
+# integration fixture. The screens run without these (see below).
+export FLUX_TEST_FAILURE_INJECTION=true
+export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
+export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+export FLUX_AI_PRIVATE_TARGETS=openai-mock
+# The key-custody secret an API key connection needs, throwaway like the rest.
+background_secret_dir=$(mktemp -d)
+head -c 32 /dev/urandom > "$background_secret_dir/background_key"
+chmod 0444 "$background_secret_dir/background_key"
+export FLUX_BACKGROUND_KEY_HOST_FILE="$background_secret_dir/background_key"
 owner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 partner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 shots=$(mktemp -d)
@@ -51,6 +68,7 @@ cleanup() {
   $compose down -v >/dev/null 2>&1 || true
   remove_project_images
   rm -rf "$shots"
+  chmod 0600 "$background_secret_dir/background_key" && unlink "$background_secret_dir/background_key" && rmdir "$background_secret_dir" || true
   exit $status
 }
 trap cleanup EXIT HUP INT TERM
@@ -73,17 +91,24 @@ $compose exec -T -e FLUX_PUBLIC_ORIGIN="$FLUX_PUBLIC_ORIGIN" \
   -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PARTNER_PASSWORD="$partner_password" \
   api node --input-type=module - < scripts/flux-demo.mjs
 # Pillow writes the GIF and the images; it is installed by hash for this run only, not into the test image.
-# The documentation screens come after the journey, so Ada's workspace already has its task and decision.
-recorders="python3 tests/ui/record_demo.py"
-if [ -n "$screens" ]; then recorders="$recorders && python3 tests/ui/record_docs_media.py"; fi
+pillow="pip install --quiet --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r tests/ui/demo-requirements.txt"
+# The scene, the journey and the README stills (record_demo.py), on the provider mock.
 $compose run --rm -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PARTNER_PASSWORD="$partner_password" ui-test sh -c \
-  "pip install --quiet --no-cache-dir --break-system-packages --only-binary=:all: --require-hashes -r tests/ui/demo-requirements.txt && $recorders"
+  "$pillow && python3 tests/ui/record_demo.py"
+if [ -n "$screens" ]; then
+  # The documentation screens come after the journey, so the space already has its task and shared answer. The API and worker restart
+  # without the test switches, with personal runs on: Settings then shows the connection Ada made, not the test one. No run is started.
+  export FLUX_TEST_FAILURE_INJECTION=false FLUX_TEST_PERSONAL_RUNS="" FLUX_TEST_ANTHROPIC_URL="" FLUX_PERSONAL_RUNS=on
+  $compose up -d --wait api worker
+  $compose run --rm -e FLUX_DEMO_OWNER_PASSWORD="$owner_password" -e FLUX_DEMO_PARTNER_PASSWORD="$partner_password" ui-test sh -c \
+    "$pillow && python3 tests/ui/record_docs_media.py"
+fi
 mkdir -p "$(dirname "$out")"
 cp "$shots/flux-demo.gif" "$out"
 echo "Wrote $out ($(wc -c < "$out") bytes)"
 if [ -n "$stills" ]; then
   mkdir -p "$stills"
-  cp "$shots"/conversation-desktop*.webp "$shots"/home-phone*.webp "$stills/"
+  cp "$shots"/conversation-desktop*.webp "$shots"/conversation-phone*.webp "$stills/"
   echo "Wrote the README stills to $stills"
 fi
 if [ -n "$screens" ]; then
