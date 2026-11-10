@@ -1,12 +1,11 @@
-import { Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
-import { useEffect, useState } from 'react';
+import { Outlet, createBrowserRouter, useMatches, useRouteError, useRouteLoaderData, type RouteObject } from 'react-router';
+import { useEffect, useState, type ComponentType } from 'react';
 import { markBooted } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
 import { UpdatePrompt } from './pwa';
 import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
 import { keepPagesOnRefresh, retryKeptPagesWith } from './app/keepPage';
-import { ProjectConversation } from './conversations/ProjectConversation';
 import { projectConversationLoader, shouldRevalidateProjectConversation } from './conversations/loader';
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
@@ -14,7 +13,7 @@ import { Home } from './app/Home';
 import { AiNotForGuests } from './ai/AiNotForGuests';
 import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
-import { docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
+import { authPages, conversationPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -27,7 +26,6 @@ import {
   signUpAction,
   signUpLoader,
 } from './auth/logic';
-import { AuthLayout, ForgotPasswordPage, ResetPasswordPage, SignInPage, SignOutPage, SignUpPage, ClaimPage } from './auth/pages';
 
 // The settings layout and its sections share one download.
 let settings: Promise<typeof import('./app/SettingsHome')> | undefined;
@@ -51,6 +49,30 @@ function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise
     },
   };
 }
+/**
+ * A route whose component's code comes when the route is matched (#1178: the first visit downloads at most 250 KB before content), while its
+ * loader, action and revalidation stay here and run at once, beside that download. Inside the app the code is fetched while the browser is
+ * idle (`DeferredSurfaces`), so a move rarely waits for it. A failed download is said by the nearest error page, as a secondary route's is.
+ */
+function lazyComponent<T>(load: () => Promise<T>, pick: (module: T) => ComponentType) {
+  return {
+    async lazy() {
+      try { return { Component: pick(await load()) }; }
+      catch (cause) {
+        const error = new RouteCodeLoadError(cause);
+        return { Component: () => { throw error; } };
+      }
+    },
+  };
+}
+
+/** The conversation's code that could not be downloaded is said inside the shell (#1178); any other error goes on to the locked panel and the page above. */
+function ConversationCodeBoundary() {
+  const error = useRouteError();
+  if (!(error instanceof RouteCodeLoadError)) throw error;
+  return <RouteErrorPage />;
+}
+
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
 const material = secondary(async () => {
   const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
@@ -89,18 +111,19 @@ export const router = createBrowserRouter([
     ErrorBoundary: RouteErrorPage,
     children: [
       {
-        Component: AuthLayout,
+        // The sign-in pages are not part of a signed-in first visit (#1178): their code comes with the page, beside its loader.
+        ...lazyComponent(authPages, (page) => page.AuthLayout),
         children: [
           // Better Auth sends a signed OAuth continuation here, including forced reauthentication.
-          { path: 'login', loader: loginLoader, action: signInAction, Component: SignInPage },
-          { path: 'sign-in', loader: signInLoader, action: signInAction, Component: SignInPage },
-          { path: 'sign-up', loader: signUpLoader, action: signUpAction, Component: SignUpPage },
-          { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
-          { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },
-          { path: 'claim', Component: ClaimPage },
+          { path: 'login', loader: loginLoader, action: signInAction, ...lazyComponent(authPages, (page) => page.SignInPage) },
+          { path: 'sign-in', loader: signInLoader, action: signInAction, ...lazyComponent(authPages, (page) => page.SignInPage) },
+          { path: 'sign-up', loader: signUpLoader, action: signUpAction, ...lazyComponent(authPages, (page) => page.SignUpPage) },
+          { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, ...lazyComponent(authPages, (page) => page.ForgotPasswordPage) },
+          { path: 'reset-password', action: resetPasswordAction, ...lazyComponent(authPages, (page) => page.ResetPasswordPage) },
+          { path: 'claim', ...lazyComponent(authPages, (page) => page.ClaimPage) },
           // An invite link (F-035): `/join#<token>`, signed in or not.
           { path: 'join', ...secondary(async () => ({ Component: (await import('./auth/JoinPage')).JoinPage })) },
-          { path: 'sign-out', loader: signOutLoader, action: signOutAction, Component: SignOutPage },
+          { path: 'sign-out', loader: signOutLoader, action: signOutAction, ...lazyComponent(authPages, (page) => page.SignOutPage) },
           { path: 'connect-agent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionPage, loader: page.agentConnectionEntryLoader }; }) },
           { path: 'consent', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConsentPage, loader: page.agentConsentLoader }; }) },
           // Linked from notification email (#116); works without signing in.
@@ -128,8 +151,10 @@ export const router = createBrowserRouter([
             path: 'projects/:projectId',
             loader: projectShellLoader,
             children: [
-              // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it.
-              { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, Component: ProjectConversation,
+              // One conversation (UI116-1): the stream stays mounted while a root's thread opens beside it. Its code is not part of the first
+              // visit (#1178): it comes beside the conversation's reads, and inside the app while the browser is idle.
+              { loader: projectConversationLoader, shouldRevalidate: shouldRevalidateProjectConversation, ErrorBoundary: ConversationCodeBoundary,
+                ...lazyComponent(conversationPage, (page) => page.ProjectConversation),
                 children: [{ index: true }, { path: 'conversations/:conversationId' }] },
               // A message by its id alone (CW-2): the loader finds its thread and opens it there.
               { path: 'messages/:messageId', ...secondary(async () => ({ loader: (await import('./conversations/messageRoute')).messageLoader })) },

@@ -10,6 +10,9 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
 }
 
 export const tasksPage = once(() => import('../work/ProjectTasks'));
+/** A space's conversation and the sign-in pages (#1178): out of the first visit's code, fetched when matched or, inside the app, when idle. */
+export const conversationPage = once(() => import('../conversations/ProjectConversation'));
+export const authPages = once(() => import('../auth/pages'));
 export const mapPage = once(() => import('../project/ProjectViews'));
 export const wikiPage = once(() => import('../docs/Wiki'));
 export const docViewsPage = once(() => import('../docs/DocViews'));
