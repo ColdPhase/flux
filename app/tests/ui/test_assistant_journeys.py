@@ -104,6 +104,19 @@ class AssistantJourneys(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page.locator(".assistant-working__error")).to_have_text("Offline")
 
+    def assert_compact_chips(self, page, chips, phone: bool) -> None:
+        """#1224: the suggestions are compact and on one row; on touch each is still a 44 px target; the page never scrolls sideways."""
+        boxes = [button.bounding_box() for button in chips.get_by_role("button").all()]
+        self.assertEqual(len(boxes), 3)
+        self.assertEqual(len({round(box["y"]) for box in boxes}), 1, "one row")
+        self.assertTrue(all(box["height"] <= (34 if phone else 30) for box in boxes), boxes)
+        self.assertEqual(chips.get_by_role("button", name="Tidy this space's tasks").count(), 1)
+        if phone:
+            hit = chips.get_by_role("button").first.evaluate("""(el) => { const r = el.getBoundingClientRect(), b = getComputedStyle(el, '::before');
+              return r.height - parseFloat(b.top) - parseFloat(b.bottom); }""")
+            self.assertGreaterEqual(hit, 44, "the touch target reaches 44 px")
+        self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0)
+
     def test_06_a_request_sent_offline_waits_and_goes_out_once_when_back(self) -> None:
         page = self.page(phone=True)
         self.stub_assistant(page)
@@ -112,6 +125,7 @@ class AssistantJourneys(unittest.TestCase):
         page.goto(self.thread_url())
         chips = page.get_by_role("group", name="Suggestions for your assistant")
         expect(chips).to_be_visible()
+        self.assert_compact_chips(page, chips, phone=True)
         page.context.set_offline(True)
         chips.get_by_role("button", name="Catch me up").click()
         expect(page.get_by_text("Sends when you're back")).to_be_visible()
@@ -147,6 +161,7 @@ class AssistantJourneys(unittest.TestCase):
         page.goto(self.thread_url())
         chips = page.get_by_role("group", name="Suggestions for your assistant")
         expect(chips).to_be_visible()
+        self.assert_compact_chips(page, chips, phone=False)
         page.context.set_offline(True)
         chips.get_by_role("button", name="Catch me up").click()
         chips.get_by_role("button", name="Turn this thread into tasks").click()
