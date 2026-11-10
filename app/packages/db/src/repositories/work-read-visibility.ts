@@ -2,6 +2,7 @@ import { sql, type SQL } from 'drizzle-orm';
 import type { WorkObjectType, WorkReadRef } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
 import { openField, sealOf } from '../sealing.js';
+import { executePrepared } from '../prepared.js';
 
 /** Native structural scope, matching workRows.targetExists. Central project.read is
  * required by the caller first; private/DM sketches are never project-work endpoints.
@@ -40,8 +41,10 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
         UNION ALL SELECT 'message:' || m.id::text || ':' || m.conversation_id::text AS fact FROM project_messages m
           WHERE m.project_id = ${projectId}::uuid AND m.conversation_id = ${sources.conversationId}::uuid`
         : sql`SELECT 'message:' || m.id::text || ':' || m.conversation_id::text AS fact FROM project_messages m
-          WHERE m.project_id = ${projectId}::uuid AND m.id IN (${sql.join(sources.messageIds.map((id) => sql`${id}::uuid`), sql`, `)})`;
-      const result = await db.execute<{ fingerprint: string }>(sql`WITH link_facts AS (SELECT
+          WHERE m.project_id = ${projectId}::uuid AND m.id = ANY(${sql.param(sources.messageIds)}::uuid[])`;
+      // Prepared (#1178): it plans in about 1.5 ms and runs in a few hundredths, twice in every work read; its text has one shape per kind of
+      // source, so a connection plans each shape a few times and then reuses the plan.
+      const result = await executePrepared<{ fingerprint: string }>(db, sql`WITH link_facts AS (SELECT
         'link:' || e.id::text || ':' || e.from_type || ':' || e.from_id::text || ':' || e.to_type || ':' || e.to_id::text || ':' || coalesce(e.to_version::text, '') || ':' || e.role || ':' ||
         (${nativeWorkEndpointVisible(projectId, sql`e.from_type`, sql`e.from_id`)})::text || ':' ||
         (${nativeWorkEndpointVisible(projectId, sql`e.to_type`, sql`e.to_id`, sql`e.to_version`)})::text AS fact
@@ -58,8 +61,10 @@ export function nativeWorkVisibilityRows(db: DbExecutor) {
       if (objects.length > 100) throw new Error('Native relation count batch exceeds the bound');
       if (!objects.length) return [];
       const expectedCount = objects.length;
-      const refs = objects.map((object) => sql`(${object.kind}::text, ${object.id}::uuid)`);
-      const result = await db.execute<NativeWorkRelationFacts>(sql`WITH refs(kind, id) AS (VALUES ${sql.join(refs, sql`, `)}), visible AS (${nativeVisibleWorkEdges(projectId)})
+      // Prepared, with the objects as two array parameters so the text has one shape (#1178): it plans in over a millisecond.
+      const result = await executePrepared<NativeWorkRelationFacts>(db, sql`WITH refs(kind, id) AS (
+          SELECT * FROM unnest(${sql.param(objects.map((object) => object.kind))}::text[], ${sql.param(objects.map((object) => object.id))}::uuid[])),
+        visible AS (${nativeVisibleWorkEdges(projectId)})
         SELECT g.kind, g.id, count(DISTINCT e.id)::int AS edges,
           count(DISTINCT e.to_id) FILTER (WHERE e.from_type = g.kind AND e.from_id = g.id AND e.role = 'source' AND e.to_type = 'message')::int AS "sourceMessages",
           count(DISTINCT (e.to_id, e.to_version)) FILTER (WHERE e.from_type = g.kind AND e.from_id = g.id AND e.role = 'source' AND e.to_type = 'material')::int AS "sourceMaterials",
