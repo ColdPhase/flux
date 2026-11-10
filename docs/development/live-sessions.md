@@ -66,6 +66,17 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   project and anchor before returning it. The response contains opaque session
   and context identifiers but no room name or source text; an SFU failure makes
   participant presence unknown.
+- `project.live_changed.v1` (#1175) tells a space's open tabs to read that list
+  again: it is committed when a session starts, when a signed SFU webhook says
+  someone joined or left (`participant_joined`, `participant_left`,
+  `participant_connection_aborted`, after the reconciliation it prompts) and
+  when a session ends. It names the space only (`{ sessionId }` in its data,
+  never sent to a browser), and only the people who can read the space get it,
+  no agent. The header's Join, its "live now" dot on More and More's Join row
+  read on it, on a stream resync and on a move; they look on a 12-second timer
+  only while the live stream is down. A lost webhook leaves the people shown in
+  a call as they were until the next of these reads; the periodic sweep keeps
+  the lifecycle and announces nothing.
 - The `GET /api/v1/live-sessions/capabilities` response says `configured` when
   the required media variables are present. This does not certify reachability,
   DNS/TLS, ICE, relay fallback or receiver quality.

@@ -291,7 +291,8 @@ test('an event forgets only the kept answers it can change: a message none, a pa
   forgetKeptFor(event('project.work_updated.v1'));
   forgetKeptFor(event('project.messages_observed.v1'));
   forgetKeptFor(event('dm.message_sent.v1', 'dm', randomId()));
-  assert.deepEqual(await asked(), [], 'a message, a task, a sight of a message or a direct message changes nothing kept');
+  forgetKeptFor(event('project.live_changed.v1'));
+  assert.deepEqual(await asked(), [], 'a message, a task, a sight of a message, a direct message or a call changes nothing kept');
   forgetKeptFor(event('project.doc_updated.v1'));
   assert.deepEqual(await asked(), [`/api/v1/projects/${P}/docs?limit=100&offset=0`], 'a page of the space: its pages');
   forgetKeptFor(event('assistant_run.changed.v1', 'assistant_run', randomId()));

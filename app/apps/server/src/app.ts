@@ -254,7 +254,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (lifecycle) {
     const mediaConfig = liveMedia!.config;
     await app.register(liveWebhookRoutes, { pool, apiKey: mediaConfig.apiKey, apiSecret: mediaConfig.apiSecret,
-      requestReconcile: (sessionId, generation) => lifecycle.reconcile(sessionId, generation).then(() => undefined),
+      requestReconcile: (sessionId, generation, presence) => lifecycle.reconcile(sessionId, generation, { announce: presence }).then(() => undefined),
       reconcileAdmissions: (roomId) => liveSignaling!.revocation.reconcileRoom(roomId) });
     const pruneWebhooks = async () => {
       try {

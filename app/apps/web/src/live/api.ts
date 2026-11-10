@@ -45,8 +45,9 @@ export const presentInSession = (id: string, ref: LivePresentationRef, clientEve
 export const listPresentations = (id: string, after: string | null, signal?: AbortSignal) =>
   request<LivePresentationPage>(`${livePresentationsPath(id)}?limit=50${after ? `&after=${after}` : ''}`, { signal });
 
+// Shared: the header's Call, its cue and More's row read one space's calls together on the same event (#1175).
 export const discoverSessions = (projectId: string, signal?: AbortSignal) =>
-  request<{ items: LiveSession[]; nextBefore: string | null }>(`${projectLiveSessionsPath(projectId)}?limit=20`, { signal });
+  request<{ items: LiveSession[]; nextBefore: string | null }>(`${projectLiveSessionsPath(projectId)}?limit=20`, { signal, share: true });
 
 export const inviteToSession = (id: string, recipientId: string) =>
   request<LiveInvitationRow>(liveInvitePath(id), { method: 'POST', body: { recipientId } });

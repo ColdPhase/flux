@@ -227,8 +227,10 @@ conversation's reads together.
   that the next event or focus asks. The error screen stays for a first load, another page, and answers that say the data is
   gone or closed (401, 403, 404, 423, other 4xx, a redirect to sign in). Sign-out, and a read that finds no session, forget
   what was kept.
-- **Live calls.** A call starting still sends no event, so the "live now" cue (only with LiveKit configured) looks every
-  30 s while the stream is open, every 12 s otherwise.
+- **Live calls ([#1175](https://github.com/ColdPhase/flux/issues/1175)).** A call starting, someone joining or leaving
+  it (the SFU's webhook) and its end send `project.live_changed.v1` to the space's people, and Join, the "live now" dot
+  and More's Join row read on it. The 30 s look while the stream was open is gone (it showed someone else's call up to
+  about 40 s late, and `check_live_ui.sh` waits 15 s); the 12 s look stays only while the stream is down.
 
 **Observed.** `test_navigation_requests` test_03 counts the API requests of an untouched tab over 60 s (Chromium, the same
 scene, 2026-11-09):

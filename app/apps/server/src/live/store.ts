@@ -14,6 +14,7 @@ import {
 } from '@flux/core';
 import type { LiveContextRef, LivePresentation, LivePresentationRef } from '@flux/contracts';
 import { requireLiveContext, requireLivePresentationSource } from './access.js';
+import { recordLiveChanged } from './events.js';
 
 type SessionRow = typeof schema.liveSessions.$inferSelect;
 const MAX_PROJECT_SESSIONS = 8;
@@ -133,6 +134,8 @@ export function liveSessionStore(db: Database): LiveRepository {
         if (inserted) {
           await ensureRoom(inserted.roomId);
           await taskFence.mark();
+          // The space's open tabs show Join at once (#1175). Last: the event's insert holds the sequence lock to commit.
+          await recordLiveChanged(tx, { workspaceId: inserted.workspaceId, projectId, sessionId: inserted.id, actor: principal });
           return record(inserted);
         }
         const [existing] = await tx.select().from(sessions).where(and(

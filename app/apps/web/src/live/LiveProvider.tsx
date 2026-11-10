@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import type { LivePresentation, LiveSession, ProjectPerson } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { streamLive } from '../api/stream';
+import { streamLive, useStreamEvents } from '../api/stream';
 import { useToast } from '../ui';
 import { listProjectPeople } from '../project/data';
 import { anchorLabel, anchorPath, sameContext, resolveFragment, type LiveAnchor, type Presentable, type ResolvedFragment } from './anchors';
@@ -499,21 +499,27 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
  */
 const sessionsSeen = new Map<string, LiveSession[]>();
 
+/** The server's `project.live_changed.v1` (apps/server/src/live/events.ts): a call of the space started, changed its people or ended. */
+export const LIVE_CHANGED_EVENT = 'project.live_changed.v1';
+
 export function useProjectSessions(projectId: string | undefined, enabled: boolean): { items: LiveSession[]; refresh(): void } {
   const { phase, meId } = useLive();
   const key = projectId ? `${meId}:${projectId}` : null;
   const [loaded, setLoaded] = useState<{ key: string; items: LiveSession[] } | null>(null);
   const [tick, setTick] = useState(0);
+  // A call of the space starting, someone joining or leaving it and its end come over the live stream (`project.live_changed.v1`, #1175):
+  // read again then, and when the stream may have missed something. No timer while the stream is open (#862).
+  useStreamEvents(meId, (event) => {
+    if (enabled && event.kind === LIVE_CHANGED_EVENT && event.objectId === projectId) setTick((n) => n + 1);
+  }, () => { if (enabled) setTick((n) => n + 1); });
   useEffect(() => {
     if (!projectId || !key || !enabled) return;
     const controller = new AbortController();
-    let last = 0;
-    const load = () => { last = Date.now(); return discoverSessions(projectId, controller.signal).then((page) => { sessionsSeen.set(key, page.items); setLoaded({ key, items: page.items }); }, () => undefined); };
+    const load = () => discoverSessions(projectId, controller.signal).then((page) => { sessionsSeen.set(key, page.items); setLoaded({ key, items: page.items }); }, () => undefined);
     void load();
-    // A call starting sends no event, so this looks every 12 s; every 30 s while the live stream is open (#862: an open tab asks at most a
-    // few times a minute), where an invitation to a call arrives as an event anyway.
+    // Only while the live stream is down, when nothing tells this tab of a call: a look every 12 s.
     const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible' && (!streamLive() || Date.now() - last >= 30_000)) void load();
+      if (document.visibilityState === 'visible' && !streamLive()) void load();
     }, 12_000);
     return () => { controller.abort(); window.clearInterval(timer); };
   }, [projectId, key, enabled, tick, phase]);

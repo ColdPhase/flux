@@ -36,11 +36,13 @@ test('signed webhook is bounded, current-generation-only, and replay-safe; recon
     { type: 'conversation', id: context.id }, randomUUID(), async () => {});
 
   const calls: { id: string; generation: number }[] = [];
+  const presence: boolean[] = [];
   let failOnce = false;
   const app = Fastify({ logger: false });
   await app.register(liveWebhookRoutes, { pool, apiKey: key, apiSecret: secret,
-    requestReconcile: async (id, generation) => {
+    requestReconcile: async (id, generation, joinedOrLeft) => {
       calls.push({ id, generation });
+      presence.push(joinedOrLeft);
       if (failOnce) { failOnce = false; throw new Error('SFU temporarily unreachable'); }
     },
   });
@@ -83,8 +85,12 @@ test('signed webhook is bounded, current-generation-only, and replay-safe; recon
     const current = JSON.stringify({ id: randomUUID(), event: 'participant_joined', room: { name: nextRoom } });
     assert.equal((await post(app, current, signed(current))).statusCode, 204);
     assert.deepEqual(calls.at(-1), { id: session.id, generation: 2 });
+    // Someone joining or leaving asks the reconciler to tell the space's open tabs (#1175); a room event does not.
+    const started = JSON.stringify({ id: randomUUID(), event: 'room_started', room: { name: nextRoom } });
+    assert.equal((await post(app, started, signed(started))).statusCode, 204);
+    assert.deepEqual(presence, [true, true, true, true, false]);
     const unknown = JSON.stringify({ id: randomUUID(), event: 'room_finished', room: { name: `live_${randomUUID().replaceAll('-', '')}` } });
     assert.equal((await post(app, unknown, signed(unknown))).statusCode, 204);
-    assert.equal(calls.length, 4);
+    assert.equal(calls.length, 5);
   } finally { await app.close(); }
 });

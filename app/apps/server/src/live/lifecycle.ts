@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
 import { holdingSessionLock, schema, type Database } from '@flux/db';
 import type { LiveMedia } from '@flux/core';
+import { recordLiveChanged } from './events.js';
 
 const NEVER_JOINED_GRACE_MS = 300_000;
 const DEPARTED_GRACE_MS = 90_000;
@@ -45,11 +46,18 @@ export function liveLifecycle(db: Database, pool: Pool,
         return;
       await tx.update(sessions).set({ state: 'ended', endedAt: now(), updatedAt: now() })
         .where(eq(sessions.id, sessionId));
+      // Join leaves the space's open tabs at once (#1175).
+      await recordLiveChanged(tx, { workspaceId: current.workspaceId, projectId: current.projectId, sessionId,
+        actor: { kind: 'human', id: current.createdBy } });
     });
     return 'ended';
   }
 
-  async function reconcile(sessionId: string, expectedGeneration?: number): Promise<LiveReconcileResult> {
+  /**
+   * `announce`: the SFU said someone joined or left (a webhook), so the space's open tabs are told to read who is in the call again
+   * (#1175). The timer's sweep keeps the lifecycle only and announces nothing.
+   */
+  async function reconcile(sessionId: string, expectedGeneration?: number, options: { announce?: boolean } = {}): Promise<LiveReconcileResult> {
     const [located] = await db.select({ workspaceId: sessions.workspaceId }).from(sessions)
       .where(eq(sessions.id, sessionId));
     if (!located) return 'stale';
@@ -77,15 +85,20 @@ export function liveLifecycle(db: Database, pool: Pool,
         catch { return 'unknown'; }
 
         const at = now();
+        // Last in the transaction: the event's insert holds the sequence lock to commit.
+        const announce = () => options.announce ? recordLiveChanged(tx, { workspaceId: row.workspaceId, projectId: row.projectId,
+          sessionId, actor: { kind: 'human', id: row.createdBy } }) : undefined;
         if (occupied > 0) {
           await tx.update(sessions).set({ connectedOnce: true, emptySince: null, updatedAt: at })
             .where(eq(sessions.id, sessionId));
+          await announce();
           return 'occupied';
         }
         const emptySince = row.emptySince ?? at;
         const grace = row.connectedOnce ? DEPARTED_GRACE_MS : NEVER_JOINED_GRACE_MS;
         if (at.getTime() - emptySince.getTime() < grace) {
           await tx.update(sessions).set({ emptySince, updatedAt: at }).where(eq(sessions.id, sessionId));
+          await announce();
           return 'empty';
         }
         // This commit is the durable admission fence. Never call external
