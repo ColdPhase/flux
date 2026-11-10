@@ -36,6 +36,19 @@ The one-shot `files-archive` service (profile `ops`, the pinned PostgreSQL image
 network, `:z` mount of `files`) exists only for `./flux backup` and `./flux restore`, which
 stream the files volume through it; see [operations](../operations/backup-restore.md).
 
+`:z` is a bind-mount option, so Compose 5 prints `mount of type volume should not define bind
+option` once per service that mounts `files` (#1174). It still takes effect (the container's
+`HostConfig.Binds` holds `files:/data/files:rw,z`), and it is needed: checked 2026-11-10 on
+Fedora 42 (SELinux enforcing, Docker 29.4.2, Compose 5.1.2), without `:z` a fresh `files`
+volume carried another container's categories (`container_file_t:s0:c534,c613` seen from inside a
+`files-archive` container), that container got "Permission denied" on its first `mkdir` in `/data/files`,
+and `./scripts/check_backup.sh` failed there. Why the label lands that way was not traced (the audit log
+needs root). So the option stays, and `./flux`
+runs `docker --log-level error compose` (`compose_main`, `compose_dev`; Compose's own errors still print) so the first `./flux up` of an
+admin prints no warning; `scripts/check_flux_cli.sh` asserts it. An operator who runs the release
+`compose.yaml` with plain `docker compose` still sees the line; it is harmless
+([troubleshooting](../operations/troubleshooting.md)).
+
 ## Local task worktrees
 
 Keep each task or independent review in its own Git worktree under the repository

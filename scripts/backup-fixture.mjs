@@ -286,7 +286,10 @@ async function seed() {
   const expected = await snapshot(ada, jonas, state);
   assert.ok(expected.adaMaps.some(([id]) => id === note.id), 'Ada sees her private map');
   assert.ok(!expected.jonasMaps.includes(note.id), 'Jonas cannot see Ada\'s private map');
-  console.log(`FLUX_FIXTURE ${JSON.stringify({ ...state, cookies: { jonas: jonas.jar(), revoked: revoked.jar() }, expected })}`);
+  // What check_backup.sh expects of the restore: how many agent connections are active as of the backup (the revoked one is not).
+  const activeConnections = expected.connections.filter(([, revokedAt]) => !revokedAt).length;
+  assert.ok(activeConnections > 0 && activeConnections < expected.connections.length, 'some agent connections are revoked and some are active at the backup');
+  console.log(`FLUX_FIXTURE ${JSON.stringify({ ...state, activeConnections, cookies: { jonas: jonas.jar(), revoked: revoked.jar() }, expected })}`);
 }
 
 async function verify() {
@@ -366,8 +369,8 @@ async function agentsRevoked() {
   const ada = await signIn(owner);
   for (const [name, bearer] of Object.entries(state.bearers)) assert.equal(await mcpStatus(bearer), 403, `the ${name} bearer is denied`);
   const connections = await ada.expect('GET', '/api/v1/agent-connections');
-  assert.ok(connections.length === 3 && connections.every((item) => item.revokedAt), 'every agent connection is revoked');
-  console.log('verified --revoke-agent-connections: all three bearers denied, every connection revoked');
+  assert.ok(connections.length === state.expected.connections.length && connections.every((item) => item.revokedAt), 'every agent connection is revoked');
+  console.log(`verified --revoke-agent-connections: every bearer denied, all ${connections.length} connections revoked`);
 }
 
 /** After an upgrade from an older Flux: the demo seeded by that version is intact and readable. */

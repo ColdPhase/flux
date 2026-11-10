@@ -8,7 +8,8 @@ wrote in a state file. `verify` signs in again on a restored or upgraded instanc
 release, and checks that every recorded item is still there (explicit fields and the exact attachment
 bytes, never whole responses, so a field a newer release adds does not matter). `verify --write` also
 proves the instance accepts a new message and reads it back. `encrypted` signs in as the recorded account and
-creates an encrypted workspace, which needs the keyring secrets INSTALL.md names.
+creates an encrypted space of its company (an encrypted space always belongs to one, F-037), which needs the
+keyring secrets INSTALL.md names.
 
 Only routes that exist since the first release are used, because `seed` runs against the PREVIOUS
 release in the upgrade leg of smoke_artifacts.sh.
@@ -217,12 +218,16 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
 def encrypted(client: Client, state_file: Path) -> None:
     state = json.loads(state_file.read_text(encoding="utf-8"))
     client.expect("POST", "/api/auth/sign-in/email", {"email": state["email"], "password": state["password"]}, (200,))
+    company = next((item for item in client.expect("GET", "/api/v1/workspaces") if item.get("company")), None)
+    if company is None:
+        raise RuntimeError("the instance has no company: an encrypted space belongs to one")
     created = client.expect("POST", "/api/v1/encrypted-workspaces", {
         "name": "Release encrypted probe", "creationId": str(uuid.uuid4()), "password": secrets.token_urlsafe(24),
+        "companyId": company["id"],
     }, (201,))
-    if not created.get("recoveryCode") or not created.get("workspace", {}).get("id"):
-        raise RuntimeError("encrypted workspace created without a workspace or recovery code")
-    print("Encrypted workspace created (recovery code returned)")
+    if not created.get("recoveryCode") or not created.get("workspace", {}).get("id") or not (created.get("project") or {}).get("id"):
+        raise RuntimeError("encrypted space created without a workspace, its space or a recovery code")
+    print("Encrypted space of the company created (recovery code returned)")
 
 
 def main() -> None:

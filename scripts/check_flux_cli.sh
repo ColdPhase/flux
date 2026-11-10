@@ -32,6 +32,12 @@ flux4() { FLUX_PORT=$((FLUX_PORT + 6)) FLUX_DEV_PORT=$((FLUX_DEV_PORT + 6)) FLUX
 
 step() { printf '\n== %s\n' "$*"; }
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
+# A command a new admin runs prints no Compose warning (#1174: "mount of type `volume` should not define `bind` option").
+no_compose_warnings() { # command output file
+  if grep -Eq 'level=warning|^WARN\[' "$2"; then
+    fail "$1 printed Compose warnings: $(grep -E 'level=warning|^WARN\[' "$2" | sort | uniq -c | head -n 3)"
+  fi
+}
 
 cleanup() {
   status=$?
@@ -77,8 +83,10 @@ done
 
 step "./flux up on a fresh copy creates .env and starts a healthy stack"
 start=$(date +%s)
-"$copy/flux" up </dev/null   # no terminal: the first-run subscription question is not asked
+"$copy/flux" up </dev/null > "$work/first-up.out" 2>&1 || { cat "$work/first-up.out"; fail "./flux up failed"; }   # no terminal: the first-run subscription question is not asked
+cat "$work/first-up.out"
 echo "up took $(( $(date +%s) - start ))s"
+no_compose_warnings "the first ./flux up" "$work/first-up.out"
 [ -f "$copy/docker/.env" ] || fail ".env not created"
 run=$(sed -n 's/^FLUX_PROJECT=//p' "$copy/docker/.env")
 printf '%s' "$run" | grep -Eqx 'flux-[0-9a-f]{8}' || fail "default project name '$run' is not flux-<path hash>"
@@ -97,7 +105,9 @@ curl -fsS "$base/api/v1/health" | grep -q '"status":"ok"' || fail "health not ok
 
 step "A second ./flux up keeps .env byte for byte"
 before=$(cksum < "$copy/docker/.env")
-second_up=$("$copy/flux" up)
+second_up=$("$copy/flux" up 2> "$work/second-up.err") || { cat "$work/second-up.err" >&2; fail "the second ./flux up failed"; }
+cat "$work/second-up.err" >&2
+no_compose_warnings "the second ./flux up" "$work/second-up.err"
 [ "$(cksum < "$copy/docker/.env")" = "$before" ] || fail ".env changed on the second up"
 [ ! -e "$copy/app/.env" ] || fail "application reference became an executable env"
 # Sign-up is open by default, so ./flux up invites the first account.
@@ -105,7 +115,9 @@ printf '%s\n' "$second_up" | grep -q 'Create an account there' || fail "./flux u
 curl -fsS "$base/api/v1/health" >/dev/null || fail "health after second up"
 
 step "./flux demo seeds through the API and prints working logins"
-out=$(FLUX_DEMO_JSON=1 "$copy/flux" demo)
+out=$(FLUX_DEMO_JSON=1 "$copy/flux" demo 2> "$work/demo.err") || { cat "$work/demo.err" >&2; fail "./flux demo failed"; }
+cat "$work/demo.err" >&2
+no_compose_warnings "./flux demo" "$work/demo.err"
 printf '%s\n' "$out" | grep -v '^FLUX_DEMO_RESULT'
 owner_pw=$(printf '%s\n' "$out" | sed -n 's/.*ada@demo\.flux\.test *\(demo-[0-9a-f]*\).*/\1/p')
 partner_pw=$(printf '%s\n' "$out" | sed -n 's/.*jonas@demo\.flux\.test *\(demo-[0-9a-f]*\).*/\1/p')
@@ -223,6 +235,7 @@ step "./flux up after reset starts empty with the same .env; ./flux clean remove
   cat "$work/up-after-reset.out"
   fail "up after reset failed"
 }
+no_compose_warnings "./flux up after reset" "$work/up-after-reset.out"
 sign_in_code=$(curl -sS -o /dev/null -w '%{http_code}' -H "Origin: $base" -H 'Content-Type: application/json' \
   -d "{\"email\":\"ada@demo.flux.test\",\"password\":\"$owner_pw\"}" "$base/api/auth/sign-in/email")
 [ "$sign_in_code" != 200 ] || fail "demo account survived reset"

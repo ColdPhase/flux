@@ -56,16 +56,20 @@ need_docker() {
 # The image tag follows the project so parallel checkouts and `clean` stay scoped.
 # With the agent runtime off the API and worker join two networks, not four: each network takes one of Docker's
 # address pools, and a shared host runs out of them (#744).
+# `docker --log-level error compose` (the Docker CLI's own flag, which the Compose plugin follows): Compose 5 warns
+# "mount of type `volume` should not define `bind` option" once per service for `files:/data/files:z` (#1174). The option has
+# to stay: without it a Fedora (SELinux enforcing) host denied the backup helper access to the volume the API had used
+# (docs/development/containers.md). Compose's errors still print.
 compose_main() {
   if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
   if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
-  FLUX_IMAGE_TAG="$PROJECT" docker compose --project-directory "$FLUX_ROOT/docker" \
+  FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
-    docker compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
+    docker --log-level error compose --project-directory "$FLUX_ROOT/docker" --env-file "$ENV_FILE" -p "$DEV_PROJECT" \
     -f "$COMPOSE_MAIN" -f "$COMPOSE_DEV" --profile dev "$@"
 }
 

@@ -106,7 +106,10 @@ if [ -n "$platforms" ]; then
   docker buildx inspect --bootstrap "$builder" | grep -E '^(Name|Driver|Platforms|BuildKit version):' || true
   # Each platform runs a step in the builder (the pinned Node base, as the Dockerfile does); no local image or tag changes.
   mkdir "$work/probe"
-  printf 'FROM %s\nRUN node -p "process.platform + \x27/\x27 + process.arch" > /arch\n' "$(sed -n 's/^FROM \(node@sha256:[0-9a-f]*\) AS build$/\1/p' docker/Dockerfile)" > "$work/probe/Dockerfile"
+  # The Dockerfile's one Node base: `FROM node@sha256:<digest> AS toolchain` (the tag is in the comment above the first stage).
+  node_pin=$(sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS toolchain$/\1/p' docker/Dockerfile)
+  [ -n "$node_pin" ] || fail "docker/Dockerfile has no 'FROM node@sha256:<digest> AS toolchain' line to probe the builder with"
+  printf 'FROM %s\nRUN node -p "process.platform + \x27/\x27 + process.arch" > /arch\n' "$node_pin" > "$work/probe/Dockerfile"
   for p in ${platforms//,/ }; do
     docker buildx build --builder "$builder" --platform "$p" --no-cache --progress quiet --output "type=local,dest=$work/probe/$p" "$work/probe" >/dev/null 2>&1 ||
       fail "the builder cannot run $p (install QEMU binfmt, see the header of this script)"
