@@ -305,9 +305,26 @@ class WikiPanesJourney(unittest.TestCase):
         expect(pages.get_by_role("link", name="Bench test log")).to_have_attribute("aria-current", "page")
         expect(pages.get_by_role("link")).to_have_count(4)
 
+    def typed_ahead_is_kept(self, page: Page, title: str, typed: str) -> None:
+        """The new page `title` holds exactly `typed`: in its editor, which has the caret, in its saved version and after a reload."""
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/docs/[0-9a-f-]{{36}}$"))
+        # Space and Enter typed while focus was back on the window's opener did not open the Create window again.
+        expect(page.get_by_role("dialog")).to_have_count(0)
+        text = page.locator(".wiki-page", has=page.get_by_role("heading", level=2, name=title)).locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_be_focused()
+        created = next(item for item in self.docs(page) if item["title"] == title)
+        doc = saved_version(page, created["id"], typed)
+        self.assertEqual(doc["body"], typed, "every character typed at once is saved, once and in order")
+        expect(saved(page)).to_be_visible()
+        page.reload()
+        wait_until_shared(page)
+        expect(text).to_contain_text(typed.splitlines()[-1])
+        self.assertEqual(text_of(text), typed)
+
     def test_04b_text_typed_at_once_after_create_page_is_kept(self) -> None:
-        """#1171: a page made in the Create window opens ready to write. Text typed the moment its editor shows, before its room has
-        opened, is kept: every character is shared and saved, and it is all there after a reload."""
+        """#1171: a page made in the Create window opens ready to write. Text typed straight after Create page is pressed, before the
+        new page or its editor is there (focus is still on the closing window and then its opener) and before its room has opened,
+        is kept: every character is shared and saved, and it is all there after a reload."""
         page = self.page("owner")
         page.goto(self.url("lamp"))
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
@@ -316,24 +333,28 @@ class WikiPanesJourney(unittest.TestCase):
         made = page.get_by_role("dialog", name="New page")
         made.get_by_role("textbox", name="Page title").fill("Soldering notes")
         made.get_by_role("button", name=re.compile("^Create page")).click()
-        # At once: typing starts in the frame the new page's editor is there (checked on every frame), with no wait for its room, its
-        # focus or its state. The page left behind keeps its own editor while the switch is under way, so the new page is named.
-        page.wait_for_function("""(title) => [...document.querySelectorAll('.wiki-page')]
-          .some((frame) => frame.querySelector('h2')?.textContent?.includes(title) && frame.querySelector('.cm-content[aria-label="Page text"]'))""",
-                               arg="Soldering notes", polling="raf")
+        # At once, with no wait for anything and no pause between keys: the window to type into is not there yet.
         typed = "Tin the tip first, then flux the joint and hold the iron for three seconds."
         page.keyboard.type(typed)
-        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/docs/[0-9a-f-]{{36}}$"))
-        text = page.locator(".wiki-page", has=page.get_by_role("heading", level=2, name="Soldering notes")).locator('.cm-content[aria-label="Page text"]')
-        expect(text).to_be_focused()
-        created = next(item for item in self.docs(page) if item["title"] == "Soldering notes")
-        doc = saved_version(page, created["id"], typed)
-        self.assertEqual(doc["body"], typed, "every character typed at once is saved, once")
-        expect(saved(page)).to_be_visible()
-        page.reload()
-        wait_until_shared(page)
-        expect(text).to_contain_text("hold the iron for three seconds")
-        self.assertEqual(text_of(text), typed)
+        self.typed_ahead_is_kept(page, "Soldering notes", typed)
+
+    def test_04c_title_enter_and_straight_on_keeps_every_key(self) -> None:
+        """#1171: the keyboard-only way: type the title, press Enter and keep typing at a person's pace. The first keys land while the
+        page is made and opened; none is lost, a new line and a correction (Backspace) included."""
+        page = self.page("owner")
+        page.goto(self.url("lamp"))
+        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
+        open_create(page)
+        kind_tab(page, "Page").click()
+        field = page.get_by_role("dialog", name="New page").get_by_role("textbox", name="Page title")
+        field.press_sequentially("Flux residue", delay=20)
+        field.press("Enter")
+        page.keyboard.type("Hello", delay=60)
+        page.keyboard.press("Enter")
+        page.keyboard.type("Wipe it with alcohol!", delay=60)
+        page.keyboard.press("Backspace")
+        page.keyboard.type(".", delay=60)
+        self.typed_ahead_is_kept(page, "Flux residue", "Hello\nWipe it with alcohol.")
 
     def choose_file(self, page: Page, name: str, data: bytes, mime: str) -> None:
         with page.expect_file_chooser() as chooser:

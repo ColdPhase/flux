@@ -15,6 +15,7 @@ import type { PageMode } from '../docs/DocViews';
 import { Faces, PageFrame, hereToo, scrollPage, useNow, useReferenceClicks } from '../docs/WikiParts';
 import { RefMark, readReferences } from '../docs/WikiRead';
 import { PageGone, usePageGone } from '../docs/page-gone';
+import { takeHeldTyping } from '../docs/typeAhead';
 import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { RefHosts, headingsOf, livePreview, setRefData, workRefs } from './livePreview';
 import { LocalWiki, needsSavedLook, settleKeptCopy } from './local-wiki';
@@ -329,6 +330,8 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
    * then that goes into the source after whatever the source holds that the page was not read with.
    */
   const early = useRef<{ base: string; changes: ChangeSet | null } | null>(null);
+  /** What was typed after Create page and before this editor was there (`typeAhead`), taken once for the life of the page. */
+  const ahead = useRef<string | null>(null);
   const [earlyTyped, setEarlyTyped] = useState(false);
   const [sourceTick, setSourceTick] = useState(0);
 
@@ -369,7 +372,13 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
       }),
     });
     setView(created);
-    if (opensWriting) { wantsCaret.current = false; created.focus(); }
+    ahead.current ??= writeAtStart ? takeHeldTyping() : '';
+    if (opensWriting) {
+      wantsCaret.current = false; created.focus();
+      // The keys typed before the page was there come first, as typed: the early-typing buffer above keeps them with the rest.
+      const typed = ahead.current, at = created.state.selection.main.head;
+      if (typed) created.dispatch({ changes: { from: at, insert: typed }, selection: { anchor: at + typed.length }, userEvent: 'input.type', scrollIntoView: true });
+    }
     return () => { window.clearTimeout(timer); created.destroy(); };
     // One view for the life of the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps

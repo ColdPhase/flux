@@ -17,6 +17,7 @@ import { searchFlux } from '../search/api';
 import { putThoughtOnMyMap } from '../sketch/myMap';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createDoc, docUrl } from '../docs/api';
+import { holdTyping } from '../docs/typeAhead';
 import { createWork, proposeDecision } from '../work/api';
 import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL } from '../work/format';
@@ -482,6 +483,8 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
   async function submit() {
     if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
+    // What is typed from now on is the new page's first text, kept until its editor is there (#1171).
+    const release = holdTyping();
     setBusy(true); setError('');
     const snapshot = carried.begin();
     // One key per title and space: a retry after a lost answer returns the same page.
@@ -493,6 +496,7 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
       onClose();
       navigate(docUrl(project.id, doc.id), { state: { writeAt: 'start' } });
     } catch (cause) {
+      release();
       setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.' : 'The page was not created. Your title is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
