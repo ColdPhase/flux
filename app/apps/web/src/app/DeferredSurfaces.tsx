@@ -10,7 +10,8 @@ import { useShellData } from './data';
 import { placeOfPath, useRecentPlaces } from '../search/recent';
 import { useAssistantReady } from '../search/useAssistantReady';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
-import { preloadProjectViews } from './viewChunks';
+import { conversationPage, preloadProjectViews } from './viewChunks';
+import type { CreateRequest } from './shellContext';
 
 /**
  * The code of one deferred surface. It is downloaded once, whoever asks first (the preload below or the surface being opened): a
@@ -26,6 +27,9 @@ function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
 type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
 const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
 const search = deferred<{ onClose: () => void; userId: string; assistantReady: boolean }>(async () => (await import('../search/JumpTo')).JumpToBody);
+// The Create window and the live strip are not part of the first visit's code (#1178): they come with the other surfaces.
+const create = deferred<{ request: CreateRequest | null; onClose: () => void }>(async () => (await import('../create/CreateWindow')).CreateHost);
+const liveBar = deferred<Record<string, never>>(async () => (await import('../live/LiveBar')).LiveBar);
 /**
  * A deferred surface's component: put in at once when its code has arrived, else `fallback` until it does. It is not a `Suspense` boundary
  * on purpose: React holds a fallback it has shown for about 300 ms before it reveals what replaces it, so a code download that takes
@@ -61,6 +65,10 @@ function preloadSurfaces() {
   preloaded = true;
   void details.download().catch(() => { preloaded = false; });
   void search.download().catch(() => { preloaded = false; });
+  void create.download().catch(() => { preloaded = false; });
+  void liveBar.download().catch(() => { preloaded = false; });
+  // A space opens on its conversation, so its code is here before the first move into one (#1178).
+  void conversationPage().catch(() => { preloaded = false; });
 }
 function preloadViews() {
   if (viewsPreloaded) return;
@@ -161,6 +169,27 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
       </Overlay>
     </SurfaceBoundary>
   );
+}
+
+/**
+ * The Create window (#1178): its code comes with the other surfaces (idle, or the first press, which is a moment before the click that opens
+ * it). Asked for before that, the window opens as soon as the code is here. Once asked for it stays mounted, so its exit and focus work.
+ */
+export function DeferredCreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
+  const [requested, setRequested] = useState(() => request !== null || create.loaded() !== null);
+  if (request !== null && !requested) setRequested(true);
+  if (!requested) return null;
+  return <SurfaceBoundary label="Create"><Surface of={create} props={{ request, onClose }} fallback={null} /></SurfaceBoundary>;
+}
+
+/** The live strip (#1178): only while there is a call or an invitation to show, with its code then. */
+export function DeferredLiveBar() {
+  const live = useLive();
+  const shown = live.phase !== 'idle' || live.invitation !== null;
+  const [requested, setRequested] = useState(() => shown || liveBar.loaded() !== null);
+  if (shown && !requested) setRequested(true);
+  if (!requested) return null;
+  return <SurfaceBoundary label="Live session"><Surface of={liveBar} props={{}} fallback={null} /></SurfaceBoundary>;
 }
 
 export function DeferredLiveStage() {

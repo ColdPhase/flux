@@ -8,7 +8,7 @@ import { Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMedi
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
-import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
+import { DeferredCreateHost, DeferredDetails, DeferredJumpTo, DeferredLiveBar, DeferredLiveStage } from './DeferredSurfaces';
 import { BusyNotice } from './BusyNotice';
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
@@ -26,9 +26,7 @@ import { SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
-import { LiveBar } from '../live/LiveBar';
 import '../live/live.css';
-import { CreateHost } from '../create/CreateWindow';
 import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
@@ -817,7 +815,7 @@ function AppLayoutContent() {
           </div>
         </header>
         )}
-        <LiveBar />
+        <DeferredLiveBar />
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
           {/* A thread's own panel is its loading state, with its own cancel: a row across the top would lie over the panel's head. */}
@@ -845,7 +843,7 @@ function AppLayoutContent() {
       </div>
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
-      <CreateHost request={create} onClose={() => setCreate(null)} />
+      <DeferredCreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </LiveProvider>
