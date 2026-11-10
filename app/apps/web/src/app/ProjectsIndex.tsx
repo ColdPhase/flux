@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
-import { lockedLine } from '../encryption/state';
+import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import './settings.css';
@@ -17,6 +17,8 @@ export function ProjectsIndex() {
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const phone = useMediaQuery(MEDIA.phone);
+  // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
+  const encryptedIn = useEncryptedWorkspaceIds();
   return (
     <div className="pane-scroll">
       <div className="pane-in set">
@@ -26,19 +28,23 @@ export function ProjectsIndex() {
         </div>
         {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card" aria-label="Spaces">
-            {projects.map((project) => (
+            {projects.map((project) => {
+              const encrypted = !!project.workspaceId && encryptedIn.has(project.workspaceId);
+              const label = `${project.name}${encrypted ? ', encrypted' : ''}${news.has(project.id) ? ', new activity' : ''}`;
+              return (
               <li key={project.id}>
-                <Link to={`/projects/${project.id}`} className="set-row" aria-label={news.has(project.id) ? `${project.name}, new activity` : undefined}>
+                <Link to={`/projects/${project.id}`} className="set-row" aria-label={label === project.name ? undefined : label} data-encrypted={encrypted ? '' : undefined}>
                   {/* The same letter tile as the sidebar and Home (#763 NV-6); a sparkle would read as AI. */}
                   <span className="set-row__ic proj-index__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                   <span className="set-row__b">
-                    <span className="set-row__t">{project.name}</span>
+                    <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}</span>
                   </span>
                   {news.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
                   <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>
               </li>
-            ))}
+              );
+            })}
             {/* An encrypted space that waits to be unlocked is one row in place of its spaces (F-030, #655). */}
             {lockedWorkspaces.map((space) => (
               <li key={space.id}>

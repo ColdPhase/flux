@@ -4,7 +4,7 @@ import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNaviga
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { lockedLine, useLockedPlace } from '../encryption/state';
-import { Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
+import { Drawer, Icon, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
@@ -611,6 +611,9 @@ function AppLayoutContent() {
   const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
   const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
   const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
+  // An encrypted space has a small lock after its name in its header, locked or not (F-026 §4, as the locked space is drawn).
+  const encryptedHere = lockedHere || (!!activeProject?.workspaceId && workspaces.some((space) => space.id === activeProject.workspaceId && !!space.encryption));
+  const encryptedMark = encryptedHere ? <Icon name="lock" size={14} label="Encrypted" className="title-lock" data-encrypted-mark="" /> : null;
   // A place has a name and, when it is locked, one line saying so. No place carries a subtitle that describes it or its audience
   // (#871): the audience of a space is the default and is not said, and a direct message is named by its people.
   const place = lockedHere
@@ -736,7 +739,7 @@ function AppLayoutContent() {
         // The title is the title, not a menu: the views are the same segmented control as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <div className="phead__id"><div className="phead__title">
-            <h1 title={place.title}>{place.title}</h1>
+            {encryptedMark ? <div className="phead__titlerow"><h1 title={place.title}>{place.title}</h1>{encryptedMark}</div> : <h1 title={place.title}>{place.title}</h1>}
             <p className="phead__sub">{peopleLine(project?.people ?? null)}{onWiki ? <span className="phead__meta-slot" ref={setMetadataSlot} /> : null}</p>
           </div></div></>
       ) : activeDm && dmViews ? (
@@ -754,7 +757,7 @@ function AppLayoutContent() {
         // installed app has no browser Back. The sidebar row's own page (/spaces/:id) is a main place with the tab bar.
         <>{routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" />
             : lockedHere && !location.pathname.startsWith('/spaces/') ? <PhoneBack onBack={() => goBack('/')} /> : null}
-          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1>{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
+          <div className="phead__id"><div className="phead__title">{encryptedMark ? <div className="phead__titlerow"><h1>{place.title}</h1>{encryptedMark}</div> : <h1>{place.title}</h1>}{'topic' in place && place.topic ? <p className="phead__sub">{place.topic}</p> : null}</div></div></>
       )}
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
@@ -804,6 +807,7 @@ function AppLayoutContent() {
           <div className="top__title">
             {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
             <h1 title={place.title}>{place.title}</h1>
+            {encryptedMark}
             {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>
           {rowViews ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}

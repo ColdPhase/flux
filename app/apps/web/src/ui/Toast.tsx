@@ -209,7 +209,7 @@ function useModalLift(active: boolean, stack: RefObject<HTMLElement | null>): { 
   return active ? lift : { inset: 0, movedAt: lift.movedAt };
 }
 
-/** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time on top. */
+/** Short confirmations and recoverable errors, announced politely, bottom centre, one at a time: a newer one replaces the older. */
 export function ToastProvider({ children, scopeKey }: { children: ReactNode; scopeKey?: string | null }) {
   const [toasts, setToasts] = useState<ToastEntry[]>([]);
   const nextId = useRef(1);
@@ -239,7 +239,11 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
       timeout: options.timeout !== undefined ? options.timeout : (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
       leaving: false, sessionEpoch: actionEpoch,
     };
-    setToasts((current) => [...current.slice(-2), entry]);
+    // One toast at a time (v0.2 visual review): a newer toast takes the place of the one shown, which leaves at once with its
+    // action. Its change stays made: every change is applied when its toast shows, and a delayed one (Accept, Answer) is sent
+    // when its own window ends, as after a dismissal. Stacked toasts covered a phone's work (a column's head) after a few quick changes.
+    setToasts((current) => [...current.filter((toast) => toast.sessionEpoch === actionEpoch)
+      .map((toast) => (toast.leaving ? toast : { ...toast, leaving: true })), entry]);
     return () => setToasts((current) => current.filter((toast) => toast.id !== entry.id));
   }, [isCurrent, sessionEpoch]);
   const remove = useCallback((id: number) => setToasts((current) => current.filter((toast) => toast.id !== id)), []);

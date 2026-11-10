@@ -885,6 +885,56 @@ class EncryptedWorkspaces(Base):
                 expect(plain.get_by_role("link", name=re.compile("People and settings"))).to_be_visible()
                 expect(plain.locator("[data-encrypted-line]")).to_have_count(0)
 
+    def test_33_an_unlocked_encrypted_space_has_a_small_lock_after_its_name(self) -> None:
+        """F-026 §4: "An encrypted space has a small lock after its name." The sidebar, its rail, the phone's Spaces and the space's
+        header (as the locked space is drawn) show it, and the link's name says "encrypted"; the plain space beside it has none."""
+        world = self.make_world()
+        page = self.page(world, "ada")
+        page.goto(f"/projects/{world.a_project}")
+        expect(page.get_by_text(A_ROOT).first).to_be_visible()
+        side = page.get_by_role("navigation", name="Spaces")
+        row = side.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)
+        expect(row).to_be_visible()
+        lock = row.locator(".side__lock")
+        expect(lock).to_be_visible()
+        # After its name, small and monochrome.
+        name_box, lock_box = self.on_page(row.locator(".side__label")), self.on_page(lock)
+        self.assertGreaterEqual(lock_box["x"], name_box["x"] + name_box["width"], "the lock is after the name")
+        self.assertLessEqual(lock_box["width"], 14)
+        self.assertIn("encrypted", side.aria_snapshot())
+        plain = side.get_by_role("link", name=B_PROJECT, exact=True)
+        expect(plain).to_be_visible()
+        expect(plain.locator(".side__lock")).to_have_count(0)
+        # The space's header: the lock after its name.
+        title = page.locator(".top__title")
+        expect(title.get_by_role("img", name="Encrypted", exact=True)).to_be_visible()
+        heading, mark = self.on_page(title.get_by_role("heading", level=1)), self.on_page(title.locator("[data-encrypted-mark]"))
+        self.assertGreaterEqual(mark["x"], heading["x"] + heading["width"] - 0.5, "the header's lock is after the name")
+        shot(page, "lock-sidebar-computer")
+        # The rail: icons only, and the tile's name says it.
+        page.keyboard.press("[")
+        rail = page.locator(".side--rail").get_by_role("navigation", name="Spaces")
+        expect(rail.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)).to_be_visible()
+        expect(rail.get_by_role("link", name=B_PROJECT, exact=True)).to_be_visible()
+        page.keyboard.press("[")
+        page.goto(f"/projects/{world.b_project}")
+        expect(page.get_by_text(B_ROOT).first).to_be_visible()
+        expect(page.locator("[data-encrypted-mark]")).to_have_count(0)
+        # The phone: its Spaces list and the space's header.
+        phone = self.page(world, "ada", phone=True)
+        phone.goto("/projects")
+        spaces = phone.get_by_role("list", name="Spaces")
+        listed = spaces.get_by_role("link", name=f"{A_PROJECT}, encrypted", exact=True)
+        expect(listed).to_be_visible()
+        expect(listed.locator(".proj-index__lock")).to_be_visible()
+        expect(spaces.get_by_role("link", name=B_PROJECT, exact=True).locator(".proj-index__lock")).to_have_count(0)
+        self.assertIn("encrypted", spaces.aria_snapshot())
+        shot(phone, "lock-spaces-phone")
+        listed.click()
+        expect(phone.get_by_text(A_ROOT).first).to_be_visible()
+        expect(phone.locator(".phead").get_by_role("img", name="Encrypted", exact=True)).to_be_visible()
+        shot(phone, "lock-header-phone")
+
     def test_31_settings_says_ai_is_off_there_for_good_and_jump_to_lists_the_waiting_space(self) -> None:
         world = self.make_world()
         self.lock(world)

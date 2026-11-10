@@ -136,6 +136,9 @@ body:has(.app) { background: var(--side); }
 .side__dm .ui-avatar, .side__agent .kreska { flex: none; }
 /* Assistant is pinned first in Messages (F-036 AG-4); its pin sits where an unread dot would. */
 .side__pin { margin-left: auto; flex: none; color: var(--t3); }
+/* An encrypted space has a small lock after its name, at the row's end as drawn (F-026 §4); a dot of news follows it. */
+.side__lock { margin-left: auto; flex: none; color: var(--t3); }
+.side__lock + .side__dot { margin-left: 0; }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }
@@ -586,6 +589,11 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__right { display: flex; align-items: center; gap: 8px; flex: none; }
 .phead__right > .top__actions:empty { display: none; }
 .phead__title h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* An encrypted space has a small lock after its name, in its header too (F-026 §4, as the locked space is drawn). */
+.phead__titlerow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.phead__titlerow h1 { min-width: 0; }
+.title-lock { flex: none; align-self: center; color: var(--t2); }
+.top__title .title-lock { margin-left: -4px; }
 /* The phone's views are the same segmented control as every width, in a row of their own under the title (#873). */
 .phead:has(> .phead__views) { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding-bottom: 8px; }
 .phead:has(> .phead__views) .phead__right { gap: 6px; }
