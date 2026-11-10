@@ -106,10 +106,9 @@ the publication workflow on the draft and again on the public downloads.
 The workflow's packaged smoke is a gate, not the whole release evaluation. It runs on
 one platform (amd64), does not cover a bound slot's sign-out and reuse (they need a vendor login; the fake-CLI
 `scripts/check_agent_runtime.sh` covers them against the source stack), and does not run the upgrade leg
-(next section), a TLS reverse proxy, browsers, Web Push or SMTP. In particular, the first release has no
-previous version from which to exercise a real forward upgrade: its schema is the v0.1 baseline
-(#779) plus migration 0002 (#806), and pre-release schemas cannot be upgraded, so `FLUX_DRYRUN_PREVIOUS` must
-name a revision with that baseline. From v0.1 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
+(next section), a TLS reverse proxy, browsers, Web Push or SMTP. In particular, v0.1 has no forward upgrade to exercise: its schema is the v0.1 baseline
+(#779) plus migration 0002 (#806), and v0.2 does not upgrade it (v0.1 had no users, #1176), so `FLUX_DRYRUN_PREVIOUS`
+must name a revision that has migration 0003, the first of v0.2. From v0.2 on, publish a candidate `-rc.N` first and upgrade from it. Arm64 QEMU build and manifest inspection are not a native arm64 install test. Those
 results remain open until the independent artifact review records them. The source
 workspace and test stack continue using their own Compose path; the attached
 `compose.yaml` is the pull-only operator path.
@@ -140,12 +139,12 @@ followed literally, with throwaway credentials and the same ports as the first l
    release's files, check it, then upgrade that restored installation to the candidate and check it again.
 
 `scripts/release/dry_run.sh` runs it against locally built images. `FLUX_DRYRUN_PREVIOUS=<git revision>`
-(at or after `a6e9851d1`, the asset set of #654) builds that revision's application image, renders its
+(a revision with migration 0003 and the asset set of #654; a v0.1 revision is refused, #1176) builds that revision's application image, renders its
 assets from its own templates as release `v0.1.0-rc.1` (the candidate becomes `v0.1.0-rc.2`) and passes
 them as the previous release:
 
 ```sh
-FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PROJECT=fluxdry FLUX_DRYRUN_PREVIOUS=a6e9851d1 bash scripts/release/dry_run.sh
+FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PROJECT=fluxdry FLUX_DRYRUN_PREVIOUS=<revision with migration 0003> bash scripts/release/dry_run.sh
 ```
 
 The leg is not wired into `final-release.yml`: the first release has no predecessor, and which published
@@ -174,7 +173,7 @@ offline).
 
 ```sh
 FLUX_DRYRUN_PLATFORMS=linux/amd64,linux/arm64 FLUX_DRYRUN_SMOKE_PLATFORM=linux/arm64 \
-  FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PREVIOUS=a6e9851d1 bash scripts/release/dry_run.sh
+  FLUX_DRYRUN_PORT=25800 FLUX_DRYRUN_PREVIOUS=<revision with migration 0003> bash scripts/release/dry_run.sh
 ```
 
 ## A supported host for the runtime checks

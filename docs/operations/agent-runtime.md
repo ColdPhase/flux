@@ -1,8 +1,8 @@
 # Agent runtime: the owner's own Claude Code or Codex in Flux
 
 This guide is for the person who runs a Flux instance with [`./flux`](../../flux). It covers the
-optional agent runtime: people sign in with their own Claude or ChatGPT subscription, and Flux runs
-that CLI (Claude Code or Codex) for them, isolated from everyone else, on your server
+optional agent runtime: people connect their own Claude or ChatGPT subscription in Connect AI, and Flux runs
+that CLI (Claude Code or Codex) for their agents, isolated from everyone else, on your server. One runtime serves everyone
 ([product contract](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/ai-modes.md#aim-3--the-runtime-transport)).
 
 **It is off by default.** With `FLUX_AGENT_RUNTIME` empty, no runtime service runs, the API reports the
@@ -202,7 +202,7 @@ performance report, about five times what a CLI uses to start. Change `FLUX_RUNT
 ## People in the runtime and releasing them
 
 A person's first use gives them their place in the runtime: a directory and a user id, holding both their Claude Code and Codex
-logins. A workspace role gives no access to anyone's place.
+logins. A company role gives no access to anyone's place.
 
 - `./flux runtime status` lists the runtime, its state, how many agents it runs at once and each person's e-mail, and what the
   supervisor reports (boot id, how many people `/data` holds).
@@ -312,12 +312,14 @@ the terminal. Nothing else is added to it.
 ## Runs
 
 Once an owner is signed in, their Claude plan (or ChatGPT plan) is one of their connections in Settings → AI →
-Connect AI, and their assistant can use any of its models ([Connect AI](../product/model-providers.md), #854). No API
-key is used or needed. Each *Ask my assistant* then runs their own Claude Code (or Codex) under their own user id:
+Connect AI, and any of their agents can use one of its models ([Connect AI](../product/model-providers.md), #854, #857). No API
+key is used or needed. Each run of an agent (an answer to `/ai`, a step on a task, a schedule's firing, a message in its private
+chat) then runs their own Claude Code (or Codex) under their own user id, with the agent's own instructions and memory:
 
 - **Token.** The worker asks the API, which is Flux's authorization server, for a run token: a signed MCP
-  access token for the owner's assistant connection, with `flux_run_id` and `flux_place` (the run's project
-  and conversation), audience `/mcp`, scope `flux.context.read` and a lifetime of the run's clock plus five minutes. The worker
+  access token for the owner's agent connection, with no scope (the run's exact tools are stored with the token and listed by the
+  route), `flux_run_id` and `flux_place` (the run's space and conversation, its direct message, or none for a private chat),
+  audience `/mcp` and a lifetime of the run's wall clock plus five minutes. The worker
   proves it holds the run with a one-time nonce whose hash it stored on the run row. Only the token's id,
   expiry and exact tools are kept; the token itself never reaches the database, a queue, a file or a log.
 - **What runs.** The runtime runs the fixed `claude -p --output-format stream-json …` command of
@@ -325,11 +327,14 @@ key is used or needed. Each *Ask my assistant* then runs their own Claude Code (
   environment variable `FLUX_RUN_TOKEN`; the MCP configuration (on the runtime's tmpfs `/tmp`) names it in
   the Flux server's `Authorization` header. The CLI reaches Flux only through `runtime-egress`'s `/mcp`
   forwarder.
-- **What it can read.** The route lists exactly the run's tools: the read tools of the areas the owner
-  switched on (F-027 AST-4; read only in this first step), refuses every other tool with the S6 refusal,
-  reaches only the run's project, refuses the token once the run ends, the owner stops it, revokes the
-  assistant's connection or turns an area off, and returns at most 256 KiB per tool result and 8 MiB per
-  run (safety bounds, below).
+- **What it can do.** The agent has exactly its owner's rights ([agents](../product/assistant.md)). The route lists exactly the run's
+  tools: every read tool and, unless the agent's **What it may do** is *Only read*, its change tools (deleting and other people's
+  things wait for the owner's OK, and only the owner can approve). It refuses every other tool, reads only what the run's place
+  allows (a conversation's audience, a task's people; the owner's whole view only in the agent's private chat), works only in spaces
+  where AI is on, refuses the token once the run ends, the owner stops it, revokes the connection, loses access or AI is turned off
+  in the space, and returns at most 256 KiB per tool result and 8 MiB per run (safety bounds, below). The runtime itself reaches no
+  web page: a server agent's page reading and search go through Flux's own tool and the provider's search
+  (`FLUX_WEB_READS`), and the CLI's own web tools are kept only while that switch is on.
 - **Read-back.** The supervisor checks the CLI's first `system/init`: any tool other than the run's exact Flux
   tools (and `EndConversation`), or any MCP server other than a connected Flux, stops the CLI with no
   answer. The worker checks it again.
@@ -410,7 +415,7 @@ A GitHub Release carries the runtime as two more assets next to
 
 - **Two images, both pinned by digest, no build.** `runtime-manager` and `runtime-egress` run the
   application image of the release; `runtime-install` and `runtime-1` run
-  `ghcr.io/coldphase/flux-agent-runtime`, built for the release's platforms (`linux/amd64` for v0.1) from the accepted
+  `ghcr.io/coldphase/flux-agent-runtime`, built for the release's platforms (`linux/amd64` for v0.2) from the accepted
   candidate by `final-release.yml` (target `agent-runtime-release` of `docker/Dockerfile`). It holds the
   supervisor with its process hardening, node-pty and the pinned official Codex (checked by SHA-256)
   on the application image's Node (without npm, corepack or yarn, #1179),
@@ -474,8 +479,8 @@ Each Flux release pins the CLI versions its flag contract check passed: Claude C
 (`DISABLE_UPDATES=1`).
 
 The separate published runtime image and release-matched operator assets are built by the final release
-workflow ([Installing from a release](#installing-from-a-release)) and published with
-[v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0); a source-built slot is not a published runtime release.
+workflow ([Installing from a release](#installing-from-a-release)) and published with each release; a source-built
+runtime is not a published runtime release.
 
 `./scripts/check_runtime_cli_contract.sh` is the opt-in flag contract check against these real CLIs
 (no account needed; internet access to github.com and downloads.claude.ai). Run it again whenever a pin

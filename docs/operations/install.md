@@ -8,11 +8,14 @@ There are three ways to run Flux. All of them are Docker Compose on one host.
 | **Your own server, from a source checkout** | A team instance that builds on the server, for example on `arm64` | This page |
 | **Your own server, from a published release** | A team instance without the source or a build | [Install from a release](install-release.md) |
 
-Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published, so a server can run from its digest-pinned image. That image is
-`linux/amd64` only; `linux/arm64` follows in v0.1.1. A source checkout uses the `./flux` launcher,
+Flux v0.2 can run from the digest-pinned image of the [latest release](https://github.com/ColdPhase/flux/releases/latest). That image is
+`linux/amd64` only; `linux/arm64` is planned for v0.3. A source checkout uses the `./flux` launcher,
 which builds the image on the server, keeps its settings in `docker/.env`, and gives you
 [backups](backup-restore.md), restores and [upgrades](upgrade.md) as single commands. The release
 path runs the same services without the source or a build.
+
+This page is a fresh installation. **v0.2 does not upgrade a v0.1 installation** (v0.1 had no users): if this host or checkout
+already runs v0.1, [read why and what to do](upgrade.md#from-v01-install-v02-fresh) first.
 
 Check the [requirements](requirements.md) first: a Linux host with Docker Engine 25 or newer and the Compose
 plugin, 4 GB of memory, and a DNS name pointing at the host.
@@ -103,16 +106,7 @@ Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx)
 Open `https://flux.example.org` and sign in with the account you made in step 1 (if you did not,
 sign up now: the first account sets up the company and is its owner, and nothing stops a stranger who reaches the
 address first). It owns the default space **Everyone**; everyone else joins by an invite link from an admin (or
-by signing in, with single sign-on). Spaces are added from **New › Space**.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/signup-dark.webp">
-    <img src="../assets/screens/signup-light.webp" width="460" alt="The sign-up page of a new instance: Create your Flux account, with Name, Email and Password fields and a Create account button.">
-  </picture>
-</p>
-
-<p align="center"><sub>The sign-up page, in the light and the dark theme your browser asks for.</sub></p>
+by signing in, with single sign-on). Spaces are added from **New › Space**. The password needs 12 to 128 characters.
 
 Check that email works:
 
@@ -151,14 +145,10 @@ send them an invite link, and set it back to `off` with `./flux up` once they ha
 `./flux up`, create the account, then close it again. Flux has no command that creates an account or
 sets a password.
 
-After you sign up, **New project** asks for one name (the people and agents come later). To bring in the
-rest of the team, open **Settings → People** and create an invite link
-([administration](administration.md#invite-links)):
-
-<p align="center">
-  <img src="../assets/screens/first-project.webp" width="49%" alt="The New project page: a Project name field, four starting points (Build something, Research, Plan an event, Blank) and a Create project button.">
-  <img src="../assets/screens/invite-link.webp" width="42%" alt="Invite with a link in Settings, People: Joins as Member, Works for 7 days, the Create invite link button and the link it made, with a Copy link button.">
-</p>
+After you sign up you are the company's owner, in the default space **Everyone**. Make your first space with
+**New › Space**: a name, the people (chosen from the company) and an AI switch that starts on. To bring in the
+rest of the team, open **Settings › Company** and use **Invite with a link**
+([administration](administration.md#invite-links)).
 
 ### 6. Finish the server
 

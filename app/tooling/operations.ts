@@ -3,6 +3,7 @@ import {
   agentRuntimeOperations,
   githubRows,
   createDatabase,
+  FIRST_V02_MIGRATION,
   FLUX_SCHEMA_VERSION,
   readAppliedMigrationVersions,
   readMigrationManifest,
@@ -53,10 +54,15 @@ async function imageFiles() {
 /**
  * A backup's ledger may be restored on this image only if the migrator can make it exact:
  * every recorded version must have a file here (else the backup is from another line of
- * development and is refused, with or without --migrate); versions the backup lacks are applied
+ * development and is refused, with or without --migrate); a ledger that stops before the first v0.2 migration is
+ * a v0.1 backup and is refused too; versions the backup lacks are applied
  * by the migrator, which the operator must request with --migrate.
  */
 function gate(files: Awaited<ReturnType<typeof imageFiles>>, backup: readonly number[], migrate: boolean) {
+  // v0.1 had no users and v0.2 converts nothing (#1176): a backup whose ledger stops before 0003 is refused with or without --migrate.
+  if (backup.length && Math.max(...backup) < FIRST_V02_MIGRATION) {
+    return { ok: false, message: `the backup was written by Flux v0.1 (schema ${Math.max(...backup)}). Flux v0.2 does not restore or upgrade v0.1 data: v0.1 had no users, so nothing is converted. Restore it with a v0.1 checkout, or start v0.2 fresh.` };
+  }
   const known = new Set(files.map((file) => file.version));
   const recorded = new Set(backup);
   const foreign = backup.filter((version) => !known.has(version));

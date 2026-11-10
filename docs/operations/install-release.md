@@ -10,12 +10,13 @@ Each GitHub Release carries these files: `compose.yaml` (the image pinned by dig
 [release installation guide](release-guide.md)), `release.json`, software bills of materials,
 third-party notices, `LICENSE` and `SHA256SUMS`, plus `compose.runtime.yaml` and `runtime.sh` for the
 optional [agent runtime](agent-runtime.md#installing-from-a-release), and `compose.live.yaml` with
-`compose.live.turn.yaml` for optional [calls and screen sharing](#calls-and-screen-sharing). v0.1
-images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Always use the files from the
+`compose.live.turn.yaml` for optional [calls and screen sharing](#calls-and-screen-sharing). The
+images are published for `linux/amd64` only; `linux/arm64` is planned for v0.3. Always use the files from the
 release you install: a newer `main` can need other migrations or variables than your image.
 
-Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published. Download its files and follow the `INSTALL.md` among them
-([the same guide](release-guide.md)). On a host that is not `linux/amd64`, install
+Download the files of the [latest release](https://github.com/ColdPhase/flux/releases/latest) (v0.2 or later; the
+[v0.2 release notes](../product/release-notes-v0.2.0.md) say what changed) and follow the `INSTALL.md` among them
+([the same guide](release-guide.md)). **Install it fresh:** v0.2 does not upgrade a v0.1.0 installation ([why and what to do](upgrade.md#from-v01-install-v02-fresh)). On a host that is not `linux/amd64`, install
 [from a source checkout](install.md). The repository copies,
 [`docker/compose.yaml`](../../docker/compose.yaml) and
 [`docker/.env.example`](../../docker/.env.example), carry a placeholder digest and do not start as
@@ -68,8 +69,8 @@ they are.
    curl -fsS http://127.0.0.1:8081/api/v1/health   # {"status":"ok","schemaVersion":N}
    ```
 
-   **Create your account now, while the server is not public.** The first account to sign up becomes
-   the company's owner. With `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081`, open that address through an SSH
+   **Create your account now, while the server is not public.** The first account to sign up sets up the
+   company and becomes its owner. With `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081`, open that address through an SSH
    tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`) and sign up. The API log warns at each start while nobody has
    signed up and the origin is a public one.
 
@@ -130,6 +131,11 @@ TCP/7880 (signaling) is never published: browsers reach it only through the API 
 
 ## Upgrade, backup and restore
 
+**v0.1.0 is not upgraded.** Starting v0.2's files on a database that v0.1 wrote makes `migrate` stop with
+`FLUX_V01_DATABASE This database was written by Flux v0.1 …` before any migration runs, and `api` and `worker` do not
+start. Install v0.2 fresh, in a new directory with its own `FLUX_PROJECT`, or after removing the old project's volumes yourself
+([details](upgrade.md#from-v01-install-v02-fresh)). The rest of this section is for upgrades between v0.2 releases and later.
+
 Map/wiki collaboration uses the same API, PostgreSQL and whole-origin WebSocket proxy; it needs no
 live-media service or AI connection. For a planned opt-out, save each shared working copy first,
 set `FLUX_LIVE_EDITING=off` in `.env` and recreate the API with the normal `up -d --wait` command.
@@ -174,7 +180,7 @@ a worker job and a restart, and removes the project, volumes and image. Ports de
 `python3 -m unittest tests.test_operator_compose` checks the file statically (pull-only, one
 marker on the three Flux services, digest pins, variables and placeholders), and
 `tests.test_release_assets` renders the real files into a release asset set. The real GHCR pull,
-the published platforms (`linux/amd64` for v0.1) and the downloaded release assets are verified by the release workflow: its `final-release.yml`
+the published platforms (`linux/amd64` for v0.2) and the downloaded release assets are verified by the release workflow: its `final-release.yml`
 installs the packaged, digest-pinned release, creates an account and workspace, takes a paired
 backup and restores it into a second project (`scripts/release/smoke_artifacts.sh`), and an
 independent reviewer repeats that before publication. The same workflow then

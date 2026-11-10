@@ -490,6 +490,13 @@ runtime_sign_out() {
   fi
 }
 
+# The migrator (app/tooling/migrate.ts) refused a database that Flux v0.1 wrote (#1176): its message is in the migrate log. Compose has already
+# replaced the old API and worker by then, so say so, and that the data is untouched.
+die_if_v01_refused() {
+  compose_main logs --no-color migrate 2>/dev/null | grep -q 'FLUX_V01_DATABASE' || return 0
+  die "Flux v0.2 does not upgrade this database (see the message above). Its data is untouched, but v0.1's API and worker are stopped now. To go on with v0.1, check out its v0.1.0 files again and run ./flux up; to start v0.2, install it fresh as the message says."
+}
+
 start_main() {
   check_runtime_switch
   if runtime_on; then ensure_runtime_secrets; runtime_limits; fi
@@ -509,10 +516,10 @@ start_main() {
     # host requirement, #860) stays red: this fails with its one message and the fix, and Flux is not reported healthy.
     compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress runtime-1 \
       || { refused=$(runtime_refusal); [ -z "$refused" ] || die "$refused"
-        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
-      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+      || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; die_if_v01_refused; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
     stop_runtime
     remove_idle_runtime_networks
   fi
@@ -793,6 +800,8 @@ sha256_of() {
 }
 file_bytes() { wc -c < "$1" | tr -d ' '; }
 
+# The first migration of v0.2 (0003: one company and spaces). A database or backup that stops before it was written by v0.1 (#1176).
+FIRST_V02_SCHEMA=3
 # Highest numbered migration of this checkout: the schema its code expects.
 code_schema() {
   ls "$MIGRATIONS_DIR" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_[a-z0-9_]*\.sql$/\1/p' | sort | tail -n 1 | sed 's/^0*//'
@@ -1056,6 +1065,10 @@ cmd_restore() {
   to_schema=$(code_schema) to_version=$(app_version) to_commit=$(git_commit)
   say "Backup of $(manifest_value "$manifest" project) taken $(manifest_value "$manifest" createdAt): schema $from_schema, Flux $from_version ($from_commit)."
   say "This checkout: schema $to_schema, Flux $to_version ($to_commit)."
+  # v0.1 had no users and v0.2 converts nothing (#1176): its backup is refused here, before any other check and with or without --migrate.
+  if [ "$from_schema" -lt "$FIRST_V02_SCHEMA" ]; then
+    die "restore: the backup was written by Flux v0.1 (schema $from_schema). Flux v0.2 does not restore or upgrade v0.1 data: v0.1 had no users, so nothing is converted. Restore it with a v0.1 checkout, or start v0.2 fresh. Nothing was restored."
+  fi
   if [ "$from_schema" -gt "$to_schema" ]; then
     die "restore: the backup has schema $from_schema, newer than this checkout's $to_schema. Check out the Flux version that wrote it (commit $from_commit) and restore there."
   fi
@@ -1154,10 +1167,10 @@ cmd_export() {
       --as) [ $# -ge 2 ] || die "export: --as needs an e-mail address"; as=$2; shift 2 ;;
       -o|--output) [ $# -ge 2 ] || die "export: $1 needs a file name"; output=$2; shift 2 ;;
       -*) die "export: unknown option $1 (use --as EMAIL, --output FILE)" ;;
-      *) [ -z "$target" ] || die "export: only one project"; target=$1; shift ;;
+      *) [ -z "$target" ] || die "export: only one space"; target=$1; shift ;;
     esac
   done
-  [ -n "$target" ] || die "usage: ./flux export <project id or exact name> [--as EMAIL] [--output FILE]"
+  [ -n "$target" ] || die "usage: ./flux export <space id or exact name> [--as EMAIL] [--output FILE]"
   need_docker
   [ -f "$ENV_FILE" ] || die "No ${ENV_FILE#"$FLUX_ROOT"/}; start Flux with ./flux up first."
   check_owner "$PROJECT"
@@ -1176,6 +1189,23 @@ cmd_export() {
   [ -n "$output" ] || output="$dir/$(sed -n 's/^FLUX_EXPORT_FILE //p' "$EXPORT_LOG")"
   mv "$EXPORT_PARTIAL" "$output"
   say "Export written: $output ($(file_bytes "$output") bytes, sha256 $(sha256_of "$output"))"
+}
+
+# Flux v0.1 had no users, so v0.2 converts nothing and keeps no compatibility with its data (#1176). A database is v0.1's when
+# its migration ledger stops before 0003 (one company and spaces) and it holds an account or a workspace. A ledger that stopped half
+# way through a first install, before anybody signed up, is not: it goes on to migrate. app/tooling/migrate.ts (the migrator) and
+# the restore gate in app/tooling/operations.ts refuse the same databases (restore also checks the manifest's schema first); this check comes first so that nothing is stopped or backed up.
+v01_database() {
+  V01_SCHEMA=$(db_query 'SELECT max(version) FROM flux_schema_version' 2>/dev/null) || return 1
+  case "$V01_SCHEMA" in ''|*[!0-9]*) return 1 ;; esac
+  [ "$V01_SCHEMA" -lt "$FIRST_V02_SCHEMA" ] || return 1
+  [ "$(db_query 'SELECT (EXISTS (SELECT 1 FROM auth_users) OR EXISTS (SELECT 1 FROM workspaces))' 2>/dev/null)" = t ]
+}
+v01_explain() {
+  warn "This database was written by Flux v0.1 (schema $V01_SCHEMA). Flux v0.2 does not upgrade it: v0.1 had no users, so v0.2 converts no data,"
+  warn "and an upgraded v0.1 instance would have no company."
+  warn "Install v0.2 fresh instead: in a new folder, or here after ./flux reset (it deletes this instance's data after you confirm), and create the"
+  warn "company and its spaces again. Flux has no import for v0.1 data; ./flux export of a v0.1 project, run with v0.1, gives files you can keep."
 }
 
 upgrade_failed() {
@@ -1208,7 +1238,8 @@ upgrade_failed() {
     warn "  check out the Flux version you ran before (its commit was not recorded)"
   fi
   warn "  ./flux restore '$UPGRADE_ARCHIVE'"
-  warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."
+  # A v0.1 database is never upgraded (#1176), so a retry with --migrate would be refused too.
+  [ "${UPGRADE_NO_RETRY:-}" = 1 ] || warn "Or fix the cause in this checkout and run ./flux restore '$UPGRADE_ARCHIVE' --migrate to retry the upgrade."
   exit 1
 }
 
@@ -1217,6 +1248,8 @@ upgrade_apply() {
   UPGRADE_ARCHIVE=$1 UPGRADE_FROM_SCHEMA=$2 UPGRADE_FROM_COMMIT=$3
   # The pulled launcher may require more of Docker than the one that started the upgrade (v0.1.0 did not check the engine).
   (need_docker) || upgrade_failed "this version cannot run on this Docker (see above)"
+  # `./flux upgrade --pull` run by a v0.1 launcher backs up and stops the writers, then comes here (#1176): stop before the build.
+  if v01_database; then v01_explain >&2; UPGRADE_NO_RETRY=1; upgrade_failed "the database was written by Flux v0.1, which v0.2 does not upgrade"; fi
   to_schema=$(code_schema)
   say "Building the new version (schema $to_schema, commit $(git_commit))..."
   build_main || upgrade_failed "the build failed"
@@ -1250,6 +1283,8 @@ cmd_upgrade() {
   if [ "$pull" = 1 ] && [ "$(git_commit)" = unknown ]; then die "upgrade --pull needs a git checkout; update the files yourself and run ./flux upgrade."; fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" db >/dev/null || die "The database of $PROJECT did not start."
   from_schema=$(db_query 'SELECT max(version) FROM flux_schema_version') || die "Could not read the schema version of $PROJECT."
+  # Before the confirmation, the backup and the stop of API and worker: v0.2 does not upgrade a v0.1 database (#1176).
+  if v01_database; then v01_explain; warn "Your data is as it was: no backup was taken and API and worker were not stopped."; exit 1; fi
   from_commit=$(image_commit)
   if [ "$pull" = 1 ]; then plan="pull the new version with git"; else plan="build this checkout (schema $(code_schema))"; fi
   confirm "Upgrade $PROJECT (schema $from_schema): back up, $plan, migrate and restart? API and worker stay stopped from the backup until the new version runs." \
@@ -1459,7 +1494,7 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          and run health and schema checks. Refuses another Flux version unless
                          --migrate. --revoke-agent-connections ends every agent connection and
                          OAuth token from the backup (they need connecting again).
-  ./flux export <project> [--as EMAIL] [--output FILE]
+  ./flux export <space> [--as EMAIL] [--output FILE]
                          Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]

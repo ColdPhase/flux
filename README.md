@@ -7,12 +7,12 @@
 
 <h1 align="center">Flux</h1>
 
-<p align="center"><b>An open source, self-hosted workspace where people and AI agents work on the same projects.</b></p>
+<p align="center"><b>An open source, self-hosted workspace where people and AI agents work in the same spaces.</b></p>
 
 <p align="center">
   <a href="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml"><img src="https://github.com/ColdPhase/flux/actions/workflows/application-checks.yml/badge.svg?branch=main" alt="Application checks"></a>
   <a href="LICENSE"><img src="https://img.shields.io/github/license/ColdPhase/flux?color=18181b&amp;labelColor=636363" alt="License: AGPL-3.0"></a>
-  <a href="https://github.com/ColdPhase/flux/releases/tag/v0.1.0"><img src="https://img.shields.io/github/v/release/ColdPhase/flux?display_name=tag&amp;label=release&amp;color=18181b&amp;labelColor=636363" alt="Release: v0.1.0"></a>
+  <a href="https://github.com/ColdPhase/flux/releases/latest"><img src="https://img.shields.io/github/v/release/ColdPhase/flux?display_name=tag&amp;label=release&amp;color=18181b&amp;labelColor=636363" alt="Latest release"></a>
   <a href="#quick-start"><img src="https://img.shields.io/badge/runs%20on-Docker%20Compose-18181b?logo=docker&amp;logoColor=white&amp;labelColor=636363" alt="Runs on Docker Compose"></a>
   <a href="https://coldphase.github.io/flux/"><img src="https://img.shields.io/badge/docs-coldphase.github.io%2Fflux-18181b?labelColor=636363" alt="Documentation"></a>
 </p>
@@ -25,79 +25,50 @@
   <a href="docs/CONTRIBUTING.md">Contributing</a>
 </p>
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/promo/flux-promo-dark.svg">
-    <img src="docs/assets/promo/flux-promo-light.svg" width="100%" alt="A short looping animation of a Flux project, Community garden sensors. Jonas asks: Should we measure soil moisture first? Ada turns the message into task #12 and accepts the decision Measure moisture before buying sensors. Kreska, as the agent Claude Code, picks up the task, reads the beds and writes a positive result into the Wiki. The Map links the message, task, decision and result, and a phone shows the same work in the Inbox. It ends on: People and agents, one project.">
-  </picture>
-</p>
+Flux keeps a company's conversations and the work that comes out of them in one place: tasks,
+decisions with their reasons, a Wiki and maps of connected thoughts, each linked to the message it
+came from. One Flux is one company, and the company works in **spaces**: a team, a department or a
+project. The people and their AI agents, and the Claude Code or Codex on their own computers, work
+in the same spaces, and an agent can do exactly what its owner can and no more. You run it on your
+own server.
 
-<p align="center"><sub>An animated sketch of the idea (<a href="docs/assets/promo/README.md">how it is made</a>); the
-<a href="docs/assets/demo/flux-demo.gif">recording of the running app</a> and the screenshots below show the real thing.</sub></p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/conversation-desktop-dark.webp">
-    <img src="docs/assets/readme/conversation-desktop.webp" width="74%" alt="The Community garden sensors project on a desktop: the conversation, with the task made from a message, and beside it the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
-  </picture>
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/home-phone-dark.webp">
-    <img src="docs/assets/readme/home-phone.webp" width="21%" alt="Home on a phone: under Needs you, Jonas's question with a Reply button; the project below is quiet; Home, Projects and Inbox sit in the bar at the bottom.">
-  </picture>
-</p>
-
-<p align="center"><sub>A project on a 1440&nbsp;px desktop and a 390&nbsp;px phone, in your light or dark theme, captured from the
-running application on the fictional <code>./flux demo</code> data (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
-
-Flux keeps a team's conversations and the work that comes out of them in one place: tasks,
-decisions with their reasons, documents and sketches, each linked to the message it came from. The
-people on the team and the agents they connect, such as Claude Code or Codex, work in the same
-projects, with the same permissions model. You run it on your own server.
-
-**Who it is for.** Small software teams, such as a product lead, a designer and an engineer, who
-already hand some work to coding agents. When you come back to a project after a break, Flux shows
-what changed, what was decided and what is next, so you do not have to ask around.
+**Who it is for.** Small companies and teams, such as a product lead, a designer and an engineer,
+who already hand some work to AI. When you come back to a space after a break, your Inbox shows
+what needs you, so you do not have to ask around.
 
 ## Highlights
 
-- **Conversations that turn into work.** One action makes a message a task, a decision with its
-  reason, or a result, and each stays linked to the message it came from.
-- **Come back and catch up.** Home shows what changed since you left, what was decided and what
-  needs you, so you do not have to ask around.
-- **Your own agent, with your permission.** Connect Claude Code, Codex or any MCP client to the
-  projects you choose. It runs on your computer with your own model account; Flux never sees it.
-- **One project, three views.** The conversation, the map and the wiki, plus tasks, direct
-  messages, a private sketchbook and search.
+- **Conversations that turn into work.** One action makes a message a task or a decision with its
+  reason, and each stays linked to the message it came from.
+- **One company, many spaces.** The first account sets up the company and its default space,
+  **Everyone**. Everything else happens in spaces, and you see only the spaces you were added to.
+  Each space has its own AI switch, and can be encrypted.
+- **Simple AI: everything is an agent.** Connect AI once (a Claude plan, a ChatGPT plan or an API
+  key). You get an **Assistant** and can add more agents, each with its own instructions, model and
+  memory. `/ai` answers privately in any conversation, an agent can take a task, and you can
+  schedule one by asking. An agent searches the web and reads pages, and lists what it used.
+- **An agent has your rights, no more.** Each agent has one setting, **What it may do**: only read,
+  do it and tell me, or ask me first. Deleting and other people's things always wait for your OK in
+  the Inbox, and every change has **Undo**.
+- **Your own Claude Code or Codex.** Sign in with one click and the client acts with your rights, on
+  your computer, with your own model account. Flux never sees it.
+- **What needs you, in one place.** The Inbox holds what waits for you: questions, tasks handed
+  back, and changes an agent asks you to approve. Home shows its top three.
+- **Wiki and Map.** Pages you edit where you read them, with versions saved by themselves, and
+  maps of connected thoughts, plus **My map**, your own private one.
 - **Everywhere you are.** One calm design on the computer and the phone, installable as a PWA, with
-  Web Push notifications and an inbox.
+  Web Push notifications.
 - **Yours to run.** One Docker Compose stack started with `./flux up`, with backups, restore,
-  project export, upgrades, single sign-on, and spaces that can be AI-free or encrypted at rest.
-
-<table>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-task.webp" width="100%" alt="The Create window open on a message from Jonas: the title is the message, the task is Open with no owner, the message is linked as its source, and Create task is the one button."><br><sub><b>A message becomes a task.</b> One action on a message opens the Create window with that message as its source.</sub></td>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-home.webp" width="100%" alt="Home when Ada comes back: two questions under Needs you, a Continue where you left off card that says Answer Basia's question, and the project marked new."><br><sub><b>Come back and catch up.</b> Home shows what needs you and the next step where you left off.</sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-agent.webp" width="100%" alt="Settings, AI: the Connect your MCP client card with the Claude Code tab and the two commands that add Flux and sign in."><br><sub><b>Your own agent, with your permission.</b> Add the address to Claude Code, Codex or any MCP client, then choose the projects it may use.</sub></td>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-map.webp" width="100%" alt="The Map view of the Community garden sensors project: a sketch with one idea, Six sensors for twelve beds, linked to three others, with the project's Conversation, Map, Tasks, Wiki and Agents views above it."><br><sub><b>One project, three views.</b> The conversation, the map (here) and the wiki, plus tasks and agents, sit under one header.</sub></td>
-  </tr>
-  <tr>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-phone.webp" width="100%" alt="Two phone screens side by side: the Inbox with two questions waiting, and the notification settings with Inbox, Push and Email choices for each kind of event."><br><sub><b>Everywhere you are.</b> The Inbox and the push settings on a 390&nbsp;px phone, installable as a PWA.</sub></td>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-encrypted.webp" width="100%" alt="The Encryption section of a space's People: encrypted, only people, no AI, unlocked by Ada, with Change your unlock password, Lock now and New recovery code, and the AI row saying Off because the space is encrypted."><br><sub><b>An encrypted space.</b> It says so, locks on demand and keeps AI out of it for good.</sub></td>
-  </tr>
-</table>
-
-<p align="center"><sub>Captured from the running application on the same <code>./flux demo</code> data
-(<a href="docs/assets/screens/README.md">how these were made</a>).</sub></p>
+  export, upgrades, single sign-on and encrypted spaces, on a small server (2 cores and 4 GB is the
+  [recommended](docs/operations/requirements.md) size).
 
 ## Why Flux
 
 | Instead of | Flux gives you |
 | --- | --- |
-| A chat where decisions scroll away | Decisions and tasks made from messages, linked back to them, and a Home that tells you what changed |
-| A separate tracker, wiki and whiteboard | The project's conversation, tasks, wiki and map in one place, with one search |
-| Agents that see everything, or nothing | Each agent gets only the projects and actions you grant; what it suggests waits in your Inbox until you answer |
+| A chat where decisions scroll away | Decisions and tasks made from messages, linked back to them, and an Inbox that tells you what needs you |
+| A separate tracker, wiki and whiteboard | A space's conversation, tasks, Wiki and Map in one place, with one search |
+| Agents that see everything, or nothing | Each agent has exactly its owner's rights, in spaces where AI is on; deleting and other people's things wait for the owner's OK |
 | A hosted service holding your team's work | Your server, your database, open formats: [project export](docs/operations/export.md) is JSON plus files |
 
 Flux is open source under the AGPL-3.0. Its public API types and SDK are Apache-2.0, so agents and
@@ -105,13 +76,17 @@ integrations can use them freely ([licensing](docs/product/licensing.md)).
 
 ## Project status
 
-**Flux [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is published.** It is the first release, an early version with no independent security review yet: keep
-[backups](docs/operations/backup-restore.md) from the start and read its
-[release notes](docs/product/release-notes-v0.1.0.md) for what is not in it yet. The image
-(`ghcr.io/coldphase/flux`) is built for `linux/amd64` only; `linux/arm64` follows in v0.1.1. To run it
-on a server, download every file of the release and follow its `INSTALL.md`
-([install from a release](docs/operations/install-release.md)). To look around first, use the quick
-start below.
+**Flux v0.2 is the current version, and this page describes it.** It is an early version: its
+security was reviewed by an agent that did not write the code, and an external human audit is still
+planned, so keep [backups](docs/operations/backup-restore.md) from the start. The
+[v0.2 release notes](docs/product/release-notes-v0.2.0.md) say what is in it and what is not. The
+first published version, [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0), had no
+users, so **v0.2 does not upgrade it**: install v0.2 fresh ([upgrade guide](docs/operations/upgrade.md)).
+The image (`ghcr.io/coldphase/flux`) is built for `linux/amd64` only; `linux/arm64` is planned for
+v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). To run it on a server, download every
+file of the [latest release](https://github.com/ColdPhase/flux/releases/latest) and follow its
+`INSTALL.md` ([install from a release](docs/operations/install-release.md)). To look around first,
+use the quick start below.
 
 What comes next is tracked in the [milestones](https://github.com/ColdPhase/flux/milestones).
 
@@ -128,7 +103,7 @@ Prerequisites: Git and Docker Engine 25 or newer (or Docker Desktop) with Compos
 git clone --depth 1 https://github.com/ColdPhase/flux.git
 cd flux
 ./flux up      # creates docker/.env with random secrets once, builds, migrates, starts, prints the URL
-./flux demo    # optional: a sample company, space, conversation and note; prints two logins
+./flux demo    # optional: a sample company with a space, conversation, Map and Wiki page; prints two logins
 ```
 
 Then open the URL that `./flux up` prints, <http://127.0.0.1:8081/> by default. If port 8081 is
@@ -137,8 +112,10 @@ taken, start the first time with another free port, for example `FLUX_PORT=8090 
 ([measured times](docs/development/time-to-first-run.md)). To connect your own MCP client, such
 as Claude Code or Codex, follow [Connect your own agent](#connect-your-own-agent).
 
-Flux can also run Claude Code or Codex for people on the server, signed in with their own Claude or
-ChatGPT subscription. The first `./flux up` in a terminal asks once
+AI is off until someone connects it in **Settings › AI**. An API key needs the operator's
+`FLUX_PERSONAL_RUNS=on` and a key file ([configuration](docs/operations/configuration.md#ai-providers)).
+To let people use their own Claude or ChatGPT subscription, Flux runs the Claude Code or Codex on the
+server for them, in one isolated runtime. The first `./flux up` in a terminal asks once
 whether to allow it (Enter means yes, for Codex; Claude Code needs a typed `y` to Anthropic's
 Commercial Terms; a host that cannot run it gets one line saying why instead); `./flux ai on` asks
 later, and without a terminal nothing is asked ([operator guide](docs/operations/agent-runtime.md)).
@@ -161,8 +138,8 @@ To run Flux for a team on your own domain, start with the
 | [Installation](docs/operations/install.md) | A production server from a source checkout, step by step |
 | [HTTPS and reverse proxies](docs/operations/reverse-proxy.md) | Caddy, nginx and Traefik examples, each tested |
 | [Configuration reference](docs/operations/configuration.md) | Every setting with its type and default, generated from the code |
-| [Backup and restore](docs/operations/backup-restore.md), [upgrade](docs/operations/upgrade.md) | `./flux backup`, `./flux restore`, `./flux upgrade` |
-| [Administration in the app](docs/operations/administration.md) | Spaces, roles, invite links, the AI switch, encrypted spaces |
+| [Backup and restore](docs/operations/backup-restore.md), [upgrade](docs/operations/upgrade.md) | `./flux backup`, `./flux restore`, `./flux upgrade` (v0.1 is not upgraded) |
+| [Administration in the app](docs/operations/administration.md) | The company and its spaces, roles, invite links, AI in a space, encrypted spaces, agents and connections |
 | [Monitoring](docs/operations/monitoring.md), [hardening](docs/operations/hardening.md), [troubleshooting](docs/operations/troubleshooting.md) | Keeping it healthy and safe |
 
 ## Connect your own agent
@@ -195,9 +172,9 @@ first. On the `./flux demo` data:
    more. **What it may do** (Settings → AI → Local co-work) starts at **Do it and tell me**; choose
    **Only read** or **Ask me first** any time. Deleting something and changing other people's things
    always wait for your OK in your **Inbox**, whatever you choose, and only you can approve them.
-4. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
-   working on, and what is still open?" The client reads the project's conversations, tasks and
-   docs with Flux's tools, and answers in your client. Claude Code asks before it uses each Flux
+4. **Ask it something**, for example: "Using Flux, what is the Community garden sensors space
+   working on, and what is still open?" The client reads the space's conversation, tasks and
+   Wiki with Flux's tools, and answers in your client. Claude Code asks before it uses each Flux
    tool the first time: allow it. From a script, `claude -p "…" --allowedTools mcp__flux` gives the
    same approval. **Disconnect** on the same page ends its access at once.
 
@@ -214,9 +191,10 @@ client signs in. Both clients were run through these steps against a clean clone
 - [Documentation site](https://coldphase.github.io/flux/): getting started, self-hosting, integrating
   and security, generated from the files in [`docs/`](docs/README.md).
 - [Integrating with Flux](docs/integrations/README.md): the MCP connection, permissions and the
-  project export format.
+  project (space) export format.
+- [Release notes](docs/product/release-notes-v0.2.0.md): what is in v0.2 and what is not.
 - [Product foundation](docs/product/README.md): the direction, human and agent collaboration,
-  continuity of project knowledge, self-hosting and extensibility.
+  continuity of knowledge, self-hosting and extensibility.
 - [Security policy](docs/SECURITY.md) and [encrypted spaces](docs/product/encrypted-workspaces.md).
 
 ## Contribute
@@ -273,7 +251,7 @@ lists everything else.
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 | `site` | The [documentation site](https://coldphase.github.io/flux/) (Astro Starlight), generated from `docs` |
-| `docs/assets` | The README promo animation, screenshots and the demo GIF (each folder says how it was made) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
+| `docs/assets` | The promo animation, screenshots and the demo GIF (each folder says how it was made; recorded on v0.1 and awaiting v0.2 media) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).

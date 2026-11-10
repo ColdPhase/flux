@@ -5,10 +5,14 @@ This is the installation guide that ships with one Flux release as `INSTALL.md`;
 together: the image digest, the migrations and the settings in them match. A newer `main` branch
 can need other migrations or variables than your release.
 
+**v0.2 is installed fresh.** v0.1 had no users, so v0.2 does not upgrade a v0.1 installation: its migration step
+refuses a database that v0.1 wrote and leaves it untouched ([Upgrade](#upgrade)). One Flux is one company: the first account
+to sign up sets it up and owns it.
+
 The release pins one OCI image, `ghcr.io/coldphase/flux`, by its manifest digest for `api`,
 `worker`, `keyring` and the one-shot `migrate` service, plus a separately digest-pinned PostgreSQL. The image
-is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.1, with
-`linux/arm64` planned for v0.1.1. Docker Engine 25 or newer with the Compose plugin is required (Compose refuses to start the services on an older engine);
+is built for the platforms that `release.json` lists: `linux/amd64` (x86_64) for v0.2, with
+`linux/arm64` planned for v0.3. Docker Engine 25 or newer with the Compose plugin is required (Compose refuses to start the services on an older engine);
 the source code and the Node toolchain are not. The optional [agent runtime](#agent-runtime-optional)
 adds a second image, `ghcr.io/coldphase/flux-agent-runtime`, also pinned by digest and built for the
 same platforms; an installation that never switches the runtime on never pulls it. Optional
@@ -90,8 +94,8 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
    | --- | --- | --- |
    | `POSTGRES_PASSWORD` | yes | Random hex (it is part of the database URL). |
    | `FLUX_AUTH_SECRET` | yes | At least 32 random characters. Changing it signs everyone out. |
-   | `FLUX_KEYRING_TOKEN` | yes | Random hex. Authenticates the API and worker to the keyring; it opens nothing by itself. Empty leaves every [encrypted workspace](https://github.com/ColdPhase/flux/blob/main/docs/operations/encrypted-spaces.md) locked and none can be created. |
-   | `FLUX_KEY_PIN_SECRET` | yes | Random hex, at least 32 characters. Pins every unlock password and key version of an encrypted workspace. **Never change it**: every encrypted workspace made with it would refuse to unlock. Back it up with `.env`, not only with the database. |
+   | `FLUX_KEYRING_TOKEN` | yes | Random hex. Authenticates the API and worker to the keyring; it opens nothing by itself. Empty leaves every [encrypted space](https://github.com/ColdPhase/flux/blob/main/docs/operations/encrypted-spaces.md) locked and none can be created. |
+   | `FLUX_KEY_PIN_SECRET` | yes | Random hex, at least 32 characters. Pins every unlock password and key version of an encrypted space. **Never change it**: every encrypted space made with it would refuse to unlock. Back it up with `.env`, not only with the database. |
    | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, for example `https://flux.example.org`. Plain `http` works only for a loopback trial (`http://127.0.0.1:8081`). |
    | `FLUX_PROJECT` | kept | Compose project name and prefix of the `pgdata` and `files` volumes (`flux`). Keep it across upgrades, or the new release starts with empty volumes. |
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`); point the reverse proxy at it. |
@@ -102,7 +106,7 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
 
    Every value is explained in the comments of `env.example`. Empty required values stop Compose
    before anything starts, except the two keyring secrets: without them Flux starts healthy but
-   cannot create or unlock an encrypted workspace. `--env-file .env` is always passed explicitly, and a variable exported in
+   cannot create or unlock an encrypted space. `--env-file .env` is always passed explicitly, and a variable exported in
    the shell overrides the file: do not export Flux variables on an operator host.
 
 2. Optional Web Push keys, generated once with the release image; copy both keys and a `mailto:`
@@ -136,14 +140,15 @@ you from a tag that moves, which is why `compose.yaml` pins digests.
    `{"default-address-pools": [{"base": "172.17.0.0/12", "size": 24}, {"base": "192.168.0.0/16", "size": 24}]}`,
    and restart the daemon ([reference](https://docs.docker.com/reference/cli/dockerd/#daemon-configuration-file)).
 
-## Assistant on your own AI key (optional)
+## Agents on your own AI key (optional)
 
-Owners connect their own AI provider in **Settings → AI**. Two switches decide whether this
-installation lets the assistant run and which private hosts a connection may use; both are off while empty. Set them in
+People connect their own AI in **Settings → AI** (Connect AI): an API key, or a Claude or ChatGPT plan through the
+[agent runtime](#agent-runtime-optional) below. For an **API key**, two switches decide whether this
+installation lets people's agents run on it and which private hosts a connection may use; both are off while empty. Set them in
 `.env`; `compose.yaml` passes them to `api` and `worker`:
 
 ```sh
-FLUX_PERSONAL_RUNS=on              # the assistant, on each owner's own AI connection
+FLUX_PERSONAL_RUNS=on              # agents run on each person's own API key
 FLUX_AI_PRIVATE_TARGETS=           # optional: private hosts a connection may use, for example ollama,10.0.0.0/8
 FLUX_BACKGROUND_KEY_HOST_FILE=/etc/flux/background.key
 ```
@@ -176,15 +181,15 @@ the file to every command in this guide, next to the other optional files:
 docker compose --env-file .env -f compose.yaml -f compose.ai.yaml up -d --wait
 ```
 
-A plain `-f compose.yaml up` recreates `api` and `worker` without the key, which makes the assistant
+A plain `-f compose.yaml up` recreates `api` and `worker` without the key, which makes agents on API keys
 unavailable again until you pass `compose.ai.yaml`. Back the key file up with `.env`, not with the
 database: without it the stored AI connections cannot be opened and each owner connects again.
 
 ## Agent runtime (optional)
 
 Off by default and not needed for Flux itself. It lets people on this Flux sign in with their own
-ChatGPT (Codex) and Claude (Claude Code) subscriptions; Flux runs each person's official CLI,
-isolated from everyone else. Read the [operator guide](https://github.com/ColdPhase/flux/blob/main/docs/operations/agent-runtime.md)
+ChatGPT (Codex) and Claude (Claude Code) subscriptions in Connect AI; Flux runs each person's official CLI for their
+agents, isolated from everyone else. One runtime serves everyone. Read the [operator guide](https://github.com/ColdPhase/flux/blob/main/docs/operations/agent-runtime.md)
 first (its commands for a source checkout are `./flux ...`; here the same steps are `sh runtime.sh ...`).
 
 - **Linux host requirement.** The runtime needs the Linux kernel setting `kernel.yama.ptrace_scope` of 1 or
@@ -238,7 +243,7 @@ Calls, cameras and screen sharing in live sessions need a media server. The rele
 `live_media_image`. Without this file everything else in Flux works; only calls are unavailable.
 
 How it connects. Browsers sign in to media through Flux itself, at `<FLUX_PUBLIC_ORIGIN>/media`: the API
-checks the session and project access, then forwards to LiveKit on an internal network. Your existing
+checks the session and the space's access, then forwards to LiveKit on an internal network. Your existing
 HTTPS reverse proxy already carries this path; it needs no change. The audio and video then flow
 **directly** between the browsers and this host's media ports, not through the reverse proxy. LiveKit's
 signaling port (TCP/7880) is never published. Media is encrypted in transit and decrypted in the media
@@ -279,7 +284,7 @@ You need a public IPv4 address that browsers reach directly, and a DNS name for 
    docker compose --env-file .env -f compose.yaml -f compose.live.yaml ps livekit
    ```
 
-   Then start a live session in a project and join it from a second device on another network (a
+   Then start a call in a space and join it from a second device on another network (a
    phone on mobile data). A healthy `livekit` proves only that it started, not that media reaches it
    from outside.
 
@@ -311,7 +316,7 @@ interrupts current calls; people rejoin.
 Back up PostgreSQL and the uploaded files as a pair while the writers (`api` and `worker`) are
 stopped. Plan for downtime; do not run these commands during a live write. Keep the matching release
 files and `.env` (especially `FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET` and the VAPID keys) with the backup, and restrict
-access to it: it contains private workspace data.
+access to it: it contains your company's private data.
 
 ```sh
 docker compose --env-file .env -f compose.yaml stop api worker
@@ -327,6 +332,13 @@ All commands must succeed. Confirm that both archives are non-empty, copy them w
 `backup-SHA256SUMS` off the machine, and treat the backup as verified only after a restore test.
 
 ## Upgrade
+
+**From v0.1.0: not upgraded.** v0.1 had no users, so v0.2 converts nothing. If you start the v0.2 files on a database that v0.1
+wrote, the `migrate` service stops with `FLUX_V01_DATABASE This database was written by Flux v0.1 …`, before any
+migration runs, and `api` and `worker` do not start; your data is as it was. Install v0.2 fresh instead: use a new directory
+with a new `FLUX_PROJECT` (new volumes) and a new `.env`, or remove the old project's volumes yourself after you have kept what you
+need (the project export of v0.1 gives files you can read; neither version imports it). Restoring a v0.1 dump into v0.2 is refused the same way. Everything below is for an
+upgrade between v0.2 releases and later.
 
 1. Check that the Docker Engine is 25 or newer (`docker version --format '{{.Server.Version}}'`), because Compose refuses the new files on an older one only after step 4 has stopped the writers. Then take and verify a paired backup with the **old** release.
 2. Download and verify the **new** release's assets into a new directory. Keep the old directory, its
@@ -377,7 +389,7 @@ docker compose --env-file restore.env -p flux-restore -f compose.yaml up -d --wa
 ```
 
 `-p flux-restore` selects another project, so the restore uses its own volumes. On a replacement
-machine you can keep your original `FLUX_PROJECT` and leave `-p` out. Check an account, a project
+machine you can keep your original `FLUX_PROJECT` and leave `-p` out. Check an account, a space
 and an uploaded file before declaring recovery successful, and never run `down -v` on a live
 installation.
 
@@ -392,4 +404,5 @@ docker compose --env-file restore.env -p flux-restore -f compose.yaml run --rm -
 ```
 
 Restore support is bounded by the PostgreSQL major version and the schema of the release that wrote
-the backup: restore with the same release first, then perform a tested forward upgrade.
+the backup: restore with the same release first, then perform a tested forward upgrade. A backup that v0.1 wrote
+cannot be brought forward to v0.2 at all.

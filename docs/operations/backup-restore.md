@@ -108,7 +108,9 @@ In this order, stopping at the first problem:
 1. **Check the archive.** It must contain the four parts; each must match the size and SHA-256
    in the manifest. A damaged or edited archive is refused before anything changes.
 2. **Check the version.** The app version and (when both are known) commit must match this
-   checkout unless `--migrate` is given. A backup with a *newer* highest schema is always refused.
+   checkout unless `--migrate` is given. A backup with a *newer* highest schema is always refused,
+   and so is a backup that **Flux v0.1 wrote** (schema 2 or lower), with or without `--migrate`: v0.1 had no users, so v0.2
+   converts nothing ([upgrade](upgrade.md#from-v01-install-v02-fresh)). Restore such a backup with a v0.1 checkout.
 3. **Check the exact migration ledger**, after building the image and before anything is
    replaced. The ledger is read from the dump itself (`pg_restore --data-only --table
    flux_schema_version`) and must equal the manifest's `appliedMigrations` and end at its
@@ -174,7 +176,7 @@ restore brings them back **as they were when the backup was taken**:
 
 - a connection revoked *before* the backup stays revoked, and its bearer tokens stay denied;
 - a connection or token revoked *after* the backup is **active again** after the restore, and
-  so is anything else the owners changed since (grants, memberships, sessions).
+  so is anything else the owners changed since (memberships, roles, sessions).
 
 When a restore brings back active connections, it prints `NOTE: N agent connection(s) are
 active as of the backup`. After restoring an older backup, or whenever a token may have leaked,

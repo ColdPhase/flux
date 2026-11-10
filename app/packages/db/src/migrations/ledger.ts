@@ -47,6 +47,35 @@ export function assertKnownMigrationVersions(manifest: readonly MigrationFile[],
     'A development database from before the v0.1 baseline (#779) cannot be upgraded: remove it with ./flux clean and start again.');
 }
 
+/** The first migration of v0.2 (`0003_one_company_spaces.sql`: one company, Spaces). A database that never applied it was written by v0.1. */
+export const FIRST_V02_MIGRATION = 3;
+
+/**
+ * Flux v0.1 had no users, so v0.2 converts nothing and keeps no compatibility with its data (founder direction, 2026-11-09,
+ * #1176): an instance that holds v0.1 people is refused instead of being migrated into one that has no company.
+ */
+export class V01DatabaseError extends Error {
+  constructor(highest: number) {
+    super(`This database was written by Flux v0.1 (schema ${highest}). Flux v0.2 does not upgrade it: v0.1 had no users, so v0.2 converts no data, ` +
+      'and an upgraded v0.1 instance would have no company. Nothing was changed. Install v0.2 fresh on an empty database (./flux reset here, or a new folder ' +
+      'and volumes), then create the company and its spaces again. Flux has no import for v0.1 data; ./flux export of v0.1 gives files you can keep and read.');
+    this.name = 'V01DatabaseError';
+  }
+}
+
+/**
+ * Refuses a database that v0.1 wrote and that holds people: its ledger stops before the first v0.2 migration and it has an account or a
+ * workspace. An empty ledger (a new database) and a ledger that stopped half way through a first install, before anybody signed up,
+ * are not v0.1 and go on to migrate.
+ */
+export async function assertNotV01Database(db: LedgerReader, applied: readonly number[]): Promise<void> {
+  if (!applied.length) return;
+  const highest = Math.max(...applied);
+  if (highest >= FIRST_V02_MIGRATION) return;
+  const held = await db.query('SELECT (EXISTS (SELECT 1 FROM auth_users) OR EXISTS (SELECT 1 FROM workspaces)) AS held');
+  if (held.rows[0]?.held) throw new V01DatabaseError(highest);
+}
+
 /** A running API/worker, or a completed migration run, needs every file recorded. */
 export function assertExactMigrationLedger(manifest: readonly MigrationFile[], applied: readonly number[]): void {
   assertKnownMigrationVersions(manifest, applied);

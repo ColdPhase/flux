@@ -1,6 +1,6 @@
 # Contributing to Flux
 
-Flux is in early development; [v0.1.0](https://github.com/ColdPhase/flux/releases/tag/v0.1.0) is its first release. The application is a
+Flux is in early development; v0.2 is the current version ([release notes](product/release-notes-v0.2.0.md)). The application is a
 TypeScript monorepo run with Docker Compose (see the [README](../README.md) and
 [architecture](development/architecture.md)). Its UI follows one design, the
 [final design "Prostota"](design/final/README.md). Contributions to usability, accessibility,
@@ -168,7 +168,7 @@ the behavior in a browser and describe your checks:
 - For documentation changes, check that links, file names, and commands match the
   repository.
 
-The `./flux demo` data gives a realistic workspace to check against. Mention the browser, operating system, and manual checks you used. If
+The `./flux demo` data gives a realistic company with a space to check against. Mention the browser, operating system, and manual checks you used. If
 you could not verify relevant behavior, state that in the PR.
 
 ## Review and project decisions

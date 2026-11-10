@@ -83,4 +83,5 @@ Names in the code that are not settings at all:
 | `FLUX_RUNTIME_PURGE` | output marker of the operations tool |
 | `FLUX_SCHEMA_VERSION` | constant: the schema version of this build |
 | `FLUX_TOOL_NAME` | constant: pattern of Flux's MCP tool names |
+| `FLUX_V01_DATABASE` | output marker of the migrator when it refuses a database that Flux v0.1 wrote (#1176) |
 | `FLUX_VAPID` | prefix in a message |
