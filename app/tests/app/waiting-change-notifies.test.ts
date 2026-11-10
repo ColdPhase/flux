@@ -81,7 +81,7 @@ describe('an agent waiting for your OK notifies its owner (F-036 item 10, #1186)
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Jonas checks both gateways' } })).message), /^Waiting for /);
     const [note] = await waitFor(async () => { const list = await approvals(scene.owner, live.runId); return list.length ? list : null; }, 'the owner is told');
-    assert.equal(note!.body, 'Rename “Jonas checks the gateway” · Lamp sensor');
+    assert.equal(note!.body, `Rename “#${theirs.number} Jonas checks the gateway” · Lamp sensor`);
     await generatorCaughtUp();
     assert.deepEqual((await inbox(scene.peer)).filter((item) => item.reason === 'approval' || item.url?.includes(live.runId)), [], 'Jonas hears nothing until the owner decides');
   });
@@ -95,6 +95,7 @@ describe('an agent waiting for your OK notifies its owner (F-036 item 10, #1186)
     await generatorCaughtUp();
     await sleep(1500);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'no push during quiet hours');
+    await scene.complete(quiet.runId);
 
     await prefs(scene.owner, { quietHours: { enabled: false } });
     expectStatus(await scene.owner.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: scene.place.id, muted: true } }), 200);
