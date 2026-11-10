@@ -159,7 +159,15 @@ const stateMovement = keymap.of([
   { key: 'ArrowRight', run: byCharacter(true, false), shift: byCharacter(true, true) },
 ]);
 
-/** Enter continues a list or a quote, as a page would; on an empty item it ends the list. */
+/**
+ * Enter continues a list or a quote, as a page would; on an empty item it ends the list. Any other Enter is one new line, made here and
+ * not by the browser: WebKit's own line break at the end of the text was read back as two (a page saved an empty last line in Safari).
+ */
+function newLine(view: EditorView) {
+  if (view.state.readOnly) return false;
+  view.dispatch(view.state.replaceSelection('\n'), { userEvent: 'input', scrollIntoView: true });
+  return true;
+}
 const LIST_LINE = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)|^(\s*>\s?)/;
 function continueBlock(view: EditorView) {
   const { state } = view;
@@ -359,7 +367,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         doc: initial,
         extensions: [
           livePreview(hosts), EditorView.lineWrapping, drawSelection(), placeholder('Write something…'), stateMovement,
-          keymap.of([{ key: 'Enter', run: continueBlock }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
+          keymap.of([{ key: 'Enter', run: (target) => continueBlock(target) || newLine(target) }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
           EditorView.contentAttributes.of({ 'aria-label': 'Page text', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
