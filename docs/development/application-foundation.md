@@ -225,7 +225,7 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml st
 docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml exec -T db \
   pg_dump -U flux -d flux -Fc > ../flux-backup/database.dump
 docker run --rm -v flux28_files:/data:ro -v "$PWD/../flux-backup":/backup:Z \
-  node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
+  node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 \
   tar -czf /backup/files.tar.gz -C /data .
 ```
 
@@ -239,7 +239,7 @@ FLUX_PORT=8082 docker compose --env-file docker/.env -p flux28restore -f docker/
 cat ../flux-backup/database.dump | docker compose --env-file docker/.env -p flux28restore -f docker/compose.source.yaml \
   exec -T db pg_restore -U flux -d flux --no-owner
 docker run --rm -v flux28restore_files:/data -v "$PWD/../flux-backup":/backup:Z \
-  node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
+  node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 \
   tar -xzf /backup/files.tar.gz -C /data
 FLUX_PORT=8082 docker compose --env-file docker/.env -p flux28restore -f docker/compose.source.yaml up -d migrate
 FLUX_PORT=8082 docker compose --env-file docker/.env -p flux28restore -f docker/compose.source.yaml --profile setup run --rm files-init

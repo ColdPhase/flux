@@ -4,7 +4,7 @@
 set -euo pipefail
 umask 077
 repo=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)
-node_image='node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1'
+node_image='node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8'
 # Official multi-architecture (amd64 and arm64) image indexes, resolved from Docker Hub on 2026-10-04:
 # cloudflare/cloudflared 2026.9.3 and selenium/standalone-chrome 153.0 (Chrome 153.0.8010.47).
 default_tunnel_image='cloudflare/cloudflared@sha256:072c067d25ccbe61d46e18f0d0723255f2bb5304f7317caa95b27031520ff92c'
