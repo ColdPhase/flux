@@ -108,6 +108,15 @@ sign up now: the first account sets up the company and is its owner, and nothing
 address first). It owns the default space **Everyone**; everyone else joins by an invite link from an admin (or
 by signing in, with single sign-on). Spaces are added from **New › Space**. The password needs 12 to 128 characters.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/signup-dark.webp">
+    <img src="../assets/screens/signup-light.webp" width="460" alt="The sign-up page of a new instance: Create your Flux account, with Name, Email and Password fields, the hint that the password needs at least 12 characters, and a Create account button.">
+  </picture>
+</p>
+
+<p align="center"><sub>The sign-up page, in the light and the dark theme your browser asks for.</sub></p>
+
 Check that email works:
 
 ```sh
@@ -149,6 +158,13 @@ After you sign up you are the company's owner, in the default space **Everyone**
 **New › Space**: a name, the people (chosen from the company) and an AI switch that starts on. To bring in the
 rest of the team, open **Settings › Company** and use **Invite with a link**
 ([administration](administration.md#invite-links)).
+
+<p align="center">
+  <img src="../assets/screens/first-space.webp" width="42%" alt="New space: a Name field, People with Add people, an AI switch that is on, an Encrypted switch that is off and cannot be turned off later, and a Create space button.">
+  <img src="../assets/screens/invite-link.webp" width="45%" alt="Invite with a link in Settings, Company: Joins as Member, Works for 7 days, the Create invite link button and the link it made, with a Copy link button.">
+</p>
+
+<p align="center"><sub>The New space window, and an invite link made in Settings › Company.</sub></p>
 
 ### 6. Finish the server
 

@@ -25,6 +25,21 @@
   <a href="docs/CONTRIBUTING.md">Contributing</a>
 </p>
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/conversation-desktop-dark.webp">
+    <img src="docs/assets/readme/conversation-desktop.webp" width="74%" alt="The Community garden sensors space on a desktop. The conversation shows a post from Ada's Claude Code marked via Claude Code, her Assistant's answer marked via Assistant with the task made from it, and a new answer from her Assistant that only she sees, with its sources and a Show everyone button. Beside it, the accepted decision to measure soil moisture first, with its reason and the message it is based on.">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/conversation-phone-dark.webp">
+    <img src="docs/assets/readme/conversation-phone.webp" width="21%" alt="The same space on a phone: Ada's answer from her Assistant with the task made from it, and below it a new answer that only she sees, with its sources and a Show everyone button; the space's Conversation, Tasks, Map and Wiki views are above.">
+  </picture>
+</p>
+
+<p align="center"><sub>A space on a 1440&nbsp;px desktop and on a 390&nbsp;px phone, in your light or dark theme, captured from the
+running application on the fictional <code>./flux demo</code> data. The <a href="docs/assets/demo/flux-demo.gif">recording of the running app</a>
+walks the same journey (<a href="docs/assets/readme/README.md">how these were made</a>).</sub></p>
+
 Flux keeps a company's conversations and the work that comes out of them in one place: tasks,
 decisions with their reasons, a Wiki and maps of connected thoughts, each linked to the message it
 came from. One Flux is one company, and the company works in **spaces**: a team, a department or a
@@ -61,6 +76,24 @@ what needs you, so you do not have to ask around.
 - **Yours to run.** One Docker Compose stack started with `./flux up`, with backups, restore,
   export, upgrades, single sign-on and encrypted spaces, on a small server (2 cores and 4 GB is the
   [recommended](docs/operations/requirements.md) size).
+
+<table>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-task.webp" width="100%" alt="The Tasks board of the Community garden sensors space in four columns, To do, Doing, Blocked and Done. Tasks belong to Jonas, to Ada, to nobody and to the agent Planner, and one blocked task waits for Basia."><br><sub><b>A message becomes a task.</b> A task keeps the message it came from, and the board says who has it: a person, an agent or nobody yet.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-home.webp" width="100%" alt="Home: under Waiting for you, two decisions waiting and questions from Basia and Jonas; under Continue where you left off, the task Calibrate the probes in the raised beds."><br><sub><b>What needs you, in one place.</b> Home shows the top of your Inbox and the next step where you left off.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-agent.webp" width="100%" alt="Settings, AI: Connect AI with one API key, Your agents (Assistant, Planner and Reviewer, each with what it may do and its model), and Your agent app with Claude Code connected."><br><sub><b>Everything is an agent.</b> Connect AI once and you get an Assistant; add more agents, and connect your own Claude Code or Codex.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-map.webp" width="100%" alt="The Map view of the Community garden sensors space: the thought Six sensors for twelve beds linked to three thoughts, which branch on to Volunteers water on Mondays and Thursdays, Gateway on the shed roof and Second antenna for the far east bed, under the space's Conversation, Tasks, Map and Wiki views."><br><sub><b>A Map for thinking out loud.</b> Thoughts link to each other, and nothing on a Map has to become a task.</sub></td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-wiki.webp" width="100%" alt="A Wiki page of the space, How the garden sensors work, with a list of the sensors, a Radio section and a table of beds, distances and signal."><br><sub><b>A Wiki you edit where you read.</b> Pages of the space, with versions saved by themselves.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-phone.webp" width="100%" alt="Two phone screens side by side: a space's conversation with a task made from Ada's answer and a new answer from her Assistant that only she sees, with a Show everyone button; and Home with the Create sheet open: Task, Thought, Decision, Page and Space."><br><sub><b>Everywhere you are.</b> The same space on a 390&nbsp;px phone, and the + that makes a task, thought, decision, page or space; installable as a PWA.</sub></td>
+  </tr>
+</table>
+
+<p align="center"><sub>Captured from the running application on the same <code>./flux demo</code> data
+(<a href="docs/assets/screens/README.md">how these were made</a>).</sub></p>
 
 ## Why Flux
 
@@ -251,7 +284,7 @@ lists everything else.
 | `scripts` | Check scripts, the demo seed and repository tooling |
 | `docs` | Product, design, development and agent documentation |
 | `site` | The [documentation site](https://coldphase.github.io/flux/) (Astro Starlight), generated from `docs` |
-| `docs/assets` | The promo animation, screenshots and the demo GIF (each folder says how it was made; recorded on v0.1 and awaiting v0.2 media) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
+| `docs/assets` | The README screenshots, the documentation screens and the demo GIF (each folder says how it was made; recorded on v0.2), `promo/` (a note on the animation generator, which no page uses now) and `brand/`, the Kreska logo. The app icons are `app/apps/web/public/icons`, rendered from Kreska ([final design §3](docs/design/final/README.md#3-kreska-logo-agent-icon-and-mascot)) by `app/apps/web/scripts/generate-icons.ts` |
 
 Dependency directions between these are described and enforced in
 [architecture](docs/development/architecture.md).
