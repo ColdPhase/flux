@@ -25,7 +25,7 @@ const automated = (event: AudienceEvent) => event.data?.automation === GITHUB_RU
 const SCAN = 400;
 /** Stop once this many visible changes are kept: there is more than one short list to show. */
 const VISIBLE_ENOUGH = 400;
-/** At most this many of the reader's own rows are read per summary. */
+/** At most this many of the reader's own rows are read per summary (of the rows it can tell, of the place for a space or a conversation). */
 const BUDGET = 8000;
 const MAX_ITEMS = 40;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -36,6 +36,7 @@ const RELEVANT = new Set([
   'sketch.created.v1', 'sketch.changed.v1', 'project.doc_created.v1', 'project.doc_updated.v1',
 ]);
 const MESSAGE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1']);
+const SUMMARY_ROWS = { kinds: [...RELEVANT], automation: GITHUB_RULE_AUTOMATION };
 
 function human(principal: Principal) {
   if (principal.kind !== 'human' || !principal.id) throw new InvalidInputError('A signed-in person is required');
@@ -141,7 +142,10 @@ export function createReturnUseCases(ports: ReturnPorts) {
     let read = 0;
     let enough = false;
     for (;;) {
-      const page = await returns.audienceAfter(recipient, base.seq, SCAN, before);
+      // A space or a conversation reads only its own rows, and only rows a summary can tell (#1178); the row budget counts those rows. The
+      // filters below stay.
+      const page = await returns.audienceAfter(recipient, base.seq, SCAN, before, resolved.type === 'project' ? { projectId: resolved.projectId! }
+        : resolved.type === 'conversation' ? { conversationId: resolved.conversationId! } : null, SUMMARY_ROWS);
       read += page.length;
       const candidates = page.filter((event) => RELEVANT.has(event.kind) && (event.actorId !== recipient || automated(event)) && event.workspaceId);
       const newSketches = [...new Set(candidates.filter((event) => event.kind.startsWith('sketch.') && !sketches.has(event.objectId)).map((event) => event.objectId))];
