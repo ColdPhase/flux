@@ -130,6 +130,14 @@ interface Drag {
   base: Thought[];
   /** Intrinsic/native minimum at pointer-down, before our own previews can change measured height. */
   resizeHeight?: number;
+  /**
+   * What the last pointermove made of the gesture (the moved offset, the new size, the wire's end), which the release saves.
+   * A pointerup can arrive before React has rendered the last pointermove, and the state of the render before would save
+   * the thought one movement short of where the pointer let go.
+   */
+  offset?: { ids: string[]; base: Thought[]; dx: number; dy: number };
+  size?: { id: string; w: number; h: number };
+  wire?: { from: string; x: number; y: number; over: string | null };
 }
 
 /**
@@ -171,10 +179,16 @@ export function SketchMap(props: SketchMapProps) {
   // Reserve the actual dock height; widths and graph positions remain display-only geometry.
   useLayoutEffect(() => {
     const el = phoneToolsRef.current;
-    if (!compact || !el || typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver(() => setPhoneToolsHeight(Math.ceil(el.getBoundingClientRect().height) + 14));
+    if (!compact || !el) return;
+    const measure = () => setPhoneToolsHeight(Math.ceil(el.getBoundingClientRect().height) + 14);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    // The height moves the canvas, which other observers watch, so a change is taken in the next frame and never inside the
+    // delivery that reported it (WebKit reports that as "ResizeObserver loop completed with undelivered notifications").
+    let frame = 0;
+    const ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(measure); });
     ro.observe(el);
-    return () => ro.disconnect();
+    return () => { cancelAnimationFrame(frame); ro.disconnect(); };
   }, [compact, hasComposition]);
   const nodes = useRef(new Map<string, HTMLButtonElement>());
   const drag = useRef<Drag | null>(null);
@@ -413,10 +427,14 @@ export function SketchMap(props: SketchMapProps) {
       setCompositionPosition((old) => old && old.left === best.left && old.top === best.top ? old : { left: best.left, top: best.top });
     };
     placeEditor();
-    const ro = new ResizeObserver(placeEditor);
+    // On the phone the editor's height moves the canvas (`--sk-phone-tools-height`), which this and other observers watch:
+    // as with the tools above, a change is taken in the next frame, not inside the delivery that reported it.
+    let frame = 0;
+    const resized = compact ? () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(placeEditor); } : placeEditor;
+    const ro = new ResizeObserver(resized);
     ro.observe(editor); ro.observe(wrap); ro.observe(canvas);
     canvas.addEventListener('scroll', placeEditor, { passive: true });
-    return () => { ro.disconnect(); canvas.removeEventListener('scroll', placeEditor); };
+    return () => { cancelAnimationFrame(frame); ro.disconnect(); canvas.removeEventListener('scroll', placeEditor); };
   }, [hasComposition, compact, zoom, selection, props.draft?.parentId, shown, phoneToolsHeight]);
 
   // Camera continuity (#151, ADAPT-4): the view a person chose survives resizing, rotation, the
@@ -799,17 +817,20 @@ export function SketchMap(props: SketchMapProps) {
       const box = zoomedRef.current!.getBoundingClientRect();
       const hit = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('.sk-node, .sk-dot, .sk-work-slot');
       const over = hit?.dataset.id ?? hit?.dataset.for ?? null;
-      setWire({ from: d.id!, x: bounded(Math.round((event.clientX - box.left) / zoom + origin.x)), y: bounded(Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null });
+      d.wire = { from: d.id!, x: bounded(Math.round((event.clientX - box.left) / zoom + origin.x)), y: bounded(Math.round((event.clientY - box.top) / zoom + origin.y)), over: over && over !== d.id ? over : null };
+      setWire(d.wire);
     } else if (d.kind === 'move') {
       // Offsets are in stored plane units; the phone projection compresses x.
-      setOffset({ ids: d.ids, base: d.base, dx: Math.round(dx * scaleX), dy: Math.round(dy) });
+      d.offset = { ids: d.ids, base: d.base, dx: Math.round(dx * scaleX), dy: Math.round(dy) };
+      setOffset(d.offset);
       props.onGesturePreview(d.base.map((thought) => ({ id: thought.id, x: bounded(Math.round(thought.x + dx * scaleX)), y: bounded(Math.round(thought.y + dy)) })));
     } else {
       const t = byId.get(d.id!) ?? sketch.thoughts.find((x) => x.id === d.id);
       const base = (props.liveEnabled ? d.base.find((x) => x.id === d.id) : sketch.thoughts.find((x) => x.id === d.id)) ?? t!;
       const width = clamp(Math.round(base.width + dx), SKETCH_LIMITS.minWidth, SKETCH_LIMITS.maxWidth);
       const height = clamp(Math.round((d.resizeHeight ?? base.height) + dy), SKETCH_LIMITS.minHeight, SKETCH_LIMITS.maxHeight);
-      setSize({ id: d.id!, w: width, h: height });
+      d.size = { id: d.id!, w: width, h: height };
+      setSize(d.size);
       props.onGesturePreview([{ id: base.id, x: base.x, y: base.y, width, height }]);
     }
   };
@@ -826,8 +847,10 @@ export function SketchMap(props: SketchMapProps) {
     if (!d.moved) return;
     suppressClick.current = true;
     window.setTimeout(() => { suppressClick.current = false; }, 0);
+    // The release saves what the last movement computed (the drag's own record), not the state of the last render.
+    const { offset, size } = d;
     if (d.kind === 'link') {
-      const end = wire;
+      const end = d.wire;
       setWire(null);
       if (!end || !arrange) return;
       if (end.over) props.onConnect(d.id!, end.over);
