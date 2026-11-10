@@ -131,7 +131,8 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
       throw new DomainError(401, 'UNAUTHENTICATED', 'Authentication required');
   };
   return { check: async (principal, projectId, fingerprint, required) => {
-    await requireSession(principal);
+    // No session check before these: they only refuse (404, 409), and nothing is answered unless the session holds at both ends of the
+    // final policy query below. A check here repeated the first of those two (#1178: one session read fewer in every work read).
     await nativeWorkReadAccess(db).requireProject(principal, projectId);
     const sources = required?.sources;
     if (sources) await nativeWorkReadRepository(db).requireSources(projectId, sources);

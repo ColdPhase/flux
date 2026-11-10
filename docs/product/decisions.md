@@ -273,6 +273,10 @@ the detail):
     content within 500 ms; server p95 at most 50 ms; at most 250 KB on a first visit before
     content; an image of at most 250 MB; a restart in at most 5 s. The performance run gains a
     CPU-limited phase that guards them.
+  - **v0.2 status** (Hubert, 2026-11-10, [#1178](https://github.com/ColdPhase/flux/issues/1178)): v0.2 ships with the idle
+    minute and the first screen met, and the 50 ms p95 met in the CPU-limited warm phases. The p95 of the CPU-limited
+    concurrent phase is deferred to v0.3. The profile and what was tried are in
+    [performance-2026-11.md](../development/performance-2026-11.md#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10).
   - **Instant actions.** Your own action (send, Done, moving a task) shows at once and the server
     confirms it in the background. If that fails, the previous state returns with "Couldn't
     save · Try again".

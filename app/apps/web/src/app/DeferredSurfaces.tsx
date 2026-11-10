@@ -10,7 +10,7 @@ import { useShellData } from './data';
 import { placeOfPath, useRecentPlaces } from '../search/recent';
 import { useAssistantReady } from '../search/useAssistantReady';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
-import { preloadProjectViews } from './viewChunks';
+import { conversationPage, preloadProjectViews } from './viewChunks';
 
 /**
  * The code of one deferred surface. It is downloaded once, whoever asks first (the preload below or the surface being opened): a
@@ -26,6 +26,8 @@ function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
 type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
 const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
 const search = deferred<{ onClose: () => void; userId: string; assistantReady: boolean }>(async () => (await import('../search/JumpTo')).JumpToBody);
+// The live strip is not part of the first visit's code (#1178): it comes with the other surfaces.
+const liveBar = deferred<Record<string, never>>(async () => (await import('../live/LiveBar')).LiveBar);
 /**
  * A deferred surface's component: put in at once when its code has arrived, else `fallback` until it does. It is not a `Suspense` boundary
  * on purpose: React holds a fallback it has shown for about 300 ms before it reveals what replaces it, so a code download that takes
@@ -61,6 +63,9 @@ function preloadSurfaces() {
   preloaded = true;
   void details.download().catch(() => { preloaded = false; });
   void search.download().catch(() => { preloaded = false; });
+  void liveBar.download().catch(() => { preloaded = false; });
+  // A space opens on its conversation, so its code is here before the first move into one (#1178).
+  void conversationPage().catch(() => { preloaded = false; });
 }
 function preloadViews() {
   if (viewsPreloaded) return;
@@ -161,6 +166,16 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
       </Overlay>
     </SurfaceBoundary>
   );
+}
+
+/** The live strip (#1178): only while there is a call or an invitation to show, with its code then. */
+export function DeferredLiveBar() {
+  const live = useLive();
+  const shown = live.phase !== 'idle' || live.invitation !== null;
+  const [requested, setRequested] = useState(() => shown || liveBar.loaded() !== null);
+  if (shown && !requested) setRequested(true);
+  if (!requested) return null;
+  return <SurfaceBoundary label="Live session"><Surface of={liveBar} props={{}} fallback={null} /></SurfaceBoundary>;
 }
 
 export function DeferredLiveStage() {
