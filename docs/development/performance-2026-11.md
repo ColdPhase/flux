@@ -21,7 +21,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
-| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
+| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms. With [#1178](https://github.com/ColdPhase/flux/issues/1178): the warm @1cpu phases 19 and 16 ms, 0 of 38 over; the concurrent @1cpu phase 42 ms, 10 of 38 over | warm phases met; the concurrent phase is deferred to v0.3 (founder decision, 2026-11-10), see [The concurrent phase](#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 241 KB, 36 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
 
@@ -117,6 +117,46 @@ the database spent 1,189 ms planning and 625 ms running.
 **Observed after** (the same ten passes): the planning took **792 ms**, a third less. The fingerprint took 23 ms in all, now
 with a generic plan. The statements with an array parameter still get custom plans: PostgreSQL judges the generic plan
 dearer when it cannot see how long the array is. They plan as before and are not worse.
+
+### The concurrent phase, deferred to v0.3 (founder decision, 2026-11-10)
+
+**Decision.** Hubert decided on 2026-11-10 that v0.2 ships that day. The concurrent @1cpu phase's p95 moves to v0.3. For v0.2:
+- the idle minute (at most 100 statements) and the first screen (at most 250 KB) are met;
+- the CPU-limited warm phases meet the 50 ms p95.
+
+**Observed** (`FLUX_PERF_PHASES=limited`, 2026-11-10 around 06:55 UTC+1, branch head `c5bfa5a35`, a host with no other test stack but not
+one held quiet for the run):
+- warm @1.0 cpu: p95 of all requests 19 ms, 0 of 38 over 50 ms;
+- warm (member) @1.0 cpu: 16 ms, 0 of 38 over;
+- concurrent @1.0 cpu: 42 ms, 10 of 38 over: the Tasks work views 61 to 86 ms, Since you left 76, root work associations 71, Needs
+  you 65, work relations 56, notice reference rows 54, search 53.
+
+`main` at `a8369b516`, measured the same way right after (another browser suite had started), failed both warm phases (7 and 4
+over) and the concurrent one (15 over).
+
+**Why the concurrent phase misses** (observed on a kept stack, the same head, two clients without pause):
+- **The API is CPU-bound in that phase.** Its cgroup was throttled in 135 of 141 CFS periods. It took about 4 to 5 ms of CPU per
+  request, so two clients that send each view's reads together keep it saturated, and the last read of a view waits for the others.
+- **Where the CPU went** (V8 profile under that load):
+  - about 23% Drizzle composing queries and mapping rows (`is()` alone is a third of that);
+  - about 18% Better Auth session reads (`better-call` context, the signed cookie, its adapter);
+  - about 13% garbage collection, and about 13% `pg` and its protocol.
+- **Since you left is the heaviest single read.** It scans up to 400 of the reader's own rows for each place it opens, one to three
+  pages of 400. Each Home and space it opens costs 13 to 17 ms of API CPU.
+- **The measuring client shares the API's CPU limit.** `perf-measure.mjs` runs inside the API's container, so it shares the 1.0 CPU
+  limit. In a concurrent run it took 1.2 s of the container's 5.5 s, about a quarter.
+
+**For v0.3** (not merged: the founder stopped this work so that only finished, tested and safe changes ship). Branch
+`claude-hubert/1178-v03-api-cpu-wip` holds these attempts:
+- a session read of one statement once Better Auth has accepted the cookie, with a test that a sign-out, a revoked or expired
+  session and a deleted account are refused on the very next request on `api` and `api2`;
+- the access policy's lookups as constant prepared statements;
+- the fingerprint, the relation counts and a person's read of a space composed once per shape;
+- the measuring client in a container of its own;
+- for Since you left, reading only the rows it can tell, of its place, in SQL.
+
+With all of these but the last, an exploratory run had the concurrent phase at 19 ms overall, 1 of 38 over (Needs you, 57 ms).
+That branch has not had the full suites; its last commit has not had any test.
 
 ## Editors
 
