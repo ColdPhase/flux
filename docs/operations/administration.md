@@ -32,6 +32,19 @@ and are in Everyone again, and other spaces are added by hand. Below that it lis
 an owner or admin can add themselves to one or delete it; their sidebar, search and Inbox hold only the
 spaces they belong to.
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/people-computer-dark.webp">
+    <img src="../assets/screens/people-computer-light.webp" width="62%" alt="Settings, Company on a computer: People, 4, with Ada Kowalska as Owner, Jonas Berg as Member, Basia Wrona as Admin and Tomasz Lis as Guest, each with a role control, an Invite button above them and the line that guests see only the spaces they are added to and never have AI.">
+  </picture>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/screens/people-phone-dark.webp">
+    <img src="../assets/screens/people-phone-light.webp" width="22%" alt="The same page on a phone: the company's name, the four people with their roles, the guests line and the start of the list of spaces.">
+  </picture>
+</p>
+
+<p align="center"><sub>Settings › Company on a 1440&nbsp;px computer and a 390&nbsp;px phone, in the light and the dark theme your browser asks for.</sub></p>
+
 Each space has its own settings (**⋯ › Settings** in its header): its name, its people, the AI switch,
 **Leave space** and, for its admins, **Delete space…**. A space has two roles, **Member** and **Admin**.
 Its creator is an admin and can make others admins. Deleting asks first, names the space and erases
@@ -54,6 +67,13 @@ links are listed in the same place, where any owner or admin can copy or revoke 
 signs in or creates an account under the instance's sign-up rule: an invite never opens sign-up that
 `FLUX_SIGNUP` or [single sign-on](single-sign-on.md) has closed. Changing `FLUX_AUTH_SECRET` voids
 every pending link.
+
+<p align="center">
+  <img src="../assets/screens/invite-link.webp" width="48%" alt="Invite with a link in Settings, Company: Joins as Member, Only for (optional), Works for 7 days, the Create invite link button, and the new link with a Copy link button and the note that it works once and Flux does not send it.">
+  <img src="../assets/screens/join-page.webp" width="48%" alt="The page the link opens: Join Riverside Makers, with the line that Ada Kowalska invited you as a member, a Sign in to join button and a Create an account button.">
+</p>
+
+<p align="center"><sub>Creating the link in Settings › Company, and the page it opens for the person who receives it.</sub></p>
 
 ## AI in a space
 
@@ -112,6 +132,12 @@ In v0.2 everything that works for a person with AI is an **agent**, and each per
 - **The web.** A server agent searches the web and reads public pages as much as a question needs, and lists every address it
   used. This is on by default and the operator can turn it off with `FLUX_WEB_READS=off`
   ([why you might](hardening.md)).
+
+<p align="center">
+  <img src="../assets/screens/highlight-agent.webp" width="52%" alt="Settings, AI: Connect AI with one API key, Your agents (Assistant, Planner and Reviewer, each with what it may do and its model), and Your agent app with Claude Code connected.">
+</p>
+
+<p align="center"><sub>Settings › AI of one person: a connection, their agents and their own Claude Code, connected.</sub></p>
 
 What the operator decides, in the [settings file](configuration.md#ai-providers): `FLUX_PERSONAL_RUNS` and a key file for
 agents on API keys, the [agent runtime](agent-runtime.md) for Claude and ChatGPT plans, and `FLUX_WEB_READS`. Until one of the two ways is on,
