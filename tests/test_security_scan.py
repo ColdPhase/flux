@@ -524,6 +524,11 @@ class WorkflowRulesTest(unittest.TestCase):
         self.assertRegex(text, r'(?s)package-ecosystem: npm\n.*?ignore:\n\s+- dependency-name: "playwright"')
         self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n\s+- dependency-name: "mcr\.microsoft\.com/playwright\*"')
 
+    def test_dependabot_leaves_the_digest_pinned_node_base_to_a_person(self) -> None:
+        text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        # A pin by digest alone has no tag for Dependabot to follow; in #1086 it offered the Debian `node:26` image.
+        self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n(?:\s+(?:#.*|- dependency-name: "[^"]+")\n)*?\s+- dependency-name: "node"\n')
+
     def test_dependabot_covers_every_directory_with_a_manifest_a_lockfile_or_a_dockerfile(self) -> None:
         listing = subprocess.run(["git", "ls-files"], cwd=ROOT, capture_output=True, text=True) if shutil.which("git") else None
         if listing is None or listing.returncode != 0:
