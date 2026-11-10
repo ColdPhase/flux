@@ -236,6 +236,25 @@ class ConnectAiJourney(unittest.TestCase):
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
 
+    def test_05b_the_lines_say_what_the_connections_give(self) -> None:
+        """#1173: with nothing connected Connect AI says its rule once. A connection listed above that cannot run an agent (a plan to
+        sign in to again, a key whose model has no known price) is not answered with "Connect AI first" below it."""
+        page = self.page("tom")
+        page.goto("/settings/agents")
+        connect, _, _ = self.sections(page)
+        expect(connect.locator(".cai__empty")).to_contain_text("Nothing is connected yet.")
+        expect(connect).not_to_contain_text("several connections")
+        self.assertEqual(connect.inner_text().count("Each agent uses one"), 1, "the rule is said once")
+        listed = self.page("tom")
+        self.stub_runtime(listed, runtime_signed_in({**CLAUDE, "state": "sign_in_again"}, None))
+        listed.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(
+            status=200, content_type="application/json", body=json.dumps({"current": None, "default": None, "groups": [], "saved": False})))
+        listed.goto("/settings/agents")
+        connect, assistant, _ = self.sections(listed)
+        expect(connect.locator("li[data-connection=claude_plan]")).to_be_visible()
+        expect(assistant).to_contain_text("None of your connections can run an agent yet. Your first agent, Assistant, appears once one can")
+        expect(assistant).not_to_contain_text("Connect AI first")
+
     def test_06_a_second_agent_is_listed_in_settings_not_among_the_computer_apps(self) -> None:
         ines = self.page("ines")
         assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
@@ -250,6 +269,15 @@ class ConnectAiJourney(unittest.TestCase):
         expect(app.locator(".sset-row__identity")).to_have_count(1)
         expect(section.get_by_role("list", name="Your agents")).to_contain_text("Ines personal assistant")
         expect(section).to_contain_text("Test fixture key")
+        # #1173: the model line names Opus and the Claude limit only beside a Claude plan that offers Opus; an API key is not one.
+        section.get_by_role("link", name=re.compile("Ines personal assistant")).click()
+        expect(ines.locator("#agent-model")).to_have_text("Model · One per agent.")
+        plan = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude",
+                "options": [{"id": model, "name": name, "note": "", "callsTools": True} for model, name in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"))]}
+        with_plan = json.dumps({**choice, "groups": [plan, *choice["groups"]]})
+        ines.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(status=200, content_type="application/json", body=with_plan))
+        ines.reload()
+        expect(ines.locator("#agent-model")).to_have_text("Model · One per agent. Opus thinks longest and uses your Claude limit fastest.")
 
     def test_07_a_second_member_never_sees_or_changes_the_first_members_connections(self) -> None:
         ines = self.page("ines")

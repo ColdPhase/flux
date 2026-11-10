@@ -9,16 +9,12 @@ import { SwitchRow } from '../ui/SwitchRow';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { LEVELS } from './levels';
 import './notifications.css';
 
 type MutedPlace = NotificationPreferences['muted'][number];
 type PendingMute = { place: MutedPlace; muted: boolean };
 
-const LEVELS: { id: NotificationLevel; label: string; detail: string }[] = [
-  { id: 'needsYou', label: 'Only what needs me', detail: 'Decisions, questions, blocked tasks, mentions and agents waiting for you' },
-  { id: 'everything', label: 'Everything', detail: 'Also every reply in conversations you are part of' },
-  { id: 'nothing', label: 'Nothing', detail: 'No push or email. Everything still waits in the Inbox' },
-];
 
 function browserTimeZone() {
   try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }

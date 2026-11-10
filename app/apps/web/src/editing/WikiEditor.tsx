@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate, useRevalidator } from 'react-router';
 import * as Y from 'yjs';
-import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
+import { ChangeSet, Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
 import { Decoration, Direction, EditorView, RectangleMarker, drawSelection, keymap, layer, placeholder, type DecorationSet, type LayerMarker } from '@codemirror/view';
 import { yCollab, yUndoManagerKeymap } from 'y-codemirror.next';
 import { DOC_LIMITS, docRef, type Doc, type DocMention, type DocVersion, type LiveDocBootstrap, type Project } from '@flux/contracts';
@@ -320,6 +320,17 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const editability = useMemo(() => new Compartment(), []);
   const landing = useRef<() => void>(() => undefined);
   const changed = useRef<() => void>(() => undefined);
+  // A new page opens with the caret in its text, once its text can be written.
+  const writeAtStart = (location.state as { writeAt?: string } | null)?.writeAt === 'start';
+  const wantsCaret = useRef(writeAtStart);
+  /**
+   * A new page takes typing from its first frame (#1171): its room (or this tab's copy) needs a moment to open, and the text typed
+   * meanwhile was lost. Until the source can be written, the view keeps what is typed (`changes`, from the text it was made with, `base`);
+   * then that goes into the source after whatever the source holds that the page was not read with.
+   */
+  const early = useRef<{ base: string; changes: ChangeSet | null } | null>(null);
+  const [earlyTyped, setEarlyTyped] = useState(false);
+  const [sourceTick, setSourceTick] = useState(0);
 
   // The view is made once, with the text the page was read with; its source is bound when it is ready.
   useEffect(() => {
@@ -333,42 +344,78 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
       setPicker(at && box ? { top: at.bottom - box.top + 6, left: Math.max(0, Math.min(at.left - box.left, box.width - 440)) } : { top: 0, left: 0 });
       return true;
     };
+    const initial = mode.live ? mode.head?.body ?? doc.body : doc.body;
+    // Only a person who may write it: the room's head says so with the page, and this tab's own copy is always writable.
+    const opensWriting = writeAtStart && (!mode.live || mode.head?.canWrite === true);
+    if (opensWriting) early.current = { base: initial, changes: null };
+    const writes = [EditorView.editable.of(true), EditorState.readOnly.of(false)];
+    const reads = [EditorView.editable.of(false), EditorState.readOnly.of(true)];
     const created = new EditorView({
       parent: parent.current,
       state: EditorState.create({
-        doc: mode.live ? mode.head?.body ?? doc.body : doc.body,
+        doc: initial,
         extensions: [
           livePreview(hosts), EditorView.lineWrapping, drawSelection(), placeholder('Write something…'), stateMovement,
           keymap.of([{ key: 'Enter', run: continueBlock }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
           EditorView.contentAttributes.of({ 'aria-label': 'Page text', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
-          EditorView.updateListener.of((update) => { if (update.docChanged) changed.current(); }),
-          collab.of([]), editability.of([EditorView.editable.of(false), EditorState.readOnly.of(true)]),
+          EditorView.updateListener.of((update) => {
+            if (!update.docChanged) return;
+            changed.current();
+            const typed = early.current;
+            if (typed) { typed.changes = typed.changes ? typed.changes.compose(update.changes) : update.changes; setEarlyTyped(true); }
+          }),
+          collab.of([]), editability.of(opensWriting ? writes : reads),
         ],
       }),
     });
     setView(created);
+    if (opensWriting) { wantsCaret.current = false; created.focus(); }
     return () => { window.clearTimeout(timer); created.destroy(); };
     // One view for the life of the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // A new page opens with the caret in its text, once its text can be written.
-  const wantsCaret = useRef((location.state as { writeAt?: string } | null)?.writeAt === 'start');
 
   // Bind the source: the view takes its text (unchanged when the read text is already it) and edits it from now on.
   const text = source?.text;
   // Someone deleted the page while it was open (#941): the room closes, what this person typed stays in this tab.
   const { gone, checking } = usePageGone(project.id, doc.id, userId, shared?.accessEnded === true || local?.missing === true);
   useEffect(() => { if (gone) shared?.pageDeleted(); }, [gone, shared]);
+  // The room of a new page could not be opened (or was closed) for this person: the page stops taking the text it could not keep.
+  const roomRefused = writeAtStart && shared?.status === 'private';
   useEffect(() => {
     if (!view) return;
+    const typed = early.current;
+    if (typed) {
+      const refused = roomRefused || (source instanceof SharedWiki && source.head?.canWrite === false);
+      if (refused && (typed.changes || !source || !text)) {
+        // The room could not be opened for writing: what was typed stays on the page, read only, beside the problem it names.
+        early.current = null; setEarlyTyped(false);
+        view.dispatch({ effects: editability.reconfigure([EditorView.editable.of(false), EditorState.readOnly.of(true)]) });
+        return;
+      }
+      // A new page keeps taking input until its source can be written (#1171).
+      if (!refused && (!source || !text)) return;
+      if (!refused && source && !source.writable) return source.subscribe(() => { if (source.writable || source.status === 'private') setSourceTick((value) => value + 1); });
+    }
     const refocus = view.hasFocus;
-    view.dispatch({ effects: [collab.reconfigure([]), editability.reconfigure([EditorView.editable.of(false), EditorState.readOnly.of(true)])] });
+    early.current = null;
+    // A new page whose source can be written now goes on taking input without a pause.
+    const writing = !!typed && !!source?.writable;
+    // What was typed before the source could take it, after what the source holds that the page was not read with.
+    const mine = writing && text ? typed?.changes ?? null : null;
+    let typedLate: { changes: ChangeSet; selection: EditorSelection } | null = null;
+    if (typed && text && mine && !mine.empty) {
+      const theirs = ChangeSet.of(difference(typed.base, text.toString()) ?? [], typed.base.length);
+      typedLate = { changes: mine.map(theirs), selection: view.state.selection.map(theirs.map(mine, true)) };
+    }
+    view.dispatch({ effects: writing ? collab.reconfigure([]) : [collab.reconfigure([]), editability.reconfigure([EditorView.editable.of(false), EditorState.readOnly.of(true)])] });
     if (!source || !text) return;
     // Only what differs is replaced, so the caret keeps its place when a room is opened afresh.
     const change = difference(view.state.doc.toString(), text.toString());
     if (change) view.dispatch({ changes: change });
     view.dispatch({ effects: collab.reconfigure(binding(source)) });
+    if (typedLate) view.dispatch({ changes: typedLate.changes, selection: typedLate.selection, userEvent: 'input', scrollIntoView: true });
+    if (typed) setEarlyTyped(false);
     let scheduled = false, gone = false, editable: boolean | null = null, hadFocus = refocus;
     const update = () => {
       if (scheduled) return;
@@ -393,7 +440,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     };
     const unsubscribe = source.subscribe(update); update();
     return () => { gone = true; unsubscribe(); };
-  }, [view, source, text, collab, editability]);
+  }, [view, source, text, collab, editability, sourceTick, roomRefused]);
 
 
   // What the references in the text lead to, read again when they change and when the window gets focus.
@@ -512,7 +559,8 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const people = shared ? [...new Map([...shared.peers.values()].filter((peer) => peer.actor.id !== userId).map((peer) => [peer.actor.id, { id: peer.actor.id, name: peer.actor.name }])).values()] : [];
   const docTime = Date.parse(doc.createdAt);
   const at = (time: number | null) => ago(new Date(time ?? docTime).toISOString(), now);
-  const state = local
+  // Text typed on a new page before its source could take it is not shared or saved yet (#1171).
+  const state = earlyTyped && shared?.status !== 'private' ? 'Saving…' : local
     ? local.conflict ? 'Not saved · this page changed' : local.saving || local.dirty ? 'Saving…' : local.problem ? 'Not saved yet' : `Saved · ${at(local.savedAt)}`
     : !shared || shared.status === 'connecting' && !shared.pendingCount ? `Saved · ${at(shared?.savedAt ?? null)}`
       : shared.status === 'reconnecting' ? 'Reconnecting · your text is kept'
@@ -567,7 +615,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   return (
     <PageFrame docId={doc.id} title={title} headings={headings} onHeading={go} rename={rename} notices={notices} onBodyClick={onClick}
       meta={<>{state}<span role="status">{people.length ? ` · ${hereToo(people)}` : ''}</span></>}
-      metaData={{ 'data-live-status': shared?.status ?? (ordinary ? 'ordinary' : 'connecting'), 'data-live-pending': shared?.pendingCount ?? (local?.dirty ? 1 : 0) }}
+      metaData={{ 'data-live-status': shared?.status ?? (ordinary ? 'ordinary' : 'connecting'), 'data-live-pending': (shared?.pendingCount ?? (local?.dirty ? 1 : 0)) + (earlyTyped ? 1 : 0) }}
       faces={<Faces people={people} />}
       shown={{ title, body: () => view?.state.doc.toString() ?? doc.body, version: savedVersion, current: true }}>
       <div ref={parent} className="doc-prose wiki-editor" data-live-wiki-editor={shared ? '' : undefined}

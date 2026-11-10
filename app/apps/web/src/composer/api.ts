@@ -1,4 +1,4 @@
-import { projectFilesPath, taskDiscussionPath, type ConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
+import { projectFilesPath, taskDiscussionPath, type SentConversationMessage, type StagedFile, type TaskContributionCommand, type TaskDiscussion } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 
 /** Every view sends the same task command through this operation, including conversation replies. */
@@ -8,8 +8,9 @@ export const getTaskDiscussion = (workId: string, options: { limit?: number; bef
   if (options.beforeSequence) query.set('beforeSequence', String(options.beforeSequence));
   return request<TaskDiscussion>(`${taskDiscussionPath(workId)}${query.size ? `?${query}` : ''}`, { signal: options.signal });
 };
+/** A message in a task's discussion; `answered` names what it answered in the person's Inbox (#1170). */
 export const contributeToTask = (workId: string, command: TaskContributionCommand) =>
-  request<ConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
+  request<SentConversationMessage>(taskDiscussionPath(workId), { method: 'POST', body: command });
 
 /**
  * Raw authenticated bytes; upload UUID is retained after a lost response. It goes by XMLHttpRequest, the

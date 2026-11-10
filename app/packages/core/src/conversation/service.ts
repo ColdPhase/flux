@@ -1,6 +1,6 @@
 import type {
   Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
-  CreateMaterialCommand, EditMessageCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, UpdateMaterialCommand,
+  CreateMaterialCommand, EditMessageCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, SentConversationMessage, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
 import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeMessageEdit, normalizeRootWindow } from './commands.js';
@@ -16,7 +16,8 @@ export interface ConversationPort {
   listRoots(principal: Principal, projectId: string, window: ReturnType<typeof normalizeRootWindow>): Promise<ConversationRootWindow>;
   getConversation(principal: Principal, conversationId: string, window: ReturnType<typeof normalizeConversationWindow>): Promise<Conversation>;
   createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<Conversation>;
-  sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<ConversationMessage>;
+  /** A person's reply also answers what they were asked or mentioned in this conversation (#1170): `answered` names those Inbox items. */
+  sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<SentConversationMessage>;
   /** The author changes the words of their own message in place (#1006); only the author, with write access, on a plain message. */
   editMessage(principal: Principal, conversationId: string, messageId: string, input: ReturnType<typeof normalizeMessageEdit>): Promise<ConversationMessage>;
   /** The author deletes their own message (#1006): a marker stays in its place; the words, its files and its notices go. */

@@ -247,6 +247,10 @@ class NotificationJourney(unittest.TestCase):
         # Three choices, Only what needs me by default: push and email for what needs you, not for replies; the Inbox keeps everything.
         levels = page.get_by_role("radiogroup", name="Tell me about")
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only what needs me", "Everything", "Nothing"])
+        # #1173: each line names what reaches Ada at that level (pinned against the reasons in notification-level-words.test.ts).
+        self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__s").all_inner_texts()], [
+            "Questions, mentions, direct messages, tasks that need you, decisions about your work and invitations to work together",
+            "Also every reply in conversations you are part of", "No push or email. Everything still waits in the Inbox"])
         expect(levels.get_by_role("radio", name="Only what needs me")).to_be_checked()
         start = self.api(page, "GET", "/api/v1/notification-preferences")
         self.assertEqual((start["level"], start["emailMe"]), ("needsYou", True))
@@ -633,6 +637,59 @@ class NotificationJourney(unittest.TestCase):
         page.wait_for_timeout(300)
         self.assertEqual(len(puts), 1, "a failed mute is not sent again by itself")
         self.assertEqual(self.api(page, "GET", "/api/v1/notification-preferences")["muted"], [])
+
+    def test_12_a_question_answered_through_reply_leaves_the_inbox_with_undo(self) -> None:
+        """#1170: Reply on a question in the Inbox opens its thread. Opening it keeps the question; answering there takes it out of the
+        Inbox and its count, as Done does, and Undo brings it back."""
+        kai = self.page("kai")
+        asked = f"@Ada Kowalska is the readings sheet shared already? {uuid.uuid4().hex[:6]}"
+        conversation = self.api(kai, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": asked, "clientMessageId": str(uuid.uuid4())})
+        page = self.page("ada", phone=True)
+        item = None
+        for _ in range(80):
+            item = next((entry for entry in self.api(page, "GET", "/api/v1/needs-you")["items"] if conversation["id"] in entry["url"]), None)
+            if item:
+                break
+            time.sleep(0.25)
+        self.assertIsNotNone(item, "the question reaches Ada's Inbox")
+        waiting = lambda: [entry["key"] for entry in self.api(page, "GET", "/api/v1/needs-you")["items"]]  # noqa: E731
+        read = lambda: next(entry for entry in self.api(page, "GET", "/api/v1/inbox?limit=100")["items"] if entry["id"] == item["key"][5:])["readAt"]  # noqa: E731
+        before = len(waiting())
+        page.goto("/inbox")
+        card = page.locator(f'.nyc[data-key="{item["key"]}"]')
+        expect(card).to_contain_text("Kai Tanaka asked you in Garden sensors")
+        card.get_by_role("button", name="Reply").tap()
+        expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/conversations/{conversation['id']}")))
+        thread = page.get_by_role("dialog", name=re.compile("^Replies"))
+        expect(thread.get_by_text(asked).first).to_be_visible()
+        # Opened, not answered: it still waits.
+        self.assertIn(item["key"], waiting())
+        thread.get_by_role("textbox", name="Reply").fill("Yes, it is shared in the Wiki under Readings.")
+        thread.get_by_role("button", name=re.compile("^Send")).tap()
+        expect(thread.get_by_text("Yes, it is shared in the Wiki under Readings.").first).to_be_visible()
+        toast = page.locator(".ui-toast", has_text="Replied. Out of your Inbox")
+        expect(toast.get_by_role("button", name="Undo")).to_be_visible()
+        for _ in range(40):
+            if item["key"] not in waiting() and read():
+                break
+            time.sleep(0.25)
+        self.assertNotIn(item["key"], waiting(), "the answered question left the Inbox")
+        self.assertEqual(len(waiting()), before - 1, "and its count")
+        self.assertTrue(read(), "answering read its notification")
+        thread.get_by_role("button", name="Inbox", exact=True).tap()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.locator(".nyc").first).to_be_visible()
+        expect(card).to_have_count(0)
+        # Undo, as for Done: the question is back, unread.
+        toast.get_by_role("button", name="Undo").tap()
+        expect(card).to_have_count(1)
+        for _ in range(40):
+            if read() is None:
+                break
+            time.sleep(0.25)
+        self.assertIsNone(read())
+        self.assertEqual(len(waiting()), before)
+        self.api(page, "POST", f"/api/v1/needs-you/{urllib.parse.quote(item['key'], safe='')}", {"action": "done"})
 
 
 if __name__ == "__main__":

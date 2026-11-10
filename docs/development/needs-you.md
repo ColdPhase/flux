@@ -50,6 +50,12 @@ person's own choice (204; idempotent).
   the first unfinished task a decision affects, or the first unfinished prerequisite of a blocked task. It ends
   when that task is done, set aside or gone.
 - Done on a mention or question also reads its notification; Undo unreads it. Nothing is deleted.
+- **Answered where it was asked** (#1170): a person's reply in a conversation (`POST /api/v1/conversations/:id/messages`, or
+  `POST /api/v1/work/:id/discussion` in a task's discussion) answers their unread `question` and `mention` notifications that open a
+  message of that conversation. In the reply's transaction each is
+  read and marked `done`, exactly as Done marks it, and the reply's answer names them (`answered`, `note:<id>` keys), so the
+  composer says "Replied. Out of your Inbox" with Undo (the `DELETE` above). Opening the thread, someone else's reply and a retried
+  send answer nothing. An agent's question card (S14) is answered with its own answers and stays.
 - A choice about a decision or a task that is no longer a need is forgotten, so the same task blocked again
   later asks again.
 - `needs_you_states` rows cascade with the account.

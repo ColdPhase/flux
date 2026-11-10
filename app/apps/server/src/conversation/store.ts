@@ -1,9 +1,9 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNull, lt, sql, type SQL } from 'drizzle-orm';
-import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
-  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
+  Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage,
   AgentProjectOwner, MaterialVersion, MessageReferenceCard, Page, PageQuery,
 } from '@flux/contracts';
 import {
@@ -398,7 +398,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       });
     },
 
-    async sendMessage(principal: Principal, conversationId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<ConversationMessage> {
+    async sendMessage(principal: Principal, conversationId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<SentConversationMessage> {
       const author = authorOf(principal, agentAuthors);
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
@@ -411,10 +411,13 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const sent = await sendInTransaction(tx, principal, row, author, input, files,fence);
         if (sent.message.sequence === 1)
           throw new ConflictError('This clientMessageId was used to start the conversation', 'IDEMPOTENCY_CONFLICT');
-        if (sent.inserted) await eventLog(tx).record(principal, row.workspaceId,
+        if (!sent.inserted) return sent.message;
+        await eventLog(tx).record(principal, row.workspaceId,
           'project.message_sent.v1', row.projectId,
           { conversationId: row.id, messageId: sent.message.id });
-        return sent.message;
+        // A person's reply answers what they were asked or mentioned in this conversation: it leaves their Inbox as Done takes it (#1170).
+        const answered = author.kind === 'human' ? await needsYouRows(tx as unknown as DbExecutor).answerIn(author.id, row.projectId, row.id) : [];
+        return answered.length ? { ...sent.message, answered } : sent.message;
       });
     },
 

@@ -37,8 +37,10 @@ function ConnectionRow({ line }: { line: AiConnectionLine }) {
  * `apiKeys`: whether this Flux runs agents on API keys at all (the operator's switch); a key is only offered then. `keys`: the
  * person's own API keys, null while they load (the page reads them once, also to tell whether the server runs any AI).
  */
-export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
+export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed }: {
   apiKeys: boolean; keys: BackgroundComputeConnection[] | null; keysFailed: boolean; onRetryKeys: () => void;
+  /** Whether any connection is listed, usable or not, for Your agents to say what waits for it (#1173). */
+  onListed?: (listed: boolean) => void;
 }) {
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
@@ -54,6 +56,8 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
   }, [loadRuntime]);
   const lines = keys === null ? [] : connectionLines(runtime, keys);
   const have = new Set(lines.map((line) => line.kind));
+  const listed = lines.length > 0;
+  useEffect(() => { onListed?.(listed); }, [onListed, listed]);
   return (
     <section className="cai" aria-labelledby="connect-ai" aria-busy={keys === null || undefined}>
       <div className="cai__head">
@@ -69,7 +73,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
       {runtimeFailed ? <p className="sset-note" role="note">Your plans could not be read. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
       {keys !== null && !lines.length ? (
         <div className="sset-card cai__empty">
-          <span className="cai__choose-lead">Nothing is connected yet. You can have several connections, and each agent uses one.</span>
+          <span className="cai__choose-lead">Nothing is connected yet.</span>
           <Button variant="primary" onClick={() => setWindowOpen(true)}>Connect AI</Button>
         </div>
       ) : null}

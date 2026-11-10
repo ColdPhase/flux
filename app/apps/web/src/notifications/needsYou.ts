@@ -10,7 +10,7 @@ import {
 import { KEEP_MS, request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
 import { useStreamEvents } from '../api/stream';
-import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
+import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceAcceptedInboxItem, announceInboxChange, type AcceptedInboxItem } from './api';
 import { acceptingIds, answeringIds } from './pendingAccept';
 import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/spaceAi';
@@ -154,6 +154,19 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
   const items = mine.response ? mine.response.items.filter((item) => !(item.decision && accepting.has(item.decision.id)) && !(item.agentQuestion && answering.has(item.agentQuestion.id))
     && !(item.project && aiOff(item.project.id) && (item.from?.kind === 'agent' || item.key.startsWith('assistant:')))) : null;
   return { userId, items, count: items?.length ?? 0, later: mine.response?.later ?? 0, doneToday: mine.response?.doneToday ?? 0, failed: mine.failed, reload, hide, show };
+}
+
+/**
+ * Items handled somewhere else than the Inbox (a reply answered them, #1170): they leave every open queue and the tab's last answer at
+ * once, and every count reads again.
+ */
+export function leaveQueues(userId: string, keys: readonly string[]) {
+  if (lastRead?.userId === userId) {
+    const items = lastRead.response.items.filter((item) => !keys.includes(item.key));
+    lastRead = { userId, response: { ...lastRead.response, items, count: items.length } };
+  }
+  for (const key of keys) announceAcceptedInboxItem(userId, key);
+  announceInboxChange();
 }
 
 export { announceInboxChange };

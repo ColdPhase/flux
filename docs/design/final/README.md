@@ -594,7 +594,10 @@ the composer. The right-hand phone above shows the sheet.
 - **Notifications:** "The Inbox always shows everything that waits for you."
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
-    shows only the count on the Inbox.
+    shows only the count on the Inbox. (The line under each level names what that level sends, as the
+    [notifications contract](../../development/notifications.md) has it, #1173: the drawn lines left out direct
+    messages and tasks given to you, which do reach you, and named every decision and an agent's change waiting
+    for your OK, which do not send push or email.)
   - **Where:** Email me too, On this device and Quiet hours ("22:00–7:00 · no email or push then;
     the Inbox keeps everything", Change).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
