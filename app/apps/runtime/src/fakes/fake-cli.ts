@@ -383,21 +383,31 @@ function codexOverrides(argv: string[]): Record<string, unknown> {
   return root;
 }
 
-/** One MCP call over the streamable HTTP route, as a client with the given headers. */
+/**
+ * One MCP call over the streamable HTTP route, as a client with the given headers: a 2026-07-28 request, or with `legacy` a 2025-06-18
+ * request without a session, as the pinned Codex sends its resource readers' requests (#1165), whose answer may be an event stream.
+ */
 function mcpClient(url: string, headers: Record<string, string>, clientName: string, version: string) {
   let id = 0;
-  return async (method: string, params: Record<string, unknown>) => {
+  return async (method: string, params: Record<string, unknown>, legacy = false) => {
     const name = typeof params.name === 'string' ? params.name : null;
-    const response = await fetch(url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', accept: 'application/json',
-      'mcp-protocol-version': '2026-07-28', 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) },
-      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params: { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28',
+    const response = await fetch(url, { method: 'POST', headers: { ...headers, 'content-type': 'application/json', ...(legacy
+      ? { accept: 'application/json, text/event-stream', 'mcp-protocol-version': '2025-06-18' }
+      : { accept: 'application/json', 'mcp-protocol-version': '2026-07-28', 'mcp-method': method, ...(name ? { 'mcp-name': name } : {}) }) },
+      body: JSON.stringify({ jsonrpc: '2.0', id: ++id, method, params: legacy ? params : { ...params, _meta: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28',
         'io.modelcontextprotocol/clientInfo': { name: clientName, version }, 'io.modelcontextprotocol/clientCapabilities': {} } } }) });
     const text = await response.text();
-    let body: { result?: Record<string, unknown>; error?: { message?: string } } = {};
-    try { body = JSON.parse(text) as typeof body; } catch { /* a refusal without JSON */ }
+    const json = response.headers.get('content-type')?.includes('text/event-stream') ? text.split('\n').find((line) => line.startsWith('data: '))?.slice(6) ?? '' : text;
+    let body: { result?: Record<string, unknown>; error?: { code?: number; message?: string } } = {};
+    try { body = JSON.parse(json) as typeof body; } catch { /* a refusal without JSON */ }
     return { status: response.status, body };
   };
 }
+
+/** Codex's own MCP resource readers and the request each sends (codex-rs `core/src/tools/handlers/mcp_resource` at rust-v0.160.1). */
+const CODEX_READER_METHODS: Record<string, string> = {
+  list_mcp_resources: 'resources/list', list_mcp_resource_templates: 'resources/templates/list', read_mcp_resource: 'resources/read',
+};
 
 /**
  * `codex exec --json … -` (F-022 T6 #281), with the event and item shapes of the pinned CLI (codex-rs
@@ -406,7 +416,8 @@ function mcpClient(url: string, headers: Record<string, string>, clientName: str
  * leaves, makes REAL MCP calls and prints `thread.started`, `turn.started`, `item.*` and `turn.completed`.
  * Like the real CLI, a tool its overrides did not switch off is used: without `features.shell_tool=false`
  * it runs a command (a `command_execution` item). Run script (`fake-run.json`) as for the fake `claude`; a `web_search` call is its own
- * search (#1065), answered by the fake with the item the pinned CLI prints.
+ * search (#1065), answered by the fake with the item the pinned CLI prints; a call of one of its MCP resource readers (#1165) sends Flux the
+ * reader's request, as the pinned CLI does.
  * Scenarios: run_command_execution, run_file_change, run_web_search, run_other_mcp, run_resource_tool,
  * run_todo_list, run_plan_limit, run_expired_login, run_model_unavailable, run_hang, run_slow, run_crash, run_broken_stream,
  * run_ignore_sigint, run_big_answer, run_secret_answer, run_error_item. Without `--ephemeral` it writes a
@@ -481,7 +492,8 @@ async function codexRun(argv: string[]): Promise<number> {
   else if (mode === 'run_file_change') local('file_change', { changes: [{ path: 'notes.md', kind: 'add' }] });
   else if (mode === 'run_web_search') local('web_search', { query: 'flux', action: { type: 'search', query: 'flux' } });
   else if (mode === 'run_other_mcp') local('mcp_tool_call', { server: 'github', tool: 'search_issues', arguments: {}, result: null, error: null });
-  else if (mode === 'run_resource_tool') local('mcp_tool_call', { server: 'flux', tool: 'read_mcp_resource', arguments: { server: 'flux', uri: 'flux://playbook/flux.cowork/1.0.0' }, result: null, error: null });
+  // A resource reader naming a server that is not Flux's (#1165): Flux's readers go through, this one does not.
+  else if (mode === 'run_resource_tool') local('mcp_tool_call', { server: 'github', tool: 'read_mcp_resource', arguments: { server: 'github', uri: 'repo://flux/README.md' }, result: null, error: null });
   else if (mode === 'run_todo_list') emit({ type: 'item.started', item: { id: next(), type: 'todo_list', items: [{ text: 'Read', completed: false }] } });
   else if (mode === 'run_error_item') emit({ type: 'item.completed', item: { id: next(), type: 'error', message: 'Codex is ignoring 1 unrecognized configuration setting(s).' } });
   let script: RunScript = {};
@@ -513,10 +525,40 @@ async function codexRun(argv: string[]): Promise<number> {
     emit({ type: 'item.completed', item: { id, type: 'web_search', query, action: planned.action ?? { type: 'search', query }, ...(structured.length ? { results: structured } : {}) } });
     results.push({ name: 'web_search', isError: false, text: JSON.stringify(entries) });
   };
+  /**
+   * One of Codex's own resource readers (#1165), as the pinned CLI runs it: the item names the server the model named, or `codex` for a
+   * list of every server; a server other than `flux` is unknown and fails before anything is sent; a list of every server skips one whose
+   * answer is an error; the result is the CLI's own JSON. The request to Flux is recorded with Flux's answer.
+   */
+  const reader = async (planned: PlannedCall) => {
+    const args = planned.args ?? {};
+    const named = typeof args.server === 'string' && args.server.trim() ? args.server.trim() : null;
+    const method = CODEX_READER_METHODS[planned.name]!;
+    const key = planned.name === 'list_mcp_resource_templates' ? 'resourceTemplates' : 'resources';
+    const base = { id: next(), type: 'mcp_tool_call', server: named ?? 'codex', tool: planned.name, arguments: args };
+    emit({ type: 'item.started', item: { ...base, result: null, error: null, status: 'in_progress' } });
+    let payload: Record<string, unknown> | null = null;
+    let failure: string | null = null;
+    if (named !== null && named !== 'flux') failure = `unknown MCP server '${named}'`;
+    else {
+      const answer = await mcp(method, planned.name === 'read_mcp_resource' ? { uri: String(args.uri ?? '') } : {}, true);
+      record('codex', argv, { event: 'resource_request', method, status: answer.status, answer: answer.body });
+      const result = answer.status === 200 ? answer.body.result : undefined;
+      const listed = result?.[key];
+      if (named === null) payload = { [key]: Array.isArray(listed) ? listed : [] };
+      else if (result) payload = planned.name === 'read_mcp_resource' ? { server: named, uri: args.uri, ...result } : { server: named, ...result };
+      else failure = `${method} failed: Mcp error: ${answer.body.error?.code ?? answer.status}: ${answer.body.error?.message ?? ''}`;
+    }
+    const text = failure ?? JSON.stringify(payload);
+    results.push({ name: planned.name, isError: failure !== null, text });
+    emit({ type: 'item.completed', item: { ...base, result: failure ? null : { content: [{ type: 'text', text }], structured_content: null },
+      error: failure ? { message: failure } : null, status: failure ? 'failed' : 'completed' } });
+  };
   for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     if (planned.name === 'web_search') { await webSearch(planned); continue; }
+    if (Object.hasOwn(CODEX_READER_METHODS, planned.name)) { await reader(planned); continue; }
     const id = next();
     const base = { id, type: 'mcp_tool_call', server: 'flux', tool: planned.name, arguments: planned.args ?? {} };
     emit({ type: 'item.started', item: { ...base, result: null, error: null, status: 'in_progress' } });

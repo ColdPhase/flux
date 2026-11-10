@@ -105,7 +105,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       grantReferenceId: typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : null,
       ...(boundProjectId ? { boundProjectId } : {}),
       ...(run ? { run } : {}),
-    }), run ? { refuseTool: (name: string) => !run!.tools.includes(name) } : {});
+    }), run ? { refuseTool: (name: string) => !run!.tools.includes(name), noResources: true } : {});
     // Protected bytes are handed to the transport only while the connection and the owner's access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {

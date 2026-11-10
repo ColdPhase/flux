@@ -90,8 +90,8 @@ const mainRequests = (entries: CliJournalEntry[], client: 'claude' | 'codex') =>
 const fluxTools = (entry: CliJournalEntry) => (entry.tools ?? []).flatMap((name) => /^mcp__flux(?:__|\.)(flux_[a-z_]+)$/.exec(name)?.[1] ?? []).sort();
 /**
  * What else a request offered beyond the CLI's allowed own tools: Claude Code's `WebSearch` and `EndConversation`; Codex's MCP resource
- * readers, whose calls are `codex` server items the run reader stops (#1127), and with the web on its own search (#1065): `web.run` for a
- * Responses Lite model, the hosted `web_search` for another.
+ * readers, which no setting removes and which reach only Flux (#1127, #1165: step `codex-resources`), and with the web on its own search
+ * (#1065): `web.run` for a Responses Lite model, the hosted `web_search` for another.
  */
 const ALLOWED_OWN: Record<'claude' | 'codex', string[]> = {
   claude: ['WebSearch', 'EndConversation'],
@@ -233,6 +233,50 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const refreshed = (await journal()).some((entry) => entry.kind === 'refresh' && entry.detail?.known === true);
     if (client === 'codex') assert.ok(refreshed, 'Codex refreshed its access token at the mock issuer');
     print({ ENGINE: engine, RUN: run.id, TOOLS: offered.length, MCP_BYTES: row.mcp_result_bytes, ...(client === 'codex' ? { REFRESHED: refreshed } : {}) });
+  },
+
+  /**
+   * #1165: Codex's own MCP resource readers. The model lists resources (no server: Codex asks every server, which is only Flux, and labels
+   * the call `codex`), lists them on Flux by name and reads an address there, then calls a Flux tool and answers. Flux's run server answers
+   * none and "not found", the run reader lets the readers through, and the run completes with its answer. `other` is the control: a reader
+   * that names a server other than Flux still stops the run.
+   */
+  async 'codex-resources'(variant = 'flux') {
+    const bo = await owner('bo');
+    const { projectId, conversationId } = await load();
+    if (variant === 'other') {
+      await script('codex', [{ tool: 'read_mcp_resource', args: { server: 'github', uri: 'repo://flux/README.md' } }, { text: 'Never reached.' }]);
+      const run = await askAi(bo, conversationId!, 'Read the README of the repository.');
+      const row = await runRow(run.id);
+      assert.deepEqual([row.status, row.end_reason, row.answer_body], ['unavailable', 'local_tool', null], JSON.stringify(row));
+      print({ CONTROL: 'reader_of_another_server', STATUS: row.status, END_REASON: row.end_reason });
+      return;
+    }
+    const playbook = 'flux://playbook/flux.cowork/1.0.0';
+    await script('codex', [
+      { tool: 'list_mcp_resources', args: {} },
+      { tool: 'list_mcp_resources', args: { server: 'flux' } },
+      { tool: 'read_mcp_resource', args: { server: 'flux', uri: playbook } },
+      { tool: 'flux_list_contexts', args: {} },
+      { text: 'Done: I found the space.' },
+    ]);
+    const from = await lastEntry();
+    const run = await askAi(bo, conversationId!, 'Which spaces can you see?');
+    const row = await runRow(run.id);
+    assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null], JSON.stringify(row));
+    assert.ok(row.answer_body, 'the answer is committed');
+    const main = mainRequests(await journalSince(from), 'codex');
+    assert.equal(main.length, 5, `five model turns: ${JSON.stringify(main.map((entry) => entry.step))}`);
+    for (const name of ['functions.list_mcp_resources', 'functions.read_mcp_resource']) assert.ok(main[0]!.tools!.includes(name), `the CLI offered ${name}: ${JSON.stringify(main[0]!.tools)}`);
+    // What the CLI gave the model back: no resources on every server, none on Flux, the address not found; then Flux's tool's answer.
+    const results = main.at(-1)!.results!;
+    assert.equal(results.length, 4, JSON.stringify(results));
+    assert.deepEqual(JSON.parse(results[0]!), { resources: [] }, results[0]);
+    assert.deepEqual(JSON.parse(results[1]!), { server: 'flux', resources: [] }, results[1]);
+    assert.ok(results[2]!.includes('-32002') && /resource not found/i.test(results[2]!), `the address is not found: ${results[2]}`);
+    assert.ok(!/co-work playbook|cowork_playbook/i.test(results[2]!), 'a run never reads the playbook a client may read');
+    assert.ok(results[3]!.includes(projectId!), `the Flux tool answered after the readers: ${results[3]!.slice(0, 300)}`);
+    print({ ENGINE: 'codex', RUN: run.id, STATUS: row.status, READERS: 3, LISTED: results[1], READ: results[2]!.slice(0, 160) });
   },
 
   /**

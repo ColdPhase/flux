@@ -11,7 +11,7 @@ import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
 import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, CODEX_MODEL_REVIEW, codexRunOverrides, fluxCodexCatalog, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
-import { classifyCodexError, classifyError, codexSearchFound, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
+import { classifyCodexError, classifyError, CODEX_RESOURCE_READERS, codexResourceReader, codexSearchFound, effectiveConfigHolds, searchQuery, searchResultAddresses } from '../../apps/runtime/src/supervisor/run.js';
 import { APP_SERVER_METHODS, openAppServer, readRateLimits } from '../../apps/runtime/src/supervisor/app-server.js';
 import { claudeSignInReader, deviceSignInReader } from '../../apps/runtime/src/supervisor/device.js';
 import { statusFacts } from '../../apps/runtime/src/supervisor/status.js';
@@ -653,6 +653,19 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
     assert.equal(effectiveConfigHolds({ ...config, mcp_servers: { flux: { ...config.mcp_servers.flux, required: false } } }, tools, url), false);
     assert.equal(effectiveConfigHolds({}, tools, url), false);
     assert.throws(() => codexRunOverrides([], url, 'brief'), /non-empty/);
+  });
+
+  test('#1165: Codex\'s three resource readers on Flux go through; any other server, or any other tool of the `codex` server, does not', () => {
+    assert.deepEqual([...CODEX_RESOURCE_READERS], ['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource']);
+    // A list of every server is labelled `codex` (codex-rs list_mcp_resources.rs); a call that names Flux is labelled `flux`.
+    for (const tool of CODEX_RESOURCE_READERS) for (const server of ['flux', 'codex']) assert.equal(codexResourceReader({ server, tool }), true, `${server} ${tool}`);
+    assert.equal(codexResourceReader({ server: 'flux', tool: 'read_mcp_resource', arguments: { server: 'flux', uri: 'http://169.254.169.254/latest/meta-data/' } }), true,
+      'the address is data for Flux\'s server, which never opens it');
+    for (const item of [{ server: 'github', tool: 'read_mcp_resource' }, { server: 'codex_apps', tool: 'list_mcp_resources' }, { server: 'Flux', tool: 'list_mcp_resources' },
+      { server: 'codex', tool: 'subscribe_mcp_resource' }, { server: 'codex', tool: 'flux_list_contexts' }, { server: 'flux', tool: 'flux_list_contexts' },
+      { tool: 'list_mcp_resources' }, { server: 'flux' }, { server: ['flux'], tool: 'list_mcp_resources' }, { server: 'flux', tool: ['read_mcp_resource'] }]) {
+      assert.equal(codexResourceReader(item), false, JSON.stringify(item));
+    }
   });
 
   test('every default-on feature of the pinned Codex is reviewed; the review switches off every tool feature named in F-022', () => {

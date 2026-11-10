@@ -143,9 +143,9 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   the vendor's. Flux's tools need no approval in Codex (Flux decides what waits for the owner,
   AG-3, as with Claude Code's `dontAsk`), and Codex's `request_user_input` is off. A preflight reads
   the effective configuration, and the run's own JSONL is the authoritative check: any item other
-  than a message, reasoning, an allowed Flux tool call or, with the web on, a `web_search` item stops
-  the CLI with nothing committed (a call to Codex's own MCP resource readers, which stay offered, is
-  such an item). **With the web on, Codex searches** (#1065, founder 2026-11-09):
+  than a message, reasoning, an allowed Flux tool call, a call of Codex's own MCP resource readers
+  on Flux (next point) or, with the web on, a `web_search` item stops the CLI with nothing
+  committed. **With the web on, Codex searches** (#1065, founder 2026-11-09):
   `-c web_search="cached"`, OpenAI's cached index; with `FLUX_WEB_READS=off` it is `web_search="disabled"`,
   and the preflight requires the one or the other (the real pinned binary's `config/read` reflects it:
   `contract/check-codex.ts`, 2026-11-09). How the pinned Codex searches depends on the model (codex-rs at
@@ -165,6 +165,24 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   neither tool was offered. Flux records the queries and the search result entries (never an opened
   page), and the run's answer names its sources; it opens any page it found with `flux_read_web` like
   any other address.
+- **Codex's own MCP resource readers go through to Flux** (#1165, decided 2026-11-10). The pinned
+  Codex offers the model `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`
+  whenever an MCP server is configured, and no setting removes them (codex-rs at rust-v0.160.1, read
+  2026-11-10: `add_mcp_resource_tools` in `core/src/tools/spec_plan.rs` checks only that a server
+  exists; neither `[tools]` nor an MCP server's settings has a switch for them). They read only MCP
+  servers Codex has configured. A call names one server, or a list names none and asks every server
+  (its item then names the server `codex`). An unknown name fails inside Codex before anything is
+  sent (`McpConnectionSet::client_by_name`). A resource address goes to that server as data and is
+  never opened by Codex. With Flux the only configured server and apps and plugins off (no
+  `codex_apps` or plugin server: `ext/mcp`), all of which the preflight checks, the readers reach
+  only Flux's MCP route, under that run's token. A run's server has no resources and does not
+  declare any, so Claude Code offers no resource tool. When Codex asks anyway, Flux answers a list
+  with none and a read with "Resource not found" (-32002), without looking at the address
+  (2025-06-18, the version the pinned Codex speaks; a 2026-07-28 request gets the SDK's own "Method
+  not found"). So a reader's item on the server `flux` or `codex` is let through. It counts as one
+  of the run's turns toward the cap, and the run goes on. A real-model acceptance run had ended
+  `local_tool` on a list the model made instead of `flux_list_contexts`. A reader that names any
+  other server, and any other tool of the `codex` server, still stops the CLI.
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
 - Transcripts are not kept. An agent's memory is only what its owner told it (AG-1). The one copy of

@@ -97,7 +97,7 @@ function serverFactory(db: Database, cursorSecret: string, github: GithubActionP
     });
     // A personal run's server offers tools only (F-022 "Hardening": the CLI must see nothing but the run's exact Flux tools). Its resource
     // and prompts are declared in the manifest, so the list still holds, but never registered, so no resource or prompt capability is
-    // advertised to it.
+    // advertised to it. Codex's own resource readers ask anyway; the protocol handler answers them with none (#1165, `noResources`).
     if (!run) playbook.resource(server, claims);
     // A run token lists and calls exactly the run's tools (F-022 "Agent connection and permissions").
     tools.bind(server, claims);

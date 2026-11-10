@@ -153,8 +153,8 @@ export const CODEX_MODEL_CATALOG = '/opt/flux-runtime/codex/models.json';
 /**
  * What Flux sets in every entry of that catalog, and why (#1127). Everything else (instructions, context window, reasoning levels)
  * stays the vendor's. Checked against the real pinned CLI (scripts/check_cli_runtime.sh): the model is offered exactly the run's Flux
- * tools in the `mcp__flux` namespace plus Codex's own MCP resource readers, whose calls are `mcp_tool_call` items of the `codex`
- * server, which the run reader stops.
+ * tools in the `mcp__flux` namespace plus Codex's own MCP resource readers, which no catalog key or setting removes. Their calls reach
+ * only Flux's run server, which has no resources, and the run reader lets them through (#1165, RT-5: `codexResourceReader`).
  */
 export const CODEX_MODEL_REVIEW = {
   /** Flux's MCP tools as plain function tools, not inside code mode's `exec` (codex-rs core/src/tools/spec_plan.rs). */
