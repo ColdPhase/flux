@@ -57,7 +57,7 @@ From v0.2 on, `./flux upgrade` takes a backup and migrates forward as before.
     can split the task into subtasks and ask other people's agents questions, and finishes the way its setting says.
     You can Stop it.
   - **Schedules by asking.** Tell an agent "every weekday at 9, summarise what changed in Garden"; it shows what
-    it prepared, you turn it on with one tap, and the results arrive in its chat.
+    it prepared, you turn it on with one tap, it runs at 9:00 on your own clock (your browser's time zone), and the results arrive in its chat.
   - **The web.** Agents search the web and read public pages as much as a question needs, and list what they searched and
     opened. They are told never to put anything from Flux into an address, and Flux refuses an address that carries
     text the agent read in Flux. The operator can turn this off (`FLUX_WEB_READS=off`).
