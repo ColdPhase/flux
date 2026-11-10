@@ -40,7 +40,7 @@ export function AttachButton({ state, disabled = false, className }: { state: Co
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <button type="button" className={['composer__attach', className].filter(Boolean).join(' ')} disabled={blocked} onClick={() => input.current?.click()}
-      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="plus" size={16} /></button>
+      aria-label="Attach files" data-tip="Attach files · private until sent" data-tip-align="start"><Icon name="clip" size={16} /></button>
     {picked.sheet}
   </>;
 }
@@ -60,7 +60,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
       onChange={(event) => { if (!blocked) picked.take([...event.currentTarget.files ?? []]); event.currentTarget.value = ''; }} />
     <input ref={recovery} className="ui-vh" type="file" tabIndex={-1} aria-hidden="true" disabled={blocked}
       onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
-    {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="plus" size={14} />Attach files</button> : null}
+    {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="clip" size={14} />Attach files</button> : null}
     {state.draft.files.length ? <>
       <span className="composer-files__privacy">Private until sent · 5 MiB each · 10 files / 20 MiB per message</span>
       <ol className="composer-files__list" aria-label="Files in your draft">{state.draft.files.map((file, index) => <DraftThumb key={file.uploadId} file={file} order={touch && state.draft.files.length > 1 ? index + 1 : 0}
