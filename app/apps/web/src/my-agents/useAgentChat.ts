@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ASSISTANT_RUN_CHANGED_EVENT, type AgentChatMessage, type AssistantRun, type PersonalAssistantStatus } from '@flux/contracts';
 import { streamLive, useStreamEvents } from '../api/stream';
-import { askAssistant, getAssistantStatus, listPlaceRuns, retryRun, stopRun } from '../assistant/api';
+import { askAssistant, getAgentStatus, listPlaceRuns, retryRun, stopRun } from '../assistant/api';
 import { isWorking } from '../assistant/format';
 import { listAgentChatMessages, readAgentChat } from './api';
 
@@ -36,9 +36,10 @@ export function useAgentChat(agentId: string, meId: string) {
   }, [agentId, reads]);
   useEffect(() => {
     let alive = true;
-    getAssistantStatus().then((value) => { if (alive) setStatus(value); }).catch(() => undefined);
+    // This agent's own status (C-3): only its own connection pauses it, not Assistant's.
+    getAgentStatus(agentId).then((value) => { if (alive) setStatus(value); }).catch(() => undefined);
     return () => { alive = false; };
-  }, [reads]);
+  }, [agentId, reads]);
   useStreamEvents(meId, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) refresh(); }, refresh);
   // A fallback while the agent works, in case the stream is reconnecting.
   const working = !!runs?.some(isWorking);

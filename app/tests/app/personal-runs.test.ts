@@ -553,6 +553,10 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       // Removing the assistant's key stops it, and says that another connection exists: nothing switches to it by itself.
       connections.disconnect(hubert.id, hubertConnection);
       assert.equal((await runs.status(human(hubert))).unavailableReason, 'connection_changed');
+      // The agent's own status (C-3) says the same for that agent; an id that is not one of his agents is 404.
+      assert.equal((await runs.agentStatus(human(hubert), agents.hubert)).unavailableReason, 'connection_changed');
+      await assert.rejects(runs.agentStatus(human(hubert), randomUUID()), { code: 'AGENT_NOT_FOUND' });
+      await assert.rejects(runs.agentStatus(human(hubert), 'not-an-id'), { code: 'AGENT_NOT_FOUND' });
       await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
       // Picking a model of another key moves the assistant there (#854): the enablement stores that key and its provider.
       await runs.chooseModel(human(hubert), { connection: newer, model: 'vendor/newer-model' });
@@ -565,6 +569,33 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       connections.disconnect(hubert.id, newer);
       connections.disconnect(hubert.id, latest);
       await enable(hubert, 'hubert', hubertConnection);
+    }
+  });
+
+  test('C-3: removing a connection pauses only the agents that use it; each agent\'s own status says so', async () => {
+    // Before the fix an agent's private chat read the first agent's status, so Planner on a live key looked paused (v0.2 J12).
+    const owner = await person('pr-c3');
+    await addMember(ada, ws.id, owner, 'member');
+    const first = randomUUID(); const second = randomUUID();
+    const assistant = (await post<{ id: string }>(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'c3 assistant', owner: 'self' })).id;
+    const planner = (await post<{ id: string }>(owner, `/api/v1/workspaces/${ws.id}/agents`, { name: 'c3 planner', owner: 'self' })).id;
+    connections.connect(owner.id, first); connections.connect(owner.id, second);
+    try {
+      await runs.enable(human(owner), { agentId: assistant, connection: first, model: 'claude-sonnet-5' });
+      await runs.enable(human(owner), { agentId: planner, connection: second, model: 'claude-sonnet-5' });
+      assert.equal((await runs.agentStatus(human(owner), planner)).state, 'ready');
+      connections.disconnect(owner.id, first);
+      const paused = await runs.agentStatus(human(owner), assistant);
+      assert.deepEqual([paused.state, paused.unavailableReason, paused.enablement?.agentId], ['unavailable', 'connection_changed', assistant]);
+      assert.equal((await runs.status(human(owner))).unavailableReason, 'connection_changed', '`/ai` (the first agent) waits for a model');
+      const going = await runs.agentStatus(human(owner), planner);
+      assert.deepEqual([going.state, going.unavailableReason, going.enablement?.agentId, going.enablement?.connection], ['ready', null, planner, second]);
+      // Nobody else reads it: another person's agent is 404, whoever asks.
+      await assert.rejects(runs.agentStatus(human(hubert), planner), { code: 'AGENT_NOT_FOUND' });
+      expectStatus(await hubert.browser.request('GET', `/api/v1/my-agents/${planner}/status`), 404, 'another person\'s agent');
+      expectStatus(await owner.browser.request('GET', `/api/v1/my-agents/${planner}/status`), 200, 'the owner reads it over HTTP');
+    } finally {
+      connections.disconnect(owner.id, second);
     }
   });
 

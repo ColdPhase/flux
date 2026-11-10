@@ -74,6 +74,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/my-agents/:agentId/schedules': exempt(PERSON),
   'POST /api/v1/my-agents/:agentId/schedules': exempt(PERSON),
   'GET /api/v1/my-agents/:agentId/background-note': exempt(PERSON),
+  'GET /api/v1/my-agents/:agentId/status': exempt('The status of one of the owner\'s own agents; no AI read or action'),
   'PATCH /api/v1/my-agents/:agentId/schedules/:jobId': exempt(PERSON),
   'DELETE /api/v1/my-agents/:agentId/schedules/:jobId': exempt(REDUCES),
   'POST /api/v1/my-agents/:agentId/schedules/:jobId/restore': exempt(PERSON),

@@ -727,6 +727,7 @@ from the request.
 | Route | Who | Result |
 | --- | --- | --- |
 | `GET /api/v1/personal-assistant` | the caller | Own state `not_enabled`, `ready`, `paused`, `capped` (the key's daily budget is used) or `unavailable` (with `unavailableReason`), the enablement with its connection and model, and the key's spend today. |
+| `GET /api/v1/my-agents/:id/status` | the agent's owner | The same state for one of the caller's own agents, on that agent's own connection and model: an agent's private chat reads this one, so removing a connection pauses only the agents that use it ([C-3](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Anyone else's agent, a deleted one or a malformed id is 404. |
 | `POST /api/v1/personal-assistant` | the caller | Enable with `{ agentId, connection, model }` (#854; `connection` is `claude_plan`, `chatgpt_plan` or one of the caller's API key ids): 201. It needs the caller's own agent (`agent.invoke`) and that connection. |
 | `GET`, `PUT /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default; `PUT { connection, model }` changes it. |
 | `PUT /api/v1/personal-assistant/agents` | the caller | `{ agentId }`: the caller's assistant for that agent's workspace. |

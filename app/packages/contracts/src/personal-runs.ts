@@ -25,6 +25,11 @@ export const dmAssistantRunsPath = (dmId: string) => `/api/v1/dms/${dmId}/assist
 export const dmThreadAssistantRunsPath = (dmId: string, rootId: string) => `/api/v1/dms/${dmId}/threads/${rootId}/assistant-runs`;
 /** A message to one of the caller's own agents in its private chat (#842). */
 export const agentAssistantRunsPath = (agentId: string) => `/api/v1/my-agents/${agentId}/assistant-runs`;
+/**
+ * The status of one of the caller's own agents (C-3): its own connection and model, so its private chat waits only when *its* connection
+ * was removed, never because another agent's was. The same shape as `GET /api/v1/personal-assistant`; anyone else's agent is 404.
+ */
+export const agentAssistantStatusPath = (agentId: string) => `/api/v1/my-agents/${agentId}/status`;
 /** Show everyone (#842): the answer is posted as its asker's message, "Ada · via Assistant". */
 export const assistantRunShowPath = (runId: string) => `${assistantRunPath(runId)}/show`;
 /** Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. */
