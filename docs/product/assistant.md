@@ -361,6 +361,10 @@ instruction.
 - A scheduled run acts like its agent in its chat: it reads what its owner can see and changes
   nothing, and it never makes or changes a schedule. Its result goes only to that chat: nothing
   posts it into a conversation, and the owner shares what they choose with their own message.
+- A schedule runs at the time its owner said on their own wall clock: in their time zone, which is their browser's, saved on them by
+  itself with no setting, and it stays at 9:00 across a clock change. It keeps the zone it was made in; a browser in another zone sees it
+  named ("Weekdays at 9:00, Warsaw time"). The agent's clock and the times it reads are in the same zone
+  ([C-57](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Flux's only schedule rule:** a time missed while Flux was off is skipped, never caught up
   ([coordinator default C-14](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). There is no minimum interval between firings and no pause after failures; a firing that
   fails, or cannot start (for example "Sign in to Claude again"), says so in the conversation (AG-4) and the next firing happens as scheduled.

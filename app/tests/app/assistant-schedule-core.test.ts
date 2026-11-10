@@ -106,3 +106,54 @@ describe('schedules: plain words and labels', () => {
     assert.equal(timeLabel(at('2026-10-26T08:00:00Z'), 'Europe/Warsaw', at('2026-10-18T10:00:00Z')), 'Mon 26 Oct 9:00', 'beyond a week it names the date');
   });
 });
+
+describe('schedules: 9:00 stays 9:00 on the owner\'s wall clock across clock changes (#1168, C-57)', () => {
+  const weekdays: AssistantJobSchedule = { kind: 'weekdays', at: '09:00' };
+  const daily: AssistantJobSchedule = { kind: 'daily', at: '09:00' };
+  /** The wall-clock time of each instant in the zone: what the person's screen shows. */
+  const wall = (dates: Date[], timeZone: string) => dates.map((date) => new Intl.DateTimeFormat('en-GB', { timeZone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(date));
+
+  test('Europe/Warsaw: weekdays at 9 over the autumn change (25 October 2026) and the spring one (28 March 2027)', () => {
+    // Friday 9:00 is summer time (07:00Z); Monday 9:00 is winter time (08:00Z).
+    const autumn = nextRuns(weekdays, 'Europe/Warsaw', at('2026-10-23T05:00:00Z'), 3);
+    assert.deepEqual(iso(autumn), ['2026-10-23T07:00:00.000Z', '2026-10-26T08:00:00.000Z', '2026-10-27T08:00:00.000Z']);
+    assert.deepEqual(wall(autumn, 'Europe/Warsaw'), ['Fri 09:00', 'Mon 09:00', 'Tue 09:00']);
+    const spring = nextRuns(weekdays, 'Europe/Warsaw', at('2027-03-26T05:00:00Z'), 3);
+    assert.deepEqual(iso(spring), ['2027-03-26T08:00:00.000Z', '2027-03-29T07:00:00.000Z', '2027-03-30T07:00:00.000Z']);
+    assert.deepEqual(wall(spring, 'Europe/Warsaw'), ['Fri 09:00', 'Mon 09:00', 'Tue 09:00']);
+    // The tick asks for the next time after the firing: the Monday after a Friday's run is still 9:00.
+    assert.deepEqual(iso(nextRuns(weekdays, 'Europe/Warsaw', at('2026-10-23T07:00:30Z'), 1)), ['2026-10-26T08:00:00.000Z']);
+    assert.deepEqual(iso(nextRuns(weekdays, 'Europe/Warsaw', at('2027-03-26T08:00:30Z'), 1)), ['2027-03-29T07:00:00.000Z']);
+  });
+
+  test('Europe/Warsaw: every day at 9 on the very days the clocks change', () => {
+    assert.deepEqual(iso(nextRuns(daily, 'Europe/Warsaw', at('2026-10-24T05:00:00Z'), 3)), ['2026-10-24T07:00:00.000Z', '2026-10-25T08:00:00.000Z', '2026-10-26T08:00:00.000Z']);
+    assert.deepEqual(iso(nextRuns(daily, 'Europe/Warsaw', at('2027-03-27T05:00:00Z'), 3)), ['2027-03-27T08:00:00.000Z', '2027-03-28T07:00:00.000Z', '2027-03-29T07:00:00.000Z']);
+  });
+
+  test('America/New_York: weekdays and every day at 9 over the autumn change (1 November 2026) and the spring one (14 March 2027)', () => {
+    const autumn = nextRuns(weekdays, 'America/New_York', at('2026-10-30T10:00:00Z'), 3);
+    assert.deepEqual(iso(autumn), ['2026-10-30T13:00:00.000Z', '2026-11-02T14:00:00.000Z', '2026-11-03T14:00:00.000Z']);
+    assert.deepEqual(wall(autumn, 'America/New_York'), ['Fri 09:00', 'Mon 09:00', 'Tue 09:00']);
+    const spring = nextRuns(weekdays, 'America/New_York', at('2027-03-12T10:00:00Z'), 3);
+    assert.deepEqual(iso(spring), ['2027-03-12T14:00:00.000Z', '2027-03-15T13:00:00.000Z', '2027-03-16T13:00:00.000Z']);
+    assert.deepEqual(wall(spring, 'America/New_York'), ['Fri 09:00', 'Mon 09:00', 'Tue 09:00']);
+    assert.deepEqual(iso(nextRuns(daily, 'America/New_York', at('2026-10-31T10:00:00Z'), 2)), ['2026-10-31T13:00:00.000Z', '2026-11-01T14:00:00.000Z']);
+    assert.deepEqual(iso(nextRuns(daily, 'America/New_York', at('2027-03-13T10:00:00Z'), 2)), ['2027-03-13T14:00:00.000Z', '2027-03-14T13:00:00.000Z']);
+  });
+
+  test('America/New_York: a time the spring change skips runs when the gap ends; one the autumn change repeats runs once', () => {
+    // 2:30 does not exist on 14 March 2027 (2:00 jumps to 3:00 EDT, 07:00Z).
+    assert.deepEqual(iso(nextRuns({ kind: 'daily', at: '02:30' }, 'America/New_York', at('2027-03-13T12:00:00Z'), 2)), ['2027-03-14T07:00:00.000Z', '2027-03-15T06:30:00.000Z']);
+    // 1:30 happens twice on 1 November 2026 (05:30Z in EDT, 06:30Z in EST): only the first.
+    assert.deepEqual(iso(nextRuns({ kind: 'daily', at: '01:30' }, 'America/New_York', at('2026-10-31T12:00:00Z'), 2)), ['2026-11-01T05:30:00.000Z', '2026-11-02T06:30:00.000Z']);
+  });
+
+  test('the words and the next times say 9:00 in the owner\'s zone, the hour it runs; in UTC the same words run at 10:00 in Warsaw', () => {
+    assert.deepEqual(previewRuns(weekdays, 'Europe/Warsaw', at('2026-10-23T05:00:00Z')).map((item) => item.label), ['Fri 9:00', 'Mon 9:00', 'Tue 9:00']);
+    assert.deepEqual(previewRuns(weekdays, 'America/New_York', at('2026-10-30T10:00:00Z')).map((item) => item.label), ['Fri 9:00', 'Mon 9:00', 'Tue 9:00']);
+    assert.equal(scheduleWords(weekdays, 'Europe/Warsaw'), 'Weekdays at 9:00');
+    // The defect of #1168: a schedule stored in UTC for a person in Warsaw says 9:00 and runs at 10:00 on their clock.
+    assert.deepEqual(wall(nextRuns(weekdays, 'UTC', at('2026-11-10T05:00:00Z'), 1), 'Europe/Warsaw'), ['Tue 10:00']);
+  });
+});

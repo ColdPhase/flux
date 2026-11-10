@@ -10,6 +10,7 @@ import { personalRunWebReadRows } from './personal-run-web-reads.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
+import { personTimeZones } from './person-time-zone.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -120,12 +121,8 @@ export function personalRunRows(db: DbExecutor) {
     enablement,
     lockOwner,
 
-    /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it. */
-    async personTimeZone(userId: string) {
-      const [row] = await db.select({ zone: schema.notificationPreferences.timeZone }).from(schema.notificationPreferences)
-        .where(eq(schema.notificationPreferences.userId, userId));
-      return row?.zone ?? 'UTC';
-    },
+    /** The person's own time zone, their browser's (#1168, C-57; UTC until one has said): a schedule they ask for runs in it, and the brief's clock reads in it. */
+    personTimeZone: (userId: string) => personTimeZones(db).get(userId),
 
     /** Today's use of an API key's one daily budget (#854), in the key's time zone; the key's own budget is passed in. */
     keySpend: (connection: { id: string; dailyBudgetCents: number; timeZone: string }, exceptRunId?: string) =>
