@@ -52,10 +52,10 @@ export interface SessionLimits { db: Database; maxAgeMs: number }
 export interface SessionFastPath { db: Database; cookieName: string; expiresInSeconds: number; updateAgeSeconds: number }
 
 /** A session cookie Better Auth accepted: what it resolved to, kept for a while by the cookie's whole signed value. */
-interface Accepted { context: SessionContext; token: string; createdAt: number; acceptedAt: number }
+interface Accepted { context: SessionContext; token: string; acceptedAt: number }
 const ACCEPTED_MAX = 5000;
 const ACCEPTED_MS = 5 * 60_000;
-const SESSION_ROW = `SELECT s.expires_at AS "expiresAt", u.email, u.name FROM auth_sessions s JOIN auth_users u ON u.id = s.user_id
+const SESSION_ROW = `SELECT s.expires_at AS "expiresAt", s.created_at AS "createdAt", u.email, u.name FROM auth_sessions s JOIN auth_users u ON u.id = s.user_id
   WHERE s.id = $1 AND s.token = $2 AND s.user_id = $3`;
 
 export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation,
@@ -108,7 +108,7 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     };
     if (key) {
       if (accepted.size >= ACCEPTED_MAX) accepted.delete(accepted.keys().next().value!);
-      accepted.set(key, { context, token: session.token, createdAt, acceptedAt: Date.now() });
+      accepted.set(key, { context, token: session.token, acceptedAt: Date.now() });
     }
     return { context, token: session.token };
   }
@@ -122,7 +122,7 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     if (!fast || !key || !known) return full(cookie, key);
     if (Date.now() - known.acceptedAt > ACCEPTED_MS) { forget(key); return full(cookie, key); }
     const { context } = known;
-    const [row] = (await queryPrepared<{ expiresAt: Date | string; email: string; name: string }>(fast.db, SESSION_ROW,
+    const [row] = (await queryPrepared<{ expiresAt: Date | string; createdAt: Date | string; email: string; name: string }>(fast.db, SESSION_ROW,
       [context.sessionId, known.token, context.principal.id])).rows;
     const expiresAt = row ? new Date(row.expiresAt).getTime() : 0;
     // Gone (signed out, revoked, a password reset, the account deleted), expired, or due for renewal: Better Auth decides, as without this path.
@@ -130,7 +130,7 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
       forget(key);
       return full(cookie, key);
     }
-    if (!await stillValid(context.sessionId, context.principal.id, known.createdAt, false)) { forget(key); return null; }
+    if (!await stillValid(context.sessionId, context.principal.id, new Date(row.createdAt).getTime(), false)) { forget(key); return null; }
     const fresh: SessionContext = { ...context, expiresAt: new Date(expiresAt), user: { id: context.principal.id, email: row.email, name: row.name } };
     return { context: fresh, token: known.token };
   }
