@@ -6,6 +6,7 @@ import type { DbExecutor } from './push.js';
 import { workRows } from './work.js';
 import { nativeWorkObjectRows } from './work-read-objects.js';
 import { nativeWorkEndpointVisible } from './work-read-visibility.js';
+import { executePrepared } from '../prepared.js';
 
 const w = schema.projectWorkItems;
 const WINDOW = 100;
@@ -24,7 +25,9 @@ export function nativeWorkThoughtRows(db: DbExecutor) {
   };
   async function visible(projectId: string, thoughtIds: readonly string[]): Promise<string[]> {
     // The endpoint predicate uses its own aliases (t, s); the selection is `g`, as elsewhere.
-    const result = await db.execute<{ id: string }>(sql`WITH sel(id) AS (VALUES ${selected(thoughtIds)})
+    // Prepared, with the thoughts as one array parameter (#1178): the visibility filter plans in over a millisecond.
+    if (thoughtIds.length < 1 || thoughtIds.length > 100) throw new Error('Invalid native thought window');
+    const result = await executePrepared<{ id: string }>(db, sql`WITH sel(id) AS (SELECT unnest(${sql.param([...thoughtIds])}::uuid[]))
       SELECT g.id::text AS id FROM sel g WHERE (${nativeWorkEndpointVisible(projectId, sql`'thought'`, sql`g.id`)})
       ORDER BY g.id::text COLLATE "C"`);
     return result.rows.map((row) => row.id);

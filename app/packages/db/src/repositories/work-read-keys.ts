@@ -3,6 +3,7 @@ import { type PrincipalRef, type WorkGroup, type WorkObjectType, type WorkReadCu
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { sealedSearchRows } from '../sealed-search.js';
+import { executePrepared } from '../prepared.js';
 
 /** Structural counterpart of core's normalized selector; DB never imports the core layer. */
 export type NativeWorkViewSelector =
@@ -76,7 +77,10 @@ export interface NativeReadKeyPage<Kind extends string> {
   total: number; before: number; hasBefore: boolean; hasAfter: boolean;
 }
 /** One observation: overfetch only one lightweight key, then hydrate <=limit returned keys. */
-export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, selected: SQL, limit: number, cursor?: WorkReadCursor, ascending = false): Promise<NativeReadKeyPage<Kind>> {
+/** `prepared`: run both statements as prepared ones (#1178), for a `selected` whose text has a fixed shape (arrays as one parameter). */
+export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, selected: SQL, limit: number, cursor?: WorkReadCursor, ascending = false,
+  prepared = false): Promise<NativeReadKeyPage<Kind>> {
+  const run = <T extends Record<string, unknown>>(query: SQL) => prepared ? executePrepared<T>(db, query) : db.execute<T>(query);
   const precedingKey = ascending ? (key: WorkReadCursor['boundary']) => sql`(created_at, id) < (${key.createdAt}::timestamptz, ${key.id}::uuid)` : preceding;
   const followingKey = ascending ? (key: WorkReadCursor['boundary']) => sql`(created_at, id) > (${key.createdAt}::timestamptz, ${key.id}::uuid)` : following;
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('Invalid bounded native key limit');
@@ -85,7 +89,7 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
   const forward = ownedCursor?.direction !== 'previous';
   const continuation = ownedCursor ? forward ? followingKey(ownedCursor.boundary) : precedingKey(ownedCursor.boundary) : sql`true`;
   const order = ascending ? forward ? sql`created_at ASC, id ASC` : sql`created_at DESC, id DESC` : forward ? sql`rank ASC, created_at DESC, id DESC` : sql`rank DESC, created_at ASC, id ASC`;
-  const found = await db.execute<{ kind: Kind; id: string; rank: number; createdAt: string }>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
+  const found = await run<{ kind: Kind; id: string; rank: number; createdAt: string }>(sql`WITH selected AS (${selected}) SELECT kind, id, rank,
     to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS "createdAt"
     FROM selected WHERE (${continuation}) ORDER BY ${order} LIMIT ${limit + 1}`);
   const items = found.rows.slice(0, limit);
@@ -93,7 +97,7 @@ export async function nativeReadKeyWindow<Kind extends string>(db: DbExecutor, s
   const boundary = items[0] ?? ownedCursor?.boundary;
   const prior = boundary ? precedingKey(boundary) : sql`false`;
   const later = boundary ? followingKey(boundary) : sql`false`;
-  const counted = await db.execute<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
+  const counted = await run<{ total: string; prior: string; later: string }>(sql`WITH selected AS (${selected}) SELECT count(*)::text AS total,
     count(*) FILTER (WHERE ${prior})::text AS prior, count(*) FILTER (WHERE ${later})::text AS later FROM selected`);
   const facts = counted.rows[0];
   if (!facts) throw new Error('Missing native work count observation');
