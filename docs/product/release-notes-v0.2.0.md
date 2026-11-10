@@ -12,8 +12,10 @@ Documentation: <https://coldphase.github.io/flux/>. Flux is open source under th
 with its data, its API shapes or its file formats.
 
 - `./flux upgrade` refuses an instance that Flux v0.1 wrote, before it takes a backup or stops anything, and says so.
-  The migration step that every start runs refuses it too, and so does `./flux restore` of a v0.1 backup
-  (with or without `--migrate`). Your v0.1 data stays exactly as it was.
+  (A v0.1 launcher run with `--pull` still takes its backup and stops the API and worker first; the v0.2 launcher it
+  pulls then refuses.) The migration step that every start runs refuses it too, and so does `./flux restore` of a v0.1
+  backup (with or without `--migrate`). Your v0.1 data stays exactly as it was. If v0.2 was started on v0.1's volumes,
+  v0.1 stays stopped until you start its v0.1.0 files again.
 - There is nothing to import. The project export of v0.1 (`./flux export`) gives open JSON and files you can
   keep and read, but neither version has an import for it.
 - To move to v0.2, install it fresh: in a new folder with its own volumes, or in the same folder after
@@ -35,16 +37,21 @@ From v0.2 on, `./flux upgrade` takes a backup and migrates forward as before.
   - The sidebar is Home, Inbox, My tasks, My map, Spaces and Messages.
   - **Create** has the same five types on the computer and the phone: Task, Thought, Decision, Page and Space.
   - A message has Reply in thread, Create task and a ⋯ menu (Add to map, Copy link, Copy text, and Edit and
-    Delete on your own messages).
-  - There is one search (⌘K) and one place for what needs you, the Inbox, with its top three on Home.
+    Delete on your own messages). On the phone and tablet, the ⋯ of your own message stays clear of its text. Attaching
+    a file is a paperclip, because + means Create.
+  - There is one search (⌘K) and one place for what needs you, the Inbox, with its top three on Home. When you answer a
+    question in its thread, it leaves your Inbox, with Undo.
   - A task is To do, Doing, Blocked or Done, and a blocked task goes back to Doing by itself when what it waited for is
     resolved.
-  - The Wiki is edited where it is read, and versions save by themselves.
+  - One toast shows at a time. A newer one replaces the older, and the older one's change stays made.
+  - The Wiki is edited where it is read, and versions save by themselves. What you type right after Create page, or after
+    Enter in the title, is kept, in order. In Safari, Enter in a page makes one new line, not an extra empty one at the end.
   - An idea is a **Thought** and a canvas is a **Map**; your private map is **My map**.
 - **AI that is the same everywhere.**
   - **Connect AI once.** In Settings › AI you connect a Claude plan, a ChatGPT plan or an API key (or all of them).
     Flux sets no limits of its own: when a plan is at its limit the work waits and resumes by itself, and an API
-    key has one daily budget that you set.
+    key has one daily budget that you set. Removing a connection pauses only the agents that use it, until you pick
+    another model for them. An agent on another connection, and its private chat, keep working.
   - **Everything is an agent.** You get an agent called **Assistant**, and can add more (a Planner, a Reviewer),
     each with its own instructions, model and a memory of what you told it to remember. Each agent is a private
     chat in Messages.
@@ -52,7 +59,8 @@ From v0.2 on, `./flux upgrade` takes a backup and migrates forward as before.
     conversation's people can already see.
   - **Agents act with your rights, no more.** Each agent has one setting, **What it may do**: Only read, Do it and tell me
     (the default) or Ask me first. Deleting something and changing other people's things always wait for your OK in
-    your Inbox, and only you can give it. Every change an agent makes has an **Undo** on its message.
+    your Inbox, and only you can give it. You get one notification for each run that waits, at Only what needs me and
+    Everything. Every change an agent makes has an **Undo** on its message.
   - **Agents take tasks.** Give a task to one of your agents in its Owner field. It works in the task's one discussion,
     can split the task into subtasks and ask other people's agents questions, and finishes the way its setting says.
     You can Stop it.
@@ -69,7 +77,8 @@ From v0.2 on, `./flux upgrade` takes a backup and migrates forward as before.
 - **Encrypted spaces, per space.** Any member who is not a guest can switch **Encrypted** on when making a space.
   Its content is encrypted on the server and it has no AI. Only the space's admins and a recovery code can open it;
   the company's admins can delete it but not read it. After a server restart it waits until one of its admins
-  enters their unlock password, and the rest of the company works as usual.
+  enters their unlock password, and the rest of the company works as usual. An encrypted space shows a small lock after
+  its name: in the sidebar, in the phone's Spaces list and in the space's header.
 
 ## What is new for the operator
 
@@ -85,8 +94,10 @@ From v0.2 on, `./flux upgrade` takes a backup and migrates forward as before.
   and `docker compose up` refuses an older engine.
 - **Lighter on a modest server.** The default memory limits are `FLUX_DB_MEMORY` 768m (new), `FLUX_API_MEMORY` 1536m and
   `FLUX_WORKER_MEMORY` 512m, 2.9 GiB for the base stack on a 4 GB host; raise them if your instance needs more. An idle Flux
-  used about 1% of one core when the release was measured, health checks are small programs, and job queues wake the worker instead
-  of being polled. An open page no longer polls the server on a timer while its live connection is up, and the application image is about 215 MB.
+  used about 1% of one core and under 100 database statements a minute when the release was measured, health checks are small programs,
+  and job queues wake the worker instead of being polled. An open page no longer polls the server on a timer while its live connection
+  is up: other people's changes, and a call someone starts, arrive over it. The first screen downloads about 241 KB (brotli), and the
+  application image is about 215 MB.
 - **Settings.** New: `FLUX_WEB_READS` (on), `FLUX_RUNTIME_MAX_RUNS`, `FLUX_RUNTIME_MEMORY`, `FLUX_RUNTIME_CPUS`, `FLUX_DB_MEMORY`,
   `FLUX_SESSION_IDLE` and `FLUX_SESSION_MAX_AGE`. Removed: `FLUX_BACKGROUND_COMPARISONS` and `FLUX_RUNTIME_SECRET_2` to `_4`
   (there is one runtime secret). The [configuration reference](https://coldphase.github.io/flux/operate/configuration/)
@@ -160,11 +171,24 @@ beside it; copy it off the machine, and check it by restoring it somewhere else.
   works only from the Home Screen app, on iOS or iPadOS 16.4 or later, and needs HTTPS and the three `FLUX_VAPID_*` settings
   ([guide](https://coldphase.github.io/flux/operate/mobile-and-push/)).
 - Flux does not support Kubernetes or Helm yet. Docker Compose is the only supported install. The agent runtime needs a Linux engine with Yama
-  `ptrace_scope` of 1 or higher; Docker Desktop cannot run it.
+  `kernel.yama.ptrace_scope` of 1 or higher; Docker Desktop cannot run it
+  ([how to check and fix it](https://coldphase.github.io/flux/operate/agent-runtime/#what-the-runtime-gets)).
 
 ## Known limits and what comes next
 
-- **No upgrade from v0.1** (above).
+- **No upgrade from v0.1.** `./flux upgrade`, the migration step and `./flux restore` refuse a v0.1 instance (above, and the
+  [upgrade guide](https://coldphase.github.io/flux/operate/upgrade/); [#1176](https://github.com/ColdPhase/flux/issues/1176)).
+- **Images for `linux/amd64` only.** `linux/arm64` is planned for v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)); see Platforms.
+- **The agent runtime needs Yama `kernel.yama.ptrace_scope` of 1 or higher** on the host, so Docker Desktop cannot run it
+  ([agent runtime guide](https://coldphase.github.io/flux/operate/agent-runtime/#what-the-runtime-gets)).
+- **Two speed targets are not met yet.**
+  - Opening a space's Conversation makes about 14 requests to the server (11 to 16, by where you come from); the target is 8. Every other
+    move makes 7 or fewer. Planned for v0.3 ([#1109](https://github.com/ColdPhase/flux/issues/1109)).
+  - With the API and database each held to one CPU and two clients sending requests without pause, about 10 of the 38 measured requests
+    miss the 50 ms p95 target. Without that concurrent load, all 38 meet it. Deferred to v0.3 ([#1191](https://github.com/ColdPhase/flux/issues/1191);
+    the measurements are in [performance-2026-11.md](https://github.com/ColdPhase/flux/blob/main/docs/development/performance-2026-11.md)).
+- **With `FLUX_LIVE_EDITING=off`**, a Wiki page deleted while you have it open says it was deleted but does not offer "Your text from the
+  deleted page" ([#1202](https://github.com/ColdPhase/flux/issues/1202)). Live editing is on by default.
 - **AI was tested with the real Claude Code and Codex programs against a local model**, and with fake CLIs and mock providers in Docker; it was not
   run on live Claude or ChatGPT plans as part of the release check. A named provider without a dated real-key test is unverified.
 - **Server agents never write code or post by themselves.** Code changes come from your own Claude Code or Codex over MCP, and a server agent
