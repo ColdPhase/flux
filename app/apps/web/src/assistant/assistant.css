@@ -133,9 +133,17 @@
 .aset-ready .ui-btn { min-height: 44px; }
 
 /* Suggestions above the composer: quiet chips, a 44 px target each. */
-.assistant-suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 8px; }
-.assistant-suggestions__chip { min-height: 44px; padding: 0 14px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
-.assistant-suggestions__chip:hover { background: var(--hov); }
+/* Quiet, compact suggestions on one row (#1224): with a mouse a 28 px chip; on touch a 32 px pill whose hit area reaches 44 px. A narrow
+   screen scrolls the row inside itself, never the page. */
+.assistant-suggestions { display: flex; flex-wrap: nowrap; gap: 6px; margin: 0 0 8px; overflow-x: auto; scrollbar-width: none; overscroll-behavior-x: contain; }
+.assistant-suggestions::-webkit-scrollbar { display: none; }
+.assistant-suggestions__chip { position: relative; flex: none; min-height: 28px; padding: 0 11px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); font: inherit; font-size: var(--fs-sm); line-height: 1; white-space: nowrap; cursor: pointer; }
+.assistant-suggestions__chip:hover { background: var(--hov); color: var(--t1); }
+@media (pointer: coarse) {
+  .assistant-suggestions { padding: 6px 0; margin-block: -6px 2px; }
+  .assistant-suggestions__chip { min-height: 32px; padding: 0 12px; }
+  .assistant-suggestions__chip::before { content: ""; position: absolute; inset: -6px -3px; }
+}
 
 .assistant-working__actions .ui-btn { min-height: 44px; }
 

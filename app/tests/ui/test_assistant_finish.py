@@ -83,7 +83,7 @@ class AssistantFinish(unittest.TestCase):
                 page.on("response", lambda response: sends.append((response.request.post_data or "", response.status)) if response.request.method == "POST" and response.url.endswith("/messages") else None)
                 page.goto(self.thread_url())
                 before = len(self.messages(page, self.ids["conversation"]))
-                page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this project's tasks").click()
+                page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this space's tasks").click()
                 deadline = time.time() + 15
                 while len(asked) < 1 and time.time() < deadline:
                     page.wait_for_timeout(100)
