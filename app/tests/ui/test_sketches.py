@@ -293,6 +293,46 @@ class SketchJourney(unittest.TestCase):
     def saved_or_idle(self, page: Page) -> None:
         expect(page.locator(".sk-status")).not_to_contain_text("Saving")
 
+    def test_03b_a_release_lands_the_thought_where_the_pointer_let_go(self) -> None:
+        """A release that comes before the last movement is drawn (a quick flick, a busy engine: WebKit under load) lands
+        the thought where the pointer let go, not one movement short. The last movement and the release are dispatched in
+        one task here, so no render comes between them."""
+        page = self.open_sketch()
+        sensor = self.thought(page, "ToF distance sensor")
+        sensor_id = sensor.get_attribute("data-id")
+        start = {t["id"]: (t["x"], t["y"]) for t in self.stored(page)["thoughts"]}[sensor_id]
+        before = translate(sensor)
+        b = box(page, sensor)
+        x, y = b["x"] + 30, b["y"] + 20
+        page.evaluate("() => addEventListener('pointerdown', (event) => { window.__fluxPointer = event.pointerId; }, { capture: true, once: true })")
+        page.mouse.move(x, y)
+        page.mouse.down()
+        page.mouse.move(x + 20, y + 10, steps=2)
+        # The first movement is drawn before the last one and the release arrive together.
+        for _ in range(40):
+            if translate(sensor) != before:
+                break
+            page.wait_for_timeout(50)
+        self.assertNotEqual(translate(sensor), before, "the drag is drawn as it starts")
+        page.evaluate("""([id, x, y]) => {
+          const node = document.querySelector(`.sk-node[data-id="${id}"]`);
+          const at = { bubbles: true, cancelable: true, composed: true, pointerId: window.__fluxPointer, pointerType: 'mouse', isPrimary: true, clientX: x, clientY: y };
+          node.dispatchEvent(new PointerEvent('pointermove', { ...at, buttons: 1 }));
+          node.dispatchEvent(new PointerEvent('pointerup', { ...at, button: 0, buttons: 0 }));
+        }""", [sensor_id, x + 120, y + 80])
+        expect(page.locator(".sk-status")).to_contain_text("Moved “ToF distance sensor")
+        self.saved(page)
+        moved = {t["id"]: (t["x"], t["y"]) for t in self.stored(page)["thoughts"]}[sensor_id]
+        self.assertEqual(moved, (start[0] + 120, start[1] + 80), "the release point, not the movement before it")
+        # The real button comes up only now: its click selects the thought, and the status line then says so.
+        page.mouse.up()
+        # Put it back for the tests after this one.
+        page.keyboard.press("Control+z")
+        expect(page.locator(".sk-status")).to_contain_text("Undid")
+        page.wait_for_timeout(300)
+        self.saved_or_idle(page)
+        self.assertEqual({t["id"]: (t["x"], t["y"]) for t in self.stored(page)["thoughts"]}[sensor_id], start)
+
     # ---------------------------------------------------------------- connect and shape
 
     def test_04_connect_and_shape(self) -> None:

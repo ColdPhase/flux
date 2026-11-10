@@ -257,9 +257,12 @@ export function Select({ value, onChange, children, placeholder, name, required,
     const height = Math.min(natural, maxHeight);
     const minWidth = Math.round(box.width);
     const width = Math.max(pane.offsetWidth, minWidth);
+    // A trigger that is not in the window yet (the page is still scrolling to the field that was just focused) never takes the
+    // list past the window's edges; the scroll that brings the trigger in places the list against it again.
+    const top = side === 'above' ? box.top - 4 - height : box.bottom + 4;
     setPlace({
       side, maxHeight, minWidth,
-      top: Math.round(side === 'above' ? box.top - 4 - height : box.bottom + 4),
+      top: Math.round(Math.max(8, Math.min(top, window.innerHeight - 8 - height))),
       left: Math.round(Math.max(8, Math.min(box.left, window.innerWidth - width - 8))),
     });
   };

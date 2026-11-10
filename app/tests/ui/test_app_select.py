@@ -319,6 +319,47 @@ class AppSelect(unittest.TestCase):
         shot(page, f"app-select-long-{UI_BROWSER}")
         page.keyboard.press("Escape")
 
+    def test_15b_a_list_opened_from_a_field_below_the_window_stays_inside_it(self) -> None:
+        """The keys can open the list before the page has scrolled to the field that was just focused (the full WebKit run, under
+        load, measured the list 27 px past the window). The long list then still opens inside the window, and once the page
+        scrolls the field into view it sits against the field again."""
+        page = self.page()
+        page.goto("/settings/notifications")
+        page.get_by_role("button", name="Change muted places").click()
+        place = page.get_by_role("combobox", name="Place to mute", exact=True)
+        expect(place).to_be_visible()
+        page.set_viewport_size({"width": DESKTOP["width"], "height": 600})
+        # The settings pane at its top leaves the field below the window; it is focused there without scrolling.
+        top = place.evaluate("""el => {
+          for (let node = el.parentElement; node; node = node.parentElement) if (node.scrollHeight > node.clientHeight + 1) node.scrollTop = 0;
+          el.focus({ preventScroll: true });
+          return el.getBoundingClientRect().top;
+        }""")
+        self.assertGreater(top, 600, "the field starts below the window")
+        expect(place).to_be_focused()
+        page.keyboard.press("End")
+        pop = page.locator(".ui-select__pop")
+        expect(pop).to_be_visible()
+        layer = pop.bounding_box()
+        self.assertGreaterEqual(layer["y"], 0, "the list stays inside the window")
+        self.assertLessEqual(layer["y"] + layer["height"], 600, "the list stays inside the window")
+        expect(page.locator('[role="listbox"] [data-active]')).to_be_in_viewport()
+        # The page scrolls to the field: the list follows it and sits against it.
+        place.scroll_into_view_if_needed()
+        expect(place).to_be_in_viewport(ratio=1)
+        trigger = place.bounding_box()
+        for _ in range(40):
+            layer = pop.bounding_box()
+            if layer["y"] + layer["height"] <= trigger["y"] + 6 or layer["y"] >= trigger["y"] + trigger["height"] - 1:
+                break
+            page.wait_for_timeout(50)
+        self.assertTrue(layer["y"] + layer["height"] <= trigger["y"] + 6 or layer["y"] >= trigger["y"] + trigger["height"] - 1,
+                        f"the list sits against its field again: {layer} / {trigger}")
+        self.assertLessEqual(layer["y"] + layer["height"], 600)
+        page.keyboard.press("Escape")
+        expect(pop).to_have_count(0)
+        expect(place).to_be_focused()
+
     def test_09_typing_treats_a_space_and_an_underscore_alike(self) -> None:
         page = self.page()
         page.goto("/settings/notifications")
