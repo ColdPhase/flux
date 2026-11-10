@@ -52,6 +52,11 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const noteId = useId();
   const nameOf = (id: string) => projectPeople?.find((person) => person.id === id)?.name ?? live.nameOf(id);
+  const hereSession = sessionAt(items, anchor);
+  // A call live elsewhere in the space (another thread, the newest root since a message came in, Tasks, Map or Wiki) is joined from
+  // the header's slot too: a dot on More alone went unseen (founder report, 2026-11-10). A task's own button stays for its task.
+  const away = variant !== 'inline' && !(hereSession && hereSession.state === 'available') ? liveElsewhere(items, anchor)[0] ?? null : null;
+  const awayLabel = useWarmLabel(away);
 
   // Spokój rule 7: the header's Call keeps its place in every view. Where there is nothing to work on together
   // (nothing open to anchor a session, a session already joined, or still checking) it stays, and a click says why
@@ -77,6 +82,8 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
   const here_ = sessionAt(items, anchor);
+  // A call live elsewhere in the space (another thread, the newest root since a message came in, Tasks, Map or Wiki) is joined from
+  // the header's slot too: a dot on More alone went unseen (founder report, 2026-11-10). The task's own button stays for its task.
   const word = KIND_WORD[anchor.context.type];
   const audience = audienceOf(projectPeople, live.meId);
 
@@ -104,14 +111,17 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     return null;
   }
 
-  const joinable = here_ && here_.state === 'available';
-  const present = joinable ? (here_.participants ?? []).map((p) => p.userId) : [];
+  const target = here_ && here_.state === 'available' ? here_ : away;
+  const joinable = !!target;
+  const present = target ? (target.participants ?? []).map((p) => p.userId) : [];
+  const where = away && target === away ? (awayLabel ? ` at “${awayLabel}”` : ` at the ${KIND_WORD[away.context.type]}`) : '';
   const label = joinable
-    ? present.length ? `Join ${namesLine(present, nameOf, live.meId)}` : 'Join the session'
+    ? present.length ? `Join ${namesLine(present, nameOf, live.meId)}${where}` : `Join the session${where}`
     : 'Work on this together';
 
   const act = () => {
-    if (joinable) void live.join(here_, anchor);
+    if (target === away && away) void live.join(away, { projectId: away.projectId, context: away.context, label: awayLabel ?? KIND_WORD[away.context.type] });
+    else if (target) void live.join(target, anchor);
     else void live.start(anchor);
   };
 
@@ -177,22 +187,31 @@ function useElsewhere() {
   const { items } = useProjectSessions(shell?.project.id, live.capability === 'configured');
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const joinable = !inSession && sessionAt(items, here.anchor)?.state === 'available';
-  const others = inSession ? [] : items.filter((item) => !sameContext(item.context, here.anchor?.context) && (item.participants === null || item.participants.length > 0));
+  const others = inSession ? [] : liveElsewhere(items, here.anchor);
   const people = shell?.people;
   const nameOf = (id: string) => people?.find((person) => person.id === id)?.name ?? live.nameOf(id);
-  return { live, others, joinable, nameOf };
+  // With no call here, the first call elsewhere takes the header's Join (or its row in More when the header is folded): the rows list the rest.
+  const rows = joinable ? others : others.slice(1);
+  return { live, others, rows, joinable, nameOf, anchor: here.anchor, inSession };
+}
+
+/** The calls of the space live at another place than `anchor`: not empty (a call stays joinable for a while after everyone left it). */
+function liveElsewhere(items: LiveSession[], anchor: LiveAnchor | null) {
+  return items.filter((item) => !sameContext(item.context, anchor?.context) && (item.participants === null || item.participants.length > 0));
 }
 
 const placeLabels = new Map<string, string>();
 const labelKey = (session: LiveSession) => `${session.projectId}:${session.context.type}:${session.context.id}`;
 
 /** The place's title, read once and kept: More opens with its rows already named, so none appears above the one focused (#873). */
-function useWarmLabel(session: LiveSession): string | null {
-  const key = labelKey(session);
-  const [label, setLabel] = useState<string | null>(placeLabels.get(key) ?? null);
+function useWarmLabel(session: LiveSession | null): string | null {
+  const key = session ? labelKey(session) : '';
+  const [state, setLabel] = useState<{ key: string; label: string | null }>({ key, label: placeLabels.get(key) ?? null });
+  const label = state.key === key ? state.label : placeLabels.get(key) ?? null;
   useEffect(() => {
+    if (!session) return undefined;
     const controller = new AbortController();
-    anchorLabel(session.projectId, session.context, controller.signal).then((title) => { if (title) { placeLabels.set(key, title); setLabel(title); } }, () => undefined);
+    anchorLabel(session.projectId, session.context, controller.signal).then((title) => { if (title) { placeLabels.set(key, title); setLabel({ key, label: title }); } }, () => undefined);
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
@@ -204,8 +223,15 @@ function useWarmLabel(session: LiveSession): string | null {
  * when one starts and nothing in it moves. Starting a call here stays Call's one click.
  */
 export function LiveNowRows() {
-  const { others, nameOf } = useElsewhere();
-  return <>{others.map((session) => <LiveNowRow key={session.id} session={session} nameOf={nameOf} />)}</>;
+  const { live, others, rows, joinable, nameOf, anchor, inSession } = useElsewhere();
+  // The header's slot joins the call elsewhere; starting a separate call here is a row (one more click, as it is rarer).
+  const startHere = !inSession && !joinable && others.length > 0 && anchor && live.capability === 'configured';
+  return <>
+    {rows.map((session) => <LiveNowRow key={session.id} session={session} nameOf={nameOf} />)}
+    {startHere ? <button type="button" role="menuitem" className="newmenu__item" data-more-row onClick={() => void live.start(anchor)}>
+      <span>Start a call here</span><span className="ui-vh">, a separate call for this {KIND_WORD[anchor.context.type]}</span>
+    </button> : null}
+  </>;
 }
 
 function LiveNowRow({ session, nameOf }: { session: LiveSession; nameOf: (id: string) => string }) {
@@ -228,9 +254,10 @@ function LiveNowRow({ session, nameOf }: { session: LiveSession; nameOf: (id: st
  * never lands on More. The rows are in More; this warms the places' titles for them.
  */
 export function LiveCue({ id, buttonId }: { id: string; buttonId: string }) {
-  const { others, joinable } = useElsewhere();
+  const { others, rows, joinable } = useElsewhere();
   const folded = useCallFolded();
-  const shown = others.length > 0 || (joinable && folded);
+  // The header's Join shows the first call; the dot says More holds more of them, or holds Join itself when the header is folded.
+  const shown = rows.length > 0 || ((joinable || others.length > 0) && folded);
   useEffect(() => {
     const button = document.getElementById(buttonId);
     if (!shown || !button) return undefined;
