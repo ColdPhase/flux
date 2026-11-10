@@ -22,7 +22,7 @@ timeout --signal=TERM --kill-after=10s 180s docker run --rm --name "$container" 
   --memory=512m --cpus=2 \
   -v "$fixture/package.json:/seed/package.json:ro,Z" \
   -v "$fixture/pnpm-workspace.yaml:/seed/pnpm-workspace.yaml:ro,Z" \
-  node@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 \
+  node@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 \
   sh -eu -c 'mkdir /tmp/calibration; cd /tmp/calibration; cp /seed/* .; corepack enable >&2; corepack install -g pnpm@12.6.0 >&2; pnpm install --lockfile-only --ignore-scripts >&2; cat pnpm-lock.yaml' > "$temporary"
 test -s "$temporary"
 mv "$temporary" "$fixture/pnpm-lock.yaml"
