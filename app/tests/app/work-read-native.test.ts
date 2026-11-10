@@ -264,27 +264,26 @@ describe('bounded native work reads through HTTP and current native fences', () 
       const session = await secondSession(other), headers = { cookie: session.browser.cookieHeader() };
       const initial = await sessions.requirePrincipal({ headers });
       let policyReads = 0;
-      // Wrap native Drizzle builders only to hold the final completed policy SQL;
-      // every row/level still comes from the actual current central policy.
-      const wrap = (builder: object): object => new Proxy(builder, { get(target, name, receiver) {
-        const member = Reflect.get(target, name, receiver);
-        if (name === 'then') return (fulfilled: (value: unknown) => unknown, rejected: (error: unknown) => unknown) => Reflect.apply(member, target, [async (value: unknown) => {
-          policyReads++;
-          if (policyReads === 2) await (expired
-            ? pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [session.sessionId])
-            : pool.query('DELETE FROM auth_sessions WHERE id = $1', [session.sessionId]));
-          return fulfilled(value);
-        }, rejected]);
-        if (typeof member !== 'function') return member;
-        return (...args: unknown[]) => { const next = Reflect.apply(member, target, args); return typeof next === 'object' && next !== null ? wrap(next) : next; };
-      } });
-      const held = new Proxy(db, { get(target, name, receiver) {
-        if (name !== 'select') return Reflect.get(target, name, receiver);
-        return (...args: unknown[]) => {
-          const native = Reflect.apply(target.select, target, args), fields = args[0];
-          return typeof fields === 'object' && fields !== null && Object.hasOwn(fields, 'project') && Object.hasOwn(fields, 'level') ? wrap(native) : native;
+      const revoke = () => expired
+        ? pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [session.sessionId])
+        : pool.query('DELETE FROM auth_sessions WHERE id = $1', [session.sessionId]);
+      // Hold the final completed policy statement, the person's read of the space with their level (composed once and prepared, #1178),
+      // at the connection it is sent on; every row/level still comes from the actual current central policy.
+      const policyRead = (text: unknown) => typeof text === 'string' && /AS level\s+FROM projects p WHERE p\.id = \$/.test(text);
+      const client = (db as unknown as { session: { client: { query: (...args: unknown[]) => Promise<unknown> } } }).session.client;
+      const heldClient = new Proxy(client, { get(target, name) {
+        const member = Reflect.get(target, name, target) as unknown;
+        if (name !== 'query' || typeof member !== 'function') return typeof member === 'function' ? (member as (...args: unknown[]) => unknown).bind(target) : member;
+        return async (...args: unknown[]) => {
+          const result = await (member as (...args: unknown[]) => Promise<unknown>).apply(target, args);
+          if (policyRead((args[0] as { text?: unknown } | undefined)?.text) && ++policyReads === 2) await revoke();
+          return result;
         };
       } });
+      const heldSession = new Proxy((db as unknown as { session: object }).session, { get(target, name) {
+        return name === 'client' ? heldClient : Reflect.get(target, name, target);
+      } });
+      const held = new Proxy(db, { get(target, name, receiver) { return name === 'session' ? heldSession : Reflect.get(target, name, receiver); } });
       const reads = createBoundedWorkReads(nativeWorkReadUnitOfWork(db), nativeWorkReadFinalFence(held, sessions, initial, headers));
       await assert.rejects(reads.summary(initial.principal, projectId), code(401, 'UNAUTHENTICATED'));
       assert.equal(policyReads, 2);
