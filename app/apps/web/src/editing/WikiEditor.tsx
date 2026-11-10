@@ -15,6 +15,7 @@ import type { PageMode } from '../docs/DocViews';
 import { Faces, PageFrame, hereToo, scrollPage, useNow, useReferenceClicks } from '../docs/WikiParts';
 import { RefMark, readReferences } from '../docs/WikiRead';
 import { PageGone, usePageGone } from '../docs/page-gone';
+import { takeHeldTyping } from '../docs/typeAhead';
 import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { RefHosts, headingsOf, livePreview, setRefData, workRefs } from './livePreview';
 import { LocalWiki, needsSavedLook, settleKeptCopy } from './local-wiki';
@@ -158,7 +159,15 @@ const stateMovement = keymap.of([
   { key: 'ArrowRight', run: byCharacter(true, false), shift: byCharacter(true, true) },
 ]);
 
-/** Enter continues a list or a quote, as a page would; on an empty item it ends the list. */
+/**
+ * Enter continues a list or a quote, as a page would; on an empty item it ends the list. Any other Enter is one new line, made here and
+ * not by the browser: WebKit's own line break at the end of the text was read back as two (a page saved an empty last line in Safari).
+ */
+function newLine(view: EditorView) {
+  if (view.state.readOnly) return false;
+  view.dispatch(view.state.replaceSelection('\n'), { userEvent: 'input', scrollIntoView: true });
+  return true;
+}
 const LIST_LINE = /^(\s*)(?:([-*+])|(\d+)([.)]))(\s+)|^(\s*>\s?)/;
 function continueBlock(view: EditorView) {
   const { state } = view;
@@ -329,6 +338,8 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
    * then that goes into the source after whatever the source holds that the page was not read with.
    */
   const early = useRef<{ base: string; changes: ChangeSet | null } | null>(null);
+  /** What was typed after Create page and before this editor was there (`typeAhead`), taken once for the life of the page. */
+  const ahead = useRef<string | null>(null);
   const [earlyTyped, setEarlyTyped] = useState(false);
   const [sourceTick, setSourceTick] = useState(0);
 
@@ -356,7 +367,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         doc: initial,
         extensions: [
           livePreview(hosts), EditorView.lineWrapping, drawSelection(), placeholder('Write something…'), stateMovement,
-          keymap.of([{ key: 'Enter', run: continueBlock }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
+          keymap.of([{ key: 'Enter', run: (target) => continueBlock(target) || newLine(target), shift: newLine }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
           EditorView.contentAttributes.of({ 'aria-label': 'Page text', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;
@@ -369,7 +380,13 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
       }),
     });
     setView(created);
-    if (opensWriting) { wantsCaret.current = false; created.focus(); }
+    ahead.current ??= writeAtStart ? takeHeldTyping() : '';
+    if (opensWriting) {
+      wantsCaret.current = false; created.focus();
+      // The keys typed before the page was there come first, as typed: the early-typing buffer above keeps them with the rest.
+      const typed = ahead.current, at = created.state.selection.main.head;
+      if (typed) created.dispatch({ changes: { from: at, insert: typed }, selection: { anchor: at + typed.length }, userEvent: 'input.type', scrollIntoView: true });
+    }
     return () => { window.clearTimeout(timer); created.destroy(); };
     // One view for the life of the page.
     // eslint-disable-next-line react-hooks/exhaustive-deps

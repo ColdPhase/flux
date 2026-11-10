@@ -11,6 +11,7 @@ import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
+import { holdTyping } from './typeAhead';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { useWiki } from './wiki-context';
 
@@ -223,6 +224,8 @@ export function NewPage({ name, done }: { name?: string; done?: () => void }) {
     event.preventDefault();
     const clean = title.trim();
     if (!clean || busy) return;
+    // What is typed from now on is the new page's first text, kept until its editor is there (#1171).
+    const release = holdTyping();
     setBusy(true); setError('');
     const intent = JSON.stringify(['new-page', project.id, clean]);
     try {
@@ -231,6 +234,7 @@ export function NewPage({ name, done }: { name?: string; done?: () => void }) {
       done?.();
       navigate(docUrl(project.id, doc.id), { state: { writeAt: 'start' } });
     } catch (cause) {
+      release();
       setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.' : 'The page was not created. Check the connection and try again.');
     } finally { setBusy(false); }
   }
