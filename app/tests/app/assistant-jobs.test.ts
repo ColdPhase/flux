@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_RUNS_PATH, agentChatMessagesPath, agentChatReadPath, assistantRunRetryPath, type AgentChatMessage, assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobRestorePath, assistantJobRunNowPath, assistantJobsPath,
+  ASSISTANT_RUN_EFFECT_TOOLS, ASSISTANT_RUNS_PATH, ME_PATH, ME_TIME_ZONE_PATH, NOTIFICATION_PREFERENCES_PATH, type MeResponse, agentChatMessagesPath, agentChatReadPath, assistantRunRetryPath, type AgentChatMessage, assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobRestorePath, assistantJobRunNowPath, assistantJobsPath,
   type AssistantJob, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
@@ -360,6 +360,70 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     return run!.id;
   };
   const block = (text: string) => `Prepared. <schedule>${JSON.stringify({ title: 'Task summary', text, when: { kind: 'weekdays', at: '09:00' } })}</schedule>`;
+
+  test('C-57 (#1168): a person in Warsaw who never opened Notifications says "every weekday at 9"; it runs at 9:00 Warsaw time and the brief names their zone', async () => {
+    const zone = 'Europe/Warsaw';
+    /** 9:00 in Warsaw on the weekday on or after the UTC date of `from`, found without Flux's own schedule code: 07:00Z in summer, 08:00Z in winter. */
+    const nineInWarsaw = (from: Date) => {
+      for (let day = 0; day < 7; day++) {
+        const date = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate() + day));
+        if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
+        return [7, 8].map((hour) => new Date(date.getTime() + hour * 3600_000))
+          .find((instant) => new Intl.DateTimeFormat('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(instant) === '09:00')!;
+      }
+      throw new Error('no weekday');
+    };
+    const local = (instant: string | Date) => new Intl.DateTimeFormat('en-GB', { timeZone: zone, weekday: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(instant));
+    try {
+      // Nothing was set: the person's zone is UTC until a browser says, and Notifications was never opened.
+      assert.equal((expectStatus(await owner.browser.request('GET', ME_PATH), 200) as unknown as MeResponse).user.timeZone, 'UTC');
+      // The web app saves its browser's zone on the person (no setting). A zone that is not one is refused.
+      for (const bad of ['Mars/Olympus', 'UTC+2', '', 'x'.repeat(65)]) assert.equal((await owner.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: bad } })).status, 400, bad);
+      expectStatus(await owner.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: zone } }), 204);
+      expectStatus(await owner.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: zone } }), 204, 'the same zone again');
+      assert.equal((expectStatus(await owner.browser.request('GET', ME_PATH), 200) as unknown as MeResponse).user.timeZone, zone);
+      assert.equal((expectStatus(await peer.browser.request('GET', ME_PATH), 200) as unknown as MeResponse).user.timeZone, 'UTC', 'only the person\'s own zone changed');
+      const quiet = (expectStatus(await owner.browser.request('GET', NOTIFICATION_PREFERENCES_PATH), 200) as { quietHours: { enabled: boolean; timeZone: string } }).quietHours;
+      assert.deepEqual([quiet.enabled, quiet.timeZone], [false, 'UTC'], 'Quiet hours were never turned on');
+
+      // Told in the chat, the schedule takes the person's zone and says 9:00, the hour it runs on their clock.
+      const prepared = await prepareBy('Every weekday at 9, summarise what changed in Lamp sensor', block('Summarise what changed in Lamp sensor'));
+      assert.deepEqual([prepared.timeZone, prepared.words], [zone, 'Weekdays at 9:00']);
+      const on = expectStatus(await owner.browser.request('PATCH', assistantJobPath(agentId, prepared.id), { body: { expectedVersion: prepared.version, enabled: true } }), 200) as unknown as AssistantJob;
+      assert.equal(on.next.length, 3);
+      for (const next of on.next) {
+        assert.match(local(next.at), /^(Mon|Tue|Wed|Thu|Fri) 09:00$/, `next ${next.at} is 9:00 on a weekday in Warsaw`);
+        assert.match(next.label, /^\w{3}( \d+ \w{3})? 9:00$/, 'and is shown as 9:00');
+      }
+      assert.equal(new Date((await jobRow(on.id)).next_run_at as string).toISOString(), on.next[0]!.at);
+
+      // It fires at 9:00 Warsaw time, not at 9:00 UTC. A weekday at least a day ahead, so only this test's tick fires it.
+      const fire = nineInWarsaw(new Date(Date.now() + DAY));
+      await pool.query(`UPDATE assistant_jobs SET next_run_at = $2 WHERE id = $1`, [on.id, fire]);
+      assert.equal((await tick(new Date(fire.getTime() - MINUTE))).fired, 0, 'not at 8:59');
+      assert.equal((await tick(new Date(fire.getTime() + 30_000))).fired, 1, 'at 9:00 Warsaw');
+      const [run] = await runsOf(on.id);
+      assert.ok(run, 'the schedule started its run');
+      // The next one is 9:00 Warsaw time on the next weekday.
+      const following = nineInWarsaw(new Date(fire.getTime() + DAY));
+      assert.equal(new Date((await jobRow(on.id)).next_run_at as string).toISOString(), following.toISOString());
+      assert.equal(local(following), `${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][following.getUTCDay()]} 09:00`);
+
+      // The agent's clock is the person's: their zone, and the time their screen shows.
+      const started = Date.now();
+      await processAll();
+      const system = compute.dispatched.at(-1)!.system;
+      const stamp = /It is now \w+, (\d{4}-\d\d-\d\d \d\d:\d\d) in .+'s time zone, ([^ ]+)\. Every time below is in that zone\./.exec(system);
+      assert.ok(stamp, system.slice(0, 600));
+      assert.equal(stamp[2], zone);
+      const wall = (at: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(at));
+      const shown = new Set<string>();
+      for (let at = started - MINUTE; at <= Date.now() + MINUTE; at += 30_000) shown.add(wall(at));
+      assert.ok(shown.has(stamp[1]!), `${stamp[1]} is the time in Warsaw now (${[...shown].join(', ')})`);
+    } finally {
+      expectStatus(await owner.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'UTC' } }), 204);
+    }
+  });
 
   test('deleting an agent deletes its schedules: nothing fires for it and no history piles up', async () => {
     const second = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Gone soon', owner: 'self' } }), 201) as { id: string }).id;

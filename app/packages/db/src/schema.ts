@@ -48,6 +48,8 @@ export const authUsers = pgTable('auth_users', {
   verificationRequired: boolean('verification_required').notNull().default(false),
   /** Raised by a password reset and by "Sign out all other devices" (migration 0036, #1031): device cookies of an older generation stop counting. */
   deviceGeneration: integer('device_generation').notNull().default(0),
+  /** The IANA zone of the browser the person uses Flux in, saved by the web app when it differs (migration 0052, #1168, C-57); UTC until one has said. */
+  timeZone: text('time_zone').notNull().default('UTC'),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

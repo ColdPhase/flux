@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { createPersonalRunProcessor, postToAgentChat, type Principal } from '@flux/core';
-import type { AssistantAnswer, AssistantRun, Conversation, ConversationRootWindow, Dm, DmMessage, DmThread, Page, Project, ShowAnswerResult, Workspace } from '@flux/contracts';
+import { ME_TIME_ZONE_PATH, type AssistantAnswer, type AssistantRun, type Conversation, type ConversationRootWindow, type Dm, type DmMessage, type DmThread, type Page, type Project, type ShowAnswerResult, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -94,7 +94,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.match(compute.dispatched.at(-1)!.system, /^You are Assistant, the AI agent of pai-hubert in Flux[^]*\nWho reads your answer\nOnly pai-hubert\. They may post it with Show everyone/);
     assert.match(compute.dispatched.at(-1)!.system, /It is now \w+day, \d{4}-\d\d-\d\d \d\d:\d\d in pai-hubert's time zone, UTC\./);
     assert.ok(sentToTheModel().startsWith('<place space="Lamp sensor" conversation="thread"/>'), sentToTheModel());
-    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
+    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" by="person" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
     assert.match(sentToTheModel(), /<request from="pai-hubert" at="[^"]+">Summarise this<\/request>$/);
 
     // The people of the space see nothing: not the run, not the answer, not that an assistant is working.
@@ -154,7 +154,8 @@ describe('/ai everywhere, answered privately (#842)', () => {
   });
 
   test('the brief tells the time in the asker\'s own zone and says when older messages were left out (#1064)', async () => {
-    expectStatus(await hubert.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { timeZone: 'Asia/Tokyo' } } }), 200);
+    // The asker's zone is their browser's, which the web app saves on them (#1168, C-57).
+    expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'Asia/Tokyo' } }), 204);
     const long = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Count to forty-one: 1', clientMessageId: randomUUID() });
     for (let n = 2; n <= 41; n++) await post(kai, `/api/v1/conversations/${long.id}/messages`, { body: `Count to forty-one: ${n}`, clientMessageId: randomUUID() });
     try {
@@ -166,7 +167,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
       assert.equal(input.includes('>Count to forty-one: 1</message>'), false, 'the oldest is the one left out');
       assert.ok(input.includes('>Count to forty-one: 41</message>'));
     } finally {
-      expectStatus(await hubert.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { timeZone: 'UTC' } } }), 200);
+      expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'UTC' } }), 204);
     }
   });
 

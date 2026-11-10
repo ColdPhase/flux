@@ -4,6 +4,7 @@ import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { pacedShellRead } from './shellPace';
 import { forgetKeptPages } from './keepPage';
+import { keepTimeZone } from './timeZone';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { listMyAgents } from '../my-agents/api';
@@ -100,6 +101,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
+  keepTimeZone(me);
   const all = read ?? await apiRead<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal: request.signal });
   const [{ workspaces, lockedWorkspaces, projects: reachableSpaces }, dms, agents] = await Promise.all([
     listAccessibleProjects(request.signal, all),
