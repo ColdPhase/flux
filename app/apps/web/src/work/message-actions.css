@@ -63,6 +63,10 @@
   min-width: 32px; height: 32px; padding: 0; border: 0; border-radius: 10px; background: transparent; color: var(--t3); white-space: nowrap; z-index: 1; }
 /* The person's own message "via" a client or an assistant has its mark at the top right, where the ⋯ is: the mark keeps clear of it (#1091). */
 .msg-touch.is-mine > :is(.project-convo__message-meta, .thread__root-meta), .dm-msg.is-mine.msg-touch .dm-msg__meta { padding-right: 36px; }
+/* One's own message has no name line above its bubble, so the ⋯ sits in the bubble's top corner: the bubble keeps that corner free and
+   its first line never runs under the ⋯ (visual review of v0.2, phone and tablet). */
+.project-convo__message.msg-touch.is-mine:not(:has(> .project-convo__message-meta)) > .message-bubble,
+.dm-msg.msg-touch.is-mine:not(:has(.dm-msg__meta)) .message-bubble { padding-right: 34px; }
 .msg-touch__label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
 .msg-touch__sr:focus-visible { height: 44px; padding: 0 14px; background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line);
   font-size: var(--fs-md); color: var(--t1); z-index: 2; }

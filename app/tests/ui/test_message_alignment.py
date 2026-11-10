@@ -510,6 +510,12 @@ class MessageAlignment(unittest.TestCase):
                         self.assertEqual(style["color"], style["ink"], style)
                         self.assertEqual(style["image"], "none", style)
                         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width)
+                        if width == 390:
+                            # One's own message has no name line, so its ⋯ is in the bubble's top corner: no line of its text runs under it.
+                            covered = bubble.evaluate("""el => { const more = el.closest('.msg-touch')?.querySelector(':scope > .msg-touch__sr, .msg-touch__sr');
+                              if (!more) return 'no ⋯'; const m = more.getBoundingClientRect(), range = document.createRange(); range.selectNodeContents(el);
+                              return [...range.getClientRects()].some((r) => r.width > 0 && !(m.left >= r.right || m.right <= r.left || m.top >= r.bottom || m.bottom <= r.top)); }""")
+                            self.assertFalse(covered, f"the ⋯ of one's own {surface} message is over its text")
                         shot(page, f"spokoj-{surface}-{width}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                     first = page.locator(f"#message-{self.dm_messages[-2]['id']}")
                     last = page.locator(f"#message-{self.dm_messages[-1]['id']}")
