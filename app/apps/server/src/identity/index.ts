@@ -3,7 +3,8 @@ import { accessPorts, agentConnectionRepository, createSessionRepository, person
 import { companyDisplayName } from '@flux/core';
 import { sql } from 'drizzle-orm';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
-import { createAuth, ensureOauthResource, type FluxAuth } from './auth.js';
+import { createAuth, ensureOauthResource, sessionUpdateAgeSeconds, type FluxAuth } from './auth.js';
+import { sessionCookieName } from './session-cookie.js';
 import { registerAuthBridge } from './bridge.js';
 import type { IdentityConfig, OidcConfig } from './config.js';
 import { createSmtpMailer, type Mailer } from './mailer.js';
@@ -151,7 +152,10 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   app.addHook('onClose', async () => standing?.stop());
   // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
   const sessions = createSessionResolver(auth, standing, confirmation, config.ssoOnly && config.oidc ? { db, providerId: config.oidc.providerId } : null,
-    { db, maxAgeMs: config.sessionMaxAgeSeconds * 1000 });
+    { db, maxAgeMs: config.sessionMaxAgeSeconds * 1000 },
+    // #1178: a cookie Better Auth accepted is read again as one statement on its session row; Better Auth still renews and refuses.
+    { db, cookieName: sessionCookieName(config.publicOrigin.startsWith('https:')), expiresInSeconds: config.sessionIdleSeconds,
+      updateAgeSeconds: sessionUpdateAgeSeconds(config.sessionIdleSeconds) });
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.ssoOnly ? 'available' : 'unavailable';
 
   const exempt = new Set(options.originExemptPaths ?? []);

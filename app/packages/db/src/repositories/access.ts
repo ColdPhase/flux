@@ -2,6 +2,7 @@ import { and, eq, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
 import type { WorkspaceRole } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { preparedTemplate, queryPrepared } from '../prepared.js';
 import { openRow, sealOf } from '../sealing.js';
 import { keyGate } from './workspace-encryption.js';
 
@@ -98,10 +99,13 @@ async function lockProjectAccess(db: DbExecutor, actor: AccessActor, projectId: 
   await db.execute(sql`SELECT g.id FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${holder} ORDER BY g.id FOR SHARE`);
 }
 
+// The two lookups every access decision makes, several times in a request: constant text, prepared, not built by Drizzle (#1178).
+const MEMBER_ROLE = 'SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2';
+const MEMBER_ROLE_LOCKED = `${MEMBER_ROLE} FOR SHARE`;
+const PROJECT_WORKSPACE = 'SELECT workspace_id AS "workspaceId" FROM projects WHERE id = $1';
+
 async function memberRole(db: DbExecutor, workspaceId: string, userId: string, lock: boolean): Promise<WorkspaceRole | null> {
-  const query = db.select({ role: schema.workspaceMembers.role }).from(schema.workspaceMembers)
-    .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
-  const rows = lock ? await query.for('share') : await query;
+  const { rows } = await queryPrepared<{ role: WorkspaceRole }>(db, lock ? MEMBER_ROLE_LOCKED : MEMBER_ROLE, [workspaceId, userId]);
   return rows[0]?.role ?? null;
 }
 
@@ -271,6 +275,23 @@ export function companyGuestSql(userId: SQLWrapper): SQL {
 }
 
 /**
+ * A person's read of one space with their level in it (#1178): run several times in every request, so composed once per company role
+ * (`humanLevel` with the person and the space as placeholders), not by Drizzle on every call. An agent's read keeps the composed path.
+ */
+const humanProjectReads = new Map<WorkspaceRole, ReturnType<typeof preparedTemplate<typeof schema.projects.$inferSelect & { level: number }>>>();
+function humanProjectRead(role: WorkspaceRole) {
+  let read = humanProjectReads.get(role);
+  if (!read) {
+    read = preparedTemplate(() => sql`SELECT p.id, p.workspace_id AS "workspaceId", p.name, p.visibility, p.created_by AS "createdBy", p.version,
+      p.created_at AS "createdAt", p.updated_at AS "updatedAt",
+      ${humanLevel(sql.placeholder('user') as unknown as string, role, sql`p.id`, sql`p.visibility`)} AS level
+      FROM projects p WHERE p.id = ${sql.placeholder('project')}`);
+    humanProjectReads.set(role, read);
+  }
+  return read;
+}
+
+/**
  * Core's `AccessReader` over one executor. One method is one statement (or the single guarded
  * statement pair of `lockProjectAccess`); core's evaluators call them in the documented lock order.
  * The rows it returns are whole table rows, so core's evaluations carry them to callers unchanged.
@@ -282,13 +303,15 @@ export function accessReader(db: DbExecutor) {
 
 
     async locateProject(projectId: string) {
-      const [located] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
+      const [located] = (await queryPrepared<{ workspaceId: string }>(db, PROJECT_WORKSPACE, [projectId])).rows;
       return located ?? null;
     },
     lockProjectAccess: (actor: AccessActor, projectId: string) => lockProjectAccess(db, actor, projectId),
     async readProject(actor: AccessActor, projectId: string) {
-      const [row] = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
-        .from(schema.projects).where(eq(schema.projects.id, projectId));
+      const [row] = actor.active && actor.principal.kind === 'human' && actor.role
+        ? (await humanProjectRead(actor.role)(db, { user: actor.principal.id, project: projectId })).rows.map(({ level, ...project }) => ({ project, level: Number(level) }))
+        : await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number) })
+          .from(schema.projects).where(eq(schema.projects.id, projectId));
       // Reached only for an active member (core loads the actor first), so only a member learns a lock (423).
       return row ? { ...row, project: openRow('projects', row.project, await sealOf(db, row.project.workspaceId, { write: false })) } : null;
     },
