@@ -1,7 +1,8 @@
-import { type ReactNode, type Ref, type KeyboardEvent, type TextareaHTMLAttributes } from 'react';
+import { type ReactNode, type Ref, type KeyboardEvent, type ClipboardEvent, type TextareaHTMLAttributes } from 'react';
 import { Icon, useToast } from '../ui';
 import { AttachButton } from './Files';
 import type { ComposerState } from './draft';
+import { pastedFiles } from './paste';
 
 /**
  * The one composer (Spokój rule 7, #504): "+", the field and the inverted round send button, the same in the
@@ -25,6 +26,15 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
   menu?: ReactNode;
 }) {
   const toast = useToast();
+  // A pasted screenshot, picture or file attaches to the draft like the paperclip; pasted text stays text.
+  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const files = pastedFiles(event.clipboardData);
+    if (!files.length) return;
+    event.preventDefault();
+    if (!attach) { toast({ message: 'Files cannot be added here.', timeout: 3000 }); return; }
+    if (attachDisabled || attach.sending) return;
+    attach.addFiles(files);
+  };
   return (
     <div className="composer__box" aria-disabled={boxDisabled || undefined} onClick={(event) => { if (event.target === event.currentTarget) document.getElementById(id)?.focus(); }}>
       {attach ? <AttachButton state={attach} disabled={attachDisabled} />
@@ -34,7 +44,7 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
       <label className="ui-vh" htmlFor={id}>{label}</label>
       <textarea id={id} ref={fieldRef} rows={1} value={value} maxLength={maxLength} placeholder={placeholder} disabled={disabled}
         onChange={(event) => onChange(event.target.value, event.target.selectionStart)} onSelect={onSelect ? (event) => onSelect(event.currentTarget.selectionStart) : undefined}
-        onBlur={onBlur} onKeyDown={onKeyDown} {...fieldProps} />
+        onBlur={onBlur} onKeyDown={onKeyDown} onPaste={onPaste} {...fieldProps} />
       <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
       {menu}
     </div>
