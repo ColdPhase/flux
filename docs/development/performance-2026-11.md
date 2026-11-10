@@ -21,7 +21,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
-| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms. With [#1178](https://github.com/ColdPhase/flux/issues/1178): the warm @1cpu phases 19 and 16 ms, 0 of 38 over; the concurrent @1cpu phase 42 ms, 10 of 38 over | warm phases met; the concurrent phase is deferred to v0.3 (founder decision, 2026-11-10), see [The concurrent phase](#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10) |
+| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms. With [#1178](https://github.com/ColdPhase/flux/issues/1178): the warm @1cpu phases 19 and 16 ms, 0 of 38 over; the concurrent @1cpu phase 42 ms, 10 of 38 over | warm phases at the target, not reliably under it: at the release candidate 0 to 3 of 38 requests reached 51–58 ms (see [At the release candidate](#at-the-release-candidate-2233996ad-2026-11-10)); the concurrent phase is deferred to v0.3 (founder decision, 2026-11-10), see [The concurrent phase](#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 241 KB, 36 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
 
@@ -157,6 +157,26 @@ over) and the concurrent one (15 over).
 
 With all of these but the last, an exploratory run had the concurrent phase at 19 ms overall, 1 of 38 over (Needs you, 57 ms).
 That branch has not had the full suites; its last commit has not had any test.
+
+### At the release candidate `2233996ad` (2026-11-10)
+
+**Observed.** A clean clone of `2233996ad`, run alone on the host (only an idle `./flux up` stack beside it), 15:00–16:05 UTC+1.
+`FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh` once, then `FLUX_PERF_PHASES=limited` twice:
+
+| Run | warm @1.0 cpu | warm (member) @1.0 cpu | concurrent @1.0 cpu |
+| --- | --- | --- | --- |
+| full | p95 18 ms, 0 of 38 over 50 ms | 15 ms, 1 over (Tasks work view open 51) | 43 ms, 9 over |
+| limited 1 | 19 ms, 3 over (Needs you 58, work relations 53 and 52) | 17 ms, 2 over (root work associations 54, notice reference rows 53) | 42 ms, 10 over |
+| limited 2 | 19 ms, 1 over (Needs you 56) | 16 ms, 0 over | 44 ms, 13 over |
+
+The same full run: idle database 97 statements a minute (met), first screen 242 KB brotli (met), API restart median 3.6 s (slowest
+7.4 s), at most 11 API connections at once.
+
+**Inferred.** The warm phases sit at the target: the p95 of all requests is 15 to 19 ms, and the requests that cross 50 ms change from
+run to run and cross it by 1 to 8 ms, the noise of this host. They are the same reads as the concurrent phase's.
+
+**Decision** (Hubert, 2026-11-10): v0.2 ships with these numbers recorded; the warm requests join the concurrent phase's work in
+v0.3 ([#1191](https://github.com/ColdPhase/flux/issues/1191)).
 
 ## Editors
 
