@@ -17,12 +17,12 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | Target | Before | After | Verdict |
 | --- | ---: | ---: | --- |
 | Idle: at most 2% of one core | 1.4% (api 0.30, worker 0.32, database 0.75) | 0.8% (api 0.21, worker 0.19, database 0.44) | met |
-| Idle: at most 100 database statements a minute | 122 | 95 | met, narrowly, see [Idle statements](#idle-statements) |
+| Idle: at most 100 database statements a minute | 122 | 95; 97 at the v0.2 candidate, measured after pg-boss's daily queue sweep ([#1178](https://github.com/ColdPhase/flux/issues/1178)) | met, narrowly, see [Idle statements](#idle-statements) |
 | An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
-| First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files | not met, see [First screen](#first-screen) |
+| First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 224 KB, 33 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
 
 **Observed.** The host is a shared 24-core development machine with other jobs running, so wall-clock numbers (p95,
@@ -94,6 +94,29 @@ decision, not part of this change:
    rewrite `nativeWorkEndpointVisible` as joins per kind. Expected: 5–15 ms off each work read.
 2. One statement for a session check (the session and its user in one join), and a final fence that resolves the
    session twice rather than three times. Expected: 4 statements off each work read.
+
+### Planned once, and one session read fewer ([#1178](https://github.com/ColdPhase/flux/issues/1178), 2026-11-10)
+
+**Observed** (the v0.2 candidate, ten warm passes of every view by one person, `pg_stat_statements`): 11,748 statements, which
+the database spent 1,189 ms planning and 625 ms running.
+- The work reads' visibility fingerprint alone took 384 ms of the planning (264 calls, 1.45 ms each, against 0.03 ms to run).
+- The visible-edge filter of the associations, relations, references and thought reads took most of the rest: one to three
+  milliseconds each.
+- Every work read also resolved the session four times, two statements each.
+
+**Changed.**
+- **Prepared statements.** Those statements run as named prepared statements (`executePrepared` in `@flux/db`), so a connection
+  plans each a few times and then may reuse a generic plan. The name is a hash of the text. Lists of ids or objects became one
+  array parameter (`= ANY($1::uuid[])`, `unnest($1::text[], $2::uuid[])`), so each statement has a text of fixed shape and a
+  connection keeps a handful of them, not one for each length of a list.
+- **The final fence.** It no longer resolves the session before its own refusing reads (the project, the sources, the objects,
+  the fingerprint). Those reads only refuse (404, 409), and nothing is answered unless the session holds at both ends of the
+  final policy query, which is still bracketed by two exact session checks. `work-read-native.test.ts` still shows a session
+  revoked, or expired, before or during the final policy query suppressing the answer.
+
+**Observed after** (the same ten passes): the planning took **792 ms**, a third less. The fingerprint took 23 ms in all, now
+with a generic plan. The statements with an array parameter still get custom plans: PostgreSQL judges the generic plan
+dearer when it cannot see how long the array is. They plan as before and are not worse.
 
 ## Editors
 
@@ -279,6 +302,29 @@ worker precaches 715 KB of JS and CSS after this change, 845 KB before it. **Inf
 editor, the map and the Details panel out of the first screen's import graph; `test_route_chunks` already guards some of
 it. Not attempted here.
 
+### Under 250 KB ([#1178](https://github.com/ColdPhase/flux/issues/1178), 2026-11-10)
+
+**Observed.** At the v0.2 candidate (`691c79d92`) the first screen was 40 files and 316 KB brotli. The entry chunk (170 KB) held
+React DOM (530 KB before minifying), and it also held everything a space's conversation needs (`ConversationStream`, the
+thread, the composer, its attachments, the assistant's lines and waiting changes), the sign-in pages, the Create window and
+the live strip. None of those is needed to show Home, and the sign-in pages are not part of a signed-in visit.
+
+**Changed.**
+- The conversation route and the sign-in routes load their component's code when they are matched (`lazyComponent` in
+  `router.tsx`, `conversationPage` and `authPages` in `app/viewChunks.ts`). Their loaders, actions and revalidation stay in
+  the router, so React Router runs them beside the download, never after it.
+- A failed download of the conversation's code is said inside the shell (`ConversationCodeBoundary`); every other error still
+  goes on to the locked panel and the page above.
+- The Create window and the live strip are deferred surfaces (`DeferredCreateHost`, `DeferredLiveBar`), like Details and Search.
+  The live strip mounts only while there is a call or an invitation.
+- Their code, and the conversation's, is fetched while the browser is idle after the shell is up, or on the first press,
+  and the service worker precaches it. So a move into a space or a press of + Create finds the code already there.
+
+**Observed after** (the same `perf-bundle.mjs` count, built from the branch): 33 files (28 JS, 5 CSS), 771 KB raw,
+**224 KB** brotli. The entry chunk is 102 KB. The precache holds 145 files.
+
+**Not changed.** The conversation is still the first screen of a space; on a cold deep link its code comes beside its reads.
+
 ## Idle statements
 
 **Observed.** Over 60 s with nobody signed in and the worker running, `main` made 122 statements: 28 queue polls (14 queues
@@ -299,6 +345,22 @@ at once.
   how a crashed worker's schedules come back, so a slower monitor would leave them waiting minutes longer; its cron worker
   (15 s), so a schedule fires within about 30 s; and the key rotation sweep (15 s), so a removed person's old key stops
   opening new content quickly.
+
+**The v0.2 candidate's 315 a minute ([#1178](https://github.com/ColdPhase/flux/issues/1178), 2026-11-10).**
+- **Observed.** The release acceptance measured 315 statements in the idle minute twice. The extra statements were
+  pg-boss's per-queue retention sweep: for each of 11 queues, three locked walks (`BEGIN`, two `SET LOCAL`, an advisory lock,
+  the walk, `COMMIT`), its clock and its retained count. That comes to about 20 statements a queue, 220 in all.
+- **Observed.** pg-boss runs that sweep once a day for each queue (`maintenanceIntervalSeconds`, 24 hours by default). On a
+  new database it comes on the worker's first supervise pass, 60 s after the worker starts, and the stamp it leaves survives a
+  restart.
+- **Observed.** A timeline of the idle stack, from the worker's start, in 10-second samples:
+  - without the seed, the minute holding that pass had 332 statements, and the next three had 97, 94 and 97;
+  - with the seed, the seed took 65 s, the pass fell inside it, and the idle minutes had 97 and 94.
+- **Inferred.** The acceptance's seed took 41 s, so the pass fell into the measured minute. Nothing since #1015 added idle
+  statements: the minute without it is 94 to 97, as #1015 measured (95). Its seed was slower, so the pass came before the minute.
+- **Changed.** `check_performance.sh` takes the idle minute only after every queue has had its daily sweep (no queue left
+  with `maintain_on` unset, then 5 s for the pass to finish). It prints how long it waited, and it says so if the sweep is still
+  due after 150 s. The sweep itself is unchanged: it is once a day, about 0.15 statements a minute on average.
 
 **Cost, accepted.** A delayed or retried job (a push held to the end of quiet hours, an e-mail, a retry after a failure)
 starts up to a minute after it is due, not half a minute. A job sent now still starts at once over NOTIFY, a backlog still
