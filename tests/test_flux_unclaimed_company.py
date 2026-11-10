@@ -19,6 +19,7 @@ INFO_OK = '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04","MemoryLimit":true
 WARNING = "Nobody has signed up yet, and the first account becomes the company's owner."
 
 DOCKER_STUB = r"""#!/bin/sh
+[ "${1:-}" != --log-level ] || shift 2   # the launcher runs `docker --log-level error compose ...` (#1174)
 printf '%s\n' "$*" >> "$FLUX_TEST_LOG"
 case "$1" in
   info) [ "${2:-}" != --format ] || printf '%s\n' "$FLUX_TEST_INFO" ;;
