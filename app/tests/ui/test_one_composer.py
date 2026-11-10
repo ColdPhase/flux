@@ -1,6 +1,6 @@
 """One composer in the conversation, a thread, a direct message, and the task panel (#504; the Sketchbook's note composer is gone, #866).
 
-Writing looks and works the same everywhere: "+", the field and the inverted round send button, in the same
+Writing looks and works the same everywhere: the paperclip, the field and the inverted round send button, in the same
 places; only the placeholder says where the text goes; the audience line sits under the box in one form.
 Screenshots (one-composer-<place>-<device>.png) go to FLUX_UI_SCREENSHOTS when set.
 """
@@ -22,6 +22,8 @@ PLACEHOLDERS = {
     "conversation": "Message · @ mention · / actions", "thread": "Reply in thread…", "dm": "Message Jonas…",
     "task": "Write about #1 · @ · /", "dm-thread": "Reply in thread…", "notes": "Write a note…",
 }
+# Attaching is a paperclip, because "+" means Create (final design S5): the `clip` path of ui/Icon.tsx.
+PAPERCLIP = "M11.25 7.25l-4.5 4.5a2.12 2.12 0 01-3-3l5.25-5.25a1.41 1.41 0 012 2L5.75 10.75"
 
 
 class OneComposer(unittest.TestCase):
@@ -91,6 +93,7 @@ class OneComposer(unittest.TestCase):
           return { kinds: kids.map((c) => c.tagName + (c.classList.contains('composer__attach') ? '.attach' : c.classList.contains('composer__send') ? '.send' : '')),
             height: Math.round(b.height), plusLeft: Math.round(plus.left - b.left), sendRight: Math.round(b.right - send.right), sendSize: Math.round(send.width),
             plusSize: Math.round(plus.width), radius: getComputedStyle(box).borderRadius,
+            icon: [...kids[0].querySelectorAll('svg path')].map((p) => p.getAttribute('d')),
             audience: [...rest].map((a) => ({ below: a.getBoundingClientRect().top >= b.bottom - 1, icon: !!a.querySelector(':scope > svg'), size: getComputedStyle(a).fontSize })) };
         }""")
 
@@ -109,6 +112,7 @@ class OneComposer(unittest.TestCase):
                     field.scroll_into_view_if_needed()
                     seen[name] = self.measure(field)
                     self.assertEqual(seen[name]["kinds"], ["BUTTON.attach", "TEXTAREA", "BUTTON.send"], name)
+                    self.assertEqual(seen[name]["icon"], [PAPERCLIP], f"{name}: attaching is a paperclip, not \"+\" (S5)")
                     shot(page, f"one-composer-{name}-{'phone' if phone else 'computer'}")
             for key in ("height", "plusLeft", "sendRight", "sendSize", "plusSize", "radius"):
                 values = {name: item[key] for name, item in seen.items()}

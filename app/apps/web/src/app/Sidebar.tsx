@@ -10,7 +10,7 @@ import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
-import { lockedLine, useLockedWorkspaces } from '../encryption/state';
+import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -49,6 +49,9 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
   const { openSearch, openCreate } = useShellActions();
   // Encrypted spaces that wait to be unlocked (F-030, #655): one row each, in place of their projects.
   const locked = useLockedWorkspaces();
+  // An encrypted space has a small lock after its name (F-026 §4); its link's name says so.
+  const encryptedIn = useEncryptedWorkspaceIds();
+  const encrypted = (project: ProjectSummary) => !!project.workspaceId && encryptedIn.has(project.workspaceId);
   const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
   const location = useLocation();
   const place = placeOf(location.pathname);
@@ -125,7 +128,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={project.name} title={project.name}
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={encrypted(project) ? `${project.name}, encrypted` : project.name} title={encrypted(project) ? `${project.name} · Encrypted` : project.name}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} size={28} />
@@ -209,9 +212,11 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.name}
-                      aria-label={news.has(project.id) ? `${project.name}, new activity` : undefined}>
+                      aria-label={news.has(project.id) || encrypted(project) ? `${project.name}${encrypted(project) ? ', encrypted' : ''}${news.has(project.id) ? ', new activity' : ''}` : undefined}
+                      data-encrypted={encrypted(project) ? '' : undefined}>
                       <ProjectTile name={project.name} />
                       <span className="side__label">{project.name}</span>
+                      {encrypted(project) ? <Icon name="lock" size={12} className="side__lock" /> : null}
                       {news.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
                   </li>

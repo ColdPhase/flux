@@ -347,8 +347,9 @@ class SmallMomentsJourney(unittest.TestCase):
         # heading (level 2), not the header's, before the gesture.
         expect(page.get_by_role("heading", level=2, name=re.compile("Your tasks|Nothing is waiting for you")).first).to_be_visible()
         page.wait_for_load_state("networkidle")
+        # Only API reads of the work count: the lazily loaded `work-*.css` asset chunk is not a read.
         reads: list[str] = []
-        page.on("request", lambda request: reads.append(request.url) if "/work" in request.url else None)
+        page.on("request", lambda request: reads.append(request.url) if "/api/" in request.url and "/work" in request.url else None)
         cdp = page.context.new_cdp_session(page)
 
         def touch(kind: str, y: int | None = None) -> None:

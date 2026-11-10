@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import { useRouteLoaderData } from 'react-router';
 import type { ShellData, WorkspaceSummary } from '../app/data';
 import type { WorkspaceEncryption } from './api';
@@ -20,6 +20,16 @@ export function useSpace(workspaceId: string | null | undefined): WorkspaceSumma
 /** The workspace's encryption state; null for a plain workspace and for one the shell does not list. */
 export function useWorkspaceEncryption(workspaceId: string | null | undefined): WorkspaceEncryption | null {
   return useSpace(workspaceId)?.encryption ?? null;
+}
+
+/**
+ * The encrypted workspaces of the person, locked or not: a space whose workspace is one of them is an encrypted space, and it has a
+ * small lock after its name in the sidebar, the phone's Spaces and its header (F-026 §4).
+ */
+export function useEncryptedWorkspaceIds(): ReadonlySet<string> {
+  const shell = useShell();
+  return useMemo(() => new Set([...(shell?.workspaces ?? []), ...(shell?.lockedWorkspaces ?? [])]
+    .filter((space) => space.encryption).map((space) => space.id)), [shell?.workspaces, shell?.lockedWorkspaces]);
 }
 
 /** The workspaces that wait to be unlocked, for the sidebar, Home, Inbox and Search. */

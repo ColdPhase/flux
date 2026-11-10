@@ -24,7 +24,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import ORIGIN, PHONE, UI_BROWSER, UPSTREAM, start_forwarder
+from test_app_shell import ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "feedback clears the footer"
 STAMP = int(time.time() * 1000)
@@ -141,8 +141,8 @@ class ToastSafeArea(unittest.TestCase):
         page._safe_area_session = session  # type: ignore[attr-defined]  # one live session keeps the override
         session.send("Emulation.setSafeAreaInsetsOverride", {"insets": {"top": 0, "left": 0, "bottom": inset, "right": 0}})
 
-    def new_task(self, title: str) -> None:
-        self.post("ada", f"/api/v1/projects/{self.project_id}/work", {"title": title, "owner": {"kind": "human", "id": self.ids["ada"]}, "clientCommandId": str(uuid.uuid4())})
+    def new_task(self, title: str) -> dict:
+        return self.post("ada", f"/api/v1/projects/{self.project_id}/work", {"title": title, "owner": {"kind": "human", "id": self.ids["ada"]}, "clientCommandId": str(uuid.uuid4())})
 
     def assert_clear(self, page: Page, inset: int, footers: set[str], label: str) -> dict:
         """The toast is at least 8 px above the highest footer element, overlaps none, and every control can be pressed."""
@@ -212,6 +212,47 @@ class ToastSafeArea(unittest.TestCase):
                     toast.get_by_role("button", name="Undo", exact=True).tap()
                     status = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]
                     self.assertEqual(status, "proposed", "Undo kept the decision proposed")
+
+    def test_04_a_newer_toast_replaces_the_older_and_only_its_undo_is_offered(self) -> None:
+        """v0.2 visual review: quick changes stacked up to three Undo toasts over a phone's work (the Board's "To do" head). One toast
+        shows at a time: the newer replaces the older, whose change stays made; the shown toast's Undo takes back its own change only."""
+        tag = uuid.uuid4().hex[:6]
+        titles = [f"{name} {tag}" for name in ("Sow the radishes", "Stake the beans", "Net the berries")]
+        numbers = [self.new_task(title)["number"] for title in titles]
+        page = self.phone(dark=False)
+        page.goto(f"/projects/{self.project_id}/tasks")
+        self.list_view(page)
+        for index, title in enumerate(titles):
+            row = page.locator(".ws-task").filter(has_text=title)
+            row.get_by_role("button", name="To do. Set to Doing").tap()
+            expect(row.get_by_role("button", name=re.compile(r"^Doing\.")).first).to_be_visible()
+            toast = page.locator(".ui-toast").filter(has_text=f"#{numbers[index]} moved to Doing")
+            expect(toast).to_be_visible()
+            # One toast at a time, and only the shown one offers Undo.
+            expect(page.locator(".ui-toast")).to_have_count(1)
+            expect(page.locator(".ui-toast__action")).to_have_count(1)
+            expect(toast.get_by_role("button", name="Undo", exact=True)).to_be_visible()
+            if index == 0:
+                self.assert_clear(page, 0, {"create"}, "the first toast")
+        page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name="Board").click()
+        expect(page.locator(".tb-col").first).to_be_visible()
+        expect(page.locator(".ui-toast")).to_have_count(1)
+        shot(page, f"toast-one-at-a-time-phone-{UI_BROWSER}")
+        page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name="List").click()
+        page.locator(".ui-toast").get_by_role("button", name="Undo", exact=True).tap()
+        last = page.locator(".ws-task").filter(has_text=titles[2])
+        expect(last.get_by_role("button", name=re.compile(r"^To do\."))).to_be_visible()
+        # The replaced toasts' changes stay made.
+        for title in titles[:2]:
+            expect(page.locator(".ws-task").filter(has_text=title).get_by_role("button", name=re.compile(r"^Doing\."))).to_be_visible()
+        stored: list = []
+        for _ in range(40):
+            items = self.contexts["ada"].request.get(f"/api/v1/projects/{self.project_id}/work?limit=100").json()["items"]
+            stored = [next((item["status"] for item in items if item["title"] == title), None) for title in titles]
+            if stored == ["in_progress", "in_progress", "open"]:
+                break
+            time.sleep(0.25)
+        self.assertEqual(stored, ["in_progress", "in_progress", "open"], "the replaced toasts' changes are kept; Undo took back the last only")
 
     def test_03_a_visible_toast_follows_a_changing_safe_area(self) -> None:
         if UI_BROWSER != "chromium":
