@@ -337,15 +337,27 @@ describe('the check', () => {
     const userId = await person(id);
     const observed: { lockable: boolean; open: number }[] = [];
     const script = scriptedProvider([]);
+    // The pass that loses the claim can still hold the row for a moment: its FOR UPDATE SKIP LOCKED locks the row the winner has
+    // just leased, finds the lease and claims nothing, and keeps that lock until its own one-statement claim commits. That is the
+    // other replica's claim, not a lock held across this call (it failed the v0.2 release check once, on a loaded host). So the probe
+    // waits for the other pass to return, or for a second provider call, which the count below refuses. Whatever the checker holds
+    // across this call it still holds while the probe runs, because the call has not returned.
+    const passes: Promise<unknown>[] = [];
+    let calls = 0; let calledTwice!: () => void;
+    const twice = new Promise<void>((resolve) => { calledTwice = resolve; });
     const fetcher = async (url: string, init: { body?: string; headers?: Record<string, string> }) => {
       if (url.endsWith('/token')) {
+        if (++calls > 1) calledTwice();
+        await Promise.race([...passes, twice]);
         const probe = await pool.connect();
         try {
           await probe.query('BEGIN');
           let lockable = true;
           try { await probe.query('SELECT 1 FROM auth_idp_standing WHERE user_id = $1 FOR UPDATE NOWAIT', [userId]); } catch { lockable = false; }
           await probe.query('ROLLBACK');
-          const open = (await probe.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND state LIKE 'idle in transaction%' AND pid <> pg_backend_pid()`)).rows[0].n as number;
+          // The connections of this test process, where the checker runs; the stack's API and worker have their own short transactions.
+          const open = (await probe.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND state LIKE 'idle in transaction%'
+            AND pid <> pg_backend_pid() AND client_addr IS NOT DISTINCT FROM inet_client_addr()`)).rows[0].n as number;
           observed.push({ lockable, open });
         } finally { probe.release(); }
         return { ok: true, status: 200, json: async () => ({ access_token: 'at' }) };
@@ -355,7 +367,9 @@ describe('the check', () => {
     const service = createIdpStanding({ db, oidc: config(id), authSecret, log: { info() {}, warn() {}, error() {} }, fetcher: fetcher as never });
     await service.recordSignIn(userId, 't1');
     await due(userId);
-    const [first, second] = await Promise.all([service.runOnce(), service.runOnce()]);
+    const runs = [service.runOnce(), service.runOnce()];
+    passes.push(...runs.map((run) => run.catch(() => undefined)));
+    const [first, second] = await Promise.all(runs);
     assert.equal(first + second, 1, 'two replicas never check one identity at once');
     assert.equal(observed.length, 1);
     assert.deepEqual(observed[0], { lockable: true, open: 0 }, 'the provider answered while no lock or transaction was held');
