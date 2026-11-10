@@ -81,7 +81,7 @@ The settings page sends its saves one after another, numbered, and shows only th
   your work and invitations to work together", then "Also every reply in conversations you are part of";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
   for you while blocked, ready for you to check or able to continue. An agent's question is a `question`. A change an agent prepared
-  that waits for your OK is in the Inbox only; it sends no push or email yet.
+  that waits for your OK is in the Inbox only; it sends no push or email yet (#1186).
 - **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
   address that is switched on and confirmed (the sign-in address and each confirmed extra address, each with its own
   switch, C-49). It is a switch beside the level, not a second level: at `nothing` it sends nothing, and with it off no
