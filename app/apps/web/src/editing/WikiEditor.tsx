@@ -367,7 +367,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         doc: initial,
         extensions: [
           livePreview(hosts), EditorView.lineWrapping, drawSelection(), placeholder('Write something…'), stateMovement,
-          keymap.of([{ key: 'Enter', run: (target) => continueBlock(target) || newLine(target) }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
+          keymap.of([{ key: 'Enter', run: (target) => continueBlock(target) || newLine(target), shift: newLine }, { key: 'Mod-b', run: wrap('**') }, { key: 'Mod-i', run: wrap('*') }, { key: 'Mod-k', run: openPicker }]),
           EditorView.contentAttributes.of({ 'aria-label': 'Page text', role: 'textbox', 'aria-multiline': 'true', spellcheck: 'true' }),
           EditorView.updateListener.of((update) => {
             if (!update.docChanged) return;

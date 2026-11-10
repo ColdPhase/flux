@@ -333,10 +333,14 @@ class WikiPanesJourney(unittest.TestCase):
         made = page.get_by_role("dialog", name="New page")
         made.get_by_role("textbox", name="Page title").fill("Soldering notes")
         made.get_by_role("button", name=re.compile("^Create page")).click()
-        # At once, with no wait for anything and no pause between keys: the window to type into is not there yet.
-        typed = "Tin the tip first, then flux the joint and hold the iron for three seconds."
-        page.keyboard.type(typed)
-        self.typed_ahead_is_kept(page, "Soldering notes", typed)
+        # At once, with no wait for anything and no pause between keys: the window to type into is not there yet. A new line and a
+        # correction come in that window too.
+        page.keyboard.type("Tin the tip first,")
+        page.keyboard.press("Enter")
+        page.keyboard.type("then flux the joint!")
+        page.keyboard.press("Backspace")
+        page.keyboard.type(" and hold the iron for three seconds.")
+        self.typed_ahead_is_kept(page, "Soldering notes", "Tin the tip first,\nthen flux the joint and hold the iron for three seconds.")
 
     def test_04c_title_enter_and_straight_on_keeps_every_key(self) -> None:
         """#1171: the keyboard-only way: type the title, press Enter and keep typing at a person's pace. The first keys land while the
