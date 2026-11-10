@@ -19,8 +19,11 @@ export interface LiveWebhookOptions {
   pool: Pool;
   apiKey: string;
   apiSecret: string;
-  /** A webhook is only a hint. The reconciler must recheck the current generation and SFU. */
-  requestReconcile(sessionId: string, generation: number): Promise<void>;
+  /**
+   * A webhook is only a hint. The reconciler must recheck the current generation and SFU. `presence`: someone joined or left, so the
+   * space's open tabs are told to read who is in the call (#1175).
+   */
+  requestReconcile(sessionId: string, generation: number, presence: boolean): Promise<void>;
   /**
    * Reconciliation hint for media admissions (#128): a participant joined this room. The
    * signaling gate is the admission boundary; this only catches what a restart missed.
@@ -66,7 +69,7 @@ export const liveWebhookRoutes: FastifyPluginAsync<LiveWebhookOptions> = async (
       void options.reconcileAdmissions(roomId).catch((error: unknown) =>
         app.log.warn({ error, sessionId: mapped.session_id }, 'Live admission reconciliation pending'));
 
-    try { await options.requestReconcile(mapped.session_id, mapped.generation); }
+    try { await options.requestReconcile(mapped.session_id, mapped.generation, event.event.startsWith('participant_')); }
     catch (error) {
       app.log.warn({ error, sessionId: mapped.session_id }, 'Live webhook reconciliation pending');
       // Let LiveKit retry a transient failure. A crash between the insert and

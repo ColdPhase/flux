@@ -104,14 +104,14 @@ export interface KeptEventRef { kind: string; objectType: string; objectId: stri
 
 /**
  * The kept answers an event can change (#862), by the addresses they were read from: `null` is all of them. Messages, tasks, decisions,
- * results, sources and agents' answers change nothing that is kept (a space, its people, the members, the space's docs, the agents' chats),
+ * results, sources, calls and agents' answers change nothing that is kept (a space, its people, the members, the space's docs, the agents' chats),
  * so the reads a view makes on such an event are answered from what is kept where they can be; the Inbox is read once per page anyway.
  * Anything not named here (a space renamed, its people or AI switch changed, a company change, an agent made or revoked) forgets all.
  */
 function keptChangedBy(event: KeptEventRef): string[] | null {
   const kind = event.kind;
   if (/^project\.doc_/.test(kind)) return [`/api/v1/projects/${event.objectId}/docs`];
-  if (/^project\.(messages?_|conversation_created|material_|work_|decision_|result_|proposal_|question_|link_created|live_invited|assistant_|agent_stopped)/.test(kind)) return [];
+  if (/^project\.(messages?_|conversation_created|material_|work_|decision_|result_|proposal_|question_|link_created|live_invited|live_changed|assistant_|agent_stopped)/.test(kind)) return [];
   if (/^(dm|sketch)\./.test(kind)) return [];
   if (/^assistant_run\./.test(kind)) return ['/api/v1/agent-chats'];
   return null;
