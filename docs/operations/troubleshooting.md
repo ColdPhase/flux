@@ -124,6 +124,11 @@ No. Flux needs its own origin: a host name, or a host name and port.
 Not with the shipped Compose files: every service builds its database URL from the bundled `db`.
 It is not a tested setup.
 
+**`docker compose` prints `mount of type volume should not define bind option`. Is something misconfigured?**
+No. The `files` volume is mounted with `:z`, which tells SELinux hosts (Fedora, RHEL) to give the volume a label that API,
+worker and the backup helper can all use; without it a container can be denied access to the uploads. Compose 5 calls that option
+a bind-mount option and warns once per service, but still applies it. `./flux` hides the line; keep the option.
+
 **Where is my data?**
 In two Docker volumes named after the project, `<FLUX_PROJECT>_pgdata` (PostgreSQL) and
 `<FLUX_PROJECT>_files` (uploads), plus the settings file. `./flux backup` captures all three.
