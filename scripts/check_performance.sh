@@ -99,6 +99,12 @@ psql -c "SELECT 'messages', count(*) FROM project_messages UNION ALL SELECT 'con
   UNION ALL SELECT 'events', count(*) FROM events UNION ALL SELECT 'event audience rows', count(*) FROM event_audience
   UNION ALL SELECT 'search documents', count(*) FROM search_documents" | tee "$out/volume.txt"
 
+# pg-boss sweeps each queue's old jobs once a day (about 20 statements a queue), first on the worker's first pass 60 s after it starts on a
+# new database. That daily pass is not what an idle minute costs, but a seed that ends before it put it in the minute below (#1178: 315
+# statements, 97 without it). Wait until it has claimed every queue, then for it to finish.
+waited=0
+while [ "$(psql -c 'SELECT count(*) FROM pgboss.queue WHERE maintain_on IS NULL')" != 0 ] && [ "$waited" -lt 150 ]; do sleep 2; waited=$((waited + 2)); done
+sleep 5
 # What the worker runs while idle (queue polling), before it is stopped for the request numbers.
 psql -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements' >/dev/null
 psql -c 'SELECT pg_stat_statements_reset()' >/dev/null
@@ -115,6 +121,7 @@ psql -c "SELECT 'Idle database: ' || coalesce(sum(calls), 0) || ' statements a m
 # #862: at most 2% of one core at idle, all three together (nobody signed in; the worker's queue polling and the API's heartbeat).
 echo "$cpu_before $cpu_after" | awk '{ if (NF == 6 && $1 != "") { api = ($4 - $1) / 60000000 * 100; worker = ($5 - $2) / 60000000 * 100; db = ($6 - $3) / 60000000 * 100;
   printf "Idle CPU over 60 s: api %.2f%%, worker %.2f%%, database %.2f%% of one core, %.2f%% together (target at most 2%%)\n", api, worker, db, api + worker + db } else print "Idle CPU: the cgroup counters could not be read" }' | tee -a "$out/idle.txt"
+if [ "$waited" -lt 150 ]; then echo "Idle minute taken after pg-boss's daily queue sweep (waited ${waited} s for it)"; else echo "Idle minute taken with pg-boss's daily queue sweep still due after 150 s"; fi | tee -a "$out/idle.txt"
 $compose stop worker
 
 # Sign in and read the views' ids once; every later run reuses those sessions and ids.
