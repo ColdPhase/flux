@@ -205,7 +205,12 @@ From #874 and the people-and-spaces answers on #861:
   delete the space but cannot read it unless a space admin adds them. The engineering option to
   confirm: an encrypted space stays a hidden internal workspace, so F-030's code barely changes
   ([note](encrypted-workspaces.md#moving-to-per-space-encryption-f-037)).
-- **No data migration.** Flux is pre-release with no installations to convert.
+- **No data migration, and v0.1 is refused** (Hubert, 2026-11-09, [#1176](https://github.com/ColdPhase/flux/issues/1176)).
+  Flux is pre-release with no installations to convert: v0.1 had no users, so v0.2 converts no data, backfills nothing
+  (a v0.1 workspace is not made the company) and keeps no compatibility with it. `./flux upgrade` and the migrator refuse a
+  database that v0.1 wrote, and `./flux restore` a v0.1 backup, with a plain message: install v0.2 fresh; there is no import
+  (the project export has none). The [upgrade guide](../operations/upgrade.md#from-v01-install-v02-fresh) and the v0.2 release
+  notes say so.
 
 ### F-038 — a simpler Flux
 
