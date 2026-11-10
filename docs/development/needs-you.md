@@ -21,7 +21,9 @@ an item. Access is checked at the moment of reading: an object the person cannot
 
 Replies, direct messages, assigned work and decisions to review stay notifications: they reach people where they
 happen (a conversation, the Messages list, Tasks) and by push and email, and still open from their
-`/inbox/:id` links. **Agent questions with ready-made answers (S14) have no contract yet**, so none are listed;
+`/inbox/:id` links. An agent waiting for your OK (`approval`, #1186) is also only a notification: the item is the run's own
+(`assistant:<run>`), which its link opens (`/inbox?item=assistant:<run>`), and the notification is read once nothing of the run
+waits. **Agent questions with ready-made answers (S14) have no contract yet**, so none are listed;
 the `question` kind is for people's questions today.
 
 Order: decisions, questions, blocked tasks, mentions; newest first within a kind. At most 300 items, of which

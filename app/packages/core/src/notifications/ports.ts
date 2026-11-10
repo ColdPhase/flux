@@ -90,6 +90,20 @@ export interface LiveInvitationFacts {
   anchor: { type: 'conversation' | 'work' | 'sketch' | 'doc'; label: string };
 }
 
+/**
+ * A change an agent prepared that still waits for its owner's OK (#1186), with what the notification says about it: the agent's name,
+ * the first waiting change in words ("Add “Order probes”") and the group the Inbox shows it in (the run, or the local client).
+ */
+export interface WaitingChangeFacts {
+  id: string;
+  projectId: string;
+  projectName: string;
+  ownerUserId: string;
+  agentName: string;
+  group: string;
+  words: string;
+}
+
 /** Current domain rows the generator needs to explain an event. No access decisions. */
 export interface NotificationFacts {
   /** Human user ids in the event's recorded audience (`event_audience`, decided at write time). */
@@ -100,6 +114,8 @@ export interface NotificationFacts {
   decision(decisionId: string): Promise<ReviewFacts | null>;
   /** Null unless the invitation is still pending and its session still available. */
   liveInvitation(invitationId: string): Promise<LiveInvitationFacts | null>;
+  /** Null unless the change still waits for its owner's OK (#1186). */
+  waitingChange(changeId: string): Promise<WaitingChangeFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;
   /** F-030: the workspace's visible name when it is encrypted, else null. */
   sealedWorkspace?(workspaceId: string): Promise<{ name: string } | null>;

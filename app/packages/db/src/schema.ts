@@ -563,7 +563,7 @@ export const notifications = pgTable('notifications', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   // Migration 0015 (#116): why it exists, the event it came from, and whether the inbox lists it.
   // 0119 also allows 'security' (F-030): Inbox-only rows written by repositories/workspace-encryption.ts, never sent.
-  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation'>(),
+  reason: text('reason').$type<'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval'>(),
   eventId: uuid('event_id'),
   inInbox: boolean('in_inbox').notNull().default(true),
   // Migration 0117 (F-029): came from AI work, set by whoever writes the row (no default: a writer that forgets it fails). While the workspace's AI is off it is hidden and never sent.

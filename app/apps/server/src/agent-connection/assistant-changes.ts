@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
   type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
-import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError } from '@flux/core';
+import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, eventRepository, sketchRows, taskDiscussionRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, principalKey, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError, WAITING_CHANGE_EVENT } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
@@ -596,7 +596,10 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             // Measured exactly as the column's CHECK measures it (jsonb text), before anything is written.
             if (await rows.preparedBytes(call) > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
-            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
+            // The run (or local client) starts waiting for its owner with this change: the owner is told once (#1186), not once per change.
+            const startsWaiting = !(await rows.waits(source));
+            const waitingId = randomUUID();
+            await rows.insert({ id: waitingId, workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, scopeId: scopeOf(operation, target, objectId, null), objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
               preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId } } : call,
@@ -604,6 +607,11 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               // Who would read what, for the card, also on a task for someone else that would tell a third person (#1089).
               toldUserId: told && told !== target.maker ? told : null, createdAt: new Date() });
             await session.flushEvents();
+            // F-036 item 10: an agent waiting for you notifies at "Only what needs me". Its event goes to the owner alone, by name: the one
+            // person who decides (#1092), never the person the change is about, and never the space's stream.
+            if (startsWaiting) await eventRepository(tx as DbExecutor).insert({ id: randomUUID(), kind: WAITING_CHANGE_EVENT, objectId: input.projectId,
+              actorId: principalKey({ kind: 'agent', id: authority.agentId }), data: { changeId: waitingId }, workspaceId: authority.workspaceId },
+            [principalKey({ kind: 'human', id: claims.ownerUserId })]);
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
         } else if (authority.mayDo === 'read') {

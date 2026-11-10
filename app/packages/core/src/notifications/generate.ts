@@ -59,11 +59,16 @@ export interface Candidate {
  */
 export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationReason, 'security'>, string>> = {
   mention: 'mentioned you', question: 'asked you', reply: 'replied', dm: 'sent you a message', assigned: 'assigned you a task',
-  review: 'asked for your review', invitation: 'invited you to work together',
+  review: 'asked for your review', invitation: 'invited you to work together', approval: 'is waiting for your OK',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
   return `${who} ${SEALED_NOTIFICATION_PHRASES[reason as Exclude<NotificationReason, 'security'>]} in ${workspaceName}`;
 }
+
+/** The event a run's (or a local client's) first change that waits for its owner records, to the owner alone (#1186). */
+export const WAITING_CHANGE_EVENT = 'project.change_waiting.v1';
+/** Where an agent waiting for your OK leads: its one Inbox item, open (`assistant:<run or client>`). */
+export const waitingChangeUrl = (group: string) => `/inbox?item=assistant:${group}`;
 
 /** True for an event whose actor is an AI principal: an agent, which includes every member's own assistant. */
 export function isAgentActor(actorId: string) {
@@ -193,6 +198,19 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         // An agent produced the item, whoever the event's actor is on its behalf.
         aiOrigin: item.by.kind === 'agent', who: by,
       }));
+    }
+    case WAITING_CHANGE_EVENT: {
+      // An agent waiting for its owner's OK (F-036 item 10, #1186): once per run or local client that starts waiting, to the owner alone,
+      // who is the one person who decides (#1092). The event's audience is the owner by name. Something of its run (or local client) must
+      // still wait when it is read; the place told is the space of what waits, whose access `deliver` checks again.
+      const changeId = id(event.data.changeId);
+      const change = changeId ? await facts.waitingChange(changeId) : null;
+      if (!change || !reachable(change.ownerUserId)) return [];
+      return [{
+        userId: change.ownerUserId, reason: 'approval', source: { type: 'project', id: change.projectId },
+        title: excerpt(`${change.agentName} is waiting for your OK`, 200), body: `${excerpt(change.words, 120)} · ${change.projectName}`,
+        url: waitingChangeUrl(change.group), aiOrigin: true, who: change.agentName,
+      }];
     }
     case 'project.live_invited.v1': {
       // One quiet signal per invitation: only its recipient, and only while it still asks

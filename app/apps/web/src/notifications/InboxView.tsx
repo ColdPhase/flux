@@ -72,7 +72,9 @@ export function InboxView() {
   const location = useLocation();
   // The filter and the selected item come back as they were left. A row of Home's top three arrives with its item selected (#865).
   const [filter, setFilter] = usePlaceState<Filter>('inbox.filter', () => 'all', arrival, (value): value is Filter => FILTERS.some((entry) => entry.id === value));
-  const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => (location.state as { select?: unknown } | null)?.select as string | null ?? null, arrival, (value): value is string | null => value === null || typeof value === 'string');
+  // The link of a notification about one item opens on it too: an agent waiting for your OK on its card (`?item=assistant:<run>`, #1186).
+  const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => (location.state as { select?: unknown } | null)?.select as string | null
+    ?? new URLSearchParams(location.search).get('item'), arrival, (value): value is string | null => value === null || typeof value === 'string');
   const [menu, setMenu] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // A decision accepted, a question answered or a task marked done collapses where it stood; the next one comes up (#593 AC-4).
