@@ -20,11 +20,14 @@ test('each level names exactly the reasons that interrupt at that level', () => 
 test('the lines say it in words, every reason once', () => {
   const line = (id: string) => LEVELS.find((level) => level.id === id)!.detail;
   assert.deepEqual(LEVELS.map((level) => level.id), [...NOTIFICATION_LEVELS]);
-  assert.equal(line('needsYou'), 'Questions, mentions, direct messages, tasks that need you, decisions about your work and invitations to work together');
+  assert.equal(line('needsYou'), 'Questions, mentions, direct messages, tasks that need you, decisions about your work, invitations to work together and agents waiting for you');
   assert.equal(line('everything'), 'Also every reply in conversations you are part of');
   assert.equal(line('nothing'), 'No push or email. Everything still waits in the Inbox');
   for (const reason of LEVEL_REASONS.needsYou) assert.ok(line('needsYou').toLowerCase().includes(REASON_WORDS[reason]), reason);
   // Nothing is promised that is not sent: no word of a reason that does not interrupt at Only what needs me.
   for (const reason of NOTIFICATION_REASONS.filter((item) => !LEVEL_REASONS.needsYou.includes(item))) assert.ok(!line('needsYou').includes(REASON_WORDS[reason]), reason);
-  for (const words of ['blocked', 'agents waiting', 'Decisions,']) assert.ok(!line('needsYou').includes(words), `the line does not promise "${words}"`);
+  for (const words of ['blocked', 'Decisions,']) assert.ok(!line('needsYou').includes(words), `the line does not promise "${words}"`);
+  // F-036 item 10 (#1186): an agent waiting for your OK is one of the reasons Only what needs me sends, and its words say so.
+  assert.ok(LEVEL_REASONS.needsYou.includes('approval'));
+  assert.ok(line('needsYou').endsWith('and agents waiting for you'));
 });

@@ -40,6 +40,20 @@ export interface ObjectMaker { userId: string | null; agentId: string | null }
 
 const first = async <T>(db: DbExecutor, query: ReturnType<typeof sql>) => ((await db.execute(query)).rows[0] as T | undefined) ?? null;
 
+/**
+ * An agent waiting for its owner's OK told them once (#1186; its link is `/inbox?item=assistant:<group>`). When nothing of that run (or
+ * local client) waits any more, because it was approved, skipped or refused, or went with its client, the notification is read, as an
+ * answered question's is: it has nothing left to ask. A later change that waits in the same run tells the owner again.
+ */
+export async function settleWaitingNotices(db: DbExecutor, ownerUserIds: readonly string[]) {
+  const ids = [...new Set(ownerUserIds)];
+  if (!ids.length) return;
+  const n = schema.notifications;
+  await db.update(n).set({ readAt: sql`now()` }).where(and(inArray(n.userId, ids), eq(n.reason, 'approval'), isNull(n.readAt),
+    sql`NOT EXISTS (SELECT 1 FROM assistant_changes w WHERE w.owner_user_id = ${n.userId} AND w.state = 'waiting'
+      AND ${n.url} = '/inbox?item=assistant:' || COALESCE(w.run_id, w.connection_id)::text)`));
+}
+
 export function assistantChangeRows(db: DbExecutor) {
   /** A change with its run's conversation (or the one a client's message went to) and its agent's name; the runs it joins may be absent. */
   const viewRows = async (where: ReturnType<typeof and>, newest?: number): Promise<AssistantChangeInView[]> => {
@@ -117,9 +131,19 @@ export function assistantChangeRows(db: DbExecutor) {
       const [inserted] = await db.insert(c).values(row).returning();
       return inserted!;
     },
-    /** Every decision bumps the row's version, so a stale Approve or Skip is a version conflict. */
+    /** Whether something of this run, or of this local client, already waits for its owner's OK (one Inbox item, one notification). */
+    async waits(source: { runId: string } | { connectionId: string }): Promise<boolean> {
+      const [row] = await db.select({ id: c.id }).from(c).where(and(eq(c.state, 'waiting'),
+        'runId' in source ? eq(c.runId, source.runId) : and(eq(c.connectionId, source.connectionId), isNull(c.runId)))).limit(1);
+      return !!row;
+    },
+    /**
+     * Every decision bumps the row's version, so a stale Approve or Skip is a version conflict. A change that stops waiting may leave its
+     * run with nothing waiting: the owner's notification about it is then read (#1186).
+     */
     async update(id: string, patch: Partial<NewAssistantChangeRow>): Promise<AssistantChangeRow> {
       const [updated] = await db.update(c).set({ ...patch, version: sql`${c.version} + 1`, updatedAt: new Date() }).where(eq(c.id, id)).returning();
+      if (patch.state && patch.state !== 'waiting') await settleWaitingNotices(db, [updated!.ownerUserId]);
       return updated!;
     },
     /** Every change of one group (see `changeGroup`). */

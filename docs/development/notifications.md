@@ -21,6 +21,7 @@ A notification exists only for a reason a person can act on (`reason` on every r
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
 | `review` | `project.decision_proposed.v1` | Owners of work the decision affects, and the owner of the agent that produced it. |
 | `invitation` | `project.live_invited.v1` (`{ sessionId, invitationId, recipientId }`, recorded only when a new invitation row is inserted) | The invited person, while the invitation is still `pending` and its live session `available` ([live sessions](live-sessions.md), #62). |
+| `approval` | `project.change_waiting.v1` (`{ changeId }`), recorded when a run, or a local client, starts waiting for its owner's OK: its first change under Ask me first, about other people's things, a deletion or one that would tell someone (#1186, F-036 item 10) | The agent's owner alone, the one person who decides (#1092): the event's audience is the owner by name, so neither the person the change is about nor the space's stream hears of it. Once per run: the run's later changes that wait are in the same Inbox item and tell nobody again. "Planner is waiting for your OK", the first change that waits ("Add “Order probes” · Lamp sensor"), opening its Inbox card (`/inbox?item=assistant:<run or client>`). It is read when nothing of the run waits any more (approved, skipped, refused, the client disconnected); a change that waits later in the same run tells the owner again. Nothing is written when everything was decided before the worker read the event. |
 
 The actor is never notified. Nothing else notifies: no digests, counts or "you have been away".
 
@@ -73,15 +74,15 @@ The settings page sends its saves one after another, numbered, and shows only th
 
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
-  to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`) at `needsYou`, to every
+  to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`, `approval`) at `needsYou`, to every
   reason (adding `reply`) at `everything`, and to none at `nothing`. Email follows push except for `invitation`: a live call
   invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
   (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, direct messages, tasks that need you, decisions about
-  your work and invitations to work together", then "Also every reply in conversations you are part of";
+  your work, invitations to work together and agents waiting for you", then "Also every reply in conversations you are part of";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
-  for you while blocked, ready for you to check or able to continue. An agent's question is a `question`. A change an agent prepared
-  that waits for your OK is in the Inbox only; it sends no push or email yet (#1186).
+  for you while blocked, ready for you to check or able to continue. An agent's question is a `question`, and an agent waiting for your
+  OK is `approval` (#1186).
 - **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
   address that is switched on and confirmed (the sign-in address and each confirmed extra address, each with its own
   switch, C-49). It is a switch beside the level, not a second level: at `nothing` it sends nothing, and with it off no

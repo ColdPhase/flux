@@ -248,6 +248,37 @@ class AssistantChanges(unittest.TestCase):
         expect(page.get_by_text("Approved: remove 1 thought, add 2 tasks")).to_be_visible()
         self.assertEqual(len(applied), 1)
 
+    def test_06b_the_notification_of_an_agent_waiting_opens_its_card(self) -> None:
+        """#1186: an agent waiting for your OK tells you once; its link (email and a push tap go through /inbox/<id>) opens the Inbox on
+        the run's card, selected, even when another item comes first."""
+        page = self.page()
+        run = self.ids["run"]
+        changes = [{"id": str(uuid.uuid4()), "version": 1, "phrase": "add task", "verb": "Add", "objectTitle": "Order 20 soil sensors",
+                    "line": "Waits for your OK: you asked it to check with you first.", "waitReason": "ask", "forPerson": None}]
+        question = {"key": f"note:{uuid.uuid4()}", "kind": "question", "title": "Jonas asked you in Gesture lamp", "detail": "Is the lux sensor in?",
+                    "project": None, "from": None, "at": NOW, "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}",
+                    "decision": None, "blocked": None, "reason": "question", "snoozeTask": None}
+        waiting = {"key": f"assistant:{run}", "kind": "question", "title": "1 thing waits for you", "detail": "add 1 task",
+                   "project": {"id": self.ids["project"], "name": "Gesture lamp"}, "from": None, "at": NOW,
+                   "url": f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "decision": None, "blocked": None, "reason": "question",
+                   "snoozeTask": None, "assistantChanges": {"runId": run, "agentName": "Assistant", "summary": "add 1 task", "changes": changes}}
+        page.route(re.compile(r".*/api/v1/needs-you(\?.*)?$"), lambda route: route.fulfill(status=200, content_type="application/json",
+                   body=json.dumps({"items": [question, waiting], "count": 2, "later": 0, "doneToday": 0})))
+        notification = str(uuid.uuid4())
+        page.route(re.compile(rf".*/api/v1/inbox/{notification}$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({
+            "id": notification, "source": {"workspaceId": str(uuid.uuid4()), "type": "project", "id": self.ids["project"]}, "reason": "approval",
+            "title": "Assistant is waiting for your OK", "body": "Add “Order 20 soil sensors” · Gesture lamp", "url": f"/inbox?item=assistant:{run}",
+            "createdAt": NOW, "readAt": None})))
+        page.route(re.compile(rf".*/api/v1/inbox/{notification}/read$"), lambda route: route.fulfill(status=200, content_type="application/json",
+                   body=json.dumps({"id": notification, "readAt": NOW})))
+        page.goto(f"/inbox/{notification}")
+        expect(page).to_have_url(re.compile(re.escape(f"/inbox?item=assistant:{run}") + "$"))
+        card = page.locator(f'.nyc[data-key="assistant:{run}"]')
+        expect(card).to_have_attribute("aria-current", "true")
+        expect(card).to_contain_text("Order 20 soil sensors")
+        expect(card.get_by_role("button", name="Approve all", exact=True)).to_be_visible()
+        expect(page.locator(f'.nyc[data-key="{question["key"]}"]')).not_to_have_attribute("aria-current", "true")
+
     def test_07_phone_reads_the_cards_without_overflow(self) -> None:
         for dark in (False, True):
             page = self.page(phone=True, dark=dark)

@@ -287,7 +287,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   turned off is the task's own state line, not a report). The count and Undo are what still stands of
   the run's changes when the line is read. The agent's row in Messages and in the sidebar shows an
   unread dot until its owner opens the chat (#919).
-- **Notifications.** "Only what needs me" includes an agent waiting for you. During Quiet hours
+- **Notifications.** "Only what needs me" includes an agent waiting for you: when a run (or a local
+  client) starts waiting for your OK, you alone are told once, and the notification opens its Inbox
+  card (`approval`, [notifications](../development/notifications.md), #1186). During Quiet hours
   there is no push or email, and the Inbox keeps everything.
 
 ## AG-8 — What server agents may do

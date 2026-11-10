@@ -249,7 +249,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only what needs me", "Everything", "Nothing"])
         # #1173: each line names what reaches Ada at that level (pinned against the reasons in notification-level-words.test.ts).
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__s").all_inner_texts()], [
-            "Questions, mentions, direct messages, tasks that need you, decisions about your work and invitations to work together",
+            "Questions, mentions, direct messages, tasks that need you, decisions about your work, invitations to work together and agents waiting for you",
             "Also every reply in conversations you are part of", "No push or email. Everything still waits in the Inbox"])
         expect(levels.get_by_role("radio", name="Only what needs me")).to_be_checked()
         start = self.api(page, "GET", "/api/v1/notification-preferences")

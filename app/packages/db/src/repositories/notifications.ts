@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { messagePreview } from '@flux/contracts';
+import { assistantChangeWords, assistantWorkChangeArgs, messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
@@ -41,7 +41,7 @@ const t = schema.notificationAddressTokens;
 const ob = schema.notificationEmails;
 const CURSOR = 'generator';
 
-type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation';
+type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation' | 'approval';
 type SourceType = 'workspace' | 'project' | 'dm';
 
 export interface StoredPreferenceRow {
@@ -270,6 +270,29 @@ export function notificationFactRows(db: DbExecutor) {
       return {
         id: row.invitation.id, sessionId: session.id, projectId: session.projectId, projectName: await projectName(session.projectId),
         inviterId: row.invitation.inviterId, recipientId: row.invitation.recipientId, anchor,
+      };
+    },
+
+    /**
+     * What the run (or local client) of this change still has waiting for its owner's OK (#1186): its oldest waiting change, with the
+     * agent's name and the change in words, or null when nothing of it waits any more (all decided before the notification was written).
+     */
+    async waitingChange(changeId: string) {
+      const c = schema.assistantChanges;
+      const [started] = await db.select({ runId: c.runId, connectionId: c.connectionId, ownerUserId: c.ownerUserId }).from(c).where(eq(c.id, changeId));
+      if (!started) return null;
+      const group = started.runId ? eq(c.runId, started.runId) : and(eq(c.connectionId, started.connectionId!), isNull(c.runId));
+      const [row] = await db.select({ change: c, agentName: schema.agents.name }).from(c).innerJoin(schema.agents, eq(schema.agents.id, c.agentId))
+        .where(and(group, eq(c.ownerUserId, started.ownerUserId), eq(c.state, 'waiting'))).orderBy(asc(c.createdAt), asc(c.id)).limit(1);
+      if (!row) return null;
+      const { change } = row;
+      // In the change view's words (a task's one changed field names itself: "Rename", "Close").
+      const args = ((change.preparedCommand as { args?: unknown } | null)?.args ?? {}) as { changes?: Record<string, unknown> };
+      const words = assistantChangeWords(change.operation, assistantWorkChangeArgs(args.changes ?? {}));
+      return {
+        id: change.id, projectId: change.projectId, projectName: await projectName(change.projectId), ownerUserId: change.ownerUserId,
+        agentName: row.agentName, group: (change.runId ?? change.connectionId)!,
+        words: change.objectTitle ? `${words.verb} “${change.objectTitle}”` : `${words.verb} the ${words.noun}`,
       };
     },
   };

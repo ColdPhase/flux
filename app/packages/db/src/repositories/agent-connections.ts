@@ -6,6 +6,7 @@ type AgentOauthGrant = { referenceId: string; clientId: string | null; connectio
 import * as schema from '../schema.js';
 import { companyGuestSql, isCompanyGuest } from './access.js';
 import { idpStandingRepository } from './idp-standing.js';
+import { settleWaitingNotices } from './assistant-changes.js';
 import type { createDatabase } from '../index.js';
 import type { DbExecutor } from './push.js';
 
@@ -45,9 +46,12 @@ export async function oauthClientName(db: DbExecutor, clientId: string): Promise
 
 /** What a disconnected client had waiting for its owner can never be approved: no dead item stays in the Inbox. */
 async function closeWaitingChanges(tx: Transaction, connectionIds: string[]) {
-  await tx.update(schema.assistantChanges)
+  const closed = await tx.update(schema.assistantChanges)
     .set({ state: 'refused', waitReason: null, refusal: 'Disconnected before you decided', version: sql`${schema.assistantChanges.version} + 1`, updatedAt: new Date() })
-    .where(and(inArray(schema.assistantChanges.connectionId, connectionIds), isNull(schema.assistantChanges.runId), eq(schema.assistantChanges.state, 'waiting')));
+    .where(and(inArray(schema.assistantChanges.connectionId, connectionIds), isNull(schema.assistantChanges.runId), eq(schema.assistantChanges.state, 'waiting')))
+    .returning({ ownerUserId: schema.assistantChanges.ownerUserId });
+  // Nothing of the client waits any more, so neither does what told its owner about it (#1186).
+  await settleWaitingNotices(tx as unknown as DbExecutor, closed.map((row) => row.ownerUserId));
 }
 
 /** SQL and locking. A connection is live while it is not revoked, its agent stands and its owner's account stands. */

@@ -5,17 +5,19 @@
 /**
  * Why a notification exists. `review` covers a proposed decision that is
  * about work you own, or that your agent produced. `invitation` is someone asking you to join
- * them live at a task, map, doc or conversation (#62): one quiet signal per invitation.
+ * them live at a task, map, doc or conversation (#62): one quiet signal per invitation. `approval` is
+ * one of your agents waiting for your OK (F-036 item 10, #1186): a change it prepared under Ask me
+ * first, or one about other people's things, sent once for each run (or local client) that starts waiting.
  */
-export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation'] as const;
+export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'approval'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
 /**
  * The reasons that "need you" (F-026 S22): decisions about your work, questions and
- * mentions, direct messages, work assigned to you and invitations. Replies in conversations you
- * joined are the rest of "Everything".
+ * mentions, direct messages, work assigned to you, invitations and your agents waiting for you.
+ * Replies in conversations you joined are the rest of "Everything".
  */
-export const NEEDS_YOU_REASONS = ['mention', 'question', 'dm', 'assigned', 'review', 'invitation'] as const satisfies readonly NotificationReason[];
+export const NEEDS_YOU_REASONS = ['mention', 'question', 'dm', 'assigned', 'review', 'invitation', 'approval'] as const satisfies readonly NotificationReason[];
 
 /**
  * What may interrupt you with push and email (F-026 S22). The inbox keeps every reason in each
