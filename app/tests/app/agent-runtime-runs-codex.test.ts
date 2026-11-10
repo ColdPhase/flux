@@ -159,7 +159,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.deepEqual(await readdir(slot.config.tmpDir), []);
   });
 
-  test('no local tool remains: a command, a file change, web search with the web off, another MCP server, a resource tool, a plan list or an error item stops the run at that item', async () => {
+  test('no local tool remains: a command, a file change, web search with the web off, another MCP server, a resource reader of another server, a plan list or an error item stops the run at that item', async () => {
     const webOff = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10, maxTurns: 10 } });
     for (const name of ['run_command_execution', 'run_file_change', 'run_web_search', 'run_other_mcp', 'run_resource_tool', 'run_todo_list', 'run_error_item']) {
@@ -173,6 +173,45 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
       const progress = await pool.query(`SELECT data FROM events WHERE object_id = $1 AND kind = 'assistant_run.changed.v1' AND data->>'step' = 'tool'`, [started.run.id]);
       assert.equal(progress.rowCount, 0, `${name}: stopped at the item, before any Flux call was reported`);
     }
+  });
+
+  test('#1165: Codex\'s own resource readers reach only Flux, which has none and opens no address; the run goes on to a Flux tool and answers', async () => {
+    const PLAYBOOK = 'flux://playbook/flux.cowork/1.0.0';
+    await script({ calls: [
+      { name: 'list_mcp_resources' },
+      { name: 'list_mcp_resources', args: { server: 'flux' } },
+      { name: 'list_mcp_resource_templates', args: { server: 'flux' } },
+      { name: 'read_mcp_resource', args: { server: 'flux', uri: PLAYBOOK } },
+      { name: 'read_mcp_resource', args: { server: 'flux', uri: 'http://169.254.169.254/latest/meta-data/' } },
+      { name: 'flux_list_contexts' },
+    ], answer: '{{results}}' });
+    const started = await ask();
+    assert.equal(await processor.process(started.run.id), 'completed');
+    const stored = await row(started.run.id);
+    assert.deepEqual([stored.status, stored.end_reason], ['completed', null]);
+    // Flux's answers, as the CLI got them in the 2025-06-18 era it speaks: none, none, none, and not found for any address.
+    const asked = (await calls()).filter((entry) => entry.event === 'resource_request').map((entry) => [entry.method, entry.status, entry.answer]);
+    const notFound = (id: number) => ({ jsonrpc: '2.0', id, error: { code: -32002, message: 'Resource not found' } });
+    assert.deepEqual(asked, [
+      ['resources/list', 200, { jsonrpc: '2.0', id: 2, result: { resources: [] } }],
+      ['resources/list', 200, { jsonrpc: '2.0', id: 3, result: { resources: [] } }],
+      ['resources/templates/list', 200, { jsonrpc: '2.0', id: 4, result: { resourceTemplates: [] } }],
+      ['resources/read', 200, notFound(5)],
+      ['resources/read', 200, notFound(6)],
+    ]);
+    const answer = String(stored.answer_body);
+    assert.ok(!answer.includes('co-work playbook') && !answer.includes('cowork_playbook'), 'a run never reads the playbook a client may read');
+    assert.ok(answer.includes(place.id), 'the Flux tool after the readers answered');
+    // Only the Flux tool is reported to the owner; the readers are turns, not Flux tool calls.
+    const progress = await pool.query(`SELECT data FROM events WHERE object_id = $1 AND kind = 'assistant_run.changed.v1' ORDER BY seq`, [started.run.id]);
+    assert.deepEqual(progress.rows.filter((r) => r.data.step === 'tool').map((r) => r.data.tool), ['flux_list_contexts']);
+
+    // They count toward the turn cap: a model that keeps listing ends at it.
+    await resetFake();
+    await script({ calls: Array.from({ length: 12 }, () => ({ name: 'list_mcp_resources' })) });
+    const looping = await ask();
+    assert.equal(await processor.process(looping.run.id), 'cap_reached');
+    assert.deepEqual([(await row(looping.run.id)).end_reason, (await row(looping.run.id)).answer_body], ['max_turns', null]);
   });
 
   test('the blocking preflight: a config/read that does not reflect the overrides refuses the run before `codex exec` starts', async () => {

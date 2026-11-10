@@ -17,8 +17,9 @@ import { CLAUDE_WEB_SEARCH_TOOL, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MOD
 // first `system/init` is checked here: any tool but the run's exact Flux tools (and `EndConversation`, and with the web on Claude Code's
 // own `WebSearch`, #1065), or any MCP server but a connected Flux, stops the CLI with no answer. Each `WebSearch` is passed on twice, as
 // closed shapes: its query when the CLI starts it, and the addresses of its result entries when they come back (C-30). For Codex (T6 #281) the authoritative
-// check is every `item.*` event of `codex exec --json`: anything but an agent message, reasoning, or an
-// `mcp_tool_call` to the `flux` server with one of the run's exact tools stops it at that item; a blocking
+// check is every `item.*` event of `codex exec --json`: anything but an agent message, reasoning, an
+// `mcp_tool_call` to the `flux` server with one of the run's exact tools, or one of Codex's own resource readers on Flux (#1165,
+// `codexResourceReader`) stops it at that item; a blocking
 // `config/read` preflight first confirms the `-c` overrides took effect. Two timeouts (no event, wall clock),
 // the answer bound and Stop (SIGINT, then SIGTERM, then kill) end it in their own states. Nothing the CLI
 // prints is logged. After the run no transcript is left in the binding directory.
@@ -140,6 +141,19 @@ export function classifyError(text: string, facts: { error?: string | null; term
 
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
+/** The pinned Codex's own MCP resource readers (codex-rs `core/src/tools/handlers/mcp_resource` at rust-v0.160.1). */
+export const CODEX_RESOURCE_READERS: readonly string[] = ['list_mcp_resources', 'list_mcp_resource_templates', 'read_mcp_resource'];
+
+/**
+ * A Codex `mcp_tool_call` item that is one of its own resource readers on Flux (#1165, RT-5). No setting of the pinned Codex removes them;
+ * they read only configured MCP servers, and the preflight keeps Flux the only one. The item names the server the model named, or `codex`
+ * for a list of every server; Flux's run server answers a list with none and a read with "not found". A reader naming any other server is
+ * not one of these: it stops the run, as any other server does.
+ */
+export function codexResourceReader(item: Record<string, unknown>): boolean {
+  return (item.server === 'flux' || item.server === 'codex') && typeof item.tool === 'string' && CODEX_RESOURCE_READERS.includes(item.tool);
+}
+
 /** A search query as one line of plain text: control characters gone, at most 300 characters. */
 // eslint-disable-next-line no-control-regex
 export const searchQuery = (value: unknown) => typeof value === 'string' ? value.replace(/[\u0000-\u001f\u007f]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, SEARCH_FRAME_LIMITS.query) : '';
@@ -191,7 +205,8 @@ export function codexSearchFound(item: unknown): { results: string[]; queries: s
  * The Codex preflight (F-022 "Optional preflight", kept because the pinned app-server's `config/read` merges
  * the root `-c` overrides as its session-flags layer: codex-rs `app-server/src/config_manager.rs`): the
  * effective configuration must have every reviewed feature off, web search disabled, or with the web on (#1065) on the cached index, and
- * Flux as the only MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run.
+ * Flux as the only MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run. Flux alone, with
+ * apps off (no `codex_apps` server), is also what keeps Codex's own resource readers, which no setting removes, to Flux (#1165).
  */
 export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string, webSearch = false): boolean {
   if (!isObject(config)) return false;
@@ -337,15 +352,17 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         }
         if (kind === 'mcp_tool_call') {
           const tool = typeof item!.tool === 'string' ? item!.tool : '';
+          // Codex's own resource reader on Flux (#1165): a turn of the run, not a Flux tool call, so nothing is reported for it.
+          const reader = codexResourceReader(item!);
           // A call to anything but the run's exact Flux tools on the `flux` server: a local tool exists after all.
-          if (item!.server !== 'flux' || !FLUX_TOOL_NAME.test(tool) || !request.tools.includes(tool)) { terminate('local_tool'); return; }
+          if (!reader && (item!.server !== 'flux' || !FLUX_TOOL_NAME.test(tool) || !request.tools.includes(tool))) { terminate('local_tool'); return; }
           const id = typeof item!.id === 'string' ? item!.id : `${toolItems.size}`;
           if (!toolItems.has(id)) {
             toolItems.add(id);
             turns = toolItems.size;
             // The answer is one more turn: a call that leaves no turn for it ends the run at the cap.
             if (turns >= request.caps.maxTurns) { terminate('max_turns'); return; }
-            send({ t: 'run', e: 'tool', name: tool });
+            if (!reader) send({ t: 'run', e: 'tool', name: tool });
           }
           return;
         }

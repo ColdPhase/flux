@@ -202,6 +202,37 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal((await mcp(grant.token, 7, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).status, 403, 'the token fails after the run ended');
   });
 
+  test('#1165: a run\'s resource requests as the pinned Codex sends them (2025-06-18): no resources, no templates, any address not found, none declared', async () => {
+    const runId = await inFlight();
+    const grant = await token(runId);
+    const legacy = { protocol: '2025-06-18' as const };
+    const init = await mcp(grant.token, 1, 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex-mcp-client', version: '0.160.1' } }, legacy);
+    assert.equal(init.status, 200);
+    assert.deepEqual(Object.keys((init.message?.result as { capabilities: Record<string, unknown> }).capabilities), ['tools'],
+      'a run declares no resources, so a client that reads capabilities offers no resource tool');
+    for (const [id, params] of [[2, {}], [3, { cursor: 'next' }]] as const) {
+      const listed = await mcp(grant.token, id, 'resources/list', params, legacy);
+      assert.deepEqual([listed.status, listed.message], [200, { jsonrpc: '2.0', id, result: { resources: [] } }]);
+    }
+    const templates = await mcp(grant.token, 4, 'resources/templates/list', {}, legacy);
+    assert.deepEqual([templates.status, templates.message], [200, { jsonrpc: '2.0', id: 4, result: { resourceTemplates: [] } }]);
+    // Any address, whatever it names, is not found: the client's playbook, a file, a cloud metadata address, this run's own wiki page.
+    const addresses = ['flux://playbook/flux.cowork/1.0.0', 'file:///etc/passwd', 'http://169.254.169.254/latest/meta-data/', `flux://projects/${place.id}/docs/${docId}`];
+    for (const [index, uri] of addresses.entries()) {
+      const read = await mcp(grant.token, 5 + index, 'resources/read', { uri }, legacy);
+      assert.deepEqual([read.status, read.message], [200, { jsonrpc: '2.0', id: 5 + index, error: { code: -32002, message: 'Resource not found' } }], uri);
+    }
+    // A malformed request is the SDK's to answer, and the 2026-07-28 era is the SDK's: neither is a resource.
+    const malformed = await mcp(grant.token, 10, 'resources/read', {}, legacy);
+    assert.equal(malformed.message?.result, undefined);
+    assert.equal((await mcp(grant.token, 11, 'resources/list')).message?.result, undefined);
+    // The run's tools still work after them.
+    const contexts = await mcp(grant.token, 12, 'tools/call', { name: 'flux_list_contexts', arguments: {} }, legacy);
+    assert.ok(toolText(contexts.message).includes(place.id));
+    await end(runId);
+    assert.equal((await mcp(grant.token, 13, 'resources/list', {}, legacy)).status, 403, 'nothing, not even an empty list, once the run ended');
+  });
+
   test('Only read gets a read-only run token that reads the place and lists no change tool', async () => {
     await setMayDo('read');
     const runId = await inFlight();

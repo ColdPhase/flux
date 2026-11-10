@@ -93,8 +93,8 @@ export async function oauthToken(browser: Browser, clientId: string, redirectUri
 }
 
 export async function mcp(accessToken: string, id: number, method: string, params: Record<string, unknown> = {},
-  options: { base?: string; headers?: Record<string, string>; query?: string } = {}) {
-  const protocol = process.env.FLUX_TEST_MCP_PROTOCOL ?? '2026-07-28';
+  options: { base?: string; headers?: Record<string, string>; query?: string; protocol?: '2025-06-18' | '2026-07-28' } = {}) {
+  const protocol = options.protocol ?? process.env.FLUX_TEST_MCP_PROTOCOL ?? '2026-07-28';
   assert.ok(protocol === '2025-06-18' || protocol === '2026-07-28', 'test lane must name an admitted protocol');
   const modern = protocol === '2026-07-28';
   // The 2026-07-28 transport repeats the tool/prompt name or the resource URI in Mcp-Name.

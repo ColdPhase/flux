@@ -40,8 +40,27 @@ function refusedTool(body: unknown) {
   } });
 }
 
+/**
+ * A personal run's answer to a resource request (#1165, RT-5). A run's server has no resources and does not declare the capability, so a
+ * client that reads capabilities (Claude Code) offers the model no resource tool. The pinned Codex offers its own three readers whatever a
+ * server declares, and its model may call one: it gets no resources, no templates, and "Resource not found" (-32002, MCP 2025-06-18) for
+ * any address, which is never looked at. Anything else, or a malformed resource request, is the SDK's to answer.
+ */
+function noResources(body: unknown): Response | null {
+  if (!isSpecType.JSONRPCRequest(body)) return null;
+  const answer = (message: Record<string, unknown>) => Response.json({ jsonrpc: '2.0', id: body.id, ...message });
+  if (isSpecType.ListResourcesRequest(body)) return answer({ result: { resources: [] } });
+  if (isSpecType.ListResourceTemplatesRequest(body)) return answer({ result: { resourceTemplates: [] } });
+  if (isSpecType.ReadResourceRequest(body)) return answer({ error: { code: -32002, message: 'Resource not found' } });
+  return null;
+}
+
+/**
+ * `refuseTool`: a personal run's token, which may call only these tools. `noResources`: also a run's, whose resource requests get the plain
+ * answers above (in the 2025-06-18 era, the one the pinned Codex speaks; a 2026-07-28 request goes to the SDK, which has no handler).
+ */
 export function createFluxMcpHandler(factory: () => McpServer,
-  options: { refuseTool?: (name: string) => boolean } = {}) {
+  options: { refuseTool?: (name: string) => boolean; noResources?: boolean } = {}) {
   const handler = createMcpHandler(factory, { legacy: 'stateless', maxRequestBodySize: MCP_MAX_REQUEST_BODY_BYTES });
   return { async fetch(request: Request): Promise<Response> {
     if (request.method !== 'POST' || !isJsonContentType(request.headers.get('content-type'))) return handler.fetch(request);
@@ -80,6 +99,7 @@ export function createFluxMcpHandler(factory: () => McpServer,
       if (offered !== legacyVersion) return unsupported(offered);
       if (header !== null && header !== offered) return unsupported(header);
     } else if (header !== legacyVersion) return unsupported(header);
+    if (options.noResources) { const answered = noResources(body); if (answered) return answered; }
     return handler.fetch(request, { parsedBody: body });
   } };
 }
