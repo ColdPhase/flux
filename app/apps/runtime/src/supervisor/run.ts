@@ -206,7 +206,8 @@ export function codexSearchFound(item: unknown): { results: string[]; queries: s
  * the root `-c` overrides as its session-flags layer: codex-rs `app-server/src/config_manager.rs`): the
  * effective configuration must have every reviewed feature off, web search disabled, or with the web on (#1065) on the cached index, and
  * Flux as the only MCP server, required, with exactly the run's tools. Anything else, or no answer, refuses the run. Flux alone, with
- * apps off (no `codex_apps` server), is also what keeps Codex's own resource readers, which no setting removes, to Flux (#1165).
+ * apps and plugins off (no `codex_apps` or plugin server, codex-rs `ext/mcp`), is also what keeps Codex's own resource readers, which no
+ * setting removes, to Flux (#1165).
  */
 export function effectiveConfigHolds(config: unknown, tools: readonly string[], mcpUrl: string, webSearch = false): boolean {
   if (!isObject(config)) return false;

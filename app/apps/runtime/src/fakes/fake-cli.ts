@@ -383,10 +383,9 @@ function codexOverrides(argv: string[]): Record<string, unknown> {
   return root;
 }
 
-/** One MCP call over the streamable HTTP route, as a client with the given headers. */
 /**
- * The fakes' MCP client: 2026-07-28 requests, or with `legacy` a 2025-06-18 request without a session, as the pinned Codex sends its
- * resource readers' requests (#1165), whose answer may be an event stream.
+ * One MCP call over the streamable HTTP route, as a client with the given headers: a 2026-07-28 request, or with `legacy` a 2025-06-18
+ * request without a session, as the pinned Codex sends its resource readers' requests (#1165), whose answer may be an event stream.
  */
 function mcpClient(url: string, headers: Record<string, string>, clientName: string, version: string) {
   let id = 0;

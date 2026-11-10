@@ -173,14 +173,15 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   servers Codex has configured. A call names one server, or a list names none and asks every server
   (its item then names the server `codex`). An unknown name fails inside Codex before anything is
   sent (`McpConnectionSet::client_by_name`). A resource address goes to that server as data and is
-  never opened by Codex. With Flux the only server (the preflight) and apps off (no `codex_apps`
-  server), the readers reach only Flux's MCP route, under that run's token. A run's server has no
-  resources and does not declare any, so Claude Code offers no resource tool. When Codex asks anyway,
-  Flux answers a list with none and a read with "Resource not found" (-32002), without looking at the
-  address (2025-06-18, the version the pinned Codex speaks; a 2026-07-28 request gets the SDK's own
-  "Method not found"). So a reader's item on the server `flux` or `codex` is let through. It counts
-  as one of the run's turns toward the cap, and the run goes on. A real-model acceptance run had
-  ended `local_tool` on a list the model made instead of `flux_list_contexts`. A reader that names any
+  never opened by Codex. With Flux the only configured server and apps and plugins off (no
+  `codex_apps` or plugin server: `ext/mcp`), all of which the preflight checks, the readers reach
+  only Flux's MCP route, under that run's token. A run's server has no resources and does not
+  declare any, so Claude Code offers no resource tool. When Codex asks anyway, Flux answers a list
+  with none and a read with "Resource not found" (-32002), without looking at the address
+  (2025-06-18, the version the pinned Codex speaks; a 2026-07-28 request gets the SDK's own "Method
+  not found"). So a reader's item on the server `flux` or `codex` is let through. It counts as one
+  of the run's turns toward the cap, and the run goes on. A real-model acceptance run had ended
+  `local_tool` on a list the model made instead of `flux_list_contexts`. A reader that names any
   other server, and any other tool of the `codex` server, still stops the CLI.
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
