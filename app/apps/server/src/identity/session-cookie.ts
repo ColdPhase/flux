@@ -19,6 +19,14 @@ export function sessionCookieName(secure: boolean): string {
  * refuses it, so nothing ever resolves it.
  */
 export function sessionCookieToken(cookieHeader: unknown, name: string): string | null {
+  const value = sessionCookieValue(cookieHeader, name);
+  if (!value) return null;
+  const dot = value.lastIndexOf('.');
+  return dot > 0 ? value.slice(0, dot) : value;
+}
+
+/** The whole value of the session cookie, its signature included, read as `sessionCookieToken` reads it; null when absent or empty. */
+export function sessionCookieValue(cookieHeader: unknown, name: string): string | null {
   if (typeof cookieHeader !== 'string') return null;
   for (const part of cookieHeader.split(';')) {
     const equals = part.indexOf('=');
@@ -28,9 +36,7 @@ export function sessionCookieToken(cookieHeader: unknown, name: string): string 
     if (value.includes('%')) {
       try { value = decodeURIComponent(value); } catch { /* kept as it is, as Better Auth does */ }
     }
-    if (!value) return null;
-    const dot = value.lastIndexOf('.');
-    return dot > 0 ? value.slice(0, dot) : value;
+    return value || null;
   }
   return null;
 }

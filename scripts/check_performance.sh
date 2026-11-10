@@ -65,8 +65,11 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 psql() { $compose exec -T db psql -U flux -d flux -v ON_ERROR_STOP=1 -tA "$@"; }
+# The measuring client runs in a container of its own, from the API's image and settings (#1178): inside the API's container it took a
+# quarter of the CPU the limited phase allows the API (1.2 of 5.5 s in a concurrent run), which a browser elsewhere never takes.
+client() { $compose run --rm --no-deps -T -e NODE_OPTIONS= -e FLUX_PERF_API=http://api:8080 "$@"; }
 measure() {
-  $compose exec -T -e NODE_OPTIONS= -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_PERF_RUNS="$runs" -e FLUX_PERF_STATE="${perf_state:-}" "$@" \
+  client -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_PERF_RUNS="$runs" -e FLUX_PERF_STATE="${perf_state:-}" "$@" \
     api node --input-type=module - < scripts/perf-measure.mjs >> "$out/measure.jsonl"
 }
 
@@ -125,7 +128,7 @@ if [ "$waited" -lt 150 ]; then echo "Idle minute taken after pg-boss's daily que
 $compose stop worker
 
 # Sign in and read the views' ids once; every later run reuses those sessions and ids.
-$compose exec -T -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_PERF_MODE=prepare api node --input-type=module - \
+client -e FLUX_PERF_PASSWORD="$perf_password" -e FLUX_PERF_MODE=prepare api node --input-type=module - \
   < scripts/perf-measure.mjs > "$out/state.jsonl"
 perf_state=$(sed -n 's/^{"type":"state",/{/p' "$out/state.jsonl")
 [ -n "$perf_state" ] || { echo "The measurement could not sign in or find the seeded views" >&2; exit 1; }
