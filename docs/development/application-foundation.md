@@ -6,11 +6,11 @@ separate worker, PostgreSQL 18, reviewed SQL migrations and a durable pg-boss qu
 
 ## Current state
 
-Flux v0.1.0, the first release, is published; there is nothing to upgrade from yet.
-On this stack the application now provides accounts and sessions, workspace
-and project access, project conversations with tasks, decisions, results, map and wiki,
-direct messages, search, the inbox with Web Push, connected MCP agents and an optional
-in-app assistant, optional live media, and `./flux` operations. The
+Flux v0.2 is the current version. v0.1.0, the first release, had no users and is not upgraded (see
+[upgrade](../operations/upgrade.md#from-v01-install-v02-fresh)).
+On this stack the application now provides accounts and sessions, one company with its spaces and their access,
+conversations with tasks, decisions, a Wiki and maps, direct messages, search, the Inbox with Web Push, agents (on the server and
+as local Claude Code or Codex over MCP) with their owner's rights, encrypted spaces, optional live media, and `./flux` operations. The
 [README](../../README.md#project-status) summarizes it for new contributors; the
 [current milestone](https://github.com/ColdPhase/flux/milestone/2) tracks the remaining
 release work. The [integration fixture](#integration-fixture) below is a technical

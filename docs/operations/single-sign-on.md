@@ -82,7 +82,7 @@ is set by `FLUX_SSO_MODE`:
    With the release Compose file, also mount the secret into the API container. `docker compose -f
    compose.yaml` never reads a `compose.override.yaml` on its own, so put the mount in a file of your own
    next to `compose.yaml`, here `compose.sso.yaml` (any name; it can be the same file as the [assistant
-   key mount](release-guide.md#assistant-on-your-own-ai-key-optional)):
+   key mount](release-guide.md#agents-on-your-own-ai-key-optional)):
 
    ```yaml
    services:
@@ -146,7 +146,7 @@ automation that acts for them stops. Nothing is revoked. A network error, timeou
 `invalid_client` changes nothing.
 
 - **Restoring access.** Checks continue for a suspended person. When the provider honours the token
-  again (a re-enabled Keycloak user), the next check clears the state; their kept agent grants work
+  again (a re-enabled Keycloak user), the next check clears the state; their local clients' connections work
   again, and they sign in again in the browser.
 - **The provider must return a refresh token.** Grant the Flux client the `refresh_token` grant and
   let the people use `offline_access` (Keycloak: the `offline_access` role; Okta: the Refresh Token
@@ -203,7 +203,7 @@ in once the cutover is on. Move them first, in this order:
 1. Set `FLUX_OIDC_*` and `FLUX_SSO_MODE=prepare`, then restart. Password sign-in keeps working.
 2. Each person signs in with their password, opens **Settings**, and selects **Link ...**. They complete one
    provider sign-in as the same person. Flux links that provider identity to their existing account: the
-   account ID, data, memberships and grants stay. Flux matches nothing by email. An identity that another
+   account ID, data and memberships stay. Flux matches nothing by email. An identity that another
    account already holds, or an account already linked to another identity, is refused with the reason shown
    in Settings, and nothing changes. A link lasts 10 minutes and works once.
 3. When everyone who needs access has linked, set `FLUX_SSO_MODE=sso` (or remove the setting) and restart.

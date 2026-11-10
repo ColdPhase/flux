@@ -114,7 +114,7 @@ if (existing) {
       body: 'Capacitive soil moisture probe (no exposed metal), DS18B20 temperature probe, '
         + 'ESP32 board with LoRa for the far beds. About 18 EUR per bed.',
     });
-    summary.seeded.push(`published material "${material.title}"`);
+    summary.seeded.push(`source "${material.title}" for a message to cite`);
 
     const thread = await owner.session.expect('POST', conversationsPath, {
       body: 'Should the first sensors measure soil moisture, or only temperature for the frost warnings?', clientMessageId: ids(),
@@ -127,7 +127,7 @@ if (existing) {
     for (const [person, body, source] of replies) {
       await person.session.expect('POST', `/api/v1/conversations/${thread.id}/messages`, { body, clientMessageId: ids(), ...(source ? { source } : {}) });
     }
-    summary.seeded.push(`conversation with ${replies.length + 1} messages between ${owner.name} and ${partner.name}, one citing the material`);
+    summary.seeded.push(`conversation with ${replies.length + 1} messages between ${owner.name} and ${partner.name}, one citing the source`);
     summary.conversationId = thread.id;
   } else {
     summary.skipped.push('conversation: this build has no conversation API yet (#36)');
@@ -135,6 +135,7 @@ if (existing) {
 
   const sketchesPath = `/api/v1/workspaces/${ws.id}/sketches`;
   if (await hasRoute(owner.session, sketchesPath)) {
+    // A space's Map (the API still calls it a sketch with the scope `project`).
     const sketch = await owner.session.expect('POST', sketchesPath, { title: 'Where the sensors go', scope: 'project', projectId: project.id });
     const add = (command) => owner.session.expect('POST', `/api/v1/sketches/${sketch.id}/thoughts`, command);
     const root = await add({ text: 'Six sensors for twelve beds', x: 0, y: 0 });
@@ -146,12 +147,12 @@ if (existing) {
     for (const [index, [text, label]] of thoughts.entries()) {
       await add({ text, x: 260, y: (index - 1) * 110, linkFrom: { thoughtId: root.thought.id, label } });
     }
-    summary.seeded.push(`sketch "${sketch.title}" with ${thoughts.length + 1} connected thoughts`);
+    summary.seeded.push(`map "${sketch.title}" with ${thoughts.length + 1} connected thoughts`);
   } else {
-    summary.skipped.push('sketch: this build has no sketch API yet (#69)');
+    summary.skipped.push('map: this build has no map API yet (#69)');
   }
 
-  // A 1:1 direct message (#107): only Ada and Jonas can read it, outside the project.
+  // A 1:1 direct message (#107): only Ada and Jonas can read it, outside every space.
   const dmsPath = `/api/v1/workspaces/${ws.id}/dms`;
   if (await hasRoute(owner.session, dmsPath)) {
     const dm = await owner.session.expect('POST', dmsPath, { participantIds: [partner.id] });
@@ -172,7 +173,7 @@ if (existing) {
 
   const docsPath = `/api/v1/projects/${project.id}/docs`;
   if (await hasRoute(owner.session, docsPath)) {
-    // A project doc with two immutable versions: Ada starts it, Jonas publishes an update.
+    // A Wiki page of the space with two versions: Ada starts it, Jonas saves an update.
     const doc = await owner.session.expect('POST', docsPath, {
       title: 'How the garden sensors work',
       body: [
@@ -194,9 +195,9 @@ if (existing) {
         '| Bed | Distance | Signal |', '| --- | ---: | --- |', '| Far east | 140 m | ok |', '| Shed | 60 m | strong |',
       ].join('\n'),
     }, [200], { 'if-match': `"${doc.version}"`, 'idempotency-key': ids() });
-    summary.seeded.push(`doc "${doc.title}" with ${updated.version} versions by ${owner.name} and ${partner.name}`);
+    summary.seeded.push(`Wiki page "${doc.title}" with ${updated.version} versions by ${owner.name} and ${partner.name}`);
   } else {
-    summary.skipped.push('doc: this build has no docs API yet (#112)');
+    summary.skipped.push('Wiki page: this build has no Wiki API yet (#112)');
   }
 }
 

@@ -8,7 +8,7 @@ runs in containers, so the host needs only Docker and a few standard tools.
 | | Recommended for a small team | Notes |
 | --- | --- | --- |
 | **Operating system** | Linux with Docker Engine | macOS and Windows with Docker Desktop run Flux for trials and development; a server should be Linux. |
-| **CPU architecture** | `x86_64` (`amd64`) | Release images are published for `linux/amd64` only; `linux/arm64` follows in v0.1.1. Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
+| **CPU architecture** | `x86_64` (`amd64`) | Release images are published for `linux/amd64` only; `linux/arm64` is planned for v0.3 ([#833](https://github.com/ColdPhase/flux/issues/833)). Source builds were measured on Linux `x86_64` and macOS `arm64` ([time to first run](../development/time-to-first-run.md)). |
 | **CPU** | 2 cores | An idle instance uses well under one core. Building from source is the heaviest step. |
 | **Memory** | 4 GB | The default container limits of the base stack add up to 2.9 GB, PostgreSQL included (see below). |
 | **Disk** | 10 GB free, SSD | About 0.25 GB for the Flux image, 0.5 GB for PostgreSQL, the build cache when you build from source, then your data and backups. |
@@ -52,7 +52,7 @@ LiveKit server whose CPU and bandwidth grow with each call.
 | Inbound UDP 3478, UDP 7882, TCP 7881, TCP 443 on a second address | LiveKit media and TURN | Only with [live media](../development/live-media.md) |
 | Outbound TCP 587 or 465 | Your mail server | When [email](configuration.md#email) is set |
 | Outbound HTTPS | Web Push services of browser vendors | When [push](mobile-and-push.md#3-allow-outbound-https-to-the-push-services) is on |
-| Outbound HTTPS | AI providers people connect, MCP client metadata documents, GitHub | When those features are used |
+| Outbound HTTPS | AI providers people connect, public web pages and search for agents (`FLUX_WEB_READS`, on by default), MCP client metadata documents, GitHub | When those features are used |
 | Outbound HTTPS | Container registries, npm (source build) | Install and upgrade |
 
 The API listens only on the host's loopback address; nothing else is published. A domain name with

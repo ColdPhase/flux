@@ -23,7 +23,7 @@ for (let index = 0; index < args.length; index++) {
   else if (!project && !arg.startsWith('-')) project = arg;
   else fail(`unknown argument ${arg}`, 2);
 }
-if (!project) fail('usage: flux export <project id or exact name> [--as <email>]', 2);
+if (!project) fail('usage: flux export <space id or exact name> [--as <email>]', 2);
 const connectionString = process.env.DATABASE_URL ?? fail('DATABASE_URL is required');
 
 const { pool, db } = createDatabase(connectionString);

@@ -15,9 +15,14 @@ described in the [security policy](../SECURITY.md).
   [what the runtime gets](agent-runtime.md#what-the-runtime-gets).
 - **No swap, no core dumps** for `api`, `worker` and `keyring`.
 - **Pinned images.** PostgreSQL and the release image are pinned by digest.
-- **Response headers.** Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`, API answers carry
-  `Cache-Control: no-store`, and with an `https` public origin the API sends `Strict-Transport-Security: max-age=31536000` (a year), so a
-  browser that has seen your address refuses `http` for it. Script policy is separate.
+- **Response headers.** Every response carries `X-Content-Type-Options: nosniff`, `Referrer-Policy: same-origin`, a `Permissions-Policy`
+  and `Cross-Origin-Resource-Policy: same-origin`, API answers carry `Cache-Control: no-store`, and with an `https` public origin the API
+  sends `Strict-Transport-Security: max-age=31536000` (a year), so a browser that has seen your address refuses `http` for it.
+- **A Content-Security-Policy.** Scripts run only from Flux's own files and its hashed inline ones, never `unsafe-inline` or
+  `unsafe-eval`; the page connects only to its own origin, and plugins, frames, `<base>` and forms to other sites are refused. Styles may
+  still be inline, the one risk the dynamic scan records as accepted.
+- **A rate-limit floor under every route** (1,200 requests a minute per session and 600 per address without one), besides the
+  sign-in limits below. A read that gets a 429 waits and asks again.
 - **No internal messages.** An unexpected server error answers `500` with a code only; its message (a SQL or file-path text, anything it
   quotes) reaches neither the browser nor the log.
 - **A security log.** One line for each failed or limited sign-in, password or session change, consent decision, refused request and space
@@ -36,11 +41,18 @@ described in the [security policy](../SECURITY.md).
 - **Single-use hashed reset tokens, sessions stored server-side** and revocable from
   **Settings → Account**. A password reset, and signing out the other devices, also disconnect the
   person's local AI clients; they connect again with one click on the consent page.
-- **Agents act only with granted permission.** MCP clients sign in through OAuth with per-project
-  grants, and a space's owners can turn AI off for the whole space.
+- **Agents act only with their owner's rights.** A server agent or a local client (Claude Code, Codex) has exactly its owner's current rights,
+  checked at every call, and only in spaces where AI is on; it never has more, and it loses them when its owner does. Deleting and other
+  people's things wait for the owner's OK, which only the owner can give. A guest has no AI, an encrypted space never has AI, and a space's
+  admins can turn AI off for the space. Local clients sign in through OAuth with one click on a consent page and hold no scopes or grants.
+  What a web page or another person's message says is data, never an instruction to an agent.
 - **Outbound fetches are restricted.** Link cards are off by default and never reach private
   addresses; AI endpoints reach private addresses only when you list them in
-  `FLUX_AI_PRIVATE_TARGETS`; cloud metadata addresses are always refused.
+  `FLUX_AI_PRIVATE_TARGETS`; cloud metadata addresses are always refused. **Agents read the web by default:** with `FLUX_WEB_READS=on`
+  (the default) a server agent's run reads public `http(s)` pages (GET only, default ports, no private addresses, bounded) and searches
+  with its provider's own search. The site learns this server's address and the provider's search partner receives the agent's query.
+  Flux writes every address down before it asks and lists them under the answer, and refuses an address that carries private Flux text the
+  run read. Set `FLUX_WEB_READS=off` to stop both.
 
 ## Checklist for the operator
 
@@ -59,7 +71,7 @@ described in the [security policy](../SECURITY.md).
    who reaches the server create an account. `verified` only proves that the person can read a
    mailbox, not that they belong to your team. For a private team on the internet, use
    [single sign-on](single-sign-on.md), or create your team's accounts and then set `FLUX_SIGNUP=off`
-   (open it briefly to add someone later). A new account sees no space until someone adds it.
+   (open it briefly to add someone later). A new account belongs to no company, and sees nothing, until an owner or admin adds it.
    Password accounts have no multi-factor sign-in. OWASP ASVS Level 2 asks for it, and the way to get
    it is single sign-on with your identity provider's MFA.
    With `open` sign-up, the sign-up page tells a person that an address already has an account (it signs the new
@@ -76,8 +88,9 @@ described in the [security policy](../SECURITY.md).
 7. **Encrypt backups that leave the machine.** An archive holds every message and document, password
    hashes and the settings file ([backup schedule](backup-restore.md#backup-schedule)).
 8. **Never run `./flux demo`** on a server, and leave `FLUX_DEMO_*_PASSWORD` empty there.
-9. **Turn on only what you use.** Link cards, the AI switches, the agent runtime, the GitHub App and
-   live media are all off until you set them.
+9. **Turn on only what you use.** Link cards, AI on API keys, the agent runtime, the GitHub App and
+   live media are all off until you set them. Agents' web reading and search are on by default: set
+   `FLUX_WEB_READS=off` if you do not want this server to fetch pages and send search queries for agents.
 10. **Keep swap off or encrypted** if anyone will use [encrypted spaces](encrypted-spaces.md#swap-and-memory).
 11. **Upgrade promptly**, with a backup first ([upgrade](upgrade.md)).
 12. **Rotate a leaked secret.** A new `FLUX_AUTH_SECRET` signs everyone out and voids pending invite

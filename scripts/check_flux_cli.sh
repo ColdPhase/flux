@@ -112,9 +112,11 @@ partner_pw=$(printf '%s\n' "$out" | sed -n 's/.*jonas@demo\.flux\.test *\(demo-[
 [ -n "$owner_pw" ] && [ -n "$partner_pw" ] || fail "demo did not print both logins"
 printf '%s\n' "$out" | grep -q "Flux demo is ready:  $base" || fail "demo did not print the URL"
 printf '%s\n' "$out" | grep -q 'seeded  conversation with 4 messages' || fail "conversation not seeded"
-printf '%s\n' "$out" | grep -Eq 'seeded  sketch|skipped sketch' || fail "sketch neither seeded nor skipped"
+printf '%s\n' "$out" | grep -Eq 'seeded  map "Where the sensors go" with 4 connected thoughts|skipped map' || fail "map neither seeded nor skipped"
 printf '%s\n' "$out" | grep -q 'seeded  direct message between Ada Kowalska and Jonas Berg with 4 messages' || fail "direct message not seeded"
-printf '%s\n' "$out" | grep -q 'seeded  doc "How the garden sensors work" with 2 versions' || fail "doc with two versions not seeded"
+printf '%s\n' "$out" | grep -q 'seeded  Wiki page "How the garden sensors work" with 2 versions' || fail "Wiki page with two versions not seeded"
+# #1172: the demo says what the app says (Wiki page, Map, Thought, source), never a v0.1 word.
+if printf '%s\n' "$out" | grep -q -i -E 'sketch|published material|seeded  doc '; then fail "the demo output still uses a v0.1 word: $out"; fi
 
 jar="$work/jar"
 sign_in() { # email password -> cookie jar $jar

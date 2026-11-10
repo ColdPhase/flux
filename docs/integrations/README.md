@@ -8,17 +8,19 @@ This guide is for two readers:
 
 The decision behind it is
 [O-010, public extension contracts](../product/extension-contracts.md),
-proposed on 2026-10-05.
+proposed on 2026-10-05. This guide describes Flux v0.2.
 
-## What you can rely on in v0.1
+## What you can rely on in v0.2
 
-Supported personal agents authenticate with Flux OAuth and owner-bound grants.
+A person's own Claude Code, Codex or other MCP client signs in with Flux OAuth in one step and acts as that
+person: it has the person's rights, in the spaces where AI is on, and one **What it may do** setting
+([local Claude Code and Codex](../product/mcp-cowork.md)). v0.2 has no scopes to choose, no capability switches and no
+per-project grants.
 The [single-provider F-024 amendment](../product/mcp-identity.md) keeps one
 operator-configured IdP with SSO-only ordinary login when active (otherwise
-password-only), safe account migration, required offboarding and ordinary owner
-MCP capability controls. No recent-authentication or secondary password/SSO
-challenge; current rights/grants and OAuth consent still bound every request. #317's additional opaque MCP-key
-surface is canceled, not implemented or promised after v0.1. Retain tested
+password-only), safe account migration and required offboarding. No recent-authentication or secondary
+password/SSO challenge; the owner's current rights and OAuth consent still bound every request. #317's additional opaque
+MCP-key surface is canceled, not implemented or promised. Retain tested
 SSH/paste-back/callback guidance under #310/#152; a fully unattended CI or
 header-only consumer that cannot complete supported OAuth is not advertised.
 Revisit one through an admitted bounded authority/compatibility contract.
@@ -31,8 +33,8 @@ against ([the rule](../product/extension-contracts.md#no-compatibility-before-th
 
 | Contract | Use it for | Version to check | Pinned snapshot |
 | --- | --- | --- | --- |
-| **EXT-1** MCP tool contract | Agents and scripts that read a project and act in it on behalf of one person | `trusted.playbook.toolContractVersion` returned by `flux_bootstrap` | [`mcp-tools.json`](../../app/tests/app/contracts/mcp-tools.json) |
-| **EXT-2** project export format | Archives, reports and moving a project's work to other tools | `formatVersion` in `project.json`, and in `manifest.json` of a bundle | [`project-export.json`](../../app/tests/app/contracts/project-export.json) |
+| **EXT-1** MCP tool contract | Agents and scripts that read a space and act in it on behalf of one person | `trusted.playbook.toolContractVersion` returned by `flux_bootstrap` | [`mcp-tools.json`](../../app/tests/app/contracts/mcp-tools.json) |
+| **EXT-2** project export format | Archives, reports and moving a space's work to other tools | `formatVersion` in `project.json`, and in `manifest.json` of a bundle | [`project-export.json`](../../app/tests/app/contracts/project-export.json) |
 
 The rest of Flux carries no contract and can change in any release:
 
@@ -41,7 +43,7 @@ The rest of Flux carries no contract and can change in any release:
 - `@flux/sdk`;
 - the GitHub bridge's internals.
 
-Flux 0.1 has **no outbound webhooks**. It also has no general REST API for
+Flux 0.2 has **no outbound webhooks**. It also has no general REST API for
 integrations beyond the export route, no supported SDK, no plugins and no export
 re-import. These are deferred, each
 with a condition, in [the deferral table](../product/extension-contracts.md#deferred-scope-record-for-249).
@@ -68,7 +70,7 @@ format version.
 1. Nothing is set up in Flux first. The person who will own the integration signs in to Flux in their browser
    when the client asks, and chooses **Allow** on the one consent page; Flux then makes the client's agent and
    its connection. The connection always belongs to that one person ([F-019](../product/decisions.md)); a
-   workspace admin cannot make one on someone else's behalf. See
+   company admin cannot make one on someone else's behalf. See
    [agent connection](../development/agent-connection.md).
 2. The client adds the server `<FLUX_PUBLIC_ORIGIN>/mcp`, using Streamable HTTP,
    and signs in with OAuth 2.1 authorization code and PKCE S256. The client finds
@@ -84,7 +86,7 @@ format version.
 
 ### Start a session
 
-3. Call `flux_bootstrap` with the project ID and a `clientSessionId`. The
+3. Call `flux_bootstrap` with the space's ID (the API and the tools call a space a project) and a `clientSessionId`. The
    `clientSessionId` is a UUID that you create once per client session.
    - Check that `trusted.playbook.toolContractVersion` is the version you built
      for. The response's own `contractVersion` (2) versions the bootstrap response
@@ -144,15 +146,14 @@ HTTP-level failures:
   `WWW-Authenticate` challenge that points to the resource metadata.
 - **403:** the connection was revoked, or the OAuth client was disabled.
 
-In Flux, a project's **Agents** view shows each connection's state and its last
-action. A connection that cannot act in the project says "Can’t act here now".
-The owner revokes a connection on the **Connect agent** page.
+In Flux, the owner sees each connection under **Settings › AI › Local co-work on this computer**, with its **What it may
+do** setting, and **Disconnect** there revokes it at once. A change a client made shows its change line ("Ada · via Claude Code") with Undo where it was made.
 
 ## EXT-2: read a project export
 
 - **Get it.** Call `GET /api/v1/projects/{projectId}/export`, adding
-  `?format=bundle` for the `.tar.gz` bundle, or run `./flux export <project>`.
-  Exporting needs `project.manage`, which workspace owners and admins have.
+  `?format=bundle` for the `.tar.gz` bundle, or run `./flux export <space>`.
+  Exporting needs `project.manage`, which a space's admins and the company's owners and admins have.
   See [project export](../operations/export.md) for what is included and what
   never is.
 - **Check it.**
@@ -164,8 +165,8 @@ The owner revokes a connection on the **Connect agent** page.
 - **Read it with the rules above.** Ignore unknown fields, and treat unknown enum
   values as unknown. The format has no re-import
   (`provenance.reimportSupported: false`).
-- **Failures.** A missing session gets 401. A project you cannot see gets 404. A
-  project you cannot manage gets 403. A missing or corrupt stored file aborts the
+- **Failures.** A missing session gets 401. A space you cannot see gets 404. A
+  space you cannot manage gets 403. A missing or corrupt stored file aborts the
   download instead of producing a partial bundle. Retrying produces a new,
   complete export.
 

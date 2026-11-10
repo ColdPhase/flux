@@ -3,7 +3,7 @@
 Anyone in the company who is not a guest can make a space **encrypted** when they create it (the
 Encrypted switch in the New space window). Its content is then
 encrypted in the database, in the files volume and in the search index, and its key lives only in
-memory. After every restart of the server the space is **locked** until an owner or admin enters
+memory. After every restart of the server the space is **locked** until one of the space's admins enters
 their unlock password. An encrypted space is always without AI. What it protects, and what it does
 not, is in [encrypted spaces](../product/encrypted-workspaces.md#threat-model): a copy of the data or
 a server taken away switched off, not a running server.
@@ -41,8 +41,8 @@ encrypted space stays locked and none can be created. The variables are in the
 | The keyring, the whole stack (`./flux down` then `./flux up`, `./flux upgrade`, `docker compose restart`) or the host | **Locked.** The boot key is gone. |
 | Only `api` or `worker`, including the stop and start around `./flux backup` | Stay unlocked. The process asks the keyring again. |
 
-After a planned restart, tell the owners and admins of encrypted spaces: each space waits until one
-of them unlocks it in the app. Plain spaces are not affected. Schedule upgrades and host reboots
+After a planned restart, tell the admins of encrypted spaces: each space waits until one
+of them unlocks it in the app. The company's owners and admins cannot, unless they are also admins of that space. Plain spaces are not affected. Schedule upgrades and host reboots
 with this in mind.
 
 ## Swap and memory
@@ -76,10 +76,10 @@ raise `FLUX_API_MEMORY` before raising them.
   keyring.
 - **Keep `FLUX_KEY_PIN_SECRET` with the settings file, not only with the database.** A database
   restored under a different pin secret refuses every encrypted space as tampered.
-- **`./flux restore`** leaves every encrypted space locked. It opens with any owner's or admin's
+- **`./flux restore`** leaves every encrypted space locked. It opens with any of the space's admins'
   unlock password **as it was when the backup was taken**, or the recovery code valid then.
 - **`./flux export`** refuses an encrypted space, because it would write plaintext to the server's
-  disk. A person with the right to manage the project exports it from the app instead.
+  disk. A space's admin exports it from the app instead.
 - A space that says its keys were changed outside Flux can be repaired from a backup; see
   [backup and restore](backup-restore.md#encrypted-spaces-that-say-their-keys-were-changed).
 

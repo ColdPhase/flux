@@ -35,8 +35,9 @@ direction is in the [decision register](product/decisions.md).
 - [Container development](development/containers.md) — Docker/Compose for the application and services.
 - [Application foundation](development/application-foundation.md) — clean start, integration fixture and operations.
 - [Time to first run](development/time-to-first-run.md) — measured time from `git clone` to a running Flux, and what the README missed.
-- [Operations](operations/README.md) — backup schedule, restore, project export, upgrade and disk hygiene.
-- [Integrations](integrations/README.md) — the public extension contracts of v0.1 (MCP tools, project export), their
+- [Operations](operations/README.md) — backup schedule, restore, project export, upgrade (not from v0.1) and disk hygiene.
+- [Integrations](integrations/README.md) — the public extension contracts of v0.2 (MCP tools, project export), their
   compatibility rules, permissions, retries and errors, for integrators and operators.
+- [Release notes](product/release-notes-v0.2.0.md) — what is in Flux v0.2 and what is not; v0.1 is not upgraded.
 - [Architecture](development/architecture.md) — layers, dependency direction, where code and tests go, known debt.
-- [Access policy](development/access-policy.md) — workspaces, projects, grants, agents, drafts and the single authorization choke point.
+- [Access policy](development/access-policy.md) — the company, spaces, roles, agents and the single authorization choke point.

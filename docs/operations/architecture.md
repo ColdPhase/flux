@@ -11,7 +11,7 @@ What runs on a Flux server, how the parts talk, and where the data lives.
 | `db` | PostgreSQL 18, pinned by digest | All records, the job queue and the event log | none published; `default` |
 | `migrate` | Flux | Applies new SQL migrations in order, each in its own transaction, then exits | `default` |
 | `api` | Flux | The web app and PWA, the HTTP API, `/mcp` for agents, WebSocket streams, sign-in and OAuth | `127.0.0.1:FLUX_PORT` → 8080; `default`, `keyring` |
-| `worker` | Flux | Queued jobs: notifications, email, Web Push, assistant runs, encryption key rotation | `default`, `keyring` |
+| `worker` | Flux | Queued jobs: notifications, email, Web Push, agent runs and schedules, encryption key rotation | `default`, `keyring` |
 | `keyring` | Flux | Holds the boot key of encrypted spaces in memory | `keyring` only (internal) |
 
 Optional parts:
@@ -33,7 +33,7 @@ pulls it by digest; a source checkout builds it from the checkout.
 - The API writes to PostgreSQL. Each write records an event; the live stream sends those events to
   open browsers, and the worker picks up queued jobs from the same database. The API and worker do not
   call each other directly, except that the worker asks the API for a short-lived token when it starts
-  an assistant run.
+  an agent's run.
 - Files go to the `files` volume, shared by `api` and `worker`.
 - The `api` and `worker` ask the `keyring` for keys of unlocked encrypted spaces over the internal
   network, with a token.
@@ -51,11 +51,12 @@ pulls it by digest; a source checkout builds it from the checkout.
 
 ## What leaves the server
 
-Only what you turn on: SMTP to your mail server, Web Push to the browser vendors' push services,
-requests to the AI providers that owners connect, link-card fetches (off by default), GitHub (when
-the App is configured), MCP client metadata documents when an agent signs in, and, with the agent
-runtime, the vendors' CLIs through the egress proxy to their documented hosts. Flux itself sends no
-telemetry.
+Only what you turn on, and what people use: SMTP to your mail server, Web Push to the browser vendors' push services,
+requests to the AI providers that people connect, link-card fetches (off by default), GitHub (when
+the App is configured), MCP client metadata documents when a local client signs in, and, with the agent
+runtime, the vendors' CLIs through the egress proxy to their documented hosts. **Agents' web reading and search are on by
+default** (`FLUX_WEB_READS`): when a person's agent needs a public web page, the API server fetches it, and the provider's search receives
+the agent's query; `FLUX_WEB_READS=off` stops both. Flux itself sends no telemetry.
 
 The code-level picture, module boundaries and dependency rules are in the
 [developer architecture](../development/architecture.md).

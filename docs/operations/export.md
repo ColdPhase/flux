@@ -1,11 +1,13 @@
 # Project export
 
-A project export is an open, documented copy of one project that people can read,
-keep and process with ordinary tools. It is not a backup: it has one project and none of the
+A project export is an open, documented copy of one **space** that people can read,
+keep and process with ordinary tools. (What v0.1 called a project is a space in v0.2; the API paths
+and the export format keep the name `project`.) It is not a backup: it has one space and none of the
 private or internal data that a [backup](backup-restore.md) keeps.
 
 **Re-import is not part of this slice.** Format version 1 has no import; every export says so in
-`provenance.reimportSupported: false` and in its README.
+`provenance.reimportSupported: false` and in its README. An export of a v0.1 instance cannot be imported into v0.2 either, and v0.2 does
+not upgrade a v0.1 instance ([upgrade](upgrade.md#from-v01-install-v02-fresh)).
 
 ## Getting an export
 
@@ -13,7 +15,7 @@ private or internal data that a [backup](backup-restore.md) keeps.
 | --- | --- | --- |
 | `GET /api/v1/projects/:projectId/export` | `project.json` (`application/json`) | A signed-in person with `project.manage`. |
 | `GET /api/v1/projects/:projectId/export?format=bundle` | The bundle (`application/gzip`, `Content-Disposition: attachment`) | Same. |
-| `./flux export <project id or exact name> [--as EMAIL] [--output FILE]` | The bundle in `exports/` | The operator, acting as the account `--as` names, by default the workspace's first owner. |
+| `./flux export <space id or exact name> [--as EMAIL] [--output FILE]` | The bundle in `exports/` | The operator, acting as the account `--as` names, by default the company's first owner. |
 
 `project.manage` belongs to a space's admins and to the company's owners and admins
 ([access policy](../development/access-policy.md#rules)). An invisible project answers
@@ -71,28 +73,27 @@ names.
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
 | `docs` | Docs with every version: title, Markdown text, reason, author, time, and `file` (the Markdown file of the current text). |
-| `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
+| `sketches` | The space's Maps (called sketches here) with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions` | All fields: status, blocker, whether it was dropped and what came of it, owner, who proposed and who accepted, supersession. |
 | `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
 | `links` | Typed links (`source`, `affects`, `related`, `mentions`, `part_of`) whose two ends are both in the export. |
 
 ## What is never exported
 
-- other projects of the workspace;
+- other spaces;
 - direct messages;
-- private sketches;
+- private maps (a person's My map);
 - images placed on map thoughts: the thought and its caption are exported, the image
   is not in the export; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;
-- approved project policies for agents: a full backup keeps them, a project export does not;
 - agent connections, OAuth clients, access and refresh tokens and signing keys (secrets of this
   instance), and pending agent proposals, which are not part of the export;
 - events, idempotency records and other internal rows.
 
 Links whose target the export leaves out are dropped, so an export never names an object it does not
-contain. (Private drafts and the placement of a note on a sketch are not in the list above because
+contain. (Private drafts and the placement of a note on a map are not in the list above because
 they no longer exist: they went with "Your notes", #947, #999.) `app/tests/app/export.test.ts`
-checks this with distinctive text in another project, a DM, a private sketch, and another member's
+checks this with distinctive text in another space, a DM, a private map, and another member's
 extra notification address, quiet hours and mute, and also checks that
 no e-mail address, client mutation id, agent connection id or other project
 id appears.

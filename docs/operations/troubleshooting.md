@@ -21,6 +21,7 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | `Set POSTGRES_PASSWORD …`, `Set FLUX_AUTH_SECRET …`, `Set FLUX_PUBLIC_ORIGIN …` | Compose stops before anything starts: fill in the required value in the settings file. |
 | `Bind for 127.0.0.1:8081 failed: port is already allocated` | Another program uses the port. Set another `FLUX_PORT` in the settings file (on the first run: `FLUX_PORT=8090 ./flux up`) and point the proxy at it. |
 | `can't set healthcheck.start_interval as feature require Docker Engine v25 or later` (or `./flux`: `Docker Engine 25 or newer is required`) | The Docker Engine is older than 25 and `docker compose up` creates nothing. Update it: [Docker Engine install](https://docs.docker.com/engine/install/) (`docker version` shows the server version). Flux needs Engine 25 or newer, see the [requirements](requirements.md#software). |
+| `migrate` exits 1 with `FLUX_V01_DATABASE This database was written by Flux v0.1 (schema 2). Flux v0.2 does not upgrade it …` (or `./flux upgrade` prints the same and "Your data is as it was") | The volumes hold a v0.1 database. v0.1 had no users, so v0.2 converts nothing and refuses it before any migration runs. Install v0.2 fresh in a new folder with its own `FLUX_PROJECT`, or after `./flux reset`; to go on with v0.1, check out its v0.1.0 files and run `./flux up`. [What happens and what to do](upgrade.md#from-v01-install-v02-fresh). |
 | `all predefined address pools have been fully subnetted` | Docker ran out of networks on a shared host; see [Docker address pools](#docker-address-pools). |
 | `Compose project … belongs to another checkout` | The settings file names a project another checkout created, often a copied `.env`. Set a different `FLUX_PROJECT`, or pass `--force-project` if you really mean that project. |
 | `migrate` exited with an error, `api` waits | Read `dc logs migrate`. A ledger mismatch means the database belongs to another version: see [migration ledger mismatch](../development/application-foundation.md#migration-ledger-mismatch-118) and restore the matching backup rather than editing the ledger. |
@@ -47,17 +48,18 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | --- | --- |
 | Push notifications | HTTPS origin, all three `FLUX_VAPID_*` set, outbound HTTPS to the push services ([push](mobile-and-push.md)). |
 | Installing on a phone | HTTPS at the root of its own origin; iPhone and iPad install from Safari's Share menu. |
-| Agents answering in Flux | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE` (a release install mounts it itself, see [the guide](release-guide.md#assistant-on-your-own-ai-key-optional)). Also the space's AI must be on. |
-| Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). |
+| Agents answering in Flux (API keys) | `FLUX_PERSONAL_RUNS=on` and a readable `FLUX_BACKGROUND_KEY_HOST_FILE` (a release install mounts it from a Compose file of its own, see [the guide](release-guide.md#agents-on-your-own-ai-key-optional)). Also the space's AI must be on, and the person must not be a guest. Settings › AI says "Off on this Flux server" while neither this nor the runtime below is on. |
+| Sign-in with Claude or ChatGPT subscriptions | `FLUX_AGENT_RUNTIME` set and applied with `./flux up`; `./flux runtime status` ([agent runtime](agent-runtime.md)). A host with Yama `ptrace_scope` 0 stops the runtime with one message and the fix. Agents beyond what the server's memory allows wait with "Waiting for room on the server" (`FLUX_RUNTIME_MAX_RUNS`). |
+| Agents do not search or read the web | `FLUX_WEB_READS=off` turns both off. On, the server needs outbound HTTPS; an agent reads only an address it was given and never one that carries private Flux text. |
 | An MCP client on another computer | It needs an `https` origin; `http://127.0.0.1` works only on the server itself. The server also needs outbound HTTPS to fetch the client's metadata. |
-| Encrypted spaces stay locked | Normal after a restart until an owner or admin unlocks. If unlocking fails with a swap message, see [swap and memory](encrypted-spaces.md#swap-and-memory). |
+| Encrypted spaces stay locked | Normal after a restart until one of the space's admins unlocks. If unlocking fails with a swap message, see [swap and memory](encrypted-spaces.md#swap-and-memory). |
 | Live calls | `GET /api/v1/live-sessions/capabilities` says `configured` only with the [live-media overlay](../development/live-media.md). |
 
 ## The first migration on a slow host (v0.1.0)
 
 Only v0.1.0, only on a fresh, empty database. `migrate` applies each migration file as one statement, and v0.1.0 gave
 it the API's 2 s timeout, so a host where the first file (the whole v0.1 schema) takes longer than 2 s rolls it back on
-every start. The next release gives the migrator its own long bound. To get past it on v0.1.0, apply that file the way
+every start. v0.2 gives the migrator its own long bound, so only v0.1.0 has this problem (and v0.1.0 cannot be upgraded to v0.2). To get past it on v0.1.0, apply that file the way
 `migrate` does, in one transaction, then start again (`migrate` then applies the second file and sets up the job queue itself).
 Run it in the directory of your `compose.yaml`; `IMG` is the `image` value of the release's `release.json`, and
 flux-db-1 is your database container (see docker compose ps):
