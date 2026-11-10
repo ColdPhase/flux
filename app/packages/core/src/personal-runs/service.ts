@@ -377,8 +377,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   }
   const agentNotFound = () => new NotFoundError('Agent', 'AGENT_NOT_FOUND');
 
-  async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
-    const enablement = await ports.runs.enablement(owner);
+  /** Without `agentId`: the first agent's (Assistant's, which answers `/ai`); with it, that agent's own, on its own connection (C-3). */
+  async function status(ports: PersonalRunPorts, owner: string, agentId?: string): Promise<PersonalAssistantStatus> {
+    const enablement = await ports.runs.enablement(owner, agentId ? { agentId } : {});
     // A guest of the company has no enablement, and their keys and plan sign-in are kept but not shown until they are a member again (C-50, #1059).
     const guest = !enablement && await ports.runs.ownerIsGuest(owner);
     const keys = providerEnabled && !guest ? await connections.list(owner) : [];
@@ -656,6 +657,19 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     startBackground,
     startTask,
     status: (principal: Principal) => uow.run((ports) => status(ports, ownerOf(principal))),
+    /**
+     * The status of one of the caller's agents (C-3): removing a connection pauses only the agents that use it, so a chat with an agent on
+     * another connection goes on. Another person's agent, a deleted one or a malformed id is 404; a guest's is their (kept, refused) state.
+     */
+    agentStatus: (principal: Principal, agentId: unknown) => {
+      const owner = ownerOf(principal);
+      if (!isId(agentId)) return Promise.reject(agentNotFound());
+      return uow.run(async (ports) => {
+        const id = agentId.toLowerCase();
+        if (!(await ports.runs.enablement(owner, { agentId: id })) && !(await ports.runs.ownerIsGuest(owner))) throw agentNotFound();
+        return status(ports, owner, id);
+      });
+    },
 
     /** What the caller may choose for an agent's model, grouped by connection (#854); `current` is their first agent's. */
     model: (principal: Principal): Promise<AssistantModelChoice> => {

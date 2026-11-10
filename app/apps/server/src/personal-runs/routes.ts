@@ -23,6 +23,7 @@ import {
   conversationAssistantAnswersPath,
   conversationAssistantRunsPath,
   PERSONAL_ASSISTANT_PATH,
+  agentAssistantStatusPath,
   PERSONAL_RUN_LIMITS,
   type AddAgentMemoryCommand,
   type AssistantModelPick,
@@ -106,6 +107,11 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   registerAssistantJobRoutes(app, db, sessions, boss, composition);
 
   app.get(PERSONAL_ASSISTANT_PATH, async (request) => runs.status(await principal(request)));
+  // One agent's own status (C-3), for its private chat: only its own connection can pause it.
+  app.get<{ Params: { agentId: string } }>(agentAssistantStatusPath(':agentId'), async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return runs.agentStatus(await principal(request), request.params.agentId);
+  });
   // What a person may choose for an agent's model (F-027 AST-11, #854): every connection's list, never another person's.
   app.get(ASSISTANT_MODEL_PATH, async (request, reply) => {
     reply.header('cache-control', 'no-store');

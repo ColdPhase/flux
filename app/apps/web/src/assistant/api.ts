@@ -1,5 +1,5 @@
 import {
-  ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH,
+  ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH, agentAssistantStatusPath,
   assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath,
   agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
@@ -14,6 +14,8 @@ import { request } from '../api/client';
 // resolves the owner, agent and key connection from the session, never from these bodies.
 
 export const getAssistantStatus = (signal?: AbortSignal) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { signal });
+/** One agent's own status (C-3), for its private chat: another agent's removed connection never pauses it. */
+export const getAgentStatus = (agentId: string, signal?: AbortSignal) => request<PersonalAssistantStatus>(agentAssistantStatusPath(agentId), { signal });
 
 /** "Tell whoever runs Flux": one Needs-you item to the workspace's owners (F-027 Journey 6). */
 export const tellOperator = (workspaceId: string, client: 'claude_code' | 'codex' | null | undefined) =>
