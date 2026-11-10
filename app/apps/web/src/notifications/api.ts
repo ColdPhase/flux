@@ -42,6 +42,10 @@ export const unsubscribe = (token: string) => request<UnsubscribeResponse>(`${NO
 export const INBOX_CHANGED = 'flux:inbox-changed';
 export const announceInboxChange = () => window.dispatchEvent(new Event(INBOX_CHANGED));
 
+/** A reply answered these Inbox items (#1170): the composer says so, the shell takes them out and offers Undo. */
+export const INBOX_ANSWERED = 'flux:inbox-answered';
+export const announceAnswered = (keys: readonly string[]) => window.dispatchEvent(new CustomEvent<readonly string[]>(INBOX_ANSWERED, { detail: keys }));
+
 /** Removes accepted proposals from every mounted queue before their next read (Inbox to Home navigation). */
 export interface AcceptedInboxItem { ownerId: string; key: string }
 export const NEEDS_YOU_ACCEPTED = 'flux:needs-you-accepted';

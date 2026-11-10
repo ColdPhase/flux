@@ -192,6 +192,8 @@ function AgentsAndAi() {
   // The caller's own API keys only; the list is owner-scoped on the server. Connect AI shows them.
   const [keys, setKeys] = useState<BackgroundComputeConnection[] | null>(null);
   const [keysFailed, setKeysFailed] = useState(false);
+  // Connect AI lists a connection, usable or not: Your agents says what waits for it (#1173).
+  const [listed, setListed] = useState(false);
   const [failed, setFailed] = useState(false);
   const loadKeys = useCallback((signal?: AbortSignal) => {
     listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
@@ -233,8 +235,8 @@ function AgentsAndAi() {
     <>
       {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line; then the person's agents, each
           using one of them; then the person's own agent apps. */}
-      <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} />
-      <AgentsList />
+      <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} onListed={setListed} />
+      <AgentsList listed={listed} />
       <section aria-labelledby="ai-agent-app">
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>

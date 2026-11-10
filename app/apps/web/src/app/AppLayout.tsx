@@ -14,6 +14,7 @@ import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
+import { useAnsweredInbox } from '../notifications/answered';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
 import { ShellContext, isOwned, type CreateRequest, type DetailsView, type OwnedPanel } from './shellContext';
@@ -299,6 +300,8 @@ function AppLayoutContent() {
   }, () => revalidator.revalidate());
 
   const inboxUnread = useInboxDot(me.user.id, location.pathname);
+  // A reply that answered a question or mention waiting in the Inbox takes it out, with Undo (#1170).
+  useAnsweredInbox(me.user.id);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -528,16 +531,16 @@ function AppLayoutContent() {
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = reachableSpaces.find((project) => project.id === projectId);
-  // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
-  // settings (GitHub), and the
-  // Map tab to the sketch (or list) that was open there.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|$)/.test(location.pathname);
+  // The Conversation tab returns to the conversation that was open before any other page of the space (Tasks, Map, Wiki,
+  // its settings, #1169), and the Map tab to the sketch (or list) that was open there. Only the conversation's own addresses
+  // count as the conversation, so a page outside the four views never becomes where Conversation leads.
+  const onConversation = /^\/projects\/[^/]+(\/conversations\/[^/]+)?\/?$/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
   const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
-    if (!projectId || (onOtherView && !onMap)) return;
+    if (!projectId || (!onConversation && !onMap)) return;
     remember(onMap ? 'map' : 'conversation', me.user.id, projectId, `${location.pathname}${location.search}`);
-  }, [me.user.id, projectId, onOtherView, onMap, location.pathname, location.search]);
+  }, [me.user.id, projectId, onConversation, onMap, location.pathname, location.search]);
   const shellProject = useProjectShell();
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const workSummary = useProjectWorkSummary();
@@ -545,7 +548,7 @@ function AppLayoutContent() {
   // Conversation · Tasks · Map · Wiki, every space from the start (#873); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
   const projectViews = projectId ? [
-    { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
+    { id: 'conversation', label: 'Conversation', to: onConversation ? `${location.pathname}${location.search}` : lastConversationPath(me.user.id, projectId) },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },

@@ -14,6 +14,7 @@ import { openRows } from '../sealing.js';
 const s = schema.needsYouStates;
 const d = schema.projectDecisions;
 const n = schema.notifications;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function needsYouRows(db: DbExecutor) {
   return {
@@ -71,6 +72,31 @@ export function needsYouRows(db: DbExecutor) {
         id: row.id, projectId: row.projectId, conversationId: row.conversationId, messageId: row.messageId, taskId: row.taskId,
         agent: { id: row.agentId, name: agentName }, question: row.question, options: row.options, createdAt: row.createdAt, answered: row.answeredAt !== null,
       }));
+    },
+
+    /**
+     * A reply of the person in a conversation answers what they were asked or mentioned in there (#1170): their unread question and
+     * mention notifications that open a message of this conversation are read and marked done, as Done in the Inbox does, so Undo
+     * (`restore`) brings them back. An agent's question card is answered with its own answers and stays. Returns the Inbox keys it took out.
+     */
+    async answerIn(userId: string, projectId: string, conversationId: string): Promise<string[]> {
+      const at = `/projects/${projectId.toLowerCase()}/conversations/${conversationId.toLowerCase()}#message-`;
+      const rows = await db.select({ id: n.id, url: n.url }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
+        eq(n.sourceType, 'project'), eq(n.sourceId, projectId), sql`starts_with(lower(${n.url}), ${at})`));
+      if (!rows.length) return [];
+      const messageOf = (url: string | null) => (url ?? '').slice(at.length).toLowerCase();
+      const messages = [...new Set(rows.map((row) => messageOf(row.url)).filter((id) => UUID.test(id)))];
+      const q = schema.agentQuestions;
+      const cards = new Set(messages.length ? (await db.select({ messageId: q.messageId }).from(q)
+        .where(and(eq(q.askedUserId, userId), inArray(q.messageId, messages)))).map((row) => row.messageId.toLowerCase()) : []);
+      const ids = rows.filter((row) => !cards.has(messageOf(row.url))).map((row) => row.id);
+      if (!ids.length) return [];
+      await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), inArray(n.id, ids), isNull(n.readAt)));
+      const done = { state: 'done' as const, until: null, untilWorkId: null };
+      await db.insert(s).values(ids.map((id) => ({ userId, itemKey: `note:${id}`, ...done }))).onConflictDoUpdate({
+        target: [s.userId, s.itemKey], set: { ...done, updatedAt: sql`now()` },
+      });
+      return ids.map((id) => `note:${id}`);
     },
 
     /** Whether the person's own notification exists; read or unread is set on it. */

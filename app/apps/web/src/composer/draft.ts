@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useSyncExternalStore } f
 import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type Conversation, type ConversationMessage, type MessageReferenceKind, type SendMessageCommand, type StagedFile } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { reply, startConversation } from '../conversations/api';
+import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, stageFile } from './api';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
@@ -49,8 +50,11 @@ export interface PendingSend {
 }
 /** An uploading file's words: its percentage while bytes go out, "Sending" once all are out, until the server confirms (#348). */
 export const uploadLabel = (file: DraftFile) => file.progress === undefined ? 'Uploading…' : file.progress >= 100 ? 'Sending…' : `Uploading ${file.progress}%`;
-/** A confirmed message, kept for this visit so a view shows it until its own read includes it. */
-export interface SentMessage { id: string; message: ConversationMessage; conversation?: Conversation }
+/**
+ * A confirmed message, kept for this visit so a view shows it until its own read includes it. `answered`: the Inbox items a reply
+ * answered (#1170), out of the person's Inbox as Done takes them, until Undo.
+ */
+export interface SentMessage { id: string; message: ConversationMessage; conversation?: Conversation; answered?: string[] }
 export type SendOutcome =
   /** `waited`: it was stored only after waiting for the connection, not as the person sent it. */
   | { status: 'delivered'; message: ConversationMessage; conversation?: Conversation; waited: boolean }
@@ -247,8 +251,14 @@ async function deliver(projectId: string, context: string, command: SendMessageC
     const conversation = await startConversation(projectId, command);
     return { id: command.clientMessageId, message: conversation.messages.find((item) => item.sequence === 1) ?? conversation.messages[0]!, conversation };
   }
-  if (context.startsWith('conversation:')) return { id: command.clientMessageId, message: await reply(context.slice('conversation:'.length), command) };
-  if (context.startsWith('task:')) return { id: command.clientMessageId, message: await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' }) };
+  if (context.startsWith('conversation:')) {
+    const { answered, ...message } = await reply(context.slice('conversation:'.length), command);
+    return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
+  }
+  if (context.startsWith('task:')) {
+    const { answered, ...message } = await contributeToTask(context.slice('task:'.length), { ...command, kind: 'text' });
+    return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
+  }
   if (context.startsWith('dm:')) {
     // `dm:<dmId>` posts to the conversation, `dm:<dmId>/<rootId>` is a private reply in that message's thread (#536).
     const [dmId, rootId] = context.slice('dm:'.length).split('/');
@@ -335,6 +345,8 @@ function kick(key: string) {
     put(key, { ...current, pending: current.pending.filter((other) => other.id !== item.id),
       sent: current.sent.some((other) => other.message.id === sent.message.id) ? current.sent : [...current.sent, sent] });
     sentListeners.forEach((listener) => listener(sent));
+    // What the reply answered in the person's Inbox has left it (#1170); the shell says so with Undo.
+    if (sent.answered?.length) announceAnswered(sent.answered);
     const latest = current.pending.find((other) => other.id === item.id);
     settle(item.id, { status: 'delivered', message: sent.message, conversation: sent.conversation, waited: !!(latest ?? item).waited });
     // Only now, with this message out of the queue: being reachable again sends what waits.

@@ -1,4 +1,4 @@
-import { fileRows, taskDiscussionRows, workRows, type Database, type Transaction } from '@flux/db';
+import { fileRows, needsYouRows, taskDiscussionRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { lockAttachments, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from './access.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
@@ -10,6 +10,7 @@ export function taskDiscussionPorts(tx: Transaction, events: TaskDiscussionPorts
   return {
     authorOwners: { read: (projectId, workspaceId, agentIds) => projectAuthorOwners(tx, projectId, workspaceId, agentIds) },
     access: policyWorkAccess(tx), work: workRows(tx), discussion: taskDiscussionRows(tx),
+    inbox: { answerIn: (userId, projectId, conversationId) => needsYouRows(tx as unknown as DbExecutor).answerIn(userId, projectId, conversationId) },
     events,
     references: { assertReadable: (principal, workspaceId, references) => messageReferences(tx).assertReadable(principal, workspaceId, references),
       save: (messageId, workspaceId, references) => messageReferences(tx).save({ kind: 'project', id: messageId }, workspaceId, references),

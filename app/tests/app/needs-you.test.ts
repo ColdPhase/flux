@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, Decision, InboxResponse, Material, NeedsYouItem, NeedsYouResponse, Project, Workspace, WorkItem } from '@flux/contracts';
+import type { Conversation, Decision, InboxResponse, Material, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, Workspace, WorkItem } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -172,5 +172,61 @@ describe('the Inbox needs-you queue', () => {
     await restore(owner, note.key);
     assert.ok(find(await queue(owner), note.key));
     assert.equal(json<InboxResponse>(await owner.browser.request('GET', '/api/v1/inbox'), 200).items.find((item) => item.id === note.key.slice(5))?.readAt, null);
+  });
+
+  test('a reply where someone asked or mentioned you answers it: it leaves the Inbox as Done takes it, and Undo brings it back (#1170)', async () => {
+    const asked = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`,
+      { body: '@Needs Owner is the readings sheet shared already?', clientMessageId: randomUUID() }), 201);
+    json(await post(partner, `/api/v1/conversations/${asked.id}/messages`, { body: '@Needs Owner the old sheet is in the shed folder.', clientMessageId: randomUUID() }), 201);
+    const elsewhere = json<Conversation>(await post(partner, `/api/v1/projects/${lamp.id}/conversations`,
+      { body: '@Needs Owner can you water the far beds tomorrow?', clientMessageId: randomUUID() }), 201);
+    const inThread = (response: NeedsYouResponse) => response.items.filter((item) => item.url.includes(asked.id));
+    const waiting = await waitFor(async () => {
+      const current = await queue(owner);
+      const there = current.items.find((item) => item.url.includes(elsewhere.id));
+      return inThread(current).length === 2 && there ? { here: inThread(current), there } : undefined;
+    }, 'the question, the mention and the question elsewhere reach the queue');
+    assert.deepEqual(waiting.here.map((item) => item.kind).sort(), ['mention', 'question']);
+    const keys = waiting.here.map((item) => item.key).sort();
+    const readAt = async (key: string) => json<InboxResponse>(await owner.browser.request('GET', '/api/v1/inbox'), 200).items.find((item) => item.id === key.slice(5))?.readAt;
+
+    // Opening the thread answers nothing, and neither does someone else's reply in it.
+    json(await owner.browser.request('GET', `/api/v1/conversations/${asked.id}`), 200);
+    const other = json<SentConversationMessage>(await post(second, `/api/v1/conversations/${asked.id}/messages`, { body: 'I think it is.', clientMessageId: randomUUID() }), 201);
+    assert.equal(other.answered, undefined, 'their reply answered nothing of theirs');
+    assert.equal(inThread(await queue(owner)).length, 2, 'what was asked still waits for the owner');
+
+    // The owner's reply in the thread answers both, and only what waits there.
+    const command = { body: 'Yes, it is shared in the Wiki.', clientMessageId: randomUUID() };
+    const sent = json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${asked.id}/messages`, command), 201);
+    assert.deepEqual([...(sent.answered ?? [])].sort(), keys, 'the reply names what it answered');
+    const after = await queue(owner);
+    assert.equal(inThread(after).length, 0, 'the answered question and mention left the Inbox');
+    assert.equal(after.count, after.items.length);
+    assert.ok(find(after, waiting.there.key), 'a question in another conversation still waits');
+    for (const key of keys) assert.ok(await readAt(key), 'answering reads the notification, as Done does');
+    // Sending the same reply again (a retry) answers nothing more.
+    assert.equal(json<SentConversationMessage>(await post(owner, `/api/v1/conversations/${asked.id}/messages`, command), 201).answered, undefined);
+
+    // Undo is Done's: each comes back, unread.
+    for (const key of keys) assert.equal((await restore(owner, key)).status, 204);
+    assert.deepEqual(inThread(await queue(owner)).map((item) => item.key).sort(), keys, 'Undo brings both back');
+    for (const key of keys) assert.equal(await readAt(key), null);
+    for (const key of [...keys, waiting.there.key]) json(await resolve(owner, key, { action: 'done' }), 200);
+  });
+
+  test('a message in a task\'s discussion answers what was asked there, with the same Undo (#1170)', async () => {
+    const task = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Seal the junction boxes' }), 201);
+    const asked = json<{ conversationId: string }>(await post(partner, `/api/v1/work/${task.id}/discussion`,
+      { body: '@Needs Owner which sealant did we order?', clientMessageId: randomUUID(), kind: 'text' }), 201);
+    const note = await waitFor(async () => (await queue(owner)).items.find((item) => item.url.includes(asked.conversationId)), 'the question in the task reaches the queue');
+    assert.equal(note.kind, 'question');
+    const sent = json<SentConversationMessage>(await post(owner, `/api/v1/work/${task.id}/discussion`,
+      { body: 'The grey silicone one, two tubes.', clientMessageId: randomUUID(), kind: 'text' }), 201);
+    assert.deepEqual(sent.answered, [note.key]);
+    assert.equal(find(await queue(owner), note.key), undefined, 'answered in the task, it left the Inbox');
+    assert.equal((await restore(owner, note.key)).status, 204);
+    assert.ok(find(await queue(owner), note.key), 'Undo brings it back');
+    json(await resolve(owner, note.key, { action: 'done' }), 200);
   });
 });

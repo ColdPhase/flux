@@ -128,6 +128,12 @@ export type MessageIdentity =
 /** Existing human JSON is unchanged; agents never occupy a human account field. */
 export type ConversationMessage = ConversationMessageFields & MessageIdentity;
 export type HumanConversationMessage = ConversationMessageFields & { authorId: string; author?: never };
+/**
+ * `POST /api/v1/conversations/:conversationId/messages`: the stored reply. `answered` (#1170) names the Inbox items this reply answered,
+ * as `note:<id>` keys: the questions and mentions of its author in this conversation, read and marked done as Done marks them, so
+ * `DELETE /api/v1/needs-you/:key` (Undo) brings each back. It is absent when the reply answered nothing, and on a retried send.
+ */
+export type SentConversationMessage = ConversationMessage & { answered?: string[] };
 export type ConversationIdentity =
   | { createdBy: string; createdByActor?: never }
   | { createdBy: null; createdByActor: { kind: 'agent'; id: string; name?: string } };

@@ -252,6 +252,37 @@ class SpaceSettings(unittest.TestCase):
         type(self).ids["people"] = self.names(page.get_by_role("list", name="People in Kiln firmware"))
         shot(page, "874-space-settings-admin")
 
+    def test_02b_conversation_from_the_settings_opens_the_conversation_last_open_there(self) -> None:
+        """#1169: on a space's settings the view switch's Conversation leads to the conversation last open in the space, on the computer
+        and the phone. The settings never become where Conversation leads, also after another view was chosen from them."""
+        self.ensure_world()
+        ada = self.page("ada")
+        made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Glaze tests", "visibility": "restricted", "people": [self.ids["kai"]]}, status=201)
+        pid = made["id"]
+        root = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Cone 6 glaze tiles are in the kiln until Friday.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        thread = f"/projects/{pid}/conversations/{root['id']}"
+        for viewport in (DESKTOP, PHONE):
+            tap = viewport == PHONE
+            with self.subTest(width=viewport["width"]):
+                page = self.page("ada", viewport)
+                page.goto(thread)
+                expect(page.get_by_text("Cone 6 glaze tiles are in the kiln until Friday.").first).to_be_visible()
+                page.goto(f"/projects/{pid}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                conversation = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Conversation"))
+                expect(conversation).to_have_attribute("href", thread)
+                view_tab(page, "Conversation", tap)
+                expect(page).to_have_url(re.compile(re.escape(thread) + "$"))
+                expect(page.get_by_role("heading", name="Space settings")).to_have_count(0)
+                # Settings, then Tasks: Conversation still leads to the conversation, not back to the settings.
+                page.goto(f"/projects/{pid}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                view_tab(page, "Tasks", tap)
+                expect(page).to_have_url(re.compile(rf"/projects/{pid}/tasks"))
+                expect(conversation).to_have_attribute("href", thread)
+                view_tab(page, "Conversation", tap)
+                expect(page).to_have_url(re.compile(re.escape(thread) + "$"))
+
     def test_03_a_member_reads_the_settings_and_can_leave(self) -> None:
         self.ensure_world()
         pid = self.ids["space"]

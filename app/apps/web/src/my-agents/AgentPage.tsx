@@ -52,6 +52,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
   const group = choice?.groups.find((item) => item.connection === agent.model.connection);
   const uses = group ? `uses your ${group.label}` : 'has no connection now';
   const picked = group?.options.find((option) => option.id === agent.model.model);
+  // Opus and the Claude limit are named only to someone whose Claude plan offers Opus (#1173); an API key spends its own budget.
+  const opus = !!choice?.groups.some((item) => item.account === 'claude_plan' && item.options.some((option) => option.id === 'opus'));
 
   async function save(change: Parameters<typeof updateMyAgent>[1], message: string) {
     setError('');
@@ -101,7 +103,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
         <textarea id="agent-instructions" className="agp__input agp__text" rows={5} value={instructions} maxLength={AGENT_LIMITS.instructions} onChange={(event) => setInstructions(event.target.value)}
           onBlur={saveInstructions} placeholder="What it is for and how it should work. Plain words are enough." />
 
-        <p className="agp__label" id="agent-model">Model<span className="agp__hint"> · One per agent. Opus thinks longest and uses your Claude limit fastest.</span></p>
+        <p className="agp__label" id="agent-model">Model<span className="agp__hint"> · One per agent.{opus ? ' Opus thinks longest and uses your Claude limit fastest.' : ''}</span></p>
         {choice?.groups.length ? (
           <div className="agp__models" role="group" aria-labelledby="agent-model">
             {choice.groups.map((item) => (

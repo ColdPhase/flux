@@ -103,6 +103,11 @@ export interface TaskDiscussionPorts {
     save(messageId: string, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
     cards(principal: Principal, workspaceId: string, messageIds: readonly string[]): Promise<Map<string, MessageReferenceCard[]>>;
   };
+  /**
+   * A person's message in a task's discussion answers what they were asked or mentioned in it (#1170): their question and mention
+   * notifications there leave their Inbox as Done takes them. Returns the Inbox keys; an entry point without it answers nothing.
+   */
+  inbox?: { answerIn(userId: string, projectId: string, conversationId: string): Promise<string[]> };
   access: WorkAccess;
   work: Pick<WorkRepository, 'locate' | 'findWork' | 'names' | 'prepareTaskUse'>;
   discussion: TaskDiscussionRepository;

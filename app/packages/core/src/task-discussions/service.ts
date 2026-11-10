@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import type { AgentProjectOwner, ConversationMessage, ConversationWindowQuery, TaskContributionCommand, TaskDiscussion } from '@flux/contracts';
+import type { AgentProjectOwner, ConversationMessage, ConversationWindowQuery, SentConversationMessage, TaskContributionCommand, TaskDiscussion } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import { normalizeConversationWindow, normalizeMessage } from '../conversation/commands.js';
 import type { Principal } from '../principal.js';
@@ -173,7 +173,7 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
      * heartbeats, acknowledgments and private logs never call this. `byFlux` is for the server's agent-task drain only, which
      * writes an in-app agent's report, question, answer and status lines (see `NewDiscussionMessage.byFlux`); no route or tool passes it.
      */
-    async contribute(principal: Principal, workIdInput: string, command: TaskContributionCommand, options: { byFlux?: boolean } = {}): Promise<ConversationMessage> {
+    async contribute(principal: Principal, workIdInput: string, command: TaskContributionCommand, options: { byFlux?: boolean } = {}): Promise<SentConversationMessage> {
       const workId = id(workIdInput, 'workId');
       const kind = directKind(command?.kind);
       const input = normalizeMessage(command);
@@ -202,7 +202,9 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
         if (!replayed) await fence.mark();
         if (!replayed && input.references.length) await ports.references!.save(message.id, project.workspaceId, input.references);
         const cited = (await ports.references?.cards(principal, project.workspaceId, [message.id]))?.get(message.id);
-        return { ...wire(message, await ports.work.names([message.author])), ...(cited?.length ? { references: cited } : {}) };
+        // A person's words here answer what they were asked or mentioned in this discussion (#1170).
+        const answered = !replayed && author.kind === 'human' && ports.inbox ? await ports.inbox.answerIn(author.id, project.projectId, message.conversationId) : [];
+        return { ...wire(message, await ports.work.names([message.author])), ...(cited?.length ? { references: cited } : {}), ...(answered.length ? { answered } : {}) };
       });
     },
   };

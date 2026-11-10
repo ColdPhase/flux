@@ -17,7 +17,8 @@ import './my-agents.css';
 
 const failure = (cause: unknown) => (cause instanceof ApiError && cause.status < 500 && cause.message ? cause.message : 'Couldn’t make it. Try again.');
 
-export function AgentsList() {
+/** `listed`: Connect AI above lists a connection, usable or not. */
+export function AgentsList({ listed = false }: { listed?: boolean } = {}) {
   const { agents, workspace } = useShellData();
   const { choice, loaded } = useAssistantModel();
   const revalidator = useRevalidator();
@@ -62,6 +63,9 @@ export function AgentsList() {
         <ul className="sset-card agl__list" aria-label="Your agents">
           {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} answers={index === 0} choice={choice} />)}
         </ul>
+      ) : loaded && !connected && listed ? (
+        // A connection is listed above, but none can run an agent (a key whose model has no known price, a plan to sign in to again).
+        <div className="sset-card agl__empty"><span className="agl__empty-text">None of your connections can run an agent yet. Your first agent, Assistant, appears once one can and answers <code>/ai</code>.</span></div>
       ) : loaded && !connected ? (
         <div className="sset-card agl__empty"><span className="agl__empty-text">Connect AI first. Your first agent, Assistant, appears then and answers <code>/ai</code>.</span></div>
       ) : loaded ? (

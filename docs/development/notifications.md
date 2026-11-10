@@ -76,7 +76,12 @@ The settings page sends its saves one after another, numbered, and shows only th
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`) at `needsYou`, to every
   reason (adding `reply`) at `everything`, and to none at `nothing`. Email follows push except for `invitation`: a live call
   invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
-  matrix and the per-reason inbox switches went with C-33.
+  matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
+  (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, direct messages, tasks that need you, decisions about
+  your work and invitations to work together", then "Also every reply in conversations you are part of";
+  `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
+  for you while blocked, ready for you to check or able to continue. An agent's question is a `question`. A change an agent prepared
+  that waits for your OK is in the Inbox only; it sends no push or email yet (#1186).
 - **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
   address that is switched on and confirmed (the sign-in address and each confirmed extra address, each with its own
   switch, C-49). It is a switch beside the level, not a second level: at `nothing` it sends nothing, and with it off no

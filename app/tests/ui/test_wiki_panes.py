@@ -25,6 +25,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
+from create_window import kind_tab, open_create
 from wiki_text import existing_text, saved, saved_version, text_of, type_at_end, wait_until_shared
 
 # WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
@@ -303,6 +304,36 @@ class WikiPanesJourney(unittest.TestCase):
         pages = self.switcher(page)
         expect(pages.get_by_role("link", name="Bench test log")).to_have_attribute("aria-current", "page")
         expect(pages.get_by_role("link")).to_have_count(4)
+
+    def test_04b_text_typed_at_once_after_create_page_is_kept(self) -> None:
+        """#1171: a page made in the Create window opens ready to write. Text typed the moment its editor shows, before its room has
+        opened, is kept: every character is shared and saved, and it is all there after a reload."""
+        page = self.page("owner")
+        page.goto(self.url("lamp"))
+        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
+        open_create(page)
+        kind_tab(page, "Page").click()
+        made = page.get_by_role("dialog", name="New page")
+        made.get_by_role("textbox", name="Page title").fill("Soldering notes")
+        made.get_by_role("button", name=re.compile("^Create page")).click()
+        # At once: typing starts in the frame the new page's editor is there (checked on every frame), with no wait for its room, its
+        # focus or its state. The page left behind keeps its own editor while the switch is under way, so the new page is named.
+        page.wait_for_function("""(title) => [...document.querySelectorAll('.wiki-page')]
+          .some((frame) => frame.querySelector('h2')?.textContent?.includes(title) && frame.querySelector('.cm-content[aria-label="Page text"]'))""",
+                               arg="Soldering notes", polling="raf")
+        typed = "Tin the tip first, then flux the joint and hold the iron for three seconds."
+        page.keyboard.type(typed)
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/docs/[0-9a-f-]{{36}}$"))
+        text = page.locator(".wiki-page", has=page.get_by_role("heading", level=2, name="Soldering notes")).locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_be_focused()
+        created = next(item for item in self.docs(page) if item["title"] == "Soldering notes")
+        doc = saved_version(page, created["id"], typed)
+        self.assertEqual(doc["body"], typed, "every character typed at once is saved, once")
+        expect(saved(page)).to_be_visible()
+        page.reload()
+        wait_until_shared(page)
+        expect(text).to_contain_text("hold the iron for three seconds")
+        self.assertEqual(text_of(text), typed)
 
     def choose_file(self, page: Page, name: str, data: bytes, mime: str) -> None:
         with page.expect_file_chooser() as chooser:
