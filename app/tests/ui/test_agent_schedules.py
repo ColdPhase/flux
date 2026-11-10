@@ -67,8 +67,8 @@ class AgentSchedulesJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, *, phone: bool = False, narrow: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def context(self, *, phone: bool = False, narrow: bool = False, zone: str = "Europe/Warsaw") -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": zone}
         if narrow:
             # The smallest phone Flux is held to (docs/design/adaptive-workspaces.md): 320 by 568.
             options.update(viewport=NARROW, device_scale_factor=2, is_mobile=True, has_touch=True)
@@ -112,6 +112,16 @@ class AgentSchedulesJourney(unittest.TestCase):
         page.locator("#agent-composer").fill(words)
         page.get_by_role("button", name=re.compile("^Send to ")).click()
 
+    def saved_zone(self, page: Page, want: str) -> str:
+        """The zone `GET /api/v1/me` holds for Jo once the shell has saved its browser's (it does so without waiting), or the last one read."""
+        zone = ""
+        for _ in range(50):
+            zone = self.api(page, "GET", "/api/v1/me", status=200)["user"]["timeZone"]
+            if zone == want:
+                break
+            page.wait_for_timeout(100)
+        return zone
+
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
@@ -126,6 +136,8 @@ class AgentSchedulesJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
+        # Her browser is in Warsaw: the shell saved its zone on her, with nothing for her to set (#1168, C-57).
+        self.assertEqual(self.saved_zone(page, "Europe/Warsaw"), "Europe/Warsaw")
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Community garden"}, status=201)
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Garden sensors", "visibility": "workspace"}, status=201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "LoRa for the far beds.", "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -154,6 +166,8 @@ class AgentSchedulesJourney(unittest.TestCase):
         expect(ready).not_to_contain_text("Off until you turn it on.")
         jobs = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['agent']}/schedules", status=200)["items"]
         self.assertEqual([(job["title"], job["enabled"], job["agentId"]) for job in jobs], [("Garden summary", True, self.ids["agent"])])
+        # Made in Jo's zone, so "9:00" is 9:00 on her clock (#1168): not UTC, where it would run at 10:00 in Warsaw.
+        self.assertEqual(jobs[0]["timeZone"], "Europe/Warsaw")
         # Change: what it does is Jo's to edit, and the time of a weekday schedule.
         ready.get_by_role("button", name="Change").click()
         form = ready.get_by_role("form", name="Change Garden summary")
@@ -323,6 +337,36 @@ class AgentSchedulesJourney(unittest.TestCase):
         meta.scroll_into_view_if_needed()
         self.assertLessEqual(meta.bounding_box()["height"], 24, "the result's header is one line at 320")
         self.assertLessEqual(meta.bounding_box()["x"] + meta.bounding_box()["width"], NARROW["width"], "and ends inside the window at 320")
+
+    def test_08_the_time_shown_is_the_hour_it_runs_on_jos_clock_and_another_zone_names_it(self) -> None:
+        # In Warsaw: the list says 9:00 and its next time is 9:00 on the browser's own clock, the hour the schedule runs (#1168).
+        page = self.agent_page()
+        row = page.locator("[data-schedule]").filter(has_text="Garden summary")
+        jobs = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['agent']}/schedules", status=200)["items"]
+        garden = next(job for job in jobs if job["title"] == "Garden summary")
+        self.assertEqual(garden["timeZone"], "Europe/Warsaw")
+        label = garden["next"][0]["label"]
+        self.assertRegex(label, r" 9:00$")
+        on_clock = page.evaluate("(at) => { const d = new Date(at); return `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')} ${d.getDay()}`; }", garden["next"][0]["at"])
+        hour, weekday = on_clock.split(" ")
+        self.assertEqual(hour, "9:00", "the next run is 9:00 on the browser's clock")
+        self.assertIn(int(weekday), range(1, 6), "on a weekday")
+        expect(row).to_contain_text(f"Weekdays at 9:00 · Next {label}")
+        expect(row).not_to_contain_text("Warsaw time")
+        # On a trip to New York: the person's zone follows the browser, and a schedule made at home keeps running at 9:00 Warsaw time and says so.
+        away = self.page(zone="America/New_York")
+        away.goto(f"/agents/{self.ids['agent']}")
+        expect(away.locator("#agent-composer")).to_be_visible()
+        header = away.locator("[data-schedules-header]")
+        expect(header).to_contain_text("Weekdays at 9:00, Warsaw time · Garden summary")
+        header.get_by_role("button", name=re.compile("Weekdays at 9:00")).click()
+        expect(header.locator("[data-schedule]").filter(has_text="Garden summary")).to_contain_text(f"Weekdays at 9:00, Warsaw time · Next {label}")
+        self.assertEqual(self.saved_zone(away, "America/New_York"), "America/New_York")
+        shot(away, "schedules-1440-chat-header-new-york")
+        # Back home, the zone is Warsaw again, and the list says no zone.
+        home = self.chat()
+        expect(home.locator("[data-schedules-header]")).to_contain_text("Weekdays at 9:00 · Garden summary")
+        self.assertEqual(self.saved_zone(home, "Europe/Warsaw"), "Europe/Warsaw")
 
 
 if __name__ == "__main__":

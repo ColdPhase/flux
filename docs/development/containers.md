@@ -254,7 +254,8 @@ docker compose --env-file docker/.env -p flux28 -f docker/compose.source.yaml --
 Endpoints: Better Auth under `/api/auth/*` (`sign-up/email`, `sign-in/email`,
 `sign-out`, `request-password-reset`, `reset-password`, and with single sign-on
 `sign-in/social` with the provider id and `callback/<provider id>`; a raw `idToken` sign-in is refused); Flux session routes
-`GET /api/v1/me`, `GET /api/v1/sessions` (never returns tokens),
+`GET /api/v1/me` (with the person's time zone), `PUT /api/v1/me/time-zone` (the shell saves its browser's zone when it differs, C-57),
+`GET /api/v1/sessions` (never returns tokens),
 `DELETE /api/v1/sessions/:id` and `POST /api/v1/sessions/revoke-others`.
 Server code resolves the caller with `requirePrincipal(request)` from
 `app/apps/server/src/identity`, which maps the session user to a `human` `Principal`.

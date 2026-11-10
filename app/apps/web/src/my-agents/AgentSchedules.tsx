@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ASSISTANT_SCHEDULE_STARTERS, type AssistantJob, type MyAgent } from '@flux/contracts';
 import { Button, Icon, Spinner } from '../ui';
 import { ChangeSchedule } from './ChangeSchedule';
-import { whenText } from './schedules';
+import { scheduleWhen, whenText } from './schedules';
 import { useAgentSchedules, type AgentSchedulesState } from './useAgentSchedules';
 
 // An agent's schedules (F-036 AG-9, #858; mockup AgentReports "Schedules are listed in the conversation's header"): the owner's own sentences, told to
@@ -27,7 +27,7 @@ function NoteLine({ state }: { state: AgentSchedulesState }) {
 
 /** "Every weekday at 9:00 · Off · Next Mon 9:00 · Done: …". */
 function detail(job: AssistantJob) {
-  const parts = [job.words];
+  const parts = [scheduleWhen(job)];
   if (!job.enabled) parts.push('Off');
   else if (job.next[0]) parts.push(`Next ${job.next[0].label}`);
   if (job.last) parts.push(`${whenText(job.last.at, job.timeZone)}: ${job.last.line}`);
@@ -118,7 +118,7 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
     <div className="agc__sched" data-schedules-header="">
       <button type="button" className="agc__sched-row" aria-expanded={open} aria-controls="agent-schedules-panel" onClick={() => setOpen((value) => !value)}>
         <Icon name="clock" size={16} />
-        <span className="agc__sched-text">{first ? `${first.words} · ${first.title}${first.enabled ? '' : ' · Off'}` : 'No schedules'}</span>
+        <span className="agc__sched-text">{first ? `${scheduleWhen(first)} · ${first.title}${first.enabled ? '' : ' · Off'}` : 'No schedules'}</span>
         <span className="agc__sched-count">{jobs.length === 1 ? '1 schedule' : `${jobs.length} schedules`}</span>
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
       </button>
@@ -135,7 +135,7 @@ export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state:
   const [changing, setChanging] = useState(false);
   return (
     <div className="agc__ready" data-prepared-schedule={job.id}>
-      <p className="agc__ready-when"><Icon name="clock" size={15} /><b>{job.words}</b><span> · {job.title}</span></p>
+      <p className="agc__ready-when"><Icon name="clock" size={15} /><b>{scheduleWhen(job)}</b><span> · {job.title}</span></p>
       <p className="agc__ready-text">{job.text}</p>
       <div className="agc__ready-actions">
         {job.enabled

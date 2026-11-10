@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ASSISTANT_SCHEDULE_STARTERS, type AssistantBackgroundNote, type AssistantJob, type UpdateAssistantJob } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { browserZone, createSchedule, deleteSchedule, getBackgroundNote, listSchedules, restoreSchedule, runScheduleNow, updateSchedule } from './schedules';
+import { browserZone } from '../app/timeZone';
+import { createSchedule, deleteSchedule, getBackgroundNote, listSchedules, restoreSchedule, runScheduleNow, updateSchedule } from './schedules';
 
 // One agent's schedules and what the person does with them (#858, AG-9): turn on, pause, run now, delete with Undo, and the ready-made ones. Turning
 // one on may first show the note about running while the person is away (AST-2.1), once per account; the tap after it is the confirmation.

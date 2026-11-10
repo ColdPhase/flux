@@ -3,13 +3,16 @@ import {
   IDENTITY_CAPABILITIES_PATH,
   ME_PATH,
   ME_PROBE_HEADER,
+  ME_TIME_ZONE_PATH,
   REVOKE_OTHER_SESSIONS_PATH,
   SESSIONS_PATH,
   type ApiError,
   type IdentityCapabilities,
   type MeResponse,
   type SessionSummary,
+  type SetTimeZone,
 } from '@flux/contracts';
+import { isTimeZone } from '@flux/core';
 import type { SessionResolver } from './session.js';
 import { securityEvent } from '../security-log.js';
 import type { Devices } from './devices.js';
@@ -32,6 +35,12 @@ export interface SessionStore {
   deleteOthers(userId: string, keepSessionId: string): Promise<number>;
 }
 
+/** A person's own time zone, their browser's (#1168, C-57). `@flux/db`'s `personTimeZones` implements it; `set` writes only a different zone. */
+export interface PersonTimeZones {
+  get(userId: string): Promise<string>;
+  set(userId: string, timeZone: string): Promise<void>;
+}
+
 /** Disconnects every local AI client of a person (#989): the connections, their runtime sessions and every OAuth token. Returns how many connections. */
 export interface ClientDisconnector {
   disconnectClients(userId: string): Promise<number>;
@@ -43,6 +52,7 @@ export interface IdentityRouteOptions {
   devices: Devices;
   store: SessionStore;
   clients: ClientDisconnector;
+  timeZones: PersonTimeZones;
   passwordReset: IdentityCapabilities['passwordReset'];
   signup: IdentityCapabilities['signup'];
   /** With a provider in SSO-only mode, the sign-in page offers no password form (#315). */
@@ -56,7 +66,7 @@ export interface IdentityRouteOptions {
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, timeZones, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
   app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
@@ -65,7 +75,17 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices
       if (!found) return reply.type('application/json').send('null') as never;
     }
     const context = await sessions.requirePrincipal(request);
-    return { principal: context.principal, user: context.user, session: { id: context.sessionId, expiresAt: context.expiresAt.toISOString() } };
+    const timeZone = await timeZones.get(context.principal.id);
+    return { principal: context.principal, user: { ...context.user, timeZone }, session: { id: context.sessionId, expiresAt: context.expiresAt.toISOString() } };
+  });
+
+  // The web app's browser zone, saved on the person when it is another one (#1168, C-57): no setting, nothing for the person to do.
+  app.put<{ Body: SetTimeZone }>(ME_TIME_ZONE_PATH, { schema: { body: { type: 'object', required: ['timeZone'], additionalProperties: false,
+    properties: { timeZone: { type: 'string', minLength: 1, maxLength: 64 } } } } }, async (request, reply) => {
+    const context = await sessions.requirePrincipal(request);
+    if (!isTimeZone(request.body.timeZone)) return reply.code(400).send({ error: 'timeZone must be an IANA time zone', code: 'INVALID_TIME_ZONE' } satisfies ApiError);
+    await timeZones.set(context.principal.id, request.body.timeZone);
+    return reply.code(204).send();
   });
 
   app.get(SESSIONS_PATH, async (request): Promise<SessionSummary[]> => {

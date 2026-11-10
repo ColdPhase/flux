@@ -44,6 +44,11 @@ export interface FixtureAgentConnectionCommand {
 export const AUTH_BASE_PATH = '/api/auth';
 export const IDENTITY_CAPABILITIES_PATH = '/api/v1/auth/capabilities';
 export const ME_PATH = '/api/v1/me';
+/**
+ * PUT `SetTimeZone`, 204 (#1168, C-57): the web app saves its browser's IANA zone on the signed-in person whenever it is not the one
+ * `MeResponse.user.timeZone` holds. Their schedules run in it and their agents' clock reads in it.
+ */
+export const ME_TIME_ZONE_PATH = '/api/v1/me/time-zone';
 /** Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. */
 export const AUTH_SIGN_UP_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-up/email`;
 export const AUTH_SIGN_IN_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
@@ -88,8 +93,14 @@ export interface IdentityCapabilities {
 
 export interface MeResponse {
   principal: { id: string; kind: 'human' };
-  user: { id: string; email: string; name: string };
+  /** `timeZone`: the person's own IANA zone, their browser's as last saved (`ME_TIME_ZONE_PATH`); UTC until a browser has said. */
+  user: { id: string; email: string; name: string; timeZone: string };
   session: { id: string; expiresAt: string };
+}
+
+export interface SetTimeZone {
+  /** An IANA time zone, as the browser names it (`Intl.DateTimeFormat().resolvedOptions().timeZone`). */
+  timeZone: string;
 }
 
 /** Session tokens are never returned; revoke by session id. */
