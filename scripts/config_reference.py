@@ -88,8 +88,9 @@ GROUPS = [
      "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
      "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
     ("ai", "AI providers",
-     "Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. "
-     "Both Compose files pass the switches to `api` and `worker`; the assistant also needs the "
+     "People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: "
+     "agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. "
+     "Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the "
      "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below)."),
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",
      "Off by default. See the [agent runtime guide](agent-runtime.md); `./flux ai on` writes these for you."),
@@ -229,13 +230,13 @@ VARIABLES: dict[str, Var] = {
     # --- ai
     "FLUX_BACKGROUND_KEY_HOST_FILE": Var("ai", "absolute host path",
         "File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside "
-        "the checkout and the database backup. Empty leaves the assistant unavailable. The "
+        "the checkout and the database backup. Empty leaves agents on API keys unavailable. The "
         "source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release "
         "`compose.yaml`, mount the file at that path in both services from a Compose file of your own "
-        "([how](release-guide.md#assistant-on-your-own-ai-key-optional)).",
+        "([how](release-guide.md#agents-on-your-own-ai-key-optional)).",
         "/etc/flux/background.key"),
     "FLUX_PERSONAL_RUNS": Var("ai", "empty · `off` · `on`",
-        "`on` lets owners run their assistant on their own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
+        "`on` lets people's agents run on their own API key. A Claude or ChatGPT plan needs the agent runtime instead. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`.", "on"),
     "FLUX_AI_PRIVATE_TARGETS": Var("ai", "list of hosts, IPs or CIDRs",
         "Private addresses an OpenAI-compatible endpoint may use, such as a local model server. Empty allows public "
         "HTTPS endpoints only; cloud metadata addresses are always refused.", "ollama,10.0.0.0/8"),
@@ -381,6 +382,7 @@ NOT_SETTINGS: dict[str, str] = {
     "FLUX_TOOL_NAME": "constant: pattern of Flux's MCP tool names",
     "FLUX_LIVE_QUEUE": "log marker",
     "FLUX_MIGRATION_GATE": "output marker of the operations tool",
+    "FLUX_V01_DATABASE": "output marker of the migrator when it refuses a database that Flux v0.1 wrote (#1176)",
     "FLUX_MIGRATIONS": "output marker of the operations tool",
     "FLUX_AGENT_ACCESS": "output marker of the operations tool",
     "FLUX_RUNTIME_PURGE": "output marker of the operations tool",

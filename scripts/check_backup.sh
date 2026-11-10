@@ -19,8 +19,12 @@
 #  2. Upgrade: checkout U starts the previous version with its demo, its files are replaced by the next version,
 #     ./flux upgrade migrates forward and the demo data is verified. The previous version is FLUX_UPGRADE_FROM, else
 #     the newest commit on main's first-parent history since the v0.1 baseline (#779) with other migrations than this
-#     tree. Before any such commit exists (v0.1 itself), it is this tree and the next version is this tree plus one
-#     synthetic migration (0002, or the next number), so the upgrade path is exercised on the real baseline. The
+#     tree and since v0.1's last migration (0002; v0.2 begins with 0003). Before any such commit exists, it is this
+#     tree and the next version is this tree plus one synthetic migration (the next number), so the upgrade path is
+#     exercised on the real schema. A previous version that is v0.1 (FLUX_UPGRADE_FROM=v0.1.0) is not upgraded: v0.1
+#     had no users, so v0.2 converts nothing (#1176). The check then starts v0.1 with its demo, and shows that
+#     ./flux upgrade, the migrator and ./flux restore of its backup refuse it with the plain message, change nothing
+#     and leave v0.1 running with its data; it goes on with the encryption case. Otherwise the
 #     pre-upgrade backup (a subset of the new image's migrations) is refused without --migrate and restored with it. A
 #     broken migration then makes ./flux upgrade fail with restore instructions, which are followed. Failures after the
 #     new version started (health probe, partial start) stop and confirm the writers and warn that work since the start
@@ -32,6 +36,7 @@
 #     plain text. After ./flux restore the space is locked, the later password does not open it, the password of
 #     backup time does, and ./flux export of its project exits non-zero with "is encrypted. Export it from the app.".
 #     FLUX_BACKUP_CASES=encryption runs only this case.
+#  FLUX_BACKUP_CASES=upgrade runs only 2. (and then 3.): the upgrade from the previous version, or the v0.1 refusal.
 set -eu
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
@@ -158,6 +163,8 @@ if [ "${FLUX_BACKUP_CASES:-all}" = encryption ]; then
   exit 0
 fi
 
+# FLUX_BACKUP_CASES=upgrade runs only the upgrade step (and the encryption case): the part that starts the previous version.
+if [ "${FLUX_BACKUP_CASES:-all}" != upgrade ]; then
 step "Copy the working tree to $A and $B"
 copy_tree "$A"
 copy_tree "$B"
@@ -342,8 +349,12 @@ fixture "$B" agents-revoked "$state"
 flux_b clean -y >/dev/null
 flux_a clean -y >/dev/null
 
+fi
+
+cd "$work"
 step "Upgrade from the previous version's schema"
 baseline=0001_v0_1_baseline.sql
+first_v02=0003_one_company_spaces.sql   # the first migration of v0.2: a database without it was written by v0.1 (#1176)
 migrations_of_tree "$here" > "$work/migrations.now"
 grep -qx "$baseline" "$work/migrations.now" || fail "this tree has no $baseline"
 from=${FLUX_UPGRADE_FROM:-}
@@ -351,8 +362,9 @@ if [ -z "$from" ]; then
   main_ref=$(git -C "$here" merge-base HEAD origin/main 2>/dev/null || git -C "$here" merge-base HEAD main)
   for commit in $(git -C "$here" rev-list --first-parent --max-count=200 "$main_ref"); do
     migrations_of_ref "$commit" > "$work/migrations.from"
-    # Pre-release schemas before the baseline cannot be upgraded (#779); stop at the first of them.
+    # Pre-release schemas before the baseline cannot be upgraded (#779), and neither can v0.1 itself (#1176); stop at the first of them.
     grep -qx "$baseline" "$work/migrations.from" || break
+    grep -qx "$first_v02" "$work/migrations.from" || break
     if ! cmp -s "$work/migrations.from" "$work/migrations.now"; then from=$commit; break; fi
   done
 fi
@@ -402,6 +414,41 @@ to_tree "$U"
 mkdir -p "$(dirname "$U/$env_relative")"
 cp "$work/upgrade.env" "$U/$env_relative"
 chmod 600 "$U/$env_relative"
+if ! grep -qx "$first_v02" "$work/migrations.from"; then
+  step "A v0.1 instance is not upgraded or restored: v0.2 starts from empty data (#1176)"
+  v01_before=$(ls -A "$U/backups" 2>/dev/null | wc -l | tr -d ' ')
+  v01_started=$(docker inspect -f '{{.State.StartedAt}}' "$(compose_in "$U" ps -q api)")
+  if flux_u upgrade -y > "$work/v01-upgrade.out" 2>&1; then fail "./flux upgrade upgraded a v0.1 instance"; fi
+  grep -q 'This database was written by Flux v0.1 (schema 2). Flux v0.2 does not upgrade it' "$work/v01-upgrade.out" \
+    || { cat "$work/v01-upgrade.out"; fail "no plain v0.1 refusal"; }
+  grep -q 'Install v0.2 fresh instead' "$work/v01-upgrade.out" || fail "the refusal does not say what to do instead"
+  grep -q 'Your data is as it was: no backup was taken and API and worker were not stopped' "$work/v01-upgrade.out" || fail "the refusal does not say that nothing changed"
+  [ "$(ls -A "$U/backups" 2>/dev/null | wc -l | tr -d ' ')" = "$v01_before" ] || fail "the refused upgrade wrote a backup"
+  [ "$(docker inspect -f '{{.State.StartedAt}}' "$(compose_in "$U" ps -q api)")" = "$v01_started" ] || fail "the refused upgrade restarted or stopped the v0.1 API"
+  curl -fsS "http://127.0.0.1:$port_u/api/v1/health" | grep -q '"schemaVersion":2' || fail "v0.1 is not healthy at schema 2 after the refused upgrade"
+  # A backup of v0.1 data is not restored either, with or without --migrate, and nothing is replaced.
+  flux_u backup --output "$work/v01-backups" > "$work/v01-backup.out" 2>&1 || { cat "$work/v01-backup.out"; fail "could not back up the v0.1 instance"; }
+  v01_archive=$(sed -n 's/^Backup written: \(.*\.tar\) (.*/\1/p' "$work/v01-backup.out")
+  [ -f "$v01_archive" ] || fail "no archive of the v0.1 instance"
+  for flags in '' '--migrate'; do
+    # shellcheck disable=SC2086
+    if flux_u restore "$v01_archive" $flags -y > "$work/v01-restore.out" 2>&1; then fail "a v0.1 backup was restored ($flags)"; fi
+    grep -q 'restore: the backup was written by Flux v0.1 (schema 2). Flux v0.2 does not restore or upgrade v0.1 data' "$work/v01-restore.out" \
+      || { cat "$work/v01-restore.out"; fail "no plain v0.1 restore refusal ($flags)"; }
+    if grep -q 'Replacing the data' "$work/v01-restore.out"; then fail "the refused restore began replacing data ($flags)"; fi
+  done
+  # The migrator is the backstop for every other way in (./flux up on the candidate's files, docker compose up): it refuses before any file runs.
+  compose_in "$U" build migrate > "$work/v01-build.out" 2>&1 || { tail -n 40 "$work/v01-build.out"; fail "could not build the candidate image"; }
+  if compose_in "$U" run --rm migrate > "$work/v01-migrate.out" 2>&1; then fail "the migrator migrated a v0.1 database"; fi
+  grep -q 'FLUX_V01_DATABASE This database was written by Flux v0.1 (schema 2)' "$work/v01-migrate.out" || { cat "$work/v01-migrate.out"; fail "the migrator gave no plain v0.1 refusal"; }
+  [ "$(compose_in "$U" exec -T db psql -X -At -U flux -d flux -c 'SELECT string_agg(version::text, $$,$$ ORDER BY version) FROM flux_schema_version')" = "1,2" ] || fail "the refused migrator changed the ledger"
+  curl -fsS "http://127.0.0.1:$port_u/api/v1/health" | grep -q '"schemaVersion":2' || fail "v0.1 is not healthy at schema 2 after the refusals"
+  echo "v0.1 instance: upgrade, migrator and restore refused with the plain message; nothing changed; v0.1 still runs at schema 2"
+  flux_u clean -y >/dev/null
+  encryption_case
+  step "PASS: a v0.1 instance is refused by upgrade, migrator and restore (#1176); encrypted-space backup and restore"
+  exit 0
+fi
 if echo n | flux_u upgrade > "$work/upgrade-cancel.out" 2>&1; then fail "upgrade without confirmation succeeded"; fi
 flux_u upgrade -y > "$work/upgrade.out" 2>&1 || { cat "$work/upgrade.out"; fail "upgrade failed"; }
 tail -n 4 "$work/upgrade.out"

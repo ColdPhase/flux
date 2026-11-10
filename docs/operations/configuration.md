@@ -404,7 +404,7 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 
 ## AI providers
 
-Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant also needs the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
+People connect their own AI in **Settings → AI** (Connect AI). These switches decide what the instance allows: agents that run on an API key, and agents that search and read the web. A Claude or ChatGPT plan needs the agent runtime below instead. Both Compose files pass the switches to `api` and `worker`; agents on API keys also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
 
 ### `FLUX_WEB_READS`
 
@@ -416,13 +416,13 @@ On by default (founder direction 2026-11-08, C-29): a server agent's run reads p
 
 **Type** absolute host path · **Default** empty · **Used by** api, worker (source)
 
-File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves the assistant unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#assistant-on-your-own-ai-key-optional)). Example: `/etc/flux/background.key`.
+File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves agents on API keys unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#agents-on-your-own-ai-key-optional)). Example: `/etc/flux/background.key`.
 
 ### `FLUX_PERSONAL_RUNS`
 
 **Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
 
-`on` lets owners run their assistant on their own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
+`on` lets people's agents run on their own API key. A Claude or ChatGPT plan needs the agent runtime instead. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
 
 ### `FLUX_AI_PRIVATE_TARGETS`
 
@@ -710,7 +710,7 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
                          and run health and schema checks. Refuses another Flux version unless
                          --migrate. --revoke-agent-connections ends every agent connection and
                          OAuth token from the backup (they need connecting again).
-  ./flux export <project> [--as EMAIL] [--output FILE]
+  ./flux export <space> [--as EMAIL] [--output FILE]
                          Write a space's JSON-plus-files bundle to exports/ (as the company
                          owner by default; the account needs project.manage).
   ./flux identity link <userId> --subject <sub> --reason "<why>" [--old-issuer <URL>] [--allow-sso]

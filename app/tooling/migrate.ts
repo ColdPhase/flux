@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertNotV01Database, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, V01DatabaseError } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
 import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
@@ -21,6 +21,8 @@ try {
     await client.query('SELECT pg_advisory_lock(hashtext($1))', ['flux-migrate']);
     let applied = await readAppliedMigrationVersions(client);
     assertKnownMigrationVersions(files, applied);
+    // v0.1 had no users and v0.2 converts nothing (#1176): a v0.1 database is refused before any file runs.
+    await assertNotV01Database(client, applied);
     for (const file of files) {
       if (applied.includes(file.version)) continue;
       const sql = await readFile(join(migrationsDir, file.name), 'utf8');
@@ -74,6 +76,11 @@ try {
   await boss.updateQueue(SEARCH_CHANGES_CLEANUP_JOB, wake);
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
+} catch (error) {
+  // The refusal is a message for the operator, not a stack trace.
+  if (!(error instanceof V01DatabaseError)) throw error;
+  console.error(`FLUX_V01_DATABASE ${error.message}`);
+  process.exitCode = 1;
 } finally {
   await pool.end();
 }
