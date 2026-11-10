@@ -94,7 +94,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.match(compute.dispatched.at(-1)!.system, /^You are Assistant, the AI agent of pai-hubert in Flux[^]*\nWho reads your answer\nOnly pai-hubert\. They may post it with Show everyone/);
     assert.match(compute.dispatched.at(-1)!.system, /It is now \w+day, \d{4}-\d\d-\d\d \d\d:\d\d in pai-hubert's time zone, UTC\./);
     assert.ok(sentToTheModel().startsWith('<place space="Lamp sensor" conversation="thread"/>'), sentToTheModel());
-    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
+    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" by="person" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
     assert.match(sentToTheModel(), /<request from="pai-hubert" at="[^"]+">Summarise this<\/request>$/);
 
     // The people of the space see nothing: not the run, not the answer, not that an assistant is working.
