@@ -1,7 +1,8 @@
 import { messagePreview } from '@flux/contracts';
-import { and, desc, eq, gt, inArray, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { queryPrepared } from '../prepared.js';
 import { openAliased, openRows } from '../sealing.js';
 
 /**
@@ -36,6 +37,28 @@ async function openVersionTextWith<T extends { id: string; workspaceId: string; 
   return rows.map((row, index) => ({ ...row, title: opened[index]!.title, ...(row.reason !== undefined ? { reason: opened[index]!.reason } : {}) }));
 }
 
+/** Structurally core's `AudiencePlace` and `AudienceKinds` (returns/ports.ts); @flux/db does not import @flux/core. */
+type AudiencePlace = { projectId: string } | { conversationId: string };
+type AudienceKinds = { kinds: string[]; automation: string };
+type AudienceRow = { id: string; seq: number | string; kind: string; workspaceId: string | null; objectId: string; actorId: string; data: Record<string, unknown>; createdAt: Date };
+const AUDIENCE_COLUMNS = `SELECT e.id, a.seq, e.kind, e.workspace_id AS "workspaceId", e.object_id AS "objectId", e.actor_id AS "actorId", e.data, e.created_at AS "createdAt"
+  FROM event_audience a JOIN events e ON e.id = a.event_id WHERE a.recipient = $1 AND a.seq > $2`;
+// The rows of a summary's tasks and messages, read as they come (#1178). `due_on` as text, as Drizzle's string mode gives it.
+type SummaryWorkRow = { id: string; workspaceId: string; projectId: string; title: string; creationRevertedAt: Date | null; status: string; blocker: string | null;
+  ownerUserId: string | null; ownerAgentId: string | null; createdByKind: string; createdById: string; createdAt: Date; dueOn: string | null };
+const SUMMARY_WORK = `SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title, creation_reverted_at AS "creationRevertedAt", status, blocker,
+  owner_user_id AS "ownerUserId", owner_agent_id AS "ownerAgentId", created_by_kind AS "createdByKind", created_by_id AS "createdById", created_at AS "createdAt",
+  due_on::text AS "dueOn" FROM project_work_items WHERE id = ANY($1::uuid[])`;
+type SummaryMessageRow = { id: string; workspaceId: string; projectId: string; conversationId: string; authorId: string | null; authorAgentId: string | null;
+  body: string; attachmentCount: number; sequence: number; createdAt: Date; via: string | null };
+const SUMMARY_MESSAGES = `SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", conversation_id AS "conversationId", author_id AS "authorId",
+  author_agent_id AS "authorAgentId", body, attachment_count AS "attachmentCount", sequence, created_at AS "createdAt", via
+  FROM project_messages WHERE id = ANY($1::uuid[]) AND removed_at IS NULL`;
+
+// A space's rows: its own events (their object is the space) and its sketches'; a conversation's: its messages.
+const OF_PROJECT = ` AND (e.object_id = $P::uuid OR (e.kind LIKE 'sketch.%' AND EXISTS (SELECT 1 FROM sketches s WHERE s.id = e.object_id AND s.project_id = $P::uuid)))`;
+const OF_CONVERSATION = ` AND e.kind IN ('project.conversation_created.v1', 'project.message_sent.v1') AND lower(e.data->>'conversationId') = $P`;
+
 export function returnRows(db: DbExecutor) {
   const openVersionText = <T extends { id: string; workspaceId: string; version: number; title: string; reason?: string | null }>(rows: T[]) => openVersionTextWith(db, rows);
   return {
@@ -68,17 +91,21 @@ export function returnRows(db: DbExecutor) {
       return null;
     },
 
-    /** The recipient's own audience rows after `afterSeq`, newest first, by primary key. */
-    audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq: number | null = null) {
-      return db.select({
-        id: schema.events.id, seq: schema.eventAudience.seq, kind: schema.events.kind, workspaceId: schema.events.workspaceId,
-        objectId: schema.events.objectId, actorId: schema.events.actorId, data: sql<Record<string, unknown>>`${schema.events.data}`,
-        createdAt: schema.events.createdAt,
-      }).from(schema.eventAudience)
-        .innerJoin(schema.events, eq(schema.events.id, schema.eventAudience.eventId))
-        .where(and(eq(schema.eventAudience.recipient, recipient), gt(schema.eventAudience.seq, afterSeq),
-          beforeSeq === null ? undefined : lt(schema.eventAudience.seq, beforeSeq)))
-        .orderBy(desc(schema.eventAudience.seq)).limit(limit);
+    /**
+     * The recipient's own audience rows after `afterSeq`, newest first, by primary key. A constant prepared statement, its rows read as
+     * they come (#1178): "Since you left" reads up to 400 of them on every Home and space it opens, and Drizzle's mapping of each cell
+     * was most of what that read cost.
+     */
+    async audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq: number | null = null, place: AudiencePlace | null = null,
+      of: AudienceKinds | null = null) {
+      const values: unknown[] = [recipient, afterSeq, limit];
+      const next = (value: unknown) => { values.push(value); return `$${values.length}`; };
+      let text = AUDIENCE_COLUMNS;
+      if (beforeSeq !== null) text += ` AND a.seq < ${next(beforeSeq)}`;
+      if (place) text += ('projectId' in place ? OF_PROJECT : OF_CONVERSATION).replaceAll('$P', next('projectId' in place ? place.projectId : place.conversationId));
+      if (of) text += ` AND e.workspace_id IS NOT NULL AND e.kind = ANY(${next(of.kinds)}::text[]) AND (e.actor_id <> $1 OR e.data->>'automation' = ${next(of.automation)})`;
+      const { rows } = await queryPrepared<AudienceRow>(db, `${text} ORDER BY a.seq DESC LIMIT $3`, values);
+      return rows.map((row) => ({ ...row, seq: Number(row.seq) }));
     },
 
     async audienceSeq(recipient: string, eventId: string) {
@@ -114,8 +141,8 @@ export function returnRows(db: DbExecutor) {
 
     async work(ids: string[]) {
       if (!ids.length) return new Map();
-      const w = schema.projectWorkItems;
-      const rows = await openRows(db, 'project_work_items', await db.select().from(w).where(inArray(w.id, ids)));
+      // Only the columns the summary says something with, as a constant prepared statement (#1178): a summary reads up to a few hundred.
+      const rows = await openRows(db, 'project_work_items', (await queryPrepared<SummaryWorkRow>(db, SUMMARY_WORK, [ids])).rows);
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.creationRevertedAt ? `${row.title} · creation undone` : row.title, status: row.status, blocker: row.blocker,
         ownerKey: row.ownerUserId ? actorKey('human', row.ownerUserId) : row.ownerAgentId ? actorKey('agent', row.ownerAgentId) : null,
@@ -127,7 +154,9 @@ export function returnRows(db: DbExecutor) {
     async decisions(ids: string[]) {
       if (!ids.length) return new Map();
       const d = schema.projectDecisions;
-      const rows = await openRows(db, 'project_decisions', await db.select().from(d).where(inArray(d.id, ids)));
+      const rows = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, projectId: d.projectId, title: d.title,
+        rationale: d.rationale, status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, supersedesId: d.supersedesId,
+        supersededById: d.supersededById }).from(d).where(inArray(d.id, ids)));
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.title, rationale: row.rationale, status: row.status,
         proposedByKey: actorKey(row.proposedByKind, row.proposedById), supersedesId: row.supersedesId, supersededById: row.supersededById,
@@ -136,9 +165,7 @@ export function returnRows(db: DbExecutor) {
 
     async messages(ids: string[]) {
       if (!ids.length) return new Map();
-      const m = schema.projectMessages;
-      const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt, via: m.via })
-        .from(m).where(and(inArray(m.id, ids), isNull(m.removedAt))));
+      const rows = await openRows(db, 'project_messages', (await queryPrepared<SummaryMessageRow>(db, SUMMARY_MESSAGES, [ids])).rows);
       return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via }) =>
         ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, via, author: actor(authorId, authorAgentId) })));
     },

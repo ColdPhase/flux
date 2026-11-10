@@ -72,6 +72,15 @@ export interface ReturnSketch { id: string; workspaceId: string; projectId: stri
 /** A project doc (#112) as it reads now: its current version and that version's reason. */
 export interface ReturnDoc { id: string; projectId: string; title: string; version: number; reason: string }
 
+/**
+ * The rows a summary can say something about (#1178): of these kinds, in a workspace, and by someone else, or by a rule (`automation`) on the
+ * reader's behalf. Read so in SQL, a person's own changes (often most of their rows) are not read only to be left out.
+ */
+export interface AudienceKinds { kinds: string[]; automation: string }
+
+/** A place whose rows `audienceAfter` keeps: a space, or a conversation. */
+export type AudiencePlace = { projectId: string } | { conversationId: string };
+
 /** Rows only; the repository makes no access decisions. `recipient` is the stream's audience key. */
 export interface ReturnRepository {
   points(userId: string, keys: string[]): Promise<Map<string, StoredReturnPoint>>;
@@ -79,8 +88,12 @@ export interface ReturnRepository {
   advance(userId: string, place: ResolvedPlace, seq: number): Promise<StoredReturnPoint>;
   /** Moves the point back to the previous one; a point without one is removed (the place is unviewed again). */
   restore(userId: string, key: string): Promise<StoredReturnPoint | null>;
-  /** The recipient's audience rows after `afterSeq` (and before `beforeSeq`, when given), newest first. */
-  audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq?: number | null): Promise<AudienceEvent[]>;
+  /**
+   * The recipient's audience rows after `afterSeq` (and before `beforeSeq`, when given), newest first. With `place`, only the rows about
+   * that space (its own events and its sketches') or that conversation (its messages), so a space's summary does not read every other
+   * space's rows to find its own (#1178).
+   */
+  audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq?: number | null, place?: AudiencePlace | null, of?: AudienceKinds | null): Promise<AudienceEvent[]>;
   /** The recipient's own audience position of an event, or null when it is not theirs. */
   audienceSeq(recipient: string, eventId: string): Promise<number | null>;
   /** The recipient's last audience row. */
