@@ -1,9 +1,11 @@
 """The packaged smoke's upgrade leg refuses a bad previous release before any image is pulled (#77),
-and its content check reports exactly what differs."""
+its content check reports exactly what differs, and its encrypted space belongs to the company (#1180)."""
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -15,7 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "scripts" / "release" / "smoke_artifacts.sh"
 sys.path.insert(0, str(ROOT / "scripts" / "release"))
-from smoke_data import PROJECT_NAME, WORKSPACE_NAME, check  # noqa: E402
+from smoke_data import PROJECT_NAME, WORKSPACE_NAME, check, encrypted  # noqa: E402
 
 POSTGRES = "postgres@sha256:" + "f" * 64
 STUB = """#!/bin/sh
@@ -136,6 +138,44 @@ class ContentCheckTest(unittest.TestCase):
             doc_versions=[[1, "draft", "Created"]], work_title="y", note_titles={},
         ))
         self.assertEqual(len(problems), 7, problems)
+
+
+class FakeClient:
+    """The two calls `encrypted` makes, recording what it sends."""
+
+    def __init__(self, workspaces: list[dict]) -> None:
+        self.workspaces = workspaces
+        self.created: list[dict] = []
+
+    def expect(self, method: str, path: str, body: dict | None = None, statuses: tuple[int, ...] = (200, 201), headers: dict | None = None):
+        if (method, path) == ("POST", "/api/auth/sign-in/email"):
+            return {}
+        if (method, path) == ("GET", "/api/v1/workspaces"):
+            return self.workspaces
+        if (method, path) == ("POST", "/api/v1/encrypted-workspaces"):
+            self.created.append(body)
+            return {"recoveryCode": "AAAA-BBBB", "workspace": {"id": "enc"}, "project": {"id": "space"}}
+        raise AssertionError(f"unexpected call {method} {path}")
+
+
+class EncryptedSpaceTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.state = Path(self.tmp.name) / "account.json"
+        self.state.write_text(json.dumps({"email": "release@example.test", "password": "secret"}), encoding="utf-8")
+
+    def test_the_encrypted_space_is_made_for_the_company(self) -> None:
+        client = FakeClient([{"id": "own", "company": None}, {"id": "company-1", "company": "Release restore probe"}])
+        with contextlib.redirect_stdout(io.StringIO()):
+            encrypted(client, self.state)
+        self.assertEqual([body["companyId"] for body in client.created], ["company-1"])
+
+    def test_an_instance_without_a_company_is_refused_before_anything_is_created(self) -> None:
+        client = FakeClient([{"id": "own", "company": None}])
+        with self.assertRaisesRegex(RuntimeError, "no company"):
+            encrypted(client, self.state)
+        self.assertEqual(client.created, [])
 
 
 if __name__ == "__main__":
