@@ -422,8 +422,8 @@ describe('an answer uses only what the task\'s people can all see (TA-4, #841, #
     scene.compute.dispatched = [];
     scene.compute.respond = async () => scene.compute.dispatched.length === 1
       ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: [
-        { id: 's1', name: 'flux_search_project', input: { projectId: place.id, q: 'reading' } },
-        { id: 's2', name: 'flux_search_project', input: { projectId: place.id, q: 'ta4' } },
+        { id: 's1', name: 'flux_search', input: { q: 'reading' } },
+        { id: 's2', name: 'flux_search', input: { q: 'ta4' } },
         { id: 's3', name: 'flux_list_maps', input: { projectId: place.id } },
         { id: 's4', name: 'flux_get_doc', input: { projectId: elsewhere.id, id: elsewhereDoc.id } },
         { id: 's5', name: 'flux_list_contexts', input: {} },

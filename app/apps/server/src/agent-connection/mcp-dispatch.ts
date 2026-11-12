@@ -6,6 +6,8 @@ export interface McpObjectDependency { projectId: string; kind: AgentProjectObje
 export interface McpDeliveryDependencies {
   projects: Map<string, McpProjectDependency['action']>;
   objects: Map<string, McpObjectDependency>;
+  /** The direct messages whose words a run in one was given (#1290): its owner must still be in each when the bytes are handed over. */
+  dms: Set<string>;
   /** Set once any tool, resource or prompt ran: from then on the bytes of the response wait for the live check of the fence. */
   protectedOutput: boolean;
 }
@@ -35,7 +37,7 @@ export type McpManifest = ReturnType<typeof createMcpManifest>;
 
 /** One verified request owns this context; nothing is a module-global identity cache. */
 export function createMcpDispatch() {
-  const dependencies: McpDeliveryDependencies = { projects: new Map(), objects: new Map(), protectedOutput: false };
+  const dependencies: McpDeliveryDependencies = { projects: new Map(), objects: new Map(), dms: new Set(), protectedOutput: false };
   return {
     dependencies,
     run<T>(kind: AgentToolEntry['kind'], name: string, callback: () => T): T {
@@ -45,6 +47,9 @@ export function createMcpDispatch() {
     },
     project(projectId: string, action: McpProjectDependency['action']) {
       if (dependencies.projects.get(projectId) !== 'project.write') dependencies.projects.set(projectId, action);
+    },
+    dm(dmId: string) {
+      dependencies.dms.add(dmId);
     },
     object(projectId: string, kind: AgentProjectObjectKind, id: string) {
       dependencies.objects.set(`${projectId}:${kind}:${id}`, { projectId, kind, id });

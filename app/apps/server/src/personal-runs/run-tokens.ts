@@ -19,6 +19,8 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
+/** A run in a direct message: reading a web page, and finding and reading around the messages of that direct message (F-042, #1290). Sorted, as every run's tools are. */
+const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_web', 'flux_search'];
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -49,10 +51,11 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
       // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
       // A private chat reads and answers and changes nothing (#842); a run in a direct message has one tool: reading a web page, since no
-      // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads.
+      // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads. It finds older messages of that DM
+      // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290).
       const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
-      const tools = run.dmId !== null ? ['flux_read_web'] : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
+      const tools = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
         .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
         // …and on its answer in the agent's private chat (founder decision on #1217, 2026-11-12): read-only as it is, the chat's answer to its
         // owner can show a picture. A schedule's report cannot.

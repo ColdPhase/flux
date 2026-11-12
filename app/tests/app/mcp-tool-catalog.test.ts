@@ -20,12 +20,11 @@ import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 
-// #1144: the MCP route builds its tool definitions (every tool's zod schema, its JSON Schema, the playbook's digest, the search cursor key
+// #1144: the MCP route builds its tool definitions (every tool's zod schema, its JSON Schema, the playbook's digest
 // and the check of the registrations against the tool list) once for the process, and a request only gets its own server with the tools it
 // may use, bound to its verified claims. Nothing of one request may reach another: two principals, two runs and a client, interleaved on
 // the one set of definitions, each get their own tools and their own results. The tool list itself is pinned by extension-contracts.test.ts.
 
-const SECRET = 'a-search-cursor-secret-of-at-least-32-characters';
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 type Message = Record<string, unknown> | null;
 const text = (message: Message) => (message?.result as { content?: { text?: string }[] } | undefined)?.content?.[0]?.text ?? '';
@@ -82,7 +81,7 @@ describe('the tool definitions are built once and every server shares them (#114
     ...(run ? { run: { id: randomUUID(), jti: randomUUID(), projectId: randomUUID(), conversationId: null, dmId: null, tools: run.tools } } : {}) });
 
   test('two servers of two principals share each tool\'s converted schema, and a personal run is served from its own definitions', () => {
-    const tools = createFluxMcpTools(db, SECRET);
+    const tools = createFluxMcpTools(db);
     const first = tools.server(claimsOf(randomUUID())), second = tools.server(claimsOf(randomUUID()));
     assert.notEqual(first, second, 'a server belongs to one request');
     for (const name of ['flux_get_work', 'flux_create_task', 'flux_bootstrap']) {
@@ -101,11 +100,16 @@ describe('the tool definitions are built once and every server shares them (#114
   });
 
   test('a personal run is served exactly its own tools from its own definitions, and a client all of the client\'s', () => {
-    const tools = createFluxMcpTools(db, SECRET);
+    const tools = createFluxMcpTools(db);
     const offered = (server: ReturnType<typeof tools.server>) => AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && server.toolInputSchemaJson(entry.name) !== undefined).map((entry) => entry.name);
     const client = offered(tools.server(claimsOf(randomUUID())));
     assert.ok(client.length > 40 && client.includes('flux_get_work') && client.includes('flux_acknowledge_playbook'));
     assert.ok(!client.includes('flux_read_web'), 'no web read for a client, and none where the install has no reader');
+    // F-042, #1290: the two tools that find and read around a message are the same for a client and for a run; the old one-space search is gone.
+    assert.ok(client.includes('flux_search') && client.includes('flux_read_around'), 'a client may search and read around');
+    assert.ok(!AGENT_TOOLS.some((entry) => entry.name === 'flux_search_project'), 'flux_search_project is retired');
+    assert.deepEqual(offered(tools.server(claimsOf(randomUUID(), { tools: ['flux_read_around', 'flux_read_web', 'flux_search'] }))).sort(), ['flux_read_around', 'flux_search'],
+      'a run minted the search tools is served them, whether or not the web read exists');
     assert.deepEqual(offered(tools.server(claimsOf(randomUUID(), { tools: ['flux_get_work', 'flux_bootstrap'] }))).sort(), ['flux_bootstrap', 'flux_get_work']);
     assert.deepEqual(offered(tools.server(claimsOf(randomUUID(), { tools: [] }))), []);
     assert.deepEqual(offered(tools.server(claimsOf(randomUUID()))), client, 'and after a run, the client\'s list is what it was');
@@ -143,8 +147,8 @@ describe('a run with none of its tools on the server is listed none, not an erro
         return { status: response.status, body: JSON.parse(data ? data.slice(6) : raw) as { result?: Record<string, unknown>; error?: { message?: string } } };
       });
 
-  test('a direct-message run is minted flux_read_web only; with reading the web off the server defines no tool for it, and its session still opens', async () => {
-    const tools = createFluxMcpTools(db, SECRET, null, webReader({ enabled: false }));
+  test('a run minted flux_read_web only: with reading the web off the server defines no tool for it, and its session still opens', async () => {
+    const tools = createFluxMcpTools(db, null, webReader({ enabled: false }));
     for (const era of ERAS) {
       const answered = await rpc(era, route(tools), 'tools/list');
       assert.equal(answered.status, 200, `${era.era}: tools/list is answered`);
@@ -159,7 +163,7 @@ describe('a run with none of its tools on the server is listed none, not an erro
   });
 
   test('with reading the web on, the same run is listed its tool: the server defines it, so the empty list is the only difference', async () => {
-    const tools = createFluxMcpTools(db, SECRET, null, webReader({ enabled: true }));
+    const tools = createFluxMcpTools(db, null, webReader({ enabled: true }));
     for (const era of ERAS) {
       const session = await openSession(mcpToolHost(issuer(['flux_read_web']), 'http://api.test/mcp', era.through(asFetch(route(tools)))), dmRun.id);
       assert.deepEqual(session.tools.map((tool) => tool.name), ['flux_read_web'], era.era);
@@ -167,7 +171,7 @@ describe('a run with none of its tools on the server is listed none, not an erro
   });
 
   test('a run whose tools are none declares the tools capability in both eras, and a run that lists tools declares the same', async () => {
-    const off = createFluxMcpTools(db, SECRET, null, webReader({ enabled: false }));
+    const off = createFluxMcpTools(db, null, webReader({ enabled: false }));
     for (const era of ERAS) {
       const answered = era.era === '2025-06-18'
         ? await rpc(era, route(off), 'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } })
@@ -176,7 +180,7 @@ describe('a run with none of its tools on the server is listed none, not an erro
       assert.deepEqual(answered.body.result?.capabilities, { tools: { listChanged: true } }, `${era.era}: tools only, as for any run`);
     }
     // A run with tools is told the same, and a client keeps resources, tools and prompts, in the order it always had.
-    const withTools = createFluxMcpTools(db, SECRET, null, null);
+    const withTools = createFluxMcpTools(db, null, null);
     const listed = await rpc(ERAS[1], (request) => createFluxMcpHandler(() => withTools.server({ ...claims(), run: { ...dmRun, tools: ['flux_list_contexts'] } })).fetch(request),
       'initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'x', version: '1' } });
     assert.deepEqual(listed.body.result?.capabilities, { tools: { listChanged: true } });

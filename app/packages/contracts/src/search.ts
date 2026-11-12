@@ -40,6 +40,28 @@ export interface SearchQuery {
   limit?: number;
 }
 
+/** Where a result opens: the exact message, version, thought or object. The web and the agents' links share it. */
+export function searchTargetPath(target: SearchTarget): string {
+  switch (target.type) {
+    case 'project': return `/projects/${target.projectId}`;
+    case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
+    case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
+    case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
+    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
+    case 'sketch': return `/map/${target.sketchId}`;
+    case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
+    case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
+    // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
+    default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
+  }
+}
+
+/**
+ * What an agent's `flux_search` and `flux_read_around` return at most (F-042, AG-12): ten hits unless it asks for more, and up to 25 messages on each side
+ * of the message it reads around. Both are safety bounds of one answer, far below a run's result bound.
+ */
+export const AGENT_SEARCH_LIMITS = { query: 300, words: 30, hitsDefault: 10, hitsMax: 25, aroundDefault: 5, aroundMax: 25 } as const;
+
 /** Highlighted text: plain parts and matched parts, never markup. */
 export interface SearchTextPart { text: string; match: boolean }
 export type SearchText = SearchTextPart[];
@@ -95,7 +117,7 @@ export interface SearchResponse {
   items: SearchResult[];
   /**
    * Cursor of the next page; `null` when no more visible results exist. The web does not page: it only tells the reader that
-   * there are more than it lists. An agent's `flux_search_project` continues with it.
+   * there are more than it lists. An agent's `flux_search` does not use it (it is ranked by BM25 and asks for a larger `limit` instead).
    */
   next: string | null;
   /**

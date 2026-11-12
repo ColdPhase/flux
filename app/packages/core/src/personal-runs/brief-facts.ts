@@ -6,8 +6,11 @@ import type { AgentBrief, MessageSource, PersonalRunPorts, RunRecord } from './p
 // before (the space's AI switch at the run's epoch and the agent's read, or the owner's part in the DM): nothing here decides access, and
 // nothing is read outside the run's own place.
 
-/** How many messages of a place a run is given: the latest of them. */
-export const MESSAGE_WINDOW = 40;
+/**
+ * How many messages of a place a run is given: the latest of them (founder, 2026-11-12, F-042: 20, not fewer). Older ones are found with `flux_search`
+ * and `flux_read_around`, and the brief says so when some were left out.
+ */
+export const MESSAGE_WINDOW = 20;
 /** How many earlier exchanges of a private chat the agent is told. */
 export const CHAT_TURNS = 6;
 

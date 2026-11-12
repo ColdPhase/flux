@@ -280,10 +280,10 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   },
 
   /**
-   * #1155: a direct-message ask is minted one tool, `flux_read_web`. With the operator's web switch off (the script restarts the API and
-   * the worker with it off before this step) the server defines no tool for it, so its list is empty. The real CLI starts with the
-   * connected Flux server and no Flux tool, the model is offered none, and the run answers: it does not end `unavailable` because
-   * its list "could not be read".
+   * #1155, #1290: a direct-message ask is minted `flux_read_web` and, since F-042, the two tools that find and read around the messages of
+   * that DM. With the operator's web switch off (the script restarts the API and the worker with it off before this step) the server
+   * defines no web read, so the model is offered those two alone, and the run answers. (A run whose list is empty, which #1155 was about,
+   * is now only made by `mcp-tool-catalog.test.ts`: no run is minted an empty list any more.)
    */
   async 'empty-tools'(engine) {
     const { who, client, cli } = ENGINES[engine as Engine];
@@ -299,16 +299,16 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'What is a lux?' } }), 202) as AssistantRun;
     const row = await until('the run to end', () => runRow(started.id), (current) => !['queued', 'reading', 'dispatching'].includes(current.status), 240);
     assert.deepEqual([row.engine, row.status, row.end_reason], ['runtime', 'completed', null], JSON.stringify(row));
-    assert.deepEqual(row.run_tools, ['flux_read_web'], 'a direct-message ask is minted this one tool');
+    assert.deepEqual(row.run_tools, ['flux_read_around', 'flux_read_web', 'flux_search'], 'a direct-message ask is minted the web read and the two tools that find and read around the messages of that DM');
     assert.ok(row.answer_body, 'the answer is committed');
     // Every request the model got: the mock records one with no Flux tool at all as a `side` request (Claude Code), so both kinds count.
     const asked = (await journalSince(from)).filter((entry) => entry.client === client && (entry.kind === 'main' || entry.kind === 'side'));
     assert.ok(asked.length >= 1, 'the model was asked');
     for (const entry of asked) {
-      assert.deepEqual(fluxTools(entry), [], `the server defines no tool for it, so the model is offered none: ${JSON.stringify(entry.tools)}`);
+      assert.deepEqual(fluxTools(entry), ['flux_read_around', 'flux_search'], `the server defines no web read, so the model is offered the two tools of its DM alone: ${JSON.stringify(entry.tools)}`);
       assert.deepEqual(otherTools(entry, client), [], `and nothing else that acts: ${JSON.stringify(entry.tools)}`);
     }
-    print({ ENGINE: engine, RUN: started.id, CLIENT: cli, REQUESTS: asked.length, TOOLS: 0 });
+    print({ ENGINE: engine, RUN: started.id, CLIENT: cli, REQUESTS: asked.length, TOOLS: 2 });
   },
 
   /**

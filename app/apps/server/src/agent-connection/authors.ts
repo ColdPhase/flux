@@ -9,6 +9,11 @@ import { projectAuthorOwners } from '../conversation/author-owners.js';
 // than a member of the space sees named there, and an agent's owner by the same rule (`projectAuthorOwners`). A person who left the company
 // or the space is a former member, as the space's own views show them (#763 XC-2). The ids stay, for the tools that take them.
 
+/** How the conversation reads and the search tools name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
+export const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Former member" once they can no longer read this space); '
+  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; and "Ada Nowak · via Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
+  + 'not yours. author.id is the person\'s or the agent\'s id.';
+
 /** The agent a read names (a message's author, a task's owner or creator, a conversation's starter): `{kind: 'agent', id, name}`. */
 type AgentRef = { kind: 'agent'; id: string; name?: string; projectOwner?: unknown };
 /** An object of the result as it will be written out; a Date or another class instance is a value, not something to walk. */

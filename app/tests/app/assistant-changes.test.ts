@@ -466,7 +466,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   test('every listed change tool is one of the run-private set', async () => {
     const run = await liveRun();
     const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
-    const listedEffects = run.tools.filter((name) => !name.startsWith('flux_list') && !name.startsWith('flux_get') && !['flux_read_material', 'flux_search_project', 'flux_project_orientation', 'flux_changes_since', 'flux_read_web'].includes(name));
+    const listedEffects = run.tools.filter((name) => !name.startsWith('flux_list') && !name.startsWith('flux_get') && !['flux_read_material', 'flux_search', 'flux_read_around', 'flux_project_orientation', 'flux_changes_since', 'flux_read_web'].includes(name));
     for (const name of listedEffects) assert.ok(effects.has(name), name);
     assert.equal(listedEffects.length, ASSISTANT_RUN_EFFECT_TOOLS.length, '"Do it and tell me" lists every change tool');
     await complete(run.runId);

@@ -51,9 +51,11 @@ const TASK: TaskFacts = {
   criteria: ['The north barrel reads within 2% of the reference probe', 'The steps are on the Wiki page [[Calibration]]'], dueOn: '2026-11-12', blocker: null,
   prerequisites: [{ number: 10, title: 'Order reference probe', status: 'done' }],
 };
-const READS = ['flux_get_conversation', 'flux_get_work', 'flux_list_conversations', 'flux_list_work', 'flux_search_project'];
+const READS = ['flux_get_conversation', 'flux_get_work', 'flux_list_conversations', 'flux_list_work', 'flux_search', 'flux_read_around'];
 const CHANGES = ['flux_create_task', 'flux_update_task', 'flux_update_doc'];
 const WEB = ['flux_read_web'];
+/** A run in a direct message: the two tools that find and read around the messages of that DM, and the web read (F-042, #1290). */
+const DM_TOOLS = ['flux_read_around', 'flux_search', ...WEB];
 const ASKABLE = 'Task #12: Calibrate north barrel\nAgents of other people in this task that you may ask one question, only if you need the answer to go on: Fieldbot (Jonas\'s agent). '
   + 'To ask, end your reply with exactly one block <ask>{"agent": "Name", "owner": "Owner", "question": "..."}</ask>, naming the agent and its owner. Their answer comes back to you; an agent only answers and changes nothing because you asked.';
 
@@ -67,7 +69,7 @@ const base: BriefInput = {
   agent: { name: 'Assistant', instructions: 'Answer briefly. Use metric units.', memory: ['The north barrel is the reference barrel.'] },
   prompt: 'Co ustaliliśmy w sprawie kamery?', requestedAt: new Date('2026-11-08T09:01:30Z'), sources: [...MESSAGES, ...OPEN_TASKS], leftOut: false, turns: [], earlier: null, thought: null,
 };
-const dm = { ...base, place: { kind: 'dm' as const, others: ['Kai Weber'], thread: false }, tools: WEB, sources: DM_MESSAGES, prompt: 'Help me answer Kai politely in German.' };
+const dm = { ...base, place: { kind: 'dm' as const, others: ['Kai Weber'], thread: false }, tools: DM_TOOLS, sources: DM_MESSAGES, prompt: 'Help me answer Kai politely in German.' };
 const chat = { ...base, place: { kind: 'chat' as const }, tools: READS, sources: [], prompt: 'What is blocked in my spaces?',
   turns: [{ prompt: 'remember that the lamp is blue', answer: 'Saved: the lamp is blue.' }] };
 const task = { ...base, kind: 'task' as const, task: TASK, prompt: ASKABLE, sources: [...MESSAGES.slice(0, 3), OPEN_TASKS[1]!] };
@@ -161,11 +163,26 @@ describe('the brief of every run (#1064)', () => {
     assert.ok(buildBrief(CASES['space-main-conversation']!).request.includes('thread="Lunch order for Friday: who wants what? Please answer by Thursday noon, the sho…"'), 'a thread\'s opening words, cut');
   });
 
-  test('the brief says when older messages were left out, and how many it shows', () => {
+  test('the brief says when older messages were left out, and how many it shows; a run with the search tools is told how to find them (F-042, #1291)', () => {
+    const FIND = 'find them with flux_search and read around a hit with flux_read_around';
     assert.match(buildBrief(base).request, /^All 4 messages of this thread, oldest first\.$/m);
-    assert.match(buildBrief({ ...base, leftOut: true }).request, /^The latest 4 messages of this thread, oldest first\. Older messages were left out\.$/m);
-    assert.match(buildBrief({ ...base, sources: OPEN_TASKS, leftOut: true }).request, /^No messages of this thread fit here; older ones were left out\.$/m);
-    assert.match(runtimeBrief(CASES['runtime-dm-thread']!), /^The latest 2 messages of this thread of the direct message \(its first message and the replies to it\), oldest first\. Older messages were left out\.$/m);
+    assert.match(buildBrief({ ...base, leftOut: true }).request, new RegExp(`^The latest 4 messages of this thread, oldest first\\. Older messages were left out: ${FIND}\\.$`, 'm'));
+    assert.match(buildBrief({ ...base, sources: OPEN_TASKS, leftOut: true }).request, new RegExp(`^No messages of this thread fit here; older ones were left out: ${FIND}\\.$`, 'm'));
+    // Without the tools there is nothing to find them with, and the brief does not say so.
+    assert.match(buildBrief({ ...base, tools: [], leftOut: true }).request, /^The latest 4 messages of this thread, oldest first\. Older messages were left out\.$/m);
+    assert.match(runtimeBrief(CASES['runtime-dm-thread']!), new RegExp(`^The latest 2 messages of this thread of the direct message \\(its first message and the replies to it\\), oldest first\\. Older messages were left out: ${FIND}\\.$`, 'm'));
+  });
+
+  test('the same line about searching, for both engines and every place that has the tools: where it reaches, and that a run with no search tools gets none (F-042, AG-12, #1290)', () => {
+    const find = (input: BriefInput) => (input.engine === 'runtime' ? runtimeBrief(input) : buildBrief(input).system).split('\n').find((line) => line.startsWith('Before you say you do not know')) ?? null;
+    assert.match(find(base)!, /^Before you say you do not know, or that something was not discussed, search: flux_search finds messages, Wiki pages, tasks, decisions and maps in this space by any of your words, best match first \(use each language the people here write in, and other words when little comes back\); flux_read_around reads the messages around a hit\.$/);
+    assert.match(find(CASES['runtime-space-thread']!)!, /maps in this space by any/, 'the CLI is told the same');
+    assert.match(find(chat)!, /maps in every space Ada Nowak can see by any/, 'a private chat reaches what its owner reaches');
+    assert.match(find(dm)!, /flux_search finds the messages of this direct message by any/, 'a run in a direct message reaches that direct message');
+    assert.match(buildBrief(dm).system, /Your Flux tools reach only this direct message\. Besides them, one Flux tool reads a public web page\./);
+    assert.equal(find({ ...base, tools: ['flux_get_work', ...CHANGES] }), null, 'one without both tools is not told of them');
+    assert.equal(find({ ...base, tools: [] }), null);
+    assert.match(buildBrief({ ...dm, tools: WEB }).system, /The only Flux tool you have reads a public web page\./, 'a direct message without the search tools says what it had');
   });
 
   test('nothing other people wrote reaches the system prompt: names of spaces, tasks and people, and messages, are data in the request', () => {

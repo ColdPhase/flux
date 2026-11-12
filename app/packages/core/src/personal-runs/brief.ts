@@ -253,6 +253,18 @@ export const NO_WEB_SEARCH_LINE = 'You have no web search here: do not say you s
 /** Whether the run can search the web: an API-key run offered its provider's search (#954) or a run on the owner's CLI with its own (#1065). */
 const searches = (input: BriefInput) => input.webSearch === true && input.tools.length > 0;
 
+/**
+ * Finding what lies outside the messages it was given (F-042, AG-12, #1290): the same line for both engines. It names where the search reaches: a run reaches
+ * its own place (C-12, C-37), a private chat every space its owner reaches. Only a run that has both tools is told about them.
+ */
+const canFind = (input: BriefInput) => input.tools.includes('flux_search') && input.tools.includes('flux_read_around');
+function findLine(input: Placed): string {
+  const what = input.place.kind === 'dm' ? 'the messages of this direct message'
+    : `messages, Wiki pages, tasks, decisions and maps ${input.place.kind === 'chat' ? `in every space ${input.ownerName} can see` : 'in this space'}`;
+  return `Before you say you do not know, or that something was not discussed, search: flux_search finds ${what} by any of your words, best match first `
+    + '(use each language the people here write in, and other words when little comes back); flux_read_around reads the messages around a hit.';
+}
+
 /** What the run's tools reach, the ids they need, and the web rule (C-30). */
 function toolRules(input: Placed): string[] {
   const owner = input.ownerName;
@@ -265,8 +277,13 @@ function toolRules(input: Placed): string[] {
   const searchLine = tools.length ? [!search ? NO_WEB_SEARCH_LINE : input.engine === 'runtime' ? RUNTIME_WEB_SEARCH_LINE : WEB_SEARCH_LINE] : [];
   if (!tools.length) return place.kind === 'chat' ? ['Flux tools', 'You have no Flux tools here: use the chat so far and general knowledge.']
     : place.kind === 'dm' ? [] : ['Flux tools', 'You have no Flux tools in this run: use what is below.'];
-  if (place.kind === 'dm') return ['Flux tools', `The only Flux tool you have reads a public web page. ${web.join(' ')} ${REFUSED}`.trim(), ...searchLine];
-  if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...web,
+  const find = canFind(input) ? [findLine(input)] : [];
+  if (place.kind === 'dm') {
+    const lead = find.length ? `Your Flux tools reach only this direct message.${tools.includes('flux_read_web') ? ' Besides them, one Flux tool reads a public web page.' : ''}`
+      : 'The only Flux tool you have reads a public web page.';
+    return ['Flux tools', `${lead} ${web.join(' ')} ${REFUSED}`.trim(), ...find, ...searchLine];
+  }
+  if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...find, ...web,
     ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
   const changes = tools.some((name) => EFFECTS.has(name));
   const onTask = input.kind === 'task' || input.kind === 'task_answer';
@@ -282,7 +299,7 @@ function toolRules(input: Placed): string[] {
   const change = input.kind === 'task_answer' ? 'You only read: no tool changes anything.'
     : changes ? `${input.kind === 'task' ? 'Make the changes the task needs, and no others.' : `Make a change only when the request asks for it.`} Some changes wait for ${owner}'s OK; the tool then says so: do not try again.`
       : `You can only read here: ${owner} set what you may do to Only read. If you are asked for a change, say so instead.`;
-  return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web,
+  return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...find, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web,
     ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
 }
 
@@ -418,8 +435,9 @@ function conversationIntro(input: Placed, count: number): string {
     : input.kind === 'task' || input.kind === 'task_answer' || (place.kind === 'space' && place.task) ? 'the task\'s discussion'
       : main ? 'the space\'s conversations' : 'this thread';
   const threads = main ? '; thread="…" gives the opening words of a message\'s thread where the thread changes' : '';
-  const older = input.leftOut ? ' Older messages were left out.' : '';
-  if (!count) return input.leftOut ? `No messages of ${of} fit here; older ones were left out.` : `There are no messages in ${of} yet.`;
+  // A run with the search tools is told how to find them; one without says only that they were left out.
+  const older = input.leftOut ? (canFind(input) ? ' Older messages were left out: find them with flux_search and read around a hit with flux_read_around.' : ' Older messages were left out.') : '';
+  if (!count) return input.leftOut ? `No messages of ${of} fit here; older ones were left out${canFind(input) ? ': find them with flux_search and read around a hit with flux_read_around' : ''}.` : `There are no messages in ${of} yet.`;
   return input.leftOut ? `The latest ${count} messages of ${of}, oldest first${threads}.${older}` : `All ${count === 1 ? '1 message' : `${count} messages`} of ${of}, oldest first${threads}.`;
 }
 

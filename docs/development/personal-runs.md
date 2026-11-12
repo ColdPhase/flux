@@ -564,8 +564,8 @@ A run belongs to a **place** (`projectId`, `conversationId` and `dmId` on `perso
 | --- | --- | --- | --- | --- |
 | A conversation, thread or task thread of a space | `project_id`, `conversation_id` | the people who read the space | the conversation and the space's open work | the space's, as before |
 | A space's main conversation | `project_id` | the same | the latest messages of the space's conversations and its open work | the space's |
-| A direct message | `dm_id` | the DM's participants | the DM's latest messages, given in the request | `flux_read_web` and the provider's web search only |
-| A thread of a direct message (#1016) | `dm_id`, `dm_thread_root_id` | the DM's participants | the thread's root and replies, given in the request | `flux_read_web` and the provider's web search only |
+| A direct message | `dm_id` | the DM's participants | the DM's latest 20 messages, given in the request | `flux_read_web`, and `flux_search` and `flux_read_around`, which reach that DM alone (F-042, #1290); the provider's web search |
+| A thread of a direct message (#1016) | `dm_id`, `dm_thread_root_id` | the DM's participants | the thread's root and replies, given in the request | the same three tools, searching the whole DM; the provider's web search |
 | An agent's private chat | none | its owner | the chat's earlier turns, and what the owner can see through the tools | every read tool of the owner's reach, no change tool |
 
 Only a run in a space has an AI epoch and is held to the space's switch (`place.ts`); a run in a DM is held to its owner still taking part
@@ -801,7 +801,7 @@ and records no event.
 
 A run reads, as its agent, only project-audience objects of the requested place:
 
-- the latest 40 messages of the conversation;
+- the latest 20 messages of the conversation (F-042, #1291; the brief says when older ones were left out and that `flux_search` and `flux_read_around` find them);
 - up to 20 open work items of the project;
 - the target thought, only on a project sketch of that project.
 

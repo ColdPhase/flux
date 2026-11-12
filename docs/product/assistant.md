@@ -478,13 +478,25 @@ database backstop) is the starting point at space level for #855 and #874; see i
 An agent does not read a whole conversation. It gets the latest messages of its place in its brief and finds the rest by
 searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql), #1242).
 
-- **`flux_search`** searches every space the agent may read now (its owner's rights, spaces with AI on), with any of the
+- **`flux_search`** searches the spaces the agent may read now (its owner's rights, spaces with AI on), with any of the
   words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
-  messages, the Wiki and tasks, and DM messages only within a run in that DM. Each hit names its place, its author as people
-  see them and its time, with a snippet. Its description asks the agent to search in each language the space uses.
-- **`flux_read_around`** returns the messages around a hit, with the same access check.
-- **The brief** keeps the latest 20 messages (founder, 2026-11-12) and says how many older ones
-  exist and that the two tools find them. Server agents and local clients get the same tools and the same brief text.
+  messages, the Wiki (pages and materials), tasks, decisions and maps, and DM messages only within a run in that DM. It takes
+  `in` (a space, a conversation, a task's discussion), `from` (an author's id), `after` / `before` (a date or a time), `kind`
+  and `limit` (ten unless asked, at most 25). Each hit names its place, its author as people see them ([C-56](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), #1160), its time, a link
+  and a snippet with the matched words in bold; a message hit also gives its conversation and its place in it. Its description
+  tells the agent to search before it says it does not know, in each language the people write in, and to try other words when
+  little comes back; a search that finds nothing says so in words that say what to try.
+- **`flux_read_around`** returns the message and up to 25 before and after it (five by default) in its conversation or direct
+  message, oldest first, with the same author labels and the same access check as a search: one answer for a message that
+  is not there, one that is deleted and one the caller may not read.
+- **Where a search reaches** is the run's own place, as before ([C-12, C-37](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)): a run in a space or a thread or a task's discussion searches that space,
+  because its answer may be shown to everyone who reads it; a run in a DM searches that DM and nothing else, while its owner is
+  one of its people; a private chat and the owner's own Claude Code or Codex search every space their owner reaches. The
+  agent cannot name a place outside its reach: it is one answer with a place that is not there.
+- **The brief** keeps the latest 20 messages (founder, 2026-11-12) and, when older ones were left out, says that they were
+  and that the two tools find them; a run that has the two tools is also told, in one line, to search before it says it does
+  not know, where the search reaches, and to use each language the people write in. Server agents and local clients get the
+  same tools and the same brief text.
 - **Summaries** are on demand only: a tool summarises a conversation or a thread since a date, paid by the asking agent's
   owner. Nothing is stored.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was

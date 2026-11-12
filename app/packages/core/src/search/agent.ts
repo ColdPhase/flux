@@ -1,0 +1,155 @@
+import { AGENT_SEARCH_LIMITS, searchTargetPath, type SearchKind, type SearchText, WORK_STATUSES } from '@flux/contracts';
+import { InvalidInputError } from '../access/errors.js';
+import type { SearchAudience, SearchPlan, SearchRow } from './ports.js';
+import { searchPlaceOf, SEARCH_SOURCES } from './sources.js';
+
+// What an agent searches with (F-042, AG-12, #1290): `flux_search` for the server engine and for the owner's Claude Code and Codex. Core states
+// the query's meaning and what a hit is told as; the server decides, on every call, which audiences the caller may read (never this file) and
+// labels each author as people see them (#1160).
+
+/** The kinds an agent may ask for. A map covers its thoughts, a message a direct message too (in a run in that DM). Not people, not a space's own row. */
+export const AGENT_SEARCH_KINDS = ['message', 'doc', 'material', 'task', 'decision', 'map'] as const;
+export type AgentSearchKind = typeof AGENT_SEARCH_KINDS[number];
+
+const KIND_ROWS: Record<AgentSearchKind, SearchKind[]> = {
+  message: ['message', 'dm_message'], doc: ['doc'], material: ['material'], task: ['work'], decision: ['decision'], map: ['sketch', 'thought'],
+};
+const WORD = /[\p{L}\p{N}]+/gu;
+
+/** What the tool is asked: as the model writes it, before anything is checked. */
+export interface AgentSearchInput {
+  q: string;
+  /** An author's id as an earlier result gave it (`author.id`): a person's or an agent's. */
+  from?: string | undefined;
+  /** A date (`2026-09-01`, from midnight UTC) or a time with its offset; from then on. */
+  after?: string | undefined;
+  /** The same; before it. */
+  before?: string | undefined;
+  kind?: AgentSearchKind | undefined;
+  limit?: number | undefined;
+}
+
+/** Where the search is held, decided by the server from the run's place and the caller's rights. */
+export interface AgentSearchScope {
+  /** The reader's user id: the agent's owner, to name a direct message by the others in it. */
+  reader: string;
+  place: SearchPlan['place'];
+  conversationId: string | null;
+}
+
+/** The words of a query, lower case, each once: the plain letters and digits only, so a query carries no operator. */
+export function agentSearchWords(q: string): string[] {
+  const text = typeof q === 'string' ? q.replace(/\s+/gu, ' ').trim() : '';
+  if (!text) throw new InvalidInputError('Search for at least one word', 'QUERY_REQUIRED');
+  if (text.length > AGENT_SEARCH_LIMITS.query) throw new InvalidInputError(`A search is at most ${AGENT_SEARCH_LIMITS.query} characters`, 'QUERY_TOO_LONG');
+  const words = [...new Set((text.match(WORD) ?? []).map((word) => word.toLowerCase()))];
+  if (!words.length) throw new InvalidInputError('Search for at least one word', 'QUERY_REQUIRED');
+  return words.slice(0, AGENT_SEARCH_LIMITS.words);
+}
+
+const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const TIME = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d{1,6})?)?(Z|[+-]\d{2}:?\d{2})$/i;
+
+/** A date (from its midnight, UTC) or a time with its offset. Anything else is refused in words the model can fix. */
+export function agentSearchTime(value: string, field: 'after' | 'before'): Date {
+  const text = typeof value === 'string' ? value.trim() : '';
+  const refused = () => new InvalidInputError(`${field} is a date like 2026-09-01 or a time like 2026-09-01T08:00:00Z`, 'INVALID_TIME');
+  const date = DATE.exec(text);
+  const time = date ? null : TIME.exec(text);
+  const [, y, mo, d] = date ?? time ?? [];
+  if (!y || !mo || !d) throw refused();
+  // A day that does not exist (2026-02-31) is not rolled over into another one.
+  const day = new Date(Date.UTC(Number(y), Number(mo) - 1, Number(d)));
+  if (day.getUTCFullYear() !== Number(y) || day.getUTCMonth() !== Number(mo) - 1 || day.getUTCDate() !== Number(d)) throw refused();
+  const zone = time ? time[7]!.toUpperCase() : 'Z';
+  const at = new Date(date ? `${text}T00:00:00Z` : `${y}-${mo}-${d}T${time![4]}:${time![5]}:${time![6] ?? '00'}${/^[+-]\d{4}$/.test(zone) ? `${zone.slice(0, 3)}:${zone.slice(3)}` : zone}`);
+  if (Number.isNaN(at.getTime())) throw refused();
+  return at;
+}
+
+/** What `ranked` runs: the words, the scope the server decided, and what the agent filtered by. */
+export type AgentSearchPlan = SearchPlan & { authorId: string | null; conversationId: string | null; since: Date | null; until: Date | null };
+
+/** The BM25 statement of `@flux/db`'s search rows: one page, best first (one more than the limit, to know there is more). */
+export interface AgentSearchRows<C> {
+  ranked(audiences: SearchAudience<C>[], plan: AgentSearchPlan): Promise<SearchRow[]>;
+}
+
+/** The plan `ranked` runs: any of the words, in the scope the server decided, with the filters the agent gave. */
+export function agentSearchPlan(input: AgentSearchInput, scope: AgentSearchScope): AgentSearchPlan {
+  const words = agentSearchWords(input.q).join(' ');
+  const since = input.after ? agentSearchTime(input.after, 'after') : null;
+  const until = input.before ? agentSearchTime(input.before, 'before') : null;
+  if (since && until && since >= until) throw new InvalidInputError('after must be earlier than before', 'INVALID_TIME');
+  const limit = input.limit ?? AGENT_SEARCH_LIMITS.hitsDefault;
+  if (!Number.isInteger(limit) || limit < 1 || limit > AGENT_SEARCH_LIMITS.hitsMax) throw new InvalidInputError(`limit must be 1–${AGENT_SEARCH_LIMITS.hitsMax}`, 'INVALID_LIMIT');
+  const kinds = input.kind ? KIND_ROWS[input.kind] : Object.values(KIND_ROWS).flat();
+  if (!kinds) throw new InvalidInputError('Unknown kind', 'INVALID_TYPE');
+  return { text: words, prefix: null, fuzzy: false, number: null, words, kinds, place: scope.place, author: null, after: null, limit, reader: scope.reader,
+    authorId: input.from?.trim() || null, conversationId: scope.conversationId, since, until };
+}
+
+/** Matched words in **bold**: the one mark a model reads without a legend. */
+export function markedText(parts: SearchText | null): string {
+  return (parts ?? []).map((part) => (part.match ? `**${part.text}**` : part.text)).join('');
+}
+
+/** Who wrote a hit, as the server labelled them for this space (#1160). */
+export interface AgentHitAuthor { kind: 'human' | 'agent'; id: string; name: string }
+
+/** The kind an agent is told: its own words for a task and a map, a direct message is a message of a place that is a direct message. */
+const KIND_WORD: Record<SearchKind, string> = {
+  project: 'space', message: 'message', dm_message: 'message', material: 'material', doc: 'doc', work: 'task', decision: 'decision', sketch: 'map', thought: 'thought', person: 'person',
+};
+
+export interface AgentHit {
+  kind: string;
+  /** The object's id: a message's id is what `flux_read_around` takes. */
+  id: string;
+  link: string;
+  /** The space or the direct message it is in. */
+  place: { type: 'space' | 'dm'; id: string; name: string } | null;
+  /** A message's conversation and its place in it, for reading around it. */
+  conversationId?: string;
+  sequence?: number;
+  /** A page's version. */
+  version?: number;
+  /** A task's number and status; a decision's status. */
+  number?: number;
+  status?: string;
+  title?: string;
+  /** The matching text with the matched words in **bold**. */
+  snippet?: string;
+  author?: AgentHitAuthor;
+  at: string;
+}
+
+/** One row as the model is told it: compact, with only what it can use. The author is the server's label, never the raw name. */
+export function agentHit(row: SearchRow, author: AgentHitAuthor | null): AgentHit {
+  const source = SEARCH_SOURCES[row.kind];
+  // A message or a thought is its text: the matching part is the hit. Any other kind has a title and, when it has a body, a snippet of it.
+  const text = markedText(source.textIsTitle && !row.snippet?.length ? row.title : row.snippet);
+  const title = source.textIsTitle ? '' : markedText(row.title).replace(/\*\*/g, '');
+  const place = searchPlaceOf(row);
+  const status = row.kind === 'work' || row.kind === 'decision' ? (WORK_STATUSES.find((known) => known === row.status) ?? row.status) : null;
+  return {
+    kind: KIND_WORD[row.kind],
+    id: row.objectId,
+    link: searchTargetPath(source.target(row)),
+    place: place.type === 'project' ? { type: 'space', id: place.id, name: place.name } : place.type === 'dm' ? { type: 'dm', id: place.id, name: place.name } : null,
+    ...(row.kind === 'message' && row.parentId ? { conversationId: row.parentId } : {}),
+    ...((row.kind === 'message' || row.kind === 'dm_message') && row.sequence != null ? { sequence: row.sequence } : {}),
+    ...((row.kind === 'doc' || row.kind === 'material') && row.version !== null ? { version: row.version } : {}),
+    ...(row.kind === 'work' && row.workNumber !== null ? { number: row.workNumber } : {}),
+    ...(status ? { status } : {}),
+    ...(title ? { title } : {}),
+    ...(text ? { snippet: text } : {}),
+    ...(author ? { author } : {}),
+    at: row.at.toISOString(),
+  };
+}
+
+/** The audiences of the agent kinds only: spaces and their maps (people and a person's own places are not searched for an agent). */
+export function agentSearchAudiences<C>(audiences: readonly SearchAudience<C>[]): SearchAudience<C>[] {
+  return audiences.filter((audience) => audience.type === 'project' || audience.type === 'sketch');
+}

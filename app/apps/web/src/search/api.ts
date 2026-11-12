@@ -1,4 +1,4 @@
-import { SEARCH_PATH, type SearchResponse, type SearchTarget } from '@flux/contracts';
+import { SEARCH_PATH, searchTargetPath, type SearchResponse } from '@flux/contracts';
 import { request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
 
@@ -14,17 +14,4 @@ export function searchFlux(params: SearchParams, signal?: AbortSignal) {
 }
 
 /** Where a result opens: the exact message, version, thought or object. */
-export function targetHref(target: SearchTarget): string {
-  switch (target.type) {
-    case 'project': return `/projects/${target.projectId}`;
-    case 'message': return `/projects/${target.projectId}/conversations/${target.conversationId}#message-${target.messageId}`;
-    case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
-    case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
-    case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
-    case 'sketch': return `/map/${target.sketchId}`;
-    case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
-    case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
-    // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
-    default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
-  }
-}
+export const targetHref = searchTargetPath;

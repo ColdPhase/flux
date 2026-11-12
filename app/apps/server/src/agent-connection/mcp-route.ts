@@ -1,7 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } from '@flux/core';
-import { agentConnectionWorkspaceId, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentConnectionWorkspaceId, loadActor, accessReader, schema, type Database, type Transaction } from '@flux/db';
+import { and, eq } from 'drizzle-orm';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpTools, type FluxMcpTools } from './mcp-tools.js';
@@ -30,13 +31,13 @@ async function aiBlockedResponse(request: Request): Promise<Response> {
 
 /**
  * The only remote MCP entry point. A new server is bound to each verified bearer request; the tool definitions it offers are built once
- * for the process, when the first request needs them (the cursor key is the auth secret, which is read once its context is ready).
+ * for the process, when the first request needs them.
  */
 export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, testDeliveryGate = false,
   standing: { checker: Pick<IdpStanding, 'stands'>; label: string } | null = null, confirmation?: Confirmation, label = 'your identity provider',
   github: GithubActionProvider | null = null, webReader: WebReader | null = null) {
   let mcpTools: Promise<FluxMcpTools> | undefined;
-  const tools = () => mcpTools ??= auth.$context.then((context) => createFluxMcpTools(db, context.secret, github, webReader));
+  const tools = () => mcpTools ??= Promise.resolve().then(() => createFluxMcpTools(db, github, webReader));
   const handleVerified = async (request: Request, token: Record<string, unknown>) => {
     const ownerUserId = token.flux_owner_user_id;
     const connectionId = token.flux_connection_id;
@@ -129,6 +130,12 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       for (const [projectId, action] of [...d.projects].sort(([a], [b]) => a.localeCompare(b))) {
         const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Project unavailable');
+      }
+      // A direct message's words (a run in it, #1290) go out only while its owner is still one of its people.
+      for (const dmId of [...d.dms].sort()) {
+        const [member] = await tx.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
+          .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, ownerUserId))).for('share');
+        if (!member) throw new Error('Direct message unavailable');
       }
     } };
     return fenceResponse(await handler.fetch(request), fence);
