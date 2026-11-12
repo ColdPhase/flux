@@ -551,20 +551,21 @@ menu's rows, the sidebar's end slot, the panel head's quiet actions and the exis
   computer's ⋯; on the phone the direct message's title menu, one row above "Message info"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
-  person need not guess: "No notices or push. Mentions and questions to you still arrive." while it is on, and "Muted. Mentions
-  and questions to you still arrive." under **Unmute**. A muted place sends no notice, push, email or sound for an ordinary
-  message; a mention of the person and a question to them still arrive.
+  person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
+  arrives." under **Unmute**. A muted place sends no notice, push, email or sound for an ordinary message (a reply or a direct message);
+  everything that needs the person still arrives: a mention, a question, a task for them, a decision about their work, a call
+  invitation and an agent waiting for their OK (founder decision, #1249).
 - **The muted mark** is the `quiet` icon at 12 px in the muted text colour (`--t3`), after the name in the same end slot as the
   encrypted lock, on the sidebar's row of a muted space or direct message and on the Spaces page's row. It is a mark, not a button.
   The 64 px rail has no slot for it: it puts ", muted" in the tile's name and tooltip.
 - **Unread in a muted place is a quiet count, never bold.** Where an unread place shows the 6 px dot, a muted one shows the number of
   new things in `--t3` at the small size, regular weight, tabular figures, in the dot's place (the muted mark stays before it).
-  Names never change weight. A muted place adds nothing to the Inbox count except the mentions and questions that still arrive.
+  Names never change weight. A muted place adds nothing to the Inbox count except what needs the person and still arrives.
 - **Follow and Following** are one quiet button in a thread's panel head, between its reply count and the close control (the head's
   "quiet actions" slot): **Follow** with the plus icon, **Following** with the check (the label says the state), the `Button`'s quiet variant at the small
   size, no colour of its own. It is the same on the computer's panel, the tablet's overlay and
   the phone's sheet. A thread is followed without choosing when the person started it, wrote in it or was mentioned in it; **Following**
-  then stops its replies from notifying (**Follow** shows again). A mention of the person still arrives in a thread they unfollowed.
+  then stops its replies from notifying (**Follow** shows again). A mention of or a question to the person still arrives in a thread they unfollowed.
 - **Everything stays in step.** The ⋯ row, the sidebar mark, the Settings list and the thread's button read and write the same
   preferences that the Inbox, push and email use, and a change in one tab shows in the person's other open tabs without a reload.
 

@@ -148,7 +148,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const place = message.kind === 'pair' ? '' : ` in ${message.title ? quote(message.title) : 'a group message'}`;
       return people.map((userId) => {
         // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
-        // space (#1249): those two reasons still arrive from a place the person muted; every other message of the conversation does not.
+        // space (#1249): those reasons still arrive from a place the person muted, while every other message of the conversation does not.
         const addressed = mentions(message.body, names.get(userId) ?? '');
         const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
@@ -258,7 +258,8 @@ export interface GenerationOptions {
 /** Stores one candidate's notification and queues its push and email, as their preferences say. */
 async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: Candidate, options: GenerationOptions) {
   const preferences = await ports.preferences.get(candidate.userId);
-  // A muted place keeps its ordinary notices quiet; a mention or a question still arrives (#1249). The one rule is `quiet`.
+  // A muted place keeps its ordinary messages quiet; what needs the person (a mention, a question, a task, a decision, an invitation, an agent
+  // waiting) still arrives (#1249). The one rule is `quiet`.
   if (await ports.preferences.quiet(candidate.userId, candidate.source, candidate.reason)) return false;
   const channels = channelsOf(preferences)[candidate.reason];
   if (!channels.inApp && !channels.push && !channels.email) return false;

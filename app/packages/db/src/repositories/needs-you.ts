@@ -17,6 +17,16 @@ const n = schema.notifications;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export function needsYouRows(db: DbExecutor) {
+  /** Reads these notifications and marks them done, as Done in the Inbox does, so Undo (`restore`) brings them back; returns their Inbox keys. */
+  const takeOut = async (userId: string, ids: string[]): Promise<string[]> => {
+    if (!ids.length) return [];
+    await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), inArray(n.id, ids), isNull(n.readAt)));
+    const done = { state: 'done' as const, until: null, untilWorkId: null };
+    await db.insert(s).values(ids.map((id) => ({ userId, itemKey: `note:${id}`, ...done }))).onConflictDoUpdate({
+      target: [s.userId, s.itemKey], set: { ...done, updatedAt: sql`now()` },
+    });
+    return ids.map((id) => `note:${id}`);
+  };
   return {
     async states(userId: string) {
       const rows = await db.select().from(s).where(eq(s.userId, userId));
@@ -89,14 +99,18 @@ export function needsYouRows(db: DbExecutor) {
       const q = schema.agentQuestions;
       const cards = new Set(messages.length ? (await db.select({ messageId: q.messageId }).from(q)
         .where(and(eq(q.askedUserId, userId), inArray(q.messageId, messages)))).map((row) => row.messageId.toLowerCase()) : []);
-      const ids = rows.filter((row) => !cards.has(messageOf(row.url))).map((row) => row.id);
-      if (!ids.length) return [];
-      await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), inArray(n.id, ids), isNull(n.readAt)));
-      const done = { state: 'done' as const, until: null, untilWorkId: null };
-      await db.insert(s).values(ids.map((id) => ({ userId, itemKey: `note:${id}`, ...done }))).onConflictDoUpdate({
-        target: [s.userId, s.itemKey], set: { ...done, updatedAt: sql`now()` },
-      });
-      return ids.map((id) => `note:${id}`);
+      return takeOut(userId, rows.filter((row) => !cards.has(messageOf(row.url))).map((row) => row.id));
+    },
+
+    /**
+     * The same for a direct message (#1249): a message that names someone is a mention or a question there, as in a space thread, so the
+     * person's reply in that conversation answers their unread ones, read and done as Done takes them. A DM has no agent question cards.
+     */
+    async answerInDm(userId: string, dmId: string): Promise<string[]> {
+      const at = `/dm/${dmId.toLowerCase()}#message-`;
+      const rows = await db.select({ id: n.id }).from(n).where(and(eq(n.userId, userId), isNull(n.readAt), inArray(n.reason, ['question', 'mention']),
+        eq(n.sourceType, 'dm'), eq(n.sourceId, dmId), sql`starts_with(lower(${n.url}), ${at})`));
+      return takeOut(userId, rows.map((row) => row.id));
     },
 
     /** Whether the person's own notification exists; read or unread is set on it. */

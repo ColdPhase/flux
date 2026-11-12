@@ -83,10 +83,10 @@ describe('the one rule for a muted place (#1249)', () => {
   });
   const source = { type: 'project', id: randomUUID() };
 
-  test('only a mention and a question reach a muted place; every other reason is quiet; an unmuted place is quiet for none', async () => {
-    assert.deepEqual([...REACHES_MUTED_PLACE].sort(), ['mention', 'question']);
+  test('a muted place keeps only a reply and a direct message quiet; everything that needs the person arrives; an unmuted place is quiet for none', async () => {
+    assert.deepEqual([...REACHES_MUTED_PLACE].sort(), ['approval', 'assigned', 'invitation', 'mention', 'question', 'review']);
     for (const reason of NOTIFICATION_REASONS) {
-      assert.equal(await store(true).quiet('u', source, reason), reason !== 'mention' && reason !== 'question', `muted, ${reason}`);
+      assert.equal(await store(true).quiet('u', source, reason), reason === 'reply' || reason === 'dm', `muted, ${reason}`);
       assert.equal(await store(false).quiet('u', source, reason), false, `not muted, ${reason}`);
     }
     // A notice with no stored reason (written directly) is as quiet as an ordinary one.
@@ -111,7 +111,7 @@ describe('mute and follow from where they are (#1249)', () => {
     projectId = (await project(ada, workspaceId, 'Harbour log', 'workspace')).id;
   });
 
-  test('a muted space sends no notice, push or email for an ordinary reply, but a mention and a question still arrive; unmuting brings replies back', async () => {
+  test('a muted space sends no notice, push or email for an ordinary reply, but a mention, a question, a task for you and a decision about your work still arrive; unmuting brings replies back', async () => {
     // At Everything a reply would push and email, so a silent reply is the mute's doing and not the level's.
     await level(cy, 'everything');
     const { subscription } = await subscribe(cy.browser);
@@ -130,12 +130,18 @@ describe('mute and follow from where they are (#1249)', () => {
     const asked = await reply(ada, thread.id, '@Cyra Lind which tide table do you want?');
     assert.equal((await waitForItem(cy, (item) => item.url?.endsWith(mention.id) === true, 'the mention in the muted space')).reason, 'mention');
     assert.equal((await waitForItem(cy, (item) => item.url?.endsWith(asked.id) === true, 'the question in the muted space')).reason, 'question');
-    await waitFor(async () => (await pushes()) === 3, 'the pushes for the mention and the question');
+    // What needs the person arrives too: a task given to them and a decision about their work (the founder's decision on #1249).
+    const work = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${projectId}/work`, { body: { title: 'Print the October tide table', owner: { kind: 'human', id: cy.id } } }), 201) as { id: string };
+    const assigned = await waitForItem(cy, (item) => item.reason === 'assigned' && item.url === `/projects/${projectId}/tasks?open=work:${work.id}`, 'the task given to her in the muted space');
+    const decision = expectStatus(await ben.browser.request('POST', `/api/v1/projects/${projectId}/decisions`, { body: { title: 'Print on recycled paper', affects: [work.id] } }), 201) as { id: string };
+    const review = await waitForItem(cy, (item) => item.reason === 'review' && item.url?.endsWith(`decision:${decision.id}`) === true, 'the decision about her work in the muted space');
+    assert.ok(assigned.id && review.id);
+    await waitFor(async () => (await pushes()) === 5, 'the pushes for the mention, the question, the task and the decision');
     await generatorCaughtUp();
     assert.equal(await arrived(cy, plain.id), undefined, 'no inbox item for the plain reply');
     assert.equal((await inbox(cy)).items.some((item) => item.url?.endsWith(plain.id)), false);
     await sleep(1000);
-    assert.equal(await pushes(), 3, 'and no push for it');
+    assert.equal(await pushes(), 5, 'and no push for it');
     // Its email would have been the next row of this person's mail: the calm window holds the question's too, so no row can be the reply's.
     const rows = await rowsFor(cy);
     const mails = (await pool.query('SELECT notification_id FROM notification_emails WHERE user_id = $1', [cy.id])).rows as { notification_id: string }[];
@@ -146,10 +152,10 @@ describe('mute and follow from where they are (#1249)', () => {
     assert.deepEqual(unmuted.muted, []);
     const again = await reply(ada, thread.id, 'Plain reply after unmuting');
     assert.equal((await waitForItem(cy, (item) => item.url?.endsWith(again.id) === true, 'the reply after unmuting')).reason, 'reply');
-    await waitFor(async () => (await pushes()) === 4, 'the push after unmuting');
+    await waitFor(async () => (await pushes()) === 6, 'the push after unmuting');
   });
 
-  test('the push and the email jobs ask the same rule: a notice written before the mute, of an ordinary reason, is not sent; a mention is', async () => {
+  test('the push and the email jobs ask the same rule: a notice written before the mute, of an ordinary reason, is not sent; one that needs the person is', async () => {
     const q = await person('Quinn Reed');
     await addMember(ada, workspaceId, q, 'member');
     await level(q, 'everything');
@@ -161,8 +167,7 @@ describe('mute and follow from where they are (#1249)', () => {
     await setMute(q, 'project', projectId, true);
     assert.equal(await wanted(q.id, notice('reply')), false, 'muted: the reply is not pushed');
     assert.equal(await wanted(q.id, notice('dm')), false);
-    assert.equal(await wanted(q.id, notice('mention')), true, 'a mention still is');
-    assert.equal(await wanted(q.id, notice('question')), true, 'and a question');
+    for (const reason of ['mention', 'question', 'assigned', 'review', 'invitation', 'approval'] as const) assert.equal(await wanted(q.id, notice(reason)), true, `${reason} still is`);
     await setMute(q, 'project', projectId, false);
   });
 

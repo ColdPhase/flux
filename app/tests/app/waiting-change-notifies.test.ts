@@ -9,8 +9,8 @@ import { recordedPushes, subscribe, waitFor } from './support/push.js';
 import { assistantScene, changesOf, text, type AssistantScene } from './support/assistant-scene.js';
 
 // F-036 item 10 (#1186): "Only what needs me" includes an agent waiting for you. When a run (or a local client) starts waiting for its
-// owner's OK, the owner alone is told once, by push and email, with a link that opens the waiting card. Quiet hours and a muted space
-// hold it back as for every other reason; once nothing of the run waits any more, the notification is read. The run's changes go through
+// owner's OK, the owner alone is told once, by push and email, with a link that opens the waiting card. Quiet hours hold push back; a muted
+// space does not, because an agent waiting for the owner's OK needs them (founder decision, #1249); once nothing of the run waits any more, the notification is read. The run's changes go through
 // the real `/mcp` route with the run's own token; the real worker writes the notifications and sends them to the push mock and Mailpit.
 
 let scene: AssistantScene;
@@ -86,7 +86,7 @@ describe('an agent waiting for your OK notifies its owner (F-036 item 10, #1186)
     assert.deepEqual((await inbox(scene.peer)).filter((item) => item.reason === 'approval' || item.url?.includes(live.runId)), [], 'Jonas hears nothing until the owner decides');
   });
 
-  test('quiet hours keep it in the Inbox with no push, and a muted space tells nothing', async () => {
+  test('quiet hours keep it in the Inbox with no push, and a muted space still tells the owner: it needs them (#1249)', async () => {
     const { subscription } = await subscribe(scene.owner.browser);
     await scene.setMayDo('ask');
     await prefs(scene.owner, { quietHours: quietNow() });
@@ -101,10 +101,8 @@ describe('an agent waiting for your OK notifies its owner (F-036 item 10, #1186)
     expectStatus(await scene.owner.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: scene.place.id, muted: true } }), 200);
     try {
       const muted = await runWaiting(['Muted space task']);
-      await generatorCaughtUp();
-      await sleep(1000);
-      assert.equal((await approvals(scene.owner, muted.runId)).length, 0, 'a muted space tells nothing');
-      assert.equal((await recordedPushes(subscription.mockId)).length, 0);
+      await waitFor(async () => (await approvals(scene.owner, muted.runId)).length === 1, 'the notification from the muted space');
+      await waitFor(async () => (await recordedPushes(subscription.mockId)).length === 1, 'the push from the muted space');
     } finally {
       expectStatus(await scene.owner.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: scene.place.id, muted: false } }), 200);
     }

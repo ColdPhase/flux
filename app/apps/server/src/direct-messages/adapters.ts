@@ -1,4 +1,4 @@
-import { accessPorts, dmRows, messageChangeRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { accessPorts, dmRows, messageChangeRows, needsYouRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
@@ -83,6 +83,8 @@ function dmPorts(tx: Transaction): DmPorts {
       save: (messageId, workspaceId, references) => messageReferences(tx).save({ kind: 'dm', id: messageId }, workspaceId, references) },
     taskCopy: dmTaskCopy(tx),
     dms: dmRepository(tx),
+    // A reply answers what its author was asked or mentioned in this conversation (#1249), as in a space thread (#1170).
+    inbox: { answerIn: (userId, dmId) => needsYouRows(tx as unknown as DbExecutor).answerInDm(userId, dmId) },
     events: { record: async (principal, workspaceId, kind, dmId, data) => { await recordEvent(eventPorts(tx), principal, workspaceId, kind, dmId, data); } },
   };
 }

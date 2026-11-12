@@ -25,7 +25,7 @@ PEOPLE = {
     "ada": ("Ada Kowalska", f"ada.m+{STAMP}@example.test"),
     "kai": ("Kai Tanaka", f"kai.m+{STAMP}@example.test"),
 }
-STILL_ARRIVES = "Mentions and questions to you still arrive."
+STILL_ARRIVES = "What needs you still arrives."
 
 
 class MuteAndFollowJourney(unittest.TestCase):

@@ -1,7 +1,7 @@
 import {
   IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
   type Dm, type DmMessage, type DmSummary, type DmTaskCopyPreview, type DmTaskCopyPreviewCommand, type DmTaskCopyResult, type DmThread,
-  type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type Workspace, WORKSPACES_PATH,
+  type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type SentDmMessage, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
 import { request } from './client';
 import { isWorkspaceLocked } from '../encryption/api';
@@ -34,7 +34,7 @@ export const openDm = (workspaceId: string, participantIds: string[], idempotenc
 export const getDm = (id: string, signal?: AbortSignal) => request<Dm>(dmPath(id), { signal });
 export const olderDmMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Dm>(`${dmPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
-export const sendDmMessage = (id: string, command: SendDmMessageCommand) => request<DmMessage>(dmMessagesPath(id), { method: 'POST', body: command });
+export const sendDmMessage = (id: string, command: SendDmMessageCommand) => request<SentDmMessage>(dmMessagesPath(id), { method: 'POST', body: command });
 /** The author changes the words of their own message, root or reply, or deletes it (#1006). */
 export const editDmMessage = (id: string, messageId: string, body: string) => request<DmMessage>(dmMessagePath(id, messageId), { method: 'PATCH', body: { body } });
 export const removeDmMessage = (id: string, messageId: string) => request<DmMessage>(dmMessagePath(id, messageId), { method: 'DELETE' });
@@ -42,7 +42,7 @@ export const removeDmMessage = (id: string, messageId: string) => request<DmMess
 export const getDmThread = (id: string, rootId: string, signal?: AbortSignal) => request<DmThread>(dmThreadPath(id, rootId), { signal });
 export const olderDmReplies = (id: string, rootId: string, beforeSequence: number, signal?: AbortSignal) =>
   request<DmThread>(`${dmThreadPath(id, rootId)}?beforeSequence=${beforeSequence}`, { signal });
-export const sendDmReply = (id: string, rootId: string, command: SendDmMessageCommand) => request<DmMessage>(dmRepliesPath(id, rootId), { method: 'POST', body: command });
+export const sendDmReply = (id: string, rootId: string, command: SendDmMessageCommand) => request<SentDmMessage>(dmRepliesPath(id, rootId), { method: 'POST', body: command });
 /** Viewing receipts (#534): what this person saw, and who saw the runs of their own messages. */
 export const observeDmMessages = (id: string, messageIds: string[]) => request<ObserveMessagesResult>(dmObservationsPath(id), { method: 'POST', body: { messageIds } });
 export const dmReceipts = (id: string, runs: string[][], signal?: AbortSignal) => request<MessageReceiptsResult>(dmReceiptsPath(id), { method: 'POST', body: { runs }, leavesReads: true, signal });

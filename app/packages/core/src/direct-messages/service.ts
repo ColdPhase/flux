@@ -4,6 +4,7 @@ import {
   RECEIPT_LIMITS,
   WORK_LIMITS,
   type DmMessage,
+  type SentDmMessage,
   type DmTaskCopyCommand,
   type DmTaskCopyPreview,
   type DmTaskCopyPreviewCommand,
@@ -195,7 +196,7 @@ async function taskCopyPreview(ports: DmPorts, principal: Principal, dm: DmRecor
 }
 
 export function createDmUseCases(uow: DmUnitOfWork) {
-  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand, via: string | null = null): Promise<DmMessage> {
+  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand, via: string | null = null): Promise<SentDmMessage> {
     const authorId = person(principal);
     if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
       throw new RuleViolationError('Direct messages cannot cite space material yet', 'DM_SOURCE_UNSUPPORTED');
@@ -231,7 +232,9 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       await ports.references.save(message.id, dm.workspaceId, input.references);
       // The message id (an identifier, never content) lets notifications (#116) name the message.
       await ports.events.record(principal, dm.workspaceId, 'dm.message_sent.v1', dm.id, { messageId: message.id, ...(rootId ? { rootId } : {}) });
-      return toMessage(message);
+      // The author's reply answers what they were asked or mentioned in this conversation: it leaves their Inbox as Done takes it (#1249).
+      const answered = ports.inbox ? await ports.inbox.answerIn(authorId, dm.id) : [];
+      return answered.length ? { ...toMessage(message), answered } : toMessage(message);
     });
   }
 
@@ -350,17 +353,17 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     },
 
     /** A message inherits the DM's audience. A retry with the same clientMessageId returns the original. */
-    async send(principal: Principal, dmId: string, command: SendDmMessageCommand): Promise<DmMessage> {
+    async send(principal: Principal, dmId: string, command: SendDmMessageCommand): Promise<SentDmMessage> {
       return sendMessage(principal, dmId, null, command);
     },
 
     /** Show everyone in a DM (#842): the person posts an agent's answer as their message, "Ada · via Assistant". Only the server calls it, from the answer itself. */
-    async sendVia(principal: Principal, dmId: string, command: SendDmMessageCommand, via: string): Promise<DmMessage> {
+    async sendVia(principal: Principal, dmId: string, command: SendDmMessageCommand, via: string): Promise<SentDmMessage> {
       return sendMessage(principal, dmId, null, command, via);
     },
 
     /** Show everyone in a DM's thread (#1016): the asker's reply in that thread, "Ada · via Assistant". Only the server calls it, from the answer itself. */
-    async replyVia(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand, via: string): Promise<DmMessage> {
+    async replyVia(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand, via: string): Promise<SentDmMessage> {
       return sendMessage(principal, dmId, validRoot(rootId), command, via);
     },
 
@@ -369,7 +372,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
      * `dm.write` check with the same locks, the same 1:1 recipient-left refusal, and a root that is not a message
      * of THIS DM (or is itself a reply) answers 404 like any invisible resource.
      */
-    async reply(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand): Promise<DmMessage> {
+    async reply(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand): Promise<SentDmMessage> {
       return sendMessage(principal, dmId, validRoot(rootId), command);
     },
 

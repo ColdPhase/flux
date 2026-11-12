@@ -263,7 +263,9 @@ async function deliver(projectId: string, context: string, command: SendMessageC
     // `dm:<dmId>` posts to the conversation, `dm:<dmId>/<rootId>` is a private reply in that message's thread (#536).
     const [dmId, rootId] = context.slice('dm:'.length).split('/');
     const body = { body: command.body, clientMessageId: command.clientMessageId, ...(command.references ? { references: command.references } : {}) };
-    return { id: command.clientMessageId, message: rootId ? await sendDmReply(dmId!, rootId, body) : await sendDmMessage(dmId!, body) };
+    // A reply in a direct message answers what its author was asked or mentioned there, as in a space thread (#1249).
+    const { answered, ...message } = rootId ? await sendDmReply(dmId!, rootId, body) : await sendDmMessage(dmId!, body);
+    return { id: command.clientMessageId, message: message as ConversationMessage, ...(answered?.length ? { answered } : {}) };
   }
   throw new Error('This composer does not publish messages.');
 }

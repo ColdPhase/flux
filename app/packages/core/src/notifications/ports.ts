@@ -149,8 +149,8 @@ export interface PreferenceRepository {
   save(userId: string, preferences: StoredPreferences): Promise<void>;
   isMuted(userId: string, source: { type: string; id: string }): Promise<boolean>;
   /**
-   * Whether the person's mute keeps a notice of this reason from them (#1249): the place is muted and the reason is not one that names
-   * them (a mention or a question). The one place that decides, for the notice, the push and the email alike.
+   * Whether the person's mute keeps a notice of this reason from them (#1249): the place is muted and the reason is an ordinary message (a
+   * reply or a direct message), not something that needs them. The one place that decides, for the notice, the push and the email alike.
    */
   quiet(userId: string, source: { type: string; id: string }, reason: NotificationReason | null | undefined): Promise<boolean>;
   mutes(userId: string): Promise<{ type: 'project' | 'dm'; id: string }[]>;

@@ -229,7 +229,7 @@ function AccountNotificationSettings() {
         </div>
         {mutedOpen ? (
           <div className="nset__panel nset__places" id={ids.muted}>
-            <p className="nset__lead">A muted place sends no notices, push or email for ordinary messages. Mentions of you and questions to you still arrive. You can still open it.</p>
+            <p className="nset__lead">A muted place is quiet for ordinary messages: no notices, push or email. What needs you still arrives: mentions, questions, tasks for you, decisions about your work, invitations and agents waiting for your OK. You can still open it.</p>
             {prefs.muted.length ? (
               <ul className="nset__muted">
                 {prefs.muted.map((place) => (
