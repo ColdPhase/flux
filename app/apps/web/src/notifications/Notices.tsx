@@ -9,6 +9,7 @@ import { useLive } from '../live/LiveProvider';
 import { Avatar, Button, IconButton, Kreska, MEDIA, duration, settle, useMediaQuery } from '../ui';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { playSound, soundPreferences } from './sound';
+import { markPushOfferReady } from './PushOffer';
 import './notices.css';
 
 /**
@@ -154,6 +155,8 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     const showing = shown.current;
     const fresh = !(showing?.family === 'call' && family !== 'call')
       && !(showing && family !== 'call' && showing.family === family && showing.place === place);
+    // Someone wrote to, mentioned or asked the person: Home may now offer to turn notifications on (#1243).
+    if (SOUNDED_MESSAGES.has(item.reason ?? '')) markPushOfferReady(identity);
     const sound = item.reason === 'invitation' ? 'call' : SOUNDED_MESSAGES.has(item.reason ?? '') ? 'message' : null;
     if (fresh && sound) {
       void soundPreferences(identity).then((switches) => { if (switches && (sound === 'call' ? switches.calls : switches.messages)) playSound(sound); });

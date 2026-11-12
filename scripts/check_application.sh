@@ -3,6 +3,7 @@
 # With arguments: paths of API test files under app/tests/app/, as seen from app/, e.g.
 # ./scripts/check_application.sh tests/app/search.test.ts. Only those files run in the test
 # service, on the same stack; the browser, restart and unavailable-configuration checks are skipped.
+# FLUX_E2E_FILES (names under app/tests/app/e2e/, space separated) runs those Chromium browser files after them.
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -19,6 +20,10 @@ for file in "$@"; do
     printf 'API test file not found: %s\n' "$file" >&2
     exit 2
   fi
+done
+for file in ${FLUX_E2E_FILES:-}; do
+  case "$file" in */*|*..*|*[!A-Za-z0-9._-]*) printf 'not a browser test file name: %s\n' "$file" >&2; exit 2 ;; esac
+  if [ ! -f "app/tests/app/e2e/$file" ]; then printf 'browser test file not found: %s\n' "$file" >&2; exit 2; fi
 done
 project="flux-test-$(date +%s)-$$"
 export POSTGRES_USER=flux
@@ -130,6 +135,7 @@ if [ "$#" -gt 0 ]; then
     echo 'Provider key appeared in API, worker or provider-mock logs' >&2
     exit 1
   fi
+  for file in ${FLUX_E2E_FILES:-}; do run_browser e2e node_modules/.bin/tsx --test "tests/app/e2e/$file"; done
   no_secrets_in_logs
   echo 'Named API test files only: browser, restart and unavailable-configuration checks skipped.'
   exit 0
@@ -154,6 +160,8 @@ run_browser -e FLUX_E2E_BROWSER=webkit e2e node_modules/.bin/tsx --test tests/ap
 
 # Browser Web Push on this device (#20): turn on stores the subscription, a muted place sends nothing, turn off removes it.
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/push-browser.e2e.ts
+# Asking for notifications at the right moment (#1243): the offer after the first direct message, Not now, Block, and the iPhone steps.
+run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/push-offer.e2e.ts
 
 # Login, sharing, denied access and stream revocation in Chromium sessions (issue #29, AC-4).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/access-stream.e2e.ts
