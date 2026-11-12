@@ -301,6 +301,77 @@ class NoticeJourney(unittest.TestCase):
             card.get_by_role("button", name="Close").tap()
             expect(card).to_have_count(0)
 
+    # ---------------------------------------------------------------- the tab, the badge and sound
+
+    FAKE_AUDIO_AND_BADGE = """
+        window.__tones = 0; window.__badges = [];
+        class FakeAudio {
+          constructor() { this.state = 'running'; this.currentTime = 0; this.destination = {}; }
+          resume() { return Promise.resolve(); }
+          createOscillator() { return { type: '', frequency: { value: 0 }, connect: (node) => node, start() { window.__tones += 1; }, stop() {} }; }
+          createGain() { return { gain: { setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect: (node) => node }; }
+        }
+        window.AudioContext = FakeAudio;
+        navigator.setAppBadge = (count) => { window.__badges.push(count); return Promise.resolve(); };
+        navigator.clearAppBadge = () => { window.__badges.push(0); return Promise.resolve(); };
+    """
+
+    def test_10_the_tab_title_favicon_and_badge_count_what_would_notify_and_clear_when_read(self) -> None:
+        self.request("ada", "POST", "/api/v1/inbox/read-all")
+        page = self.page("ada")
+        page.add_init_script(self.FAKE_AUDIO_AND_BADGE)
+        page.goto("/")
+        expect(page).to_have_title("Flux")
+        page.wait_for_timeout(1500)
+        self.dm("Did the new connectors arrive?")
+        expect(page).to_have_title("(1) Flux", timeout=8000)
+        icon = page.locator('link[rel="icon"]').first
+        expect(icon).to_have_attribute("href", "/icons/icon-dot.svg")
+        page.wait_for_function("() => window.__badges.includes(1)")
+        page.mouse.move(10, 10)
+        shot(page, "notices-desktop-1440-light-tab-count")
+        self.card(page).get_by_role("button", name="Open").click()
+        expect(page).to_have_url(re.compile(rf"/dm/{self.dm_id}"))
+        expect(page).to_have_title("Flux", timeout=8000)
+        expect(icon).to_have_attribute("href", "/icons/icon.svg")
+        page.wait_for_function("() => window.__badges.at(-1) === 0")
+
+    def test_11_sound_for_messages_is_off_by_default_and_plays_once_when_on(self) -> None:
+        page = self.page("ada")
+        page.add_init_script(self.FAKE_AUDIO_AND_BADGE)
+        page.goto("/settings/notifications")
+        messages = page.get_by_role("switch", name="Sound for messages")
+        calls = page.get_by_role("switch", name="Sound when someone calls me")
+        expect(messages).to_have_attribute("aria-checked", "false")
+        expect(calls).to_have_attribute("aria-checked", "true")
+        shot(page, "notices-desktop-1440-light-sound-settings")
+        page.goto("/")
+        page.wait_for_timeout(1500)
+        self.dm("Silent by default.")
+        expect(self.card(page)).to_be_visible(timeout=5000)
+        page.wait_for_timeout(500)
+        self.assertEqual(page.evaluate("window.__tones"), 0, "no sound while Sound for messages is off")
+        self.card(page).get_by_role("button", name="Close").click()
+
+        page.goto("/settings/notifications")
+        messages.click()
+        expect(messages).to_have_attribute("aria-checked", "true")
+        self.addCleanup(lambda: self.request("ada", "PATCH", "/api/v1/notification-preferences", {"sound": {"messages": False}}))
+        for _ in range(40):
+            if self.request("ada", "GET", "/api/v1/notification-preferences")["sound"]["messages"]:
+                break
+            time.sleep(0.1)
+        page.get_by_role("link", name=re.compile("^Home")).first.click()
+        page.wait_for_timeout(1500)
+        self.dm("Now you hear me.")
+        expect(self.card(page)).to_be_visible(timeout=5000)
+        page.wait_for_function("() => window.__tones === 1")
+        # A burst that joins the card shown does not sound again.
+        self.dm("And again.")
+        expect(self.card(page)).to_contain_text("2 new messages", timeout=5000)
+        page.wait_for_timeout(500)
+        self.assertEqual(page.evaluate("window.__tones"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

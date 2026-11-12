@@ -28,6 +28,10 @@ export interface StoredPreferences {
   quietStart: number;
   quietEnd: number;
   timeZone: string;
+  /** "Sound for messages" (#1243): off by default. */
+  soundMessages: boolean;
+  /** "Sound when someone calls me" (#1243): on by default. */
+  soundCalls: boolean;
 }
 
 /**
@@ -42,6 +46,8 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   quietStart: 22 * 60,
   quietEnd: 7 * 60,
   timeZone: 'UTC',
+  soundMessages: false,
+  soundCalls: true,
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
@@ -111,6 +117,16 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
   if (command.accountEnabled !== undefined) {
     if (typeof command.accountEnabled !== 'boolean') throw new InvalidInputError('accountEnabled must be true or false', 'INVALID_ACCOUNT_ENABLED');
     next.accountEnabled = command.accountEnabled;
+  }
+  const sound = command.sound;
+  if (sound !== undefined) {
+    if (!sound || typeof sound !== 'object') throw new InvalidInputError('sound must be an object', 'INVALID_SOUND');
+    for (const [key, field] of [['messages', 'soundMessages'], ['calls', 'soundCalls']] as const) {
+      const value = sound[key];
+      if (value === undefined) continue;
+      if (typeof value !== 'boolean') throw new InvalidInputError(`sound.${key} must be true or false`, 'INVALID_SOUND');
+      next[field] = value;
+    }
   }
   const quiet = command.quietHours;
   if (quiet !== undefined) {

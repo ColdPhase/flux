@@ -7,6 +7,7 @@ import { useShellData } from '../app/data';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
+import { noteSoundPreferences } from './sound';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup, TimeField } from '../ui';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
@@ -57,7 +58,7 @@ function AccountNotificationSettings() {
   const [mutedOpen, setMutedOpen] = useState(false);
   const hasPreferences = useRef(false);
   const toast = useToast();
-  const ids = { level: useId(), where: useId(), email: useId(), quiet: useId(), muted: useId() };
+  const ids = { level: useId(), where: useId(), sound: useId(), email: useId(), quiet: useId(), muted: useId() };
 
   const queue = useRef<Promise<void>>(Promise.resolve());
   const sequence = useRef(0);
@@ -67,7 +68,7 @@ function AccountNotificationSettings() {
     getPreferences().then((next) => {
       if (mounted.current && mine === reads.current && edit === sequence.current) {
         hasPreferences.current = true;
-        setPrefs(next); setFailed(false); setStaleRead(false);
+        setPrefs(next); setFailed(false); setStaleRead(false); noteSoundPreferences(ownerId, next.sound);
       }
     }, () => {
       if (mounted.current && mine === reads.current && edit === sequence.current) {
@@ -75,7 +76,7 @@ function AccountNotificationSettings() {
         else setFailed(true);
       }
     });
-  }, []);
+  }, [ownerId]);
   useEffect(load, [load]);
   // A place muted or unmuted from its ⋯ menu, here or in another tab (#1249), is read again: this list is the overview of the same mutes.
   useStreamEvents(ownerId, (event) => { if (notificationsChanged(event)) load(); }, load);
@@ -114,7 +115,7 @@ function AccountNotificationSettings() {
       if (!isCurrentNotificationSession(session)) return false;
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
-        setPrefs(result); setSaved(done); setPendingMute(null); setStaleRead(false);
+        setPrefs(result); setSaved(done); setPendingMute(null); setStaleRead(false); noteSoundPreferences(ownerId, result.sound);
       }
       return true;
     });
@@ -198,6 +199,17 @@ function AccountNotificationSettings() {
           <div className="sset-row sset-row--stack"><span className="sset-row__t">On this device</span><NotificationsButton installStepsBelow={phone} /></div>
         )}
         <QuietHours prefs={prefs} open={quietOpen} panelId={ids.quiet} onToggle={() => setQuietOpen((open) => !open)} onChange={change} />
+      </div>
+
+      {/* Two sound switches (founder decision, 2026-11-12, #1243): an open tab plays them with a notice, so the level and quiet hours hold them too. */}
+      <h3 className="sset-sec" id={ids.sound}>Sound</h3>
+      <div className="sset-card" role="group" aria-labelledby={ids.sound}>
+        <SwitchRow label="Sound for messages" checked={prefs.sound.messages}
+          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for direct messages and mentions while Flux is open'}
+          onChange={(messages) => change({ sound: { messages } }, (current) => ({ ...current, sound: { ...current.sound, messages } }))} />
+        <SwitchRow label="Sound when someone calls me" checked={prefs.sound.calls}
+          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'One soft chime when someone invites you to a call'}
+          onChange={(calls) => change({ sound: { calls } }, (current) => ({ ...current, sound: { ...current.sound, calls } }))} />
       </div>
 
       {email.available ? (

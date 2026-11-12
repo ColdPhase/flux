@@ -8,6 +8,7 @@ import { getSession } from '../live/api';
 import { useLive } from '../live/LiveProvider';
 import { Avatar, Button, IconButton, Kreska, MEDIA, duration, settle, useMediaQuery } from '../ui';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
+import { playSound, soundPreferences } from './sound';
 import './notices.css';
 
 /**
@@ -35,6 +36,8 @@ function eventAge(createdAt: string) {
   return gap - nearest;
 }
 const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply']);
+/** "Sound for messages": direct messages, mentions and questions to you; a reply in a thread does not sound (#1243). */
+const SOUNDED_MESSAGES = new Set(['dm', 'mention', 'question']);
 const LIVE_URL = /^\/projects\/[0-9a-f-]+\/live\/([0-9a-f-]+)/i;
 
 type Family = 'message' | 'call' | 'other';
@@ -147,6 +150,14 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
     const place = placeOf(item);
     // A notice that arrives while the last one leaves enters again from where that one is.
     if (leavingNow.current) entered.current = null;
+    // A new card may sound once (a burst that joins the card shown, or a message under a call's card, does not).
+    const showing = shown.current;
+    const fresh = !(showing?.family === 'call' && family !== 'call')
+      && !(showing && family !== 'call' && showing.family === family && showing.place === place);
+    const sound = item.reason === 'invitation' ? 'call' : SOUNDED_MESSAGES.has(item.reason ?? '') ? 'message' : null;
+    if (fresh && sound) {
+      void soundPreferences(identity).then((switches) => { if (switches && (sound === 'call' ? switches.calls : switches.messages)) playSound(sound); });
+    }
     setLeaving(false);
     setNotice((current) => {
       const live = current && shown.current === current ? current : null;
@@ -157,7 +168,7 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
       }
       return { serial: ++serial.current, place, family, items: [item] };
     });
-  }, []);
+  }, [identity]);
 
   const dismiss = useCallback(() => setLeaving(true), []);
 

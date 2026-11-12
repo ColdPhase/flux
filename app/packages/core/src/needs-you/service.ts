@@ -14,6 +14,7 @@ import type { Principal } from '../principal.js';
 import { linkReader } from '../work/service.js';
 import type { WorkRecord } from '../work/ports.js';
 import type { NeedsYouPorts, StoredNeedsYou } from './ports.js';
+import { channelsOf } from '../notifications/preferences.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KEY = /^(decision|blocked|note|assistant|proposal|question):[0-9a-f-]{36}$/i;
@@ -58,6 +59,8 @@ function holds(state: StoredNeedsYou, now: Date, statuses: Map<string, string>) 
  * did with an item is stored. Every list is filtered by the access policy at the moment of reading.
  */
 export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new Date()) {
+  /** Unread notifications that would notify the person, counted by the read of `candidates` that made the list (#1243). */
+  const notifyingOf = new WeakMap<NeedsYouItem[], number>();
   async function candidates(principal: Principal): Promise<NeedsYouItem[]> {
     const userId = human(principal);
     const items: NeedsYouItem[] = [];
@@ -145,6 +148,10 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // People's questions and mentions, still unread.
     const since = now().getTime() - MENTION_DAYS * 86_400_000;
     const inbox = await ports.inbox.listReadable(userId, 100);
+    // What would notify the person now and is still unread (#1243): the tab's "(N)" and the app's badge.
+    const level = (await ports.level?.(userId)) ?? 'needsYou';
+    const channels = channelsOf({ level, emailMe: false });
+    const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push).length;
     // An agent's question with ready-made answers (S14, #763 IN-1/IN-2) is read from the question itself, not from the notification
     // that announced it: it carries its answers and leaves the queue once it is answered, here, in the conversation or in Agents.
     const asked = await ports.repository.agentQuestions(userId, [...projects], new Date(since), MAX_AGENT_QUESTIONS);
@@ -211,13 +218,16 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
             line: change.line, waitReason: change.waitReason, forPerson: change.forPerson, tells: change.tells, after: change.tells.length ? change.after : null })) },
       });
     }
-    return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
+    const sorted = items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
+    notifyingOf.set(sorted, notifying);
+    return sorted;
   }
 
   /** The queue after the person's own choices; also forgets choices that no longer mean anything. */
   async function queue(principal: Principal) {
     const userId = human(principal);
     const all = await candidates(principal);
+    const notifying = notifyingOf.get(all) ?? 0;
     const stored = await ports.repository.states(userId);
     const statuses = await ports.repository.workStatuses(stored.flatMap((entry) => (entry.untilWorkId ? [entry.untilWorkId] : [])));
     const at = now();
@@ -236,13 +246,13 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     await ports.repository.deleteStates(userId, stale);
     const dayAgo = at.getTime() - 86_400_000;
     const doneToday = stored.filter((entry) => entry.state !== 'snoozed' && entry.updatedAt.getTime() >= dayAgo && (entry.key.startsWith('note:') || keys.has(entry.key))).length;
-    return { items: shown.slice(0, MAX_ITEMS), all, later, doneToday };
+    return { items: shown.slice(0, MAX_ITEMS), all, later, doneToday, notifying };
   }
 
   return {
     async list(principal: Principal): Promise<NeedsYouResponse> {
-      const { items, later, doneToday } = await queue(principal);
-      return { items, count: items.length, later, doneToday };
+      const { items, later, doneToday, notifying } = await queue(principal);
+      return { items, count: items.length, later, doneToday, notifying };
     },
 
     async resolve(principal: Principal, key: string, command: ResolveNeedsYouCommand): Promise<NeedsYouResolved> {

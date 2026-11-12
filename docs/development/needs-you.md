@@ -77,9 +77,11 @@ real reversals through the calls above.
 
 ## Counts
 
-`GET /api/v1/needs-you` returns `{ items, count, later, doneToday }`: `count` is what the sidebar, the phone's
+`GET /api/v1/needs-you` returns `{ items, count, later, doneToday, notifying }`: `count` is what the sidebar, the phone's
 tab bar and Home's "Needs you" badge show; `later` counts snoozed items, `doneToday` what was marked done or
-declined in the last 24 hours ("4 done today").
+declined in the last 24 hours ("4 done today"). `notifying` (#1243) counts the unread notifications among the person's
+newest 100 Inbox items that would notify them under their level; the tab title's "(N)", its favicon dot and the app
+badge show it ([mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243)).
 
 ## The Tasks views
 

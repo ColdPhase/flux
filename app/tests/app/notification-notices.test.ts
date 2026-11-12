@@ -72,3 +72,44 @@ describe('the notice on an open tab (#1243)', () => {
     }
   });
 });
+
+describe('the tab count and the sound switches (#1243)', () => {
+  const notifying = async (someone: Person) => (expectStatus(await someone.browser.request('GET', '/api/v1/needs-you'), 200) as { notifying: number }).notifying;
+
+  test('two sound switches: messages off and calls on by default, each saved on its own', async () => {
+    const ada = await person('sound-ada');
+    const fresh = expectStatus(await ada.browser.request('GET', '/api/v1/notification-preferences'), 200) as { sound: unknown };
+    assert.deepEqual(fresh.sound, { messages: false, calls: true });
+    const on = await prefs(ada, { sound: { messages: true } }) as { sound: unknown };
+    assert.deepEqual(on.sound, { messages: true, calls: true });
+    const off = await prefs(ada, { sound: { calls: false } }) as { sound: unknown };
+    assert.deepEqual(off.sound, { messages: true, calls: false }, 'one switch changes, the other stays');
+    // A value that is not true or false is refused by the rules (notification-sound-core.test.ts); the route's schema takes only these two keys.
+  });
+
+  test('"(N)" counts unread notifications that would notify under the level, and reading one takes it away', async () => {
+    const ada = await person('count-ada');
+    const jonas = await person('count-jonas');
+    const ws = await workspace(ada, 'Counts');
+    await addMember(ada, ws.id, jonas, 'member');
+    const dm = expectStatus(await jonas.browser.request('POST', workspaceDmsPath(ws.id), { body: { participantIds: [ada.id] } }), 201) as { id: string };
+    assert.equal(await notifying(ada), 0);
+    await send(jonas, dm.id, 'Can you bring the soldering iron?');
+    await generatorCaughtUp();
+    assert.equal(await notifying(ada), 1, 'an unread direct message counts');
+    await send(jonas, dm.id, 'And the spare probes?');
+    await generatorCaughtUp();
+    assert.equal(await notifying(ada), 2);
+
+    await prefs(ada, { level: 'nothing' });
+    assert.equal(await notifying(ada), 0, 'at Nothing nothing would notify');
+    await prefs(ada, { level: 'needsYou' });
+
+    const [first] = (expectStatus(await ada.browser.request('GET', '/api/v1/inbox?limit=10'), 200) as { items: InboxItem[] }).items;
+    expectStatus(await ada.browser.request('POST', `/api/v1/inbox/${first!.id}/read`), 200);
+    assert.equal(await notifying(ada), 1, 'reading one takes it away');
+    expectStatus(await ada.browser.request('POST', '/api/v1/inbox/read-all'), 200);
+    assert.equal(await notifying(ada), 0);
+    assert.equal(await notifying(jonas), 0, 'the sender has nothing');
+  });
+});

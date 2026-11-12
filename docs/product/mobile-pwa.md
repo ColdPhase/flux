@@ -210,13 +210,20 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   the device's.
 - **Accessible.** `role=status`, announced politely; it never takes focus, never covers
   the composer, Send or an open dialog, and is instant with reduced motion.
-- **Sound** (founder decision, Hubert, 2026-11-12): off by default, one switch in
-  Settings › Notifications. The one exception is a direct call invitation's single soft
-  chime (#1223, F-039), on by default, which follows that same switch, the level and
-  quiet hours. Never a loop.
-- **The tab and the app.** The tab title gets "(N)" and the favicon a dot while
-  something unread waits that the level lets interrupt; the installed app sets the same
-  number with `navigator.setAppBadge` where the engine supports it. Reading it clears it.
+- **Sound** (founder decisions, Hubert, 2026-11-12): two switches in Settings ›
+  Notifications under **Sound**. "Sound for messages" (a soft tone for a direct message,
+  a mention or a question to you) is **off** by default; "Sound when someone calls me"
+  (one soft two-note chime for a direct call invitation, #1223, F-039) is **on** by
+  default. An open tab plays a sound only with a new notice card, so both follow the
+  level and quiet hours, and a burst that joins the card shown does not sound again.
+  Never a loop, never for a call started in a space, never for a reply.
+- **The tab and the app** (founder decision, 2026-11-12). The tab title gets "(N)" and
+  the favicon a dot (`/icons/icon-dot.svg`) while unread notifications wait that would
+  notify you under your level (direct messages, mentions, questions, tasks, call
+  invitations… at Only what needs me; every reason at Everything; none at Nothing),
+  counted among your newest 100 Inbox items (`notifying` on `GET /api/v1/needs-you`, read
+  with the sidebar's count, so no new request). The installed app shows the same number
+  with `navigator.setAppBadge` where the engine supports it. Reading the items clears it.
 - **Asking for push.** After the first direct message or mention arrives, Home and the
   Inbox show one dismissible card, once: "Get notified when someone writes to you or
   calls · Turn on · Not now". **Turn on** calls `Notification.requestPermission()`

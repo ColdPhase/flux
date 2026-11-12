@@ -144,6 +144,12 @@ export interface NeedsYouResponse {
   later: number;
   /** How many you marked done or declined in the last 24 hours ("4 done today"). */
   doneToday: number;
+  /**
+   * Unread notifications that would notify you under your level (#1243): direct messages, mentions, questions, tasks, call invitations…
+   * at "Only what needs me", every reason at "Everything", none at "Nothing"; counted among your newest 100 Inbox items. The tab's
+   * title "(N)", its favicon dot and the installed app's badge show it.
+   */
+  notifying: number;
 }
 
 /**
