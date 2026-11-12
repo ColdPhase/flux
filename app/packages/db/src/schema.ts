@@ -514,6 +514,25 @@ export const projects = pgTable('projects', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.workspaceId, table.id)]);
 
+/**
+ * A space's icon (F-040, #1227, migration 0063): an emoji, or a picture whose `picture` is its version in the immutable URL and whose
+ * renditions are file objects. No row keeps the letter. A deleted row queues its objects in `file_garbage` (trigger); an encrypted
+ * workspace's space never has a row (`a_sealed_workspace_refused`).
+ */
+export const spaceIcons = pgTable('space_icons', {
+  projectId: uuid('project_id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  emoji: text('emoji'),
+  picture: uuid('picture').unique(),
+  object64: uuid('object_64'),
+  object128: uuid('object_128'),
+  object256: uuid('object_256'),
+  changedBy: text('changed_by').notNull(),
+  changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
+]);
+
 export const agents = pgTable('agents', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),

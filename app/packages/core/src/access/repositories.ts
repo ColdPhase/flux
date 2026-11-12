@@ -1,4 +1,4 @@
-import type { WorkspaceRole } from '@flux/contracts';
+import type { SpaceIcon, WorkspaceRole } from '@flux/contracts';
 import type { EventRepository } from '../events.js';
 import type { EncryptionViewInput } from '../encryption/view.js';
 import type { Executor } from '../types.js';
@@ -107,6 +107,8 @@ export interface ProjectRepository {
   /** A new name, one version on. */
   rename(projectId: string, workspaceId: string, name: string): Promise<ProjectRecord>;
   /** The AI switch of each space, with who last changed it. */
+  /** F-040: the icon of each space that has one. */
+  icons(projectIds: string[]): Promise<Map<string, SpaceIcon>>;
   aiPolicies(projectIds: string[]): Promise<{ projectId: string; state: 'allowed' | 'blocked'; changedAt: Date; changedBy: string | null }[]>;
   /** The space's AI policy row `FOR UPDATE` (the flip's first lock). */
   lockAiPolicy(projectId: string): Promise<{ projectId: string; state: 'allowed' | 'blocked'; epoch: number } | null>;
@@ -115,7 +117,7 @@ export interface ProjectRepository {
   /** Erases the space and everything that names it, in the caller's transaction. */
   erase(projectId: string): Promise<void>;
   /** One page of the projects the actor can see with their level; the filter applies before count and page. */
-  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number; member: boolean; ai: 'allowed' | 'blocked' | null }[] }>;
+  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number; member: boolean; ai: 'allowed' | 'blocked' | null; icon: SpaceIcon | null }[] }>;
   /** The project's grants, leaving out the agents the principal may not see. */
   listGrants(principal: Principal, projectId: string): Promise<GrantRecord[]>;
   /** The workspace's people. */

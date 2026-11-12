@@ -14,6 +14,7 @@ import { useOpenConversation } from './OverviewContext';
 import { agentDisplayName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import './overview.css';
+import { SpaceFace } from '../ui/SpaceFace';
 import { RefLink } from '../place/origin';
 
 /** Hooks run before the shell is known; this stands in for it and is never shown. */
@@ -183,7 +184,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       {projectMode ? <>
         {/* The space itself, once: its tile and name, then who is in it (#512, AC-2). */}
         <header className="ov-head">
-          <span className="ov-tile" aria-hidden="true">{project.name.trim().charAt(0).toUpperCase()}</span>
+          <span className="ov-tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={40} /></span>
           <div className="ov-head__b">
             <h3 className="details__title">{project.name}</h3>
             <p className="ov-audience">{audienceLine(people, me.user.id)}</p>

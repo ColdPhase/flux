@@ -1,4 +1,5 @@
 import type { WorkspaceEncryption } from './encryption.js';
+import type { SpaceIcon } from './pictures.js';
 
 // Wire types for workspaces, projects, grants and agents (issue #29, AC-2). F-037 (#874): one Flux is one company,
 // the one workspace setup makes; people call it the company and a project a space. The paths keep their internal names.
@@ -157,6 +158,8 @@ export interface Project {
   member?: boolean;
   /** AG-10: whether agents and local clients may work in this space. Everyone who can open the space sees the state. */
   ai: SpaceAiState;
+  /** F-040: the emoji or picture in its tile; null keeps the letter. */
+  icon: SpaceIcon | null;
   version: number;
   createdAt: string;
 }

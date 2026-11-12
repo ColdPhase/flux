@@ -89,7 +89,9 @@ cp scripts/dast/zap-rules.conf "$out/zap-rules.conf"
 
 api_container=$($compose ps -q api)
 # ZAP's own proxy listens on 8090 (-P): 8080 is the API's, in the namespace they share.
-zap() { tool=$1; shift; docker run --rm --network "container:$api_container" --user zap -v "$out:/zap/wrk:rw" "$zap_image" "$tool" -P 8090 "$@"; }
+# `z` relabels the reports directory for the container on an SELinux host, so a directory outside this checkout (such as an evidence
+# folder in the home directory) is readable by ZAP too; elsewhere it changes nothing.
+zap() { tool=$1; shift; docker run --rm --network "container:$api_container" --user zap -v "$out:/zap/wrk:rw,z" "$zap_image" "$tool" -P 8090 "$@"; }
 # Every request carries the Origin the API checks; a signed-in scan adds the person's session cookie. ZAP splits this string at
 # spaces, so neither value has any.
 replacer() {

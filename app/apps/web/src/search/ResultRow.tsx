@@ -2,6 +2,10 @@ import { Fragment, type ReactNode } from 'react';
 import type { SearchKind, SearchPlace, SearchResult, SearchText } from '@flux/contracts';
 import { Icon, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
 import { plainSnippet } from './plain';
+import { useRouteLoaderData } from 'react-router';
+import { SpaceFace } from '../ui/SpaceFace';
+import { PersonPhoto } from '../ui/Avatar';
+import type { ShellData } from '../app/data';
 
 // One search result as Search.dc.html draws it (#870): a 28 px tile for what it is, the matching text with the matched
 // words marked, and one line of where it lives, who wrote it and when. The results are grouped by kind, in this order.
@@ -62,12 +66,26 @@ function initials(author: string | null): string {
 function Tile({ result }: { result: SearchResult }) {
   const { task } = result;
   if (task) return <span className="sr__ic sr__ic--work" aria-hidden="true"><StatusGlyph status={task.status} size={14} /></span>;
-  if (result.kind === 'project') return <span className="sr__ic sr__ic--project" aria-hidden="true">{(result.title.map((part) => part.text).join('').trim()[0] ?? '?').toUpperCase()}</span>;
+  if (result.kind === 'project') return <span className="sr__ic sr__ic--project" aria-hidden="true"><ProjectFace result={result} /></span>;
+  // A person found by name: their photo over their initials (F-039). A message names its author by name only, so it keeps the initials.
+  if (result.kind === 'person') {
+    return <span className="sr__ic sr__ic--person" aria-hidden="true">{initials(plainTitle(result))}<PersonPhoto id={result.target.type === 'person' ? result.target.userId : null} px={28} /></span>;
+  }
   if (result.kind === 'message' || result.kind === 'dm_message') {
     const letters = initials(result.author);
     return <span className="sr__ic sr__ic--person" aria-hidden="true">{letters || <Icon name="chat" size={14} />}</span>;
   }
   return <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={14} /></span>;
+}
+
+const plainTitle = (result: SearchResult) => result.title.map((part) => part.text).join('');
+
+/** A space's tile in its result: the icon the shell knows for it (F-040), or its letter. */
+function ProjectFace({ result }: { result: SearchResult }) {
+  const shell = useRouteLoaderData('app') as ShellData | undefined;
+  const projectId = result.target.type === 'project' ? result.target.projectId : null;
+  const icon = shell?.reachableSpaces.find((space) => space.id === projectId)?.icon;
+  return <SpaceFace name={plainTitle(result)} icon={icon} size={28} />;
 }
 
 /** The second line: the words the group does not already say, then where it lives and when it was written. */

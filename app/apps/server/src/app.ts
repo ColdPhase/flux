@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, isPersonPhotoObject, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
+import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, isPersonPhotoObject, isSpaceIconObject, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
@@ -195,9 +195,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
     const executor = db as unknown as DbExecutor;
     const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
-    // A profile photo's rendition is account data, never sealed (F-039). An object without its row is refused, never written or served
+    // A profile photo's rendition is account data, and a space with an icon is never an encrypted one: neither is sealed (F-039, F-040). An object without its row is refused, never written or served
     // as plaintext (#707 review).
-    if (!row) { if (await isPersonPhotoObject(executor, objectId)) return null; throw new Error('A stored file needs its row before its bytes'); }
+    if (!row) {
+      if (await isPersonPhotoObject(executor, objectId) || await isSpaceIconObject(executor, objectId)) return null;
+      throw new Error('A stored file needs its row before its bytes');
+    }
     return fileCipherOf(executor, row.workspace_id, objectId, { write: false });
   } });
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;

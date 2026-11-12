@@ -12,7 +12,8 @@ const SECONDS = 10;
 /**
  * The picture renderer of the API (F-039, #1226), made once by the composition root. libvips is set up for untrusted input here: no
  * operation cache, one thread per picture, only the three loaders. One picture is rendered at a time and at most `waiting` more wait,
- * so a burst of uploads cannot take the target host's two vCPUs (#862); past that the upload is refused as busy.
+ * so a burst of uploads cannot take the target host's two vCPUs (#862); past that the upload is refused as busy, before its body is
+ * read. The limit is per API process.
  */
 export function sharpPictureRenderer({ waiting = 4 }: { waiting?: number } = {}): PictureRenderer {
   sharp.cache(false);
@@ -32,6 +33,7 @@ export function sharpPictureRenderer({ waiting = 4 }: { waiting?: number } = {})
   }
   return {
     render: (bytes) => turn(() => render(bytes)),
+    full: () => running && queue.length >= waiting,
   };
 }
 

@@ -278,8 +278,8 @@ function AppLayoutContent() {
     };
   }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
-    // A space's AI switch, name or existence changed (AG-10): the sidebar, its header and its views read them again at once.
-    if (event.kind === SPACE_AI_POLICY_CHANGED_EVENT || event.kind === 'project.renamed.v1' || event.kind === 'project.deleted.v1') { revalidator.revalidate(); return; }
+    // A space's AI switch, name, icon (F-040) or existence changed (AG-10): the sidebar, its header and its views read them again at once.
+    if (event.kind === SPACE_AI_POLICY_CHANGED_EVENT || event.kind === 'project.renamed.v1' || event.kind === 'project.updated.v1' || event.kind === 'project.deleted.v1') { revalidator.revalidate(); return; }
     // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
     if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
     // A page was deleted (#941): the Wiki's list of pages reads again; an open page asks for itself.

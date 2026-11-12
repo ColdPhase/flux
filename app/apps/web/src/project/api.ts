@@ -1,6 +1,6 @@
 import {
   WORKSPACES_PATH, projectAiPolicyPath, projectLeavePath, projectPath, workspaceProjectsPath, type SetSpaceAiResult, type SpaceAiState,
-  type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
+  type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER, spaceIconPath, type SpaceIcon,
 } from '@flux/contracts';
 import { KEEP_MS, request } from '../api/client';
 import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
@@ -57,3 +57,9 @@ export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKe
 /** `fresh`: read now, not from the answer kept a moment ago (the entry into a space, #862). */
 export const getProject = (id: string, signal?: AbortSignal, fresh = false) => request<Project>(projectPath(id), { signal, share: true, keep: KEEP_MS, fresh });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal, share: true, keep: KEEP_MS });
+
+/** A space's icon (F-040): an emoji, a picture (its bytes as they are; the server decides by them what it is), or back to the letter. */
+export const setSpaceEmoji = (projectId: string, emoji: string) => request<SpaceIcon>(spaceIconPath(projectId), { method: 'PUT', body: { emoji } });
+export const setSpacePicture = (projectId: string, file: Blob) =>
+  request<SpaceIcon>(spaceIconPath(projectId), { method: 'PUT', bytes: new Blob([file], { type: 'application/octet-stream' }) });
+export const removeSpaceIcon = (projectId: string) => request<null>(spaceIconPath(projectId), { method: 'DELETE' });

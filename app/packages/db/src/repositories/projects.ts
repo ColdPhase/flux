@@ -4,6 +4,7 @@ import { visibleAgentIdentity } from './agents.js';
 import { projectLevelSql, projectMemberSql, visibleProjectsSql, type AccessActor, type AccessPrincipal } from './access.js';
 import type { DbExecutor } from './push.js';
 import { isUuid } from './uuid.js';
+import { spaceIconRows, spaceIconSql } from './space-icons.js';
 import { openRows, sealFor, sealOf, openRow } from '../sealing.js';
 
 /**
@@ -64,6 +65,9 @@ export function projectRepository(db: DbExecutor) {
       return openRow('projects', row!, await sealOf(db, row!.workspaceId, { write: false }));
     },
 
+    /** The icon of each space that has one (F-040); a space without one keeps its letter. */
+    icons: (projectIds: string[]) => spaceIconRows(db).iconsOf(projectIds),
+
     /** The AI switch of each space, with the name of whoever last changed it. */
     aiPolicies(projectIds: string[]) {
       const p = schema.projectAiPolicies;
@@ -108,7 +112,8 @@ export function projectRepository(db: DbExecutor) {
       const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.projects).where(filter);
       const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number),
         member: projectMemberSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Boolean),
-        ai: sql<'allowed' | 'blocked' | null>`(SELECT ai.state FROM project_ai_policies ai WHERE ai.project_id = ${schema.projects.id})` })
+        ai: sql<'allowed' | 'blocked' | null>`(SELECT ai.state FROM project_ai_policies ai WHERE ai.project_id = ${schema.projects.id})`,
+        icon: spaceIconSql(schema.projects.id) })
         .from(schema.projects).where(filter)
         .orderBy(asc(schema.projects.createdAt), asc(schema.projects.id))
         .limit(page.limit).offset(page.offset);

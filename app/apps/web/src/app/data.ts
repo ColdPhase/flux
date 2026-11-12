@@ -1,5 +1,5 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { ME_PROBE_HEADER, WORKSPACES_PATH, plainMessageText, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type WorkspaceRole } from '@flux/contracts';
+import { ME_PROBE_HEADER, WORKSPACES_PATH, plainMessageText, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type SpaceIcon, type WorkspaceRole } from '@flux/contracts';
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { pacedShellRead } from './shellPace';
@@ -38,6 +38,8 @@ export interface ProjectSummary {
   visibility?: ProjectVisibility;
   /** AG-10: whether agents may work in this space; the space is human-only while `blocked`. */
   ai?: SpaceAiState;
+  /** F-040: the emoji or picture in its tile; absent or null keeps its letter. */
+  icon?: SpaceIcon | null;
 }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary {
