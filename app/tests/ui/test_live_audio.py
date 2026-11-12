@@ -515,6 +515,9 @@ class LiveAudio(LiveBase):
         """A quiet fake microphone (a tone from a file) is not clipped at 200 %: the receiver gets about four times the power."""
         self.seed()
         nia = self.page_on(self.tone, "nia")
+        # The browser's own processing would treat a steady tone as noise and level it: its three switches are off from the start (the
+        # settings are remembered on the device, which is also how a person would have them).
+        nia.context.add_init_script("localStorage.setItem('flux.live.audio', JSON.stringify({ noiseSuppression: false, echoCancellation: false, autoGain: false }))")
         jonas = self.page("jonas")
         self.open_conversation(nia)
         nia.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Call|Join)$")).click()
@@ -528,11 +531,8 @@ class LiveAudio(LiveBase):
         self.bar(nia).get_by_role("button", name="Audio settings").click()
         dialog = nia.get_by_role("dialog", name="Audio settings")
         expect(dialog).to_be_visible()
-        # The browser's own processing would treat a steady tone as noise: switched off, the tone is what is sent.
-        captures = nia.evaluate("window.__audio.gum.length")
         for name in ("Reduce background noise", "Cancel echo", "Even out my volume"):
-            dialog.get_by_role("switch", name=name).click()
-        until(nia, f"window.__audio.gum.length >= {captures + 3}")
+            expect(dialog.get_by_role("switch", name=name)).to_have_attribute("aria-checked", "false")
         slider = dialog.get_by_role("slider", name="Microphone volume")
         measured: dict[int, dict] = {}
         nia.wait_for_timeout(1500)
@@ -543,6 +543,9 @@ class LiveAudio(LiveBase):
                 nia.wait_for_timeout(1500)
             measured[percent] = jonas.evaluate(POWER, {"ms": 6000, "who": uid("nia")})
             print(f"receiver of the quiet tone at {percent} %: {measured[percent]}")
+            if not measured[percent]["peak"]:
+                print("  sender tracks:", nia.evaluate("window.__live.tracks.map((t) => [t.kind, t.readyState, t.label])"), nia.evaluate("window.__audio.gum"))
+                print("  receiver tracks:", jonas.evaluate("[...document.querySelectorAll('[data-live-audio] audio')].map((e) => [e.dataset.livePerson, e.srcObject && e.srcObject.getTracks().map((t) => t.readyState + ':' + t.muted + ':' + t.enabled)])"))
         base = measured[100]["beep"]
         self.assertGreater(base, 1e-4, "the quiet tone is heard")
         self.assertLess(measured[100]["peak"], 0.5, "and it is far from full scale at 100 %")
