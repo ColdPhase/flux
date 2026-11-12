@@ -16,6 +16,9 @@ import { TaskAgentState } from '../agents/TaskAgentState';
 import { ClientChanges } from '../assistant/ClientChanges';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
 import { askError, askState } from '../assistant/format';
+import { assistantSuggestions, noteAssistantUse } from '../assistant/MeetAssistant';
+import { useAskMenu } from '../assistant/useAskMenu';
+import { ComposerMenu } from '../app/ComposerMenu';
 import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useSpaceAi } from '../ai/spaceAi';
@@ -328,15 +331,19 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   // `/ai …` asks the person's agent in this discussion; the words are not a message (#842).
   const asking = !state.aiOff && /^\/ai(\s|$)/.test(composer.draft.body);
   const [askFailure, setAskFailure] = useState('');
-  async function askAgent() {
-    const prompt = composer.draft.body.replace(/^\/ai\s*/, '').trim();
+  // `/` in the box lists `/ai` and, under it, this task's suggestions (#1224), once the task has a discussion to ask in.
+  const menu = useAskMenu({ fieldId: id, draft: composer.draft.body, enabled: writable && !state.aiOff && !!conversationId,
+    suggestions: assistantSuggestions('task', meId, state.assistant.status?.state === 'ready'),
+    onDraft: (value) => composer.setBody(value), onAsk: (text) => void askAgent(text) });
+  async function askAgent(words?: string) {
+    const prompt = words ?? composer.draft.body.replace(/^\/ai\s*/, '').trim();
     const ready = askState(state.assistant.status);
     if (!conversationId) { setAskFailure('Start the discussion with a first message, then ask your agent with /ai.'); return; }
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai what is left on this task?'); return; }
     if (ready.kind !== 'ready') { setAskFailure(ready.note); return; }
     const active = captureScope();
     setAskFailure('');
-    try { await state.assistant.ask(prompt); if (active()) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }
+    try { noteAssistantUse(meId); await state.assistant.ask(prompt); if (active()) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }
   }
 
   async function send(event?: FormEvent) {
@@ -353,6 +360,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   }
   // A keyboard's Enter sends and Shift+Enter adds a line; a phone's Enter adds a line and its button sends (#189).
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (menu.onKeyDown(event)) return;
     if (sendsOnEnter(event, touch) || (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing)) { event.preventDefault(); void send(); }
   };
   if (!writable) {
@@ -363,8 +371,10 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ConnectionLine />
       <ComposerFiles state={composer} attach="none" />
       <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
-        placeholder={`Write about #${item.number} · @ · /`} onChange={(value) => { setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onBlur={typing.stop} onKeyDown={onKeyDown}
-        attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()} />
+        placeholder={`Write about #${item.number} · @ · /`} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
+        fieldProps={{ 'aria-controls': menu.open ? `${id}-menu` : undefined, 'aria-activedescendant': menu.open ? `${id}-menu-${menu.options[menu.active]!.id}` : undefined }}
+        attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()}
+        menu={<ComposerMenu open={menu.open} id={`${id}-menu`} options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />} />
       {asking ? <div className="wd-foot__line"><ComposerAudience>Only you see the answer, until you choose Show everyone</ComposerAudience></div> : typingNotice}
       {askFailure ? <p className="wd-error" role="alert">{askFailure}</p> : null}
       <SendAnnouncer pending={composer.pending} />

@@ -1,6 +1,5 @@
 import { plainMessageText, type Material } from '@flux/contracts';
 import { AskBar } from '../assistant/ConversationParts';
-import { assistantUses, AssistantSuggestions } from '../assistant/MeetAssistant';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { ComposerMenu } from '../app/ComposerMenu';
 import { ComposerBox } from '../composer/ComposerBox';
@@ -25,7 +24,7 @@ interface Props {
 
 /** The pane's composer (F-026 S5): sources, the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
 export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materials, typing, readFailure, author }: Props) {
-  const { me, project, conversation, writable, aiOff, composerId } = core;
+  const { project, conversation, writable, aiOff, composerId } = core;
   const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
   const trayOpen = materials.trayOpen;
@@ -34,7 +33,6 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
     {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material: Material) => void actions.cite(material)} /> : null}
     <ConnectionLine />
     {/* A space's conversation and its threads are read by the space's people, the default, so no audience is said (#871). */}
-    {conversation && !asking && menu.assistantEntry?.mode === 'ask' && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={ask.askSuggestion} /> : null}
     {asking ? <AskBar id="project-ask" state={askBar.state} error={askBar.error} onExit={ask.exitAsk} onAction={askBar.onAction} />
       : conversation ? <div className="project-convo__to"><p className="project-convo__current-thread" title={title}>Replying to · {title}</p></div> : null}
     {!asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}

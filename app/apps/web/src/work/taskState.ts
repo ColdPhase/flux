@@ -128,17 +128,19 @@ export function useStateChange(saved: (item: WorkItem) => void, done: () => void
 /**
  * The toast after a person creates a task (#763 B1, principle 6): "Task #13 created" with Undo (Z) on every create
  * path, while the server says this reader may still undo the creation. Undo is the #238 creation Undo: the task stays
- * as read-only history and leaves the board, counts and choosers.
+ * as read-only history and leaves the board, counts and choosers. A window that created it passes `another`: "Add another" then
+ * follows Undo (#1235), so entering several tasks is one step each, with no switch to remember.
  */
 export function useCreatedToast(done?: () => void) {
   const toast = useToast();
   const currentScope = useToastScope();
-  return useCallback((item: WorkItem) => {
+  return useCallback((item: WorkItem, another?: () => void) => {
     const message = `Task ${taskNumber(item)} created`;
-    if (!item.creationUndo?.eligible) { toast({ message, tone: 'success', timeout: 4000 }); return; }
+    const next = another ? { label: 'Add another', onClick: another } : undefined;
+    if (!item.creationUndo?.eligible) { toast({ message, tone: 'success', timeout: next ? 8000 : 4000, ...(next ? { action: next } : {}) }); return; }
     const commandId = crypto.randomUUID();
     toast({
-      message, tone: 'neutral', timeout: 8000,
+      message, tone: 'neutral', timeout: 8000, ...(next ? { also: next } : {}),
       action: {
         label: 'Undo', key: 'Z',
         onClick: () => {

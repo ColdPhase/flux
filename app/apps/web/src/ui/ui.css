@@ -338,7 +338,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-toast__sep { align-self: center; width: 1px; height: 16px; background: color-mix(in srgb, var(--oninv) 30%, transparent); }
 .ui-toast__close:hover { opacity: 1; background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__close:focus-visible { outline-color: var(--oninv); }
-@media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } }
+@media (pointer: coarse) { .ui-toast__close { width: 44px; height: 44px; } .ui-toast__action { min-height: 44px; } .ui-toast__action kbd { display: none; } .ui-toast--also .ui-toast__action { padding: 0 10px; } }
 
 /* ---------- Empty and error states ---------- */
 .ui-empty, .ui-error { display: flex; flex-direction: column; align-items: flex-start; max-width: 440px; }

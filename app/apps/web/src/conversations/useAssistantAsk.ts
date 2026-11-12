@@ -107,7 +107,7 @@ export function useAssistantAsk({ me, place, writable, outside, guest, composerI
       assistant.refreshStatus();
     }
   }
-  /** A suggested question under a thread (#68): asked at once, held while offline. */
+  /** A suggestion chosen in the `/` menu under `/ai` (#68, #1224): asked at once, held while offline. */
   function askSuggestion(text: string) {
     noteAssistantUse(me.user.id);
     const clientRunId = crypto.randomUUID();

@@ -51,7 +51,7 @@ const KINDS: { id: Shown; label: string; name: string; manual?: boolean }[] = [
 ];
 
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
-export function CreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
+export function CreateHost({ request, onClose, onTask }: { request: CreateRequest | null; onClose: () => void; onTask?: (projectId: string) => void }) {
   const phone = useMediaQuery(MEDIA.phone);
   // Each opening starts on Task (F-026 S3), or on Space while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
@@ -68,7 +68,7 @@ export function CreateHost({ request, onClose }: { request: CreateRequest | null
       className={kind === 'space' ? 'newspace-win' : 'create'}>
       {request ? (kind === 'space'
         ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { onClose(); void navigate(`/projects/${project.id}`); }} />
-        : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} />) : null}
+        : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} onTask={onTask} />) : null}
     </Overlay>
   );
 }
@@ -85,7 +85,7 @@ interface Carried {
 /** A panel's ids and whether its tab is the selected one. */
 interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
-function CreateBody({ request, phone, kind, onKind, onSpace, onClose }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void }) {
+function CreateBody({ request, phone, kind, onKind, onSpace, onClose, onTask }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void; onTask?: (projectId: string) => void }) {
   const { me, projects } = useShellData();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -129,7 +129,7 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose }: { reques
         </div>
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
       </div>
-      <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} />
+      <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} onTask={onTask} />
       <ThoughtForm {...shared} ids={ids('thought')} />
       <DecisionForm {...shared} ids={ids('decision')} request={request} />
       <PageForm {...shared} ids={ids('page')} />
@@ -236,9 +236,9 @@ function savedForm(records: Unresolved[], title: string, sources: ObjectRef[] | 
 
 interface Context { project: Project; members: { userId: string; name: string }[]; agents: { id: string; name: string }[] }
 
-function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose }: PanelProps & { request: CreateRequest; prefilled: boolean }) {
+function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose, onTask }: PanelProps & { request: CreateRequest; prefilled: boolean; onTask?: (projectId: string) => void }) {
   const { me, projects } = useShellData();
-  const { openDetails } = useShellActions();
+  const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
   const created = useCreatedToast(() => revalidator.revalidate());
   const noteId = useId();
@@ -272,7 +272,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const [linkingIn, setLinkingIn] = useState<string | null>(null);
   const linking = linkingIn === projectId;
   const setLinking = (open: boolean) => setLinkingIn(open ? projectId : null);
-  const [another, setAnother] = useState(false);
   const [busy, setBusy] = useState(false);
   // Set synchronously before the first await, so a second submit in the same tick never sends another command.
   const inFlight = useRef(false);
@@ -349,22 +348,16 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       }
       request.onCreated?.();
       revalidator.revalidate();
-      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1).
-      created(item);
+      // Every way of creating a task says so and offers Undo (Z), with the panel still opening on it (#763 B1). "Add another" opens
+      // this window again on the same space (#1235); there is no switch that keeps it open.
+      onTask?.(projectId);
+      created(item, () => openCreate({ kind: 'task', projectId }));
       if (!mounted.current) return;
-      if (another) { done(); return; }
       onClose();
       openDetails({ kind: 'work', id: item.id, projectId });
     } catch (cause) {
       if (mounted.current) setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add tasks.' : cause instanceof Error ? cause.message : 'Could not create the task.');
     } finally { inFlight.current = false; if (mounted.current) setBusy(false); }
-  }
-  /** Create another: the next task starts empty in the same project, with the same status and owner. */
-  function done() {
-    if (prefilled) carried.set('');
-    setOutcome(''); setBlocker(''); setSources([]); setLinking(false);
-    // The field is disabled while the command runs: focus it once it is enabled again.
-    requestAnimationFrame(() => titleRef.current?.focus());
   }
   const where = <ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />;
 
@@ -376,7 +369,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   return (
     <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<>
       <p className="create__note">Goes to Tasks · Conversation gets a one-line note</p>
-      <label className="create__another"><input type="checkbox" role="switch" checked={another} onChange={(event) => setAnother(event.target.checked)} /><span className="create__sw" aria-hidden="true" />Create another{phone ? ' after this' : ''}</label>
       <Go label="Create task" busy={busy} ready={ready} phone={phone} />
     </>}>
       <label className="ui-vh" htmlFor={ids.field}>Title</label>

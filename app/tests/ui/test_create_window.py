@@ -109,7 +109,7 @@ class CreateWindow(unittest.TestCase):
             expect(window).to_be_visible()
             expect(title_field(page)).to_be_focused()
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link a message or thought"), window.get_by_role("switch"), submit_button(page)):
+                            window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             self.assertEqual(window.evaluate("el => el.offsetWidth"), 640)
             # The place picker is a 10px frame around a 6px tile, not a pill (concentric corners).
@@ -140,26 +140,55 @@ class CreateWindow(unittest.TestCase):
         # Columns have no "+" (#868): "+ Task" is the board's one way to the window.
         expect(page.locator(".tb-col__head button")).to_have_count(0)
 
-    def test_03_create_another_and_command_enter(self) -> None:
+    def test_03_there_is_no_create_another_switch_and_add_another_and_c_open_the_window_on_the_same_space(self) -> None:
+        """#1235: no switch in the window, on the computer or the phone. Create closes the window; the toast reads "Task #N created · Undo ·
+        Add another"; Add another, and `C` on the computer, open it again on the same space with an empty title."""
         self.ensure_account()
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks")
-        field = open_from_tasks(page)
-        dialog(page).get_by_role("switch").check()
-        field.fill("First of two")
-        dialog(page).get_by_label("Details").fill("Done when both are listed")
-        page.keyboard.press("Control+Enter")
-        expect(field).to_have_value("")
-        expect(dialog(page)).to_be_visible()
-        expect(field).to_be_focused()
-        field.fill("Second of two")
-        page.keyboard.press("Control+Enter")
-        expect(field).to_have_value("")
-        dialog(page).get_by_role("switch").uncheck()
-        page.keyboard.press("Escape")
-        stored = {item["title"]: item for item in self.work(page)}
-        self.assertEqual(stored["First of two"]["outcome"], "Done when both are listed")
-        self.assertIn("Second of two", stored)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                page.goto(f"/projects/{self.ids['project']}/tasks")
+                field = open_from_tasks(page)
+                expect(dialog(page).get_by_role("switch")).to_have_count(0)
+                expect(dialog(page).get_by_text("Create another")).to_have_count(0)
+                expect(dialog(page).get_by_role("button", name=re.compile("^Create task"))).to_have_count(1)
+                # The space is the other one, so "kept" is more than the page the person is on.
+                choose(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
+                tag = "phone" if phone else "computer"
+                field.fill(f"First of two {tag}")
+                dialog(page).get_by_label("Details").fill("Done when both are listed")
+                if not phone:
+                    page.keyboard.press("Control+Enter")
+                else:
+                    submit_button(page).click()
+                expect(dialog(page)).to_have_count(0)
+                toast = page.locator(".ui-toast").filter(has_text=re.compile(r"Task #\d+ created"))
+                actions = toast.locator(".ui-toast__action")
+                expect(actions).to_have_count(2)
+                expect(actions.nth(0)).to_contain_text("Undo")
+                expect(actions.nth(1)).to_have_text("Add another")
+                shot(page, f"1235-toast-add-another-{'390' if phone else '1440'}")
+                actions.nth(1).click()
+                expect(dialog(page)).to_be_visible()
+                field = title_field(page)
+                expect(field).to_have_value("")
+                expect(field).to_be_focused()
+                expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
+                expect(dialog(page).get_by_role("switch")).to_have_count(0)
+                field.fill(f"Second of two {tag}")
+                submit_button(page).click()
+                expect(dialog(page)).to_have_count(0)
+                if not phone:
+                    # `C` keeps the space the last task went to, though the page shows another one.
+                    page.keyboard.press("c")
+                    expect(dialog(page)).to_be_visible()
+                    expect(title_field(page)).to_have_value("")
+                    expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
+                    page.keyboard.press("Escape")
+                    expect(dialog(page)).to_have_count(0)
+                stored = {item["title"]: item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]}
+                self.assertEqual(stored[f"First of two {tag}"]["outcome"], "Done when both are listed")
+                self.assertIn(f"Second of two {tag}", stored)
 
     def test_04_a_blocked_task_needs_its_reason(self) -> None:
         self.ensure_account()
@@ -285,7 +314,7 @@ class CreateWindow(unittest.TestCase):
             choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
             expect(title_field(page)).to_have_value("Print labels for the beds")
             for control in (window.get_by_label("Details"), window.get_by_role("combobox", name="Status"), window.get_by_role("combobox", name="Owner"),
-                            window.get_by_role("button", name="+ Link a message or thought"), window.get_by_role("switch"), submit_button(page)):
+                            window.get_by_role("button", name="+ Link a message or thought"), submit_button(page)):
                 expect(control).to_be_visible()
             box = submit_button(page).bounding_box()
             self.assertGreaterEqual(box["height"], 44)

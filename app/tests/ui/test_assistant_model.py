@@ -16,6 +16,7 @@ import uuid
 from playwright.sync_api import Page, Route, expect
 
 import test_assistant_screen as base
+from test_assistant_screen import pick_suggestion
 from test_app_shell import shot
 from touch_targets import has_minimum_touch_size
 
@@ -164,7 +165,7 @@ class AssistantModel(unittest.TestCase):
                "answer": None, "createdAt": NOW, "dispatchedAt": NOW, "completedAt": NOW}
         page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), lambda route: self.json(route, run, 202))
         page.goto(self.thread_url())
-        page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Catch me up").click()
+        pick_suggestion(page, "Catch me up on this thread")
         line = page.locator(".assistant-working")
         expect(line).to_contain_text("Your Claude plan didn’t accept Opus. Nothing was changed.")
         shot(page, "model-unavailable-1440-light")

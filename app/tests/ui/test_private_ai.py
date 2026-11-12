@@ -66,8 +66,8 @@ class PrivateAiJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, who: str | None, *, phone: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+    def context(self, who: str | None, *, phone: bool = False, dark: bool = False) -> BrowserContext:
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -251,6 +251,81 @@ class PrivateAiJourney(unittest.TestCase):
         expect(posted).to_contain_text("via Assistant")
 
     # ---------------------------------------------------------------- a direct message
+
+    # ---------------------------------------------------------------- the `/` menu's suggestions (#1224)
+
+    def test_03b_the_slash_menu_lists_each_places_own_suggestions_under_ai_and_choosing_one_asks(self) -> None:
+        """#1224: no chips above or below a composer. `/` lists the actions, and the `/ai` row is followed by the suggestions of this place only,
+        understand first and then act: a space's conversation, a thread and a task each have two, a direct message none. The rows are compact
+        (at most 30 px with a mouse, at least 44 px on touch) and choosing one asks the assistant at once."""
+        mock("/__script", {"reset": True, "text": ANSWER})
+        project, work, dm = self.ids["project"], self.ids["work"], self.ids["dm"]
+        places = [
+            ("space", f"/projects/{project}", "#project-composer", ["Catch me up", "Tidy this space's tasks"]),
+            ("thread", f"/projects/{project}/conversations/{self.ids['conversation']}", "#thread-composer", ["Catch me up on this thread", "Turn this thread into tasks"]),
+            ("task", f"/projects/{project}/tasks?open=work:{work}", "#details .wd-composer textarea", ["Summarise this task", "What's left?"]),
+            ("dm", f"/dm/{dm}", "#dm-composer", []),
+        ]
+        for dark in (False, True):
+            for phone in (False, True):
+                for name, url, composer, expected in places:
+                    with self.subTest(place=name, phone=phone, dark=dark):
+                        page = self.page("jo", phone=phone, dark=dark)
+                        page.goto(url)
+                        box = page.locator(composer)
+                        expect(box).to_be_visible()
+                        expect(page.locator(".assistant-suggestions")).to_have_count(0)
+                        box.fill("/")
+                        menu = page.get_by_role("listbox", name="Actions")
+                        if not expected:
+                            expect(menu).to_have_count(0)
+                            continue
+                        rows = menu.locator(".cmenu__o--ask")
+                        expect(rows).to_have_count(len(expected))
+                        expect(rows).to_contain_text(expected)
+                        order = menu.locator(".cmenu__o").evaluate_all("(rows) => rows.map((row) => row.querySelector('code, .cmenu__name').textContent)")
+                        self.assertEqual(order[-(len(expected) + 1):], ["/ai", *expected], "under /ai, understand first and then act")
+                        if name == "task":
+                            self.assertEqual(order, ["/ai", *expected], "a task's box has no other slash command")
+                        shown = menu.bounding_box()
+                        for row in rows.all():
+                            box = row.bounding_box()
+                            self.assertTrue(box["height"] >= 44 if phone else box["height"] <= 30, f"{name}: row is {box['height']} px")
+                            self.assertLessEqual(box["y"] + box["height"], shown["y"] + shown["height"] + 1, f"{name}: the suggestion is below the menu's visible part")
+                        self.no_horizontal_scroll(page)
+                        shot(page, f"suggestions-{name}-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+
+    def test_03c_choosing_a_suggestion_asks_at_once_and_the_answer_is_private_in_a_thread_and_a_task(self) -> None:
+        mock("/__script", {"reset": True, "text": ANSWER})
+        jo = self.thread("jo")
+        jo.locator("#thread-composer").fill("/")
+        jo.get_by_role("listbox", name="Actions").get_by_role("option", name="Catch me up on this thread", exact=True).click()
+        expect(jo.locator("#thread-composer")).to_have_value("")
+        card = self.private_card(jo)
+        expect(card).to_be_visible(timeout=20000)
+        expect(card).to_contain_text("Only you can see this")
+        expect(card).to_contain_text("far beds will use LoRa")
+        task = self.page("jo")
+        task.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
+        box = task.locator("#details .wd-composer textarea")
+        box.fill("/")
+        # The keyboard works in the menu as in the others: the arrows move over `/ai` and its suggestions, Enter chooses.
+        expect(task.get_by_role("listbox", name="Actions").get_by_role("option", selected=True)).to_contain_text("/ai")
+        box.press("ArrowDown")
+        box.press("ArrowDown")
+        expect(task.get_by_role("option", name="What's left?", exact=True)).to_have_attribute("aria-selected", "true")
+        box.press("Enter")
+        expect(box).to_have_value("")
+        expect(task.locator("#details .assistant-private")).to_be_visible(timeout=20000)
+        # `/ai` itself fills the box with the command, as typing it would.
+        box.fill("/a")
+        task.get_by_role("listbox", name="Actions").get_by_role("option").filter(has_text="Ask your assistant").click()
+        expect(box).to_have_value("/ai ")
+        expect(task.locator("#details .wd-foot__line")).to_contain_text("Only you see the answer")
+        # What was asked here is Jo's alone and stays until it is put away: leave the task and the thread as they were.
+        for page, where in ((task, "#details .assistant-private"), (jo, ".assistant-private")):
+            page.locator(where).get_by_role("button", name="Dismiss").click()
+            expect(page.locator(where)).to_have_count(0)
 
     def test_04_in_a_direct_message_both_people_see_one_line_and_only_jo_the_answer(self) -> None:
         mock("/__script", {"reset": True, "text": "Fact: you two agreed to meet on Thursday [S1]."})

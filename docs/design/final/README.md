@@ -386,7 +386,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". The assistant's suggestions are in that menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -612,6 +612,16 @@ The phone's "+" and the computer's New (`C`) open Create with the same five type
 Decision, Page (a Wiki page) and Space. "Message" is not a type, because a message is written in
 the composer. The right-hand phone above shows the sheet.
 
+- **Create task closes the window, and the toast offers the next one** (founder decision, Hubert,
+  2026-11-12, #1235). The footer has the hint line and the one primary button, "Create task", and
+  nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
+  remembered between openings. After Create the window closes and the task opens in the panel as
+  before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
+- **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
+  next, opens the window again on Task with the same space chosen, an empty title and the default
+  status and owner. `C` keeps the space the last task was created in until the person goes to another
+  place.
+
 ### Tasks and the task panel
 
 | | |
@@ -787,6 +797,29 @@ the composer. The right-hand phone above shows the sheet.
   this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
   "Ada · via Assistant". In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
+- **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,
+  2026-11-12, #1224). There is no row of chips above or below the composer: the field, its
+  attachments and the audience line stay as they are. Typing `/` lists the actions as before, and the
+  `/ai` row is followed by the suggestions for this place, indented under it to the column of its
+  hint:
+  - the rows are quieter than the actions (secondary text, `--fs-sm`, no command and no hint) and
+    compact: 28 px with a mouse, 44 px on touch; the active row shows the ↵ key like any other;
+  - they take the arrow keys, Enter and a click like every row; choosing one asks the assistant at
+    once, as `/ai` does, and the answer is private in the same card ("Only you can see this");
+  - they follow `/ai` whenever it is listed (`/`, `/a`, `/ai`) and go with it when it is not;
+  - each place shows only its own, understand first and then act, in this order:
+
+    | Place | Suggestions |
+    | --- | --- |
+    | A thread | Catch me up on this thread · Turn this thread into tasks |
+    | A space's conversation | Catch me up · Tidy this space's tasks |
+    | A task | Summarise this task · What's left? |
+    | A direct message | none |
+
+  - they show only while the assistant is ready and the space's AI is on, and until the person has
+    used the assistant three times, as before;
+  - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
+    two suggestions only (the task has no other slash commands), once the task has its first message.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

@@ -34,6 +34,12 @@ def assistant_known(page: Page) -> None:
     page.wait_for_timeout(250)
 
 
+def pick_suggestion(page: Page, name: str, composer: str = "#thread-composer") -> None:
+    """#1224: the assistant's suggestions are rows of the `/` menu, under `/ai`: type "/" in the composer and choose one."""
+    page.locator(composer).fill("/")
+    page.get_by_role("listbox", name="Actions").get_by_role("option", name=name, exact=True).click()
+
+
 class AssistantScreen(unittest.TestCase):
     """Tests run in name order and share one account."""
 

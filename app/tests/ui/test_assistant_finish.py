@@ -18,6 +18,7 @@ from pathlib import Path
 from playwright.sync_api import Page, Route, expect
 
 import test_assistant_screen as base
+from test_assistant_screen import pick_suggestion
 from test_app_shell import ORIGIN, shot
 
 FORBIDDEN = base.FORBIDDEN
@@ -83,7 +84,7 @@ class AssistantFinish(unittest.TestCase):
                 page.on("response", lambda response: sends.append((response.request.post_data or "", response.status)) if response.request.method == "POST" and response.url.endswith("/messages") else None)
                 page.goto(self.thread_url())
                 before = len(self.messages(page, self.ids["conversation"]))
-                page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this space's tasks").click()
+                pick_suggestion(page, "Turn this thread into tasks")
                 deadline = time.time() + 15
                 while len(asked) < 1 and time.time() < deadline:
                     page.wait_for_timeout(100)
@@ -101,7 +102,7 @@ class AssistantFinish(unittest.TestCase):
         before = len(self.messages(page, self.ids["conversation"]))
         self.stub_ask(page, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         page.goto(self.thread_url())
-        page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Catch me up").click()
+        pick_suggestion(page, "Catch me up on this thread")
         expect(page.locator("#project-ask")).to_contain_text("You can't open this space any more, so neither can your assistant.")
         self.assertEqual(len(self.messages(page, self.ids["conversation"])), before)
 
