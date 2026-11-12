@@ -24,6 +24,7 @@ type Around = { aroundMessageId: string; projectId?: string; dmId?: string; conv
 
 const rename = (who: Person, name: string) => pool.query('UPDATE auth_users SET name = $1 WHERE id = $2', [name, who.id]);
 const failure = (message: Message) => toolFailure(message).code;
+const inSpace = (found: Found, spaceId: string) => found.results.filter((hit) => hit.place?.id === spaceId);
 const bodies = (found: Found) => found.results.map((hit) => (hit.snippet ?? hit.title ?? '').replace(/\*\*/g, ''));
 
 describe('flux_search and flux_read_around: the owner\'s rights at the moment of the call, in every space they reach (#1290)', () => {
@@ -192,13 +193,13 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
     assert.ok(bodies(await search(lost.token, { q: 'czujnik piatek' })).includes(PL));
     assert.equal((await around(lost.token, { messageId: plMessage })).messages.length, 1);
     await removeFromSpace(scene.lead, lamp.id, lost.someone);
-    assert.deepEqual((await search(lost.token, { q: 'czujnik piatek' })).results, [], 'a grant lost');
+    assert.deepEqual(inSpace(await search(lost.token, { q: 'czujnik piatek' }), lamp.id), [], 'a grant lost: nothing of that space; the open one is still read');
     assert.equal(failure((await call(lost.token, 'flux_read_around', { messageId: plMessage })).message), 'MESSAGE_NOT_FOUND');
     assert.equal(failure((await call(lost.token, 'flux_search', { q: 'czujnik', in: lamp.id })).message), 'PLACE_NOT_FOUND');
 
     try {
       await setSpaceAi(lamp.id, 'blocked');
-      assert.deepEqual((await search(client.token, { q: 'czujnik piatek' })).results, [], 'AI turned off in the space');
+      assert.deepEqual(inSpace(await search(client.token, { q: 'czujnik piatek' }), lamp.id), [], 'AI turned off in the space');
       assert.equal(failure((await call(client.token, 'flux_read_around', { messageId: plMessage })).message), 'MESSAGE_NOT_FOUND');
       assert.ok(bodies(await search(client.token, { q: 'sensor calibrate' })).includes(EN), 'the other spaces are found as before');
       assert.ok(JSON.stringify((await scene.peer.browser.request('GET', `/api/v1/search?q=${encodeURIComponent('Kalibracja czujników')}`)).json).includes('piątek'), 'people still find it');
@@ -348,7 +349,7 @@ describe('flux_search and flux_read_around: the owner\'s rights at the moment of
       assert.match(searchTool.description, /Search before you say you do not know/);
       assert.match(searchTool.description, /in each language the people here write in/);
       assert.match(searchTool.description, /try other words/);
-      assert.match(listed.find((tool) => tool.name === 'flux_read_around')!.description, /"Ada Nowak · via Assistant" for an answer of Ada's agent that Ada posted/);
+      assert.match(listed.find((tool) => tool.name === 'flux_read_around')!.description, /Authors are named as people see them, as flux_get_conversation names them/);
     }
     assert.ok(run.tools.includes('flux_search') && run.tools.includes('flux_read_around'), 'a run is minted both');
   });
