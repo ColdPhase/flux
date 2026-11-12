@@ -103,7 +103,6 @@ describe('/ai everywhere, answered privately (#842)', () => {
       assert.equal((await other.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`)).status, 404, 'only the asker shows it');
       assert.equal((await other.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/dismiss`)).status, 404);
     }
-    assert.equal((await kai.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-activity`)).status, 404, 'there is no line that says someone is asking');
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(live.events.some((event) => event.kind.startsWith('project.assistant_')), false, 'the space heard nothing');
     await live.close();

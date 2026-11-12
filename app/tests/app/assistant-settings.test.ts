@@ -13,7 +13,7 @@ import { db, pool } from './support/db.js';
 import { person, workspace, project, addMember, expectStatus, type Person } from './support/people.js';
 import { beginOauth, mcp, toolValue } from './support/mcp.js';
 import { Browser, publicOrigin } from './support/http.js';
-import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { barrier, waitUntilBlockedBy } from './support/locks.js';
 
 const principal = (owner: Person): Principal => ({ kind: 'human', id: owner.id });
@@ -78,7 +78,7 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   const engine = f.connections.connect(f.owner.id, randomUUID(), { provider: 'openai', model: 'fixture-engine' });
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'payer/engine lookup does not replace identity');
   // The API container's own lookup does not hold this test's fake keys, so the owner's choice goes through the fake composition.
-  await f.runs.chooseModel(principal(f.owner), { connection: engine.id, model: engine.model, agentId: f.agent.id });
+  await chooseModel(f.runs, principal(f.owner), { connection: engine.id, model: engine.model }, f.agent.id);
   assert.equal((await pool.query('SELECT provider FROM assistant_settings WHERE agent_id=$1', [f.agent.id])).rows[0].provider, 'openai');
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'choosing another model keeps the one rights connection');
 });

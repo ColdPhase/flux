@@ -26,7 +26,6 @@ import {
   agentAssistantStatusPath,
   PERSONAL_RUN_LIMITS,
   type AddAgentMemoryCommand,
-  type AssistantModelPick,
   type CreateMyAgentCommand,
   type EditAgentMemoryCommand,
   type AssistantPlace,
@@ -63,7 +62,6 @@ interface Options {
 /** One of the caller's connections (#854): a plan, or an API key's id. */
 const connection = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const model = { type: 'string', minLength: 1, maxLength: 200 } as const;
-const chooseModel = { type: 'object', required: ['connection', 'model'], additionalProperties: false, properties: { connection, model } } as const;
 const instructions = { type: 'string', maxLength: AGENT_LIMITS.instructions } as const;
 const createAgentBody = { type: 'object', additionalProperties: false, properties: {
   agentId: { type: 'string' }, name: { type: 'string', minLength: 1, maxLength: 80 }, workspaceId: { type: 'string' }, instructions, connection, model,
@@ -118,11 +116,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     reply.header('cache-control', 'no-store');
     return runs.model(await principal(request));
   });
-  // The ask bar's model chip changes the first agent's (Assistant's) model until `/ai` replaces the bar (#842); every agent's own is `PATCH /api/v1/my-agents/:id`.
-  app.put<{ Body: AssistantModelPick }>(ASSISTANT_MODEL_PATH, { schema: { body: chooseModel } }, async (request, reply) => command(request, reply, {
-    operation: `PUT ${ASSISTANT_MODEL_PATH}`, scope: 'account',
-    run: (actor, conn) => personalRunUseCases(conn, composition).chooseModel(actor, request.body), replay: ownState,
-  }));
+  // An agent's own model is changed on its page: `PATCH /api/v1/my-agents/:id`.
 
   // A person's agents (F-036 AG-1, #857). Only their owner lists, reads or changes them; anyone else gets 404.
   app.get(MY_AGENTS_PATH, async (request, reply) => {

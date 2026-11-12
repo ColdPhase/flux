@@ -687,28 +687,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     },
 
     /**
-     * Changes an agent's one model (AST-11, #857), from any of the owner's connections (#854): picking a model of another
-     * connection moves the agent to it. Only a model in that connection's list is accepted; anything else is a plain error and
-     * the previous model stays. A request already sent keeps the model it recorded. Without `agentId`: their first agent.
-     */
-    async chooseModel(principal: Principal, command: ModelPick & { agentId?: string }): Promise<AssistantModelChoice> {
-      const owner = ownerOf(principal);
-      if (!command || typeof command !== 'object') throw new InvalidInputError('Choose a model of one of your connections');
-      return uow.run(async (ports) => {
-        // The owner's assistant lock first, as a change of a key's budget takes it: one of the two goes first, and the other sees it (#915).
-        await ports.assistants?.lockOwner(owner);
-        const enablement = await lockedEnablement(ports, owner, command.agentId);
-        const still = ` It is still ${modelNameOf({ model: modelOf(enablement) })}.`;
-        const chosen = await pick(owner, command.connection, command.model, still);
-        const next = placement(chosen.item, chosen.model);
-        const unchanged = next.engine === enablement.engine && next.apiKeyId === enablement.connectionId && next.provider === enablement.provider
-          && next.model === modelOf(enablement);
-        if (!unchanged) await agentsOf(ports).change(enablement.agentId, next);
-        return modelChoice(await ownConnections(owner), { connection: chosen.item.ref, model: chosen.model }, true);
-      });
-    },
-
-    /**
      * Gives an agent identity of the owner its AI setup (#857): a model of one of their connections (Connect AI's default when
      * none is named), saved instructions. Its colour is the least used one. There is nothing else to agree to or set (#854).
      */

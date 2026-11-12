@@ -1,24 +1,18 @@
-import { ASSISTANT_RUN_CHANGED_EVENT, ASSISTANT_WORKING_EVENT } from '@flux/contracts';
-import { isPrivateAnswer, type PersonalRunPorts, type RunChanges, type RunRecord } from './ports.js';
+import { ASSISTANT_RUN_CHANGED_EVENT } from '@flux/contracts';
+import type { PersonalRunPorts, RunChanges, RunRecord } from './ports.js';
 import { reportTaskRun } from './task-report.js';
 
 // Owner-only progress of personal runs (#68, O-008 §4 "Progress"). Every status change of a run
 // records `assistant_run.changed.v1` about the run itself. The access policy gives that object
 // exactly one reader, the run's owner while active in its workspace, so the event's audience rows
 // and its delivery are the owner's alone: the run, its prompt and its progress never leave the owner.
-// The event carries identifiers only; the owner refetches the run. The one thing the others learn
-// (F-027 AST-6) is that an assistant is working, by name, from `project.assistant_working.v1`.
+// The event carries identifiers only; the owner refetches the run. The others learn nothing about a run: what a run on a task says to
+// them is a message of the task's discussion (#1120), and there is no "is working" line (nothing read the event that said it).
 
 /** Records the run's current status for its owner, in the caller's unit of work. */
 export async function announce(ports: PersonalRunPorts, run: RunRecord): Promise<void> {
   await ports.events.record({ kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
-  // F-027 AST-6: everyone in the place sees "Ada's assistant is working…". That is one identifier-only event to the project's audience when
-  // a run starts working and when it stops; the detail (what it reads, Stop) stays in the owner's events above.
-  // A run for `/ai`, a chat or a schedule is private (#842, #1104): nobody else learns that it exists, not even by name.
-  if (run.projectId !== null && !isPrivateAnswer(run) && (run.status === 'reading' || !IN_FLIGHT.has(run.status)))
-    await ports.events.record({ kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId, { conversationId: run.conversationId });
 }
-const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
 
 /** Updates a run and, when its status or stop request changed, tells its owner. */
 export async function updateAndAnnounce(ports: PersonalRunPorts, id: string, changes: RunChanges, options: { report?: boolean } = {}): Promise<RunRecord> {

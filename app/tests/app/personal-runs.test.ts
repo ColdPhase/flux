@@ -11,7 +11,7 @@ import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
-import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
 
@@ -556,7 +556,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       await assert.rejects(runs.agentStatus(human(hubert), 'not-an-id'), { code: 'AGENT_NOT_FOUND' });
       await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
       // Picking a model of another key moves the assistant there (#854): the enablement stores that key and its provider.
-      await runs.chooseModel(human(hubert), { connection: newer, model: 'vendor/newer-model' });
+      await chooseModel(runs, human(hubert), { connection: newer, model: 'vendor/newer-model' });
       const stored = await pool.query('SELECT api_key_id AS connection_id, provider, model AS assistant_model FROM assistant_settings WHERE agent_id = $1', [agents.hubert]);
       assert.deepEqual(stored.rows, [{ connection_id: newer, provider: 'openrouter', assistant_model: 'vendor/newer-model' }]);
     } finally {

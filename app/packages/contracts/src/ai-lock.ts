@@ -82,7 +82,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/my-agents/:agentId/schedules/:jobId/history': exempt(PERSON),
   'GET /api/v1/personal-assistant': exempt('Account-wide status of the owner\'s own assistant; no AI read or action'),
   'GET /api/v1/personal-assistant/model': exempt(ACCOUNT),
-  'PUT /api/v1/personal-assistant/model': exempt(ACCOUNT),
   // A person's agents (F-036 AG-1, #857): their own setup, instructions and memory. What an agent does in a space is checked in that space (AG-10).
   'GET /api/v1/my-agents': exempt(PERSON),
   'POST /api/v1/my-agents': exempt(PERSON),

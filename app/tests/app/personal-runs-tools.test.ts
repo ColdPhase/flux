@@ -10,7 +10,7 @@ import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapter
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, loseSpace, pool } from './support/db.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
 
 // The `server` tool loop in the worker (F-027 AST-8.2 and AST-8.3, issue #406): the reservation over
@@ -289,7 +289,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     const other = randomUUID();
     connections.connect(owner.id, other, {});
     compute.respond = async () => {
-      await runs.chooseModel(human(owner), { connection: other, model: 'claude-sonnet-5' });
+      await chooseModel(runs, human(owner), { connection: other, model: 'claude-sonnet-5' });
       return { kind: 'completed', stopReason: 'end_turn', text: 'Fact: finished [S1].', usage: { inputTokens: 100, outputTokens: 10 } };
     };
     const sent = await ask('Finish this');

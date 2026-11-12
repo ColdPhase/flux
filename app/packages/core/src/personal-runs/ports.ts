@@ -341,8 +341,6 @@ export interface PersonalRunQueue {
 export type PersonalRunEventKind =
   /** Owner-only progress of one run; the object is the run (`assistant_run`). */
   | 'assistant_run.changed.v1'
-  /** An assistant started or stopped working in a conversation: the project's audience, identifiers only (F-027 AST-6). */
-  | 'project.assistant_working.v1'
   /** The line "used AI here" joined a direct message: its participants read it again (#842). */
   | 'dm.changed.v1';
 

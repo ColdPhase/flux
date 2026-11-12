@@ -8,7 +8,7 @@ import { parsePrivateTargets, providerPersonalCompute } from '../../packages/age
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // One provider-neutral path for personal runs (#68, #179 F-020 PROV-2/PROV-3): the same use cases,
@@ -224,7 +224,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     await mock('/__script', { wire: 'anthropic', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } });
     const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
     // The next request is sent with the new model; this one keeps Haiku even though the choice changes before it runs.
-    choice = await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
+    choice = await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.deepEqual(choice.current, { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-4-5', reserved_micros: 0, charged_micros: 0, cost_state: 'reserved' });
     assert.equal(await processor.process(first.run.id), 'completed');
@@ -244,15 +244,15 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
       [{ connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }, 'Sign in to ChatGPT first. It is still Sonnet 5.'],
     ];
     for (const [pick, message] of refusals) {
-      await assert.rejects(runs.chooseModel(human(owner), pick), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message }, JSON.stringify(pick));
+      await assert.rejects(chooseModel(runs, human(owner), pick), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message }, JSON.stringify(pick));
     }
     assert.deepEqual((await runs.model(human(owner))).current, { connection: sonnet5, model: 'claude-sonnet-5' });
     // Choosing the same model again changes nothing; a costly model is fine: there is no per-request limit (#843).
     const version = (await runs.status(human(owner))).enablement!.version;
-    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
+    await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.equal((await runs.status(human(owner))).enablement!.version, version);
-    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-fable-5-1' });
-    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
+    await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-fable-5-1' });
+    await chooseModel(runs, human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
   });
 
   test('#854: several connections at once; the picker is grouped by connection in the order they were made, and a model of another moves the assistant there', async () => {
@@ -274,7 +274,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     for (const someone of [viewer, guest]) {
       const theirs = await runs.model(human(someone));
       assert.deepEqual([theirs.groups, theirs.current, theirs.default, theirs.saved], [[], null, null, false]);
-      await assert.rejects(runs.chooseModel(human(someone), { connection: sonnet5, model: 'claude-haiku-4-5' }), { code: 'PERSONAL_RUN_NOT_ENABLED' });
+      await assert.rejects(runs.updateAgent(human(someone), agentId, { connection: sonnet5, model: 'claude-haiku-4-5' }), { code: 'AGENT_NOT_FOUND' }, 'another person\'s agent is not found');
     }
     assert.deepEqual((await runs.model(human(owner))).current, { connection: sonnet5, model: 'claude-sonnet-5' }, 'nobody else changed it');
     // Over HTTP (the API container's own lookup does not hold this test's fake keys): a viewer or guest sees nothing of the owner's.
@@ -283,9 +283,9 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
       assert.deepEqual([read.groups, read.current], [[], current], 'the API container offers this account no list; only the owner sees their own stored model');
     }
     for (const someone of [viewer, guest]) {
-      const refused = await someone.browser.request('PUT', '/api/v1/personal-assistant/model', { body: { connection: sonnet5, model: 'claude-haiku-4-5' } });
-      assert.equal(refused.status, 409, refused.text);
-      assert.equal((refused.json as { code: string }).code, 'PERSONAL_RUN_NOT_ENABLED');
+      const refused = await someone.browser.request('PATCH', `/api/v1/my-agents/${agentId}`, { body: { connection: sonnet5, model: 'claude-haiku-4-5' } });
+      assert.equal(refused.status, 404, refused.text);
+      assert.equal((refused.json as { code: string }).code, 'AGENT_NOT_FOUND');
     }
     const anonymous = await fetch(`${process.env.FLUX_API_URL ?? 'http://api:8080'}/api/v1/personal-assistant/model`);
     assert.equal(anonymous.status, 401);
@@ -322,7 +322,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     await assert.rejects(runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' }), { code: 'PERSONAL_RUN_UNAVAILABLE' });
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id=$1', [owner.id])).rows[0].n, before, 'nothing ran on the spare key');
     // Only the owner's own pick moves it: then the next request goes to the other connection.
-    await runs.chooseModel(human(owner), { connection: spare, model: 'gpt-6-luna' });
+    await chooseModel(runs, human(owner), { connection: spare, model: 'gpt-6-luna' });
     assert.equal((await runs.status(human(owner))).state, 'ready');
     await runs.remove(human(owner));
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;

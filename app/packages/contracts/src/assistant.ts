@@ -134,8 +134,6 @@ export type AssistantChangeScope = 'work' | 'doc' | 'map';
  * and Undo for everyone who can read it (mcp-cowork LC-2). Waiting changes are the owner's Inbox, and a run's are in its conversation.
  */
 export const projectAssistantChangesPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-changes`;
-/** Project-audience event, identifiers only: an agent started or stopped working on a task in a conversation. The run of `/ai`, of a chat and of a schedule is private (#842, #1104) and sends none. */
-export const ASSISTANT_WORKING_EVENT = 'project.assistant_working.v1';
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;
 /**
  * `apply` (Approve all), `skip` (Skip all) or `undo` (the Undo on the run's message). Only the owner, in their own signed-in session,

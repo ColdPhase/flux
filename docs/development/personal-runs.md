@@ -471,9 +471,9 @@ progress never leave the owner. The event carries identifiers and the status onl
 client refetches `GET /api/v1/assistant-runs/:id`.
 
 F-027 AST-6 ("Visible to everyone", 2026-10-17, #404) told the others that an assistant was working
-(`project.assistant_working.v1`; the route `GET /api/v1/conversations/:id/assistant-activity` that listed who was working is gone, and
-it answers 404). Since #842 that is gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still
-sent for a task's run, which posts its result as a message in the task's discussion.
+(`project.assistant_working.v1` and `GET /api/v1/conversations/:id/assistant-activity`). Nothing read it any more (#842 made `/ai` and a chat
+private, and no screen drew the line), so the event and the route are gone (#1120): the others learn nothing about a run, and what a run on
+a task says reaches them as a message in the task's discussion.
 
 ## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
@@ -569,8 +569,8 @@ in it; a chat's tools are gated by each space on every call. `flux_place` in the
 (a chat) start a run through the one `start`. `GET /api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`,
 `dmId` (the DM's main line; with `dmThreadRootId`, that thread) or `chatAgentId`.
 
-**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`, `scheduled`) means: no working event, no
-proposal, nothing for the space. (There is no list of "posted answers" and no answer-committed event for any run, #1120: what an agent says to the
+**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`, `scheduled`) means: nothing for the space and no
+proposal. (There is no list of "posted answers" and no answer-committed event for any run, #1120: what an agent says to the
 people of a task is a message of the task's discussion, posted by the agent-task drain as the agent, with the access of any message.) The asker sees it as a card
 (`PrivateAnswer`) with **Dismiss** (`POST /assistant-runs/:id/dismiss`, final) and **Show everyone** (`POST /assistant-runs/:id/show`): the
 core plans it (`planShow`: their own, committed, not dismissed, still allowed to write there, and AI still on in the space), the adapter posts
@@ -737,7 +737,7 @@ from the request.
 | `GET /api/v1/personal-assistant` | the caller | Own state `not_enabled`, `ready`, `paused`, `capped` (the key's daily budget is used) or `unavailable` (with `unavailableReason`), the enablement with its connection and model, and the key's spend today. |
 | `GET /api/v1/my-agents/:id/status` | the agent's owner | The same state for one of the caller's own agents, on that agent's own connection and model: an agent's private chat reads this one, so removing a connection pauses only the agents that use it ([C-3](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Anyone else's agent, a deleted one or a malformed id is 404. |
 | `POST /api/v1/personal-assistant` | the caller | Enable with `{ agentId, connection, model }` (#854; `connection` is `claude_plan`, `chatgpt_plan` or one of the caller's API key ids): 201. It needs the caller's own agent (`agent.invoke`) and that connection. |
-| `GET`, `PUT /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default; `PUT { connection, model }` changes it. |
+| `GET /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default. An agent's model is changed on its page, `PATCH /api/v1/my-agents/:id` (`{ connection, model }`); there is no other route for it. |
 | `PUT /api/v1/personal-assistant/agents` | the caller | `{ agentId }`: the caller's assistant for that agent's workspace. |
 | `POST …/pause`, `POST …/resume`, `DELETE /api/v1/personal-assistant` | the caller | Pause ends queued work at zero cost. Delete also removes the consent. |
 | `POST /api/v1/conversations/:id/assistant-runs` | the caller | Invoke `{ clientRunId, kind, prompt, target?, continuesRunId? }`: 202 with the run; the same `clientRunId` returns it again (200) and never charges twice. |

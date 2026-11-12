@@ -13,6 +13,7 @@ import { personalRunWorkerComposition, webSearchSwitch } from '../../apps/worker
 import { db, pool } from './support/db.js';
 import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';
 import { BRIEF } from './support/brief.js';
+import { chooseModel } from './support/personal-runs.js';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
@@ -354,7 +355,7 @@ describe('the review of #1073: only what the search returned, a refused search, 
   test('P2-A: a refusal at the count before the run is counted again without the search: the run answers without it, told so, and the key\'s model is remembered', async () => {
     const other = randomUUID();
     scene.connections.connect(scene.owner.id, other, { model: 'claude-sonnet-5' });
-    await scene.runs.chooseModel(human(scene.owner), { connection: other, model: 'claude-sonnet-5' });
+    await chooseModel(scene.runs, human(scene.owner), { connection: other, model: 'claude-sonnet-5' });
     const counts: boolean[] = [];
     const before = scene.compute.count;
     scene.compute.count = (request) => { counts.push(request.webSearch === true); if (request.webSearch) throw new WebSearchRefusedError(); return before(request); };
@@ -448,7 +449,7 @@ describe('no limit on searches or pages, only the key\'s budget (#1113; real wor
   test('the key\'s daily budget still stops spending: the run ends at its limit with no request that could not fit, and is charged no more than the day has left', async () => {
     const other = randomUUID();
     scene.connections.connect(scene.owner.id, other, { model: 'claude-sonnet-5', dailyBudgetCents: 40 });
-    await scene.runs.chooseModel(human(scene.owner), { connection: other, model: 'claude-sonnet-5' });
+    await chooseModel(scene.runs, human(scene.owner), { connection: other, model: 'claude-sonnet-5' });
     let step = 0;
     // Ten searches a step: 10 × a cent and the tokens. One request with the room for search results fits 268,000 micros: the third could not fit $0.40.
     scene.compute.respond = async () => searchAndRead(++step, 10);

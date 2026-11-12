@@ -29,7 +29,7 @@ import { db, pool } from './support/db.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { apiUrl } from './support/http.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeCompute, FakeQueue } from './support/personal-runs.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { waitFor } from './support/wait.js';
 
@@ -647,11 +647,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal((await row(first.run.id)).model, 'sonnet');
 
     // Choosing Opus changes the next request.
-    choice = await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'opus' });
+    choice = await chooseModel(runs, human(owner), { connection: 'claude_plan', model: 'opus' });
     assert.deepEqual(choice.current, { connection: 'claude_plan', model: 'opus' });
     const early = await ask();
     // A change made after it was sent never reaches it; the next request is sent with the new model.
-    await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'haiku' });
+    await chooseModel(runs, human(owner), { connection: 'claude_plan', model: 'haiku' });
     const late = await ask();
     await resetFake(); await script({ calls: [], answer: 'Done.' });
     assert.equal(await processor.process(early.run.id), 'completed');
@@ -664,16 +664,16 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
     // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
     for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id', '', 42]) {
-      await assert.rejects(runs.chooseModel(human(owner), { connection: 'claude_plan', model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
+      await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
         && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', String(bad));
     }
     // A ChatGPT plan the owner is not signed in to offers nothing (#854): never a switch to another vendor.
-    await assert.rejects(runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
+    await assert.rejects(chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
     assert.deepEqual((await runs.model(human(owner))).current, { connection: 'claude_plan', model: 'haiku' });
   });
 
   test('AST-11: a model the vendor does not accept ends the run as its own state; the setting stays and nothing falls back', async () => {
-    await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'opus' });
+    await chooseModel(runs, human(owner), { connection: 'claude_plan', model: 'opus' });
     await scenario('run_model_unavailable');
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'unavailable');
