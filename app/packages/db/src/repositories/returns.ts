@@ -1,5 +1,5 @@
 import { messagePreview } from '@flux/contracts';
-import { and, desc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { queryPrepared } from '../prepared.js';
@@ -40,9 +40,10 @@ async function openVersionTextWith<T extends { id: string; workspaceId: string; 
 /** Structurally core's `AudiencePlace` and `AudienceKinds` (returns/ports.ts); @flux/db does not import @flux/core. */
 type AudiencePlace = { projectId: string } | { conversationId: string };
 type AudienceKinds = { kinds: string[]; automation: string };
-type AudienceRow = { id: string; seq: number | string; kind: string; workspaceId: string | null; objectId: string; actorId: string; data: Record<string, unknown>; createdAt: Date };
-const AUDIENCE_COLUMNS = `SELECT e.id, a.seq, e.kind, e.workspace_id AS "workspaceId", e.object_id AS "objectId", e.actor_id AS "actorId", e.data, e.created_at AS "createdAt"
-  FROM event_audience a JOIN events e ON e.id = a.event_id WHERE a.recipient = $1 AND a.seq > $2`;
+// `createdAt` comes as milliseconds since the epoch: a number is far cheaper to read than a timestamp's text, a few hundred times a summary.
+type AudienceRow = { id: string; seq: number | string; kind: string; workspaceId: string | null; objectId: string; actorId: string; data: Record<string, unknown>; createdAt: number | string };
+const AUDIENCE_COLUMNS = `SELECT e.id, a.seq, e.kind, e.workspace_id AS "workspaceId", e.object_id AS "objectId", e.actor_id AS "actorId", e.data,
+  extract(epoch FROM e.created_at) * 1000 AS "createdAt" FROM event_audience a JOIN events e ON e.id = a.event_id WHERE a.recipient = $1 AND a.seq > $2`;
 const AUDIENCE_FLOOR = 'SELECT seq FROM event_audience WHERE recipient = $1 AND seq > $2 ORDER BY seq DESC OFFSET $3 LIMIT 1';
 // The rows of a summary's tasks and messages, read as they come (#1178). `due_on` as text, as Drizzle's string mode gives it.
 type SummaryWorkRow = { id: string; workspaceId: string; projectId: string; title: string; creationRevertedAt: Date | null; status: string; blocker: string | null;
@@ -56,6 +57,28 @@ const SUMMARY_MESSAGES = `SELECT id, workspace_id AS "workspaceId", project_id A
   author_agent_id AS "authorAgentId", body, attachment_count AS "attachmentCount", sequence, created_at AS "createdAt", via
   FROM project_messages WHERE id = ANY($1::uuid[]) AND removed_at IS NULL`;
 
+// The other lookups of a summary, each one constant statement over an array of ids (#1191): a summary makes one of each, over up to a few
+// hundred ids, and Drizzle composed each anew, with a parameter per id.
+const POINTS = `SELECT place_key AS key, seq, saved_at AS "savedAt", previous_seq AS "previousSeq", previous_saved_at AS "previousSavedAt"
+  FROM return_points WHERE user_id = $1 AND place_key = ANY($2::text[])`;
+const LAST_EVENT = 'SELECT event_id AS id, seq FROM event_audience WHERE recipient = $1 ORDER BY seq DESC LIMIT 1';
+const SUMMARY_PROJECTS = 'SELECT id, workspace_id AS "workspaceId", name FROM projects WHERE id = ANY($1::uuid[])';
+const SUMMARY_DECISIONS = `SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title, rationale, status, proposed_by_kind AS "proposedByKind",
+  proposed_by_id AS "proposedById", supersedes_id AS "supersedesId", superseded_by_id AS "supersededById" FROM project_decisions WHERE id = ANY($1::uuid[])`;
+const SUMMARY_CONVERSATIONS = `SELECT c.id, c.workspace_id AS "workspaceId", c.project_id AS "projectId", c.created_by AS "createdBy", c.created_by_agent_id AS "createdByAgentId",
+  m.id AS "openingId", m.body AS opening, m.attachment_count AS "attachmentCount"
+  FROM project_conversations c LEFT JOIN project_messages m ON m.conversation_id = c.id AND m.sequence = 1 WHERE c.id = ANY($1::uuid[])`;
+const LAST_POSTS = `SELECT conversation_id AS id, max(created_at) AS at FROM project_messages WHERE author_id = $1 AND conversation_id = ANY($2::uuid[])
+  GROUP BY conversation_id`;
+const SUMMARY_MATERIALS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version
+  FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[])`;
+const SUMMARY_DOCS = `SELECT pm.id, pm.workspace_id AS "workspaceId", pm.project_id AS "projectId", v.title, pm.current_version AS version, v.reason
+  FROM project_materials pm JOIN project_material_versions v ON v.material_id = pm.id AND v.version = pm.current_version WHERE pm.id = ANY($1::uuid[]) AND pm.kind = 'doc'`;
+const SUMMARY_SKETCHES = 'SELECT id, workspace_id AS "workspaceId", project_id AS "projectId", title FROM sketches WHERE id = ANY($1::uuid[])';
+const PEOPLE_NAMES = 'SELECT id, name FROM auth_users WHERE id = ANY($1::text[])';
+const AGENT_NAMES = 'SELECT id, name FROM agents WHERE id = ANY($1::uuid[])';
+type PointRow = { key: string; seq: string | number; savedAt: Date; previousSeq: string | number | null; previousSavedAt: Date | null };
+
 // A space's rows: its own events (their object is the space) and its sketches'; a conversation's: its messages.
 const OF_PROJECT = ` AND (e.object_id = $P::uuid OR (e.kind LIKE 'sketch.%' AND EXISTS (SELECT 1 FROM sketches s WHERE s.id = e.object_id AND s.project_id = $P::uuid)))`;
 const OF_CONVERSATION = ` AND e.kind IN ('project.conversation_created.v1', 'project.message_sent.v1') AND lower(e.data->>'conversationId') = $P`;
@@ -65,8 +88,9 @@ export function returnRows(db: DbExecutor) {
   return {
     async points(userId: string, keys: string[]) {
       if (!keys.length) return new Map();
-      const rows = await db.select({ key: rp.placeKey, ...pointColumns }).from(rp).where(and(eq(rp.userId, userId), inArray(rp.placeKey, keys)));
-      return new Map(rows.map(({ key, ...point }) => [key, point]));
+      const { rows } = await queryPrepared<PointRow>(db, POINTS, [userId, keys]);
+      return new Map(rows.map(({ key, seq, savedAt, previousSeq, previousSavedAt }) =>
+        [key, { seq: Number(seq), savedAt, previousSeq: previousSeq === null ? null : Number(previousSeq), previousSavedAt }]));
     },
 
     /** Forward only: an older or equal position leaves the point (and its previous one) as it is. */
@@ -106,7 +130,7 @@ export function returnRows(db: DbExecutor) {
       if (place) text += ('projectId' in place ? OF_PROJECT : OF_CONVERSATION).replaceAll('$P', next('projectId' in place ? place.projectId : place.conversationId));
       if (of) text += ` AND e.workspace_id IS NOT NULL AND e.kind = ANY(${next(of.kinds)}::text[]) AND (e.actor_id <> $1 OR e.data->>'automation' = ${next(of.automation)})`;
       const { rows } = await queryPrepared<AudienceRow>(db, `${text} ORDER BY a.seq DESC LIMIT $3`, values);
-      return rows.map((row) => ({ ...row, seq: Number(row.seq) }));
+      return rows.map((row) => ({ ...row, seq: Number(row.seq), createdAt: new Date(Number(row.createdAt)) }));
     },
 
     /** The seq of the recipient's row just older than their newest `budget` rows after `afterSeq`: an index-only walk of at most `budget`. */
@@ -122,9 +146,8 @@ export function returnRows(db: DbExecutor) {
     },
 
     async lastEvent(recipient: string) {
-      const [row] = await db.select({ id: schema.eventAudience.eventId, seq: schema.eventAudience.seq }).from(schema.eventAudience)
-        .where(eq(schema.eventAudience.recipient, recipient)).orderBy(desc(schema.eventAudience.seq)).limit(1);
-      return row ?? null;
+      const [row] = (await queryPrepared<{ id: string; seq: string }>(db, LAST_EVENT, [recipient])).rows;
+      return row ? { id: row.id, seq: Number(row.seq) } : null;
     },
 
     /** Ids of the workspace's projects that pass `visible` (the policy's list condition). */
@@ -141,8 +164,7 @@ export function returnRows(db: DbExecutor) {
 
     async projects(ids: string[]) {
       if (!ids.length) return new Map();
-      const rows = await openRows(db, 'projects', await db.select({ id: schema.projects.id, workspaceId: schema.projects.workspaceId, name: schema.projects.name })
-        .from(schema.projects).where(inArray(schema.projects.id, ids)));
+      const rows = await openRows(db, 'projects', (await queryPrepared<{ id: string; workspaceId: string; name: string }>(db, SUMMARY_PROJECTS, [ids])).rows);
       return byId(rows.map(({ id, name }) => ({ id, name })));
     },
 
@@ -160,10 +182,8 @@ export function returnRows(db: DbExecutor) {
 
     async decisions(ids: string[]) {
       if (!ids.length) return new Map();
-      const d = schema.projectDecisions;
-      const rows = await openRows(db, 'project_decisions', await db.select({ id: d.id, workspaceId: d.workspaceId, projectId: d.projectId, title: d.title,
-        rationale: d.rationale, status: d.status, proposedByKind: d.proposedByKind, proposedById: d.proposedById, supersedesId: d.supersedesId,
-        supersededById: d.supersededById }).from(d).where(inArray(d.id, ids)));
+      const rows = await openRows(db, 'project_decisions', (await queryPrepared<{ id: string; workspaceId: string; projectId: string; title: string; rationale: string;
+        status: string; proposedByKind: string; proposedById: string; supersedesId: string | null; supersededById: string | null }>(db, SUMMARY_DECISIONS, [ids])).rows);
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.title, rationale: row.rationale, status: row.status,
         proposedByKey: actorKey(row.proposedByKind, row.proposedById), supersedesId: row.supersedesId, supersededById: row.supersededById,
@@ -179,10 +199,8 @@ export function returnRows(db: DbExecutor) {
 
     async conversations(ids: string[]) {
       if (!ids.length) return new Map();
-      const c = schema.projectConversations;
-      const m = schema.projectMessages;
-      const read = await db.select({ id: c.id, workspaceId: c.workspaceId, projectId: c.projectId, createdBy: c.createdBy, createdByAgentId: c.createdByAgentId, openingId: m.id, opening: m.body, attachmentCount: m.attachmentCount }).from(c)
-        .leftJoin(m, and(eq(m.conversationId, c.id), eq(m.sequence, 1))).where(inArray(c.id, ids));
+      const read = (await queryPrepared<{ id: string; workspaceId: string; projectId: string; createdBy: string | null; createdByAgentId: string | null;
+        openingId: string | null; opening: string | null; attachmentCount: number | null }>(db, SUMMARY_CONVERSATIONS, [ids])).rows;
       const rows = await openAliased(db, read, { table: 'project_messages', column: 'body', key: 'opening', workspace: (row) => row.workspaceId,
         identity: (row) => (row.openingId ? [row.openingId] : null) });
       return byId(rows.map(({ createdBy, createdByAgentId, id, projectId, opening, attachmentCount }) => ({ id, projectId, attachmentCount,
@@ -191,45 +209,34 @@ export function returnRows(db: DbExecutor) {
 
     async lastPosts(userId: string, conversationIds: string[]) {
       if (!conversationIds.length) return new Map();
-      const m = schema.projectMessages;
-      const rows = await db.select({ id: m.conversationId, at: sql<Date>`max(${m.createdAt})`.mapWith((value) => new Date(value as string)) })
-        .from(m).where(and(eq(m.authorId, userId), inArray(m.conversationId, conversationIds))).groupBy(m.conversationId);
-      return new Map(rows.map((row) => [row.id, row.at]));
+      const { rows } = await queryPrepared<{ id: string; at: Date }>(db, LAST_POSTS, [userId, conversationIds]);
+      return new Map(rows.map((row) => [row.id, new Date(row.at)]));
     },
 
     async materials(ids: string[]) {
       if (!ids.length) return new Map();
-      const pm = schema.projectMaterials;
-      const v = schema.projectMaterialVersions;
-      const read = await db.select({ id: pm.id, workspaceId: pm.workspaceId, projectId: pm.projectId, title: v.title, version: pm.currentVersion }).from(pm)
-        .innerJoin(v, and(eq(v.materialId, pm.id), eq(v.version, pm.currentVersion))).where(inArray(pm.id, ids));
-      const rows = await openVersionText(read);
+      const rows = await openVersionText((await queryPrepared<{ id: string; workspaceId: string; projectId: string; title: string; version: number }>(db, SUMMARY_MATERIALS, [ids])).rows);
       return byId(rows.map(({ id, projectId, title, version }) => ({ id, projectId, title, version })));
     },
 
     /** Project docs (#112): materials of kind 'doc' with their current version's title and reason. */
     async docs(ids: string[]) {
       if (!ids.length) return new Map();
-      const pm = schema.projectMaterials;
-      const v = schema.projectMaterialVersions;
-      const read = await db.select({ id: pm.id, workspaceId: pm.workspaceId, projectId: pm.projectId, title: v.title, version: pm.currentVersion, reason: v.reason }).from(pm)
-        .innerJoin(v, and(eq(v.materialId, pm.id), eq(v.version, pm.currentVersion))).where(and(inArray(pm.id, ids), eq(pm.kind, 'doc')));
-      const rows = await openVersionText(read);
+      const rows = await openVersionText((await queryPrepared<{ id: string; workspaceId: string; projectId: string; title: string; version: number; reason: string }>(db, SUMMARY_DOCS, [ids])).rows);
       return byId(rows.map(({ id, projectId, title, version, reason }) => ({ id, projectId, title, version, reason })));
     },
 
     async sketches(ids: string[]) {
       if (!ids.length) return new Map();
-      const s = schema.sketches;
-      return byId(await openRows(db, 'sketches', await db.select({ id: s.id, workspaceId: s.workspaceId, projectId: s.projectId, title: s.title }).from(s).where(inArray(s.id, ids))));
+      return byId(await openRows(db, 'sketches', (await queryPrepared<{ id: string; workspaceId: string; projectId: string | null; title: string }>(db, SUMMARY_SKETCHES, [ids])).rows));
     },
 
     async names(keys: string[]) {
       const humans = keys.filter((item) => item.startsWith('human:')).map((item) => item.slice(6));
       const agents = keys.filter((item) => item.startsWith('agent:')).map((item) => item.slice(6)).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
       const names = new Map<string, string>();
-      if (humans.length) for (const row of await db.select({ id: schema.authUsers.id, name: schema.authUsers.name }).from(schema.authUsers).where(inArray(schema.authUsers.id, humans))) names.set(`human:${row.id}`, row.name);
-      if (agents.length) for (const row of await db.select({ id: schema.agents.id, name: schema.agents.name }).from(schema.agents).where(inArray(schema.agents.id, agents))) names.set(`agent:${row.id}`, row.name);
+      if (humans.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, PEOPLE_NAMES, [humans])).rows) names.set(`human:${row.id}`, row.name);
+      if (agents.length) for (const row of (await queryPrepared<{ id: string; name: string }>(db, AGENT_NAMES, [agents])).rows) names.set(`agent:${row.id}`, row.name);
       return names;
     },
   };
