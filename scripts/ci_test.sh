@@ -80,7 +80,10 @@ fi
 if [ -z "$sha" ]; then
   sha=$(gh api "repos/$repo/git/ref/tags/$ref" --jq '.object | if .type == "tag" then empty else .sha end' 2>/dev/null || true)
 fi
-if [ -z "$sha" ]; then
+case "$sha" in
+  *[!0-9a-f]*) sha= ;;
+esac
+if [ "${#sha}" -ne 40 ]; then
   printf 'ref %s is not on GitHub (%s); push it first\n' "$ref" "$repo" >&2
   exit 3
 fi
@@ -96,8 +99,8 @@ gh workflow run test-modules.yml -R "$repo" --ref "$workflow_ref" \
 # The run name carries the request id, so concurrent dispatches of other people are never mistaken for this one.
 run_id=
 attempt=0
-while [ -z "$run_id" ] && [ "$attempt" -lt 40 ]; do
-  sleep 3
+while [ -z "$run_id" ] && [ "$attempt" -lt 18 ]; do
+  sleep 10
   run_id=$(gh run list -R "$repo" --workflow test-modules.yml --event workflow_dispatch --limit 50 --json databaseId,displayTitle \
     --jq ".[] | select(.displayTitle | contains(\"$request\")) | .databaseId" 2>/dev/null | head -n 1 || true)
   attempt=$((attempt + 1))
@@ -120,7 +123,13 @@ ticker=$!
 trap 'kill "$ticker" 2>/dev/null || true' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-gh run watch "$run_id" -R "$repo" --interval 60 --compact --exit-status >/dev/null 2>&1 || true
+# One small request every two minutes (gh run watch also reads every job each time): ~20 agents waiting at once stay far under
+# GitHub's 5,000 requests an hour. A refused request (rate limit, network) is waited out, never taken as the result.
+while :; do
+  sleep "${FLUX_CI_POLL_SECONDS:-120}" || true
+  state=$(gh api "repos/$repo/actions/runs/$run_id" --jq .status 2>/dev/null || true)
+  [ "$state" = completed ] && break
+done
 kill "$ticker" 2>/dev/null || true
 
 conclusion=$(gh run view "$run_id" -R "$repo" --json conclusion --jq .conclusion)
