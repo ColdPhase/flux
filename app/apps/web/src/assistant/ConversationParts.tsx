@@ -12,7 +12,7 @@ import { useKeepFocus } from './useKeepFocus';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 import { RefLink } from '../place/origin';
-import { MessageText } from '../app/MessageText';
+import { MessageText, type NamedPerson } from '../app/MessageText';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
@@ -136,6 +136,8 @@ export interface SourceLookups {
   messages: ConversationMessage[];
   work: ReadonlyMap<string, NativeWorkRow>;
   author: (id: string) => string;
+  /** The names a `@Name Surname` in the answer may stand for, so a name with a space is one chip. */
+  people?: readonly NamedPerson[] | null;
 }
 
 function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; index: number; lookups: SourceLookups }) {
@@ -160,7 +162,7 @@ export function AnswerBody({ answer, lookups }: { answer: Pick<AssistantAnswer, 
     const source = answer.sources[index - 1];
     return source ? <SourceLink source={source} index={index} lookups={lookups} /> : null;
   };
-  return <div className="assistant-answer__body"><MessageText body={answer.body} cite={cite} /></div>;
+  return <div className="assistant-answer__body"><MessageText body={answer.body} cite={cite} people={lookups.people ?? null} /></div>;
 }
 
 export function sourceSummary(count: number, from = 'this project') {

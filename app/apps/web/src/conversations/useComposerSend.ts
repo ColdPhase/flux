@@ -1,5 +1,5 @@
 import type { KeyboardEvent } from 'react';
-import type { Conversation, Material } from '@flux/contracts';
+import { plainMessageText, type Conversation, type Material } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { getMaterialVersion } from '../materials/api';
@@ -50,7 +50,7 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
     // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
     openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
-      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(fromThread.text) }] } : {}) });
+      ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)) }] } : {}) });
   }
   async function send() {
     typing.stop();

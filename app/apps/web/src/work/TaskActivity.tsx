@@ -245,7 +245,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       <ClientChanges key={item.id} projectId={project.id} kind="work" id={item.id} refreshKey={state.lines.length} onChanges={setClientChanges} />
       {/* The person's own agent at work and what it answered them: theirs alone (#842). */}
       <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
-        lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '' }} />
+        lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '', people }} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
       {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>

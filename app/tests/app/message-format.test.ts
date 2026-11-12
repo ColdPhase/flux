@@ -79,15 +79,52 @@ describe('inline marks', () => {
     assert.deepEqual(parseInline('`**kept**`'), [code('**kept**')]);
   });
 
-  test('deeply nested marks do not run away, and a hostile long line is read in linear time', () => {
+  test('deeply nested marks do not run away', () => {
     const deep = '*a '.repeat(50) + 'z' + '*'.repeat(50);
     assert.doesNotThrow(() => parseInline(deep));
-    for (const hostile of ['*a '.repeat(8000), '**a *b '.repeat(3000), '` `` ``` '.repeat(2000), ('*a ' + '**b ').repeat(3000), `${'*'.repeat(20000)}`, 'a'.repeat(50000)]) {
-      const started = performance.now();
-      parseMessage(hostile);
-      assert.ok(performance.now() - started < 500, `${hostile.slice(0, 12)}… took ${Math.round(performance.now() - started)} ms`);
-    }
   });
+});
+
+describe('hostile bodies are read in linear time', () => {
+  // `messagePreview` runs the parser in the API for every conversation list, notification and return, and the web app on every message, so no
+  // body that fits the limit (100,000 characters) may take longer than a blink. Quadratic readers take seconds on these; the bound is generous
+  // for a loaded machine (the best of three runs, 20 to 50 milliseconds on a quiet one) and still 20 times below the seconds a quadratic reader takes.
+  const BOUND_MS = 200;
+  const inputs: [string, string][] = [
+    ['a mark that never closes, many times', '*a '.repeat(30000)],
+    ['bold marks that never close', '**a *b '.repeat(14000)],
+    ['backtick runs of every width, never closed', Array.from({ length: 440 }, (_, i) => '*x ' + '`'.repeat(i + 1)).join(' ')],
+    ['backtick runs of a few widths, never closed', '` `` ``` '.repeat(10000)],
+    ['an unclosed backtick run after each mark', ('*a ' + '`'.repeat(3) + ' ').repeat(10000)],
+    ['stars and marks mixed', ('*a ' + '**b ').repeat(14000)],
+    ['only stars', '*'.repeat(99990)],
+    ['one long word', 'a'.repeat(99990)],
+    ['many short links', 'http://a.example/x '.repeat(5000)],
+    ['many wiki marks', '[[a *b* c]] '.repeat(8000)],
+    ['a text, 99,990 blank lines, a quote', `x${'\n'.repeat(99990)}> q`],
+    ['a list, 50,000 blank lines, a text', `- a\n${'\n'.repeat(50000)}x`],
+    ['a text, 50,000 blank lines, a list', `x${'\n'.repeat(50000)}- a`],
+    ['a quote, 50,000 blank lines, a text', `> q\n${'\n'.repeat(50000)}x`],
+    ['a text, 50,000 blank lines, a code block', `x${'\n'.repeat(50000)}\n\`\`\`\ncode\n\`\`\``],
+    ['a code block, 50,000 blank lines, a text', `\`\`\`\ncode\n\`\`\`${'\n'.repeat(50000)}x`],
+    ['blank lines between 20,000 list items', '- a\n\n'.repeat(20000)],
+    ['blank lines of spaces next to a list', `x\n${'  \n'.repeat(30000)}- a`],
+    ['alternating blocks', '- a\n> q\n```\nc\n```\nt\n'.repeat(5000)],
+    ['an open fence of many lines', `\`\`\`\n${'line\n'.repeat(20000)}`],
+    ['many fences that never close', '```a\n'.repeat(20000)],
+  ];
+  for (const [name, body] of inputs) {
+    test(name, () => {
+      let best = Infinity;
+      for (let run = 0; run < 3; run++) {
+        const started = performance.now();
+        parseMessage(body);
+        plainMessageText(body);
+        best = Math.min(best, performance.now() - started);
+      }
+      assert.ok(best < BOUND_MS, `${name}: ${Math.round(best)} ms for ${body.length} characters`);
+    });
+  }
 });
 
 describe('blocks', () => {

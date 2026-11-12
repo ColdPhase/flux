@@ -417,7 +417,7 @@ function DmContent({ initial }: { initial: Dm }) {
           )}
           {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
           <PrivateAiLines own assistant={assistant} meId={me.user.id} meName={me.user.name} others={firstNames(others.map((person) => person.name))} composerId="dm-composer"
-            lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf }} />
+            lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf, people: [...others, { name: me.user.name }].map((person) => ({ kind: 'human' as const, name: person.name })) }} />
         </div>
       </div>
       <div className="composer dm__composer">

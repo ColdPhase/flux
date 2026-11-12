@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
+import { plainMessageText } from '@flux/contracts';
 import { Button, Icon, Spinner } from '../ui';
 import { getConversation, listConversations } from '../conversations/api';
 import { lastAskedConversation } from './lastAsked';
@@ -10,7 +11,7 @@ import './assistant.css';
 // project they last asked in), and opens the one picked with the assistant ready to be asked.
 
 interface Place { projectId: string; conversationId: string; title: string; project: string; last: boolean }
-const first = (body: string) => (body.split('\n')[0] ?? '').trim() || 'Conversation';
+const first = (body: string) => (plainMessageText(body).split('\n')[0] ?? '').trim() || 'Conversation';
 
 export function AskWhere({ userId, projectId, projects, onOpen, onBack }: {
   userId: string; projectId: string | undefined; projects: { id: string; name: string }[]; onOpen: () => void; onBack: () => void;

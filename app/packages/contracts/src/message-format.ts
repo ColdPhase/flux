@@ -51,24 +51,37 @@ function atomLength(text: string, at: number): number {
   return 0;
 }
 
+/** The maximal runs of backticks of a text, by width: where each starts, in order. Built once for a text, so a span is found without a scan. */
+type Ticks = Map<number, number[]>;
+function tickRuns(text: string): Ticks {
+  const runs: Ticks = new Map();
+  for (let k = text.indexOf('`'); k >= 0 && k < text.length;) {
+    let end = k;
+    while (text[end] === '`') end++;
+    const same = runs.get(end - k);
+    if (same) same.push(k); else runs.set(end - k, [k]);
+    k = text.indexOf('`', end);
+  }
+  return runs;
+}
+
 /** A code span that opens with the backtick run at `at` and closes with the next run of the same length; none when it never closes. */
-function codeSpan(text: string, at: number): { text: string; end: number } | null {
+function codeSpan(text: string, at: number, ticks: Ticks): { text: string; end: number } | null {
   let open = at;
   while (text[open] === '`') open++;
   const width = open - at;
-  for (let k = open; k < text.length; k++) {
-    if (text[k] !== '`') continue;
-    let close = k;
-    while (text[close] === '`') close++;
-    if (close - k === width) {
-      const inner = text.slice(open, k);
-      // One space on each side is the way to write a span that starts or ends with a backtick; it is not part of the code.
-      const padded = inner.length > 2 && inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '';
-      return { text: padded ? inner.slice(1, -1) : inner, end: close };
-    }
-    k = close - 1;
-  }
-  return null;
+  const starts = ticks.get(width);
+  if (!starts) return null;
+  // The first run of this width after the opening one (binary search: the starts are in order).
+  let low = 0;
+  let high = starts.length;
+  while (low < high) { const middle = (low + high) >> 1; if (starts[middle]! > at) high = middle; else low = middle + 1; }
+  const close = starts[low];
+  if (close === undefined) return null;
+  const inner = text.slice(open, close);
+  // One space on each side is the way to write a span that starts or ends with a backtick; it is not part of the code.
+  const padded = inner.length > 2 && inner.startsWith(' ') && inner.endsWith(' ') && inner.trim() !== '';
+  return { text: padded ? inner.slice(1, -1) : inner, end: close + width };
 }
 
 const runOfStars = (text: string, at: number) => { let end = at; while (text[end] === '*') end++; return end - at; };
@@ -79,13 +92,13 @@ const opens = (text: string, at: number, width: number) => !isWord(text[at - 1])
 const closes = (text: string, at: number, width: number) => at > 0 && !isSpace(text[at - 1]) && !isWord(text[at + width]);
 
 /** Where the marks `delimiter` opened before `from` close, or -1. Code spans, addresses and `[[pages]]` are skipped as they are; a mark inside the text opens and closes on its own. */
-function findClose(text: string, from: number, delimiter: string, failed: Map<string, number>, nest = 0): number {
+function findClose(text: string, from: number, delimiter: string, failed: Map<string, number>, ticks: Ticks, nest = 0): number {
   const known = failed.get(delimiter);
   if (known !== undefined && from >= known) return -1;
   for (let k = from; k < text.length;) {
     const char = text[k];
     if (char === '`') {
-      const span = codeSpan(text, k);
+      const span = codeSpan(text, k, ticks);
       if (span) { k = span.end; continue; }
       while (text[k] === '`') k++;
       continue;
@@ -98,7 +111,7 @@ function findClose(text: string, from: number, delimiter: string, failed: Map<st
     if (nest < MAX_DEPTH && opens(text, k, run)) {
       // A mark opened inside this one: skip to where it closes, if it does.
       const width = Math.min(run, 2);
-      const inner = findClose(text, k + width, '*'.repeat(width), failed, nest + 1);
+      const inner = findClose(text, k + width, '*'.repeat(width), failed, ticks, nest + 1);
       if (inner >= 0) { k = inner + width; continue; }
     }
     k += run;
@@ -113,10 +126,11 @@ export function parseInline(text: string, depth = 0): MessageInline[] {
   let pending = '';
   const flush = () => { if (pending) { out.push({ kind: 'text', text: pending }); pending = ''; } };
   const failed = new Map<string, number>();
+  const ticks = tickRuns(text);
   for (let i = 0; i < text.length;) {
     const char = text[i]!;
     if (char === '`') {
-      const span = codeSpan(text, i);
+      const span = codeSpan(text, i, ticks);
       if (span) { flush(); out.push({ kind: 'code', text: span.text }); i = span.end; continue; }
       let end = i;
       while (text[end] === '`') end++;
@@ -129,7 +143,7 @@ export function parseInline(text: string, depth = 0): MessageInline[] {
     const run = runOfStars(text, i);
     if (depth < MAX_DEPTH && opens(text, i, Math.min(run, 3))) {
       if (run >= 3) {
-        const close = findClose(text, i + 3, '***', failed);
+        const close = findClose(text, i + 3, '***', failed, ticks);
         if (close >= 0) {
           flush();
           out.push({ kind: 'bold', children: [{ kind: 'italic', children: parseInline(text.slice(i + 3, close), depth + 2) }] });
@@ -138,12 +152,12 @@ export function parseInline(text: string, depth = 0): MessageInline[] {
         }
       }
       if (run >= 2) {
-        const close = findClose(text, i + 2, '**', failed);
+        const close = findClose(text, i + 2, '**', failed, ticks);
         if (close >= 0) { flush(); out.push({ kind: 'bold', children: parseInline(text.slice(i + 2, close), depth + 1) }); i = close + 2; continue; }
         pending += text.slice(i, i + run); i += run;
         continue;
       }
-      const close = findClose(text, i + 1, '*', failed);
+      const close = findClose(text, i + 1, '*', failed, ticks);
       if (close >= 0) { flush(); out.push({ kind: 'italic', children: parseInline(text.slice(i + 1, close), depth + 1) }); i = close + 1; continue; }
     }
     pending += text.slice(i, i + run); i += run;
@@ -216,10 +230,12 @@ export function parseMessage(body: string): MessageBlock[] {
   return runs.map((run, index): MessageBlock => {
     if (run.kind !== 'lines') return run;
     // Beside another block a paragraph gives up its blank edge lines: the block's own margin separates them.
-    let part = run.lines;
-    if (index > 0) while (part.length && part[0]!.trim() === '') part = part.slice(1);
-    if (index < runs.length - 1) while (part.length && part[part.length - 1]!.trim() === '') part = part.slice(0, -1);
-    return { kind: 'text', inline: parseInline(part.join('\n')) };
+    // The first and last line that say something are found, and the lines are sliced once: a message of blank lines costs one pass.
+    let from = 0;
+    let to = run.lines.length;
+    if (index > 0) while (from < to && run.lines[from]!.trim() === '') from++;
+    if (index < runs.length - 1) while (to > from && run.lines[to - 1]!.trim() === '') to--;
+    return { kind: 'text', inline: parseInline(run.lines.slice(from, to).join('\n')) };
   }).filter((block) => !(block.kind === 'text' && !block.inline.length && runs.length > 1));
 }
 

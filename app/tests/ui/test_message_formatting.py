@@ -133,7 +133,7 @@ class MessageFormatting(unittest.TestCase):
 
     # ------------------------------------------------------------------------------------------------ what is drawn
 
-    def check_drawn(self, body: Locator, *, phone: bool, copy: bool = False) -> None:
+    def check_drawn(self, body: Locator, *, phone: bool, copy: bool = False, one_chip: bool = True) -> None:
         """Every element of the subset is drawn, in the face and weight the design gives it, and no mark is left in the text."""
         text = body.inner_text()
         for raw in ("**", "```", "`calibrate", "*bed 4*", "\n- ", "\n1. ", "> Ben"):
@@ -154,6 +154,9 @@ class MessageFormatting(unittest.TestCase):
         # References stay chips and links inside the marks; in code nothing is one.
         expect(body.locator("strong .ref-chip--task")).to_have_text("#12")
         expect(body.locator("li .ref-chip--wiki")).to_have_text("Calibration")
+        if one_chip:
+            # A known name with a space is one chip, not "Ben" and a word.
+            expect(body.locator("li .ref-chip--person")).to_have_text("@Ben Okafor")
         expect(body.locator("em a.msg-link")).to_have_attribute("href", "https://example.com/probes")
         expect(body.locator("ul.msg-list > li")).to_have_count(3)
         expect(body.locator("ol.msg-list > li")).to_have_count(2)
@@ -178,7 +181,9 @@ class MessageFormatting(unittest.TestCase):
         if copy:
             button = block.get_by_role("button", name="Copy code")
             button.click()
-            expect(button).to_have_text("Copied")
+            # Its name follows its words: "Copied" is what a screen reader hears too.
+            copied = block.get_by_role("button", name="Copied", exact=True)
+            expect(copied).to_have_text("Copied")
             if UI_BROWSER == "chromium":
                 self.assertEqual(body.page.evaluate("() => navigator.clipboard.readText()"), CODE)
 
@@ -187,6 +192,13 @@ class MessageFormatting(unittest.TestCase):
     def test_01_a_space_draws_the_message_and_stores_it_unchanged(self) -> None:
         sent = self.api("ada", "POST", f"/api/v1/projects/{self.ids['project']}/conversations", {"body": BODY, "clientMessageId": str(uuid.uuid4())}, status=201)
         self.assertEqual(sent["messages"][0]["body"], BODY, "the stored body is the typed text")
+        # A conversation's opening words are the text as typed (a thread root and `/map` use them as they are); its list preview is plain.
+        listed = self.api("ada", "GET", f"/api/v1/projects/{self.ids['project']}/conversations")["items"]
+        opening = next(item for item in listed if item["id"] == sent["id"])
+        self.assertEqual(opening["firstMessageBody"], BODY)
+        self.assertNotIn("**", opening["lastMessageBody"])
+        self.assertNotIn("```", opening["lastMessageBody"])
+        self.assertTrue(opening["lastMessageBody"].startswith("Soil moisture is low in bed 4"), opening["lastMessageBody"])
         self.api("ben", "POST", f"/api/v1/projects/{self.ids['project']}/conversations", {"body": REPLY, "clientMessageId": str(uuid.uuid4())}, status=201)
         for phone in (False, True):
             for dark in (False, True):
@@ -255,7 +267,7 @@ class MessageFormatting(unittest.TestCase):
                 page.goto(f"/dm/{self.ids['dm']}")
                 body = page.locator(".dm-msg__body", has_text="Soil moisture").first
                 expect(body).to_be_visible()
-                self.check_drawn(body, phone=phone, copy=phone and not dark)
+                self.check_drawn(body, phone=phone, copy=phone and not dark, one_chip=False)
                 self.look(page, "dm", phone=phone, dark=dark)
         page = self.page("ben")
         page.goto("/dm")

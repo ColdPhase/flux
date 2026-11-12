@@ -25,7 +25,7 @@ export function CodeBlock({ code, lang = null }: { code: string; lang?: string |
     <div className="msg-codeblock" data-ref="code">
       <div className="msg-codeblock__bar">
         {lang ? <span className="msg-codeblock__lang">{lang}</span> : <span />}
-        <Button variant="quiet" size="sm" icon={state === 'copied' ? 'check' : 'copy'} aria-label="Copy code" onClick={() => void copy()}>
+        <Button variant="quiet" size="sm" icon={state === 'copied' ? 'check' : 'copy'} aria-label={state === 'idle' ? 'Copy code' : undefined} onClick={() => void copy()}>
           {state === 'copied' ? 'Copied' : state === 'failed' ? 'Press Ctrl+C' : 'Copy'}
         </Button>
       </div>

@@ -260,7 +260,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
             </ol>
             {/* The person's own agent at work in this thread and what it answered them: theirs alone, at the end like a reply about to be sent (#1016). */}
             <PrivateAiLines own assistant={assistant} meId={meId} meName={meName} others={others} composerId="dm-thread-composer"
-              lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf }} />
+              lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf, people: [...people.values(), { name: meName }].map((person) => ({ kind: 'human' as const, name: person.name })) }} />
           </div>
         </div>
         <div className="composer dm__composer dm-thread__composer">

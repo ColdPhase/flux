@@ -14,6 +14,9 @@ import './message-format.css';
 // unchanged: this only reads it. With the project's people, a known name (also one with a space, such as "Jonas Berg") is one chip, and
 // an agent's chip carries the Kreska mark.
 
+/** What a mention chip needs of a person: the name to match, and whether it is an agent. A space's people are this, and so are a chat's known names. */
+export type NamedPerson = Pick<ProjectPerson, 'kind' | 'name'>;
+
 const URL_TOKEN = LINK_URL_SOURCE;
 const escapeRe = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -29,7 +32,7 @@ function tokens(names: string[], cites = false): RegExp {
  * itself a link (a nested anchor is invalid); its preview card still comes from LinkPreviews. `cite` turns a `[3]` of an assistant's answer
  * into what the caller draws for source 3 (null leaves the text as it is).
  */
-export function MessageText({ body, linked = true, people = null, cite }: { body: string; linked?: boolean; people?: ProjectPerson[] | null; cite?: (index: number) => ReactNode | null }) {
+export function MessageText({ body, linked = true, people = null, cite }: { body: string; linked?: boolean; people?: readonly NamedPerson[] | null; cite?: (index: number) => ReactNode | null }) {
   const names = [...(people ?? [])].sort((a, b) => b.name.length - a.name.length);
   const blocks = useMemo(() => parseMessage(body), [body]);
   const reference = tokens(names.map((person) => person.name), cite !== undefined);

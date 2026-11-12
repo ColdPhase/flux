@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -39,8 +39,15 @@ export function AgentConversation() {
 /** A chat's answers cite nothing of a space: the sources it names (none, for a schedule's result) have no project to open. */
 const NO_LOOKUPS = { projectId: '', messages: [], work: new Map(), author: () => '' };
 
+/** The lookups of a chat's answers with the names it knows (the owner and the people they message), so `@Ben Okafor` is one chip, not "Ben" and a word. */
+function useChatLookups() {
+  const { me, directMessages } = useShellData();
+  return useMemo(() => ({ ...NO_LOOKUPS, people: [...new Set([me.user.name, ...directMessages.flatMap((dm) => dm.people)])].map((name) => ({ kind: 'human' as const, name })) }), [me.user.name, directMessages]);
+}
+
 /** One turn: what the owner said, then what the agent is doing or answered. */
 function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRun; agent: MyAgent; chat: AgentChat; schedules: AgentSchedulesState; first: boolean; newDay: boolean }) {
+  const lookups = useChatLookups();
   const [busy, setBusy] = useState('');
   const [failed, setFailed] = useState('');
   const act = async (name: string, action: () => Promise<void>) => {
@@ -62,7 +69,7 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">
             {first ? <p className="dm-msg__meta"><b>{agent.name}</b></p> : null}
-            {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={NO_LOOKUPS} /></div></MessageBubble>
+            {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={lookups} /></div></MessageBubble>
               : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? workingText(run) : ended ?? 'Nothing to say.'}</div>}
             {prepared ? <ReadySchedule job={prepared} state={schedules} agent={agent} /> : null}
             {run.answer?.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
@@ -86,6 +93,7 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
  * with the schedule's name and times after its own. A firing that gave no result says why in a muted line (C-53), with the way to fix a sign-out.
  */
 function ScheduleLine({ line, schedule, agent, newDay }: { line: AgentChatMessage; schedule: NonNullable<AgentChatMessage['schedule']>; agent: MyAgent; newDay: boolean }) {
+  const lookups = useChatLookups();
   return (
     <li className="dm-msg agc__turn" data-line-id={line.id} data-schedule-line={schedule.failed ? 'failed' : 'result'} data-chat-agent="">
       {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
@@ -100,7 +108,7 @@ function ScheduleLine({ line, schedule, agent, newDay }: { line: AgentChatMessag
               <span>{line.body}</span>
               {/^Sign in to /.test(line.body) ? <Link className="ui-btn ui-btn--quiet ui-btn--sm" to="/settings/agents">Sign in</Link> : null}
             </div>
-          ) : <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={{ body: line.body, sources: [] }} lookups={NO_LOOKUPS} /></div></MessageBubble>}
+          ) : <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={{ body: line.body, sources: [] }} lookups={lookups} /></div></MessageBubble>}
         </div>
       </div>
     </li>
@@ -118,6 +126,7 @@ function Line({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agen
  * discussion (#856); once nothing stands the line is struck through and says "Undone by you".
  */
 function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
+  const lookups = useChatLookups();
   const [undoing, setUndoing] = useState(false);
   const [failed, setFailed] = useState(false);
   const [note, setNote] = useState('');
@@ -143,7 +152,7 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
           <p className="dm-msg__meta"><b>{agent.name}</b><time className="agc__time" dateTime={line.createdAt}> · {clock(line.createdAt)}</time></p>
           {line.words || line.task ? (
             <MessageBubble><div className="dm-msg__body agc__answer">
-              {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} /></div> : null}
+              {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} people={lookups.people} /></div> : null}
               {line.task ? (
                 <Link className="agc__chip" to={`/projects/${line.task.projectId}/tasks?open=work:${line.task.id}`}>
                   <Icon name="tasks" size={13} />#{line.task.number} {line.task.title} · {line.task.projectName}

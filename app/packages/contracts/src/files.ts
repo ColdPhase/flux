@@ -63,9 +63,16 @@ export interface MessageFile extends FileDetail {
   size: number;
 }
 
+const attachedFiles = (count: number) => (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
+
 /** A system preview: the message's words without its formatting marks (#1247). The stored authored message body remains unchanged. */
 export function messagePreview(body: string, count = 0): string {
-  return plainMessageText(body) || (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
+  return plainMessageText(body) || attachedFiles(count);
+}
+
+/** A conversation's opening words as they were typed (its first message, or what it attached): the text drawn again as a message, or kept on a map. */
+export function messageOpening(body: string, count = 0): string {
+  return body || attachedFiles(count);
 }
 
 /** Images a map thought may show (#252): checked by their bytes' signature, never by name or a declared type. SVG is never one. */

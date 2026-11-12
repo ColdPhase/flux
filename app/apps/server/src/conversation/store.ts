@@ -1,4 +1,4 @@
-import { messagePreview } from '@flux/contracts';
+import { messageOpening, messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
@@ -277,7 +277,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const items = rows.map((row) => {
         const end = ends.get(row.id);
         return { id: row.id, projectId: row.projectId, ...creator(row, names), createdAt: row.createdAt.toISOString(),
-          firstMessageBody: messagePreview(end?.firstBody ?? '', end?.firstAttachments ?? 0), lastMessageAt: end?.lastAt?.toISOString() ?? row.createdAt.toISOString(),
+          firstMessageBody: messageOpening(end?.firstBody ?? '', end?.firstAttachments ?? 0), lastMessageAt: end?.lastAt?.toISOString() ?? row.createdAt.toISOString(),
           lastMessageBody: messagePreview(end?.lastBody ?? '', end?.lastAttachments ?? 0) };
       });
       return { items, total: count?.total ?? 0, ...page };
@@ -362,7 +362,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
         ...(task ? { task } : {}),
-        createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
+        createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
     },
 
@@ -379,7 +379,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,
             audience: { kind: 'project' as const, projectId: row.projectId }, ...creator(row, names),
-            createdAt: row.createdAt.toISOString(), firstMessageBody: messagePreview(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id),
+            createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(existing.body, existing.attachmentCount), messages: [message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id),
               references: (await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, [existing.id])).get(existing.id) }, names)],
             messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
         }
@@ -393,7 +393,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         if (first.inserted) await eventLog(tx).record(principal, project.workspaceId, 'project.conversation_created.v1', projectId, { conversationId: row!.id, messageId: first.message.id });
         return { id: row!.id, projectId, workspaceId: project.workspaceId,
           audience: { kind: 'project' as const, projectId }, ...creator(row!, names),
-          createdAt: row!.createdAt.toISOString(), firstMessageBody: messagePreview(first.message.body, first.message.files?.length), messages: [first.message],
+          createdAt: row!.createdAt.toISOString(), firstMessageBody: messageOpening(first.message.body, first.message.files?.length), messages: [first.message],
           messagePage: { hasMoreBefore: false, nextBeforeSequence: null, limit: 50 } };
       });
     },
