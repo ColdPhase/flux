@@ -118,7 +118,7 @@ buttons above, which read as too strong:
 text, 12 / 500) and 28 px for a person chip in a field, with a 20 px face and ×. They never wrap;
 a long name ends in an ellipsis.
 
-**Switches** are 36 × 22 (the live panel's 32 × 20). One style of switch across the app: Settings, the Create window's "Create another", the
+**Switches** are 36 × 22 (the live panel's 32 × 20). One style of switch across the app: Settings, the
 live panel and the connection's permissions (#1238).
 - On: the `--inv` track with an `--oninv` knob. Unmistakable in both themes.
 - Off: the `--sub` track with a 1 px `--t3` edge and a `--t3` knob. The edge and the knob are at least 3:1 against the card and the screen

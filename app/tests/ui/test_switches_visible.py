@@ -3,8 +3,8 @@ track (1.1:1) and an off switch was a white knob on a pale track (1.3:1 in light
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app; FLUX_UI_BROWSER picks the engine
 (chromium by default, webkit too). The numbers are measured in the running app, composited over every ancestor with tests/ui/contrast.py,
-never judged by eye, for the Map / List switch, Board / List, What it may do and Text size, and for the switches of
-Settings and of the Create window, light and dark, on the computer (1440) and on the phone (390):
+never judged by eye, for the Map / List switch, Board / List, What it may do and Text size, and for the switch of
+Settings, light and dark, on the computer (1440) and on the phone (390):
 - the selected option's fill against its track at least 1.5:1 and lighter than the track, its label at least 4.5:1 on it, an unselected
   label at least 4.5:1 on the track and not the selected label's colour, and in dark a 1 px light edge (2:1 against the track);
 - an off switch's edge and knob at least 3:1 against the card and the track, an on switch's track at least 3:1 against the card and its knob
@@ -25,7 +25,6 @@ import unittest
 from playwright.sync_api import Browser, Locator, Page, expect, sync_playwright
 
 from contrast import FILL, MEASURE, RING
-from create_window import open_create
 from layers import settle
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_map_options, shot, start_forwarder
 
@@ -39,7 +38,7 @@ TEXT_MINIMUM = 4.5
 NON_TEXT_MINIMUM = 3.0
 EDGE_MINIMUM = 2.0  # in dark, where the edge is a light line on the darker track
 # The painted track of a switch: its box minus any border the fill is clipped out of (`background-clip: padding-box`). A pill 22 to 28 px
-# tall (the phone's 44 px box paints a 28 px track); the knob (a child element, or a pseudo-element when `knobSelector` is empty) sits inside.
+# tall (the phone's 44 px box paints a 28 px track); the knob (a child element) sits inside.
 SHAPE = r"""(spec) => {
   const el = document.querySelector(spec.selector);
   if (!el) throw new Error('Missing switch: ' + spec.selector);
@@ -147,28 +146,24 @@ class SwitchesVisible(unittest.TestCase):
 
     measured: list[str] = []
 
-    def switch(self, page: Page, control: Locator, what: str, *, part: str, knob_pseudo: str | None = None, on: bool) -> None:
-        """One switch in the state asked: `control` is the element with the track's fill and edge; `part` selects the knob inside it
-        (a child element, or the control's own `knob_pseudo` pseudo-element)."""
+    def switch(self, page: Page, control: Locator, what: str, *, part: str, on: bool) -> None:
+        """One switch in the state asked: `control` is the element with the track's fill and edge; `part` selects the knob, a child element of it."""
         settle(page)
         control.evaluate("el => { el.setAttribute('data-contrast-switch', ''); el.parentElement.setAttribute('data-contrast-surface', ''); }")
         try:
-            self.measure_switch(page, what, part, knob_pseudo, on)
+            self.measure_switch(page, what, part, on)
         finally:
             page.evaluate("() => document.querySelectorAll('[data-contrast-switch], [data-contrast-surface]').forEach((el) => { el.removeAttribute('data-contrast-switch'); el.removeAttribute('data-contrast-surface'); })")
 
-    def measure_switch(self, page: Page, what: str, part: str, knob_pseudo: str | None, on: bool) -> None:
+    def measure_switch(self, page: Page, what: str, part: str, on: bool) -> None:
         track, outside = "[data-contrast-switch]", "[data-contrast-surface]"
         scheme = "dark" if page.evaluate("matchMedia('(prefers-color-scheme: dark)').matches") else "light"
         state = "on" if on else "off"
-        if knob_pseudo:
-            knob = page.evaluate(FILL, {"selector": track, "pseudo": knob_pseudo})
-        else:
-            knob = page.evaluate(FILL, {"selector": f"{track} {part}", "underSelector": track})
+        knob = page.evaluate(FILL, {"selector": f"{track} {part}", "underSelector": track})
         edge = page.evaluate(RING, {"selector": track, "outsideSelector": outside})
         track_fill = page.evaluate(FILL, {"selector": track, "underSelector": outside})
         self.assertIsNotNone(edge.get("edge"), f"{what} {state} ({scheme}): the switch has a 1 px inset edge {edge}")
-        shape = page.evaluate(SHAPE, {"selector": track, "knobSelector": part.lstrip("> ") if not knob_pseudo else ""})
+        shape = page.evaluate(SHAPE, {"selector": track, "knobSelector": part.lstrip("> ")})
         self.assertGreater(shape["width"], shape["height"], f"{what} {state} ({scheme}): the track is a pill, wider than tall {shape}")
         self.assertGreaterEqual(shape["height"], 20, f"{what} {state} ({scheme}): the painted track is at least 20 px tall {shape}")
         self.assertLessEqual(shape["height"], 30, f"{what} {state} ({scheme}): the painted track is at most 30 px tall, not a 44 px disc {shape}")
@@ -245,24 +240,6 @@ class SwitchesVisible(unittest.TestCase):
             expect(row).to_have_attribute("aria-checked", "true")
             self.switch(page, row, "Settings switch", part="> span", on=True)
             shot(page, f"1238-switch-on-{size}-{scheme}")
-            # The Create window's "Create another", off and on.
-            page.goto(f"/projects/{self.ids['project']}/tasks")
-            if phone:
-                page.get_by_role("button", name="Create", exact=True).tap()
-                page.get_by_role("dialog", name="Create").get_by_role("button", name="Task", exact=True).tap()
-            else:
-                open_create(page)
-            window = page.get_by_role("dialog", name="New task")
-            expect(window).to_be_visible()
-            another = window.get_by_role("switch")
-            expect(another).not_to_be_checked()
-            sw = window.locator(".create__sw")
-            self.switch(page, sw, "Create another", part="", knob_pseudo="::after", on=False)
-            window.locator(".create__another").click()
-            expect(another).to_be_checked()
-            self.switch(page, sw, "Create another", part="", knob_pseudo="::after", on=True)
-            shot(page, f"1238-create-another-{size}-{scheme}")
-            page.keyboard.press("Escape")
 
     def test_04_zz_the_measured_numbers(self) -> None:
         # Printed with -v so a reviewer sees the numbers; the assertions above already hold them to the targets.
