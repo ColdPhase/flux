@@ -73,7 +73,7 @@ export interface LiveValue {
   dismissNotice(): void;
   diagnostics: LiveMediaConnection['diagnostics'] | null;
   /** The screen and camera view over the work area, opened on request only. */
-  /** `auto`: opened by itself because someone started sharing (F-041 point 7): no motion and no focus taken. */
+  /** `auto`: opened by itself because someone started sharing (F-041 point 8): no motion and no focus taken. */
   stage: { open: boolean; focus: string | null; auto?: boolean };
   openStage(focus?: string | null): void;
   closeStage(): void;
