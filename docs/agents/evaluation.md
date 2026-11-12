@@ -46,6 +46,10 @@ live-mode script. Cite the run URL and the tested SHA as the evidence. It covers
 those targets only, does not replace required remote checks, and a target that did not run
 stays `unverified`.
 
+Authors and evaluators on a loaded host may also run targeted modules of a pushed ref on demand with
+`scripts/ci_test.sh <ref> <ui|live|api> <chromium|webkit> <modules...>` (sharded, any branch or SHA, result lines printed;
+[ci-and-releases](ci-and-releases.md#targeted-test-modules-on-demand-scriptsci_testsh)); the same limits apply.
+
 For documentation-only changes, use relevant link, configuration, and structural
 checks. Do not run a browser suite or introduce application dependencies merely
 to validate a documentation patch.
