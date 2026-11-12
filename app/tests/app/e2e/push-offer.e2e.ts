@@ -62,9 +62,14 @@ function browserStub(subscription: TestSubscription, answer: 'granted' | 'denied
     };
     proto.getSubscription = async function () { return saved; };
     proto.permissionState = async function () { return permission === 'granted' ? 'granted' : 'prompt'; };
-    let permission = 'default';
+    // A browser keeps the answer across page loads, as this does.
+    let permission = localStorage.getItem('flux-test-permission') || 'default';
     Object.defineProperty(Notification, 'permission', { configurable: true, get: () => permission });
-    Notification.requestPermission = async () => { window.__asked += 1; permission = ${JSON.stringify(answer)}; return permission; };
+    Notification.requestPermission = async () => {
+      window.__asked += 1; permission = ${JSON.stringify(answer)};
+      try { localStorage.setItem('flux-test-permission', permission); } catch (error) { /* private window */ }
+      return permission;
+    };
   })();`;
 }
 
