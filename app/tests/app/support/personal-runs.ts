@@ -1,6 +1,6 @@
-import { tablePrice, type AiPrice, type AiProviderKind } from '@flux/contracts';
+import { tablePrice, type AiPrice, type AiProviderKind, type AssistantModelPick } from '@flux/contracts';
 import type {
-  PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup, PersonalRunQueue,
+  createPersonalRunUseCases, Principal, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup, PersonalRunQueue,
 } from '@flux/core';
 import type { DbExecutor } from '@flux/db';
 
@@ -102,4 +102,17 @@ export class FakeCompute implements PersonalCompute {
 export class FakeQueue {
   readonly runIds: string[] = [];
   readonly factory: (tx: DbExecutor) => PersonalRunQueue = () => ({ enqueue: async (runId) => { this.runIds.push(runId); } });
+}
+
+type ModelUseCases = Pick<ReturnType<typeof createPersonalRunUseCases>, 'listAgents' | 'updateAgent' | 'model'>;
+
+/**
+ * Moves an agent to a model of one of its owner's connections the way its page does (`PATCH /api/v1/my-agents/:id`, `updateAgent`):
+ * the owner's first agent unless `agentId` names another. Resolves with what the owner may choose afterwards, as `runs.model` says it.
+ */
+export async function chooseModel(runs: ModelUseCases, principal: Principal, pick: AssistantModelPick, agentId?: string) {
+  const id = agentId ?? (await runs.listAgents(principal))[0]?.id;
+  if (!id) throw new Error('The owner has no agent to choose a model for');
+  await runs.updateAgent(principal, id, { connection: pick.connection, model: pick.model });
+  return runs.model(principal);
 }

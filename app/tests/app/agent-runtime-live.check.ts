@@ -329,8 +329,6 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 120);
     assert.equal(run.status, 'completed', JSON.stringify(run));
     assert.match(run.answer?.body ?? '', /^Done: I read 1 things in this project\.$/);
-    const answers = expectStatus(await someone.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as { items: { runId: string }[] };
-    assert.ok(answers.items.some((item) => item.runId === run.id), 'the answer is committed for the conversation');
     console.log(`RUN=${run.id}`);
     console.log(`PROJECT=${project.id}`);
   },

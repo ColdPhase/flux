@@ -1,4 +1,4 @@
-import { ASSISTANT_RUN_CHANGED_EVENT, ASSISTANT_WORKING_EVENT, SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
 import type { SetSpaceAiCommand, SetSpaceAiResult, SpaceAiState, SpaceAiSweepJob, SpaceAiSwept } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
@@ -68,8 +68,6 @@ export async function sweepSpaceAi(job: SpaceAiSweepJob, db: Database, ports: Pi
       // The owner's progress events, as for any other end or stop request of a run (events are written last).
       for (const run of [...ended, ...stopping]) {
         await recordEvent(eventPorts(ports, tx), { kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id, { status: run.status });
-        if (run.status === 'stopped') await recordEvent(eventPorts(ports, tx), { kind: 'agent', id: run.agentId }, run.workspaceId, ASSISTANT_WORKING_EVENT, run.projectId,
-          { conversationId: run.conversationId });
       }
       return ended.length + stopping.length;
     }],

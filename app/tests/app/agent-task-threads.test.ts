@@ -435,5 +435,10 @@ describe('an answer uses only what the task\'s people can all see (TA-4, #841, #
     assert.ok(sent.includes(SHARED), 'control: what every person of the task can see is read');
     const tools = (scene.compute.dispatched[0]?.tools ?? []).map((tool) => tool.name);
     assert.ok(tools.length > 0 && tools.every((name) => !/create|update|delete|apply|undo/.test(name)), `an answer reads only: ${tools.join(', ')}`);
+    // #1120: the answer reaches the people only as a message of the task's discussion, which the drain posts. The run commits it for its
+    // owner, and there is no list of posted answers and no event about one for the space.
+    assert.equal((await pool.query('SELECT committed_at IS NOT NULL AS committed FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].committed, true);
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = $1`, [started.run.id])).rows[0].n), 0);
+    assert.equal((await peer.browser.request('GET', `/api/v1/conversations/${talk.conversationId}/assistant-answers`)).status, 404, 'the feed of posted answers is gone');
   });
 });

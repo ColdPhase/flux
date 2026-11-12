@@ -1,17 +1,10 @@
 /* The personal assistant in a conversation (#57 design, #68). No new colours: the shared tokens,
    the ordinary message hierarchy. */
 .assistant-avatar { position: absolute; left: 0; top: 10px; }
-.project-convo__message-meta span.assistant-answer__asked { visibility: visible; }
-.assistant-answer__asked { color: var(--t3); }
-/* The request is a quiet caption above the answer bubble, not a message of its own (#136 bubbles). */
-.project-convo__message > .assistant-answer__request { margin: 2px 0 0; padding: 0; border-radius: 0; background: none; color: var(--t2); font-size: var(--fs-sm); font-style: italic; overflow-wrap: anywhere; }
 .assistant-answer__body { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.55; margin: 4px 0 0; }
 .assistant-cite { font-family: var(--mono); display: inline-grid; place-items: center; min-width: 20px; height: 20px; margin: 0 1px; padding: 0 5px; border-radius: var(--r-sm); background: var(--sub); color: var(--t1); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; text-decoration: none; vertical-align: 2px; box-shadow: inset 0 0 0 1px var(--line); font-style: normal; font-variant-numeric: tabular-nums; }
 .assistant-cite:hover { background: var(--sub); }
 .assistant-answer__truncated { display: flex; align-items: center; gap: 6px; margin-top: 6px; font-size: var(--fs-sm); color: var(--t2); }
-.assistant-answer__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 6px; font-size: var(--fs-xs); color: var(--t3); }
-.assistant-answer__foot > span { margin-right: 4px; }
-.assistant-answer__foot .ui-btn--link { min-height: 28px; font-size: var(--fs-xs); }
 .assistant-answer__error, .assistant-working__error { margin-top: 4px; font-size: var(--fs-sm); color: var(--t1); }
 
 .assistant-working { position: relative; display: flex; align-items: flex-start; gap: 10px; margin-top: 24px; padding: 0 0 0 44px; list-style: none; max-width: min(600px, 100%); }
@@ -57,14 +50,12 @@
 .assistant-ask__error { flex-basis: 100%; color: var(--t1); }
 
 @media (max-width: 640px) {
-  .assistant-answer .project-convo__message-meta { flex-wrap: wrap; row-gap: 0; }
   .assistant-waiting .assistant-proposal__actions { flex-wrap: wrap; }
   .assistant-proposal__actions .ui-btn { flex: 1; }
   .assistant-working { padding-left: 42px; flex-wrap: wrap; }
 }
 @media (pointer: coarse) {
   .assistant-cite { min-width: 24px; height: 24px; }
-  .assistant-answer__foot .ui-btn--link { min-height: 44px; }
 }
 
 /* Your assistant settings (reuses the notification settings layout). */
@@ -108,25 +99,6 @@
 @media (max-width: 430px) { .aset__more-hint { display: none; } }
 .aset__more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
 
-/* The assistant's panel: a dialog on the computer, a sheet on the phone; Settings tokens only. */
-.aset-panel__in { display: grid; gap: 14px; padding: 18px; width: min(440px, 100%); }
-.aset-panel__head { display: flex; align-items: center; gap: 10px; }
-.aset-panel__head > div { flex: 1; min-width: 0; }
-.aset-panel__sub { display: block; font-size: var(--fs-xs); color: var(--t3); }
-.aset-panel__in h3 { margin: 0 0 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
-.aset-panel__in p, .aset-panel__recent { margin: 0; font-size: var(--fs-sm); color: var(--t1); line-height: 1.5; overflow-wrap: anywhere; }
-.aset-panel__recent { padding: 0; list-style: none; display: grid; gap: 4px; }
-.aset-panel__foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.aset-panel__foot .ui-btn, .aset-panel__foot .ui-link { min-height: 44px; display: inline-flex; align-items: center; }
-.ui-overlay__surface.aset-panel { width: min(440px, 100%); height: auto; }
-.aset-panel__menu { position: relative; }
-.aset-panel__pop { position: absolute; right: 0; top: 100%; z-index: 2; display: grid; min-width: 200px; padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); }
-.aset-panel__pop .ui-btn, .aset-panel__pop .ui-link { justify-content: flex-start; min-height: 44px; display: flex; align-items: center; padding: 0 12px; }
-.project-convo__message-meta > span.assistant-answer__asked { font-family: inherit; }
-.assistant-answer__who { all: unset; cursor: pointer; font-weight: 600; min-height: 24px; }
-.assistant-answer__who:hover { text-decoration: underline; }
-.assistant-answer__who:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
-
 /* "Your assistant is ready" (Journey 1 step 4): one card, one button that is the consent. */
 .aset-ready__h { display: flex; align-items: center; gap: 10px; }
 .aset-ready__list { display: grid; gap: 8px; margin: 0 0 12px; padding-left: 18px; font-size: var(--fs-base); line-height: 1.5; }
@@ -150,41 +122,7 @@
 /* The ask bar's text buttons (Add my assistant here, Tell whoever runs Flux …) get a 44 px target on a touch screen. */
 @media (pointer: coarse) { .assistant-ask .ask__connect { min-height: 44px; display: inline-flex; align-items: center; } }
 
-/* The assistant's model control (F-027 AST-11): one button that names the model, one short list. Tokens only. */
-.aset-model { position: relative; display: inline-flex; align-items: center; max-width: 100%; }
-.aset-model__btn { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; min-width: 44px; padding: 0 10px; border: 0; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font: inherit; font-size: var(--fs-sm); cursor: pointer; }
-.aset-model__btn:hover:not(:disabled) { background: var(--hov); }
-.aset-model__btn:disabled { cursor: default; opacity: .7; }
-.aset-model__lab { color: var(--t3); }
-.aset-model__name { font-weight: 500; }
-/* Beside the ask field the button is a small pill with a 44 px hit area, taken from the empty space around it. */
-.aset-model--chip { margin-block: -10px; }
-.aset-model--chip .aset-model__btn { background: transparent; box-shadow: none; padding: 0 6px; color: var(--t1); font-size: var(--fs-xs); }
-.aset-model--chip .aset-model__name { padding: 3px 8px; border-radius: var(--r-pill); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); }
-.aset-model--static { min-height: 24px; color: var(--t2); font-size: var(--fs-sm); }
-.aset-model__menu { position: absolute; z-index: 30; left: 0; display: grid; min-width: 260px; max-width: min(340px, calc(100vw - 32px)); padding: 4px; border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-card); }
-.aset-model__menu--down { top: 100%; margin-top: 4px; }
-.aset-model__menu--up { bottom: 100%; margin-bottom: 4px; }
-/* The chip's list hangs from the ask bar, not from the chip, so it stays inside a phone's width. */
 .assistant-ask { position: relative; }
-.aset-model--chip { position: static; }
-.aset-model--chip .aset-model__menu { left: 0; }
-.aset-model__item { display: flex; align-items: flex-start; gap: 8px; width: 100%; min-height: 44px; padding: 8px 10px; border: 0; border-radius: var(--r-sm); background: none; color: var(--t1); font: inherit; font-size: var(--fs-md); text-align: left; cursor: pointer; }
-.aset-model__item:hover, .aset-model__item:focus-visible { background: var(--hov); }
-.aset-model__tick { flex: none; width: 14px; padding-top: 4px; }
-.aset-model__text { display: grid; gap: 1px; min-width: 0; }
-.aset-model__note { color: var(--t3); font-size: var(--fs-xs); line-height: 1.4; }
-/* One group per connection (#854): its name above its models, the groups in the order they were connected. */
-.aset-model__menu { max-height: min(420px, 70vh); overflow-y: auto; }
-.aset-model__group { display: grid; }
-.aset-model__group + .aset-model__group { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
-.aset-model__group-name { padding: 6px 10px 2px; color: var(--t3); font-size: var(--fs-xs); font-weight: 600; }
-.aset-model__said { flex-basis: 100%; min-height: 0; color: var(--t2); font-size: var(--fs-xs); }
-.aset-model__said:empty { display: none; }
-.aset-model__error { flex-basis: 100%; color: var(--t1); font-size: var(--fs-xs); }
-.aset-model-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; margin: 2px 0; }
-.aset-ready__model { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 0 12px; }
-.aset-ready__model .aset-model__note { font-size: var(--fs-sm); }
 
 /* "In which conversation?" in ⌘K (AST-10.10): quiet rows, a 44 px target each. */
 .aset-where { display: grid; gap: 6px; padding: 12px; }

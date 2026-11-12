@@ -263,6 +263,6 @@ creation moved to `drafts/`, `captures/` and `project/`; the project conversatio
 (`materials/useProjectMaterials.ts`, `MaterialTray.tsx`, whose form now keeps its text in the shared draft store) have their own
 modules. The pane itself is split into hooks that read and act (`paneCore.ts`, `useThreadReplies.ts` with the live refresh of #733,
 `useThreadReading.ts`, `useThreadPlace.ts`, `useComposerDrafts.ts`, `useComposerMenu.ts`, `useComposerSend.ts`, `useAssistantAsk.ts`,
-`useAskBar.ts`) and views that only render (`ThreadFeed.tsx`, `ThreadAnswers.tsx`, `ThreadReply.tsx`, `PaneComposer.tsx`); the
+`useAskBar.ts`) and views that only render (`ThreadFeed.tsx`, `ThreadReply.tsx`, `PaneComposer.tsx`); the
 architecture test keeps every file of `conversations/` and `materials/` within 150 lines and their views free of API calls
 ([#93](https://github.com/ColdPhase/flux/issues/93), [#94](https://github.com/ColdPhase/flux/issues/94)).

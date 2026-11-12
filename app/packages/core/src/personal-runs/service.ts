@@ -26,7 +26,6 @@ import {
   type EditAgentMemoryCommand,
   type InvokeAssistantRunCommand,
   type Page,
-  type PageQuery,
   type PersonalAssistantStatus,
   type PersonalAssistantUnavailableReason,
   type PersonalRunEnablement,
@@ -158,8 +157,9 @@ function enablementView(record: EnablementRecord): PersonalRunEnablement {
 }
 
 /**
- * The answer as the one who may see it does (#842): the answer to `/ai` and to a chat is its asker's alone, from their agent by name; a
- * schedule's is the project's, "Jo's assistant". No cost, budget, connection or hidden source in either.
+ * The answer as its owner reads it on the run (#842): the answer to `/ai`, to a chat and of a schedule is its asker's alone, from their agent
+ * by name; that of a run on a task is the project's, "Jo's assistant", and what a task's agent says reaches the people as a message of the
+ * task's discussion (#1120). No cost, budget, connection or hidden source in either.
  */
 export async function answerView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantAnswer | null> {
   if (record.answerBody === null || !record.committedAt) return null;
@@ -687,28 +687,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     },
 
     /**
-     * Changes an agent's one model (AST-11, #857), from any of the owner's connections (#854): picking a model of another
-     * connection moves the agent to it. Only a model in that connection's list is accepted; anything else is a plain error and
-     * the previous model stays. A request already sent keeps the model it recorded. Without `agentId`: their first agent.
-     */
-    async chooseModel(principal: Principal, command: ModelPick & { agentId?: string }): Promise<AssistantModelChoice> {
-      const owner = ownerOf(principal);
-      if (!command || typeof command !== 'object') throw new InvalidInputError('Choose a model of one of your connections');
-      return uow.run(async (ports) => {
-        // The owner's assistant lock first, as a change of a key's budget takes it: one of the two goes first, and the other sees it (#915).
-        await ports.assistants?.lockOwner(owner);
-        const enablement = await lockedEnablement(ports, owner, command.agentId);
-        const still = ` It is still ${modelNameOf({ model: modelOf(enablement) })}.`;
-        const chosen = await pick(owner, command.connection, command.model, still);
-        const next = placement(chosen.item, chosen.model);
-        const unchanged = next.engine === enablement.engine && next.apiKeyId === enablement.connectionId && next.provider === enablement.provider
-          && next.model === modelOf(enablement);
-        if (!unchanged) await agentsOf(ports).change(enablement.agentId, next);
-        return modelChoice(await ownConnections(owner), { connection: chosen.item.ref, model: chosen.model }, true);
-      });
-    },
-
-    /**
      * Gives an agent identity of the owner its AI setup (#857): a model of one of their connections (Connect AI's default when
      * none is named), saved instructions. Its colour is the least used one. There is nothing else to agree to or set (#854).
      */
@@ -758,7 +736,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         if (change.name !== undefined && change.name !== current.name) await agents.rename(current.id, change.name);
         if (change.model) {
           const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${modelNameOf(current.model)}.`);
-          await agents.change(current.id, placement(chosen.item, chosen.model));
+          // Choosing the model it already has changes nothing (no new version of the agent).
+          if (current.model.connection !== chosen.item.ref || current.model.model !== chosen.model) await agents.change(current.id, placement(chosen.item, chosen.model));
         }
         if (change.instructions !== undefined) await agents.change(current.id, { instructions: change.instructions });
         return (await agents.get(owner, current.id))!;
@@ -976,24 +955,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const run = await ownRun(ports, principal, runId, true);
         if (run.shownAt) return runView(ports, run);
         return runView(ports, await ports.runs.updateRun(run.id, { shownAt: new Date(), dismissedAt: null }));
-      });
-    },
-
-    /** Committed answers of a conversation for anyone who can read its project now. */
-    async listAnswers(principal: Principal, conversationId: string, query?: PageQuery): Promise<Page<AssistantAnswer>> {
-      const window = page(query);
-      return uow.run(async (ports) => {
-        const place = isId(conversationId) ? await ports.runs.locateConversation(conversationId.toLowerCase()) : null;
-        if (!place) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-        try {
-          await ports.access.requireProject(principal, 'read', place.projectId);
-        } catch (error) {
-          if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-          throw error;
-        }
-        const { items, total } = await ports.runs.listAnswers(conversationId.toLowerCase(), window);
-        const answers = await Promise.all(items.map((item) => answerView(ports, item)));
-        return { items: answers.filter((answer): answer is AssistantAnswer => answer !== null), total, ...window };
       });
     },
   };

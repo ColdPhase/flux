@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantChange, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantChange, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { streamLive, useStreamEvents } from '../api/stream';
 import {
-  askAssistant, dismissAnswer, getAssistantStatus, getRun, listAnswers, listPlaceRuns, retryRun, showAnswer, stopRun,
+  askAssistant, dismissAnswer, getAssistantStatus, getRun, listPlaceRuns, retryRun, showAnswer, stopRun,
   type AskPlace,
 } from './api';
 import { isWorking } from './format';
@@ -11,15 +11,8 @@ import { readRunChanges } from './WaitingChanges';
 
 // The person's own agent asked from one place (#68, #842): a conversation of a space, the space's main conversation, a direct message or the
 // agent's private chat. The answer is the asker's alone; Show everyone posts it as their message and Dismiss puts it away. What a place shows is
-// the asker's own runs there (`/assistant-runs?…`) and, for a conversation of a space, the answers posted in it (the project's answers and
-// proposals). The status and the working run come only from the asker's own endpoints and their owner-only progress events.
-
-async function allAnswers(conversationId: string) {
-  const first = await listAnswers(conversationId);
-  if (first.total <= first.items.length) return first.items;
-  // Oldest first: show the latest 100 when there are more.
-  return (await listAnswers(conversationId, first.total - 100)).items;
-}
+// the asker's own runs there (`/assistant-runs?…`). What an agent says to the people of a conversation (a task's) is a message of it, read
+// with the messages. The status and the working run come only from the asker's own endpoints and their owner-only progress events.
 
 /** Whether a run is one of `/ai`'s or a chat's: its answer is the asker's alone. */
 const asked = (run: AssistantRun) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
@@ -30,8 +23,6 @@ export const placeKey = (place: AskPlace | null) => !place ? '' : place.kind ===
 
 export interface ConversationAssistant {
   status: PersonalAssistantStatus | null;
-  /** What was posted in this conversation as an answer, for everyone who reads it (a schedule's result is not: it goes to its agent's chat, #1104). */
-  answers: AssistantAnswer[];
   /** The signed-in person's latest run here: in flight, or ended without an answer and not yet dismissed. */
   run: AssistantRun | null;
   /** The next request, waiting for the working one to end (AST-6 queue): "Next: '…'. It starts when this one ends · Cancel". */
@@ -43,7 +34,7 @@ export interface ConversationAssistant {
   cancelQueued(): Promise<void>;
   /** The queued request waits behind a background run of the owner: "Finishing your daily check first… [ Stop it ]". */
   stopBehind(): Promise<void>;
-  /** Changes whenever the shared part of the conversation was refreshed: an answer was posted, a run moved, an answer arrived. */
+  /** Changes whenever the stream resynced: the conversation's runs were read again. */
   tick: number;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
@@ -67,7 +58,6 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   onShown?: (messageId: string) => void;
 }): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
-  const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
   const [mine, setMine] = useState<AssistantRun[]>([]);
   /** When the runs were last read: a run that ended without an answer shows its line for an hour. */
   const [readAt, setReadAt] = useState(0);
@@ -82,8 +72,6 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
   /** Runs this page started or saw working: their line stays until it is put away. One found already ended shows for an hour after it ended. */
   const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
   const see = useCallback((ids: string[]) => { if (ids.length) setSeen((known) => (ids.every((id) => known.has(id)) ? known : new Set([...known, ...ids]))); }, []);
-  const conversationId = place?.kind === 'space' ? place.conversationId : null;
-  const projectId = place?.kind === 'space' ? place.projectId : null;
 
   const refreshStatus = useCallback(() => { if (enabled) getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, [enabled]);
   /** The asker's own runs here, newest first; an error keeps what is shown. */
@@ -108,28 +96,21 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
     setMine((items) => [run, ...items.filter((item) => item.id !== run.id)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
     setReadAt(Date.now());
   }, [see]);
-  const refreshShared = useCallback(async () => {
+  const refreshShared = useCallback(() => {
     setTick((value) => value + 1);
     void refreshRuns();
-    if (!conversationId) return;
-    try {
-      setAnswers(await allAnswers(conversationId));
-    } catch { /* the conversation itself reports lost access */ }
-  }, [conversationId, refreshRuns]);
+  }, [refreshRuns]);
 
   useEffect(() => {
-    // F-029 (#614): while the space's AI is off only what was posted (conversation history) and the asker's own answers are read.
+    // F-029 (#614): while the space's AI is off only the asker's own answers are read.
     if (enabled && key) refreshStatus();
     void refreshRuns();
-    if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
-  }, [key, conversationId, enabled, refreshStatus, refreshRuns]);
+  }, [key, enabled, refreshStatus, refreshRuns]);
 
-  // The asker's own run moved (their owner-only event), or an answer was posted here: read again.
+  // The asker's own run moved (their owner-only event): read it again.
   useStreamEvents(meId, (event) => {
-    if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) { getRun(event.objectId).then(take).catch(() => { void refreshRuns(); }); return; }
-    if (!enabled) return;
-    if (projectId && event.objectType === 'project' && event.objectId === projectId && event.kind.startsWith('project.assistant_')) void refreshShared();
-  }, () => { void refreshShared(); });
+    if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) { getRun(event.objectId).then(take).catch(() => { void refreshRuns(); }); }
+  }, refreshShared);
 
   // A fallback while a run works, in case the stream is reconnecting.
   const working = enabled && mine.some(isWorking);
@@ -163,7 +144,7 @@ export function useConversationAssistant({ meId, place, onShown, enabled = true 
 
   return {
     // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
-    status: enabled ? status : null, answers,
+    status: enabled ? status : null,
     run, queued: enabled ? waiting : null, privateAnswers, changesOf: (runId: string) => changed[runId] ?? [], tick, refreshStatus,
     async cancelQueued() {
       if (!waiting) return;

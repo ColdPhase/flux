@@ -82,7 +82,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/my-agents/:agentId/schedules/:jobId/history': exempt(PERSON),
   'GET /api/v1/personal-assistant': exempt('Account-wide status of the owner\'s own assistant; no AI read or action'),
   'GET /api/v1/personal-assistant/model': exempt(ACCOUNT),
-  'PUT /api/v1/personal-assistant/model': exempt(ACCOUNT),
   // A person's agents (F-036 AG-1, #857): their own setup, instructions and memory. What an agent does in a space is checked in that space (AG-10).
   'GET /api/v1/my-agents': exempt(PERSON),
   'POST /api/v1/my-agents': exempt(PERSON),
@@ -104,7 +103,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/my-agents/:agentId/assistant-runs': useCase('A private chat is in no space; whatever its agent reads is checked and gated in that space, call by call'),
   'POST /api/v1/assistant-runs/:runId/show': gated('params', 'runId', 'run'),
   'POST /api/v1/assistant-runs/:runId/dismiss': exempt(REDUCES),
-  'GET /api/v1/conversations/:conversationId/assistant-answers': exempt('Committed answers an agent posted in a conversation (a task\'s) are conversation history; a private answer is none'),
   'GET /api/v1/assistant-runs': exempt(OWN_HISTORY),
   'GET /api/v1/assistant-runs/:runId': exempt(OWN_HISTORY),
   'POST /api/v1/assistant-runs/:runId/stop': exempt(REDUCES),

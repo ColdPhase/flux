@@ -471,9 +471,9 @@ progress never leave the owner. The event carries identifiers and the status onl
 client refetches `GET /api/v1/assistant-runs/:id`.
 
 F-027 AST-6 ("Visible to everyone", 2026-10-17, #404) told the others that an assistant was working
-(`project.assistant_working.v1`, and `GET /api/v1/conversations/:id/assistant-activity`). Since #842 that is
-gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still sent for a
-task's run and a schedule's firing, which post their results in the conversation.
+(`project.assistant_working.v1` and `GET /api/v1/conversations/:id/assistant-activity`). Nothing read it any more (#842 made `/ai` and a chat
+private, and no screen drew the line), so the event and the route are gone (#1120): the others learn nothing about a run, and what a run on
+a task says reaches them as a message in the task's discussion.
 
 ## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
@@ -569,8 +569,9 @@ in it; a chat's tools are gated by each space on every call. `flux_place` in the
 (a chat) start a run through the one `start`. `GET /api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`,
 `dmId` (the DM's main line; with `dmThreadRootId`, that thread) or `chatAgentId`.
 
-**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`) means: no entry in
-`conversation-assistant-answers`, no `project.assistant_answer_committed.v1`, no working event, no proposal. The asker sees it as a card
+**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`, `scheduled`) means: nothing for the space and no
+proposal. (There is no list of "posted answers" and no answer-committed event for any run, #1120: what an agent says to the
+people of a task is a message of the task's discussion, posted by the agent-task drain as the agent, with the access of any message.) The asker sees it as a card
 (`PrivateAnswer`) with **Dismiss** (`POST /assistant-runs/:id/dismiss`, final) and **Show everyone** (`POST /assistant-runs/:id/show`): the
 core plans it (`planShow`: their own, committed, not dismissed, still allowed to write there, and AI still on in the space), the adapter posts
 it as their own message with `via` set to the agent's name, under the run's id, and `markShown` records it (a reply in the thread for a run in a
@@ -668,12 +669,11 @@ tokens:
   conversation…" with **Stop**; afterwards "Stopped. Nothing was posted." or the failure, with
   Retry where it makes sense. It follows the owner's progress events, and polls while the
   stream reconnects.
-- **Answer.** (Since #842 this is the asker's private card, see above; the text below describes a schedule's posted answer.) An ordinary message from "<Owner>'s assistant" with a ✦ avatar and an
-  *Assistant* tag, "asked by …", the request, the body and `[n]` citations that open exactly
+- **Answer.** Since #842 it is the asker's private card, see above: the body and `[n]` citations that open exactly
   their source (a message in the conversation, a work item in Details, a map thought).
   Committed answers renumber the model's `[S<n>]` labels to `[1]…` in the order of `sources`.
-  Provenance names the provider and model; no cost. The owner gets Retry (and Continue when
-  truncated); others with write access get *Ask my assistant about this*.
+  No cost is shown. A run on a task has no card of its own for the people: its result is the agent's message in the
+  task's discussion, like any other agent-posted message (#1120).
 - **Settings** at `/settings/assistant` (Settings → AI, and Details → *Connect your AI*): the
   model picker grouped by connection (Connect AI's default first), the assistant per workspace
   (create one there) and *Turn on*; then state, Pause/Resume, the connection's line (the plan's
@@ -737,7 +737,7 @@ from the request.
 | `GET /api/v1/personal-assistant` | the caller | Own state `not_enabled`, `ready`, `paused`, `capped` (the key's daily budget is used) or `unavailable` (with `unavailableReason`), the enablement with its connection and model, and the key's spend today. |
 | `GET /api/v1/my-agents/:id/status` | the agent's owner | The same state for one of the caller's own agents, on that agent's own connection and model: an agent's private chat reads this one, so removing a connection pauses only the agents that use it ([C-3](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Anyone else's agent, a deleted one or a malformed id is 404. |
 | `POST /api/v1/personal-assistant` | the caller | Enable with `{ agentId, connection, model }` (#854; `connection` is `claude_plan`, `chatgpt_plan` or one of the caller's API key ids): 201. It needs the caller's own agent (`agent.invoke`) and that connection. |
-| `GET`, `PUT /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default; `PUT { connection, model }` changes it. |
+| `GET /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default. An agent's model is changed on its page, `PATCH /api/v1/my-agents/:id` (`{ connection, model }`); there is no other route for it. |
 | `PUT /api/v1/personal-assistant/agents` | the caller | `{ agentId }`: the caller's assistant for that agent's workspace. |
 | `POST …/pause`, `POST …/resume`, `DELETE /api/v1/personal-assistant` | the caller | Pause ends queued work at zero cost. Delete also removes the consent. |
 | `POST /api/v1/conversations/:id/assistant-runs` | the caller | Invoke `{ clientRunId, kind, prompt, target?, continuesRunId? }`: 202 with the run; the same `clientRunId` returns it again (200) and never charges twice. |
@@ -746,7 +746,6 @@ from the request.
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
 | `GET /api/v1/conversations/:id/assistant-changes` | project readers | The run messages of the conversation: the owner's own rows in every state, everyone else's what was done (applied, approved, undone, skipped) with `undoable` true only for someone who may edit (F-027 A4). Non-readers get 404. |
 | `GET /api/v1/projects/:id/assistant-changes?kind=work\|doc\|map&id=` | project readers | The local clients' applied changes (applied, approved, undone) to one task, Wiki page or map of the space, oldest first, the newest 50, with `via` ("Claude Code", "Codex" or the client's name) and `undoable` as for a conversation's list (#868, LC-2). A waiting change and a run's change are not listed. Non-readers get 404, a wrong `kind` or `id` 400. |
-| `GET /api/v1/conversations/:id/assistant-activity` | project readers | `{ working: [{ ownerId, ownerName }] }`: whose assistant is working there now, nothing more (F-027 AST-6). |
 | `POST /api/v1/assistant-changes/:id/apply`, `…/skip`, `…/edit`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/skip` | the owner only, in their own session | Decide waiting changes (F-036 AG-3). Everyone else gets 404. |
 | `POST /api/v1/assistant-changes/:id/undo`, `POST /api/v1/assistant-runs/:id/changes/undo` | the owner, or anyone who may edit | Take back one change or the whole message (F-027 A4). A reader who may not edit gets 403, a non-reader 404; only the owner takes back a created task. |
 
@@ -760,7 +759,6 @@ pageshow, focus or explicit interaction after a cancelled navigation restores
 the current owner's lifetime and rechecks canonical state. It sends no automatic
 Stop or other write. Genuine subsequent own-run progress and cancelled-navigation
 recovery require actual browser checks; errors and existing race guards remain.
-| `GET /api/v1/conversations/:id/assistant-answers` | project readers | Committed answers with label, request, body, provenance (provider and model) and cited sources. No cost, cap, connection or hidden source. |
 
 The invoke checks run in this order. A body that names another `ownerId`,
 `agentId` or `connectionId` gets `403 PERSONAL_RUN_NOT_OWNER`. A conversation the
@@ -805,7 +803,7 @@ provider count where the wire format has one) fits 16 000 tokens (32 000 for a r
 with tools), or ends the run as `input_too_large`.
 
 At commit, citations `[S<n>]` count only for supplied sources. A `max_tokens` answer is committed as
-`truncated`. The commit records `project.assistant_answer_committed.v1` for the project's audience.
+`truncated`. The commit tells the owner alone (`assistant_run.changed.v1`); nothing is recorded for the project's audience.
 A `<proposal>` block in a model's text is plain text: nothing asks for it or reads it any more (#1054).
 
 ## Tests
@@ -829,7 +827,7 @@ the manager grant, the working line only for the owner, the attributed answer an
 citations for peers, Stop, a provider failure, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
 The keyboard and modal-focus checks of AC-8 (08b to 08d, 10b) use Tab and Enter only: ask with `/ai`, reach Stop, Retry
-and Dismiss, and open the assistant's panel and the Details sheet, whose focus
+and Dismiss, and open the Details sheet, whose focus
 must stay inside until Esc returns it to the opener. They found, and the code now fixes, a Stop, Retry, Accept, Apply or Undo
 that dropped focus to the page when its button went away, a `/a` left in the reply box by typing `/ai` key by key, and a
 result opened from a thread button that did not take focus. `FLUX_UI_BROWSER=webkit` runs the same files in WebKit.

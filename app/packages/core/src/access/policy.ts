@@ -262,8 +262,8 @@ export async function evaluateDm<M extends DmFacts = DmFacts>(principal: Princip
 /**
  * A personal assistant run (#68, O-008 §4): only its owner, while active in the run's
  * workspace, may know it exists. Workspace roles, project access and agents never see it; the
- * run's progress events therefore reach the owner alone. A committed answer is a separate
- * project object (`project.assistant_answer_committed.v1`) for the conversation's audience.
+ * run's progress events therefore reach the owner alone. What a run on a task says to the people
+ * is a message of the task's discussion, which has the access of any message.
  */
 export async function evaluateAssistantRun(principal: Principal, _action: ActionsByResource['assistant_run'], runId: string, reader: AccessReader, options: LoadOptions = {}): Promise<AssistantRunEvaluation> {
   const none = { ...DENIED, actor: null, run: null };

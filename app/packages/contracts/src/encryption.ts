@@ -215,7 +215,6 @@ const AI_ONLY = 'AI work: F-029 forces it off in an encrypted workspace before a
  */
 export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = {
   'POST /api/v1/workspaces': 'Creates the workspace: there is none yet, and its name is visible metadata',
-  'PUT /api/v1/personal-assistant/model': `The person's own assistant model. ${AI_ONLY}`,
   'POST /api/v1/my-agents': `A person's own agent. ${AI_ONLY}`,
   'PATCH /api/v1/my-agents/:agentId': `A person's own agent. ${AI_ONLY}`,
   'DELETE /api/v1/my-agents/:agentId': `A person's own agent. ${AI_ONLY}`,

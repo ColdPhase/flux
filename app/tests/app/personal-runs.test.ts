@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
 import {
-  type AssistantAnswer, type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
+  type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
   type Project, type WorkItem, type Workspace,
 } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -11,7 +11,7 @@ import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
-import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
 
@@ -204,8 +204,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     for (const token of Object.values(TOKENS)) assert.equal(dispatched.includes(token), false, `input contains ${token}`);
 
     // The answer is the asker's alone: their own view of it names the agent and the provenance, and nobody else lists it.
-    const kaiView = expectStatus(await kai.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as Page<AssistantAnswer>;
-    assert.equal(kaiView.items.length, 0);
     const answer = (await runs.get(human(hubert), answeredRunId)).answer!;
     assert.equal(answer.assistant.label, 'hubert assistant');
     assert.equal(answer.askedBy.id, hubert.id);
@@ -213,7 +211,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     for (const token of Object.values(TOKENS)) assert.equal(answer.body.includes(token), false, `answer contains ${token}`);
     const text = JSON.stringify(answer);
     for (const hidden of ['Micros', 'reserved', 'test-key-ref', hubertConnection]) assert.equal(text.includes(hidden), false, `the answer shows ${hidden}`);
-    assert.equal((await outsider.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`)).status, 404);
 
     assert.ok(answer.sources.length >= 2);
     const conversation = expectStatus(await viewer.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
@@ -422,10 +419,10 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     hooks.afterDispatch = undefined;
     assert.equal((await row(leeRun.run.id)).answer_body, null);
 
-    const answers = expectStatus(await kai.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers?limit=100`), 200) as Page<AssistantAnswer>;
-    for (const withheldRun of [beforeDispatch, beforeCommit, leeRun]) assert.equal(answers.items.some((answer) => answer.runId === withheldRun.run.id), false);
-    const events = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.assistant_answer_committed.v1' AND data->>'runId' = ANY($1)`,
-      [[beforeCommit.run.id, leeRun.run.id]]);
+    // A withheld answer is nobody's: no run of the three has one, and the space hears nothing of them.
+    for (const withheldRun of [beforeDispatch, beforeCommit, leeRun]) assert.equal((await row(withheldRun.run.id)).answer_body, null);
+    const events = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind LIKE 'project.assistant_%' AND data->>'runId' = ANY($1)`,
+      [[beforeDispatch.run.id, beforeCommit.run.id, leeRun.run.id]]);
     assert.equal(events.rows[0].n, 0);
   });
 
@@ -559,7 +556,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       await assert.rejects(runs.agentStatus(human(hubert), 'not-an-id'), { code: 'AGENT_NOT_FOUND' });
       await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
       // Picking a model of another key moves the assistant there (#854): the enablement stores that key and its provider.
-      await runs.chooseModel(human(hubert), { connection: newer, model: 'vendor/newer-model' });
+      await chooseModel(runs, human(hubert), { connection: newer, model: 'vendor/newer-model' });
       const stored = await pool.query('SELECT api_key_id AS connection_id, provider, model AS assistant_model FROM assistant_settings WHERE agent_id = $1', [agents.hubert]);
       assert.deepEqual(stored.rows, [{ connection_id: newer, provider: 'openrouter', assistant_model: 'vendor/newer-model' }]);
     } finally {

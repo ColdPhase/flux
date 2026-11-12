@@ -1,8 +1,8 @@
-"""Browser tests for the assistant's model (F-027 AST-11, #596; #854 grouped by connection): one model, chosen at turn-on and changed
-everywhere, from any of the person's connections.
+"""Browser tests for the assistant's model (F-027 AST-11, #596; #854 grouped by connection): a model the vendor does not accept is said in
+the working line, with the way to the agent's own page (#842), where the model is chosen.
 
 Same stubbed-engine approach as test_assistant_screen: the model endpoint is an in-memory world that applies the server's rules
-(only a listed model, the previous one stays on a refusal), so these prove the words, the taps and the layout at both widths.
+(only a listed model, the previous one stays on a refusal).
 tests/app/personal-runs-providers.test.ts and tests/app/agent-runtime-runs*.test.ts prove the rules and the command against the real store.
 """
 
@@ -18,9 +18,7 @@ from playwright.sync_api import Page, Route, expect
 import test_assistant_screen as base
 from test_assistant_screen import pick_suggestion
 from test_app_shell import shot
-from touch_targets import has_minimum_touch_size
 
-FORBIDDEN = base.FORBIDDEN
 NOW = base.NOW
 
 CLAUDE = [
@@ -28,17 +26,7 @@ CLAUDE = [
     {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
     {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True},
 ]
-CODEX = [
-    {"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "note": "Everyday work", "callsTools": True},
-    {"id": "gpt-6-astra", "name": "GPT-6 Astra", "note": "The hardest requests", "callsTools": True},
-]
 CLAUDE_PLAN = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude"}
-CHATGPT_PLAN = {"connection": "chatgpt_plan", "account": "chatgpt_plan", "label": "ChatGPT plan", "company": "ChatGPT"}
-KEY = {"connection": "4c1f0a52-7d3e-4b8a-9f61-2e5d8c7b9a10", "account": "api_key", "label": "Work Anthropic", "company": "Anthropic"}
-API = [
-    {"id": "claude-sonnet-5", "name": "Sonnet 5", "note": "Your connection's model", "callsTools": True},
-    {"id": "gpt-6-astra", "name": "GPT-6 Astra", "note": "Input $10, output $50 per 1M tokens", "callsTools": False},
-]
 
 
 class AssistantModel(unittest.TestCase):
@@ -49,7 +37,7 @@ class AssistantModel(unittest.TestCase):
     setUpClass = classmethod(base.AssistantScreen.setUpClass.__func__)
     tearDownClass = classmethod(base.AssistantScreen.tearDownClass.__func__)
     pw = None
-    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "answer", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
+    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
         locals()[_name] = getattr(base.AssistantScreen, _name)
     del _name
 
@@ -95,59 +83,6 @@ class AssistantModel(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/personal-assistant/model(\?.*)?$"), model)
         return world
 
-    def ask_bar(self, page: Page):
-        return page.locator("#project-ask")
-
-    def open_list(self, page: Page, scope, current: str = "Sonnet"):
-        control = scope.get_by_role("button", name=f"Model: {current}. Change")
-        control.click()
-        menu = page.get_by_role("menu", name="Model")
-        expect(menu).to_be_visible()
-        return menu
-
-    def open_panel(self, page: Page):
-        """The assistant's details panel in a conversation; the model list lives there and in the ask bar (#857: the agent's own page picks by connection)."""
-        self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
-        page.goto(self.thread_url())
-        page.get_by_role("button", name="Ada's assistant", exact=True).click()
-        return page.get_by_role("group", name="Ada's assistant, details")
-
-    def inside(self, page: Page, locator) -> None:
-        box = locator.bounding_box()
-        size = page.viewport_size
-        self.assertGreaterEqual(box["x"], 0)
-        self.assertGreaterEqual(box["y"], 0)
-        self.assertLessEqual(box["x"] + box["width"], size["width"] + 0.5)
-        self.assertLessEqual(box["y"] + box["height"], size["height"] + 0.5)
-
-    # ---------------------------------------------------------------- AST-11.6: the ready card
-
-    def test_07_the_panel_changes_the_model_too_and_a_colleague_sees_no_control(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        model = self.stub_model(page)
-        self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
-        page.goto(self.thread_url())
-        page.get_by_role("button", name="Ada's assistant", exact=True).click()
-        panel = page.get_by_role("group", name="Ada's assistant, details")
-        menu = self.open_list(page, panel)
-        self.inside(page, menu)
-        shot(page, "model-panel-1440-light")
-        menu.get_by_role("menuitemradio", name=re.compile("Opus")).click()
-        expect(panel.get_by_role("button", name="Model: Opus. Change")).to_be_visible()
-        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
-        # A colleague's assistant: no model control and no model name anywhere in what they see.
-        other = self.page()
-        self.stub_assistant(other)
-        self.stub_model(other, saved=False)
-        self.stub_thread(other, [self.answer(str(uuid.uuid4()), "Jonas Weiss", "Jonas's assistant")])
-        other.goto(self.thread_url())
-        other.get_by_role("button", name="Jonas's assistant", exact=True).click()
-        theirs = other.get_by_role("group", name="Jonas's assistant, details")
-        expect(theirs.get_by_test_id("assistant-others")).to_be_visible()
-        expect(theirs.get_by_test_id("model-control")).to_have_count(0)
-        expect(other.get_by_test_id("model-control")).to_have_count(0)
-
     # ---------------------------------------------------------------- AST-11.7: plain errors, the previous model stays
 
     def test_09_a_model_the_vendor_does_not_accept_leads_to_the_agent_s_page_in_the_same_line(self) -> None:
@@ -155,7 +90,7 @@ class AssistantModel(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         self.stub_model(page, current="opus")
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         agent = str(uuid.uuid4())
         run = {"id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "workspaceId": self.ids["workspace"], "projectId": self.ids["project"],
                "conversationId": self.ids["conversation"], "dmId": None, "agentId": agent, "kind": "ask", "prompt": "Catch me up", "target": None, "continuesRunId": None, "retryOfRunId": None,
@@ -170,79 +105,6 @@ class AssistantModel(unittest.TestCase):
         expect(line).to_contain_text("Your Claude plan didn’t accept Opus. Nothing was changed.")
         shot(page, "model-unavailable-1440-light")
         expect(line.get_by_role("link", name="Choose a model")).to_have_attribute("href", f"/settings/agents/{agent}")
-
-    # ---------------------------------------------------------------- the list's own states
-
-    def test_10_the_list_is_grouped_by_connection_and_a_pick_names_its_connection(self) -> None:
-        """#854: with a Claude plan and a ChatGPT plan, one list grouped by connection; the control names the connection, and a
-        pick from the other group saves that connection with its model."""
-        page = self.page()
-        self.stub_assistant(page)
-        world = self.stub_model(page, more=[(CHATGPT_PLAN, CODEX)])
-        row = self.open_panel(page)
-        control = row.get_by_role("button", name="Model: Sonnet · Claude plan. Change")
-        control.click()
-        menu = page.get_by_role("menu", name="Model")
-        groups = menu.get_by_role("group")
-        expect(groups).to_have_count(2)
-        expect(groups.nth(0)).to_have_accessible_name("Claude plan")
-        expect(groups.nth(1)).to_have_accessible_name("ChatGPT plan")
-        expect(groups.nth(0).get_by_role("menuitemradio")).to_have_count(3)
-        expect(groups.nth(1).get_by_role("menuitemradio")).to_have_count(2)
-        self.inside(page, menu)
-        shot(page, "model-groups-1440-light")
-        groups.nth(1).get_by_role("menuitemradio", name=re.compile("GPT-6.1 Sol")).click()
-        expect(row.get_by_role("button", name="Model: GPT-6.1 Sol · ChatGPT plan. Change")).to_be_visible()
-        self.assertEqual(world["puts"], [{"connection": "chatgpt_plan", "model": "gpt-6.1-sol"}])
-
-    def test_11_a_model_that_cannot_make_changes_says_so_beside_it(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        self.stub_model(page, current="claude-sonnet-5", options=API, group=KEY)
-        row = self.open_panel(page)
-        menu = self.open_list(page, row, "Sonnet 5")
-        astra = menu.get_by_role("menuitemradio", name=re.compile("GPT-6 Astra"))
-        expect(astra).to_contain_text("Can answer but can't make changes")
-        expect(astra).to_contain_text("Input $10, output $50 per 1M tokens")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("Sonnet 5"))).not_to_contain_text("can't make changes")
-
-    def test_11b_a_model_that_cannot_see_pictures_says_so_beside_it(self) -> None:
-        """#1217: an agent on a model without vision sees attached files only by name, and the list says so."""
-        page = self.page()
-        self.stub_assistant(page)
-        options = [API[0], {"id": "qwen3-30b", "name": "qwen3-30b", "note": "Input $0, output $0 per 1M tokens", "callsTools": True, "seesPictures": False}]
-        self.stub_model(page, current="claude-sonnet-5", options=options, group=KEY)
-        row = self.open_panel(page)
-        menu = self.open_list(page, row, "Sonnet 5")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("qwen3-30b"))).to_contain_text("Can't see pictures")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("Sonnet 5"))).not_to_contain_text("see pictures")
-        shot(page, "agent-vision-1440-model-list")
-
-    def test_12_the_list_is_a_menu_for_the_keyboard(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        model = self.stub_model(page)
-        self.open_panel(page)
-        control = page.get_by_role("button", name="Model: Sonnet. Change")
-        expect(control).to_have_attribute("aria-haspopup", "menu")
-        expect(control).to_have_attribute("aria-expanded", "false")
-        control.focus()
-        page.keyboard.press("Enter")
-        expect(control).to_have_attribute("aria-expanded", "true")
-        menu = page.get_by_role("menu", name="Model")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("Sonnet"))).to_be_focused()
-        page.keyboard.press("ArrowDown")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("Opus"))).to_be_focused()
-        page.keyboard.press("End")
-        expect(menu.get_by_role("menuitemradio", name=re.compile("Haiku"))).to_be_focused()
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(control).to_be_focused()
-        page.keyboard.press("Enter")
-        page.keyboard.press("ArrowDown")
-        page.keyboard.press("Enter")
-        expect(page.get_by_role("button", name="Model: Opus. Change")).to_be_focused()
-        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
 
 
 if __name__ == "__main__":

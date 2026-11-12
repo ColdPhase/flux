@@ -411,7 +411,6 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         }
         if (!answer) return save(ended('cap_reached', null, { ...used, endReason: 'answer_too_large' }));
         const { redacted, prepared } = answer;
-        const agent: Principal = { kind: 'agent', id: run.agentId };
         const text = await answerWithSchedule(ports, run, prepared);
         // Claude Code hands Flux no citations (#1065, C-30): the addresses its answer names count as cited, listed when its search returned
         // them; those of the cleaned answer, so an address left out is never listed.
@@ -421,8 +420,6 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           ...used, answerBody: words.trim() || '(No answer text.)', answerTruncated: false, answerSources: [], answerRedacted: redacted.changed,
           committedAt: new Date(),
         }));
-        // The answer to `/ai` and to a chat is its owner's alone: the space hears nothing until Show everyone (#842).
-        if (!isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
         await fence?.mark();
         return status;
       });

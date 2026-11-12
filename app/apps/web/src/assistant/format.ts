@@ -1,4 +1,4 @@
-import { aiConnectionLabel, assistantModelName, type AgentRuntimePayer, type AiProviderKind, type AssistantRun, type AssistantRunStatus, type PersonalAssistantStatus } from '@flux/contracts';
+import { assistantModelName, type AgentRuntimePayer, type AssistantRun, type AssistantRunStatus, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 
 // Words of the personal assistant (#57 design, #68). Calm and exact: they say what happened, who
@@ -15,15 +15,6 @@ export function micros(value: number) {
 /** A price per 1M tokens in micro-dollars, with the precision small prices need ($0.075). */
 export function perMillion(value: number) {
   return `$${(value / 1_000_000).toFixed(value % 10_000 === 0 ? 2 : 4)}`;
-}
-
-/**
- * What answered, for the message's footer (F-027 AST-11): "Claude · Sonnet" for a Claude plan model the owner chose; a run on
- * the plan's own default keeps "Anthropic · Claude Code", and an API key names its provider and model id (PROV-2).
- */
-export function answeredBy(provenance: { provider: AiProviderKind; model: string }) {
-  if (['sonnet', 'opus', 'haiku'].includes(provenance.model)) return `Claude · ${assistantModelName(provenance.model)}`;
-  return aiConnectionLabel(provenance.provider, provenance.model === 'claude-code' ? 'Claude Code' : provenance.model);
 }
 
 /** What a run recorded, in the words of the list: "Sonnet", or the plan's default for a run before the choice existed. */

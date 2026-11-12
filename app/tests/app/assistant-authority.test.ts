@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
   assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, type AssistantChange,
+  conversationAssistantChangesPath, NEEDS_YOU_PATH, type AssistantChange,
   type AssistantRun, type AssistantRunUndone, type NeedsYouResponse,
 } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -295,7 +295,6 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     await scene.runs.stop(owner, third.run.id);
     // Nobody else learns of the runs: not by name, not at all (#842: `/ai` is private).
     for (const who of [scene.peer, scene.viewer, scene.guest, scene.admin]) {
-      assert.equal((await who.browser.request('GET', `/api/v1/conversations/${scene.thread.id}/assistant-activity`)).status, 404, 'there is no line that says someone is asking');
       assert.equal((await who.browser.request('GET', `/api/v1/assistant-runs/${mine.run.id}`)).status, 404);
       assert.equal((await who.browser.request('GET', `/api/v1/assistant-runs/${summary.run.id}`)).status, 404);
     }
@@ -321,8 +320,8 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       assert.equal(await scene.processor.process(started.run.id), 'completed');
       await new Promise((resolve) => setTimeout(resolve, 400));
       assert.deepEqual(peerStream.events.filter((event) => event.kind.startsWith('project.assistant_')), []);
-      const stored = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = $1 AND object_id = $2`, [ASSISTANT_WORKING_EVENT, scene.place.id]);
-      assert.equal(stored.rows[0].n, 0, 'no event about the run was written for anyone');
+      const stored = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind LIKE 'project.assistant_%' AND object_id = $1`, [scene.place.id]);
+      assert.equal(stored.rows[0].n, 0, 'no event about the run was written for the space');
     } finally { await peerStream.close(); }
   });
 

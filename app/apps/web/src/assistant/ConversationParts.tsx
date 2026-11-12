@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { type AssistantAnswer, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
+import { Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
-import { AssistantPanel, companyName } from './AssistantPanel';
 import { useShellActions } from '../app/shellContext';
-import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
+import { canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
 import { failure } from './WaitingChanges';
 import { useKeepFocus } from './useKeepFocus';
 import { agentAuthorLabel } from '../docs/format';
@@ -18,8 +17,9 @@ import { plainWords } from '../work/messageWords';
 import { shownWords, stepWords, useLiveRun, useReducedMotion } from './liveRun';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
-// hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
-// an assistant and never as the person; the working line and its Stop are the owner's alone.
+// hierarchy: its working line and its Stop are the owner's alone, and its answer is the owner's
+// alone until Show everyone. What an agent says to the people (a task's discussion) is an ordinary
+// message, marked as an agent's.
 
 /** The assistant's face: Kreska, never a person's initials (F-026 P3). Its expression follows the run. */
 export function AssistantAvatar({ expression = 'idle' }: { expression?: KreskaExpression }) {
@@ -248,55 +248,4 @@ export function AnswerBody({ answer, lookups }: { answer: Pick<AssistantAnswer, 
 export function sourceSummary(count: number, from = 'this project') {
   if (!count) return 'No sources cited';
   return `${count} ${count === 1 ? 'source' : 'sources'} from ${from}`;
-}
-
-const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
-
-export function AnswerItem({ answer, mine, lookups, when, clock, changes = null, resultInMessage = false, onRetry, onContinue, onAskAbout }: {
-  answer: AssistantAnswer;
-  /** The owner's waiting changes of this run (F-027 A3); only ever the owner's own. */
-  changes?: ReactNode;
-  /** The run's message already says what it did: a bare "Done…" result line is not repeated above it (AST-10.13). */
-  resultInMessage?: boolean;
-  mine: boolean;
-  lookups: SourceLookups;
-  when: (iso: string) => string;
-  clock: (iso: string) => string;
-  onRetry: () => Promise<void>;
-  onContinue: () => Promise<void>;
-  onAskAbout: (() => void) | null;
-}) {
-  const [busy, setBusy] = useState<'' | 'retry' | 'continue'>('');
-  const [panel, setPanel] = useState(false);
-  const [failed, setFailed] = useState('');
-  const act = async (kind: 'retry' | 'continue', action: () => Promise<void>) => {
-    setBusy(kind); setFailed('');
-    try { await action(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : error instanceof ApiError ? error.message : 'Couldn’t reach Flux. Try again.'); }
-    finally { setBusy(''); }
-  };
-  return (
-    <li id={`answer-${answer.runId}`} tabIndex={-1} className="project-convo__message assistant-answer" data-answer-run={answer.runId}>
-      <AssistantAvatar />
-      <div className="project-convo__message-meta">
-        <button type="button" className="assistant-answer__who" aria-haspopup="dialog" onClick={() => setPanel(true)}><strong>{answer.assistant.label}</strong></button>
-        <AgentTag />
-        <span className="assistant-answer__asked">for {mine ? 'you' : firstName(answer.askedBy.name)} · {companyName(answer.provenance.provider)}</span>
-        <time dateTime={answer.committedAt} title={when(answer.committedAt)}>{clock(answer.committedAt)}</time>
-      </div>
-      <p className="assistant-answer__request">“{answer.request.prompt}”</p>
-      {resultInMessage && /^done\b[^\n]{0,160}$/i.test(answer.body.trim()) ? null : <AnswerBody answer={answer} lookups={lookups} />}
-      {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
-      {changes}
-      <div className="assistant-answer__foot">
-        <span>{sourceSummary(answer.sources.length)} · {answeredBy(answer.provenance)}</span>
-        {mine ? <>
-          {answer.truncated ? <Button variant="link" busy={busy === 'continue'} onClick={() => void act('continue', onContinue)}>Continue</Button> : null}
-          <Button variant="link" busy={busy === 'retry'} onClick={() => void act('retry', onRetry)}>Retry</Button>
-        </> : onAskAbout ? <Button variant="link" onClick={onAskAbout}>Ask my assistant about this</Button> : null}
-      </div>
-      {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
-      <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={firstName(answer.askedBy.name)} provider={answer.provenance.provider}
-        onMessage={onAskAbout} />
-    </li>
-  );
 }

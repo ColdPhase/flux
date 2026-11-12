@@ -88,10 +88,10 @@ export function personalRunRows(db: DbExecutor) {
     return row ? toRun(row) : null;
   }
 
-  async function pagedRuns(where: SQL, order: 'newest' | 'committed', window: Window) {
+  async function pagedRuns(where: SQL, window: Window) {
     const [counted] = await db.select({ total: sql<number>`count(*)::int` }).from(r).where(where);
     const rows = await db.select().from(r).where(where)
-      .orderBy(...(order === 'newest' ? [desc(r.createdAt), desc(r.id)] : [asc(r.committedAt), asc(r.id)]))
+      .orderBy(desc(r.createdAt), desc(r.id))
       .limit(window.limit).offset(window.offset);
     return { items: rows.map(toRun), total: counted?.total ?? 0 };
   }
@@ -302,11 +302,7 @@ export function personalRunRows(db: DbExecutor) {
           : 'spaceId' in place ? and(eq(r.projectId, place.spaceId), isNull(r.conversationId))
             // A chat lists what its owner said and the answers to it; a schedule's run is none of that: its result is a line of the chat (#858).
             : 'dmId' in place ? and(eq(r.dmId, place.dmId), place.dmThreadRootId === null ? isNull(r.dmThreadRootId) : eq(r.dmThreadRootId, place.dmThreadRootId))
-              : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId), sql`${r.kind} <> 'scheduled'`))!, 'newest', window),
-
-    // The report of a run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
-    listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought', 'scheduled')`)!, 'committed', window),
+              : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId), sql`${r.kind} <> 'scheduled'`))!, window),
 
     async names(userIds: string[]) {
       const unique = [...new Set(userIds)];

@@ -7,7 +7,7 @@ import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
 import { expectStatus, person, workspace, type Person } from './support/people.js';
-import { FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // Provider-neutral owner AI connections through the running API (#179, F-020 PROV-1/3/4): every
@@ -197,7 +197,7 @@ describe('a budget that one request of the assistant\'s model would not fit is r
     expectStatus(await lower(20), 200);
     expectStatus(await lower(200), 200);
     // The assistant moves to Fable, whose one request is 114,000 × $10/M + 4,000 × $50/M = $1.34; it fits $2.00.
-    await runs.chooseModel(me, { connection: key.id, model: 'claude-fable-5-1' });
+    await chooseModel(runs, me, { connection: key.id, model: 'claude-fable-5-1' });
     const refused = await lower(20);
     assert.equal(codeOf(refused), 'AI_BUDGET_TOO_SMALL', refused.text);
     assert.match((refused.json as { error: string }).error, /Fable 5\.1, your assistant's model on this key, can cost up to \$1\.34/);
@@ -205,7 +205,7 @@ describe('a budget that one request of the assistant\'s model would not fit is r
     assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)!.dailyBudgetCents, 200, 'the refused budget changed nothing');
     expectStatus(await lower(134), 200);
     // Back on the key's own cheap model, a small budget is fine again.
-    await runs.chooseModel(me, { connection: key.id, model: 'claude-haiku-4-5' });
+    await chooseModel(runs, me, { connection: key.id, model: 'claude-haiku-4-5' });
     expectStatus(await lower(20), 200);
   });
 

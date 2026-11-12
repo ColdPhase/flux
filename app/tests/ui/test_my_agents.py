@@ -9,6 +9,7 @@ Messages and deletes it; Ben, in the same company, never sees any of it. Compute
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import time
@@ -166,6 +167,36 @@ class MyAgentsJourney(unittest.TestCase):
         page.get_by_role("button", name="Delete", exact=True).click()
         expect(page.get_by_text("Nothing yet.")).to_be_visible()
         self.assertEqual(self.api(page, "GET", f"/api/v1/my-agents/{self.ids['planner']}/memory")["items"], [])
+
+    def stub_models(self, page, agent: dict, *, sees_pictures: bool | None, calls_tools: bool = True) -> None:
+        """The model list of the agent's connection, with the agent's own model in it; `sees_pictures` None leaves the field out (it sees them)."""
+        model = agent["model"]
+        option = {"id": model["model"], "name": "Test model", "note": "Input $1, output $2 per 1M tokens", "callsTools": calls_tools}
+        if sees_pictures is not None:
+            option["seesPictures"] = sees_pictures
+        group = {"connection": model["connection"], "account": "api_key", "label": "Ada's Anthropic key", "company": "Anthropic", "options": [option]}
+        choice = {"current": model, "default": model, "groups": [group], "saved": True}
+        page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
+                   if route.request.method == "GET" else route.continue_())
+
+    def test_03b_a_model_that_cannot_see_pictures_says_so_on_the_agent_s_page(self) -> None:
+        """#1217 (C-59): an agent on a model without vision sees attached files only by name, and its page says so; a model that sees them says nothing."""
+        agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
+        note = "can’t see pictures, so it sees attached files only by name."
+        blind = self.page()
+        self.stub_models(blind, agent, sees_pictures=False)
+        blind.goto(f"/settings/agents/{agent['id']}")
+        expect(blind.get_by_role("radio", name="Test model")).to_have_attribute("aria-checked", "true")
+        expect(blind.get_by_role("note").filter(has_text=note)).to_have_text(f"Test model: {note}")
+        expect(blind.get_by_role("note").filter(has_text="can answer but can’t make changes")).to_have_count(0)
+        shot(blind, "agent-vision-note-1440")
+        for label, vision in (("a model that sees pictures", True), ("a model whose list says nothing of it", None)):
+            with self.subTest(label):
+                sighted = self.page()
+                self.stub_models(sighted, agent, sees_pictures=vision)
+                sighted.goto(f"/settings/agents/{agent['id']}")
+                expect(sighted.get_by_role("radio", name="Test model")).to_have_attribute("aria-checked", "true")
+                expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
 
     def test_04_each_agent_is_a_private_conversation_in_messages(self) -> None:
         page = self.page()

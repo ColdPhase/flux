@@ -37,7 +37,7 @@ class AssistantFinish(unittest.TestCase):
     setUpClass = classmethod(base.AssistantScreen.setUpClass.__func__)
     tearDownClass = classmethod(base.AssistantScreen.tearDownClass.__func__)
     pw = None
-    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "answer", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
+    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
         locals()[_name] = getattr(base.AssistantScreen, _name)
     del _name
 
@@ -78,7 +78,7 @@ class AssistantFinish(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_thread(page, [])
+                self.stub_thread(page)
                 asked = self.stub_ask(page)
                 sends: list[tuple[str, int]] = []
                 page.on("response", lambda response: sends.append((response.request.post_data or "", response.status)) if response.request.method == "POST" and response.url.endswith("/messages") else None)
@@ -98,7 +98,7 @@ class AssistantFinish(unittest.TestCase):
     def test_06_a_refused_request_leaves_no_message_behind(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         before = len(self.messages(page, self.ids["conversation"]))
         self.stub_ask(page, error={"code": "PERSONAL_RUN_NO_PROJECT_ACCESS", "message": "Your assistant has no access to this project"})
         page.goto(self.thread_url())
@@ -122,7 +122,7 @@ class AssistantFinish(unittest.TestCase):
                 type(self).ids = {**self.ids, "run": str(uuid.uuid4())}
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_thread(page, [])
+                self.stub_thread(page)
                 items = [self.change(objectTitle=f"#{number} Task {number}", done=f"renamed task #{number} Task {number}") for number in (3, 5)]
                 items.append(self.change(state="waiting", waitReason="others", phrase="close task", verb="Close", objectTitle="#4 Duplicate", before=None, after=None,
                                          undoable=False, line="Jonas's task: other people's things wait for your OK.", done="closed task #4 Duplicate"))
@@ -157,7 +157,7 @@ class AssistantFinish(unittest.TestCase):
             with self.subTest(phone=phone, remembered=remembered):
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_thread(page, [])
+                self.stub_thread(page)
                 if remembered:
                     page.add_init_script(f"localStorage.setItem('flux.assistant-last-asked.{base.ADA['id']}', JSON.stringify({{projectId: '{self.ids['project']}', conversationId: '{self.ids['conversation']}'}}))")
                 page.goto("/")
@@ -201,7 +201,7 @@ class AssistantFinish(unittest.TestCase):
                 page = self.page(phone=phone)
                 world = self.stub_assistant(page)
                 world["status"].update(state="unavailable", unavailableReason="runtime_off")
-                self.stub_thread(page, [])
+                self.stub_thread(page)
                 told: list[str] = []
 
                 def tell(route: Route) -> None:
@@ -251,28 +251,16 @@ class AssistantFinish(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Schedules")).to_be_visible()
                 self.axe(page, f"an agent's page, with its schedules ({tag})")
 
-    def stub_model(self, page: Page) -> None:
-        options = [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True}, {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]
-        pick = {"connection": "claude_plan", "model": "sonnet"}
-        groups = [{"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": options}]
-        choice = {"current": pick, "default": pick, "groups": groups, "saved": True}
-        page.route(re.compile(r".*/api/v1/personal-assistant/model(\?.*)?$"), lambda route: self.json(route, choice))
-
-    def test_14_the_panel_and_the_conversation_have_no_axe_violations(self) -> None:
+    def test_14_the_conversation_with_the_ask_bar_has_no_axe_violations(self) -> None:
         for phone, dark in ((False, False), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 tag = self.tag(phone, dark)
                 page2 = self.page(phone=phone, dark=dark)
                 self.stub_assistant(page2)
-                self.stub_model(page2)
-                self.stub_thread(page2, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
+                self.stub_thread(page2)
                 page2.goto(f"{self.thread_url()}?ask=1")
                 expect(page2.locator("#project-ask")).to_be_visible()
                 self.axe(page2, f"the ask bar ({tag})", "#project-ask")
-                page2.locator("#project-ask").get_by_role("button", name="Stop asking your assistant").click()
-                page2.get_by_role("button", name="Ada's assistant", exact=True).click()
-                expect(page2.get_by_role("group", name="Ada's assistant, details")).to_be_visible()
-                self.axe(page2, f"the assistant's panel ({tag})", ".aset-panel")
 
     def test_15_leaving_ask_mode_in_a_thread_logs_no_layout_loop(self) -> None:
         """The thread's feed is watched by several observers, and its short-thread lift is moved from one of them: when the composer changes
@@ -283,8 +271,7 @@ class AssistantFinish(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_model(page)
-                self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
+                self.stub_thread(page)
                 for _ in range(6):
                     page.goto(f"{self.thread_url()}?ask=1")
                     expect(page.locator("#project-ask")).to_be_visible()

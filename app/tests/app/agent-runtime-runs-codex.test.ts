@@ -18,7 +18,7 @@ import { managerPersonalRuntime } from '../../apps/worker/src/personal-runs/runt
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeCompute, FakeQueue } from './support/personal-runs.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { waitFor } from './support/wait.js';
 
@@ -302,7 +302,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(flag(await argvOf()), 'gpt-6.1-sol');
     assert.equal((await row(first.run.id)).model, 'gpt-6.1-sol');
 
-    choice = await runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
+    choice = await chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
     assert.deepEqual(choice.current, { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
     await resetFake(); await script({ calls: [], answer: 'Done.' });
     const chosen = await ask();
@@ -311,7 +311,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(flag(argv), 'gpt-6-luna');
     assert.ok(argv.indexOf('-m') < argv.indexOf('-'), 'before the prompt marker');
     assert.equal((await row(chosen.run.id)).model, 'gpt-6-luna');
-    await assert.rejects(runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
+    await assert.rejects(chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
 
     await resetFake(); await scenario('run_model_unavailable');
     const refused = await ask();
