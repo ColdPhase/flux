@@ -263,7 +263,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         </li>
       ))}</ol> : null}
       <ol className="wd-act" aria-label="Task activity">
-        {/* A call started from this task is one line of its discussion, in time order (F-041 point 6). */}
+        {/* A call started from this task is one line of its discussion, newest first like the rest (F-041 point 6). */}
         {byTime((state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
           && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => ({ at: line.at, node: (() => {
           if (line.kind === 'message') {
@@ -391,10 +391,10 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   );
 }
 
-/** Activity lines and call lines in time order; at the same instant the activity line comes first. */
+/** Activity lines and call lines in one timeline, newest first like the activity itself; at the same instant the activity line comes first. */
 function byTime(lines: { at: string; node: ReactNode }[], calls: { at: string; node: ReactNode }[]): ReactNode[] {
   return [...lines.map((entry, index) => ({ ...entry, order: index })), ...calls.map((entry, index) => ({ ...entry, order: lines.length + index }))]
-    .sort((a, b) => a.at.localeCompare(b.at) || a.order - b.order).map((entry) => entry.node);
+    .sort((a, b) => Date.parse(b.at) - Date.parse(a.at) || a.order - b.order).map((entry) => entry.node);
 }
 
 /**

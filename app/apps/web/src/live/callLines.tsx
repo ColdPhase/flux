@@ -29,9 +29,6 @@ export function useCallLines(projectId: string, taskId: string | null = null): L
 
 const minutes = (from: string, to: number) => Math.max(1, Math.round((to - Date.parse(from)) / 60_000));
 const first = (name: string) => name.trim().split(/\s+/)[0] || name;
-function list(names: string[]) {
-  return names.length <= 2 ? names.join(' and ') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
-}
 
 /** The words of a call's line without its starter's name (F-041): what a task's activity says after "Hubert". */
 export function callWords(line: LiveCallLine, nameOf: (userId: string) => string, now: number): { named: boolean; text: string } {
@@ -42,7 +39,7 @@ export function callWords(line: LiveCallLine, nameOf: (userId: string) => string
   }
   if (!others.length) return { named: true, text: 'called · nobody joined' };
   const people = [...new Set([line.startedBy, ...line.joinedBy])].map((userId) => first(nameOf(userId)));
-  return { named: false, text: `Call · ${minutes(line.startedAt, Date.parse(line.endedAt))} min · ${list(people)}` };
+  return { named: false, text: `Call · ${minutes(line.startedAt, Date.parse(line.endedAt))} min · ${people.join(', ')}` };
 }
 
 /** The time a running call has lasted, read again every half minute (no request). */
@@ -77,7 +74,7 @@ export function CallLineItem({ line, projectId, nameOf, meId, clock, title }: {
       <AuthorFace kind="human" id={line.startedBy} name={starter} mine={mine} />
       <div className="convo-notice__body">
         <p className="convo-notice__meta">
-          {words.named ? <strong>{starter}{mine ? ' · you' : ''}</strong> : null}
+          {words.named ? <strong title={starter}>{first(starter)}{mine ? ' · you' : ''}</strong> : null}
           <span className="convo-notice__what">{words.text}</span>
           {inCall.length ? <span className="lv-faces convo-call__faces" aria-hidden="true">{inCall.slice(0, 3).map((userId) => <Avatar key={userId} id={userId} name={nameOf(userId)} size="sm" />)}</span> : null}
           {running && !here && (line.inCall === null || line.inCall.length > 0) ? <Button variant="secondary" className="convo-call__join" onClick={() => void join({ projectId, sessionId: line.id })}>Join</Button> : null}

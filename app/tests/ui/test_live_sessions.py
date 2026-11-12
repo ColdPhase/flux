@@ -577,7 +577,7 @@ class LiveJourney(LiveBase):
 
     def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
         """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;
-        Join from the line joins the call; when it ends the line reads "Call · N min · Lee and Ada"; it survives a reload. A call nobody
+        Join from the line joins the call; when it ends the line reads "Call · N min · Lee, Ada"; it survives a reload. A call nobody
         joined reads "Nia called · nobody joined"."""
         self.seed()
         ada = self.page("ada")
@@ -593,7 +593,8 @@ class LiveJourney(LiveBase):
         expect(self.bar(nia)).to_be_visible()
         line = ada.locator("li.convo-call")
         started = time.monotonic()
-        expect(line).to_contain_text("Lee Park", timeout=2500)
+        expect(line).to_contain_text("Lee", timeout=2500)
+        expect(line).not_to_contain_text("Lee Park")  # first names, as a task line has them
         expect(line).to_contain_text("started a call")
         self.assertLess(time.monotonic() - started, 3, "the line shows within about 2 s")
         expect(line.get_by_role("button", name="Join")).to_be_visible()
@@ -605,9 +606,9 @@ class LiveJourney(LiveBase):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
         # Everyone left: the call ends after its short grace, and the same line says how long and who.
-        expect(line).to_contain_text(re.compile(r"Call · \d+ min · Lee and Ada"), timeout=150000)
+        expect(line).to_contain_text(re.compile(r"Call · \d+ min · Lee, Ada"), timeout=150000)
         ada.reload()
-        expect(ada.locator("li.convo-call")).to_contain_text(re.compile(r"Call · \d+ min · Lee and Ada"))
+        expect(ada.locator("li.convo-call")).to_contain_text(re.compile(r"Call · \d+ min · Lee, Ada"))
         shot(ada, "live-desktop-1440-call-line-ended")
 
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
