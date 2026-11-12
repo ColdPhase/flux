@@ -218,7 +218,8 @@ class SpokojLayout(unittest.TestCase):
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                self.assertEqual(items[:4], ["People", "Call", "Settings", "Space details"], items)
+                # Mute space (#1249) sits between Settings and the space's details, under its own one-line hint.
+                self.assertEqual(items[:5], ["People", "Call", "Settings", "Mute space", "Space details"], items)
                 # Live sessions are off on this test server: Call is dimmed in place, not removed.
                 expect(menu.get_by_role("menuitem", name="Call")).to_have_attribute("aria-disabled", "true")
                 menu.get_by_role("menuitem", name="Space details").click()

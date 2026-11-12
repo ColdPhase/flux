@@ -626,6 +626,17 @@ class ReturnToOrigin(unittest.TestCase):
                 feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"
                 expect(page.locator(feed)).to_be_visible()
                 page.wait_for_timeout(1500)
+                # The person has read this conversation to its end before, so nothing in it is new and it opens at its end (S23, #1246); a
+                # conversation never read would open at its first message under the New divider, which moves with what is read.
+                expect(page.locator(feed)).to_be_visible()
+                box = page.locator(feed).bounding_box()
+                page.mouse.move(box["x"] + box["width"] / 2, box["y"] + min(box["height"] / 2, 300))
+                page.mouse.wheel(0, 100000)
+                page.wait_for_function("(feed) => { const el = document.querySelector(feed); return el.scrollHeight - el.clientHeight - el.scrollTop < 2; }", arg=feed)
+                page.wait_for_timeout(1500)
+                page.reload()
+                expect(page.locator(feed)).to_be_visible()
+                page.wait_for_timeout(1500)
                 # Message 8 is older than the newest 50: the reader reads back to it, and puts it 48 px below the top.
                 page.get_by_role("button", name="Show earlier messages").click()
                 expect(page.locator(target)).to_have_count(1)

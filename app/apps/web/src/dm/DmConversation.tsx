@@ -120,6 +120,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const shown = useMemo(() => merge(composer.sent.map((item) => item.message as DmMessage), messages), [messages, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, me.user.id);
   const refreshing = useRef(false);
+  const refreshAgain = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const navigate = useNavigate();
   const toast = useToast();
@@ -163,27 +164,32 @@ function DmContent({ initial }: { initial: Dm }) {
 
   /** Fetches the newest window and any replies between it and what is on screen. */
   const refresh = useCallback(async () => {
-    if (refreshing.current) return;
+    // A change that is told while a read is on its way asks for one more when it ends: that read may have been made before the change was stored.
+    if (refreshing.current) { refreshAgain.current = true; return; }
     refreshing.current = true;
     try {
-      const latest = await getDm(initial.id);
-      const follow = atBottom();
-      const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
-      let incoming = latest.messages;
-      let cursor = incoming[0]?.sequence;
-      while (newestSeen > 0 && cursor && cursor > newestSeen + 1) {
-        const page = await olderDmMessages(initial.id, cursor);
-        if (!page.messages.length || page.messages[0]!.sequence >= cursor) break;
-        incoming = merge(page.messages, incoming);
-        learn(page.people);
-        cursor = page.messages[0]?.sequence;
-      }
-      setDm(latest);
-      learn(latest.people);
-      setMessages((current) => merge(current, incoming));
-      if (follow) toBottom();
-    } catch (cause) { denied(cause); }
-    finally { refreshing.current = false; }
+      do {
+        refreshAgain.current = false;
+        try {
+          const latest = await getDm(initial.id);
+          const follow = atBottom();
+          const newestSeen = messagesRef.current.at(-1)?.sequence ?? 0;
+          let incoming = latest.messages;
+          let cursor = incoming[0]?.sequence;
+          while (newestSeen > 0 && cursor && cursor > newestSeen + 1) {
+            const page = await olderDmMessages(initial.id, cursor);
+            if (!page.messages.length || page.messages[0]!.sequence >= cursor) break;
+            incoming = merge(page.messages, incoming);
+            learn(page.people);
+            cursor = page.messages[0]?.sequence;
+          }
+          setDm(latest);
+          learn(latest.people);
+          setMessages((current) => merge(current, incoming));
+          if (follow) toBottom();
+        } catch (cause) { denied(cause); }
+      } while (refreshAgain.current);
+    } finally { refreshing.current = false; }
   }, [denied, initial.id, learn]);
 
   const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id, threadRootId: null }, onShown: () => { void refresh(); toBottom(); } });

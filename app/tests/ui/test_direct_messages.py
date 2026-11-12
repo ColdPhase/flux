@@ -360,6 +360,38 @@ class DirectMessageJourney(unittest.TestCase):
         lee.goto(f"/dm/{pair_id}")
         expect(lee.get_by_text("Welcome back, Lee.")).to_be_visible()
 
+    def test_09_a_message_stored_while_a_read_is_on_its_way_is_still_shown(self) -> None:
+        """A change that is told while the conversation is being read again asks for one more read: the first may have been made before it was stored."""
+        ada, kai = self.page("ada"), self.page("kai")
+        ada.goto(self.dm_path)
+        expect(ada.locator(".dm-msg__body").first).to_be_visible()
+        held: list = []
+        holding = {"on": True}
+        def read_now_deliver_later(route) -> None:
+            if route.request.method == "GET" and holding["on"]:
+                held.append((route, route.fetch()))
+            else:
+                route.continue_()
+        ada.route(re.compile(rf"/api/v1/dms/{self.dm_id()}$"), read_now_deliver_later)
+        def say(text: str) -> None:
+            response = kai.request.fetch(f"{ORIGIN}/api/v1/dms/{self.dm_id()}/messages", method="POST", data=json.dumps({"body": text, "clientMessageId": str(uuid.uuid4())}),
+                                         headers={"origin": ORIGIN, "content-type": "application/json"})
+            self.assertEqual(response.status, 201, response.text())
+        first, second = "Told while reading: the first message.", "Told while reading: the second, stored after the read that is on its way was made."
+        say(first)
+        for _ in range(100):
+            if held:
+                break
+            ada.wait_for_timeout(100)
+        self.assertTrue(held, "the first message made the open conversation read again")
+        say(second)
+        ada.wait_for_timeout(1000)
+        holding["on"] = False
+        for route, response in held:
+            route.fulfill(response=response)
+        expect(ada.locator(".dm-msg__body", has_text=first)).to_be_visible(timeout=15000)
+        expect(ada.locator(".dm-msg__body", has_text=second)).to_be_visible(timeout=15000)
+
 
 if __name__ == "__main__":
     unittest.main()

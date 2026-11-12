@@ -1,0 +1,2 @@
+- After a space's name, a space's icon or the company's name is saved or cancelled, focus goes back to its Change button once, as the editor closes, and is never taken from a control the person has moved to meanwhile; in WebKit the late return used to pull focus off the AI switch ([#1298](https://github.com/ColdPhase/flux/issues/1298)).
+- A Wiki page's text no longer takes focus back from where the person moved it when another person joins or writes ([#1298](https://github.com/ColdPhase/flux/issues/1298)).

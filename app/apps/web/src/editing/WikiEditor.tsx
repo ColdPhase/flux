@@ -455,8 +455,13 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         }
       });
     };
+    // Focus the person moved elsewhere on purpose is theirs: what the page was holding when this started (`refocus`) is handed back only when it
+    // was lost with the input above, never because the next change of the text found it on the page, as it would for any change another person
+    // makes (#1298).
+    const left = () => { if (editable) hadFocus = false; };
+    view.contentDOM.addEventListener('focusout', left);
     const unsubscribe = source.subscribe(update); update();
-    return () => { gone = true; unsubscribe(); };
+    return () => { gone = true; unsubscribe(); view.contentDOM.removeEventListener('focusout', left); };
   }, [view, source, text, collab, editability, sourceTick, roomRefused]);
 
 

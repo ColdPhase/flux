@@ -9,7 +9,7 @@ import { leaveProject, renameProject, setSpaceAi } from '../project/api';
 import { SpaceIconRow } from './SpaceIconRow';
 import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
-import { Avatar, Button, Icon, Input, Option, Select, useToast } from '../ui';
+import { Avatar, Button, Icon, Input, Option, Select, useFocusBack, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
 import { attemptKeys, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
@@ -286,7 +286,8 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const changeRef = useRef<HTMLButtonElement>(null);
-  const close = () => { setEditing(false); setProblem(''); requestAnimationFrame(() => changeRef.current?.focus({ preventScroll: true })); };
+  const close = () => { setEditing(false); setProblem(''); };
+  useFocusBack(changeRef, editing);
   async function save(event: FormEvent) {
     event.preventDefault();
     const next = value.trim();

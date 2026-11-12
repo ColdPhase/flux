@@ -8,7 +8,7 @@ import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
+import { Avatar, Button, Icon, Input, Spinner, useFocusBack, useRowMotion, useToast, Select, Option } from '../ui';
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { listCompanyEncryptedSpaces } from '../encryption/api';
@@ -303,7 +303,8 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
   const [problem, setProblem] = useState('');
   const keys = useRef(attemptKeys());
   const changeRef = useRef<HTMLButtonElement>(null);
-  const close = () => { setEditing(false); setProblem(''); requestAnimationFrame(() => changeRef.current?.focus({ preventScroll: true })); };
+  const close = () => { setEditing(false); setProblem(''); };
+  useFocusBack(changeRef, editing);
   async function save(event: FormEvent) {
     event.preventDefault();
     const next = value.trim();

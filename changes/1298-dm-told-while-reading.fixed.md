@@ -1,0 +1,1 @@
+- A direct message, or a thread in one, that is told of a new message while it is already being read again reads once more when that ends: a message stored a moment after the first read was made no longer stays missing until the next change ([#1298](https://github.com/ColdPhase/flux/issues/1298)).

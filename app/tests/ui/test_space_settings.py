@@ -201,6 +201,8 @@ class SpaceSettings(unittest.TestCase):
         page.get_by_role("button", name="Save").click()
         expect(page.locator(".spset__status")).to_have_text("Renamed to Kiln firmware.")
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["name"], "Kiln firmware")
+        # The editor is gone: focus returns to Change, once, when it closes, and is never taken back later (#1298).
+        expect(page.get_by_role("button", name="Change the name of Kiln firmware")).to_be_focused()
         # The rename reloads the space in the background: wait for its new name to reach the page, so the switch below starts from what
         # the page holds now and not from a state that is about to be replaced.
         expect(page.get_by_role("list", name="People in Kiln firmware")).to_be_visible()
