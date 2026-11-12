@@ -59,6 +59,13 @@ PAIRS = [
     ("--t3", "--pick", 3.0, "the check box of a chosen message row"),
     ("--own", "--pick", 1.08, "a chosen own bubble stays apart from the row's fill"),
     ("--bg", "--pick", 1.15, "the fill of a chosen row stands out from the screen"),
+    # Segmented controls and switches (#1238): the selected option is clearly lighter or raised against its track, its label and the
+    # unselected labels read on their fills, and an off switch's knob is 3:1 on its track (its edge and knob are --t3, 3:1 on the card and the screen above).
+    ("--seg-on", "--seg", 1.4, "the selected segmented option stands out from its track"),
+    ("--t1", "--seg-on", 4.5, "the selected segmented option's label"),
+    ("--seg-off", "--seg", 4.5, "unselected segmented labels on their track"),
+    ("--t1", "--seg", 4.5, "a hovered unselected segmented label"),
+    ("--t3", "--sub", 3.0, "an off switch's knob on its track"),
     ("--oninv", "--inv", 4.5, "human collaboration name label"),
     ("--t1", "--el", 3.0, "human collaboration cursor and caret"),
 ]

@@ -115,10 +115,17 @@
 .mcp-permissions__row strong { display: block; color: var(--t1); font-size: var(--fs-sm); font-weight: 500; overflow-wrap: anywhere; }
 .mcp-permissions__row small { display: block; margin-top: 2px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.4; overflow-wrap: anywhere; }
 .mcp-permissions__row > input { position: relative; flex: none; appearance: none; width: 44px; height: 44px; margin: 0; border: 0; background: transparent; cursor: pointer; }
-.mcp-permissions__row > input::before { content: ''; position: absolute; width: 40px; height: 24px; left: 2px; top: 10px; border-radius: 14px; background: var(--line2); }
-.mcp-permissions__row > input::after { content: ''; position: absolute; width: 16px; height: 16px; left: 6px; top: 14px; border-radius: 50%; background: var(--bg); box-shadow: 0 1px 3px var(--line); transition: transform var(--dur-1); }
-.mcp-permissions__row > input:checked::before { background: var(--t1); }
-.mcp-permissions__row > input:checked::after { transform: translateX(18px); }
+/* The same switch as in Settings (#1238): off a quiet track with a --t3 edge and knob, on the ink track with an --oninv knob. */
+.mcp-permissions__row > input::before { content: ''; position: absolute; width: 40px; height: 24px; left: 2px; top: 10px; border-radius: 14px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--t3); transition: background-color var(--dur-1), box-shadow var(--dur-1); }
+.mcp-permissions__row > input::after { content: ''; position: absolute; width: 16px; height: 16px; left: 6px; top: 14px; border-radius: 50%; background: var(--t3); transition: transform var(--dur-1), background-color var(--dur-1); }
+.mcp-permissions__row > input:checked::before { background: var(--inv); box-shadow: inset 0 0 0 1px var(--inv); }
+.mcp-permissions__row > input:checked::after { transform: translateX(18px); background: var(--oninv); }
+@media (forced-colors: active) {
+  .mcp-permissions__row > input::before { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 1px ButtonText; }
+  .mcp-permissions__row > input::after { forced-color-adjust: none; background: ButtonText; }
+  .mcp-permissions__row > input:checked::before { background: Highlight; box-shadow: inset 0 0 0 1px Highlight; }
+  .mcp-permissions__row > input:checked::after { background: HighlightText; }
+}
 .mcp-permissions__row > input:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 8px; }
 .mcp-permissions__row > input:disabled { opacity: .5; cursor: default; }
 .mcp-permissions__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
