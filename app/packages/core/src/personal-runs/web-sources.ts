@@ -1,4 +1,6 @@
-import { defangedAddresses } from './web-addresses.js';
+import { WEB_SOURCES_HEADINGS, webSourcesStart } from '@flux/contracts';
+import { addressesIn, defangedAddresses } from './web-addresses.js';
+import { withoutOwnSources } from './answer-marks.js';
 import type { PersonalRunPorts, RunRecord } from './ports.js';
 
 // "Web: read-only page reading, always citing the sources" (F-036 AG-8, #918). Every address the Flux server sent a request to for a run is
@@ -15,22 +17,9 @@ export type WebReadOutcome = 'asked' | 'read' | 'redirected' | 'blocked' | 'unre
 /** An address the server asked for a run, and whether what a run writes may hold it as a link (marked when it was asked, #1156). */
 export interface ListedRead { finalUrl: string; outcome: string; writable: boolean }
 
-/** The headings of the block Flux appends to an answer; the block starts at the first of them, after a blank line. */
-export const WEB_SOURCES_HEADINGS = ['Searched the web for:', 'Found on the web:', 'Read on the web:', 'Requested, not read:'] as const;
-
-/**
- * Where the block Flux appended to a text starts, or the text's length when it has none: it comes last, after a blank line, and holds only
- * its headings and `- ` lines. What stands there is Flux's list, never the agent's words (a query in it is the model's own, #1156).
- */
-export function webSourcesAt(text: string): number {
-  let at = text.length;
-  for (const heading of WEB_SOURCES_HEADINGS) {
-    const start = text.lastIndexOf(`\n\n${heading}\n`);
-    if (start >= 0 && start < at && text.slice(start + 2).trimEnd().split('\n')
-      .every((line) => line.startsWith('- ') || (WEB_SOURCES_HEADINGS as readonly string[]).includes(line))) at = start;
-  }
-  return at;
-}
+export { WEB_SOURCES_HEADINGS };
+/** Where the block Flux appended to a text starts, or the text's length when it has none (`webSourcesStart`, shared with the readers' link cards, #1222). */
+export const webSourcesAt = webSourcesStart;
 
 /** The most queries and cited addresses one block lists. The pages a run read are all listed: there is no limit on how many it reads (#1113), and each is a source (AG-8). */
 const LISTED = 20;
@@ -69,13 +58,16 @@ export function webSourcesLine(reads: readonly ListedRead[], searches: { queries
 }
 
 /**
- * The answer with the run's searches and the addresses it asked for at its end. `cited` holds each cited result as the answer may list it,
+ * The answer with the run's searches and the addresses it asked for at its end, and without the model's own list of the same addresses
+ * (#1222). `cited` holds each cited result as the answer may list it,
  * worked out before the commit's transaction (`preparedAnswer`); one it does not hold is listed defanged.
  */
 export async function answerWithWebSources(ports: PersonalRunPorts, run: Pick<RunRecord, 'id'>, answer: string, cited: ReadonlyMap<string, string> = new Map()): Promise<string> {
   const searches = await ports.runs.webSearches(run.id);
   const line = webSourcesLine(await ports.runs.webReads(run.id), { ...searches, cited: searches.cited.map((address) => cited.get(address) ?? defangedAddresses(address)) });
-  return line ? `${answer.trimEnd()}\n\n${line}` : answer;
+  if (!line) return answer;
+  // One list (#1222): the model's own "Sources:" block is left out when Flux lists every address in it (a defanged address is no address here).
+  return `${withoutOwnSources(answer, new Set(addressesIn(line, line.length))).trimEnd()}\n\n${line}`;
 }
 
 /**

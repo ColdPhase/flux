@@ -38,7 +38,7 @@ const wire = (row: DiscussionMessage, names: Map<string, string>, owners: Readon
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
         ...(owners.has(row.author.id) ? { projectOwner: owners.get(row.author.id)! } : {}) } }),
     body: row.body, source: row.source, ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(),
-    ...(row.via ? { via: row.via } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
+    ...(row.via ? { via: row.via, ...(row.viaColour ? { viaColour: row.viaColour } : {}) } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 };
 
 /**

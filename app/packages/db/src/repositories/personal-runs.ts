@@ -507,11 +507,11 @@ export function personalRunRows(db: DbExecutor) {
 
     /** What the model is told besides the request (F-036 AG-1): the agent's saved instructions and what its owner asked it to remember. */
     async agentBrief(agentId: string) {
-      const [row] = await db.select({ name: ag.name, instructions: e.instructions }).from(e).innerJoin(ag, eq(ag.id, e.agentId)).where(eq(e.agentId, agentId));
+      const [row] = await db.select({ name: ag.name, instructions: e.instructions, colour: e.colour }).from(e).innerJoin(ag, eq(ag.id, e.agentId)).where(eq(e.agentId, agentId));
       if (!row) return null;
       const memory = await db.select({ body: schema.agentMemoryItems.body }).from(schema.agentMemoryItems).where(eq(schema.agentMemoryItems.agentId, agentId))
         .orderBy(asc(schema.agentMemoryItems.createdAt), asc(schema.agentMemoryItems.id));
-      return { name: row.name, instructions: row.instructions, memory: memory.map((item) => item.body) };
+      return { name: row.name, instructions: row.instructions, colour: row.colour, memory: memory.map((item) => item.body) };
     },
   };
 }

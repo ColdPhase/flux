@@ -69,7 +69,7 @@ export function messageChangeRows(db: DbExecutor) {
     /** Overwrites the words. Returns the new `edited_at`. */
     async editProject(message: Pick<LockedProjectMessage, 'id' | 'workspaceId'>, body: string): Promise<Date> {
       const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body }, { id: message.id });
-      const [updated] = await db.update(m).set({ body: sealed.body, editedAt: sql`now()`, via: null }).where(eq(m.id, message.id)).returning({ editedAt: m.editedAt });
+      const [updated] = await db.update(m).set({ body: sealed.body, editedAt: sql`now()`, via: null, viaColour: null }).where(eq(m.id, message.id)).returning({ editedAt: m.editedAt });
       return updated!.editedAt!;
     },
 
@@ -79,7 +79,7 @@ export function messageChangeRows(db: DbExecutor) {
       const files = await db.delete(f).where(eq(f.messageId, message.id)).returning({ id: f.id });
       if (files.length) await db.insert(schema.fileGarbage).values(files.map(({ id }) => ({ id }))).onConflictDoNothing();
       const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
-      const [updated] = await db.update(m).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, attachmentCount: 0, sourceMaterialId: null, sourceMaterialVersion: null })
+      const [updated] = await db.update(m).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, viaColour: null, attachmentCount: 0, sourceMaterialId: null, sourceMaterialVersion: null })
         .where(eq(m.id, message.id)).returning({ removedAt: m.removedAt });
       const place = `/projects/${message.projectId}/conversations/${message.conversationId}`;
       await forgetNotices(db, { type: 'project', id: message.projectId }, `${place}#message-${message.id}`, message.sequence === 1 ? place : undefined);
@@ -97,7 +97,7 @@ export function messageChangeRows(db: DbExecutor) {
     async editDm(message: { id: string; workspaceId: string; authorId: string }, body: string): Promise<Date> {
       await forgetSendAnswers(db, message);
       const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body }, { id: message.id });
-      const [updated] = await db.update(dm).set({ body: sealed.body, editedAt: sql`now()`, via: null }).where(eq(dm.id, message.id)).returning({ editedAt: dm.editedAt });
+      const [updated] = await db.update(dm).set({ body: sealed.body, editedAt: sql`now()`, via: null, viaColour: null }).where(eq(dm.id, message.id)).returning({ editedAt: dm.editedAt });
       return updated!.editedAt!;
     },
 
@@ -107,7 +107,7 @@ export function messageChangeRows(db: DbExecutor) {
       // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the marker, #1052).
       await forgetSendAnswers(db, message);
       const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
-      const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
+      const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, viaColour: null }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
       await forgetNotices(db, { type: 'dm', id: message.dmId }, `/dm/${message.dmId}#message-${message.id}`);
       return updated!.removedAt!;
     },

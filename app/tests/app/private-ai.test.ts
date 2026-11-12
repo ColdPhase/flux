@@ -11,7 +11,7 @@ import { echo, FakeCompute, FakeConnections, FakeQueue } from './support/persona
 import { StreamClient } from './support/stream.js';
 
 // `/ai` in every conversation, answered privately (#842, F-036 AG-4, C-12): a space's conversation and its threads, a direct message and the
-// private chat with an agent. The answer is its asker's alone; Show everyone posts it as the asker's own message, "Ada · via Assistant". What
+// private chat with an agent. The answer is its asker's alone; Show everyone posts it as the asker's message, "Ada's Assistant". What
 // the answer draws on is only what the place's audience can see; a DM's thread has the DM's people as its audience, and the model is given that
 // thread and nothing else (#1016). Fake compute: no provider pass is claimed.
 
@@ -82,7 +82,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
   const ask = (place: Parameters<typeof runs.invoke>[1], prompt = 'Summarise this', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(hubert), place, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
 
-  test('in a thread: the answer is the asker\'s alone, nobody learns of the run, and Show everyone posts it once as "Ada · via Assistant"', async () => {
+  test('in a thread: the answer is the asker\'s alone, nobody learns of the run, and Show everyone posts it once as "Ada\'s Assistant"', async () => {
     const live = await StreamClient.connect(kai.browser);
     await live.ready();
     const started = await ask(thread.id);
@@ -121,7 +121,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal(again.messageId, shown.messageId);
     const conversation = await get<Conversation>(kai, `/api/v1/conversations/${thread.id}`);
     const message = conversation.messages.find((item) => item.id === shown.messageId)!;
-    assert.deepEqual([message.authorId, message.via], [hubert.id, 'Assistant']);
+    assert.deepEqual([message.authorId, message.via, message.viaColour], [hubert.id, 'Assistant', 'ink'], 'the asker stays the author; the agent\'s name and colour label it (#1232)');
     assert.equal(conversation.messages.filter((item) => item.via).length, 1);
     assert.equal(message.body.includes('[1]'), false, 'citations point at the asker\'s card, not at a message');
     // A dismissed run, or one already shown, cannot be dismissed into nothing or shown again.
@@ -147,7 +147,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const after = await get<ConversationRootWindow>(kai, `/api/v1/projects/${lamp.id}/conversation-roots`);
     assert.equal(after.roots.length, roots + 1);
     const root = after.roots.find((item) => item.message.id === shown.messageId)!;
-    assert.deepEqual([root.message.authorId, root.message.via], [hubert.id, 'Assistant']);
+    assert.deepEqual([root.message.authorId, root.message.via, root.message.viaColour], [hubert.id, 'Assistant', 'ink']);
   });
 
   test('the brief tells the time in the asker\'s own zone and says when older messages were left out (#1064)', async () => {
@@ -207,7 +207,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const shown = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`), 200) as ShowAnswerResult;
     const view = await get<Dm>(kai, `/api/v1/dms/${dm.id}`);
     const message = view.messages.find((item) => item.id === shown.messageId)!;
-    assert.deepEqual([message.authorId, message.via], [hubert.id, 'Assistant']);
+    assert.deepEqual([message.authorId, message.via, message.viaColour], [hubert.id, 'Assistant', 'ink']);
     const hits = await pool.query(`SELECT 1 FROM search_documents WHERE doc_key = $1`, [`dm_message:${started.run.id}`]);
     assert.equal(hits.rowCount, 0, 'the line "used AI here" is not searchable');
   });
@@ -255,7 +255,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal(again.messageId, shown.messageId);
     const opened = await get<DmThread>(kai, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`);
     const message = opened.replies.find((item) => item.id === shown.messageId)!;
-    assert.deepEqual([message.authorId, message.via, message.threadRootId], [hubert.id, 'Assistant', dmRoot.id]);
+    assert.deepEqual([message.authorId, message.via, message.viaColour, message.threadRootId], [hubert.id, 'Assistant', 'ink', dmRoot.id]);
     assert.equal(opened.replies.length, repliesBefore + 1);
     assert.equal(opened.root.replyCount, repliesBefore + 1);
     assert.deepEqual((await get<Dm>(kai, `/api/v1/dms/${dm.id}`)).messages.map((item) => item.id), mainBefore, 'the DM\'s main line gained nothing');
@@ -406,12 +406,12 @@ describe('/ai everywhere, answered privately (#842)', () => {
 
   test('attack: nobody can label their own words "via Assistant", forge the line "used AI here", or post through someone else\'s answer', async () => {
     // The schemas drop what a message does not take (or refuse it): either way the words stay plain, and no label or line is made.
-    const labelled = await kai.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: 'Looks official', clientMessageId: randomUUID(), via: 'Assistant' } });
+    const labelled = await kai.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: 'Looks official', clientMessageId: randomUUID(), via: 'Assistant', viaColour: 'rose' } });
     assert.ok([201, 400].includes(labelled.status), labelled.text);
     const forged = await kai.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Claude', clientMessageId: randomUUID(), kind: 'ai_used', via: 'Assistant' } });
     assert.ok([201, 400].includes(forged.status), forged.text);
     const read = await get<Conversation>(hubert, `/api/v1/conversations/${thread.id}`);
-    assert.deepEqual(read.messages.filter((message) => message.body === 'Looks official').map((message) => message.via ?? null), labelled.status === 201 ? [null] : []);
+    assert.deepEqual(read.messages.filter((message) => message.body === 'Looks official').map((message) => [message.via ?? null, message.viaColour ?? null]), labelled.status === 201 ? [[null, null]] : [], 'no label, and no colour of an agent either');
     const dmView = await get<Dm>(hubert, `/api/v1/dms/${dm.id}`);
     assert.equal(dmView.messages.filter((message) => message.authorId === kai.id && (message.notice || message.via)).length, 0, 'no forged line or label');
     const started = await ask(thread.id, 'Something to show');

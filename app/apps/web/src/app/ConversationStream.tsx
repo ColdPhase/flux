@@ -16,7 +16,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -856,15 +856,19 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
     return pendingMessageRow({ place: 'stream', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
   const { root, project, owners, meId, messageWork, open, arrived, makeWork, onOpen, onDenied } = stored;
-  const mine = message.authorId === meId;
+  // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232): the left side, its face, its label.
+  const shown = shownAnswer(message);
+  const mine = message.authorId === meId && !shown;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`} tabIndex={-1} data-conversation-id={root.conversationId}
       className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${open ? ' is-open' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} /> : null}
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} {...(shown ? { hue: shown.colour } : {})} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
-        <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
-        <ViaTag via={message.via} />
+        {shown ? <ShownAnswerName shown={shown} asker={name} /> : <>
+          <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
+          <ViaTag via={message.via} />
+        </>}
       </div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>

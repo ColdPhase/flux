@@ -1145,7 +1145,7 @@ the composer. The right-hand phone above shows the sheet.
   - Only the owner approves, in their own session.
 - **`/ai`** in a conversation is answered privately by Assistant in a card marked "Only you can see
   this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
-  "Ada · via Assistant". A picture the agent attached (#1217) sits in the card under the answer
+  "Ada's Assistant" (below). A picture the agent attached (#1217) sits in the card under the answer
   exactly as a photo sits in a message (frameless, the same grid and viewer), with its change line
   under it, "Attached the picture Raised garden bed · Undo"; Show everyone posts it with the answer
   as an ordinary photo of the message. Under Ask me first it waits in the card like any change,
@@ -1201,6 +1201,30 @@ the composer. The right-hand phone above shows the sheet.
     before any words, the line says "Stopped. Nothing was posted." as before.
   - **Reduced motion** (either setting): no caret and no typing; the text shows a finished paragraph at a time. A
     dropped connection keeps what was shown and the answer replaces it when it is done.
+- **An answer shown to everyone is an agent's message** (#1232, founder decision, Hubert, 2026-11-12).
+  It reads the same for every reader, the person who pressed Show everyone included.
+  - **One label: "Hubert's Assistant".** The asker's first name and the agent's own name
+    ("Hubert's Planner" for another agent), in the name line where an agent's name stands. The
+    "Agent" tag follows it. There is no "via" text, no "for Hubert" and no quoted question.
+  - **The agent's face.** Its Kreska in its own colour (section 2) stands in the avatar column: 32 px
+    in a space's conversation, a thread and a direct message, 20 px in a task's discussion.
+  - **The agent's bubble, on the left.** It uses the style of an agent's own message, never the plain
+    own-message bubble on the right, so it is not taken for words the asker typed. This holds for the
+    asker, for another member, for a guest, in a thread, in a task's discussion and in a direct
+    message. The side follows what the message is, an agent's answer, and the asker stays its
+    author of record ([AG-4](../../product/assistant.md)): its time, Edit and Delete are theirs, and
+    an edited answer becomes their own words, with no label.
+  - **Earlier answers read the same.** An answer posted before this label existed has no stored colour:
+    it gets the same label and agent message, with the Kreska in the default ink (`--inv`).
+  - **The screen reader** reads the message as "Hubert's Assistant, shown by Hubert".
+  - **The private card says the same:** "Show everyone posts it as “Hubert's Assistant”".
+  - **Where only text fits** (notifications, search results, what an agent reads) the line stays
+    "Hubert · via Assistant": it names the person as the author.
+- **A web answer lists its sources once** (#1222, founder decision, Hubert, 2026-11-12). Flux's own
+  list under the answer, "Searched the web for" and "Found on the web", is the only list. The words of
+  the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
+  Flux lists, and citation marks that point at nothing Flux supplied (`[8]`, `[S2]`, `【3†source】`). A link
+  card is drawn only for an address the list does not already hold, so each address shows once.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

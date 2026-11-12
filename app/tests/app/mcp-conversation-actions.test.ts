@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { test } from 'node:test';
 import type { Conversation, ConversationMessage, Doc, TaskDiscussion } from '@flux/contracts';
 import { conversationUseCases, InvalidInputError } from '@flux/core';
@@ -112,6 +113,31 @@ test('conversation actions never post into a direct message, a private map, some
 
   assert.deepEqual([await dmMessages(), await messages(a.id), await messages(b.id), await messages(hidden.id)], [1, 2, 1, 1]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE project_id=$1 AND via IS NOT NULL', [f.projectId])).rows[0].n, 2, 'the two posts are the owner\'s, marked via the client');
+});
+
+test('#1232: a message shown with Show everyone before the label existed (a name in `via`, no colour) is backfilled as an agent answer in ink; a local client\'s post is not', async () => {
+  const f = await actionScene(pool);
+  const started = toolValue(await f.tool('flux_start_conversation', { ...command(f.projectId, f), message: { body: 'Posted by the client' } }));
+  const conversationId = String(started.conversationId);
+  const sent = expect(await f.owner.request('POST', `/api/v1/conversations/${conversationId}/messages`, { body: { body: 'An answer shown before the label', clientMessageId: randomUUID() } }), 201);
+  await pool.query('UPDATE project_messages SET via = $2 WHERE id = $1', [String(sent.id), 'Assistant']);
+  const clientRow = (await pool.query('SELECT id FROM project_messages WHERE conversation_id = $1 AND via IS NOT NULL AND id <> $2', [conversationId, String(sent.id)])).rows[0] as { id: string };
+  // The migration's own statements, run on this data and then rolled back: nothing else a test left is changed.
+  const sql = (await readFile('packages/db/migrations/0059_message_via_colour.sql', 'utf8')).split('\n').filter((line) => !line.trim().startsWith('--')).join('\n');
+  const statements = sql.split(';').map((statement) => statement.trim()).filter((statement) => /^UPDATE/i.test(statement));
+  assert.equal(statements.length, 2);
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    for (const statement of statements) await client.query(statement);
+    const rows = (await client.query('SELECT id, via, via_colour FROM project_messages WHERE id = ANY($1)', [[String(sent.id), clientRow.id]])).rows as { id: string; via: string; via_colour: string | null }[];
+    assert.deepEqual(rows.map((row) => [row.id === clientRow.id ? 'client' : 'answer', row.via, row.via_colour]).sort(), [['answer', 'Assistant', 'ink'], ['client', 'Test client', null]]);
+  } finally {
+    await client.query('ROLLBACK');
+    client.release();
+  }
+  const after = await read(f, conversationId);
+  assert.deepEqual(after.messages.map((item) => [item.via ?? null, item.viaColour ?? null]), [['Test client', null], ['Assistant', null]], 'rolled back: nothing a test left changed');
 });
 
 test('two owners and three connections stay isolated: grants, receipts, targets and revocation never cross', async () => {

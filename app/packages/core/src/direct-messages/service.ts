@@ -3,6 +3,7 @@ import {
   DM_LIMITS,
   RECEIPT_LIMITS,
   WORK_LIMITS,
+  type AgentColour,
   type DmMessage,
   type SentDmMessage,
   type DmTaskCopyCommand,
@@ -113,7 +114,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
-    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
+    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via, ...(record.viaColour ? { viaColour: record.viaColour } : {}) } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
     ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
 
@@ -197,7 +198,7 @@ async function taskCopyPreview(ports: DmPorts, principal: Principal, dm: DmRecor
 }
 
 export function createDmUseCases(uow: DmUnitOfWork) {
-  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand, via: string | null = null): Promise<SentDmMessage> {
+  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand, via: string | null = null, viaColour: AgentColour | null = null): Promise<SentDmMessage> {
     const authorId = person(principal);
     if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
       throw new RuleViolationError('Direct messages cannot cite space material yet', 'DM_SOURCE_UNSUPPORTED');
@@ -228,7 +229,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       await ports.references.assertReadable(principal, dm.workspaceId, input.references);
       const message = await ports.dms.appendMessage({
         id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
-        clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId, via,
+        clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId, via, viaColour: via ? viaColour : null,
       });
       await ports.references.save(message.id, dm.workspaceId, input.references);
       // The message id (an identifier, never content) lets notifications (#116) name the message.
@@ -359,13 +360,13 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     },
 
     /** Show everyone in a DM (#842): the person posts an agent's answer as their message, "Ada · via Assistant". Only the server calls it, from the answer itself. */
-    async sendVia(principal: Principal, dmId: string, command: SendDmMessageCommand, via: string): Promise<SentDmMessage> {
-      return sendMessage(principal, dmId, null, command, via);
+    async sendVia(principal: Principal, dmId: string, command: SendDmMessageCommand, via: string, viaColour?: AgentColour): Promise<SentDmMessage> {
+      return sendMessage(principal, dmId, null, command, via, viaColour ?? null);
     },
 
     /** Show everyone in a DM's thread (#1016): the asker's reply in that thread, "Ada · via Assistant". Only the server calls it, from the answer itself. */
-    async replyVia(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand, via: string): Promise<SentDmMessage> {
-      return sendMessage(principal, dmId, validRoot(rootId), command, via);
+    async replyVia(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand, via: string, viaColour?: AgentColour): Promise<SentDmMessage> {
+      return sendMessage(principal, dmId, validRoot(rootId), command, via, viaColour ?? null);
     },
 
     /**

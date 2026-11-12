@@ -343,6 +343,14 @@ describe('addresses taken from a message', () => {
     assert.deepEqual(messageLinkUrls(`${'https://long.example/'}${'a'.repeat(2100)}`), [], 'longer than 2048 characters');
     assert.deepEqual(messageLinkUrls('no addresses, just example.org and mailto:a@b.c'), []);
   });
+
+  test('an address that Flux\'s own list under an agent\'s answer holds gets no card: each address shows once (#1222)', () => {
+    const list = 'Searched the web for:\n- harbour\nFound on the web:\n- https://a.example/x\nRead on the web:\n- https://b.example/y';
+    assert.deepEqual(messageLinkUrls(`See https://a.example/x#top and https://c.example/z.\n\n${list}`), ['https://c.example/z'], 'the list\'s addresses, with or without a fragment, and none from the list itself');
+    assert.deepEqual(messageLinkUrls(`Answer.\n\n${list}`), [], 'an answer whose addresses are all in the list has no card');
+    // Only the block Flux appends counts: the same lines in a person's own message, or not last, are words like any other.
+    assert.deepEqual(messageLinkUrls(`Found on the web:\n- https://a.example/x\n\nand then https://d.example`), ['https://a.example/x', 'https://d.example']);
+  });
 });
 
 describe('the cache and the rate', () => {

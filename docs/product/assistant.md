@@ -194,7 +194,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 - **`/ai` everywhere.** In every conversation the person can write in (a space's conversation,
   threads, a task's thread and DMs), `/ai` asks their Assistant. Only the asker sees the answer, as
   a card in the conversation with Dismiss and Show everyone. Show everyone posts it as the asker's
-  own message, attributed "Ada · via Assistant". The agent may use the conversation as context, for
+  message (they stay its author), labelled "Ada's Assistant" (their first name and the agent's own name)
+  with the agent's Kreska, in the agent's message style, for every reader including the asker (#1232,
+  [the design](../design/final/README.md)). The agent may use the conversation as context, for
   example to summarise it. A guest has no `/ai`. The places, what each may use and what Show everyone
   posts are [C-36 to C-40](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
 - **Who wrote what.** Every message an agent reads names its author as people see them: a person
@@ -360,7 +362,7 @@ the Claude Code and Codex engines manage their own context. A test shows that we
 happens when a page tells an agent to send what it read to a site (#918, #953, #1065). The server reads the page, not the agent's
 process, so the runtime's egress stays closed to the web ([network](ai-modes.md#rt-4--network)); the run lists every address the
 server asked for, those that failed too, in Flux's own words, written down before each request goes out, and its searches and the
-addresses its answer cites: under its answer, or in its end line when it ends without one. Reading and searching are on by default; the operator turns both
+addresses its answer cites: under its answer, or in its end line when it ends without one. That list is the only one (#1222): citation marks the model invented and its own "Sources:" block of the same addresses are not stored, and a link card shows only an address the list does not hold. Reading and searching are on by default; the operator turns both
 off with `FLUX_WEB_READS=off` ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A
 local client reads and searches the web with its own tools and does not get the tool
 ([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web)). Another person's task title that becomes a run's request is the same kind of input: data, never an

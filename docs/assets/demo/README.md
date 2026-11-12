@@ -7,7 +7,7 @@ running application, not from the prototype or a mockup:
 2. **The space.** She opens *Community garden sensors*, where Basia and Jonas asked her something.
 3. **An agent.** She types `/ai` and asks what the space settled on for the first sensors. Her Assistant works
    ("Only you see this", with Stop), then answers with numbered sources from the space; only she sees it. **Show everyone**
-   posts the answer as her own message, marked "via Assistant".
+   posts the answer as an agent message, "Ada's Assistant".
 4. **A task.** One action on that message (**Create task**) makes a task from it; it appears under the message. The Create
    window it opens is not drawn in the GIF (see the size note below); the toast and the panel beside it are closed again.
 5. **Tasks, Map and Wiki.** The Tasks board has the new task with the others; the Map shows the space's connected thoughts;

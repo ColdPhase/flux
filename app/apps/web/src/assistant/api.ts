@@ -33,7 +33,7 @@ export const getRun = (runId: string, signal?: AbortSignal) => request<Assistant
 export const listPlaceRuns = (place: AskPlace, options: { limit?: number; offset?: number } = {}, signal?: AbortSignal) =>
   request<Page<AssistantRun>>(`${ASSISTANT_RUNS_PATH}?${placeQuery(place)}&limit=${options.limit ?? 20}&offset=${options.offset ?? 0}`, { signal });
 export const listOwnRuns = (signal?: AbortSignal) => request<Page<AssistantRun>>(`${ASSISTANT_RUNS_PATH}?limit=10`, { signal });
-/** Show everyone: the answer becomes the asker's own message, "Ada · via Assistant" (#842). */
+/** Show everyone: the answer becomes the asker's message, "Ada's Assistant" (#842, #1232). */
 export const showAnswer = (runId: string) => request<ShowAnswerResult>(assistantRunShowPath(runId), { method: 'POST' });
 /** Dismiss: puts an answer, or the line of a run that ended, away (#842). */
 export const dismissAnswer = (runId: string) => request<AssistantRun>(assistantRunDismissPath(runId), { method: 'POST' });

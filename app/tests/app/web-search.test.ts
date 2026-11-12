@@ -278,6 +278,18 @@ describe('the review of #1073: only what the search returned, a refused search, 
     assert.ok(body.endsWith(`Searched the web for:\n- harbour\nFound on the web:\n- ${PAGE}`), body);
   });
 
+  test('#1222: the stored answer has none of the model\'s own marks and no "Sources:" block repeating Flux\'s list, so each address is listed once', async () => {
+    const replies: PersonalComputeResult[] = [
+      { kind: 'completed', text: `The last boat leaves at 17:40 [8]【3†source】.\n\nSources:\n- Harbour & Co, "timetable": ${PAGE}`, stopReason: 'end_turn', usage: { ...usage, webSearches: 1 },
+        webSearch: { queries: [SEARCH.query], results: [PAGE], cited: [PAGE] } },
+    ];
+    scene.compute.respond = async () => replies.shift()!;
+    const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'When is the last boat?' });
+    assert.equal(await scene.processor.process(started.run.id), 'completed');
+    const body = (await pool.query(`SELECT answer_body FROM personal_runs WHERE id = $1`, [started.run.id])).rows[0].answer_body as string;
+    assert.equal(body, `The last boat leaves at 17:40.\n\nSearched the web for:\n- ${SEARCH.query}\nFound on the web:\n- ${PAGE}`);
+  });
+
   test('input: Anthropic\'s encrypted search results are not counted byte for byte, so a run that searched a few times goes on; a request that offers search has room for their results', async () => {
     const blob = 'x'.repeat(40_000);
     const replay = [

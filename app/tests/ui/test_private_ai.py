@@ -5,7 +5,7 @@ real worker sends runs through the real Anthropic adapter to `tests/ui/anthropic
 billing or compatibility pass.
 
 Three people share a space: Jo (owns the assistant), Kai (contributor) and Lee (a guest of the company). Jo asks in the space's main conversation, in a
-thread, in a direct message with Kai and in the task's thread; the answer is Jo's alone until Show everyone posts it as "Jo Weber · via Assistant".
+thread, in a direct message with Kai and in the task's thread; the answer is Jo's alone until Show everyone posts it as "Jo's Assistant" (#1232).
 Jo's agent also has a private chat with a box to write in. Each case is checked on what the others do not see.
 """
 
@@ -119,6 +119,20 @@ class PrivateAiJourney(unittest.TestCase):
     def private_card(self, page: Page):
         return page.locator(".assistant-private")
 
+    def agent_answer(self, posted, label: str = "Jo's Assistant", spoken: str = "Jo's Assistant, shown by Jo") -> None:
+        """An answer shown to everyone is the agent's message for every reader, the asker included (#1232): its label, its Kreska in the agent's
+        colour, the "Agent" tag, and never the asker's own right-hand bubble; a screen reader hears whose it is and who showed it."""
+        expect(posted).to_be_visible(timeout=15000)
+        expect(posted).to_have_attribute("data-shown-answer", "")
+        expect(posted).to_have_attribute("aria-label", spoken)
+        expect(posted).not_to_have_class(re.compile(r"\bis-mine\b"))
+        who = posted.locator(".project-convo__message-meta, .dm-msg__meta, .wd-act__who, .thread__root-meta").first
+        expect(who).to_contain_text(label)
+        expect(who.locator(".agent-tag")).to_have_text("Agent")
+        expect(who).not_to_contain_text("via")
+        expect(posted.locator(".kreska--ink").first).to_be_visible()
+        expect(posted).not_to_contain_text("via Assistant")
+
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
@@ -176,7 +190,7 @@ class PrivateAiJourney(unittest.TestCase):
         expect(card).to_contain_text("Only you can see this")
         expect(card).to_contain_text("You asked: /ai summarise what we decided about the network")
         expect(card).to_contain_text("far beds will use LoRa")
-        expect(card).to_contain_text("Kai and Lee don’t see this. Show everyone posts it as “Jo · via Assistant”.")
+        expect(card).to_contain_text("Kai and Lee don’t see this. Show everyone posts it as “Jo's Assistant”.")
         shot(jo, "private-ai-1440-main-conversation")
         expect(self.private_card(kai)).to_have_count(0)
         self.assertNotIn("far beds will use LoRa because Wi-Fi drops when the hedge is wet [", kai.locator("body").inner_text(), "the others do not see the answer")
@@ -185,18 +199,19 @@ class PrivateAiJourney(unittest.TestCase):
         self.assertEqual(len(sent), 1)
         self.assertIn(OPENING, json.dumps(sent[0]["body"]))
         self.assertNotIn(DM_TOKEN, json.dumps(sent[0]["body"]))
-        # Show everyone: the card goes, the answer is Jo's own message for the others, naming the agent.
+        # Show everyone: the card goes, the answer is Jo's message for the others, "Jo's Assistant", an agent's message (#1232).
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
         posted = kai.locator(".project-convo__message").filter(has_text="far beds will use LoRa")
-        expect(posted).to_be_visible(timeout=15000)
-        expect(posted).to_contain_text("Jo Weber")
-        expect(posted).to_contain_text("via Assistant")
+        self.agent_answer(posted)
         expect(posted).not_to_contain_text("Source")
-        # It stays gone after a reload: it was posted, not kept.
+        # It stays gone after a reload: it was posted, not kept. Jo reads the same agent's message, not her own bubble on the right.
         jo.reload()
-        expect(jo.locator(".project-convo__message").filter(has_text="far beds will use LoRa")).to_be_visible()
+        self.agent_answer(jo.locator(".project-convo__message").filter(has_text="far beds will use LoRa"))
         expect(self.private_card(jo)).to_have_count(0)
+        # A guest of the company reads it the same way.
+        lee = self.space("lee")
+        self.agent_answer(lee.locator(".project-convo__message").filter(has_text="far beds will use LoRa"))
 
     def test_02b_an_answer_that_searched_the_web_lists_what_it_searched_and_the_page_it_cites(self) -> None:
         """#954: the provider's own web search is on by default; Flux lists the search and the cited address under the answer, in its own words."""
@@ -248,8 +263,8 @@ class PrivateAiJourney(unittest.TestCase):
         expect(self.private_card(jo)).to_be_visible(timeout=20000)
         self.private_card(jo).get_by_role("button", name="Show everyone").click()
         posted = kai.locator(".project-convo__message").filter(has_text="hedge is the reason").last
-        expect(posted).to_be_visible(timeout=15000)
-        expect(posted).to_contain_text("via Assistant")
+        self.agent_answer(posted)
+        self.agent_answer(jo.locator(".project-convo__message").filter(has_text="hedge is the reason").last)
 
     # ---------------------------------------------------------------- a direct message
 
@@ -367,8 +382,8 @@ class PrivateAiJourney(unittest.TestCase):
         card.get_by_role("button", name="Show everyone").click()
         expect(card).to_have_count(0)
         posted = kai.locator(".dm-msg").filter(has_text="you two agreed to meet on Thursday")
-        expect(posted).to_be_visible(timeout=15000)
-        expect(posted).to_contain_text("via Assistant")
+        self.agent_answer(posted)
+        self.agent_answer(jo.locator(".dm-msg").filter(has_text="you two agreed to meet on Thursday"))
         # The line is no message: the list shows the last words, not "Claude".
         kai.goto("/dm")
         expect(kai.get_by_text("you two agreed to meet on Thursday").first).to_be_visible()
@@ -401,7 +416,7 @@ class PrivateAiJourney(unittest.TestCase):
         expect(card).to_be_visible(timeout=20000)
         expect(card).to_contain_text("Only you can see this")
         expect(card).to_contain_text("settled on Thursday")
-        expect(card).to_contain_text("Kai doesn’t see this. Show everyone posts it as “Jo · via Assistant”.")
+        expect(card).to_contain_text("Kai doesn’t see this. Show everyone posts it as “Jo's Assistant”.")
         expect(jo.locator("#dm-thread-composer")).to_have_value("")
         expect(jo.locator(".dm__feed .assistant-private")).to_have_count(0)
         expect(kai.locator(".assistant-private")).to_have_count(0)
@@ -419,12 +434,12 @@ class PrivateAiJourney(unittest.TestCase):
         # A reload keeps the card for its asker.
         jo.reload()
         expect(jo.locator(".dm-thread .assistant-private")).to_be_visible(timeout=15000)
-        # Show everyone: Jo's reply in the thread, "via Assistant", not a message of the conversation.
+        # Show everyone: Jo's reply in the thread, "Jo's Assistant", not a message of the conversation.
         jo.locator(".dm-thread .assistant-private").get_by_role("button", name="Show everyone").click()
         expect(jo.locator(".dm-thread .assistant-private")).to_have_count(0)
         posted = kai.locator(".dm-thread .dm-msg").filter(has_text="settled on Thursday for the planting")
-        expect(posted).to_be_visible(timeout=15000)
-        expect(posted).to_contain_text("via Assistant")
+        self.agent_answer(posted)
+        self.agent_answer(jo.locator(".dm-thread .dm-msg").filter(has_text="settled on Thursday for the planting"))
         expect(kai.locator(".dm__feed").get_by_text("settled on Thursday for the planting")).to_have_count(0)
         thread = self.api(kai, "GET", f"/api/v1/dms/{self.ids['dm']}/threads/{root['id']}", status=200)
         self.assertEqual([(message["authorId"], message.get("via")) for message in thread["replies"] if message.get("via")], [(JO["id"], "Assistant")])
@@ -452,13 +467,13 @@ class PrivateAiJourney(unittest.TestCase):
                 posted = kai.locator(".dm-msg").filter(has_text=words)
                 expect(posted).to_be_visible(timeout=15000)
                 expect(posted).not_to_have_class(re.compile(r"dm-msg--cont"))
-                expect(posted.locator(".dm-msg__meta")).to_contain_text("Jo Weber")
-                expect(posted.locator(".dm-msg__via")).to_have_text("via Assistant")
+                self.agent_answer(posted)
                 shot(kai, f"private-ai-{size}-dm-answer-after-own-message")
-                mine = jo.locator(".dm-msg.is-mine").filter(has_text=words)
-                expect(mine.locator(".dm-msg__via")).to_have_text("via Assistant")
+                # Jo reads it as her agent's message, on the left under its label, not as one more bubble of her own (#1232).
+                mine = jo.locator(".dm-msg").filter(has_text=words)
+                self.agent_answer(mine)
                 if phone:
-                    self.assertFalse(self.overlap(mine.locator(".dm-msg__via").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
+                    self.assertFalse(self.overlap(mine.locator(".dm-msg__meta").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
                     shot(jo, f"private-ai-{size}-dm-answer-after-own-message-jo")
                 # The list names the mark before the words: it is an answer, not something Jo typed.
                 kai.goto("/dm")
@@ -487,13 +502,12 @@ class PrivateAiJourney(unittest.TestCase):
                 posted = kai.locator(".dm-thread .dm-msg").filter(has_text=words)
                 expect(posted).to_be_visible(timeout=15000)
                 expect(posted).not_to_have_class(re.compile(r"dm-msg--cont"))
-                expect(posted.locator(".dm-msg__meta")).to_contain_text("Jo Weber")
-                expect(posted.locator(".dm-msg__via")).to_have_text("via Assistant")
+                self.agent_answer(posted)
                 shot(kai, f"private-ai-{size}-dm-thread-answer-after-own-reply")
-                mine = jo.locator(".dm-thread .dm-msg.is-mine").filter(has_text=words)
-                expect(mine.locator(".dm-msg__via")).to_have_text("via Assistant")
+                mine = jo.locator(".dm-thread .dm-msg").filter(has_text=words)
+                self.agent_answer(mine)
                 if phone:
-                    self.assertFalse(self.overlap(mine.locator(".dm-msg__via").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
+                    self.assertFalse(self.overlap(mine.locator(".dm-msg__meta").bounding_box(), mine.locator(".msg-touch__sr").bounding_box()), "Jo's ⋯ is not over her label")
                     shot(jo, f"private-ai-{size}-dm-thread-answer-after-own-reply-jo")
 
     # ---------------------------------------------------------------- the task's thread
@@ -515,7 +529,33 @@ class PrivateAiJourney(unittest.TestCase):
         talk = self.api(jo, "GET", f"/api/v1/work/{self.ids['work']}/discussion", status=200)
         posted = [message for message in [talk["root"], *talk["messages"]] if message and message.get("via")]
         self.assertEqual([(message["authorId"], message["via"]) for message in posted], [(JO["id"], "Assistant")])
-        expect(jo.locator("#details .wd-act__item").filter(has_text="six probes are ordered")).to_contain_text("via Assistant")
+        self.agent_answer(jo.locator("#details .wd-act__item").filter(has_text="six probes are ordered"))
+
+    def test_05b_a_shown_answer_is_the_agents_message_for_the_asker_a_member_and_a_guest_on_both_devices_in_light_and_dark(self) -> None:
+        # #1232: "Jo's Assistant", its Kreska in the agent's colour and the Agent tag, the agent's bubble on the left: for the asker too, for another
+        # member, for a guest of the company, in the stream, as a thread's opening message and as a reply in a thread.
+        words = "far beds will use LoRa"
+        roots = self.api(self.page("jo"), "GET", f"/api/v1/projects/{self.ids['project']}/conversation-roots", status=200)["roots"]
+        shown_root = next(root for root in roots if root["message"].get("via") and words in root["message"]["body"])
+        self.assertEqual([shown_root["message"]["authorId"], shown_root["message"]["via"], shown_root["message"]["viaColour"]], [JO["id"], "Assistant", "ink"])
+        for dark in (False, True):
+            for phone, size in ((False, "1440"), (True, "390")):
+                with self.subTest(dark=dark, size=size):
+                    theme = "dark" if dark else "light"
+                    for who, role in (("jo", "asker"), ("kai", "member"), ("lee", "guest")):
+                        page = self.space(who, phone=phone, dark=dark)
+                        posted = page.locator(".project-convo__message").filter(has_text=words)
+                        self.agent_answer(posted)
+                        self.no_horizontal_scroll(page)
+                        shot(page, f"shown-answer-{size}-{theme}-{role}-stream")
+                        page.goto(f"/projects/{self.ids['project']}/conversations/{shown_root['conversationId']}")
+                        self.agent_answer(page.locator(".thread__root").filter(has_text=words))
+                        self.no_horizontal_scroll(page)
+                        shot(page, f"shown-answer-{size}-{theme}-{role}-thread-root")
+                    page = self.thread("jo", phone=phone, dark=dark)
+                    reply = page.locator(".project-convo__message").filter(has_text="hedge is the reason").last
+                    self.agent_answer(reply)
+                    shot(page, f"shown-answer-{size}-{theme}-asker-thread-reply")
 
     # ---------------------------------------------------------------- a guest
 

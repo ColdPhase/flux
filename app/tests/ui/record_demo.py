@@ -4,7 +4,7 @@ Not a test: scripts/record_demo.sh seeds the `./flux demo` data (scripts/flux-de
 Playwright container, against the TEST-ONLY provider mock (nothing here calls a model). It first makes the scene the media show
 (media_scene.py: the company, Ada's agents, a day of conversation, tasks, decisions, the Map and the Wiki), then Ada Kowalska walks the
 v0.2 journey in one real browser: what waits for her on Home, the question that opens the space's conversation, `/ai` asked there and the
-answer shared with Show everyone ("via Assistant"), a task made from that message, the Tasks board, the Map and the Wiki. Every frame is a
+answer shared with Show everyone ("Ada's Assistant"), a task made from that message, the Tasks board, the Map and the Wiki. Every frame is a
 Playwright screenshot of the real app; only a pointer is drawn on top so the viewer can follow the clicks. The frames become one looping GIF
 with Pillow.
 
@@ -126,7 +126,7 @@ def journey(page: Page, rec: Recorder) -> None:
     expect(messages.filter(has_text="volunteer rota").first).to_be_visible()
     rec.hold(2200)
 
-    # 3. `/ai` asks Ada's Assistant, which answers only to her; Show everyone posts the answer as hers, "via Assistant".
+    # 3. `/ai` asks Ada's Assistant, which answers only to her; Show everyone posts the answer as "Ada's Assistant".
     mock("/__script", {"reset": True, "text": ANSWER, "output_tokens": 180})
     composer = page.locator("#project-composer")
     rec.type(composer, f"/ai {ASK}")

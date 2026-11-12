@@ -348,6 +348,16 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
         + `Searched the web for:\n- ${query}\nRead on the web:\n- ${at('/read/timetable')}\n- ${at('/read/second')}`);
     });
 
+    test('the stored answer has no mark the model invented and no "Źródła:" block of its own: Flux\'s list is the only one (#1222)', async () => {
+      await script({ calls: [
+        { name: 'web_search', args: { query: 'harbour notes' }, results: [{ title: 'Notes', url: at('/read/notes') }] },
+      ], answer: `Notes are published weekly [8]【3†source】, see ${at('/read/notes')}.\n\nŹródła:\n[1] Notes: ${at('/read/notes')}` });
+      const started = await ask('What do the harbour notes say?');
+      assert.equal(await processor.process(started.run.id), 'completed');
+      const body = String((await row(started.run.id)).answer_body);
+      assert.equal(body, `Notes are published weekly, see ${at('/read/notes')}.\n\nSearched the web for:\n- harbour notes\nFound on the web:\n- ${at('/read/notes')}`);
+    });
+
     test('structured results, when the item carries them, are recorded: search result entries only, never a page the model opened', async () => {
       await script({ calls: [
         { name: 'web_search', args: { query: 'harbour notes' }, results: [{ title: 'Notes', url: at('/read/notes') }],

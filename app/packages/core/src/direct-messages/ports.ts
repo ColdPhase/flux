@@ -1,4 +1,4 @@
-import type { DmKind, DmPerson, MessageReference, PageQuery, DmTaskCopyPerson, WorkItem } from '@flux/contracts';
+import type { AgentColour, DmKind, DmPerson, MessageReference, PageQuery, DmTaskCopyPerson, WorkItem } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -45,6 +45,8 @@ export interface DmMessageRecord {
   removedAt: Date | null;
   /** The agent whose answer the author posted with Show everyone; null for a message they wrote. */
   via: string | null;
+  /** That agent's colour (#1232); null when there is none. */
+  viaColour?: AgentColour | null;
   /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation. */
   kind: 'text' | 'ai_used';
 }
@@ -85,6 +87,7 @@ export interface NewDmMessage {
   body: string;
   threadRootId?: string | null;
   via?: string | null;
+  viaColour?: AgentColour | null;
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link DmAccess}). */

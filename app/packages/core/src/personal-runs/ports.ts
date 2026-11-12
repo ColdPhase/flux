@@ -36,7 +36,7 @@ export interface EnablementRecord {
 }
 
 /** What a run tells the model besides the request (F-036 AG-1): the agent's name, saved instructions and the items its owner asked it to remember. */
-export interface AgentBrief { name: string; instructions: string; memory: string[] }
+export interface AgentBrief { name: string; instructions: string; memory: string[]; /** The agent's colour (AG-1); Show everyone keeps it on the posted message (#1232). */ colour?: AgentColour }
 
 /** Today's use of one API key's daily budget (#854), by everything that runs on it. */
 export interface KeySpend { budgetCents: number; chargedMicros: number; reservedMicros: number; resetsAt: Date }

@@ -110,7 +110,7 @@ The points of #851, with the later answers applied (point 11 comes from #868):
    is **Assistant** and answers `/ai`. More can be added, such as Planner or Reviewer (#857).
 4. **Talking to your agents.** Each agent is a private conversation in Messages, with Assistant
    pinned first. `/ai` works in every conversation and is answered privately; Show everyone
-   posts the answer as "Ada · via Assistant" (#842).
+   posts the answer as "Ada's Assistant" (#842, #1232).
    - **What `/ai` may use.** Inside a conversation, only what that conversation's audience can
      see, so Show everyone never publishes anything private ([coordinator default C-12](#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). In a private conversation
      with your own agent, the agent can use anything you can see. The agent's instructions and

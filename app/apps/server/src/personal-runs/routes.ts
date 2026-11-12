@@ -214,21 +214,21 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       return run;
     }, replay: ownState,
   }));
-  // Show everyone (F-036 AG-4): the answer becomes its asker's own message in the place they asked in, "Ada · via Assistant". It is posted
+  // Show everyone (F-036 AG-4): the answer becomes its asker's message in the place they asked in, labelled "Ada's Assistant" (#1232). It is posted
   // under the run's id, so a retry posts it once. Nothing reads another person's run: the run is the caller's own or it is not found.
   app.post<{ Params: { runId: string } }>(assistantRunShowPath(':runId'), async (request, reply) => command(request, reply, {
     operation: `POST ${assistantRunShowPath(':runId')}`, scope: 'account',
     run: async (actor, conn): Promise<ShowAnswerResult> => {
       const uses = personalRunUseCases(conn, composition);
-      const { run, place, body, via } = await uses.planShow(actor, request.params.runId);
+      const { run, place, body, via, viaColour } = await uses.planShow(actor, request.params.runId);
       // The pictures its agent attached go with it (#1217, C-59), as the asker's own attachments: in a space only (a DM carries no files).
       const pictures = place.kind === 'space' ? await answerPictureIds(conn as unknown as DbExecutor, run.id, run.answer!.askedBy.id) : [];
       const message = { body, clientMessageId: run.id, ...(pictures.length ? { attachmentIds: pictures } : {}) };
       let messageId: string;
-      if (place.kind === 'dm') messageId = (place.threadRootId !== null ? await dmUseCases(conn).replyVia(actor, place.dmId, place.threadRootId, message, via)
-        : await dmUseCases(conn).sendVia(actor, place.dmId, message, via)).id;
-      else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn, { storage })).sendMessage(actor, place.conversationId, message, via)).id;
-      else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn, { storage })).createConversation(actor, place.projectId, message, via)).messages[0]!.id;
+      if (place.kind === 'dm') messageId = (place.threadRootId !== null ? await dmUseCases(conn).replyVia(actor, place.dmId, place.threadRootId, message, via, viaColour)
+        : await dmUseCases(conn).sendVia(actor, place.dmId, message, via, viaColour)).id;
+      else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn, { storage })).sendMessage(actor, place.conversationId, message, via, viaColour)).id;
+      else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn, { storage })).createConversation(actor, place.projectId, message, via, viaColour)).messages[0]!.id;
       else throw new InvalidInputError('A private chat has nobody to show it to');
       // A picture still waiting for its OK can no longer join the posted answer (#1217): it is closed, and the run's kept private text goes.
       await assistantChangeRows(conn as unknown as DbExecutor).closeWaitingPictures(run.id, 'The answer was shown to everyone before this picture was approved');

@@ -61,7 +61,7 @@ function message(row: MessageRow & { files?: import('@flux/contracts').MessageFi
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(row.via ? { via: row.via } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : row.editedAt ? { editedAt: row.editedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
+    ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(row.via ? { via: row.via, ...(row.viaColour ? { viaColour: row.viaColour } : {}) } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : row.editedAt ? { editedAt: row.editedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
     ...(row.references?.length ? { references: row.references } : {}) };
 }
 
