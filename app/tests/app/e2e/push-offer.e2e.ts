@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import http from 'node:http';
 import net from 'node:net';
 import { after, before, test } from 'node:test';
-import { chromium, devices, type Browser, type BrowserContext, type Page } from 'playwright';
+import { chromium, devices, webkit, type Browser, type BrowserContext, type Page } from 'playwright';
 import type { PushSubscriptionSummary } from '@flux/contracts';
 import { addMember, expectStatus, password, person, workspace, type Person } from '../support/people.js';
 import { recordedPushes, testSubscription, waitFor, type TestSubscription } from '../support/push.js';
@@ -17,6 +17,9 @@ import { recordedPushes, testSubscription, waitFor, type TestSubscription } from
  * observed 2026-10-10, and its push service is outside this network); the page, the API, the worker and the push mock are real.
  */
 const origin = process.env.FLUX_PUBLIC_ORIGIN!;
+/** FLUX_E2E_BROWSER=webkit runs the iPhone lane in WebKit (the engine of Safari); the push and Android cases are Chromium's. */
+const inWebKit = process.env.FLUX_E2E_BROWSER === 'webkit';
+const chromiumOnly = inWebKit ? 'Chromium only: the push stub, the push mock and Android' : false;
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const proxy = http.createServer((request, response) => {
   const forward = http.request({ host: upstream.hostname, port: upstream.port || 80, method: request.method, path: request.url, headers: request.headers }, (answer) => {
@@ -92,7 +95,7 @@ async function pair(label: string) {
 }
 
 async function withBrowser(work: (browser: Browser) => Promise<void>) {
-  const browser = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
+  const browser = inWebKit ? await webkit.launch({ headless: true }) : await chromium.launch({ headless: true, args: ['--no-sandbox'] });
   try { await work(browser); } finally { await browser.close(); }
 }
 
@@ -107,7 +110,7 @@ async function home(context: BrowserContext, someone: Person) {
 
 const offer = (page: Page) => page.locator('section.push-offer');
 
-test('after the first direct message Home offers once; Turn on asks from the tap and a push reaches this device in the background', async () => {
+test('after the first direct message Home offers once; Turn on asks from the tap and a push reaches this device in the background', { skip: chromiumOnly }, async () => {
   await withBrowser(async (browser) => {
     const { ada, write } = await pair('Offer');
     const subscription = testSubscription('push');
@@ -146,7 +149,7 @@ test('after the first direct message Home offers once; Turn on asks from the tap
   });
 });
 
-test('Not now is remembered for 14 days, and Block shows how to allow notifications again', async () => {
+test('Not now is remembered for 14 days, and Block shows how to allow notifications again', { skip: chromiumOnly }, async () => {
   await withBrowser(async (browser) => {
     const { ada, write } = await pair('Later');
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: 'en-GB', serviceWorkers: 'allow' });
@@ -187,8 +190,21 @@ test('an iPhone in Safari is shown the Add to Home Screen steps first; Android g
     const steps = await card.locator('ol li').allInnerTexts();
     assert.deepEqual(steps, ['Tap Share, then Add to Home Screen.', 'Open Flux from your Home Screen.', 'Turn notifications on there.']);
     assert.equal(await card.getByRole('button', { name: 'Turn on' }).count(), 0, 'nothing to turn on in a Safari tab');
-    if (process.env.FLUX_E2E_EVIDENCE_DIR) await phone.screenshot({ path: `${process.env.FLUX_E2E_EVIDENCE_DIR}/push-offer-iphone-390.png`, fullPage: true });
+    await card.getByRole('button', { name: 'Not now' }).scrollIntoViewIfNeeded();
+    if (process.env.FLUX_E2E_EVIDENCE_DIR) await card.screenshot({ path: `${process.env.FLUX_E2E_EVIDENCE_DIR}/push-offer-iphone-390-${inWebKit ? 'webkit' : 'chromium'}.png` });
     await iphone.close();
+
+    // A server that cannot push: no steps, since the installed app could not be notified either (#763 SG-3).
+    const unpushable = await browser.newContext({ ...devices['iPhone 13'], locale: 'en-GB', serviceWorkers: 'allow' });
+    await unpushable.addInitScript(browserStub(testSubscription('push'), 'granted', { noPush: true }));
+    await unpushable.route('**/api/v1/push/public-key', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ status: 'unavailable' }) }));
+    const { page: plain } = await home(unpushable, ada);
+    await write('Without push on the server');
+    await plain.locator('.ui-notices .ui-notice').waitFor({ timeout: 10_000 });
+    await plain.waitForTimeout(1500);
+    assert.equal(await offer(plain).count(), 0, 'no Add to Home Screen steps when the server cannot push');
+    await unpushable.close();
+    if (inWebKit) return;
 
     const android = await browser.newContext({ ...devices['Pixel 7'], locale: 'en-GB', serviceWorkers: 'allow' });
     await android.addInitScript(browserStub(testSubscription('push'), 'granted'));

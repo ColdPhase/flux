@@ -1,10 +1,11 @@
 /* The one-time offer to turn notifications on (#1243; docs/design/final/README.md "Asking for notifications"): a Home card, last on
    the page, with a face, two lines and its buttons under them. Only the tokens, Button and the Home card. */
-.push-offer { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 12px; margin-top: 28px; padding: 16px 20px; }
+.home__card.push-offer { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 12px; row-gap: 12px; margin-top: 28px; padding: 16px 20px; }
 .push-offer__text { min-width: 0; padding-top: 5px; }
 .push-offer__t { margin: 0; font-size: var(--fs-base); line-height: 20px; font-weight: 600; overflow-wrap: anywhere; }
 .push-offer__s { margin: 2px 0 0; font-size: var(--fs-base); line-height: 20px; color: var(--t2); overflow-wrap: anywhere; }
 .push-offer__steps { margin: 6px 0 0; padding-left: 20px; font-size: var(--fs-base); line-height: 20px; color: var(--t2); }
 .push-offer__steps li + li { margin-top: 2px; }
 .push-offer__actions { grid-column: 2; display: flex; flex-wrap: wrap; gap: 8px; }
-@media (max-width: 680px) { .push-offer { padding: 14px 16px; } }
+/* Higher than `.home__card { display: block }` on purpose: the card is a Home card laid out as a grid. */
+@media (max-width: 680px) { .home__card.push-offer { margin-top: 24px; padding: 14px 16px; } }

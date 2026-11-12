@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { enablePushNotifications, getPushState } from '../pwa/push';
+import { enablePushNotifications, getPushState, pushOnServer } from '../pwa/push';
 import { installState, isAppleMobile, onInstallState, type InstallState } from '../pwa/install';
 import { Button, Icon, useToast } from '../ui';
 import './push-offer.css';
@@ -37,7 +37,12 @@ type View =
   | { kind: 'blocked' }
   | { kind: 'asking'; publicKey: string };
 
+/** An iPad says it is a Mac to websites; its touch screen gives it away, as `isAppleMobile` reads it. */
+const deviceWord = () => /iPad/.test(navigator.userAgent) || (navigator.userAgent.includes('Macintosh') && navigator.maxTouchPoints > 1) ? 'iPad' : 'iPhone';
+const desktopSafari = () => /Safari\//.test(navigator.userAgent) && !/Chrome|Chromium|CriOS|Edg|Firefox|FxiOS/.test(navigator.userAgent);
+
 function blockedSteps() {
+  if (desktopSafari() && !isAppleMobile()) return 'To allow them, open Safari’s Settings, then Websites, then Notifications, and choose Allow for this site.';
   if (isAppleMobile()) return 'To allow them, open Settings, then Notifications, then Flux, and turn Allow Notifications on.';
   if (/Android/i.test(navigator.userAgent)) return 'To allow them, open the browser menu, then Site settings, then Notifications, and allow this site.';
   return 'To allow them, click the icon left of the address, open Notifications and choose Allow.';
@@ -65,10 +70,11 @@ export function PushOffer({ userId, ready }: { userId: string; ready: boolean })
     // Asked before (allowed or blocked): nothing to offer, and nothing is read from the server.
     if (typeof Notification !== 'undefined' && Notification.permission !== 'default') return undefined;
     let live = true;
-    getPushState().then((state) => {
+    getPushState().then(async (state) => {
       if (!live) return;
       if (state.state === 'prompt') setView({ kind: 'offer', publicKey: state.publicKey });
-      else if (state.state === 'needs-install') setView({ kind: 'home-screen' });
+      // The Home Screen steps only where the installed app could then be notified: this server must be able to push (#763 SG-3).
+      else if (state.state === 'needs-install' && await pushOnServer() && live) setView({ kind: 'home-screen' });
     }, () => undefined);
     return () => { live = false; };
   }, [userId, due]);
@@ -89,7 +95,7 @@ export function PushOffer({ userId, ready }: { userId: string; ready: boolean })
   };
   const installable = install.state === 'available' ? install.install : null;
 
-  const title = view.kind === 'home-screen' ? `Get notified on this ${/iPad/.test(navigator.userAgent) ? 'iPad' : 'iPhone'}`
+  const title = view.kind === 'home-screen' ? `Get notified on this ${deviceWord()}`
     : view.kind === 'blocked' ? 'Notifications are blocked for Flux' : 'Get notified when someone writes to you or calls';
   return (
     <section className="home__card push-offer" aria-labelledby="push-offer-title">
@@ -97,7 +103,7 @@ export function PushOffer({ userId, ready }: { userId: string; ready: boolean })
       <div className="push-offer__text">
         <h3 className="push-offer__t" id="push-offer-title">{title}</h3>
         {view.kind === 'home-screen' ? <>
-          <p className="push-offer__s">Notifications on {/iPad/.test(navigator.userAgent) ? 'iPad' : 'iPhone'} work from Flux on your Home Screen:</p>
+          <p className="push-offer__s">Notifications on {deviceWord()} work from Flux on your Home Screen:</p>
           <ol className="push-offer__steps">
             <li>Tap Share, then Add to Home Screen.</li>
             <li>Open Flux from your Home Screen.</li>
