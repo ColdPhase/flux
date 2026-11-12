@@ -55,7 +55,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__citation button { min-width: 28px; min-height: 28px; }
 .project-convo__error { color: var(--t1); font-size: var(--fs-sm); margin-top: 6px; }
 .project-convo__hint { color: var(--t2); font-size: var(--fs-sm); margin-top: 6px; }
-.project-convo__error button { text-decoration: underline; min-height: 32px; }
 .project-setup { max-width: 560px; }
 .material-view { max-width: 760px; }
 .material-view__body { margin: 24px 0; }

@@ -3,7 +3,7 @@ import type { ConversationMessage } from '@flux/contracts';
 import { useLoaderData } from 'react-router';
 import { outboxView } from '../composer/draft';
 import { useFileDrop } from '../composer/Files';
-import { MEDIA, useMediaQuery } from '../ui';
+import { Button, MEDIA, useMediaQuery } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { OneConversation, type PaneProps } from '../app/OneConversation';
@@ -108,7 +108,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
       waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} />}
     {conversation ? <MessageWorkPages read={messageWork} /> : null}
-    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <button type="button" className="ws-none__b" onClick={referenceWork.refresh}>Refresh task references</button></div> : null}
+    {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} materials={materials} typing={typing}
       readFailure={thread.readFailure} author={author} />
   </div>;

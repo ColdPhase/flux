@@ -82,7 +82,7 @@ export function ConnectionLabels({ sketch, target, editable, onSave, onDraftChan
       <p className="connection-labels__hint">Name a connection to explain how the thoughts relate.</p>
       {links.length ? <ul className="connection-labels__list">{links.map((item) => {
         const other = title(item.fromId === selected?.id ? item.toId : item.fromId);
-        return <li key={item.id}><button type="button" disabled={!editable} aria-label={`${item.label ? 'Edit' : 'Add'} label for connection to ${other}`}
+        return <li key={item.id}><button type="button" className="connection-labels__row" disabled={!editable} aria-label={`${item.label ? 'Edit' : 'Add'} label for connection to ${other}`}
           onClick={() => { setError(null); setConflict(null); setEditing({ id: item.id, text: item.label ?? '', expected: item.label }); }}>
           <span><strong>{other}</strong>{item.label ? <span className="connection-labels__saved">{item.label}</span> : null}</span>
           <span className="connection-labels__action">{item.label ? 'Edit label' : 'Add label'}<Icon name="chevron-right" size={14} /></span>

@@ -193,8 +193,8 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
           <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
         </h3>
         <div className="doc-seg" role="group" aria-label="Show the changes as">
-          <button type="button" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>Rendered</button>
-          <button type="button" aria-pressed={view === 'markdown'} onClick={() => setView('markdown')}>Markdown</button>
+          <button type="button" className="doc-seg__b" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>Rendered</button>
+          <button type="button" className="doc-seg__b" aria-pressed={view === 'markdown'} onClick={() => setView('markdown')}>Markdown</button>
         </div>
       </header>
       <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>

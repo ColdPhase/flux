@@ -28,7 +28,7 @@ function ConnectionRow({ line }: { line: AiConnectionLine }) {
         <span className="sset-row__t">{line.name}<span className="cai__state"> · {line.state === 'connected' ? 'Connected' : 'Sign in again'}</span></span>
         <span className="cai__usage"><UsageBar used={line.used} /><span className="cai__usage-text">{line.usage}</span></span>
       </span>
-      <Link className="ui-btn ui-btn--secondary cai__change" to={line.to} aria-label={`Change ${line.name}`}>Change</Link>
+      <Link className="ui-btn ui-btn--quiet ui-btn--sm cai__change" to={line.to} aria-label={`Change ${line.name}`}>Change</Link>
     </li>
   );
 }

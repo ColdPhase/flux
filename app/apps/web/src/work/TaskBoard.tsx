@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
 import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Icon, Kreska, StatusGlyph, initials, useRowMotion } from '../ui';
+import { AgentTag, Button, Icon, Kreska, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
 import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
@@ -488,7 +488,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       {filtered && !shown.length && !Object.values(waitingFor).some(Boolean) ? (
         <p className="tb-none" role="status">
           {query ? `No task${mine ? ' of yours' : ''} matches “${query}”.` : 'Nothing of yours on the board.'}{' '}
-          <button type="button" className="ws-none__b" onClick={clearFilters}>Show every task</button>
+          <Button variant="link" size="sm" onClick={clearFilters}>Show every task</Button>
         </p>
       ) : null}
       <div className={`tb-board${writable ? ' tb-board--movable' : ''}`} ref={boardRef}>

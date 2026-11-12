@@ -66,7 +66,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
         })}
       </ol>
       <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${count} ${count === 1 ? 'thought' : 'thoughts'}`}</button>
-        <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
+        <button type="button" className="ui-btn ui-btn--secondary" disabled={saving} onClick={onCancel}>Cancel</button>
         <span>Enter saves all · Escape cancels</span></div>
     </form>;
   }
@@ -77,7 +77,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
     <textarea className="ui-input" rows={2} aria-label={draft.file ? 'Image caption' : 'Thought text'} value={draft.text} maxLength={SKETCH_LIMITS.text} disabled={saving}
       onChange={(event) => onText(event.target.value)} onKeyDown={keys} />
     <div className="sk-draft__actions"><button type="submit" className="ui-btn ui-btn--primary" disabled={!ready}>{saving ? 'Saving…' : `${confirmPrevious ? 'Confirm and save' : 'Save'} ${draft.file ? 'image' : 'thought'}`}</button>
-      <button type="button" className="ui-btn ui-btn--quiet" disabled={saving} onClick={onCancel}>Cancel</button>
+      <button type="button" className="ui-btn ui-btn--secondary" disabled={saving} onClick={onCancel}>Cancel</button>
       {onPaste && !draft.file && !draft.text.trim() && !draft.attempt && !draft.unknown ? <button type="button" className="ui-btn ui-btn--quiet sk-draft__paste" disabled={saving} onClick={onPaste}>
         <Icon name="paste" size={14} />Paste lines, a link or an image</button> : null}
       <span>Enter saves · Shift+Enter adds a line · Escape cancels</span></div>

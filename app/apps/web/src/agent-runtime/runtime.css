@@ -42,7 +42,7 @@
 @media (pointer: coarse) {
   .rt-open { min-height: 48px; }
   .rt-code__row .ui-btn { min-width: 72px; }
-  .rt-device .ui-btn { min-height: 48px; }
+  .rt-device .ui-btn { min-height: 44px; }
   .rt-device .rt-more summary { min-height: 44px; display: flex; align-items: center; }
 }
 @media (pointer: coarse) {

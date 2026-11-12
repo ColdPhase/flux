@@ -106,7 +106,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
             })}
           </div>
           <div className="cai-window__actions">
-            <Button variant="quiet" onClick={onClose}>Cancel</Button>
+            <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button type="submit" variant="primary" disabled={!selected}>Continue</Button>
           </div>
         </form>

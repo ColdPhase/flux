@@ -94,7 +94,7 @@ export function DmTaskCopy({ dmId, message, excerpt, participants, onClose, onCr
         {notice ? <p className="dm-copy__notice" role="status">{notice}</p> : null}
         {error ? <p className="dm-copy__error" role="alert"><Icon name="alert" size={13} /> {error}</p> : null}
         <footer className="dm-copy__actions">
-          <Button variant="quiet" onClick={onClose}>Cancel</Button>
+          <Button variant="secondary" onClick={onClose}>Cancel</Button>
           {preview?.project ? <Button ref={confirm} variant="primary" busy={busy} disabled={loading} onClick={() => void create()}>Create task</Button> : null}
         </footer>
       </section>

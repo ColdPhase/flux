@@ -235,7 +235,7 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
               ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />
               : <span className="sk-outline-title" id={titleId}>{thought.text}</span>}
             {also.length ? <span className="sk-outline-also" onClick={quiet}><Icon name="link" size={12} /><span>also under </span>{also.map(({ other, relation }, at) => (
-              <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
+              <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" className="sk-outline-also__b" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
             ))}</span> : null}
           </span>
           {/* The row's end: the date (on hover or focus, its room kept), the selected row's actions and, last, the task chip, so it never moves. */}
@@ -245,8 +245,8 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             : <span className="sk-li-s">{provenance(thought, meId)}</span>}
           {acting ? <span className="sk-outline-actions" role="group" aria-label={`Actions for ${quote(thought.text)}`} onClick={quiet} onKeyDown={(event) => closeMore(event, thought.id)}>
             {canWrite ? <>
-              <button type="button" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button>
-              <button type="button" aria-label="Add a child thought" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Child</button>
+              <button type="button" className="sk-outline-action" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button>
+              <button type="button" className="sk-outline-action" aria-label="Add a child thought" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Child</button>
             </> : null}
             <button type="button" className="sk-outline-more" aria-label="More actions" aria-expanded={more} onClick={() => setMoreId(more ? null : thought.id)}><Icon name="more" size={14} /></button>
           </span> : null}
@@ -255,18 +255,18 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
         </div>
         {more ? <div className="sk-outline-menu" role="group" aria-label={`More actions for ${quote(thought.text)}`} onKeyDown={(event) => closeMore(event, thought.id)}>
           {arrange && canWrite ? <>
-            <button type="button" onClick={() => { setMoreId(null); indent(row); }}>Indent<kbd>Tab</kbd></button>
-            <button type="button" onClick={() => { setMoreId(null); outdent(row); }}>Outdent<kbd>⇧Tab</kbd></button>
+            <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); indent(row); }}>Indent<kbd>Tab</kbd></button>
+            <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); outdent(row); }}>Outdent<kbd>⇧Tab</kbd></button>
           </> : null}
-          <button type="button" onClick={() => { setMoreId(null); reorder(row, -1); }}>Move up<kbd>⌥↑</kbd></button>
-          <button type="button" onClick={() => { setMoreId(null); reorder(row, 1); }}>Move down<kbd>⌥↓</kbd></button>
-          {arrange && canWrite ? <button type="button" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
-          <button type="button" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
+          <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); reorder(row, -1); }}>Move up<kbd>⌥↑</kbd></button>
+          <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); reorder(row, 1); }}>Move down<kbd>⌥↓</kbd></button>
+          {arrange && canWrite ? <button type="button" className="sk-outline-menu__item" aria-pressed={connectFrom === thought.id} onClick={() => { setMoreId(null); on.onConnectFrom(thought.id); }}>Connect…</button> : null}
+          <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onConnections(thought.id); }}>Connections</button>
           {projectId && thought.source?.projectMessageId ? <Link to={projectMessageHref(projectId, thought.source.projectMessageId)} onClick={() => setMoreId(null)}>Open message</Link> : null}
-          {on.onCite ? <button type="button" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
-          {on.onMove ? <button type="button" onClick={() => { setMoreId(null); on.onMove?.(); }}>Move to a space map</button> : null}
-          {on.onCopyLink && selection.length === 1 ? <button type="button" onClick={() => { setMoreId(null); on.onCopyLink?.(); }}>Copy link</button> : null}
-          {canWrite ? <button type="button" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
+          {on.onCite ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onCite?.(); }}>Cite in conversation</button> : null}
+          {on.onMove ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onMove?.(); }}>Move to a space map</button> : null}
+          {on.onCopyLink && selection.length === 1 ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onCopyLink?.(); }}>Copy link</button> : null}
+          {canWrite ? <button type="button" className="sk-outline-menu__item" onClick={() => { setMoreId(null); on.onRemove(selection.includes(thought.id) ? selection : [thought.id]); }}>Remove</button> : null}
         </div> : null}
         {thought.file || link ? <div className="sk-outline-body">
           {thought.file ? <ThoughtImage className="sk-li-img" fileId={thought.file.id} name={thought.file.name} /> : null}

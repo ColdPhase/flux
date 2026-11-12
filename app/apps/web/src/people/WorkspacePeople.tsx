@@ -123,7 +123,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         {back}
         <p className="details__eyebrow">{page ? 'Company' : 'Encrypted space'}</p>
         <h3 className="details__title">People</h3>
-        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<button type="button" onClick={load}>Try again</button></p>
+        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<Button variant="link" size="sm" onClick={load}>Try again</Button></p>
           : <div className="people__loading"><Spinner label="Loading people" /></div>}
       </div>
     );
@@ -238,7 +238,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
         {people.map((person) => (
           <li className="people__item" key={person.userId}><div className="people__row">
             <Avatar name={person.name} id={person.userId} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
-            <Button variant="quiet" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
+            <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
           </div></li>
         ))}
       </ul>
@@ -278,15 +278,15 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
         {spaces.map((space) => (
           <li className="people__item" key={space.id}><div className="people__row">
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
-            {space.member === false ? <Button variant="quiet" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
+            {space.member === false ? <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
             {/* Everyone holds the whole company and cannot be deleted; any other space can be, with a confirmation that names it (F-037). */}
-            {space.visibility === 'workspace' ? null : <Button variant="quiet" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
+            {space.visibility === 'workspace' ? null : <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
           </div></li>
         ))}
         {sealed.map((entry) => (
           <li className="people__item" key={entry.id} data-encrypted-space={entry.id}><div className="people__row">
             <span className="people__who"><b><Icon name="lock" size={13} /> {entry.name}</b><span>Encrypted · made {madeOn.format(new Date(entry.createdAt))} · you can delete it, not open it</span></span>
-            <Button variant="quiet" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
+            <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
           </div></li>
         ))}
       </ul>
@@ -336,7 +336,7 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
       ) : (
         <div className="sset-card"><div className="people__row people__name">
           <span className="people__who"><b>{workspace.name}</b><span>Shown on the sign-in page and in emails</span></span>
-          {manager ? <Button ref={changeRef} variant="quiet" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
+          {manager ? <Button ref={changeRef} variant="quiet" size="sm" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
         </div></div>
       )}
     </section>
@@ -414,11 +414,11 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
         {/* On the company's page the role is the control: "Admin ▾" opens the same editor under the row. */}
         {page && editable ? (
-          <Button ref={changeRef} variant="quiet" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
+          <Button ref={changeRef} variant="quiet" size="sm" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
             onClick={() => onEdit(!editing)}>{ROLE_LABEL[member.role]}<Icon name="chevron-down" size={14} /></Button>
         ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
         {!page && editable ? (
-          <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
+          <Button ref={changeRef} variant="quiet" size="sm" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
             Change<span className="ui-vh"> {self ? 'your role' : member.name}</span>
           </Button>
         ) : null}
@@ -641,9 +641,9 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
               <li className="people__item" key={invite.id}>
                 <div className="people__row">
                   <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
-                  <Button variant="quiet" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
+                  <Button variant="quiet" size="sm" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
                   {invite.role !== 'admin' || myRole === 'owner'
-                    ? <Button variant="quiet" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
+                    ? <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
                 </div>
                 {/* #763 FT-13: a revoked link can't come back, so Revoke asks once, in place. */}
                 {revoking === invite.id ? (

@@ -10,10 +10,7 @@
 .pick__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pick__x { display: grid; place-items: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
 .pick__x:hover { background: var(--hov); color: var(--t1); }
-.pick__x:focus-visible, .pick__add:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
-.pick__add { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); font: inherit; font-size: var(--fs-md); font-weight: 500; cursor: pointer; transition: var(--tr-fill); }
-.pick__add:hover { background: var(--hov); color: var(--t1); }
-.pick__add:disabled { opacity: .5; cursor: default; }
+.pick__x:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .pick__list { display: grid; gap: 4px; padding: 6px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); max-height: 260px; overflow-y: auto; }
 .pick__list ul { margin: 0; padding: 0; list-style: none; }
 .pick__filter { margin: 2px 2px 4px; }

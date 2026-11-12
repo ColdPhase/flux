@@ -41,7 +41,7 @@
 .sset-row__ic { display: grid; place-items: center; flex: none; width: 24px; color: var(--t1); }
 .sset-row__b { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 1px; cursor: inherit; }
 .sset-row__t { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-base); font-weight: 500; line-height: 1.35; overflow-wrap: anywhere; }
-.sset-row__s { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.sset-row__s { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); overflow-wrap: anywhere; }
 .sset-row__meta { font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
 .sset-row__go { display: inline-flex; align-items: center; gap: 2px; flex: none; font-size: var(--fs-xs); color: var(--t2); }
 .sset-row__t .sset-row__meta { display: contents; }

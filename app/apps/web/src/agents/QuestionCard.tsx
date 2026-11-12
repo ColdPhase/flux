@@ -96,7 +96,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
               <label className="ui-vh" htmlFor={`${labelId}-own`}>Your answer</label>
               <input id={`${labelId}-own`} value={text} maxLength={AGENT_QUESTION_LIMITS.answer} autoFocus placeholder="Your answer" onChange={(event) => setText(event.target.value)} />
               <Button type="submit" variant="soft" disabled={!text.trim()} busy={!!busy && busy.startsWith('text:')}>Send</Button>
-              <Button variant="quiet" onClick={() => { setTyping(false); setText(''); }}>Cancel</Button>
+              <Button variant="secondary" onClick={() => { setTyping(false); setText(''); }}>Cancel</Button>
             </form>
           ) : null}
         </>

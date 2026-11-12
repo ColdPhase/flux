@@ -1,6 +1,6 @@
 import { useId, useMemo, useState } from 'react';
 import type { WorkspaceMember } from '@flux/contracts';
-import { Avatar, Icon } from '../ui';
+import { Avatar, Button, Icon } from '../ui';
 import './space.css';
 
 /**
@@ -35,9 +35,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
             ))}
           </ul>
         ) : null}
-        <button type="button" className="pick__add" aria-expanded={open} aria-controls={open ? listId : undefined} disabled={disabled} onClick={() => setOpen((on) => !on)}>
-          <Icon name="plus" size={14} />Add people
-        </button>
+        <Button variant="quiet" size="sm" icon="plus" aria-expanded={open} aria-controls={open ? listId : undefined} disabled={disabled} onClick={() => setOpen((on) => !on)}>Add people</Button>
       </div>}
       {open ? (
         <div className="pick__list" id={listId} role="group" aria-label={`People in ${companyName}`}>

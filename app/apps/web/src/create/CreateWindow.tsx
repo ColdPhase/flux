@@ -397,7 +397,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
               <span key={`${source.ref.type}:${source.ref.id}`} className="create__chip create__chip--link">
                 <Icon name={source.ref.type === 'message' ? 'chat' : 'map'} size={13} />{/* Focusable (not in the tab order): a tap on the label is not adjusted onto the nearby Remove target. */}
                 <span tabIndex={-1}>{source.label}</span>
-                <button type="button" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
+                <button type="button" className="create__chip-x" aria-label={`Remove link to ${source.label}`} onClick={() => setSources(sources.filter((s) => s !== source))}><Icon name="x" size={12} /></button>
               </span>
             ))}
             <button type="button" className="create__chip create__chip--add" aria-expanded={linking} onClick={() => setLinking(!linking)}>+ Link a message or thought</button>
@@ -605,7 +605,7 @@ function LinkPicker({ projectId, taken, onPick, onDone }: { projectId: string; t
       {state === 'loading' ? <Spinner /> : null}
       <ul id={listId} className="create__results" aria-label="Messages and thoughts">
         {text && state !== 'loading' ? items.map((item) => (
-          <li key={`${item.ref.type}:${item.ref.id}`}><button type="button" onClick={() => onPick(item.ref, item.label)}><small>{item.kind}</small><span>{item.label}</span></button></li>
+          <li key={`${item.ref.type}:${item.ref.id}`}><button type="button" className="create__result" onClick={() => onPick(item.ref, item.label)}><small>{item.kind}</small><span>{item.label}</span></button></li>
         )) : null}
       </ul>
       {text && state === 'ready' && !items.length ? <p className="create__note" role="status">No message or thought matches.</p> : null}

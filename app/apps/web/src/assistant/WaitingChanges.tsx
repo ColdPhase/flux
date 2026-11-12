@@ -159,7 +159,7 @@ function WaitingCard({ change, agent, busy, onAct, editing, onEdit }: {
         <label className="ui-vh" htmlFor={`edit-${change.id}`}>Task title</label>
         <input id={`edit-${change.id}`} value={title} maxLength={WORK_LIMITS.title} onChange={(event) => setTitle(event.target.value)} autoFocus />
         <Button type="submit" variant="secondary" busy={busy === `edit:${change.id}`} disabled={!title.trim() || !!busy}>Save</Button>
-        <Button variant="quiet" disabled={!!busy} onClick={() => { setTitle(change.objectTitle); onEdit(false); }}>Cancel</Button>
+        <Button variant="secondary" disabled={!!busy} onClick={() => { setTitle(change.objectTitle); onEdit(false); }}>Cancel</Button>
       </form> : <div className="assistant-proposal__actions">
         <Button variant="primary" busy={busy === `apply:${change.id}`} disabled={!!busy} onClick={() => onAct(`apply:${change.id}`, () => applyChange(change))}>{removal ? 'Delete' : 'Approve'}</Button>
         {proposal ? <Button variant="secondary" disabled={!!busy} onClick={() => onEdit(true)}>Edit</Button> : null}
@@ -186,7 +186,7 @@ function ProposalGroup({ changes, agent, busy, onAct, editing, onEdit }: {
             <input id={`edit-${change.id}`} value={titles[change.id] ?? change.objectTitle} maxLength={WORK_LIMITS.title} autoFocus
               onChange={(event) => setTitles((current) => ({ ...current, [change.id]: event.target.value }))} />
             <Button type="submit" variant="secondary" busy={busy === `edit:${change.id}`} disabled={!(titles[change.id] ?? change.objectTitle).trim() || !!busy}>Save</Button>
-            <Button variant="quiet" disabled={!!busy} onClick={() => onEdit(null)}>Cancel</Button>
+            <Button variant="secondary" disabled={!!busy} onClick={() => onEdit(null)}>Cancel</Button>
           </form></li>
         ) : (
           <li key={change.id} data-change={change.id}>

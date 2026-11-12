@@ -2,6 +2,7 @@ import { plainMessageText, type Material } from '@flux/contracts';
 import { AskBar } from '../assistant/ConversationParts';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { ComposerMenu } from '../app/ComposerMenu';
+import { Button } from '../ui';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerFiles } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
@@ -49,6 +50,6 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
     {conversation ? <TypingNotice {...typing} /> : null}
     <SendAnnouncer pending={publicComposer.pending} />
     {menu.commandHint ? <p className="project-convo__hint" role="status">{menu.commandHint}</p> : null}
-    {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
+    {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <Button variant="link" size="sm" onClick={readFailure.retry}>Retry read</Button></p> : null}
   </div></div>;
 }

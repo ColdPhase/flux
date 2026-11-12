@@ -202,7 +202,7 @@ function Remembers({ agent }: { agent: MyAgent }) {
       <div className="aset__actions">
         <Button type="submit" variant="primary" busy={busy} disabled={!text.trim()}>Save</Button>
         {editing ? <Button variant="danger" disabled={busy} onClick={() => void remove(items!.find((item) => item.id === editing)!)}>Delete</Button> : null}
-        <Button variant="quiet" onClick={stop}>Cancel</Button>
+        <Button variant="secondary" onClick={stop}>Cancel</Button>
       </div>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
     </form>

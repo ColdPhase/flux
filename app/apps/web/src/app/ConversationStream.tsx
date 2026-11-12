@@ -641,7 +641,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       <div className="project-convo__in" ref={columnRef}>
         <section aria-label="Messages" className="project-convo__messages">
           {stream.hasOlder ? <Button variant="quiet" busy={stream.olderBusy} onClick={() => void loadOlder()}>Load earlier messages</Button> : null}
-          {failure ? <p className="project-convo__error" role="alert">{failure} <button type="button" onClick={() => void loadOlder()}>Retry</button></p> : null}
+          {failure ? <p className="project-convo__error" role="alert">{failure} <Button variant="link" size="sm" onClick={() => void loadOlder()}>Retry</Button></p> : null}
           {entries.length || outbox.pending.length ? (
             <ol className="project-convo__message-list">
               {[...display.flatMap((entry, index) => {

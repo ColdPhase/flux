@@ -45,7 +45,7 @@ export function ChangeSchedule({ job, state, agentName, onDone }: { job: Assista
       ) : <p className="agp__hint">To change when it runs, tell {agentName}.</p>}
       <div className="agc__change-actions">
         <Button type="submit" variant="primary" size="sm" busy={state.busy === job.id} disabled={!text.trim()}>Save</Button>
-        <Button type="button" variant="quiet" size="sm" onClick={onDone}>Cancel</Button>
+        <Button type="button" variant="secondary" size="sm" onClick={onDone}>Cancel</Button>
       </div>
     </form>
   );
