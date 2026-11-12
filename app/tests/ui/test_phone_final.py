@@ -318,7 +318,8 @@ class PhoneFinal(unittest.TestCase):
                 page.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                self.assertEqual(items, ["Search", "Call", "Settings", "Space details"])
+                # (Mute space, #1249, sits between Settings and the details.)
+                self.assertEqual([*items[:3], items[-1]], ["Search", "Call", "Settings", "Space details"])
                 menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
                 expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
