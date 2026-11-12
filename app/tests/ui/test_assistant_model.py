@@ -206,6 +206,18 @@ class AssistantModel(unittest.TestCase):
         expect(astra).to_contain_text("Input $10, output $50 per 1M tokens")
         expect(menu.get_by_role("menuitemradio", name=re.compile("Sonnet 5"))).not_to_contain_text("can't make changes")
 
+    def test_11b_a_model_that_cannot_see_pictures_says_so_beside_it(self) -> None:
+        """#1217: an agent on a model without vision sees attached files only by name, and the list says so."""
+        page = self.page()
+        self.stub_assistant(page)
+        options = [API[0], {"id": "qwen3-30b", "name": "qwen3-30b", "note": "Input $0, output $0 per 1M tokens", "callsTools": True, "seesPictures": False}]
+        self.stub_model(page, current="claude-sonnet-5", options=options, group=KEY)
+        row = self.open_panel(page)
+        menu = self.open_list(page, row, "Sonnet 5")
+        expect(menu.get_by_role("menuitemradio", name=re.compile("qwen3-30b"))).to_contain_text("Can't see pictures")
+        expect(menu.get_by_role("menuitemradio", name=re.compile("Sonnet 5"))).not_to_contain_text("see pictures")
+        shot(page, "agent-vision-1440-model-list")
+
     def test_12_the_list_is_a_menu_for_the_keyboard(self) -> None:
         page = self.page()
         self.stub_assistant(page)

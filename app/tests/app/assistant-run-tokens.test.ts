@@ -360,13 +360,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
     assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_web']);
 
-    // A chat: every read tool, in every space its owner reaches, and no tool that changes anything.
+    // A chat: every read tool, in every space its owner reaches, a picture for its own answer, and no tool that changes anything.
     compute.respond = calls(doc(other.id, otherDocId), { id: 'make', name: 'flux_create_task', input: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } },
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 18, 'the 18 read tools');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.every((tool) => !names.includes(tool)), 'no change tool');
+    assert.equal(names.length, 20, 'the 19 read tools (flux_view_image, #1217) and a picture for its answer (flux_attach_image, #1217)');
+    assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).
@@ -391,7 +392,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   });
 
   test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {
-    // With every switch on the run lists 18 read tools. Their definitions travel with every request, so they
+    // With every switch on the run lists 19 read tools. Their definitions travel with every request, so they
     // are kept short (#484): measured below, bounded here, and over a hundred turns fit the tool-run input bound.
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
@@ -400,7 +401,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const fullTools = compute.dispatched[0]?.tools ?? [];
     const fullBytes = JSON.stringify(fullTools).length;
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 18 + ASSISTANT_RUN_EFFECT_TOOLS.length, '18 read tools (flux_read_web, #918) and every change tool (A3)');
+    assert.equal(fullTools.length, 19 + ASSISTANT_RUN_EFFECT_TOOLS.length, '19 read tools (flux_read_web, #918; flux_view_image, #1217) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');

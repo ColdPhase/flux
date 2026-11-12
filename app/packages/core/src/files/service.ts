@@ -279,7 +279,13 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       const fileId = id(fileIdInput, 'fileId').toLowerCase();
       const row = await unit.run(async (ports) => {
         const file = await ports.files.findFile(fileId);
-        if (!file || file.state !== 'ready' || file.size === null) throw unavailable();
+        // A picture of an agent's answer in its private chat (#1217, C-59): no space's file; its owner's alone.
+        if (!file) {
+          const picture = await ports.runPictures?.find(fileId);
+          if (!picture || principal.kind !== 'human' || principal.id !== picture.ownerUserId) throw unavailable();
+          return { id: picture.id, name: picture.name, size: picture.size, sha256: picture.sha256 };
+        }
+        if (file.state !== 'ready' || file.size === null) throw unavailable();
         try { await ports.access.requireProject(principal, 'read', file.projectId); }
         catch (error) { if (error instanceof NotFoundError || error instanceof ForbiddenError) throw unavailable(); throw error; }
         if (!isPublished(file)) {

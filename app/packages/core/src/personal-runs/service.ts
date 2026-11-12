@@ -215,6 +215,9 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
     completedAt: record.completedAt ? iso(record.completedAt) : null,
     shownAt: record.shownAt ? iso(record.shownAt) : null, dismissedAt: record.dismissedAt ? iso(record.dismissedAt) : null,
+    // A chat's answer can carry pictures (#1217, C-59); only a chat run that answered is asked.
+    ...(record.projectId === null && record.dmId === null && record.answerBody !== null && ports.runs.runPictures
+      ? await ports.runs.runPictures(record.id).then((pictures) => (pictures.length ? { pictures } : {})) : {}),
   };
 }
 

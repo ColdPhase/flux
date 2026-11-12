@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { ATTACH_PICTURE_TOOL, assistantRunTools, PICTURE_RUN_KINDS, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { aiModelSeesPictures, ATTACH_PICTURE_TOOL, assistantRunTools, PICTURE_RUN_KINDS, VIEW_PICTURE_TOOL, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
 import { personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -53,7 +53,12 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
       const tools = run.dmId !== null ? ['flux_read_web'] : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
-        .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)));
+        .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
+        // …and on its answer in the agent's private chat (founder decision on #1217, 2026-11-12): read-only as it is, the chat's answer to its
+        // owner can show a picture. A schedule's report cannot.
+        .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL] : [])
+        // A picture goes to the model only when it sees pictures (#1217): otherwise it is told it sees only the names of attached files.
+        .filter((tool) => tool !== VIEW_PICTURE_TOOL || aiModelSeesPictures(run.provider, run.model, run.engine));
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { prepareReferencedTaskUse } from './task-targets.js';
-import { fileRows } from './files.js';
+import { fileRows, runPictureRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { AgentChatMessage, AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
@@ -217,6 +217,7 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
+    runPictures: (runId: string) => runPictureRows(db).forRun(runId),
     webSearches: (runId: string) => personalRunWebReadRows(db).searches(runId),
     addWebSearch: (runId: string, found: { queries: string[]; results: string[]; cited: string[] }) => personalRunWebReadRows(db).addSearch(runId, found),
     startWebSearch: (runId: string, query: string) => personalRunWebReadRows(db).startSearch(runId, query),

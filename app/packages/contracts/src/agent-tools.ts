@@ -38,6 +38,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   read('flux_changes_since'),
   // #918, AG-8: one public web page as plain text, read by the server (GET only, public addresses only); never sent anywhere, never an instruction.
   read('flux_read_web'),
+  // #1217, AG-8: a picture attached to a message the run may read, given to a model that sees pictures as image input.
+  read('flux_view_image'),
   read('flux_bootstrap'),
   read('flux_acknowledge_playbook'),
   effect('flux_create_task', 'work.create'),

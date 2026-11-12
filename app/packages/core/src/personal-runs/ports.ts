@@ -172,6 +172,8 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
   webReads(runId: string): Promise<{ finalUrl: string; outcome: string; writable: boolean }[]>;
+  /** #1217: the pictures an agent attached to its answer in its private chat, in order. Absent from a port that serves no chat. */
+  runPictures?(runId: string): Promise<MessageFile[]>;
   /** The run's searches (#954): their queries and the addresses the answers cited, each once, in the order found. */
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */
@@ -440,7 +442,11 @@ export interface PersonalToolResult {
   callId: string;
   content: string;
   isError: boolean;
+  /** Pictures the call returned (#1217, `flux_view_image`), sent to the model as image input; base64 of a PNG, JPEG, WebP or GIF. */
+  images?: PersonalImage[];
 }
+/** A picture as image input of a request (#1217). */
+export interface PersonalImage { mimeType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'; data: string }
 
 /**
  * One round of the tool loop: what the model said and asked for, and what came back. `replay` is
@@ -553,7 +559,7 @@ export interface PersonalToolSession {
   /** Fresh owner-authorized external facts provided by the run-token issuer, already bounded/redacted. */
   readonly context?: string;
   /** Runs one call as the run's agent. A refusal or failure is a result with `isError`, not an exception. */
-  call(call: PersonalToolCall, signal: AbortSignal): Promise<{ content: string; isError: boolean }>;
+  call(call: PersonalToolCall, signal: AbortSignal): Promise<{ content: string; isError: boolean; images?: PersonalImage[] }>;
   /** Ends the session (the run token); called once, whatever the outcome. */
   close(): Promise<void>;
 }

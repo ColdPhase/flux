@@ -132,3 +132,26 @@ function groupMessageFiles(grouped: Map<string, MessageFile[]>, rows: readonly (
   }
   return grouped;
 }
+
+const p = schema.personalRunPictures;
+/** #1217 (C-59): the pictures of an agent's answer in its private chat, the run's own and its owner's alone. */
+export function runPictureRows(db: DbExecutor) {
+  return {
+    async add(row: { id: string; runId: string; ownerUserId: string; name: string; size: number; sha256: string; position: number }) {
+      await db.insert(p).values(row);
+    },
+    async forRun(runId: string): Promise<MessageFile[]> {
+      return (await db.select({ id: p.id, name: p.name, size: p.size }).from(p).where(eq(p.runId, runId)).orderBy(asc(p.position)));
+    },
+    async find(id: string) {
+      const [row] = await db.select().from(p).where(eq(p.id, id));
+      return row ?? null;
+    },
+  };
+}
+
+/** Whether an object of the files volume is a chat picture (#1217): account data of its owner, never sealed. */
+export async function isRunPictureObject(db: DbExecutor, objectId: string): Promise<boolean> {
+  const [row] = await db.select({ id: p.id }).from(p).where(eq(p.id, objectId)).limit(1);
+  return !!row;
+}

@@ -24,6 +24,8 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
  */
 export const PICTURE_RUN_KINDS: ReadonlySet<string> = new Set(['ask', 'summarize', 'map_thought']);
 export const ATTACH_PICTURE_TOOL = 'flux_attach_image';
+/** #1217: a picture attached to a message the run may read, as image input; only for a run whose model sees pictures. */
+export const VIEW_PICTURE_TOOL = 'flux_view_image';
 
 /**
  * The tools that post a message in a space's conversation. A run never gets them, whatever its "What it may do" (F-036 AG-3 "Never

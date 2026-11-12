@@ -80,6 +80,7 @@ export function ModelPicker({ groups, value, onSelect, variant, placement = 'dow
                         <span className="aset-model__item-name">{option.name}</span>
                         <span className="aset-model__note">{option.note}</span>
                         {option.callsTools ? null : <span className="aset-model__note">Can answer but can&apos;t make changes</span>}
+                        {option.seesPictures === false ? <span className="aset-model__note">Can&apos;t see pictures</span> : null}
                       </span>
                     </button>
                   );

@@ -1,6 +1,7 @@
 import type { Page, PageQuery } from './access.js';
 import type { AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
+import type { MessageFile } from './files.js';
 
 /**
  * Owner-invoked personal assistant runs (issue #68; Connect AI, #854).
@@ -360,6 +361,8 @@ export interface AssistantRun {
   /** The answer was posted with Show everyone, or put away with Dismiss (#842); null while it is the asker's alone to see. */
   shownAt?: string | null;
   dismissedAt?: string | null;
+  /** The pictures its agent attached to its answer in its private chat (#1217, C-59): its owner's alone. Absent elsewhere. */
+  pictures?: MessageFile[];
 }
 
 export type AssistantRunAuthority = 'owner_request' | 'owner_schedule';

@@ -619,7 +619,7 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
   `edited` and "(agent)" mean; and last what the owner gave the agent (C-7, C-8).
 - **Request**: `<place …/>` with the names of the space, the task or the DM's people; for a task run the whole task (outcome, done-when,
   prerequisites, due day, blocker); the space's open tasks and the place's messages, each with its mark, author, time, `kind`, `via`,
-  `edited`, attachments by name, and in a space's main conversation the opening words of its thread where the thread changes; a line that says when older messages
+  `edited`, attachments by name (with their file id when the run's model sees pictures and has `flux_view_image`, #1217), and in a space's main conversation the opening words of its thread where the thread changes; a line that says when older messages
   were left out (the window reads one message more than it gives, and the fit that drops the oldest ones says so too); the chat's latest
   exchanges; then the request, the schedule's instruction, the task's assignment or the other agent's question, last.
 - **Rules of the text.** Nothing other people wrote is in `system`: a space's or task's name, a message, a DM's other people. Content is

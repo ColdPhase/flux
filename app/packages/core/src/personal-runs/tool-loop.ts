@@ -22,7 +22,11 @@ import { WebSearchRefusedError } from './ports.js';
  * byte for byte: Anthropic's token count, which counts them as the provider does, may only raise the estimate, and no other wire
  * format replays any.
  */
-const opaque = (key: string, value: unknown) => ((key === 'encrypted_content' || key === 'encrypted_index') && typeof value === 'string' ? '' : value);
+const opaque = (key: string, value: unknown) => ((key === 'encrypted_content' || key === 'encrypted_index') && typeof value === 'string' ? ''
+  // A picture (#1217) is counted as what it costs a model, about 1,600 tokens (a picture is scaled to about 1.15 megapixels, ~750 pixels a
+  // token: docs.claude.com "Vision", read 2026-11-12), not by its base64.
+  : key === 'images' && Array.isArray(value) ? value.map(() => PICTURE_ESTIMATE) : value);
+const PICTURE_ESTIMATE = 'x'.repeat(6_400);
 
 /** The same request without the provider's own web search (#954). */
 export function dropSearch(request: PersonalComputeRequest): PersonalComputeRequest {
@@ -140,7 +144,8 @@ async function runCall(session: PersonalToolSession, offered: ReadonlySet<string
   if (!offered.has(call.name)) return { callId: call.id, content: `There is no tool named ${call.name}. Nothing was run.`, isError: true };
   try {
     const result = await session.call(call, signal);
-    return { callId: call.id, content: typeof result.content === 'string' ? result.content : '', isError: result.isError === true };
+    return { callId: call.id, content: typeof result.content === 'string' ? result.content : '', isError: result.isError === true,
+      ...(result.images?.length ? { images: result.images } : {}) };
   } catch {
     // Whether the call changed anything is not known here; the change log of the route is the record.
     return { callId: call.id, content: 'The call failed.', isError: true };

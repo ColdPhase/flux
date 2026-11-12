@@ -913,7 +913,8 @@ the composer. The right-hand phone above shows the sheet.
   exactly as a photo sits in a message (frameless, the same grid and viewer), with its change line
   under it, "Attached the picture Raised garden bed · Undo"; Show everyone posts it with the answer
   as an ordinary photo of the message. Under Ask me first it waits in the card like any change,
-  with Approve / Skip, and the picture appears once approved. No new control.
+  with Approve / Skip, and the picture appears once approved. In the agent's private chat a picture it
+  attached sits above its answer the same way. No new control.
   In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
 - **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,

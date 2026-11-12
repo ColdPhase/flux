@@ -49,8 +49,12 @@ export function anthropicMessages(input: string, turns: readonly PersonalTurn[] 
     messages.push({ role: 'assistant', content: Array.isArray(turn.replay) && turn.replay.length ? turn.replay : rebuilt });
     // A turn the provider paused (#1116) has no call: the request goes on from its answer, which is the last message.
     if (!turn.calls.length) continue;
+    // A picture a call returned (#1217) is an image block of its tool_result, after its words (docs.claude.com "Vision" and "Tool use", read 2026-11-12).
     messages.push({ role: 'user', content: resultsInCallOrder(turn).map((result) => ({
-      type: 'tool_result', tool_use_id: result.callId, content: result.content, ...(result.isError ? { is_error: true } : {}),
+      type: 'tool_result', tool_use_id: result.callId,
+      content: result.images?.length ? [{ type: 'text', text: result.content }, ...result.images.map((image) => ({ type: 'image', source: { type: 'base64', media_type: image.mimeType, data: image.data } }))]
+        : result.content,
+      ...(result.isError ? { is_error: true } : {}),
     })) });
   }
   return messages;
@@ -132,8 +136,12 @@ export function responsesInput(input: string, turns: readonly PersonalTurn[] = [
       if (turn.text) items.push({ role: 'assistant', content: turn.text });
       for (const call of turn.calls) items.push({ type: 'function_call', call_id: call.id, name: call.name, arguments: JSON.stringify(call.input) });
     }
+    // A picture a call returned (#1217) goes in its output as an `input_image` after its words (the Responses API's function_call_output
+    // takes a string or a list of input_text, input_image and input_file items; platform.openai.com, read 2026-11-12).
     for (const result of resultsInCallOrder(turn))
-      items.push({ type: 'function_call_output', call_id: result.callId, output: result.isError ? `Error: ${result.content}` : result.content });
+      items.push({ type: 'function_call_output', call_id: result.callId, output: result.isError ? `Error: ${result.content}`
+        : result.images?.length ? [{ type: 'input_text', text: result.content }, ...result.images.map((image) => ({ type: 'input_image', image_url: `data:${image.mimeType};base64,${image.data}` }))]
+          : result.content });
   }
   return items;
 }
@@ -238,6 +246,10 @@ export function chatMessages(system: string, user: string, turns: readonly Perso
     messages.push(isObject(turn.replay) && Array.isArray(turn.replay.tool_calls) ? { ...turn.replay, role: 'assistant' } : rebuilt);
     for (const result of resultsInCallOrder(turn))
       messages.push({ role: 'tool', tool_call_id: result.callId, content: result.isError ? `Error: ${result.content}` : result.content });
+    // A tool message carries text only on this wire format: the pictures of a turn's calls (#1217) follow its tool messages as one user message.
+    const pictures = turn.results.flatMap((result) => (result.isError ? [] : result.images ?? []));
+    if (pictures.length) messages.push({ role: 'user', content: [{ type: 'text', text: 'The pictures flux_view_image returned:' },
+      ...pictures.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] });
   }
   return messages;
 }
