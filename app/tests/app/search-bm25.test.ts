@@ -27,7 +27,9 @@ function plan(words: string, reader: string): SearchPlanRows {
 async function found(principal: Principal, words: string): Promise<string[]> {
   const audiences = await access.audiences(principal);
   const hits = await rows.ranked(audiences, plan(words, principal.id));
-  return hits.map((hit) => hit.title.map((part) => part.text).join(''));
+  const text = (parts: { text: string }[] | null) => (parts ?? []).map((part) => part.text).join('');
+  // A message has no title: its words are the snippet, as people's search shows it.
+  return hits.map((hit) => text(hit.title) || text(hit.snippet));
 }
 
 describe('BM25 search: any word, Polish and English stems, accents folded, only what the caller may read now', () => {
