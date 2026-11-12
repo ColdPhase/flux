@@ -300,7 +300,16 @@ function toRecord(row: PageRow): SearchRowRecord {
  * PostgreSQL always reaches `search_documents` through the audience-leading GIN indexes, also
  * while the table is small. The work then depends only on the audiences the reader may see.
  */
-async function planned(db: SearchExecutor, statement: SQL) {
+async function planned(db: SearchExecutor, statement: SQL, ranking: SearchRanking = 'prefix') {
+  if (ranking === 'bm25') {
+    // pg_search's custom scan scores BM25 and is off by default in Flux's database image (docker/database, F-041): on for this
+    // statement only. Not read-only: pg_search records each field alias it meets in its own table (paradedb._typmod_cache).
+    return db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL enable_seqscan = off`);
+      await tx.execute(sql`SET LOCAL paradedb.enable_custom_scan = on`);
+      return tx.execute(statement);
+    });
+  }
   return db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL enable_seqscan = off`);
     return tx.execute(statement);
@@ -384,7 +393,7 @@ export function searchRows(db: SearchExecutor) {
      */
     async ranked(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SearchRowRecord[]> {
       if (!audiences.length || !/[\p{L}\p{N}]/u.test(plan.words)) return [];
-      const result = await planned(db, pageStatement(audiences, plan, 'bm25'));
+      const result = await planned(db, pageStatement(audiences, plan, 'bm25'), 'bm25');
       return (result.rows as unknown as PageRow[]).map(toRecord);
     },
 

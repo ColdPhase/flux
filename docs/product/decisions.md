@@ -539,6 +539,9 @@ Encrypted spaces are never indexed for AI or embedded (unchanged, [AG-10](assist
   title and body each indexed twice, with a Polish and an English stemmer and accents folded, plus the kind, audience, space,
   author and time as filter fields. Sealed rows (encrypted spaces) are placeholders without text and are left out of the index.
   It follows every insert, edit and delete in the same transaction: no job, no lag, no idle statements.
+- **pg_search plans only Flux's BM25 statements.** Its custom scan, which scores BM25, refuses any other condition on a column the
+  index holds twice ("Query is ambiguous"), so the image turns it off by default and each BM25 statement turns it on for its own
+  transaction (`SET LOCAL paradedb.enable_custom_scan = on`); every other statement plans as before. Its planner notes are off too.
 - **Access is decided at query time,** never stored in the index: the statement receives the audiences the caller may read
   now (the access policy's `memberFilter` / `visibleFilter`, and for an agent the spaces with AI on), as people's search does
   today, and the index applies them before ranking and the limit. A grant lost, a space's AI turned off, a person who left, a
