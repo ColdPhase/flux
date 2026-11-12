@@ -22,6 +22,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from test_assistant_screen import menu_clipped_by, suggestions_reachable
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -287,21 +288,22 @@ class PrivateAiJourney(unittest.TestCase):
                         self.assertEqual(order[-(len(expected) + 1):], ["/ai", *expected], "under /ai, understand first and then act")
                         if name == "task":
                             self.assertEqual(order, ["/ai", *expected], "a task's box has no other slash command")
-                        shown = menu.bounding_box()
                         for row in rows.all():
-                            box = row.bounding_box()
-                            self.assertTrue(box["height"] >= 44 if phone else box["height"] <= 30, f"{name}: row is {box['height']} px")
-                            self.assertLessEqual(box["y"] + box["height"], shown["y"] + shown["height"] + 1, f"{name}: the suggestion is below the menu's visible part")
+                            height = row.bounding_box()["height"]
+                            self.assertTrue(height >= 44 if phone else height <= 30, f"{name}: row is {height} px")
+                        suggestions_reachable(self, menu, rows)
+                        self.assertIsNone(menu_clipped_by(page, menu), f"{name}: the menu sits inside the pane or sheet")
                         self.no_horizontal_scroll(page)
                         shot(page, f"suggestions-{name}-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
 
     def test_03c_choosing_a_suggestion_asks_at_once_and_the_answer_is_private_in_a_thread_and_a_task(self) -> None:
         mock("/__script", {"reset": True, "text": ANSWER})
+        # Each card is found by what it says it was asked, so cards that other tests left in these places are not mistaken for it.
         jo = self.thread("jo")
         jo.locator("#thread-composer").fill("/")
-        jo.get_by_role("listbox", name="Actions").get_by_role("option", name="Catch me up on this thread", exact=True).click()
+        jo.get_by_role("listbox", name="Actions").get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(jo.locator("#thread-composer")).to_have_value("")
-        card = self.private_card(jo)
+        card = self.private_card(jo).filter(has_text="You asked: /ai Catch me up on this thread")
         expect(card).to_be_visible(timeout=20000)
         expect(card).to_contain_text("Only you can see this")
         expect(card).to_contain_text("far beds will use LoRa")
@@ -309,23 +311,34 @@ class PrivateAiJourney(unittest.TestCase):
         task.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
         box = task.locator("#details .wd-composer textarea")
         box.fill("/")
-        # The keyboard works in the menu as in the others: the arrows move over `/ai` and its suggestions, Enter chooses.
-        expect(task.get_by_role("listbox", name="Actions").get_by_role("option", selected=True)).to_contain_text("/ai")
+        # The keyboard works in the menu as in the others: the arrows move over `/ai` and its suggestions, one key at a time, and Enter chooses.
+        menu = task.get_by_role("listbox", name="Actions")
+        expect(menu.get_by_role("option", selected=True)).to_contain_text("/ai")
         box.press("ArrowDown")
+        expect(menu.get_by_role("option", selected=True)).to_have_attribute("aria-label", "Ask your assistant: Summarise this task")
         box.press("ArrowDown")
-        expect(task.get_by_role("option", name="What's left?", exact=True)).to_have_attribute("aria-selected", "true")
+        expect(menu.get_by_role("option", selected=True)).to_have_attribute("aria-label", "Ask your assistant: What's left?")
+        box.press("ArrowDown")
+        expect(menu.get_by_role("option", selected=True)).to_contain_text("/ai")
+        box.press("ArrowUp")
+        expect(menu.get_by_role("option", selected=True)).to_have_attribute("aria-label", "Ask your assistant: What's left?")
         box.press("Enter")
         expect(box).to_have_value("")
-        expect(task.locator("#details .assistant-private")).to_be_visible(timeout=20000)
-        # `/ai` itself fills the box with the command, as typing it would.
-        box.fill("/a")
-        task.get_by_role("listbox", name="Actions").get_by_role("option").filter(has_text="Ask your assistant").click()
-        expect(box).to_have_value("/ai ")
+        asked = task.locator("#details .assistant-private").filter(has_text="You asked: /ai What's left?")
+        expect(asked).to_be_visible(timeout=20000)
+        # `/ai` itself fills the box with the command, as typing it would, and the words around the "/" stay.
+        box.fill("check the probes")
+        box.press("Home")
+        box.press("/")
+        expect(menu.get_by_role("option", selected=True)).to_contain_text("/ai")
+        box.press("Enter")
+        expect(box).to_have_value("/ai check the probes")
         expect(task.locator("#details .wd-foot__line")).to_contain_text("Only you see the answer")
+        box.fill("")
         # What was asked here is Jo's alone and stays until it is put away: leave the task and the thread as they were.
-        for page, where in ((task, "#details .assistant-private"), (jo, ".assistant-private")):
-            page.locator(where).get_by_role("button", name="Dismiss").click()
-            expect(page.locator(where)).to_have_count(0)
+        for page, answer in ((task, asked), (jo, card)):
+            answer.get_by_role("button", name="Dismiss").click()
+            expect(answer).to_have_count(0)
 
     def test_04_in_a_direct_message_both_people_see_one_line_and_only_jo_the_answer(self) -> None:
         mock("/__script", {"reset": True, "text": "Fact: you two agreed to meet on Thursday [S1]."})
@@ -648,6 +661,42 @@ class PrivateAiJourney(unittest.TestCase):
         expect(chat.locator("#agent-composer")).to_be_visible()
         self.no_horizontal_scroll(chat)
         shot(chat, "private-ai-390-agent-chat")
+
+    def test_09_the_suggestions_are_not_offered_while_the_assistant_is_not_ready_after_three_uses_or_with_ai_off(self) -> None:
+        """#1224: the rows follow `/ai`, and `/ai` itself goes with AI. Kai has no assistant yet; Jo has used hers three times on this device;
+        and in a space whose AI is off there is no `/ai` at all."""
+        def rows(page, composer):
+            page.locator(composer).fill("/")
+            menu = page.get_by_role("listbox", name="Actions")
+            expect(menu.get_by_role("option").first).to_be_visible()
+            return menu
+        # Not ready: the command is listed (it leads to the set-up), its suggestions are not.
+        for place, composer in (("thread", "#thread-composer"), ("space", "#project-composer")):
+            kai = self.thread("kai") if place == "thread" else self.space("kai")
+            menu = rows(kai, composer)
+            expect(menu.locator(".cmenu__cmd", has_text="/ai")).to_have_count(1)
+            expect(menu.locator(".cmenu__o--ask")).to_have_count(0)
+        # After three uses on this device (what the assistant remembers by itself): the same.
+        for url, composer in ((f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "#thread-composer"),
+                              (f"/projects/{self.ids['project']}", "#project-composer"),
+                              (f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}", "#details .wd-composer textarea")):
+            jo = self.page("jo")
+            jo.add_init_script(f"localStorage.setItem('flux.assistant-uses.{JO['id']}', '3')")
+            jo.goto(url)
+            expect(jo.locator(composer)).to_be_visible()
+            menu = rows(jo, composer)
+            expect(menu.locator(".cmenu__cmd", has_text="/ai")).to_have_count(1)
+            expect(menu.locator(".cmenu__o--ask")).to_have_count(0)
+        # AI off in the space: no `/ai`, so nothing under it either.
+        jo = self.page("jo")
+        quiet = self.api(jo, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "No AI here", "visibility": "restricted"}, status=201)
+        self.api(jo, "PUT", f"/api/v1/projects/{quiet['id']}/ai-policy", {"state": "blocked"})
+        jo.goto(f"/projects/{quiet['id']}")
+        expect(jo.locator("#project-composer")).to_be_visible()
+        menu = rows(jo, "#project-composer")
+        expect(menu.locator(".cmenu__cmd", has_text="/task")).to_have_count(1)
+        expect(menu.locator(".cmenu__cmd", has_text="/ai")).to_have_count(0)
+        expect(menu.locator(".cmenu__o--ask")).to_have_count(0)
 
 
 if __name__ == "__main__":

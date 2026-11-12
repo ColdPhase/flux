@@ -186,6 +186,14 @@ class CreateWindow(unittest.TestCase):
                     expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["other"])
                     page.keyboard.press("Escape")
                     expect(dialog(page)).to_have_count(0)
+                    # It ends when the person goes to another place: then `C` opens on the space of the place they are in.
+                    page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("Community garden sensors")).click()
+                    expect(page).not_to_have_url(re.compile(r"/tasks"))
+                    page.keyboard.press("c")
+                    expect(dialog(page)).to_be_visible()
+                    expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
+                    page.keyboard.press("Escape")
+                    expect(dialog(page)).to_have_count(0)
                 stored = {item["title"]: item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]}
                 self.assertEqual(stored[f"First of two {tag}"]["outcome"], "Done when both are listed")
                 self.assertIn(f"Second of two {tag}", stored)

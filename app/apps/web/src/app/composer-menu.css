@@ -1,11 +1,12 @@
 /* The "@" and "/" menu above the composer (F-026 S5), and mention chips in messages. */
 .composer__box { position: relative; }
 .cmenu { position: absolute; z-index: var(--z-menu); left: 0; bottom: calc(100% + 8px); width: min(100%, 352px); padding: 6px; border-radius: 16px;
-  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); max-height: min(60vh, 420px); overflow: auto; overscroll-behavior: contain; }
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); max-height: max(120px, min(var(--cmenu-room, 100vh), 60vh, 420px)); overflow: auto; overscroll-behavior: contain; }
 .cmenu__h { padding: 4px 10px 6px; color: var(--t3); font-size: var(--fs-sm); }
 .cmenu__o { display: flex; align-items: center; gap: 12px; min-height: 38px; padding: 0 10px; border-radius: 10px; color: var(--t1); font-size: var(--fs-base); cursor: pointer; }
 .cmenu__o.is-active { background: var(--sub); }
 .cmenu__o--ask { min-height: 28px; padding-left: calc(10px + 72px + 12px); color: var(--t2); font-size: var(--fs-sm); }
+.cmenu__o--ask .cmenu__name { font-weight: 400; }
 .cmenu__o--ask.is-active { color: var(--t1); }
 .cmenu__cmd { flex: none; min-width: 72px; font-family: var(--mono); font-size: var(--fs-md); font-weight: 600; }
 .cmenu__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
@@ -14,4 +15,4 @@
 .cmenu__kbd { flex: none; display: grid; place-items: center; min-width: 20px; height: 20px; border-radius: 5px; background: var(--sub); color: var(--t2); font: 500 var(--fs-glyph)/1 var(--mono); box-shadow: inset 0 -1px 0 var(--line2); }
 .cmenu__o.is-active .cmenu__kbd { background: var(--el); }
 .cmenu__f { margin: 4px 4px 0; padding: 8px 6px 4px; border-top: 1px solid var(--line); color: var(--t3); font-size: var(--fs-sm); }
-@media (pointer: coarse) { .cmenu__o { min-height: 48px; font-size: var(--fs-lg); } .cmenu__o--ask { min-height: 44px; font-size: var(--fs-base); } .cmenu { width: 100%; max-height: min(70vh, 560px); } }
+@media (pointer: coarse) { .cmenu__o { min-height: 48px; font-size: var(--fs-lg); } .cmenu__o--ask { min-height: 44px; font-size: var(--fs-base); } .cmenu { width: 100%; max-height: max(120px, min(var(--cmenu-room, 100vh), 70vh, 560px)); } }

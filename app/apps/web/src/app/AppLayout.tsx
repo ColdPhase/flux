@@ -177,7 +177,10 @@ function AppLayoutContent() {
   // After a task is created, `C` and New open on the space it went to until the person goes to another place (#1235): adding several is one key each.
   const keptSpace = useRef<{ projectId: string; path: string } | null>(null);
   const pathNow = useRef(location.pathname);
-  useLayoutEffect(() => { pathNow.current = location.pathname; });
+  useLayoutEffect(() => {
+    pathNow.current = location.pathname;
+    if (keptSpace.current && keptSpace.current.path !== location.pathname) keptSpace.current = null;
+  });
   const paneRef = useRef<HTMLElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();

@@ -9,7 +9,7 @@ export function useAskMenu({ fieldId, draft, enabled, suggestions, onAsk, onDraf
   fieldId: string; draft: string; enabled: boolean; suggestions: readonly string[];
   /** A suggestion was chosen: the "/" is gone from the field and these words are asked. */
   onAsk: (text: string) => void;
-  /** `/ai ` replaces the "/" that was typed. */
+  /** The draft as it is now: the "/" that was typed is replaced by `/ai ` or taken out, the words around it stay. */
   onDraft: (value: string) => void;
 }) {
   const [caret, setCaret] = useState(0);
@@ -22,12 +22,18 @@ export function useAskMenu({ fieldId, draft, enabled, suggestions, onAsk, onDraf
   /** The field changed: the caret is where the person typed. */
   function change(position: number) { setCaret(position); setIndex(0); setClosedAt(null); }
   function pick(option: ComposerOption) {
-    if (option.ask) { onDraft(''); onAsk(option.ask); return; }
-    onDraft('/ai ');
-    setCaret(4);
+    if (!trigger) return;
+    // What is around the "/" stays, as in the other composers' menu: words written before the caret or after it are not lost.
+    const before = draft.slice(0, trigger.start);
+    const after = draft.slice(caret);
+    if (option.ask) { onDraft(before + after); setCaret(before.length); onAsk(option.ask); return; }
+    const next = before + option.insert + after;
+    const position = before.length + option.insert.length;
+    onDraft(next);
+    setCaret(position);
     requestAnimationFrame(() => {
       const field = document.getElementById(fieldId);
-      if (field instanceof HTMLTextAreaElement) { field.focus(); field.setSelectionRange(4, 4); }
+      if (field instanceof HTMLTextAreaElement) { field.focus(); if (field.value === next) field.setSelectionRange(position, position); }
     });
   }
   /** Arrow keys, Enter, Tab and Escape while the menu is open; true when the key was the menu's. */
@@ -35,7 +41,7 @@ export function useAskMenu({ fieldId, draft, enabled, suggestions, onAsk, onDraf
     if (!open || event.nativeEvent.isComposing) return false;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      setIndex((active + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
+      setIndex((current) => (Math.min(current, options.length - 1) + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
       return true;
     }
     if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') { event.preventDefault(); pick(options[active]!); return true; }

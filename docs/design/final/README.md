@@ -802,8 +802,13 @@ the composer. The right-hand phone above shows the sheet.
   attachments and the audience line stay as they are. Typing `/` lists the actions as before, and the
   `/ai` row is followed by the suggestions for this place, indented under it to the column of its
   hint:
-  - the rows are quieter than the actions (secondary text, `--fs-sm`, no command and no hint) and
-    compact: 28 px with a mouse, 44 px on touch; the active row shows the ↵ key like any other;
+  - the rows are quieter than the actions (secondary text in regular weight, `--fs-sm` with a mouse
+    and `--fs-base` on touch, no command and no hint) and compact: 28 px with a mouse, 44 px on
+    touch; the active row shows the ↵ key like any other; a screen reader hears "Ask your
+    assistant: Catch me up";
+  - the menu is never taller than the room above the composer inside its pane or sheet (a phone's
+    thread sheet is short): what does not fit scrolls inside the menu, the first row is always
+    reachable, and the arrow keys keep the active row in view;
   - they take the arrow keys, Enter and a click like every row; choosing one asks the assistant at
     once, as `/ai` does, and the answer is private in the same card ("Only you can see this");
   - they follow `/ai` whenever it is listed (`/`, `/a`, `/ai`) and go with it when it is not;
@@ -819,7 +824,8 @@ the composer. The right-hand phone above shows the sheet.
   - they show only while the assistant is ready and the space's AI is on, and until the person has
     used the assistant three times, as before;
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
-    two suggestions only (the task has no other slash commands), once the task has its first message.
+    two suggestions only (the task has no other slash commands), once the task has its first message;
+    choosing a row keeps the words written around the `/`, as in the conversation's composer.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

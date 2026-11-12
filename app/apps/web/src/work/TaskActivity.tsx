@@ -343,7 +343,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
     if (ready.kind !== 'ready') { setAskFailure(ready.note); return; }
     const active = captureScope();
     setAskFailure('');
-    try { noteAssistantUse(meId); await state.assistant.ask(prompt); if (active()) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }
+    try { noteAssistantUse(meId); await state.assistant.ask(prompt); if (active() && words === undefined) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }
   }
 
   async function send(event?: FormEvent) {

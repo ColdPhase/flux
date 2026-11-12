@@ -15,7 +15,7 @@ import uuid
 from playwright.sync_api import Route, expect
 
 import test_assistant_screen as base
-from test_assistant_screen import pick_suggestion
+from test_assistant_screen import menu_clipped_by, pick_suggestion, suggestions_reachable
 from test_app_shell import shot
 
 FORBIDDEN = base.FORBIDDEN
@@ -119,9 +119,9 @@ class AssistantJourneys(unittest.TestCase):
         self.assertEqual(order[-3:], ["/ai", "Catch me up on this thread", "Turn this thread into tasks"], "under /ai, understand first and then act")
         boxes = [row.bounding_box() for row in rows.all()]
         self.assertTrue(all(box["height"] >= 44 for box in boxes) if phone else all(box["height"] <= 30 for box in boxes), boxes)
-        shown = menu.bounding_box()
-        self.assertTrue(all(box["y"] + box["height"] <= shown["y"] + shown["height"] + 1 for box in boxes), "both suggestions are in the menu's visible part")
-        self.assertEqual(menu.get_by_role("option", name="Tidy this space's tasks").count(), 0, "a space-wide action is not offered in a thread")
+        suggestions_reachable(self, menu, rows)
+        self.assertIsNone(menu_clipped_by(page, menu), "the menu sits inside the pane or sheet")
+        self.assertEqual(menu.get_by_role("option", name=re.compile("Tidy this space")).count(), 0, "a space-wide action is not offered in a thread")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0)
         return menu
 
@@ -134,7 +134,7 @@ class AssistantJourneys(unittest.TestCase):
         menu = self.open_suggestions(page, phone=True)
         shot(page, "suggestions-thread-390-light")
         page.context.set_offline(True)
-        menu.get_by_role("option", name="Catch me up on this thread", exact=True).click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(page.get_by_text("Sends when you're back")).to_be_visible()
         shot(page, "offline-390-light")
         self.assertEqual(asked, [])
@@ -150,7 +150,7 @@ class AssistantJourneys(unittest.TestCase):
         page.goto(self.thread_url())
         menu = self.open_suggestions(page, phone=False)
         page.context.set_offline(True)
-        menu.get_by_role("option", name="Catch me up on this thread", exact=True).click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(page.get_by_text("Sends when you're back")).to_be_visible()
         page.context.set_offline(False)
         # Refused on reconnect: not lost. The words are back in the ask field and the reason shows, as for a refused ask.
@@ -168,7 +168,7 @@ class AssistantJourneys(unittest.TestCase):
         menu = self.open_suggestions(page, phone=False)
         shot(page, "suggestions-thread-1440-light")
         page.context.set_offline(True)
-        menu.get_by_role("option", name="Catch me up on this thread", exact=True).click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         pick_suggestion(page, "Turn this thread into tasks")
         expect(page.get_by_text("Sends when you're back")).to_have_count(2)
         self.assertEqual(asked, [])

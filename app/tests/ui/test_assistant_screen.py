@@ -37,7 +37,28 @@ def assistant_known(page: Page) -> None:
 def pick_suggestion(page: Page, name: str, composer: str = "#thread-composer") -> None:
     """#1224: the assistant's suggestions are rows of the `/` menu, under `/ai`: type "/" in the composer and choose one."""
     page.locator(composer).fill("/")
-    page.get_by_role("listbox", name="Actions").get_by_role("option", name=name, exact=True).click()
+    page.get_by_role("listbox", name="Actions").get_by_role("option", name=f"Ask your assistant: {name}", exact=True).click()
+
+
+def menu_clipped_by(page: Page, menu) -> str | None:
+    """#1224: what cuts a composer's `/` menu off: the pane or sheet it sits in, or the top of the screen (None when nothing does). The menu
+    is as tall as the room above its box, so a short phone sheet scrolls it instead of hiding rows under its header."""
+    page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+    return menu.evaluate("""(el) => { const r = el.getBoundingClientRect(); if (r.top < -1) return 'the screen';
+      for (let p = el.parentElement; p; p = p.parentElement) { if (getComputedStyle(p).overflowY === 'visible') continue;
+        const q = p.getBoundingClientRect(); if (q.height && (r.top < q.top - 1 || r.bottom > q.bottom + 1)) return String(p.className || p.tagName); }
+      return null; }""")
+
+
+def suggestions_reachable(test: unittest.TestCase, menu, rows) -> None:
+    """The first row is always in view; a suggestion is in view too unless the menu scrolls (then the arrow keys and the finger reach it)."""
+    shown = menu.bounding_box()
+    first = menu.locator(".cmenu__o").first.bounding_box()
+    test.assertGreaterEqual(first["y"], shown["y"] - 1, "the first row is at the top of the menu")
+    if not menu.evaluate("(el) => el.scrollHeight > el.clientHeight + 1"):
+        for row in rows.all():
+            box = row.bounding_box()
+            test.assertLessEqual(box["y"] + box["height"], shown["y"] + shown["height"] + 1, "the suggestion is in view")
 
 
 class AssistantScreen(unittest.TestCase):

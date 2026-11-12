@@ -77,7 +77,7 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId, conve
     if (!menuOpen || event.nativeEvent.isComposing) return false;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      setMenuIndex((activeIndex + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
+      setMenuIndex((current) => (Math.min(current, options.length - 1) + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
       return true;
     }
     if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') { event.preventDefault(); pick(options[activeIndex]!); return true; }

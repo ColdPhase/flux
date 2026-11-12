@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, Kreska, usePop } from '../ui';
 import './composer-menu.css';
@@ -92,11 +92,46 @@ export function ComposerMenu({ open, ...props }: ComposerMenuProps & { open: boo
 }
 
 function ComposerMenuList({ id, options, active, onPick, onHover, trigger, aiOff = false, popProps }: ComposerMenuProps & { popProps: ReturnType<typeof usePop>['props'] }) {
-  // The arrow keys reach the suggestions at the end of a long list: the row they act on stays in view.
+  const list = useRef<HTMLDivElement>(null);
+  // The menu is never taller than the room above its box inside whatever clips it (a phone's thread sheet is short): `--cmenu-room` is that room,
+  // and the CSS takes the smaller of it and the menu's own height; what does not fit scrolls inside the menu.
+  useLayoutEffect(() => {
+    const menu = list.current;
+    const box = menu?.parentElement;
+    if (!menu || !box) return undefined;
+    const measure = () => {
+      let top = window.visualViewport?.offsetTop ?? 0;
+      for (let element = box.parentElement; element; element = element.parentElement) {
+        if (getComputedStyle(element).overflowY !== 'visible') top = Math.max(top, element.getBoundingClientRect().top);
+      }
+      menu.style.setProperty('--cmenu-room', `${Math.max(0, Math.floor(box.getBoundingClientRect().top - top - 16))}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => { window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
+  }, [options.length]);
+  // The arrow keys reach the rows at the end of a long list: the row they act on stays in view. Only this menu scrolls, and no row
+  // reads the pointer the scroll left under it as a hover.
   const activeId = options[active] ? `${id}-${options[active]!.id}` : null;
-  useEffect(() => { if (activeId) document.getElementById(activeId)?.scrollIntoView({ block: 'nearest' }); }, [activeId]);
+  useEffect(() => {
+    const menu = list.current;
+    const row = activeId ? document.getElementById(activeId) : null;
+    if (!menu || !row || menu.scrollHeight <= menu.clientHeight) return;
+    if (row.offsetTop < menu.scrollTop) menu.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > menu.scrollTop + menu.clientHeight) menu.scrollTop = row.offsetTop + row.offsetHeight - menu.clientHeight;
+  }, [activeId]);
+  // Only a pointer that really moved chooses a row: the browser repeats the last mouse move after a scroll or a layout change.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const hover = (index: number) => (event: { clientX: number; clientY: number; movementX: number; movementY: number }) => {
+    const last = pointer.current;
+    pointer.current = { x: event.clientX, y: event.clientY };
+    if (event.movementX === 0 && event.movementY === 0) return;
+    if (last && last.x === event.clientX && last.y === event.clientY) return;
+    if (index !== active) onHover(index);
+  };
   return (
-    <div {...popProps} className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
+    <div {...popProps} ref={list} className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
       // The field keeps focus: choosing never moves it, so the press must not blur the field.
       onMouseDown={(event) => event.preventDefault()}>
       <div className="cmenu__h" aria-hidden="true">{trigger === '@' ? 'Mention' : 'Actions'}</div>
@@ -104,7 +139,8 @@ function ComposerMenuList({ id, options, active, onPick, onHover, trigger, aiOff
         <div key={option.id} id={`${id}-${option.id}`} role="option" aria-selected={index === active}
           className={`cmenu__o${option.kind === 'suggestion' ? ' cmenu__o--ask' : ''}${index === active ? ' is-active' : ''}`}
           data-ai-surface={option.kind === 'agent' || option.kind === 'suggestion' || option.slash && AI_ACTIONS.has(option.slash) ? 'composer-ai-option' : undefined}
-          onMouseMove={() => { if (index !== active) onHover(index); }} onClick={() => onPick(option)}>
+          aria-label={option.kind === 'suggestion' ? `Ask your assistant: ${option.label}` : undefined}
+          onMouseMove={hover(index)} onClick={() => onPick(option)}>
           {option.kind === 'action' ? <code className="cmenu__cmd">{option.label}</code>
             : option.kind === 'suggestion' ? <span className="cmenu__name">{option.label}</span>
               : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} id={option.personId} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
