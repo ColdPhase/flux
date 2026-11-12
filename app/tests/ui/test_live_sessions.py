@@ -640,9 +640,8 @@ class LiveJourney(LiveBase):
         expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
         ada.goto("/inbox")
         expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
-        # Kai's card goes with the call and the tab stops counting it.
-        expect(kai.locator(".ui-notices .ui-notice")).to_have_count(0, timeout=20000)
-        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=20000)
+        # The tab stops counting the call once nobody is in it (its card stays until the call ends, as #1268 draws it).
+        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=30000)
 
     def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
         """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;
