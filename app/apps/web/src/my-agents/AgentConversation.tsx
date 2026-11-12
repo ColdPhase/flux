@@ -195,10 +195,11 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const working = chat.working;
   // Where the person left off (#1246): the first thing the agent said after they last had this chat open, as it was when they opened it
   // (later things are not "new" to a chat that is open: it reads itself as they arrive).
-  const since = chat.opening?.since ?? null;
+  // A chat never opened has all of what the agent said to read: the first of it.
+  const since = chat.opening?.since ?? '';
   const [newFrom, setNewFrom] = useState<string | null | undefined>(undefined);
   if (newFrom === undefined && chat.opening) {
-    setNewFrom(since ? entries.find((entry) => entry.run ? (entry.run.completedAt ?? '') > since : entry.line!.createdAt > since)?.key ?? null : null);
+    setNewFrom(entries.find((entry) => entry.run ? (entry.run.completedAt ?? '') > since : entry.line!.createdAt > since)?.key ?? null);
   }
   // Opening is on the "New" divider, or on the newest turn. After that the newest turn comes into view as it arrives or changes only for a
   // reader who is at the end; one who is reading above is never moved, and what arrives is counted in "↓ N new".

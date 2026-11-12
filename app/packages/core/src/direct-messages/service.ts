@@ -171,12 +171,9 @@ async function detail(ports: DmPorts, record: DmRecord, self: string, window: { 
   return {
     ...toSummary(record, self), messages: items, people: await peopleOf(ports, record, messages),
     messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? items[0]!.sequence : null, limit: window.limit },
-    ...unread(await ports.dms.unreadFrom(record.id, self, null)),
+    unreadFrom: await ports.dms.unreadFrom(record.id, self, null),
   };
 }
-
-/** Where the person left off (#1246), as the field: absent when they have observed nothing at that level yet. */
-const unread = (from: string | null | undefined) => from === undefined ? {} : { unreadFrom: from };
 
 function validMessage(value: unknown): string {
   if (typeof value !== 'string' || !UUID.test(value)) throw missingMessage();
@@ -394,7 +391,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
         return {
           root: toMessage(rootMessage), replies, people: await peopleOf(ports, record, [rootMessage, ...messages]),
           messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? replies[0]!.sequence : null, limit: window.limit },
-          ...unread(await ports.dms.unreadFrom(dmId, principal.id, root)),
+          unreadFrom: await ports.dms.unreadFrom(dmId, principal.id, root),
         };
       });
     },

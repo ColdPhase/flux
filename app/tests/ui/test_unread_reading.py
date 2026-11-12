@@ -1,8 +1,9 @@
 """Browser tests for opening a conversation where the person left off (#1246, final design S23).
 
 One behaviour in five surfaces: a space's conversation, a direct message, a thread, a task's discussion and an agent's chat (and a direct message's
-thread). Each opens on its first new message with a quiet "New" divider above it, or at its end when nothing is new; while the reader is above the
-end, what arrives is counted in "↓ N new", which a click or tap (and End) takes to the end; and nothing moves under the reader.
+thread). Each opens on its first new message with a quiet "New" divider above it, or at its end when nothing is new, or at its very first message when
+the person has never opened it (founder decision on #1246); while the reader is above the end, what arrives is counted in "↓ N new", which a click or
+tap (and End) takes to the end; and nothing moves under the reader.
 
 Ada reads and Bob writes. What Ada had seen is set through the API the app itself writes (a return point for the space, viewing observations for a
 direct message, a thread and a discussion), then Bob writes 30 more and Ada opens the surface. The agent's chat has no way to post a line from a test, so
@@ -173,7 +174,7 @@ class OpenWhereYouLeftOff(unittest.TestCase):
                 status=200, content_type="application/json", body=json.dumps({"items": lines, "readAt": read_at})) if route.request.method == "GET" else route.continue_())
 
         return dict(name="agent", url=f"/agents/{agent}", feed=".agc-pane .dm__feed", first=f'[data-line-id="{lines[0]["id"]}"]', ready=f'[data-line-id="{lines[-1]["id"]}"]', more=more,
-                    refresh=False, arrange=arrange)
+                    refresh=False, arrange=arrange, starts=True)
 
     # ------------------------------------------------------------------ the one behaviour
 
@@ -209,9 +210,12 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         # It opens on what is new: the divider is where the feed starts, with the first new message below it. Not at the end and not at the top.
         expect(first).to_be_in_viewport()
         top = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
-        self.assertTrue(0 <= top <= 40, f"{label}: the divider opens at the top of the feed, saw {top}px below it")
-        # (An agent's chat starts with its divider, under one line of note, so there is little above it.)
-        self.assertGreater(feed.evaluate("el => el.scrollTop"), 40, f"{label}: it did not open at the top")
+        if surface.get("starts"):
+            # Nothing was read before the divider (the agent's chat holds only new lines): it opens at the very top, under the chat's own note.
+            self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: it opens at the top")
+        else:
+            self.assertTrue(0 <= top <= 40, f"{label}: the divider opens at the top of the feed, saw {top}px below it")
+            self.assertGreater(feed.evaluate("el => el.scrollTop"), 100, f"{label}: it did not open at the top")
         self.assertGreater(self.at_end(feed), 200, f"{label}: it did not open at the end, 30 messages are new")
         self.assertTrue(divider.evaluate("(el, selector) => el.nextElementSibling?.matches(selector)", surface["first"]), f"{label}: the divider is right above the first new message")
         expect(self.pill(feed)).to_have_count(0)
@@ -307,6 +311,53 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         agent["ready"] = ".agc-pane"
         page, feed = self.open(agent)
         expect(feed.get_by_role("separator", name="New")).to_have_count(0)
+
+
+    # ------------------------------------------------------------------ never opened: the first message
+
+    def test_08_a_conversation_never_opened_opens_at_its_first_message(self) -> None:
+        """Founder decision on #1246: everything in a conversation the person has never opened is new, so it opens at its first message with
+        the divider above it, from the very top (who is in it, a thread's root), and "↓ N new" leads to the end."""
+        project = self.ids["project"]
+        for phone in (False, True):
+            # Each viewport has conversations of its own: what the first one showed is observed, so it is no longer new.
+            tag = "phone" if phone else "computer"
+            dm = self.call("ada", f"/api/v1/workspaces/{self.ids['workspace']}/dms", {"participantIds": [self.ids["bob"], self.ids["carol"]], "title": f"Lamp crew new {tag}"})["id"]
+            sent = [self.call("bob", f"/api/v1/dms/{dm}/messages", {"body": words("Hello", index), "clientMessageId": str(uuid.uuid4())})["id"] for index in range(60)]
+            root = self.call("bob", f"/api/v1/projects/{project}/conversations", {"body": f"Which bed gets the new sensors first? (never opened {tag})", "clientMessageId": str(uuid.uuid4())})
+            replies = [self.call("bob", f"/api/v1/conversations/{root['id']}/messages", {"body": words("Hello", index), "clientMessageId": str(uuid.uuid4())})["id"] for index in range(20)]
+            label = "a phone" if phone else "a computer"
+            # A new direct message with 60 messages (more than its newest window): it is read back to the first.
+            page, feed = self.open({"url": f"/dm/{dm}", "feed": ".dm__feed", "ready": f"#message-{sent[0]}"}, phone=phone)
+            divider = feed.get_by_role("separator", name="New")
+            expect(divider).to_have_count(1)
+            self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", sent[0]), f"{label}: the divider is right above the first message")
+            expect(page.locator(f"#message-{sent[0]}")).to_be_in_viewport()
+            expect(feed.locator(".dm__head")).to_be_in_viewport()
+            self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a direct message never opened opens at its very top")
+            name = f"unread-never-opened-dm-{'390' if phone else '1440'}"
+            shot(page, f"{name}-light")
+            page.emulate_media(color_scheme="dark")
+            shot(page, f"{name}-dark")
+            page.emulate_media(color_scheme="light")
+            # A thread never opened opens at its root, whole, with the divider under it above the first reply.
+            page, feed = self.open({"url": f"/projects/{project}/conversations/{root['id']}", "feed": ".thread__feed", "ready": f"#message-{replies[-1]}"}, phone=phone)
+            divider = feed.get_by_role("separator", name="New")
+            expect(divider).to_have_count(1)
+            self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", replies[0]), f"{label}: the divider is right above the first reply")
+            self.assertLess(feed.evaluate("el => el.scrollTop"), 2, f"{label}: a thread never opened opens at its root")
+            expect(feed.locator(".thread__root")).to_be_in_viewport()
+            expect(page.locator(f"#message-{replies[0]}")).to_be_in_viewport()
+            # "↓ N new" leads to the end.
+            page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+            self.call("bob", f"/api/v1/conversations/{root['id']}/messages", {"body": words("Later", 99), "clientMessageId": str(uuid.uuid4())})
+            page.evaluate("() => window.dispatchEvent(new Event('focus'))")
+            pill = self.pill(feed)
+            expect(pill).to_have_text("1 new")
+            pill.tap() if phone else pill.click()
+            expect(self.pill(feed)).to_have_count(0)
+            page.wait_for_timeout(300)
+            self.assertLess(self.at_end(feed), 48, f"{label}: the line took the reader to the end")
 
 
 if __name__ == "__main__":

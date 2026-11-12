@@ -17,7 +17,7 @@ export function useAgentChat(agentId: string, meId: string) {
   const [failed, setFailed] = useState(false);
   const [reads, setReads] = useState(0);
   // When the person last had this chat open, as it was when they opened it now (#1246): what the agent said after is new to them. The chat reads
-  // itself (below), which moves it; the first read is the one that tells where they left off. Null: never opened, or not told.
+  // itself (below), which moves it; the first read is the one that tells where they left off. Null: never opened, so all the agent said is new.
   const [opening, setOpening] = useState<{ since: string | null } | null>(null);
   // What the chat's neighbours (the schedules) read again with: the stream's events and the person's own doing, not the timer below.
   const [signal, setSignal] = useState(0);

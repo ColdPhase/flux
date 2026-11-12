@@ -186,9 +186,9 @@ export function dmRows(db: DbExecutor) {
       const level = rootId ? eq(m.threadRootId, rootId) : isNull(m.threadRootId);
       const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(obs).innerJoin(m, eq(m.id, obs.messageId))
         .where(and(eq(obs.dmId, dmId), eq(obs.viewerId, viewerId), level));
-      if (seen?.top === null || seen?.top === undefined) return undefined;
+      // Nothing observed at this level: none of it was read, so it all is new.
       const [next] = await db.select({ id: m.id }).from(m)
-        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, seen.top), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
+        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, seen?.top ?? 0), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
         .orderBy(asc(m.sequence)).limit(1);
       return next?.id ?? null;
     },

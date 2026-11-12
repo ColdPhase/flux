@@ -7,9 +7,9 @@ import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
 // Where a person left off in a conversation (#1246): `unreadFrom` is the first message by someone else after the newest one they observed in
-// it (the viewing receipts of #534 are the only read state), `null` when they have observed everything, and absent when they have observed nothing
-// yet. It is the person's own read: another person, a removed message and a DM's "used AI here" line change nothing. An agent's chat says when
-// its owner last had it open (`readAt`).
+// it (the viewing receipts of #534 are the only read state), the first message of all when they have observed none (a conversation never
+// opened is all new), and `null` when they have observed everything. It is the person's own read: another person, a removed message and a DM's
+// "used AI here" line change nothing. An agent's chat says when its owner last had it open (`readAt`, null: never).
 
 describe('where the person left off (#1246)', () => {
   let ada: Person;
@@ -46,11 +46,11 @@ describe('where the person left off (#1246)', () => {
   });
 
   describe('a direct message and its thread', () => {
-    test('says nothing before the person has observed anything, then where they left off, and null when they are caught up', async () => {
+    test('names the first message of a conversation never opened, then where the person left off, and null when they are caught up', async () => {
       const dm = await dmOf(ada, [bob, carol], 'Lamp crew');
       const first = await say(bob, dm.id, 'First');
       const second = await say(bob, dm.id, 'Second');
-      assert.equal('unreadFrom' in await readDm(ada, dm.id), false, 'nothing observed yet: nothing is said');
+      assert.equal((await readDm(ada, dm.id)).unreadFrom, first.id, 'nothing observed: all of it is new, from its first message');
       await observe(ada, dm.id, [first.id]);
       assert.equal((await readDm(ada, dm.id)).unreadFrom, second.id, 'the first message after the newest one observed');
       const third = await say(carol, dm.id, 'Third');
@@ -58,11 +58,14 @@ describe('where the person left off (#1246)', () => {
       assert.equal((await readDm(ada, dm.id)).unreadFrom, third.id);
       await observe(ada, dm.id, [third.id]);
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null, 'caught up');
-      // Ada's own message is nobody's to read, and a person who observed nothing is told nothing.
+      // Ada's own message is nobody's to read; the read is each person's own, and a conversation of one's own words has nothing new.
       await say(ada, dm.id, 'Mine');
       assert.equal((await readDm(ada, dm.id)).unreadFrom, null);
-      assert.equal('unreadFrom' in await readDm(carol, dm.id), false, 'the read is the person\'s own');
-      assert.equal('unreadFrom' in await readDm(bob, dm.id), false);
+      assert.equal((await readDm(carol, dm.id)).unreadFrom, first.id, 'Carol has observed nothing');
+      assert.equal((await readDm(bob, dm.id)).unreadFrom, third.id, 'Bob\'s first message by someone else is Carol\'s');
+      const lonely = await dmOf(ada, [bob, carol], 'Notes to self');
+      await say(ada, lonely.id, 'Only mine');
+      assert.equal((await readDm(ada, lonely.id)).unreadFrom, null, 'nothing by anyone else');
     });
 
     test('a thread keeps its own level, and a removed message and the AI line never count', async () => {
@@ -72,9 +75,9 @@ describe('where the person left off (#1246)', () => {
       const one = await reply(bob, dm.id, root.id, 'Yes.');
       const two = await reply(carol, dm.id, root.id, 'Or a knob.');
       await observe(ada, dm.id, [root.id]);
-      // The root observed says where Ada is among the roots; no reply was observed, so the thread says nothing.
+      // The root observed says where Ada is among the roots; no reply was observed, so every reply is new.
       assert.equal((await readDm(ada, dm.id)).unreadFrom, other.id);
-      assert.equal('unreadFrom' in await readThread(ada, dm.id, root.id), false);
+      assert.equal((await readThread(ada, dm.id, root.id)).unreadFrom, one.id);
       await observe(ada, dm.id, [one.id]);
       assert.equal((await readThread(ada, dm.id, root.id)).unreadFrom, two.id);
       assert.equal((await readDm(ada, dm.id)).unreadFrom, other.id, 'a reply observed does not move the roots');
@@ -95,7 +98,7 @@ describe('where the person left off (#1246)', () => {
       const rootId = opened.messages[0]!.id;
       const one = await post(bob, opened.id, 'The north one.');
       const two = await post(carol, opened.id, 'Or the east.');
-      assert.equal('unreadFrom' in await readConversation(ada, opened.id), false, 'nothing observed yet');
+      assert.equal((await readConversation(ada, opened.id)).unreadFrom, one.id, 'nothing observed: every reply is new, the root is the thread\'s header');
       await watch(ada, [rootId, one.id]);
       assert.equal((await readConversation(ada, opened.id)).unreadFrom, two.id);
       await watch(ada, [two.id]);
@@ -104,8 +107,10 @@ describe('where the person left off (#1246)', () => {
       assert.equal((await readConversation(ada, opened.id)).unreadFrom, three.id);
       // Another conversation's observations say nothing here, and the read is the person's own.
       const elsewhere = await start(bob, 'Something else');
-      assert.equal('unreadFrom' in await readConversation(ada, elsewhere.id), false);
-      assert.equal('unreadFrom' in await readConversation(carol, opened.id), false);
+      assert.equal((await readConversation(ada, elsewhere.id)).unreadFrom, null, 'a root with no reply has nothing to read');
+      const answer = await post(carol, elsewhere.id, 'Carol answers');
+      assert.equal((await readConversation(ada, elsewhere.id)).unreadFrom, answer.id);
+      assert.equal((await readConversation(carol, opened.id)).unreadFrom, one.id, 'Carol has observed nothing in it');
     });
 
     test('a task\'s discussion is read the same way', async () => {
@@ -126,7 +131,7 @@ describe('where the person left off (#1246)', () => {
     test('says when its owner last had it open, before the chat\'s own read moves it, and nobody else\'s', async () => {
       const scene = await assistantScene('left');
       const read = async () => expectStatus(await scene.owner.browser.request('GET', agentChatMessagesPath(scene.agentId)), 200) as AgentChatLines;
-      assert.equal((await read()).readAt, null, 'never opened');
+      assert.equal((await read()).readAt, null, 'never opened: all of it is new');
       const before = Date.now();
       await scene.runs.readAgentChat(human(scene.owner), scene.agentId);
       const opened = (await read()).readAt;

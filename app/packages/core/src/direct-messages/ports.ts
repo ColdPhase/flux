@@ -132,10 +132,10 @@ export interface DmRepository {
   viewersOfAll(dmId: string, ids: string[], excludeId: string): Promise<DmPerson[]>;
   /**
    * Where `viewerId` left off at one level (the roots when `rootId` is null, else that root's replies; #1246): the first message by
-   * someone else, neither removed nor the "used AI here" line, after the newest message of that level they observed. Null when nothing
-   * is unread; undefined when they have observed nothing at that level.
+   * someone else, neither removed nor the "used AI here" line, after the newest message of that level they observed. When they observed none,
+   * that is the first message of the level. Null when nothing is unread.
    */
-  unreadFrom(dmId: string, viewerId: string, rootId: string | null): Promise<string | null | undefined>;
+  unreadFrom(dmId: string, viewerId: string, rootId: string | null): Promise<string | null>;
   /** Display names of these people. */
   names(userIds: string[]): Promise<DmPerson[]>;
 }

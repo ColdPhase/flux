@@ -102,8 +102,9 @@ async function requireProject(principal: Principal, projectId: string, db: Execu
 }
 
 /**
- * Where the caller left off in a conversation (#1246, `UnreadFrom`): the first message by someone else after the newest one they observed
- * here (#534). Only a person has a read of their own; nothing observed yet says nothing, so the field is left out.
+ * Where the caller left off in a conversation (#1246, `UnreadFrom`): the first reply by someone else after the newest message they observed
+ * here (#534), or the first reply of all when they observed none. The opening message is the thread's header, never the divider's place.
+ * Only a person has a read of their own.
  */
 async function unreadFrom(db: Executor, principal: Principal, conversationId: string): Promise<{ unreadFrom?: string | null }> {
   if (principal.kind !== 'human') return {};
@@ -111,9 +112,8 @@ async function unreadFrom(db: Executor, principal: Principal, conversationId: st
   const m = schema.projectMessages;
   const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(o).innerJoin(m, eq(m.id, o.messageId))
     .where(and(eq(m.conversationId, conversationId), eq(o.viewerId, principal.id)));
-  if (seen?.top === null || seen?.top === undefined) return {};
   const [next] = await db.select({ id: m.id }).from(m)
-    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, seen.top), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
+    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, 1)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
     .orderBy(asc(m.sequence)).limit(1);
   return { unreadFrom: next?.id ?? null };
 }

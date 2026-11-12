@@ -50,7 +50,9 @@ const holds = new WeakMap<HTMLElement, () => void>();
 function endOpening(feed: HTMLElement) { holds.get(feed)?.(); }
 
 /**
- * Opens a feed on its "New" divider (`data-unread-start`): the divider goes to the top, with what is new below it. Layout settles for a
+ * Opens a feed on its "New" divider (`data-unread-start`): the divider goes to the top, with what is new below it. When the divider starts the
+ * list (nothing has been read: a conversation never opened), the feed opens at its very top instead, so what stands above the list (who is in
+ * a direct message, a thread's root, an agent's note) is in view too. Layout settles for a
  * moment after a feed opens (previews, chips and fonts arrive), so this repeats until the reader acts or {@link HOLD_MS} passes, like
  * `openOnWholeMessages`. It does nothing when the feed has no divider. Returns the cleanup, or null when there was no divider.
  */
@@ -58,10 +60,16 @@ export function openAtUnread(feed: HTMLElement, column: HTMLElement | null): (()
   const divider = () => feed.querySelector<HTMLElement>('[data-unread-start]');
   if (!divider()) return null;
   let written = Number.NaN;
+  /** Nothing but a day line stands before it in its list. */
+  const startsList = (mark: HTMLElement) => {
+    const before = mark.previousElementSibling;
+    return !before || (before.classList.contains('message-day') && !before.previousElementSibling);
+  };
   const place = () => {
     const mark = divider();
     if (!mark) return;
-    feed.scrollTop += mark.getBoundingClientRect().top - feed.getBoundingClientRect().top - TOP_GAP;
+    if (startsList(mark)) feed.scrollTop = 0;
+    else feed.scrollTop += mark.getBoundingClientRect().top - feed.getBoundingClientRect().top - TOP_GAP;
     written = feed.scrollTop;
   };
   place();

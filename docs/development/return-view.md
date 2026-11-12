@@ -153,8 +153,10 @@ first new one from the read it already makes, and nothing new is written:
 
 `unreadFrom` (`UnreadFrom` in `@flux/contracts`) comes from the viewing receipts of #534: a message is observed when its reader has had at least 60 %
 of it in view for 700 ms (`POST …/observations`), and that existing write is the whole read state. A message by the person themselves, a removed
-message and a DM's "used AI here" line never count. It is a string (the id the divider stands above), `null` (everything up to the newest was observed) or
-absent (nothing in that conversation was observed yet, so nothing says where the person left off and it opens as it always did). The value is
-read when the conversation opens and kept for as long as it stays open: what is seen meanwhile does not move the divider. A first new message older
+message and a DM's "used AI here" line never count. It is a string (the id the divider stands above) or `null` (everything up to the newest was
+observed). A conversation in which nothing was observed has never been opened, so all of it is new (founder decision, 2026-11-12): it names the first
+message by someone else (a thread's first reply; an agent's chat with no `readAt` has its first line or answer). When the divider starts the list the
+feed opens at its very top, so who is in a DM, a thread's root and an agent's note are in view. A space you have never visited has no return point
+and is not changed: it opens at its end. The value is read when the conversation opens and kept for as long as it stays open: what is seen meanwhile does not move the divider. A first new message older
 than the newest window is read back to with the same paging a link to a message uses (a direct message and a project thread do; a DM's thread
 and a space's stream do not, and then open as they always did, without a divider).

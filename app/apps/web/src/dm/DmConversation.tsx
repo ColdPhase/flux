@@ -89,8 +89,8 @@ function DmContent({ initial }: { initial: Dm }) {
   const [messages, setMessages] = useState(initial.messages);
   const [people, setPeople] = useState(() => new Map(initial.people.map((p) => [p.id, p])));
   const [olderCursor, setOlderCursor] = useState(initial.messagePage.nextBeforeSequence);
-  // Where the person left off (#1246), as this conversation was opened: the "New" divider stands above this message and opening scrolls to it.
-  // Later reads move it (what is seen is read), so it is kept as it was when the conversation opened.
+  // Where the person left off (#1246), as this conversation was opened: the "New" divider stands above this message and opening scrolls to it
+  // (a conversation never opened: its first message, from the very top). Later reads move it (what is seen is read), so it is kept as it was.
   const [unreadFrom] = useState(initial.unreadFrom ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   // The shared composer record, kept in this tab: the draft and the messages being sent (#264).

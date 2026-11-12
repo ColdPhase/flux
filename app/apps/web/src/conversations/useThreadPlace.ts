@@ -24,8 +24,9 @@ interface Options {
 export function useThreadPlace({ me, project, conversation }: PaneCore, { thread, reading, answers, outbox, rootMessageId, hideIfDenied }: Options) {
   const { messages, olderCursor } = thread;
   const { threadRestore, scrollRef, feedNode, columnRef, revealed } = reading;
-  // Where the person left off (#1246), as the thread was opened (what is seen is read, so a later read says something else): a message
-  // the "New" divider stands above, "caught up" (null) or nothing known yet (undefined). The pane is made again for each thread.
+  // Where the person left off (#1246), as the thread was opened (what is seen is read, so a later read says something else): a reply
+  // the "New" divider stands above, or "caught up" (null). A thread never opened has all its replies to read: the first reply, which opens the
+  // thread at its root, whole (#436). The pane is made again for each thread.
   const [leftOff] = useState(conversation?.unreadFrom);
   const unreadFrom = typeof leftOff === 'string' ? leftOff : null;
   const hash = useLocation().hash;
@@ -53,8 +54,8 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   useEffect(() => () => stopUnread.current?.(), []);
   useEffect(() => {
     // A source link from a notice or search opens on that whole message. Otherwise an open thread opens where the person left off
-    // (#1246): on the "New" divider, or at the end when they have read all of it. A thread they have not read any of starts at
-    // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
+    // (#1246): on the "New" divider, or at the end when they have read all of it. A divider above the first reply opens it at its root,
+    // whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
     // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).
     if (threadRestore) return;
