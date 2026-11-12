@@ -40,7 +40,7 @@ describe('#1217 on a real model (Claude Sonnet 5.5, API key)', { skip }, () => {
     const row = tablePrice('anthropic', MODEL)!;
     scene.connections.connect(scene.owner.id, connectionId, { provider: 'anthropic', model: MODEL, dailyBudgetCents: 200,
       price: { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'table', checkedOn: row.checkedOn } });
-    await scene.runs.enable(human(scene.owner), { agentId: scene.agentId, connection: connectionId, model: MODEL });
+    await scene.runs.chooseModel(human(scene.owner), { agentId: scene.agentId, connection: connectionId, model: MODEL });
     const real = providerPersonalCompute({ enabled: true, policy: PUBLIC_ONLY, webSearch: false, resolveKey: async () => KEY });
     // What was sent, to see that the picture went as image input (never printed: it holds only Flux's own words and the picture).
     const compute = { ...real, enabled: real.enabled, dispatch: (request: PersonalComputeRequest, signal: AbortSignal) => { sent.push(request); return real.dispatch(request, signal); },

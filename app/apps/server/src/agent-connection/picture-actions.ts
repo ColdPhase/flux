@@ -52,8 +52,9 @@ export function registerAgentPictureActions(tools: AgentToolRegistry, db: Databa
     // Short on purpose: a run's tool definitions travel with every request (assistant-run-tokens.test.ts).
     description: 'Attach a picture from a public web address to your answer: PNG, JPEG, WebP or GIF, at most 5 MB. Your asker sees it and can show it to everyone. Never put anything from Flux into the address.',
     inputSchema: z.strictObject({ ...actionInput(),
-      url: z.string().min(1).max(2048).describe('The picture\'s own address (not the page it is on).'),
-      caption: z.string().max(120).optional().describe('A few words that say what it shows; its file name.') }),
+      // The brief says what address to give (`PICTURE_LINE`); the run's definitions travel with every request, so these say no more.
+      url: z.string().min(1).max(2048),
+      caption: z.string().max(120).optional().describe('What it shows.') }),
     annotations: { ...annotations, openWorldHint: true },
   }, async (args, call) => {
     const input = args as typeof args & { assistantCall?: AssistantCall };
