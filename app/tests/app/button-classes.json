@@ -42,6 +42,7 @@
       "description": "A whole row, card or tile that opens something. The row is the target, so it carries no button of its own.",
       "classes": [
         "sset-row",
+        "file-row__open",
         "sset-card",
         "spset__keys",
         "ov-row",
