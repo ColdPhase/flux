@@ -1,7 +1,7 @@
 import {
-  IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
+  IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReadersPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
   type Dm, type DmMessage, type DmSummary, type DmTaskCopyPreview, type DmTaskCopyPreviewCommand, type DmTaskCopyResult, type DmThread,
-  type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type SentDmMessage, type Workspace, WORKSPACES_PATH,
+  type MessageReadersResult, type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type SentDmMessage, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
 import { request } from './client';
 import { isWorkspaceLocked } from '../encryption/api';
@@ -46,6 +46,9 @@ export const sendDmReply = (id: string, rootId: string, command: SendDmMessageCo
 /** Viewing receipts (#534): what this person saw, and who saw the runs of their own messages. */
 export const observeDmMessages = (id: string, messageIds: string[]) => request<ObserveMessagesResult>(dmObservationsPath(id), { method: 'POST', body: { messageIds } });
 export const dmReceipts = (id: string, runs: string[][], signal?: AbortSignal) => request<MessageReceiptsResult>(dmReceiptsPath(id), { method: 'POST', body: { runs }, leavesReads: true, signal });
+/** One page of the readers of one run, when a person opens the list (#1231). */
+export const dmReaders = (id: string, runs: string[][], run: number, after: string | undefined, signal?: AbortSignal) =>
+  request<MessageReadersResult>(dmReadersPath(id), { method: 'POST', body: { runs, run, ...(after ? { after } : {}) }, leavesReads: true, signal });
 /** An explicit excerpt copy into a project task (#537). */
 export const previewDmTaskCopy = (id: string, body: DmTaskCopyPreviewCommand, signal?: AbortSignal) => request<DmTaskCopyPreview>(dmTaskCopyPreviewPath(id), { method: 'POST', body, signal });
 export const copyDmToTask = (id: string, body: { messageId: string; excerpt: string; projectId: string; token: string; clientCommandId: string }, idempotencyKey: string) =>

@@ -3,6 +3,7 @@ import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, ShownAnswerName, SourceCitation, SourceTag, ViaTag, pendingMessageRow, shownAnswer, shownLabel } from '../app/messageParts';
+import type { Receipt } from '../app/receipts';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
@@ -18,8 +19,8 @@ type ThreadReplyProps = {
   continued?: boolean; groupLast?: boolean;
   message: ConversationMessage; mine: boolean; meId: string; arrived: boolean; name: string; project: Project; owners: AgentOwners; people: ProjectPerson[] | null;
   preview: MessageWorkPreview | null; makeWork: ReturnType<typeof useCreateWorkFromMessage>; writable: boolean;
-  /** Another person's reply is watched for viewing receipts; `seenBy` names who observed every reply of this author run. */
-  observed?: boolean; seenBy?: readonly string[];
+  /** Another person's reply is watched for viewing receipts; `receipt` says who read every reply of this author run. */
+  observed?: boolean; receipt?: Receipt | undefined;
   onDenied: (cause: unknown) => void;
 };
 type QueuedReplyProps = { continued?: boolean; pending: PendingSend; name: string; onRetry: () => void; onRemove: () => void };
@@ -66,7 +67,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

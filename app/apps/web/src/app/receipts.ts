@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { RECEIPT_LIMITS, type DmPerson, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
+import { RECEIPT_LIMITS, type MessageReadersResult, type MessageReader, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
 import { sameMessageAuthor } from './messageParts';
 import { streamLive, useStreamEvents } from '../api/stream';
 
@@ -103,20 +103,40 @@ export function ownRuns(lines: readonly Line[], meId: string, hasEarlier: boolea
   return runs;
 }
 
-/** Who observed every message of each of the person's own whole runs; refetched when the runs or `tick` change. */
-export function useReceipts({ scope, fetchReceipts, runs, tick }: {
-  scope: string; fetchReceipts: (runs: string[][], signal: AbortSignal) => Promise<MessageReceiptsResult>; runs: readonly OwnRun[]; tick: number;
+/**
+ * Who read one of the person's own whole runs (#1231): how many, and only the newest few, which is all the row under the message draws.
+ * `list` reads the whole list a page at a time, and is called only when a person opens it.
+ */
+export interface Receipt {
+  count: number;
+  readers: readonly MessageReader[];
+  list: (after: string | undefined, signal: AbortSignal) => Promise<MessageReadersResult>;
+}
+
+/**
+ * Who read each of the person's own whole runs, keyed by the run's last message. Each reader is in one run, the newest they read whole
+ * (the server places them); refetched when the runs or `tick` change. Only the newest runs are asked about: older ones are bounded by
+ * the request limits and are not at the reading edge.
+ */
+export function useReceipts({ scope, fetchReceipts, fetchReaders, runs, tick }: {
+  scope: string; fetchReceipts: (runs: string[][], signal: AbortSignal) => Promise<MessageReceiptsResult>;
+  fetchReaders: (runs: string[][], run: number, after: string | undefined, signal: AbortSignal) => Promise<MessageReadersResult>;
+  runs: readonly OwnRun[]; tick: number;
 }) {
   const key = `${scope}|${runs.map((run) => run.ids.join('+')).join('|')}`;
-  const [answer, setAnswer] = useState<{ key: string; seen: Map<string, DmPerson[]> }>({ key: '', seen: new Map() });
+  const [answer, setAnswer] = useState<{ key: string; seen: Map<string, Receipt> }>({ key: '', seen: new Map() });
+  const readers = useRef(fetchReaders);
+  useEffect(() => { readers.current = fetchReaders; });
   useEffect(() => {
-    // The newest runs only: older ones are bounded by the request limits and are not at the reading edge.
     const wanted = runs.slice(-RECEIPT_LIMITS.runsPerCall).filter((run) => run.ids.length <= RECEIPT_LIMITS.messagesPerCall);
     if (!wanted.length) return;
+    const lists = wanted.map((run) => run.ids);
     const controller = new AbortController();
-    fetchReceipts(wanted.map((run) => run.ids), controller.signal).then((result) => {
+    fetchReceipts(lists, controller.signal).then((result) => {
       if (controller.signal.aborted) return;
-      setAnswer({ key, seen: new Map(result.runs.map((run, index) => [wanted[index]!.last, run.seenBy])) });
+      setAnswer({ key, seen: new Map(result.runs.map((run, index) => [wanted[index]!.last, {
+        count: run.count, readers: run.readers, list: (after, signal) => readers.current(lists, index, after, signal),
+      }])) });
     }).catch(() => { /* Without an answer nothing is claimed. */ });
     return () => controller.abort();
     // `key` stands for the runs.
@@ -126,14 +146,16 @@ export function useReceipts({ scope, fetchReceipts, runs, tick }: {
   return answer.key === key ? answer.seen : EMPTY;
 }
 
-const EMPTY = new Map<string, DmPerson[]>();
+const EMPTY = new Map<string, Receipt>();
 
 /**
- * When a space's "Seen by" is read again (#862): when someone sees the person's messages there for the first time, the server tells the
- * author (`project.messages_observed.v1`); a tick every few seconds is the fallback while the live stream is down.
+ * When a space's receipts are read again (#862): when someone sees the person's messages there for the first time, the server tells the
+ * author (`project.messages_observed.v1`); a tick every few seconds is the fallback only while the live stream is down.
  */
 export function useReceiptTick(enabled: boolean, identity: string, projectId: string, ms = 8000) {
   const [tick, setTick] = useState(0);
+  const last = useRef(0);
+  const later = useRef(0);
   useEffect(() => {
     if (!enabled) return;
     const timer = window.setInterval(() => { if (document.visibilityState === 'visible' && !streamLive()) setTick((value) => value + 1); }, ms);
@@ -145,14 +167,26 @@ export function useReceiptTick(enabled: boolean, identity: string, projectId: st
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [enabled]);
+  useEffect(() => () => window.clearTimeout(later.current), []);
+  // Many people reading at once (a space of hundreds) send an event each: the first one asks at once, the rest of that window ask
+  // once more at its end, so the receipts are read a few times a second at most and never once per reader (#1231).
+  const poke = () => {
+    const wait = last.current + EVENT_WINDOW_MS - Date.now();
+    const ask = () => { later.current = 0; last.current = Date.now(); setTick((value) => value + 1); };
+    if (wait <= 0) ask();
+    else if (!later.current) later.current = window.setTimeout(ask, wait);
+  };
   useStreamEvents(identity, (event) => {
     if (!enabled) return;
     // Someone saw the person's messages; or someone may no longer read the space, and "Seen by" names only those who can now.
-    if ((event.kind === MESSAGES_OBSERVED || READERS_CHANGED.has(event.kind)) && event.objectId === projectId) setTick((value) => value + 1);
-    else if (event.objectType === 'workspace' && READERS_CHANGED.has(event.kind)) setTick((value) => value + 1);
+    if ((event.kind === MESSAGES_OBSERVED || READERS_CHANGED.has(event.kind)) && event.objectId === projectId) poke();
+    else if (event.objectType === 'workspace' && READERS_CHANGED.has(event.kind)) poke();
   }, () => { if (enabled) setTick((value) => value + 1); });
   return tick;
 }
+
+/** The most often the receipts are read again because of events: one read a window, however many people read in it. */
+const EVENT_WINDOW_MS = 1500;
 
 /** Changes that can take a reader out of a space: "Seen by" names only people who can read it now (#534, #862). */
 const READERS_CHANGED = new Set(['project.grant_revoked.v1', 'project.grant_set.v1', 'project.access_ended.v1', 'project.deleted.v1',

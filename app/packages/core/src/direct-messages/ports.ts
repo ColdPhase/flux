@@ -131,8 +131,8 @@ export interface DmRepository {
   levelRange(dmId: string, rootId: string | null, from: number, to: number): Promise<{ id: string; authorId: string }[]>;
   /** Idempotent per message and viewer; returns how many rows were written now. */
   observe(workspaceId: string, dmId: string, viewerId: string, ids: string[]): Promise<number>;
-  /** Current participants other than `excludeId` who observed every one of `ids`. */
-  viewersOfAll(dmId: string, ids: string[], excludeId: string): Promise<DmPerson[]>;
+  /** Current participants other than `excludeId` who observed every one of `ids`, with when they finished (the last of their observations). */
+  viewersOfAll(dmId: string, ids: string[], excludeId: string): Promise<(DmPerson & { at: Date })[]>;
   /**
    * Where `viewerId` left off at one level (the roots when `rootId` is null, else that root's replies; #1246): the first message by
    * someone else, neither removed nor the "used AI here" line, after the newest message of that level they observed. When they observed none,

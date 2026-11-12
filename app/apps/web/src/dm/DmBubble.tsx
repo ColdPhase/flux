@@ -4,6 +4,7 @@ import { MessageContent } from '../composer/Files';
 import { OutboxStatus, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime, ShownAnswerName, shownAnswer, shownLabel } from '../app/messageParts';
+import type { Receipt } from '../app/receipts';
 import { MessageText } from '../app/MessageText';
 import { useAddToMyMap } from '../sketch/myMap';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
@@ -27,7 +28,7 @@ function selectedIn(messageId: string, body: string): string | undefined {
  * grouping, time, day line and actions everywhere: reply in thread and create task beside it on a computer, swipe
  * left and long press on a phone, and the thread count under a root that has replies.
  */
-export function DmBubble({ dmId, message, pending, mine: authored, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
+export function DmBubble({ dmId, message, pending, mine: authored, name, continued, groupLast, day, writable, arrived, observed, receipt, nav,
   onReply, onCreateTask, onOpenThread, onRetry, onRemove }: {
   /** The conversation, for the message's link. */
   dmId: string;
@@ -37,7 +38,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
   day: string | null;
   writable: boolean; arrived: boolean;
   /** Other people's messages are watched for viewing receipts. */
-  observed: boolean; seenBy: readonly string[];
+  observed: boolean; receipt?: Receipt | undefined;
   /** Roots in the conversation show their thread count and open the thread; elsewhere they do not. */
   nav: 'stream' | 'thread';
   onReply?: () => void;
@@ -107,7 +108,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
               <Icon name="reply" size={13} />{message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
             </button>
           ) : null}
-          {groupLast ? <MessageTime at={message.createdAt} seenBy={seenBy} edited={message.editedAt} /> : null}
+          {groupLast ? <MessageTime at={message.createdAt} receipt={receipt} edited={message.editedAt} /> : null}
           {actions ? <MessageActions {...actions} /> : null}
         </div>
       </div>

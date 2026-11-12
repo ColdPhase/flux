@@ -176,13 +176,12 @@ export function dmRows(db: DbExecutor) {
     async viewersOfAll(dmId: string, ids: string[], excludeId: string) {
       if (!ids.length) return [];
       const distinct = [...new Set(ids)];
-      return db.select({ id: users.id, name: users.name }).from(obs)
+      return db.select({ id: users.id, name: users.name, at: sql<Date>`max(${obs.observedAt})`.mapWith(obs.observedAt) }).from(obs)
         .innerJoin(p, and(eq(p.dmId, obs.dmId), eq(p.userId, obs.viewerId)))
         .innerJoin(users, eq(users.id, obs.viewerId))
         .where(and(eq(obs.dmId, dmId), inArray(obs.messageId, distinct), sql`${obs.viewerId} <> ${excludeId}`))
-        .groupBy(users.id, users.name, p.joinedAt)
-        .having(sql`count(distinct ${obs.messageId}) = ${distinct.length}`)
-        .orderBy(asc(p.joinedAt), asc(users.name), asc(users.id));
+        .groupBy(users.id, users.name)
+        .having(sql`count(distinct ${obs.messageId}) = ${distinct.length}`);
     },
     async unreadFrom(dmId: string, viewerId: string, rootId: string | null) {
       const level = rootId ? eq(m.threadRootId, rootId) : isNull(m.threadRootId);

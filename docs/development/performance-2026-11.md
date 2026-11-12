@@ -353,7 +353,8 @@ conversation's reads together.
   event. Now the first sight of messages records `project.messages_observed.v1` for their authors who can read the space,
   and for nobody else, and the author's page reads its receipts then. It also reads them on focus and when someone may have
   lost the space (a grant removed, someone left or removed from the company, a role changed), since it names only people
-  who can read the space now.
+  who can read the space now. Because of events it reads at most once every 1.5 s, so a space where hundreds read at once
+  (an event for each) costs the author's page a few reads, not one per reader (#1231); the 8 s timer runs only while the stream is down.
 - **A dead socket does not leave a tab with nothing.** The stream opens again from its cursor, so what it missed is
   replayed:
   - when the browser comes back online;

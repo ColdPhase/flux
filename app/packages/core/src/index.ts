@@ -51,6 +51,7 @@ export type {
   AccountLookup, AccountRecord, AgentRecord, GrantRecord, GrantWrite, MemberRecord, ProjectRecord, SweptRun, WorkspaceRecord,
 } from './access/records.js';
 export * from './idempotency.js';
+export { placeReaders, readersPage, receiptRun, runIndex, type RunReader } from './receipts.js';
 export * from './stream-audience.js';
 export * from './events.js';
 export * from './conversation/commands.js';

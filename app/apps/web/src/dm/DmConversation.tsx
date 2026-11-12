@@ -8,7 +8,7 @@ import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearc
 import { NavigateWithNote } from '../app/NavigateWithNote';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
+import { dmReaders, dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/direct-messages';
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
@@ -360,7 +360,7 @@ function DmContent({ initial }: { initial: Dm }) {
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending && !waitingForUnread, feed: feedBox,
     ids: shown.filter((m) => m.authorId !== me.user.id && !m.notice).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
-  const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });
+  const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), fetchReaders: (list, run, after, signal) => dmReaders(dm.id, list, run, after, signal), runs, tick: receiptTick + refreshTick });
 
   function openThread(rootId: string, reply: boolean) {
     opener.current = rootId;
@@ -441,7 +441,7 @@ function DmContent({ initial }: { initial: Dm }) {
                 if (!line.message) {
                   const item = line.item!;
                   return <DmBubble dmId={dm.id} key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
-                    writable={!recipientGone} arrived={false} observed={false} seenBy={[]} nav="stream"
+                    writable={!recipientGone} arrived={false} observed={false} nav="stream"
                     onCreateTask={startCopy} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
@@ -449,7 +449,7 @@ function DmContent({ initial }: { initial: Dm }) {
                 // A message confirmed from its queued one keeps that list item: nothing moves (#264).
                 const bubble = <DmBubble dmId={dm.id} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
                   day={newDay && message.id !== unreadFrom ? label : null} writable={!recipientGone} arrived={arrived === message.id}
-                  observed={!mine} seenBy={(seen.get(message.id) ?? []).map((p) => p.name)} nav="stream"
+                  observed={!mine} receipt={seen.get(message.id)} nav="stream"
                   onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;
                 // Where what is new begins (#1246): its day line first, then the divider, then the message.
                 return message.id === unreadFrom ? [newDay ? <MessageDay key={`day-${message.id}`} label={label} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;

@@ -79,6 +79,9 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
   app.post<{ Params: { projectId: string }; Body: { runs: string[][] } }>('/api/v1/projects/:projectId/receipts',
     { schema: { body: { type: 'object', required: ['runs'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: messageId } } } } } },
     async (request) => receipts.receipts(await principal(request), request.params.projectId, request.body));
+  app.post<{ Params: { projectId: string }; Body: { runs: string[][]; run: number; after?: string } }>('/api/v1/projects/:projectId/receipts/readers',
+    { schema: { body: { type: 'object', required: ['runs', 'run'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: messageId } }, run: { type: 'integer', minimum: 0, maximum: 19 }, after: { type: 'string', maxLength: 100 } } } } },
+    async (request) => receipts.readers(await principal(request), request.params.projectId, request.body));
 
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/materials',
     { schema: { querystring: page } }, async (request) => store.listMaterials(await principal(request), request.params.projectId, request.query));

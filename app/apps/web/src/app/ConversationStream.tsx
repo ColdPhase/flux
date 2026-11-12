@@ -13,9 +13,9 @@ import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import { STATUS_LABEL } from '../work/format';
 import { useShellActions } from './shellContext';
-import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from '../conversations/api';
+import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReaders, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
-import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
+import { ownRuns, useObservation, useReceiptTick, useReceipts, type Receipt } from './receipts';
 import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, OPENING_REVEAL_MS, ShownAnswerName, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, shownAnswer, shownLabel, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
@@ -358,7 +358,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     ...outbox.pending.map((item) => ({ id: null, authorId: meId, createdAt: item.at }))];
   const receiptRuns = ownRuns(receiptLines, meId, stream.hasOlder);
   const receiptTick = useReceiptTick(receiptRuns.length > 0, meId, project.id);
-  const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
+  const seen = useReceipts({ scope: project.id, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), fetchReaders: (list, run, after, signal) => projectReaders(project.id, list, run, after, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: revealed, feed: feedRef,
     ids: display.flatMap((entry) => entry.kind === 'root' && entry.root.message.authorId !== meId ? [entry.root.message.id] : []), depend: entries.length });
   if (!revealed && (openingSettled || openingTimedOut)) setRevealed(true);
@@ -669,7 +669,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
-                  observed={root.message.authorId !== meId} seenBy={(seen.get(root.message.id) ?? []).map((person) => person.name)}
+                  observed={root.message.authorId !== meId} receipt={seen.get(root.message.id)}
                   onDenied={onDenied} />];
               }), ...outbox.pending.flatMap((item, index) => {
                 const label = day(item.at);
@@ -820,8 +820,8 @@ type RootItemProps = {
   root: ConversationRoot; project: Project; owners: AgentOwners; meId: string; author: (message: ConversationMessage) => string;
   messageWork: MessageWorkRead;
   open: boolean; arrived: boolean; makeWork: ReturnType<typeof useCreateWorkFromMessage>;
-  /** Another person's root is watched for viewing receipts; `seenBy` names who observed every root of this author run. */
-  observed?: boolean; seenBy?: readonly string[];
+  /** Another person's root is watched for viewing receipts; `receipt` says who read every root of this author run. */
+  observed?: boolean; receipt?: Receipt | undefined;
   onOpen: (root: ConversationRoot, reply: boolean) => void; onDenied: (cause: unknown) => void;
 };
 /** A root the person sent that is not stored yet (#264). */
@@ -879,7 +879,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} /> : null}
       <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} receipt={stored.receipt} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

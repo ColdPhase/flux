@@ -5,7 +5,7 @@ import { pageBackTo } from '../app/seekMessage';
 import { UNREAD_READ_BACK, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
 import { useArrivals } from '../ui';
-import { observeProjectMessages, olderMessages, projectReceipts } from './api';
+import { observeProjectMessages, olderMessages, projectReaders, projectReceipts } from './api';
 import { feedEntries, mergeMessages } from './feed';
 import type { PaneCore } from './paneCore';
 import type { ThreadReading } from './useThreadReading';
@@ -93,7 +93,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     ...outbox.pending.map((item) => ({ id: null, authorId: me.user.id, createdAt: item.at }))];
   const receiptRuns = ownRuns(receiptLines, me.user.id, !!olderCursor);
   const receiptTick = useReceiptTick(receiptRuns.length > 0, me.user.id, project.id);
-  const seen = useReceipts({ scope: `${project.id}/${conversation?.id ?? ''}`, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
+  const seen = useReceipts({ scope: `${project.id}/${conversation?.id ?? ''}`, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), fetchReaders: (list, run, after, signal) => projectReaders(project.id, list, run, after, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: !!conversation && revealed, feed: scrollRef,
     ids: replyEntries.flatMap((entry) => entry.type === 'message' && entry.message.authorId !== me.user.id ? [entry.message.id] : []), depend: replyEntries.length });
   return { arrived, seen, unreadFrom: unreadLoaded ? unreadFrom : null, newBelow };

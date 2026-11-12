@@ -1,5 +1,5 @@
 import {
-  conversationMessagePath, conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type SentConversationMessage, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath, projectAgentQuestionsPath, projectConversationViewPath, type ConversationView,
+  conversationMessagePath, conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type SentConversationMessage, type TaskCreationNotice, projectObservationsPath, projectReadersPath, projectReceiptsPath, type MessageReadersResult, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath, projectAgentQuestionsPath, projectConversationViewPath, type ConversationView,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { workAssociationReadUrl } from '../work/read-api';
@@ -49,6 +49,9 @@ export const observeProjectMessages = (projectId: string, messageIds: string[]) 
   request<ObserveMessagesResult>(projectObservationsPath(projectId), { method: 'POST', body: { messageIds } });
 export const projectReceipts = (projectId: string, runs: string[][], signal?: AbortSignal) =>
   request<MessageReceiptsResult>(projectReceiptsPath(projectId), { method: 'POST', body: { runs }, signal, leavesReads: true });
+/** One page of the readers of one run, when a person opens the list (#1231). The runs are the ones the receipts were read for. */
+export const projectReaders = (projectId: string, runs: string[][], run: number, after: string | undefined, signal?: AbortSignal) =>
+  request<MessageReadersResult>(projectReadersPath(projectId), { method: 'POST', body: { runs, run, ...(after ? { after } : {}) }, signal, leavesReads: true });
 /** The conversation a project message belongs to (CW-2), for a link that knows only the message. */
 export const getMessagePlace = (projectId: string, messageId: string, signal?: AbortSignal) =>
   request<MessagePlace>(projectMessagePlacePath(encodeURIComponent(projectId), encodeURIComponent(messageId)), { signal });

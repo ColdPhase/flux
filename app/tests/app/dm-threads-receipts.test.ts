@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, ConversationMessage, Dm, DmMessage, DmTaskCopyPreview, DmTaskCopyResult, DmThread, MessageReceiptsResult, Page, WorkItem, Workspace } from '@flux/contracts';
+import type { Conversation, ConversationMessage, Dm, DmMessage, DmTaskCopyPreview, DmTaskCopyResult, DmThread, MessageReadersResult, MessageReceiptsResult, Page, WorkItem, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, removeMember, workspace, type Person } from './support/people.js';
 
@@ -30,8 +30,11 @@ const audience = async (objectId: string, kind: string) => {
   const result = await pool.query('SELECT DISTINCT a.recipient FROM event_audience a JOIN events e ON e.id = a.event_id WHERE e.object_id = $1 AND e.kind = $2', [objectId, kind]);
   return new Set(result.rows.map((row) => row.recipient as string));
 };
+const readersRaw = (actor: Person, dmId: string, runs: string[][], run: number, after?: string) =>
+  actor.browser.request('POST', `/api/v1/dms/${dmId}/receipts/readers`, { body: { runs, run, ...(after ? { after } : {}) } });
+const readers = async (actor: Person, dmId: string, runs: string[][], run: number) => expectStatus(await readersRaw(actor, dmId, runs, run), 200, 'readers');
 const seenNames = async (actor: Person, dmId: string, runs: string[][]) =>
-  (expectStatus(await receipts(actor, dmId, runs), 200, 'receipts') as MessageReceiptsResult).runs.map((run) => run.seenBy.map((p) => p.name).sort());
+  (expectStatus(await receipts(actor, dmId, runs), 200, 'receipts') as MessageReceiptsResult).runs.map((run) => run.readers.map((p) => p.name).sort());
 
 describe('DM reply threads, viewing receipts and task copies', () => {
   let ada: Person; // workspace owner, in no DM below
@@ -211,7 +214,8 @@ describe('DM reply threads, viewing receipts and task copies', () => {
 
       assert.deepEqual((expectStatus(await observe(kai, dm.id, [m1.id, m2.id, m3.id]), 200) as { observed: number }).observed, 3);
       expectStatus(await observe(lee, dm.id, [m1.id]), 200);
-      assert.deepEqual(await seenNames(jo, dm.id, [[m1.id, m2.id, m3.id], [m1.id, m2.id], [m1.id]]), [['th-kai'], ['th-kai'], ['th-kai', 'th-lee']]);
+      // Each reader is placed once, in the newest run they read whole (#1231): Kai read all three, so he is under the last of these runs, with Lee.
+      assert.deepEqual(await seenNames(jo, dm.id, [[m1.id, m2.id, m3.id], [m1.id, m2.id], [m1.id]]), [[], [], ['th-kai', 'th-lee']]);
       expectStatus(await observe(lee, dm.id, [m2.id]), 200);
       assert.deepEqual(await seenNames(jo, dm.id, [[m1.id, m2.id, m3.id]]), [['th-kai', 'th-lee']]);
 
@@ -300,6 +304,44 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       const [obs] = await Promise.all([observe(lee, group.id, [racing.id]), lee.browser.request('POST', `/api/v1/dms/${group.id}/leave`)]);
       assert.ok(obs.status === 200 || obs.status === 404);
       assert.deepEqual(await seenNames(jo, group.id, [[racing.id]]), [[]]);
+    });
+
+    test('a run answers its count and its 3 newest readers, each reader once in the newest run they read, and the list pages newest first (#1231)', async () => {
+      const [jo, kai, lee] = await trio();
+      const [pia, quinn] = await Promise.all(['th-pia', 'th-quinn'].map(person));
+      for (const member of [pia, quinn]) await addMember(ada, ws.id, member, 'member');
+      const dm = await openDm(jo, ws.id, [kai, lee, pia, quinn], 'Five of us');
+      const older = await say(jo, dm.id, 'older');
+      await say(kai, dm.id, 'someone else in between');
+      const newer = await say(jo, dm.id, 'newer');
+      // Everyone reads the newer run; kai and lee also read the older one, pia read the older one first and the newer one last.
+      for (const [who, stamp] of [[pia, '1 hour'], [kai, '50 minutes'], [lee, '40 minutes'], [quinn, '30 minutes']] as const) {
+        expectStatus(await observe(who, dm.id, [older.id]), 200);
+        await pool.query(`UPDATE dm_message_observations SET observed_at = now() - interval '${stamp}' WHERE message_id = $1 AND viewer_id = $2`, [older.id, who.id]);
+      }
+      for (const [who, stamp] of [[kai, '20 minutes'], [lee, '10 minutes'], [quinn, '5 minutes']] as const) {
+        expectStatus(await observe(who, dm.id, [newer.id]), 200);
+        await pool.query(`UPDATE dm_message_observations SET observed_at = now() - interval '${stamp}' WHERE message_id = $1 AND viewer_id = $2`, [newer.id, who.id]);
+      }
+      const runs = [[older.id], [newer.id]];
+      const answer = expectStatus(await receipts(jo, dm.id, runs), 200) as MessageReceiptsResult;
+      assert.deepEqual(answer.runs.map((run) => run.count), [1, 3], 'kai, lee and quinn are under the newer run only; pia is the one reader left under the older');
+      assert.deepEqual(answer.runs[0]!.readers.map((reader) => reader.name), ['th-pia']);
+      assert.deepEqual(answer.runs[1]!.readers.map((reader) => reader.name), ['th-quinn', 'th-lee', 'th-kai'], 'newest reader first');
+      assert.ok(answer.runs[1]!.readers.every((reader, index, all) => index === 0 || reader.at < all[index - 1]!.at), 'with the time each finished reading');
+
+      // A fourth reader of the newer run: still 3 faces, and the count is 4.
+      expectStatus(await observe(pia, dm.id, [newer.id]), 200);
+      const four = expectStatus(await receipts(jo, dm.id, runs), 200) as MessageReceiptsResult;
+      assert.deepEqual([four.runs[1]!.count, four.runs[1]!.readers.length, four.runs[0]!.count], [4, 3, 0], 'pia moved to the newer run; nothing repeats under the older one');
+      assert.equal(four.runs[1]!.readers[0]!.name, 'th-pia', 'the newest reader is the first face');
+
+      const page = (await readers(jo, dm.id, runs, 1)) as MessageReadersResult;
+      assert.deepEqual(page.readers.map((reader) => reader.name), ['th-pia', 'th-quinn', 'th-lee', 'th-kai']);
+      assert.deepEqual([page.count, page.next], [4, null], 'a small audience is one page');
+      expectStatus(await readersRaw(jo, dm.id, runs, 2), 400, 'run must name one of the runs');
+      expectStatus(await readersRaw(jo, dm.id, runs, 1, 'not-a-cursor'), 400, 'after must be a cursor of this list');
+      for (const [who, status] of [[kai, 422], [ada, 404], [gus, 404]] as const) expectStatus(await readersRaw(who, dm.id, runs, 1), status, 'only the author of the runs, and only participants');
     });
   });
 
@@ -442,7 +484,7 @@ describe('DM reply threads, viewing receipts and task copies', () => {
     const seeP = (actor: Person, projectId: string, ids: string[]) => actor.browser.request('POST', `${projectPath(projectId)}/observations`, { body: { messageIds: ids } });
     const receiptsP = (actor: Person, projectId: string, runs: string[][]) => actor.browser.request('POST', `${projectPath(projectId)}/receipts`, { body: { runs } });
     const namesP = async (actor: Person, projectId: string, runs: string[][]) =>
-      (expectStatus(await receiptsP(actor, projectId, runs), 200, 'project receipts') as MessageReceiptsResult).runs.map((run) => run.seenBy.map((p) => p.name).sort());
+      (expectStatus(await receiptsP(actor, projectId, runs), 200, 'project receipts') as MessageReceiptsResult).runs.map((run) => run.readers.map((p) => p.name).sort());
 
     test('roots and thread replies: Seen by needs every message of the run, only current readers are named, and access is exact', async () => {
       const [jo, kai, lee] = await trio();

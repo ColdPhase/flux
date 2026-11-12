@@ -411,6 +411,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   background: var(--el); color: var(--t1); font-weight: 600; letter-spacing: 0;
   box-shadow: inset 0 0 0 1px var(--line), var(--sh-1);
 }
+.ui-avatar--xs { width: 16px; height: 16px; font-size: calc(var(--fs-glyph) * .72); }  /* the face under a message (#1231) */
 .ui-avatar--sm { width: 20px; height: 20px; font-size: var(--fs-glyph); }
 .ui-avatar--md { width: 26px; height: 26px; font-size: var(--fs-glyph); }
 .ui-avatar--lg { width: 32px; height: 32px; font-size: var(--fs-xs); }

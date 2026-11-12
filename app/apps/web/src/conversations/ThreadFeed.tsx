@@ -6,6 +6,7 @@ import { PrivateAiLines } from '../assistant/PrivateAiLines';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { WaitingChanges, type useAssistantChanges } from '../assistant/WaitingChanges';
 import { MessageDay, day, sameMessageAuthor } from '../app/messageParts';
+import type { Receipt } from '../app/receipts';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
 import { followsProposal } from '../app/objectNotices';
 import type { ShellActions } from '../app/shellContext';
@@ -32,7 +33,7 @@ export interface PrivateAiContext {
 interface Props {
   core: PaneCore; thread: ThreadReplies; reading: ThreadReading; entries: FeedEntry[]; outbox: ReturnType<typeof outboxView>;
   publicComposer: ComposerState; privateAi: PrivateAiContext; owners: AgentOwners; people: ProjectPerson[] | null;
-  makeWork: ReturnType<typeof useCreateWorkFromMessage>; arrived: string | null; seen: Map<string, { name: string }[]>;
+  makeWork: ReturnType<typeof useCreateWorkFromMessage>; arrived: string | null; seen: Map<string, Receipt>;
   messageAuthor: (message: ConversationMessage) => string; openDetails: ShellActions['openDetails']; hideIfDenied: (cause: unknown) => void;
   waitingHere: { clientRunId: string }[]; rootHeader: PaneProps['rootHeader']; rootMessageId: string | null;
   /** The reply the "New" divider stands above, and the "↓ N new" line for a reader above the end (#1246). */
@@ -62,7 +63,7 @@ export function ThreadFeed(props: Props) {
       // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
       withDay(entry.at, dayKey, [...(message.id === props.unreadFrom ? [<UnreadDivider key="unread" />] : []), <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
         project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable} onDenied={props.hideIfDenied}
-        observed={message.authorId !== me.user.id} seenBy={(seen.get(message.id) ?? []).map((person) => person.name)} />]);
+        observed={message.authorId !== me.user.id} receipt={seen.get(message.id)} />]);
     }
   });
   outbox.pending.forEach((item, index) => {

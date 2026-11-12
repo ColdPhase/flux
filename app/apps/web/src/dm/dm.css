@@ -142,8 +142,7 @@
 .dm-replies svg { flex: none; color: var(--t2); }
 .dm-msg.is-mine .dm-replies { margin: 4px -7px 0 0; align-self: flex-end; }
 @media (pointer: coarse) { .dm-replies { min-height: 44px; min-width: 44px; } }
-.message-seen { color: var(--t3); }
-.dm-msg.is-mine .message-time { text-align: right; }
+.dm-msg.is-mine .message-time { justify-content: flex-end; text-align: right; }
 
 /* The thread beside or over the conversation: the same bubble, grouping and composer. */
 .dm-thread .dm__in { max-width: none; margin: 0; padding: 18px 20px 12px; }

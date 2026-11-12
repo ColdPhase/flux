@@ -952,6 +952,63 @@ A person's sound (a popover under their face in the strip; the same two rows und
 - **Words.** "Audio settings", "Microphone", "Microphone volume", "Reduce background noise", "Cancel echo", "Even out my volume",
   "Speakers or headphones", "Test sound", "Everything you hear", "Volume", "Mute for me". No jargon on screen.
 
+### Time and who has read it
+
+Founder decisions, Hubert, 2026-11-10 and 2026-11-12 ([#1231](https://github.com/ColdPhase/flux/issues/1231)).
+The line under the last message of an author's group (a space, a thread, a direct message) is the
+time and, under your own messages, small faces of the people who have read them. It is supporting
+information: it reads as part of the conversation, never as a log line, and it never has text such as
+"Seen by …" on screen.
+
+```
+ ┌──────────────────────────────────────────┐
+ │ Wave to dim, hold to switch it off.      │     your message (bubble as drawn)
+ └──────────────────────────────────────────┘
+                           9:57 PM  (KT)(LM)(JB) (+497)      the line: time, then the faces
+                                    └ 16 px ┘     └ 16 px high, grows in width only
+```
+
+- **The time** is in the interface font (Geist), `--t3`, `--fs-xs`, normal letter spacing and
+  weight, with no monospace. "· edited" after it is drawn the same way. The line is one row,
+  `--fs-xs` × 1.5 high, with or without faces, so nothing moves when a reader arrives.
+- **A face** is the shared `Avatar` at 16 px (size `xs`): the person's photo when they have one
+  (#1226), otherwise their initials in `--fs-glyph` scaled to the circle, on the avatar fill with its
+  hairline ring. Faces sit 2 px apart, centred on the line, 8 px after the time and at the same edge
+  as the bubble (the right, under your own messages). There is no overlap, so no ring colour has to
+  match the surface behind them.
+- **At most 3 faces plus "+N".** The faces are the 3 newest readers. When more people have read it,
+  a "+N" circle follows (N is everyone else: "+2", "+47", "+497"): `--sub` fill, a 1 px inset
+  `--line`, `--fs-glyph` weight 600 in `--t2`, 16 px high and at least 16 wide with 2 px side padding:
+  a circle for "+2", a pill when the number needs room. The row never grows: not taller and not wider than 3 faces and
+  one such circle, in a space of 5 people or of 500, at every width.
+- **Each reader appears once**, under the newest group of your messages they have fully read (every
+  message of the group must have been in view, as before). Older groups that they also read show
+  nothing for them, so the faces move down the conversation as people read on, and a group nobody
+  has newly reached shows its time only.
+- **A direct message with one person** shows their single face, never "+N". A group message uses the
+  same row as a space.
+- **The list** answers "who exactly, and when". On the computer the faces are one button: hovering
+  (after the usual tooltip delay) or focusing it and pressing Enter opens the list, Escape or moving
+  away closes it. On the phone a tap opens it and a tap outside closes it. It is a popover on the
+  menu surface (`--el`, `--r`, `--sh-pop`, the shared `[data-pop]` motion) above the faces, or below
+  when there is no room, and inside the screen with a 12 px margin.
+  - A row is a 20 px face, the name (`--fs-md`, `--t1`) and the time they read it, right-aligned in
+    `--fs-xs` `--t3` ("9:58 PM", or the short date and time when it was another day). Rows are 32 px
+    high (44 px on touch). The list is newest readers first, scrolls inside the popover (about 8
+    rows visible) and has no heading.
+  - It shows the first 20 names. While more remain, a last quiet line reads "and 27 others"
+    (`--fs-xs`, `--t3`); scrolling it into view loads the next 20 and the line counts down, so the
+    full list of a large space is read page by page and only after it was opened. A list of 3 or
+    fewer is already known and loads nothing.
+- **The accessible name** of the faces button is "Seen by Maurycy" (first names: "Seen by Maurycy
+  and Ada", "Seen by Maurycy, Ada, Jonas and 47 others"); the faces and the "+N" are decoration for
+  the screen reader. The list is a dialog named "Seen by", its rows are plain list items, and Escape
+  returns focus to the button.
+- **Load rules** (#862): the server answers per group only the count and the 3 newest readers; the
+  list is a separate request made when it is opened; faces come from the receipts already read
+  for the newest groups, updated by the live event `project.messages_observed.v1`; the 8 s look
+  runs only while the live stream is down.
+
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,

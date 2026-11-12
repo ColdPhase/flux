@@ -7,6 +7,9 @@ import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
 import { MessageText } from './MessageText';
+import { ReceiptFaces } from './ReceiptFaces';
+import { clock, when } from './timeFormat';
+import type { Receipt } from './receipts';
 
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
 
@@ -32,18 +35,7 @@ export function SourceTag({ messageId }: { messageId: string }) {
   return mine && shown ? <span className="convo-source-tag" data-source-tag>{source.label}</span> : null;
 }
 
-// One formatter for every message's hover title: `toLocaleString` with options builds a new ICU formatter on each call, which
-// at a screenful of messages was the largest single cost of opening a conversation on a phone (#716).
-const stampFormat = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-export function when(iso: string) { return stampFormat.format(new Date(iso)); }
-// A natural clock as drawn ("11:02", or "4:55 PM" in a 12-hour locale), never a zero-padded "04:55 PM" (#436).
-const clockFormat = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' });
-const dayFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
-export function clock(iso: string) { return clockFormat.format(new Date(iso)); }
-export function day(iso: string) {
-  const date = new Date(iso);
-  return new Date().toDateString() === date.toDateString() ? 'Today' : dayFormat.format(date);
-}
+export { when, clock, day } from './timeFormat';
 
 /** Longest a feed waits for its first chips, references and state line before it shows (#155). */
 export const OPENING_REVEAL_MS = 1000;
@@ -160,18 +152,15 @@ export function sameMessageAuthor(a: { authorId: string | null; createdAt: strin
     && new Date(a.createdAt).toDateString() === new Date(b.createdAt).toDateString();
 }
 
-/** "Seen by Kai", "Kai and Lena", "Kai, Lena and 2 others": real observers of a whole author run (#534). */
-export function seenLabel(names: readonly string[]) {
-  if (!names.length) return '';
-  const first = names.map((name) => name.trim().split(/\s+/)[0] || name);
-  if (first.length <= 2) return `Seen by ${first.join(' and ')}`;
-  return `Seen by ${first.slice(0, 2).join(', ')} and ${first.length - 2} ${first.length - 2 === 1 ? 'other' : 'others'}`;
-}
-
-export function MessageTime({ at, seenBy = [], edited }: { at: string; seenBy?: readonly string[]; edited?: string }) {
-  return <div className="message-time"><time dateTime={at} title={when(at)}>{clock(at)}</time>
-    {edited ? <span className="message-edited" title={`Edited ${when(edited)}`}> · edited</span> : null}
-    {seenBy.length ? <span className="message-seen" title={seenBy.join(', ')}> · {seenLabel(seenBy)}</span> : null}</div>;
+/** The line under the last message of an author's group: the time, "· edited", and under the person's own messages the faces of who read it (#1231). */
+export function MessageTime({ at, receipt, edited }: { at: string; receipt?: Receipt | undefined; edited?: string }) {
+  return (
+    <div className="message-time">
+      <span className="message-time__when"><time dateTime={at} title={when(at)}>{clock(at)}</time>
+        {edited ? <span className="message-edited" title={`Edited ${when(edited)}`}> · edited</span> : null}</span>
+      {receipt && receipt.count > 0 ? <ReceiptFaces receipt={receipt} /> : null}
+    </div>
+  );
 }
 
 export function MessageDay({ label, as: Tag = 'li' }: { label: string; as?: 'li' | 'p' }) {

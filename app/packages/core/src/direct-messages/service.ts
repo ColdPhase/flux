@@ -12,6 +12,8 @@ import {
   type DmTaskCopyResult,
   type DmThread,
   type EditMessageCommand,
+  type MessageReadersQuery,
+  type MessageReadersResult,
   type MessageReceiptsQuery,
   type MessageReceiptsResult,
   type ObserveMessagesCommand,
@@ -29,6 +31,7 @@ import {
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import { normalizeConversationWindow, normalizeMessage, normalizeMessageEdit } from '../conversation/commands.js';
 import type { Principal } from '../principal.js';
+import { placeReaders, readersPage, receiptRun, runIndex, type RunReader } from '../receipts.js';
 import type { DmMessageRecord, DmPorts, DmRecord, DmUnitOfWork } from './ports.js';
 
 // Direct-message use cases (issue #107). Each runs in one unit of work: it asks the access port
@@ -265,6 +268,35 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     });
   }
 
+  /** The caller's runs checked against the stored messages, and who read each (placed once, in the newest run they read whole). */
+  async function readersOfRuns(principal: Principal, dmId: string, query: { runs?: unknown }) {
+    const self = person(principal);
+    if (!query || !Array.isArray(query.runs) || !query.runs.length || query.runs.length > RECEIPT_LIMITS.runsPerCall)
+      throw new InvalidInputError(`runs must list 1 to ${RECEIPT_LIMITS.runsPerCall} runs`);
+    const runs = query.runs.map((run) => messageIds(run, RECEIPT_LIMITS.messagesPerCall, 'each run'));
+    if (runs.reduce((sum, run) => sum + run.length, 0) > RECEIPT_LIMITS.messagesPerQuery) throw new InvalidInputError('Too many messages in one request');
+    return uow.run(async (ports) => {
+      await ports.access.requireDm(principal, 'dm.read', dmId);
+      const facts = new Map((await ports.dms.messageFacts(dmId, [...new Set(runs.flat())])).map((f) => [f.id, f]));
+      const found: RunReader[] = [];
+      for (const [index, run] of runs.entries()) {
+        const rows = run.map((id) => facts.get(id));
+        if (rows.some((row) => !row)) throw missingMessage();
+        const list = rows as NonNullable<(typeof rows)[number]>[];
+        const root = list[0]!.threadRootId;
+        if (list.some((row) => row.authorId !== self || row.threadRootId !== root))
+          throw new RuleViolationError('Seen by is shown for your own consecutive messages only', 'RECEIPT_RUN_INVALID');
+        const from = Math.min(...list.map((row) => row.sequence));
+        const to = Math.max(...list.map((row) => row.sequence));
+        const between = await ports.dms.levelRange(dmId, root, from, to);
+        if (between.length !== run.length || between.some((row) => !facts.has(row.id)))
+          throw new RuleViolationError('A run must list every message between its first and last', 'RECEIPT_RUN_INVALID');
+        for (const viewer of await ports.dms.viewersOfAll(dmId, run, self)) found.push({ run: index, id: viewer.id, name: viewer.name, at: viewer.at });
+      }
+      return { runs, placed: placeReaders(found, runs.length) };
+    });
+  }
+
   return {
     /**
      * The author changes the words of their own message in place (#1006). The earlier words are not kept; the message shows "edited".
@@ -418,37 +450,21 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     },
 
     /**
-     * "Seen by" for the caller's own author runs (#534). A run lists consecutive messages of ONE author at one level
-     * (roots, or one thread's replies); the answer is the current participants who observed EVERY message of it.
+     * Who read the caller's own author runs (#534, #1231). A run lists consecutive messages of ONE author at one level
+     * (roots, or one thread's replies); a reader is a current participant who observed EVERY message of it, and is named once,
+     * in the newest run they read whole. The answer holds each run's count and its 3 newest readers, never the whole audience.
      * The runs are checked against the stored messages, so a skipped message or a message of another DM is refused,
      * never trusted. Former participants are never named, whatever they observed.
      */
     async receipts(principal: Principal, dmId: string, query: MessageReceiptsQuery): Promise<MessageReceiptsResult> {
-      const self = person(principal);
-      if (!query || !Array.isArray(query.runs) || !query.runs.length || query.runs.length > RECEIPT_LIMITS.runsPerCall)
-        throw new InvalidInputError(`runs must list 1 to ${RECEIPT_LIMITS.runsPerCall} runs`);
-      const runs = query.runs.map((run) => messageIds(run, RECEIPT_LIMITS.messagesPerCall, 'each run'));
-      if (runs.reduce((sum, run) => sum + run.length, 0) > RECEIPT_LIMITS.messagesPerQuery) throw new InvalidInputError('Too many messages in one request');
-      return uow.run(async (ports) => {
-        await ports.access.requireDm(principal, 'dm.read', dmId);
-        const facts = new Map((await ports.dms.messageFacts(dmId, [...new Set(runs.flat())])).map((f) => [f.id, f]));
-        const result: MessageReceiptsResult['runs'] = [];
-        for (const run of runs) {
-          const rows = run.map((id) => facts.get(id));
-          if (rows.some((row) => !row)) throw missingMessage();
-          const list = rows as NonNullable<(typeof rows)[number]>[];
-          const root = list[0]!.threadRootId;
-          if (list.some((row) => row.authorId !== self || row.threadRootId !== root))
-            throw new RuleViolationError('Seen by is shown for your own consecutive messages only', 'RECEIPT_RUN_INVALID');
-          const from = Math.min(...list.map((row) => row.sequence));
-          const to = Math.max(...list.map((row) => row.sequence));
-          const between = await ports.dms.levelRange(dmId, root, from, to);
-          if (between.length !== run.length || between.some((row) => !facts.has(row.id)))
-            throw new RuleViolationError('A run must list every message between its first and last', 'RECEIPT_RUN_INVALID');
-          result.push({ messageIds: run, seenBy: await ports.dms.viewersOfAll(dmId, run, self) });
-        }
-        return { runs: result };
-      });
+      const { runs, placed } = await readersOfRuns(principal, dmId, query);
+      return { runs: runs.map((ids, index) => receiptRun(ids, placed[index]!)) };
+    },
+
+    /** One page of the readers of one run, newest first (#1231): made only when a person opens the list. */
+    async readers(principal: Principal, dmId: string, query: MessageReadersQuery): Promise<MessageReadersResult> {
+      const { runs, placed } = await readersOfRuns(principal, dmId, query);
+      return readersPage(placed[runIndex(query.run, runs.length)]!, query.after);
     },
 
     /**
