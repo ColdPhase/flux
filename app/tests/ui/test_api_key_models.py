@@ -9,15 +9,18 @@ in app/tests/app/api-key-model-lists.test.ts). No key is real and no provider is
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 import unittest
+import urllib.request
 
 from playwright.sync_api import Browser, Page, Route, expect, sync_playwright
 
 from app_select import choose, open_select, values
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
+MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 PASSWORD = "a provider of my own choosing"
 STAMP = int(time.time() * 1000)
 OWNER = {"name": "Ines Park", "email": f"ines.park+{STAMP}@example.test"}
@@ -25,6 +28,12 @@ MARK = "owner-budget-key-"
 GOOD = f"sk-ant-api03-{MARK * 3}KM01"
 REFUSED = f"sk-ant-api03-refused-{MARK * 2}KM02"
 SLOW = f"sk-ant-api03-slow-{MARK * 2}KM03"
+
+
+def mock(path: str, body: dict) -> None:
+    """The TEST-ONLY provider mock (tests/ui/anthropic_mock.py): `/__key-lists` leaves models out of one key's lists."""
+    request = urllib.request.Request(f"{MOCK}{path}", data=json.dumps(body).encode(), method="POST", headers={"content-type": "application/json"})
+    urllib.request.urlopen(request, timeout=5).read()
 
 
 def named(name: str) -> str:
@@ -154,6 +163,37 @@ class ApiKeyModels(unittest.TestCase):
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
         expect(page.get_by_role("combobox", name="Model")).to_be_enabled()
 
+    def connected(self, page: Page) -> list[str]:
+        return [item["name"] for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text())]
+
+    def test_03b_a_key_is_never_saved_on_a_model_nobody_chose(self) -> None:
+        """Enter in the key field reads the models instead of saving, and Connect while they are being read says to choose one."""
+        page = self.page()
+        self.form(page)
+        before = self.connected(page)
+        key = page.get_by_label("API key", exact=True)
+        key.fill(f"sk-ant-api03-{MARK * 3}KM05")
+        key.press("Enter")  # the field is not left: no blur, so no reading would have run before
+        expect(page.get_by_role("status").filter(has_text="6 models from Anthropic.")).to_be_visible()
+        model = page.get_by_role("combobox", name="Model")
+        expect(model).to_be_enabled()
+        expect(model).to_contain_text("Choose a model")
+        expect(page.get_by_role("status").filter(has_text="Key saved")).to_have_count(0)
+        self.assertEqual(self.connected(page), before, "Enter saved nothing")
+        # Connect while the list is still being read.
+        waiting = self.page()
+        self.form(waiting)
+        self.type_key(waiting, SLOW)
+        expect(waiting.get_by_role("status").filter(has_text="Reading Anthropic’s models…")).to_be_visible()
+        waiting.get_by_role("button", name="Connect", exact=True).click()
+        expect(waiting.get_by_role("alert").filter(has_text="Choose a model first.")).to_be_visible()
+        self.assertEqual(self.connected(waiting), before, "Connect saved nothing")
+        # The server holds the same line: a command without a model is a 422 and nothing is saved.
+        refused = waiting.request.post(f"{ORIGIN}/api/v1/background-compute-connections", headers={"origin": ORIGIN},
+                                       data={"provider": "anthropic", "apiKey": f"sk-ant-api03-{MARK * 3}KM06", "dailyBudgetCents": 500})
+        self.assertEqual((refused.status, refused.json()["code"]), (422, "AI_MODEL_REQUIRED"), refused.text())
+        self.assertEqual(self.connected(waiting), before)
+
     def test_04_a_list_that_cannot_be_read_leaves_the_plain_field_with_a_note(self) -> None:
         page = self.page()
         self.form(page)
@@ -235,10 +275,9 @@ class ApiKeyModels(unittest.TestCase):
         listing = page.get_by_role("status").filter(has_text="Couldn’t read Anthropic’s model list.")
         expect(listing).to_be_visible()
         model = page.locator(".agp__key-models .ui-select")
-        self.assertEqual(values(model), ["claude-sonnet-5-7", "claude-sonnet-5-5", "claude-opus-5-5", "claude-opus-5"])
-        box = open_select(model.first)
-        expect(box.get_by_role("option", name="Opus 5 · no longer offered by Anthropic", exact=True)).to_have_attribute("aria-disabled", "true")
-        page.keyboard.press("Escape")
+        # A retired model that no agent is on is not listed here (the agent on one is test_07).
+        self.assertEqual(values(model), ["claude-sonnet-5-7", "claude-sonnet-5-5", "claude-opus-5-5"])
+        expect(model).to_contain_text("Opus 5.5")
         shot(page, named("api-key-models-agent-1440-unavailable"))
         listing.get_by_role("button", name="Try again").click()
         expect(listing).to_have_count(0)
@@ -253,6 +292,37 @@ class ApiKeyModels(unittest.TestCase):
         expect(form).to_have_count(0)
         self.assertEqual(world["puts"], [{"model": "claude-sonnet-5-7", "inputMicrosPerMTok": 3_000_000, "outputMicrosPerMTok": 15_000_000}])
         self.assertEqual(world["patches"][-1], {"connection": connection, "model": "claude-sonnet-5-7"})
+
+    def test_07_an_agent_on_a_model_its_provider_stopped_offering_says_why_it_is_paused(self) -> None:
+        """CA-2 on the real server: the model stays in its agent's dropdown as no longer offered, with the line that the agent is paused."""
+        page = self.page()
+        headers = {"origin": ORIGIN}
+        key = next(item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "Ines's Anthropic key")
+        ws = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Retirement lab"}, headers=headers)
+        self.assertEqual(ws.status, 201, ws.text())
+        made = page.request.post(f"{ORIGIN}/api/v1/my-agents", headers=headers,
+                                 data={"workspaceId": ws.json()["id"], "name": "Scout", "connection": key["id"], "model": "claude-fable-5-2"})
+        self.assertEqual(made.status, 201, made.text())
+        agent = made.json()
+        self.assertEqual(agent["model"]["model"], "claude-fable-5-2")
+        # The provider stops offering it; Try again reads the list through the worker.
+        mock("/__key-lists", {"key": GOOD, "omit": ["claude-fable-5-2"]})
+        again = page.request.post(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}/model-list", headers=headers)
+        self.assertEqual(again.status, 200, again.text())
+        page.goto(f"/settings/agents/{agent['id']}")
+        model = page.locator(".agp__key-models .ui-select")
+        expect(model).to_contain_text("Fable 5.2 · no longer offered by Anthropic")
+        expect(page.get_by_role("note").filter(has_text="is no longer offered by Anthropic. Scout is paused until you choose another model.")).to_be_visible()
+        box = open_select(model.first)
+        expect(box.get_by_role("option", name="Fable 5.2 · no longer offered by Anthropic", exact=True)).to_have_attribute("aria-disabled", "true")
+        self.assertEqual(box.locator('[role="option"]').count(), 6, "the chosen retired model and the five still offered; no other retired model")
+        page.keyboard.press("Escape")
+        shot(page, named("api-key-models-agent-1440-retired"))
+        # Nothing switched by itself; choosing another model of the key goes on.
+        self.assertEqual(json.loads(page.request.get(f"{ORIGIN}/api/v1/my-agents/{agent['id']}").text())["model"]["model"], "claude-fable-5-2")
+        choose(model, value="claude-sonnet-5-5")
+        expect(page.get_by_role("note").filter(has_text="is paused until you choose another model")).to_have_count(0)
+        self.assertEqual(json.loads(page.request.get(f"{ORIGIN}/api/v1/my-agents/{agent['id']}").text())["model"]["model"], "claude-sonnet-5-5")
 
 
 if __name__ == "__main__":

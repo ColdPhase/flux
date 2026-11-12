@@ -50,6 +50,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     (Opus, Sonnet, Haiku, Fable…) with the newest family and model first, each with its price or
     "price unknown, enter it". The provider's own display name is shown where it gives one. Nothing
     is preselected. "Other model id…" opens a field for an id the list doesn't have.
+  - **A key is saved only on a model its owner chose.** Flux has no default model for a key: Enter
+    in the key field reads the models like leaving it, Connect before a model is chosen says so, and
+    the server refuses a command without a model (422 `AI_MODEL_REQUIRED`) before it sends the key
+    anywhere.
   - **OpenRouter and an OpenAI-compatible endpoint** keep their `/models` list read without a key
     (an endpoint's server usually answers it without one), and the free field as a fallback.
   - **Fresh and bounded.** A key's list is read again when its picker opens and the last reading is

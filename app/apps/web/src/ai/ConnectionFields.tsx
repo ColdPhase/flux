@@ -139,6 +139,8 @@ export function ConnectionFields({ disabled, onKeyRefused, keyHelpId }: {
     <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
       aria-invalid={refused || undefined} aria-describedby={`${keyHelpId}${refused ? ` ${id}-refused` : ''}`}
       onBlur={(event) => keyLeft(event.currentTarget.value)}
+      // Enter before the models are read reads them (the key's test) instead of saving: the form never goes on without a chosen model.
+      onKeyDown={(event) => { if (event.key === 'Enter' && waitingForKey) { event.preventDefault(); keyLeft(event.currentTarget.value); } }}
       onChange={() => { if (refused) { setListing({ state: 'idle' }); listedKey.current = ''; } }} /></label>
     {refused ? <p id={`${id}-refused`} className="background-settings__error" role="alert">{listFailure(provider as AiProviderKind, 'key_refused')}</p> : null}
     <p id={keyHelpId} className="background-settings__help">{info ? info.keyHint : 'Choose a provider first to see what its keys look like.'} {keyed ? 'Flux reads the models this key can use when you leave the field.' : ''} This field is cleared after every save attempt; enter it again to try again.</p>

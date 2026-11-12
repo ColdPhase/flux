@@ -1248,7 +1248,13 @@ the composer. The right-hand phone above shows the sheet.
     the key is typed. Leaving the key field reads the key's models: the help line says "Reading
     Anthropic's models…", then the `Select` fills, grouped by family with the newest first ("Sonnet", "Fable",
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
-    unknown, enter it". Its last option, "Other model id…", shows the plain field under it.
+    unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
+    carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+  - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
+    field does, instead of saving. Connect before a model is chosen (the list is still being read)
+    puts "Choose a model first. Flux lists the models of your key once you have entered it and left
+    the field." above the form, in the form's error style. The server holds the same line: a key
+    without a model is refused (422), never saved on a default model.
   - A refused key puts one line under the key field, in the field error style: "This key was
     refused by Anthropic. Check it and try again." The Model stays empty and Connect stays
     disabled until the key changes.
@@ -1263,8 +1269,9 @@ the composer. The right-hand phone above shows the sheet.
   choosing it opens the two price fields and Save price under the control, and the model is
   chosen when the price is saved. A list that couldn't be read adds one line under the group,
   "Couldn't read Anthropic's model list · Try again", and the saved model stays. A model the
-  provider retired reads "Opus 5.5 · no longer offered by Anthropic" in the control and the agent's
-  line says it is paused until another model is chosen; nothing switches by itself.
+  provider retired reads "Opus 5.5 · no longer offered by Anthropic" in the control (only on the
+  agent that is on it; other agents' lists leave it out) and the agent's line says it is paused
+  until another model is chosen; nothing switches by itself.
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.

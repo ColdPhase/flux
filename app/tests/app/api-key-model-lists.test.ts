@@ -137,6 +137,22 @@ describe('a key, its models and its agents (#1218)', () => {
     assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length, before);
   });
 
+  test('a key without a chosen model is refused with a 422 and nothing is saved or sent: Flux has no default model for a key', async () => {
+    const before = (expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length;
+    for (const provider of ['anthropic', 'openai', 'gemini'] as const) {
+      const apiKey = keyOf(provider);
+      for (const model of [undefined, '']) {
+        const refused = await owner.browser.request('POST', path, { body: { provider, apiKey, dailyBudgetCents: 500, ...(model === undefined ? {} : { model }) } });
+        assert.equal(refused.status, 422, `${provider} ${JSON.stringify(model)}: ${refused.text}`);
+        assert.equal(codeOf(refused), 'AI_MODEL_REQUIRED');
+        assert.match((refused.json as { error: string }).error, /^Choose the model this key uses\./);
+        assert.equal(refused.text.includes(apiKey), false);
+      }
+      assert.equal((await askedWith(apiKey)).length, 0, `${provider}: the key was never sent to its provider`);
+    }
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length, before);
+  });
+
   test('the picker by family, newest first, with prices; Opus at once, an unpriced model after its owner enters a price; a run on Opus sends the listed id', async () => {
     const apiKey = keyOf('anthropic');
     const key = expectStatus(await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey, dailyBudgetCents: 500 } }), 201) as BackgroundComputeConnection;

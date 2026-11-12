@@ -180,6 +180,17 @@ class MyAgentsJourney(unittest.TestCase):
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
                    if route.request.method == "GET" else route.continue_())
 
+    def stub_plan_models(self, page, agent: dict) -> None:
+        """The agent's connection as a Claude plan: its few models are segments (#1219), the agent's own model among them."""
+        model = agent["model"]
+        options = [{"id": model["model"], "name": "Sonnet", "note": "Everyday work", "callsTools": True},
+                   {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
+                   {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True}]
+        group = {"connection": model["connection"], "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": options}
+        choice = {"current": model, "default": model, "groups": [group], "saved": True}
+        page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
+                   if route.request.method == "GET" else route.continue_())
+
     def test_03b_a_model_that_cannot_see_pictures_says_so_on_the_agent_s_page(self) -> None:
         """#1217 (C-59): an agent on a model without vision sees attached files only by name, and its page says so; a model that sees them says nothing."""
         agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
@@ -187,7 +198,8 @@ class MyAgentsJourney(unittest.TestCase):
         blind = self.page()
         self.stub_models(blind, agent, sees_pictures=False)
         blind.goto(f"/settings/agents/{agent['id']}")
-        expect(blind.get_by_role("radio", name="Test model")).to_have_attribute("aria-checked", "true")
+        # An API key's models are the app's dropdown, named by the key (#1218); it shows the agent's model.
+        expect(blind.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
         expect(blind.get_by_role("note").filter(has_text=note)).to_have_text(f"Test model: {note}")
         expect(blind.get_by_role("note").filter(has_text="can answer but can’t make changes")).to_have_count(0)
         shot(blind, "agent-vision-note-1440")
@@ -196,7 +208,7 @@ class MyAgentsJourney(unittest.TestCase):
                 sighted = self.page()
                 self.stub_models(sighted, agent, sees_pictures=vision)
                 sighted.goto(f"/settings/agents/{agent['id']}")
-                expect(sighted.get_by_role("radio", name="Test model")).to_have_attribute("aria-checked", "true")
+                expect(sighted.get_by_role("combobox", name="Ada's Anthropic key")).to_contain_text("Test model")
                 expect(sighted.get_by_role("note").filter(has_text="see pictures")).to_have_count(0)
 
     def test_04_each_agent_is_a_private_conversation_in_messages(self) -> None:
@@ -225,9 +237,12 @@ class MyAgentsJourney(unittest.TestCase):
 
     def test_05b_segmented_choices_size_each_option_to_its_label_and_keep_its_room(self) -> None:
         """#1219: What it may do and Model give each option its label and 14 px each side, not an equal share of the group, so the longest
-        label never fills its pill edge to edge. Where the group has no room for one row (a phone) the options wrap instead of overflowing."""
+        label never fills its pill edge to edge. Where the group has no room for one row (a phone) the options wrap instead of overflowing.
+        A plan's models are segments; an API key's are a dropdown (#1218), so the Model group measured here is a Claude plan's."""
+        agent = self.api(self.page(), "GET", f"/api/v1/my-agents/{self.ids['planner']}")
         for label, phone, viewport in (("1440", False, None), ("390", True, PHONE), ("320", True, {"width": 320, "height": 640})):
             page = self.page(phone=phone, viewport=viewport)
+            self.stub_plan_models(page, agent)
             page.goto(f"/settings/agents/{self.ids['planner']}")
             expect(page.get_by_role("radiogroup", name=re.compile("^What it may do"))).to_be_visible()
             # The model choices arrive after the page does.

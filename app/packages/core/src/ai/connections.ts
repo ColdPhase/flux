@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
   type AiModelList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, tablePrice } from '@flux/contracts';
-import { InvalidInputError, NotFoundError } from '../access/errors.js';
+import { InvalidInputError, NotFoundError, RuleViolationError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
 import { requestReservationMicros, resolveConnectionPrice } from '../ai/price.js';
@@ -62,7 +62,7 @@ function connectionName(value: unknown): value is string {
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * A key in the selected provider's format, a bounded model id (or the provider's default), one daily budget and, for an
+ * A key in the selected provider's format, a bounded model id the owner chose, one daily budget and, for an
  * OpenAI-compatible endpoint only, a well-formed base URL (#854: no set-up attestations, no allowance of its own). Whether
  * that URL's host may be reached is checked separately. Returns the model the key keeps.
  */
@@ -71,8 +71,11 @@ export function validateBackgroundConnection(input: ConnectBackgroundComputeComm
     throw new InvalidInputError('Choose a supported provider', 'AI_PROVIDER_INVALID');
   if (!validAiKey(input.provider, input.apiKey))
     throw new InvalidInputError(`The key does not look like a key of this provider. ${AI_PROVIDERS[input.provider].keyHint}`, 'AI_KEY_FORMAT');
-  const model = input.model ?? apiKeyDefaultModel(input.provider);
-  if (model === null) throw new InvalidInputError('Name the model this key uses', 'AI_MODEL_INVALID');
+  // Flux never picks a model for a key: the models are the provider's own, so the owner chooses one from the list of their key
+  // (or names it), and a command without one is refused rather than saved on a model nobody chose (#1218).
+  const model = input.model;
+  if (model === undefined || model === null || model === '')
+    throw new RuleViolationError('Choose the model this key uses. Flux lists the models of a key once it has read it.', 'AI_MODEL_REQUIRED');
   if (!validModelId(input.provider, model))
     throw new InvalidInputError('The model id must be 1–200 letters, digits or . _ : / @ + - and no provider-hosted tool variant', 'AI_MODEL_INVALID');
   if (input.provider === 'openai_compatible') {

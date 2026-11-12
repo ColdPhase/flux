@@ -43,7 +43,8 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
   const [problem, setProblem] = useState('');
   const company = group.company;
   const current = chosen ? group.options.find((option) => option.id === chosen) : undefined;
-  const families = groupModelsByFamily(group.options.map((option) => ({ ...option, family: option.family ?? 'Models' })));
+  // A model its provider stopped offering is listed only on the agent that is on it: there it says why the agent is paused.
+  const families = groupModelsByFamily(group.options.filter((option) => !option.retired || option.id === chosen).map((option) => ({ ...option, family: option.family ?? 'Models' })));
   const priceFor = pricing ? group.options.find((option) => option.id === pricing) : undefined;
 
   async function savePrice(event: FormEvent<HTMLFormElement>) {
