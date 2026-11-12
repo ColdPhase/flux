@@ -1,8 +1,8 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from '../ui';
-import { cellText, type JsonErrorModel, type JsonModel, type TableModel, type TextModel } from './previewParse';
+import { TABLE_COLUMNS, cellText, type JsonErrorModel, type JsonModel, type TableModel, type TextModel } from './previewParse';
 
-// The text views of a file preview (C-58, #1252): plain text and source, pretty JSON and CSV/TSV tables. Only the lines or rows in view
+// The text views of a file preview (C-60, #1252): plain text and source, pretty JSON and CSV/TSV tables. Only the lines or rows in view
 // are in the DOM; everything is drawn as text by React, never as HTML.
 
 const OVERSCAN = 24;
@@ -130,6 +130,8 @@ export function JsonView({ model, label }: { model: JsonModel; label: string }) 
   }} />;
 }
 
+const CELL_CHARS = 1000;
+
 /** CSV/TSV: every row, the header sticky; a cell is always text, so `=SUM(A1)` is shown as written and never computed. */
 export function TableView({ model, label }: { model: TableModel; label: string }) {
   const { scroller, probe, box } = useScroller();
@@ -137,12 +139,15 @@ export function TableView({ model, label }: { model: TableModel; label: string }
   const height = Math.round(box.line + 12);
   const first = Math.max(1, Math.floor(box.top / height) + 1 - OVERSCAN);
   const last = Math.min(rows, Math.ceil((box.top + box.height) / height) + 1 + OVERSCAN);
-  const template = Array.from(model.widths, (width) => `${width + 3}ch`).join(' ');
+  const shown = Math.min(model.columns, TABLE_COLUMNS);
+  const template = Array.from(model.widths.subarray(0, shown), (width) => `${width + 3}ch`).join(' ');
   const row = (r: number, header = false) => {
     const cells: ReactNode[] = [];
-    for (let col = 0; col < model.columns; col++) {
+    for (let col = 0; col < shown; col++) {
       const cell = model.rowStart[r]! + col;
-      const value = cell < model.rowStart[r + 1]! ? cellText(model, cell) : '';
+      const full = cell < model.rowStart[r + 1]! ? cellText(model, cell) : '';
+      // A cell is one line that ends in an ellipsis: a megabyte in one cell would only cost layout.
+      const value = full.length > CELL_CHARS ? `${full.slice(0, CELL_CHARS)}…` : full;
       cells.push(<div key={col} role={header ? 'columnheader' : 'cell'} className={`file-viewer__cell${model.numeric[col] ? (header ? ' is-end' : ' is-number') : ''}`}
         title={value.length > model.widths[col]! ? value : undefined}>{value}</div>);
     }
@@ -159,6 +164,10 @@ export function TableView({ model, label }: { model: TableModel; label: string }
     </div>
   );
 }
+
+/** The note for a table wider than {@link TABLE_COLUMNS} columns, or null. */
+export const hiddenColumns = (model: TableModel) => model.columns > TABLE_COLUMNS
+  ? `Showing the first ${TABLE_COLUMNS} of ${model.columns.toLocaleString('en-GB')} columns. Download to see them all.` : null;
 
 /** The number of data rows, for the note under a table. */
 export const tableRows = (model: TableModel) => Math.max(0, model.rowStart.length - 2);

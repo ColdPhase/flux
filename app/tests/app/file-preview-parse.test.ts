@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { cellText, decode, jsonModel, parsePreview, tableModel, textModel, type JsonModel, type TableModel, type TextModel } from '../../apps/web/src/composer/previewParse.js';
+import { TABLE_COLUMNS, cellText, decode, jsonModel, parsePreview, tableModel, textModel, type JsonModel, type TableModel, type TextModel } from '../../apps/web/src/composer/previewParse.js';
 
-// The file preview's parsers (C-58, #1252), which run in a Web Worker in the browser.
+// The file preview's parsers (C-60, #1252), which run in a Web Worker in the browser.
 
 const lines = (model: { text: string; starts: Uint32Array; ends: Uint32Array }) => Array.from(model.starts, (start, i) => model.text.slice(start, model.ends[i]));
 const rows = (model: TableModel) => Array.from({ length: model.rowStart.length - 1 }, (_, r) =>
@@ -65,4 +65,12 @@ test('a 5 MiB CSV parses to every row', () => {
   const model = parsePreview(new TextEncoder().encode(`time,bed,rssi,battery\n${body}\n`), 'csv') as TableModel;
   assert.equal(model.rowStart.length - 1, 100_001);
   assert.deepEqual(rows(model).at(-1), ['2026-11-07T14:00:00Z', 'bed 39', '-99', '3.71']);
+});
+
+test('a table as wide as a file allows is parsed whole and measured only where it is drawn', () => {
+  const model = tableModel(','.repeat(1_000_000), 'utf-8', ',');
+  assert.equal(model.columns, 1_000_001);
+  assert.equal(model.rowStart.length - 1, 1);
+  assert.equal(model.widths[TABLE_COLUMNS - 1], 4);
+  assert.equal(model.widths[TABLE_COLUMNS], 0, 'columns past the drawn ones are not measured');
 });

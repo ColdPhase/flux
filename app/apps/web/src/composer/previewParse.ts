@@ -1,5 +1,5 @@
 /**
- * Decoding and parsing for file previews (C-58, #1252). It runs in a Web Worker (`preview.worker.ts`), so a 5 MiB file never holds
+ * Decoding and parsing for file previews (C-60, #1252). It runs in a Web Worker (`preview.worker.ts`), so a 5 MiB file never holds
  * the page. Every model is one string plus typed arrays of offsets: the page receives a single string and transferable arrays (no
  * million small strings to copy), and slices only the lines or cells it draws. Nothing here is ever drawn as HTML.
  */
@@ -160,6 +160,12 @@ export function jsonModel(source: string, encoding: Encoding): JsonModel | JsonE
   return { kind: 'json', encoding, text: lines.join('\n'), starts, ends, columns, depth: Uint16Array.from(depths), close: Int32Array.from(closes), items: Uint32Array.from(counts) };
 }
 
+/**
+ * The columns a table draws: a CSV of 4 MiB of commas is one row of four million cells, and drawing them holds the page. The rest are
+ * counted, and the note says to download the file to see them all.
+ */
+export const TABLE_COLUMNS = 200;
+
 const NUMBER = /^[-+]?(?:\d{1,3}(?:[ ,]\d{3})+|\d+)?(?:[.,]\d+)?(?:[eE][-+]?\d+)?%?$/;
 
 /** RFC 4180 rows: quoted cells may hold the delimiter, `""` and line breaks; a row may be shorter or longer than the header. */
@@ -208,13 +214,13 @@ export function tableModel(text: string, encoding: Encoding, delimiter: ',' | '\
   const seen = new Uint8Array(columns);
   model.numeric.fill(1);
   for (let r = 0; r < sampled; r++) {
-    for (let c = rowStart[r]!, col = 0; c < rowStart[r + 1]!; c++, col++) {
+    for (let c = rowStart[r]!, col = 0; c < rowStart[r + 1]! && col < TABLE_COLUMNS; c++, col++) {
       const value = cellText(model, c);
       model.widths[col] = Math.max(model.widths[col]!, Math.min(40, value.length));
       if (r > 0 && value) { seen[col] = 1; if (!NUMBER.test(value.trim())) model.numeric[col] = 0; }
     }
   }
-  for (let col = 0; col < columns; col++) { model.widths[col] = Math.max(4, model.widths[col]!); if (!seen[col]) model.numeric[col] = 0; }
+  for (let col = 0; col < Math.min(columns, TABLE_COLUMNS); col++) { model.widths[col] = Math.max(4, model.widths[col]!); if (!seen[col]) model.numeric[col] = 0; }
   return model;
 }
 

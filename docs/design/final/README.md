@@ -682,7 +682,9 @@ These functional rules from UI116-4 remain required:
     indents, each object and array folds with a chevron; a large file starts folded below the
     second level; invalid JSON shows the text with the parse error line above it. CSV/TSV: a table
     of every row with the header row sticky, mono numbers right-aligned, a cell that starts with
-    `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows.
+    `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows. A table
+    wider than 200 columns shows the first 200 and says "Showing the first 200 of N columns. Download to see
+    them all."
 
 | | |
 | --- | --- |

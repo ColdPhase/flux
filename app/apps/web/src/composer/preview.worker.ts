@@ -1,6 +1,6 @@
 import { parsePreview, transferablesOf, type ParsedFormat } from './previewParse';
 
-// The file preview's parser (C-58, #1252): decodes and parses off the page's thread, then hands back one string and typed arrays.
+// The file preview's parser (C-60, #1252): decodes and parses off the page's thread, then hands back one string and typed arrays.
 interface Scope { onmessage: ((event: MessageEvent<{ bytes: ArrayBuffer; format: ParsedFormat }>) => void) | null; postMessage(message: unknown, transfer: Transferable[]): void }
 const scope = self as unknown as Scope;
 scope.onmessage = (event) => {

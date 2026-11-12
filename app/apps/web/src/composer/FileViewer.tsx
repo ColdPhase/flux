@@ -6,7 +6,7 @@ import { readFileBytes } from '../api/files';
 import { Button, Icon, Spinner, trapTab } from '../ui';
 import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 import type { ParsedFormat, PreviewModel } from './previewParse';
-import { JsonErrorView, JsonView, TableView, TextView, tableRows } from './previewViews';
+import { JsonErrorView, JsonView, TableView, TextView, hiddenColumns, tableRows } from './previewViews';
 
 // A file preview in the photo viewer's frame (C-60, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
 // Someone else's HTML never runs on Flux's origin: it is framed from the preview route, which sandboxes it to an opaque origin
@@ -72,7 +72,7 @@ function HtmlPage({ file, scripts }: { file: MessageFile; scripts: boolean }) {
 
 /**
  * A PDF in the browser's own viewer. The frame is sandboxed by the preview's policy only: Chromium shows no PDF in a frame with the
- * `sandbox` attribute (C-58). A browser without a PDF viewer (Android) says so and offers Download.
+ * `sandbox` attribute (C-60). A browser without a PDF viewer (Android) says so and offers Download.
  */
 function PdfPage({ file }: { file: MessageFile }) {
   if (navigator.pdfViewerEnabled === false) return (
@@ -127,6 +127,8 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
         : model.kind === 'table' ? <TableView model={model} label={label} />
           : <TextView model={model} numbers={numbers} label={label} />;
     if (model.kind === 'table') notes.push(`${tableRows(model).toLocaleString('en-GB')} ${tableRows(model) === 1 ? 'row' : 'rows'}`);
+    const hidden = model.kind === 'table' ? hiddenColumns(model) : null;
+    if (hidden) notes.push(hidden);
     if (model.encoding === 'windows-1252') notes.push('Shown as Windows-1252 text.');
     if (model.kind === 'text') notes.push(quiet(numbers ? 'Hide line numbers' : 'Show line numbers', () => setNumbers((on) => !on)));
   }

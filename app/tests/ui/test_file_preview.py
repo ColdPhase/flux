@@ -163,7 +163,9 @@ BIG_CSV = (b"time,bed,rssi,snr,battery,note\n" + b"".join(f"2026-11-07T14:{(n //
 BIG_CSV = BIG_CSV[:BIG_CSV.rindex(b"\n", 0, LIMIT - 4096) + 1]
 BIG_CSV_ROWS = BIG_CSV.count(b"\n") - 1
 BIG_JSON = ("[" + ",".join(f'{{"id":{n},"bed":"bed {n % 40}","readings":{{"rssi":-{90 + n % 30},"snr":{n % 11 - 4}.5}},"tags":["lora","sf9"]}}' for n in range(60_000)) + "]").encode()
-assert len(BIG_JSON) < LIMIT and len(LOG) < LIMIT and len(BIG_CSV) < LIMIT
+COMMAS = b"," * (4 * 1024 * 1024)  # one row of 4,194,305 empty cells: any member can send it
+WIDE = ("\n".join(",".join(f"s{c}" if r == 0 else str((r * c) % 997) for c in range(2000)) for r in range(300)) + "\n").encode()
+assert len(BIG_JSON) < LIMIT and len(LOG) < LIMIT and len(BIG_CSV) < LIMIT and len(COMMAS) < LIMIT and len(WIDE) < LIMIT
 SMALL_LOG = b"gateway-3 boot ok\n\tsf=9 bw=125\nuplink fcnt=1 rssi=-112 snr=-4.5\n" + b"x" * 300 + b"\n"
 LATIN = "Caf\u00e9 north bed, 12\u00b0C\n".encode("windows-1252")
 JSON_OK = b'{"gateway": "gw-3", "beds": [{"name": "far east", "rssi": -112}, {"name": "north", "rssi": -98}], "ok": true, "note": null}'
@@ -223,7 +225,8 @@ class FilePreview(unittest.TestCase):
         for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
                                 ("source", "rssi.py", SOURCE), ("pdf", "placement.pdf", pdf_bytes()),
-                                ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON)):
+                                ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
+                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE)):
             root(key, f"File {name}", name, data)
         for context in contexts.values():
             context.close()
@@ -550,7 +553,7 @@ class FilePreview(unittest.TestCase):
         if page.evaluate("navigator.pdfViewerEnabled"):
             frame = dialog.locator("iframe")
             expect(frame).to_have_attribute("src", f"/api/v1/files/{self.ids['file:pdf']}/preview")
-            self.assertIsNone(frame.get_attribute("sandbox"), "sandboxed by the preview's own policy (C-58)")
+            self.assertIsNone(frame.get_attribute("sandbox"), "sandboxed by the preview's own policy (C-60)")
         else:
             # Playwright's headless Chromium shell has no PDF viewer: the viewer says so and offers Download.
             expect(dialog.get_by_text("This browser can't show a PDF here.")).to_be_visible()
@@ -609,6 +612,23 @@ class FilePreview(unittest.TestCase):
                 print(f"{name}: ready in {ready:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
                 self.shot(page, f"file-preview-{key}-1440-light")
+        # A table as wide as a file allows draws its first 200 columns and says so: no column holds the page either.
+        for key, name, columns in (("commas", "commas.csv", len(COMMAS) + 1), ("wide", "matrix.csv", 2000)):
+            with self.subTest(file=name):
+                page, _, _ = self.open(key)
+                page.evaluate("() => { window.__long = []; new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); }")
+                started = time.time()
+                _, dialog = self.viewer(page, key, name)
+                table = dialog.get_by_role("table", name=f"Contents of {name}")
+                expect(table.get_by_role("columnheader")).to_have_count(200, timeout=30000)
+                expect(table).to_have_attribute("aria-colcount", str(columns))
+                expect(dialog.get_by_role("status")).to_contain_text(f"Showing the first 200 of {columns:,} columns. Download to see them all.")
+                table.evaluate("(el) => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; }")
+                page.wait_for_timeout(500)
+                self.assertLess(table.locator("[role=cell], [role=columnheader]").count(), 200 * 120)
+                long = page.evaluate("window.__long")
+                print(f"{name}: ready in {time.time() - started:.2f} s, long tasks {long}")
+                self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
 
     def test_99_a_reader_who_lost_access_sees_nothing(self) -> None:
         page, outside, _ = self.open("report", quiet_stream=True)

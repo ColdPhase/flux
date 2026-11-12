@@ -79,7 +79,7 @@ class FileOnlyMessage(unittest.TestCase):
         page.goto(f"/projects/{project['id']}/conversations/{started['id']}")
         message = page.locator(f"#message-{message_id}")
         files = message.get_by_role("list", name="1 attached file")
-        # A CSV previews from its name (C-58, #1252); its own Download stays beside it.
+        # A CSV previews from its name (C-60, #1252); its own Download stays beside it.
         expect(files.get_by_role("button", name="Preview readings.csv")).to_be_visible()
         link = files.get_by_role("link", name="Download readings.csv")
         expect(link).to_have_attribute("href", f"/api/v1/files/{file['id']}")
@@ -318,7 +318,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         files = self.message(page, "files")
         files.scroll_into_view_if_needed()
         rows = files.get_by_role("list", name="3 attached files")
-        # A PDF and a CSV preview from their name (C-58, #1252); the round button beside them downloads.
+        # A PDF and a CSV preview from their name (C-60, #1252); the round button beside them downloads.
         pdf = rows.locator(".file-row").filter(has_text="probe-v2-drawing.pdf")
         expect(pdf.get_by_role("link", name="Download probe-v2-drawing.pdf")).to_have_attribute("download", "probe-v2-drawing.pdf")
         expect(pdf.get_by_role("button", name="Preview probe-v2-drawing.pdf")).to_contain_text("PDF · 302.8 KiB")
