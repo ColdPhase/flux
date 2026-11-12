@@ -568,6 +568,20 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **Licences.** `pg_search` is AGPL-3.0-or-later, which Flux (AGPL-3.0-only) may ship; its source is the release tag the
   Dockerfile names. PostgreSQL and `pgvector` are under the PostgreSQL Licence, OpenBLAS (a `pg_search` dependency) BSD-3-Clause.
 
+**Engineering choices (#1292, summaries).**
+
+- **`flux_summarize` returns a digest and asks nothing of Flux's own models:** "by the calling agent's own model in its own run" is the
+  only way both engines get it, since a local Claude Code or Codex has no model connection on the server. The tool reads the messages the
+  caller may read now, in a range, and the agent writes the summary, paid as its run is (AG-11); no summary is stored, so there is no
+  record to keep current, to hide or to bill.
+- **An answer is a page:** about 16,000 characters (about 4,000 tokens, far inside an API-key run's 64,000), one line per message with a
+  heading for each day and, in a space's main conversation, for each thread; a line break in a message is a visible mark, so a message
+  cannot pass as another line. It says when it stopped early, how many messages remain and its `next` (the stored time with its
+  microseconds and the message id), and the range is read in pages without a gap or a repeat.
+- **Where it reads** is a space (its conversations, not a task's discussion, which is the task's), a conversation or thread, a task's
+  discussion (through the task's own read, its people) and a run's direct message; the id is checked in the agent's own company, so
+  another company's or an encrypted workspace's space is not found, and the reach rules of search apply (C-12, C-37).
+
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.
 

@@ -7,6 +7,7 @@ import { agentToolRegistry, type AgentToolRegistry } from './tool-registry.js';
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
 import { registerAgentSearchReads } from './search-reads.js';
+import { registerAgentSummaryReads } from './summary-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
 import { registerAgentMapActions } from './map-actions.js';
 import { registerAgentDocActions } from './doc-actions.js';
@@ -78,6 +79,7 @@ function serverFactory(db: Database, github: GithubActionProvider | null, webRea
   const playbook = registerAgentPlaybook(tools, db);
   registerAgentDomainReads(tools.forAccess('read'), db);
   registerAgentSearchReads(tools.forAccess('read'), db);
+  registerAgentSummaryReads(tools.forAccess('read'), db);
   registerAgentBootstrap(tools, db);
   registerAgentWorkActions(tools, db);
   registerAgentMapActions(tools, db);
