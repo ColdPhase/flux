@@ -1,5 +1,5 @@
 import https from 'node:https';
-import webpush, { WebPushError } from 'web-push';
+import { WebPushError, getVapidHeaders, sendNotification } from 'web-push';
 import { assignmentDeliveryAdmission, pushDeliveryRepository, accessReader, type Database } from '@flux/db';
 import { pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
 import { createPublicOnlyLookup, type PublicLookupResolver } from './public-lookup.js';
@@ -40,7 +40,7 @@ export function createVapidAuthorizer(): VapidAuthorizer {
     const nowSeconds = Math.floor(now / 1000);
     if (cached && cached.expiresAt - JWT_RENEW_BEFORE_SECONDS > nowSeconds) return cached.authorization;
     const expiresAt = nowSeconds + JWT_LIFETIME_SECONDS;
-    const { Authorization } = webpush.getVapidHeaders(audience, config.subject, config.publicKey, config.privateKey, 'aes128gcm', expiresAt);
+    const { Authorization } = getVapidHeaders(audience, config.subject, config.publicKey, config.privateKey, 'aes128gcm', expiresAt);
     headers.set(key, { authorization: Authorization, expiresAt });
     return Authorization;
   };
@@ -55,7 +55,7 @@ export function webPushSender(
   return {
     async send(subscription, payload) {
       try {
-        const result = await webpush.sendNotification(
+        const result = await sendNotification(
           { endpoint: subscription.endpoint, keys: { p256dh: subscription.p256dh, auth: subscription.auth } },
           JSON.stringify(payload),
           {
