@@ -139,9 +139,12 @@ span.photo-grid__open { cursor: default; }
 .file-viewer__table-scroll { padding: 0; font-size: var(--fs-base); line-height: var(--lh); }
 .file-viewer__row { display: grid; grid-template-columns: var(--cols); width: max-content; min-width: 100%; height: var(--row); border-bottom: 1px solid var(--line); }
 .file-viewer__head { position: sticky; top: 0; z-index: 1; width: max-content; min-width: 100%; background: var(--el); }
-.file-viewer__row.is-header { border-bottom-color: var(--line2); font-weight: 600; }
+/* Weight on the cells, not the row: the columns are in `ch` of the row's font, the same for the header and every row. */
+.file-viewer__row.is-header { border-bottom-color: var(--line2); }
+.file-viewer__row.is-header .file-viewer__cell { font-weight: 600; }
 .file-viewer__cell { padding: 6px 12px; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
 .file-viewer__cell.is-number { font-family: var(--mono); text-align: right; }
+.file-viewer__cell.is-end { text-align: right; }
 @media (max-width: 680px) { .file-viewer__sheet, .file-viewer__sheet--text, .file-viewer__sheet--json { width: 100%; border-radius: 0; } .file-viewer__scroll { padding: 12px 16px; } .file-viewer__table-scroll { padding: 0; } }
 
 /* Before sending: thumbnails with × in the composer; several choices on a phone are numbered in send order. */

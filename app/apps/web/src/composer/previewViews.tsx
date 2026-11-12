@@ -143,7 +143,7 @@ export function TableView({ model, label }: { model: TableModel; label: string }
     for (let col = 0; col < model.columns; col++) {
       const cell = model.rowStart[r]! + col;
       const value = cell < model.rowStart[r + 1]! ? cellText(model, cell) : '';
-      cells.push(<div key={col} role={header ? 'columnheader' : 'cell'} className={`file-viewer__cell${!header && model.numeric[col] ? ' is-number' : ''}`}
+      cells.push(<div key={col} role={header ? 'columnheader' : 'cell'} className={`file-viewer__cell${model.numeric[col] ? (header ? ' is-end' : ' is-number') : ''}`}
         title={value.length > model.widths[col]! ? value : undefined}>{value}</div>);
     }
     return <div key={r} role="row" aria-rowindex={r + 1} className={`file-viewer__row${header ? ' is-header' : ''}`}>{cells}</div>;
