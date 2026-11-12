@@ -97,7 +97,12 @@ supersedes the quiet start of #59 (2026-09-27).
    - Never in a place the reader can't read. In an encrypted space the line holds only
      who and when, never a recap of content.
    - An agent's brief sees the line as an event ("a call took place, 12 min, Hubert and
-     Maurycy"), not as a message to answer.
+     Maurycy"), not as a message to answer. An API-key run's `<conversation>` carries it
+     as `<event kind="call">` among the messages by when the call started, with the
+     names its readers see and nothing else, for the space's main conversation and a
+     task's discussion (a thread has none); the brief says events are not messages. The
+     owner's Claude Code and Codex read messages through the Flux tools, which do not list
+     calls.
 8. **A shared screen is seen.** When someone starts sharing, each other participant's
    stage opens on that screen once, unless they closed the stage for that share (a
    reconnect does not open it again); on a phone a sheet offers **View Nia's screen**.

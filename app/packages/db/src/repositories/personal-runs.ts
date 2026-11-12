@@ -340,6 +340,25 @@ export function personalRunRows(db: DbExecutor) {
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
     },
 
+    /**
+     * The latest `limit` calls of the place a run reads, oldest first (F-041 point 6): the space's own (a call at no task, map or page), or the
+     * task's when the place is a task or its discussion; a thread has none. Identifiers and times only.
+     */
+    async calls(projectId: string, place: { conversationId: string | null; workId: string | null }, limit: number) {
+      const s = schema.liveSessions;
+      let workId = place.workId;
+      if (workId === null && place.conversationId !== null) {
+        const [discussion] = await db.select({ workId: schema.projectTaskDiscussions.workId }).from(schema.projectTaskDiscussions)
+          .where(eq(schema.projectTaskDiscussions.conversationId, place.conversationId));
+        if (!discussion) return [];
+        workId = discussion.workId;
+      }
+      const at: SQL = workId !== null ? eq(s.workId, workId) : and(isNull(s.conversationId), isNull(s.workId), isNull(s.sketchId), isNull(s.docId))!;
+      const rows = await db.select().from(s).where(and(eq(s.projectId, projectId), at)).orderBy(desc(s.createdAt), desc(s.id)).limit(limit);
+      return rows.reverse().map((row) => ({ id: row.id, startedAt: row.createdAt, startedBy: row.createdBy, joinedBy: row.joinedBy,
+        endedAt: row.state === 'available' || row.state === 'rotating' ? null : row.endedAt ?? row.updatedAt }));
+    },
+
     /** The latest `limit` messages written in the people's conversations of a space, oldest first: what its main conversation says (#842). */
     async spaceMessages(projectId: string, limit: number) {
       const m = schema.projectMessages;

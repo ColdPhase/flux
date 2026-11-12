@@ -161,6 +161,8 @@ export interface MessageSource {
    */
   conversationId?: string; thread?: string | null;
 }
+/** One call of a place, as a run is told it (F-041): who started it and who was in it, never what was said. A running call has no `endedAt`. */
+export interface CallSource { id: string; startedAt: Date; endedAt: Date | null; startedBy: string; joinedBy: string[] }
 /** One place of the owner's runs (#842): exactly one of these. */
 export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string };
 
@@ -266,6 +268,12 @@ export interface PersonalRunRepository {
   /** The company's people whose first name, in lower case, is one of these (#1163); whether they read a space is asked separately. */
   namesakes(workspaceId: string, firstNames: string[]): Promise<{ id: string; name: string }[]>;
   messages(conversationId: string, limit: number): Promise<MessageSource[]>;
+  /**
+   * The latest `limit` calls of the place a run reads, oldest first: what a call line shows (F-041 point 6). The space's own conversation (no
+   * conversation, no task) has the space's calls, a task or its discussion has the task's, and a thread has none. A run is told them as events
+   * beside the messages, never as messages.
+   */
+  calls(projectId: string, place: { conversationId: string | null; workId: string | null }, limit: number): Promise<CallSource[]>;
   /** The latest `limit` messages written in a space's conversations, oldest first: what its main conversation says (#842). */
   spaceMessages(projectId: string, limit: number): Promise<MessageSource[]>;
   /**

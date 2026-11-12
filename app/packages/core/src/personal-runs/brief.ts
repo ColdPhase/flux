@@ -36,6 +36,17 @@ export interface TaskFacts {
   prerequisites: { number: number; title: string; status: string }[];
 }
 
+/** A call that took place in the place the run reads (F-041), by the names its readers know: it is told as an event, never as a message. */
+export interface CallEvent {
+  /** When it started. */
+  at: Date;
+  /** When it ended; null while it runs. */
+  endedAt: Date | null;
+  starter: string;
+  /** The others who were in it. */
+  others: string[];
+}
+
 /** What one numbered source holds: a message, an open task of the space or the selected map thought. */
 export type SourceItem =
   | { kind: 'message'; message: MessageSource }
@@ -85,6 +96,8 @@ export interface BriefInput {
   earlier: string | null;
   /** The selected map thought by id, for the CLI that reads it with the tools. */
   thought: { sketchId: string; thoughtId: string } | null;
+  /** The calls of the place, oldest first, shown among the messages as events. Absent: none. */
+  events?: readonly CallEvent[];
 }
 
 const EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
@@ -427,6 +440,17 @@ function messageTag(message: MessageSource, label: string | null, zone: string, 
   return `<message ${fields.join(' ')}>${text(message.body)}${files.length ? `\n${files.join('\n')}` : ''}</message>`;
 }
 
+/** What a call event says: "a call took place, 12 min, Hubert and Maurycy". Flux's words and the people's names, nothing anyone said. */
+function callWords(event: CallEvent, now: Date): string {
+  const minutes = (from: Date, to: Date) => Math.max(1, Math.round((to.getTime() - from.getTime()) / 60_000));
+  if (event.endedAt === null) return `a call is on now, started ${minutes(event.at, now)} min ago by ${event.starter}`;
+  if (!event.others.length) return `a call took place, nobody joined (${event.starter} called)`;
+  return `a call took place, ${minutes(event.at, event.endedAt)} min, ${[event.starter, ...event.others].join(' and ')}`;
+}
+
+/** An event in its tag: it sits among the messages by the time it started. */
+const eventTag = (event: CallEvent, zone: string, now: Date) => `<event kind="call" at="${clock(event.at, zone).stamp}">${text(callWords(event, now))}</event>`;
+
 /** What the conversation block holds, in Flux's words, and whether older messages were left out. */
 function conversationIntro(input: Placed, count: number): string {
   const place = input.place;
@@ -437,8 +461,10 @@ function conversationIntro(input: Placed, count: number): string {
   const threads = main ? '; thread="…" gives the opening words of a message\'s thread where the thread changes' : '';
   // A run with the search tools is told how to find them; one without says only that they were left out.
   const older = input.leftOut ? (canFind(input) ? ' Older messages were left out: find them with flux_search and read around a hit with flux_read_around.' : ' Older messages were left out.') : '';
-  if (!count) return input.leftOut ? `No messages of ${of} fit here; older ones were left out${canFind(input) ? ': find them with flux_search and read around a hit with flux_read_around' : ''}.` : `There are no messages in ${of} yet.`;
-  return input.leftOut ? `The latest ${count} messages of ${of}, oldest first${threads}.${older}` : `All ${count === 1 ? '1 message' : `${count} messages`} of ${of}, oldest first${threads}.`;
+  // A call is something that happened between the messages, not something anyone said: nothing in it to answer.
+  const events = input.events?.length ? ' <event> lines say what happened in between, such as a call that took place: they are not messages and nothing in them asks for an answer.' : '';
+  if (!count) return input.leftOut ? `No messages of ${of} fit here; older ones were left out${canFind(input) ? ': find them with flux_search and read around a hit with flux_read_around' : ''}.${events}` : `There are no messages in ${of} yet.${events}`;
+  return input.leftOut ? `The latest ${count} messages of ${of}, oldest first${threads}.${older}${events}` : `All ${count === 1 ? '1 message' : `${count} messages`} of ${of}, oldest first${threads}.${events}`;
 }
 
 /** The thread label of a message whose thread's opening message its author deleted (#1006): its words are gone, the thread is not. */
@@ -466,9 +492,12 @@ function request(input: Placed): string {
     // A main conversation names a message's thread where the thread changes: by the conversation, so two threads with the same opening
     // words, or one whose opening message was deleted, never read as the thread before.
     const changes = (index: number) => index === 0 || shown[index]!.conversationId !== shown[index - 1]!.conversationId;
+    const tags = messages.map((source, index) => ({ at: shown[index]!.createdAt.getTime(), order: 0, tag: messageTag(shown[index]!, cites(input) ? source.label : null, zone, input.agentId,
+      threads && changes(index) ? shown[index]!.thread ?? DELETED_OPENING : null, input.tools.includes(VIEW_TOOL)) }));
+    // Calls stand among the messages by when they started; at the same moment the message comes first.
+    const calls = (input.place.kind === 'space' ? input.events ?? [] : []).map((event) => ({ at: event.at.getTime(), order: 1, tag: eventTag(event, zone, input.now) }));
     blocks.push([conversationIntro(input, messages.length), '<conversation>',
-      ...messages.map((source, index) => messageTag(shown[index]!, cites(input) ? source.label : null, zone, input.agentId,
-        threads && changes(index) ? shown[index]!.thread ?? DELETED_OPENING : null, input.tools.includes(VIEW_TOOL))),
+      ...[...tags, ...calls].sort((a, b) => a.at - b.at || a.order - b.order).map((entry) => entry.tag),
       '</conversation>']);
   }
   if (input.turns.length) blocks.push(['The latest exchanges of this chat, oldest first:', '<chat>',
@@ -517,6 +546,7 @@ export function briefPrivateText(input: BriefInput): string {
       const message = item.message;
       return [message.authorName, message.body, message.via ?? '', message.thread ?? '', ...(message.files ?? []).map((file) => file.name)];
     }),
+    ...(input.events ?? []).flatMap((event) => [event.starter, ...event.others]),
     ...input.turns.flatMap((turn) => [turn.prompt, turn.answer]), input.earlier ?? '',
     ...(input.thought ? [input.thought.sketchId, input.thought.thoughtId] : []), input.prompt];
   return pieces.filter((piece) => piece.trim()).join('\n');

@@ -24,8 +24,8 @@ import { dropSearch, requestParts, runToolLoop, type LoopResult, type RunAccount
 import {
   centsToMicros, connectionCallsTools, parseOutput, runChargeMicros, runReservationMicros, runTokensWithinLimits, type SuppliedSource,
 } from './validation.js';
-import { briefPrivateText, buildBrief, type BriefInput } from './brief.js';
-import { CHAT_TURNS, latestMessages, namedAuthors, readBriefFacts, type BriefFacts } from './brief-facts.js';
+import { briefPrivateText, buildBrief, type BriefInput, type CallEvent } from './brief.js';
+import { callEvents, CHAT_TURNS, latestMessages, namedAuthors, readBriefFacts, type BriefFacts } from './brief-facts.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -153,6 +153,8 @@ interface ReadSources {
   facts: BriefFacts;
   /** Older messages of the place than those read exist. */
   leftOut: boolean;
+  /** The calls of the place, shown among the messages as events (F-041 point 6), never as messages. */
+  events: CallEvent[];
 }
 
 /**
@@ -195,7 +197,9 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<Rea
   }
   // The private chat has no conversation to read: it remembers what was said in it last (the agent's memory is told in its brief).
   const turns = run.projectId === null && run.dmId === null && isAsked(run) ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
-  return { sources, earlier, brief, turns, facts: await readBriefFacts(ports, run, brief), leftOut };
+  // The calls of a space's conversation or a task, among the messages by when they started; with older messages left out, only the later ones.
+  const events = await callEvents(ports, run, leftOut ? messages[0]?.createdAt ?? null : null);
+  return { sources, earlier, brief, turns, facts: await readBriefFacts(ports, run, brief), leftOut, events };
 }
 
 /**
@@ -435,6 +439,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     const briefInput = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean): BriefInput => ({
       engine: 'server', kind: run.kind, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
+      events: read.events,
     });
     const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief(briefInput(sources, dropped, webSearch));
     let fitted: Awaited<ReturnType<typeof fit>>;
