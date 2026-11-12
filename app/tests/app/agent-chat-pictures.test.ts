@@ -50,6 +50,18 @@ describe('pictures in the agent\'s private chat (#1217)', () => {
     assert.deepEqual(view.pictures, [{ id: picture!.id, name: 'Raised bed.png', size: own.bytes.length }]);
   });
 
+  test('two calls of the same id at once save one picture, and neither takes the other\'s bytes away', async () => {
+    const run = await chatRun();
+    const command = randomUUID();
+    const call = () => run.call('flux_attach_image', { clientCommandId: command, url: at('/pic/leaf.webp') });
+    const both = await Promise.all([call(), call()]);
+    for (const said of both) assert.equal(result(said.message)?.isError, undefined, text(said.message));
+    const saved = await pictures(run.runId);
+    assert.equal(saved.length, 1);
+    assert.equal((await download(scene.owner, saved[0]!.id)).status, 200, 'its bytes are there');
+    await scene.complete(run.runId);
+  });
+
   test('in the chat too a refusal is plain words, and nothing is kept', async () => {
     const run = await chatRun();
     for (const [url, words] of [[at('/pic/drawing.svg'), /SVG drawing/], ['http://127.0.0.1/a.png', /only pictures at public web addresses/], [at('/pic/to-private'), /only pictures at public web addresses/]] as const) {

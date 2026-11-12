@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { z } from 'zod';
-import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, isNull, sql } from 'drizzle-orm';
 import { AGENT_OPERATION_CLASSES, FILE_LIMITS, PICTURE_RUN_KINDS, type AgentJsonValue, type StagedFile } from '@flux/contracts';
 import { addressChain, ADDRESS_MAX, DomainError, derivedUuid, normalizedAddress, pictureName, requireSpaceAi, SpaceAiOffError, type FileStorage,
   type PrivateTextIndex } from '@flux/core';
@@ -234,18 +234,30 @@ async function attachInChat(db: Database, services: PictureServices, input: { cl
   const ok = fetched as Extract<PictureResult, { ok: true }>;
   const name = pictureName(input.caption, ok.finalUrl, ok.type);
   const received = await services.storage.receive(Readable.from([Buffer.from(ok.bytes)]), { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 });
+  let saved: { name: string; size: number } | null = null;
   try {
-    await received.commit(id);
-    await db.transaction(async (tx) => {
+    saved = await db.transaction(async (tx) => {
+      // One call of this id at a time (a retry racing the first): the first saves it, the other finds it saved and touches nothing.
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`run-picture:${id}`}))`);
       // The run is checked live again before the picture is its: a run stopped meanwhile keeps nothing.
       await agentConnectionInTransaction(tx, claims, 'read', null);
       const rows = runPictureRows(tx as DbExecutor);
+      const existing = await rows.find(id);
+      if (existing) return { name: existing.name, size: existing.size };
+      await received.commit(id);
       await rows.add({ id, runId: run.id, ownerUserId: claims.ownerUserId, name, size: received.size, sha256: received.sha256, position: (await rows.forRun(run.id)).length });
+      return null;
     });
   } catch (error) {
     await received.discard().catch(() => undefined);
-    await services.storage.remove(id).catch(() => undefined);
+    // Bytes this call committed under a row that never was: removed. A picture another call saved under this id is left alone.
+    const kept = await runPictureRows(db as unknown as DbExecutor).find(id).catch(() => null);
+    if (!kept) await services.storage.remove(id).catch(() => undefined);
     throw error;
+  }
+  if (saved) {
+    await received.discard().catch(() => undefined);
+    return toolResult({ attached: saved.name, size: saved.size, replayed: true });
   }
   return toolResult({ attached: name, size: received.size,
     note: 'The picture is attached to your answer in this chat; only your owner sees it. Do not describe it as seen unless you looked at it.' });
