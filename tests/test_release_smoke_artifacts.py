@@ -294,11 +294,33 @@ class LegSettingsTest(StubbedDocker):
             self.assertIn(message, result.stderr)
         self.assertFalse(self.log.exists())
 
-    def test_the_candidate_carries_the_provider_mock_overlay_on_every_compose_call(self) -> None:
+    def test_the_upgrade_leg_carries_the_agent_settings_and_the_provider_mock_overlay(self) -> None:
         result = self.run_with(FLUX_SMOKE_LEGS="upgrade")
         self.assertNotEqual(result.returncode, 0)  # the stub docker fails the first compose call
         first = self.log.read_text().splitlines()[0]
         self.assertIn("provider-mock.compose.yaml", first)
+        env = (self.dir / "state" / "upgrade" / "source.env").read_text(encoding="utf-8")
+        for line in ("FLUX_PERSONAL_RUNS=on", "FLUX_AI_PRIVATE_TARGETS=provider-mock"):
+            self.assertIn(line, env.splitlines())
+        self.assertRegex(env, r"(?m)^FLUX_BACKGROUND_KEY_HOST_FILE=/.+background\.key$")
+
+    def test_the_clean_default_install_has_no_agent_settings_and_no_overlay(self) -> None:
+        """Leg 1 installs exactly as INSTALL.md says: the template filled in with its secrets and port, nothing else (P2 of #1262)."""
+        env = dict(os.environ, STUB_LOG=str(self.log), PATH=f"{self.dir / 'bin'}{os.pathsep}{os.environ['PATH']}")
+        env.pop("FLUX_SMOKE_PREVIOUS_ASSETS", None)
+        result = subprocess.run(["bash", str(SCRIPT), str(self.candidate), str(self.dir / "state"), "projectsrc", "projectrst"], env=env, capture_output=True, text=True)
+        self.assertNotEqual(result.returncode, 0)  # the stub docker fails the first compose call
+        calls = self.log.read_text().splitlines()
+        self.assertTrue(calls)
+        for call in calls:
+            self.assertNotIn("provider-mock.compose.yaml", call)
+            self.assertEqual(call.count(" -f "), 1, call)
+        written = (self.dir / "state" / "source.env").read_text(encoding="utf-8")
+        template = (self.candidate / "env.example").read_text(encoding="utf-8")
+        for key in ("FLUX_PERSONAL_RUNS", "FLUX_AI_PRIVATE_TARGETS", "FLUX_BACKGROUND_KEY_HOST_FILE"):
+            self.assertNotIn(key, written)
+            self.assertNotIn(key, template)
+        self.assertFalse((self.dir / "state" / "background.key").exists(), "no key file is made for a default install")
 
 
 if __name__ == "__main__":

@@ -57,17 +57,26 @@ class EnvChangesTest(unittest.TestCase):
         out, env = self.apply("rename FLUX_OLD FLUX_NEW\nremove FLUX_GONE why\n", "B=2\n")
         self.assertEqual((out, env), ("", "B=2\n"))
 
-    def test_an_unknown_action_stops_the_upgrade(self) -> None:
+    def test_an_unknown_action_fails_the_function_so_the_upgrade_reports_a_failed_upgrade(self) -> None:
         with tempfile.TemporaryDirectory(prefix="flux-env-changes-") as directory:
             root = Path(directory).resolve()
             (root / "docker").mkdir()
             (root / "docker" / "env-changes.txt").write_text("rename-ish A B\n", encoding="utf-8")
             (root / "docker" / ".env").write_text("A=1\n", encoding="utf-8")
-            script = (f'FLUX_ROOT="{root}"\nENV_FILE="{root}/docker/.env"\nsay() {{ :; }}\ndie() {{ printf "DIE %s\\n" "$*"; exit 1; }}\n'
-                      + launcher_function("set_env_line") + launcher_function("drop_env_line") + launcher_function("apply_env_changes") + "apply_env_changes\n")
+            script = (f'FLUX_ROOT="{root}"\nENV_FILE="{root}/docker/.env"\nsay() {{ :; }}\nwarn() {{ printf "WARN %s\\n" "$*"; }}\n'
+                      'upgrade_failed() { printf "UPGRADE_FAILED %s\\n" "$1"; exit 1; }\n'
+                      + launcher_function("set_env_line") + launcher_function("drop_env_line") + launcher_function("apply_env_changes")
+                      + 'apply_env_changes || upgrade_failed "docker/env-changes.txt could not be applied (see above)"\necho not-reached\n')
             result = subprocess.run(["sh", "-c", script], capture_output=True, text=True)
             self.assertEqual(result.returncode, 1)
-            self.assertIn("unknown action 'rename-ish'", result.stdout)
+            self.assertIn("WARN docker/env-changes.txt: unknown action 'rename-ish'", result.stdout)
+            self.assertIn("UPGRADE_FAILED docker/env-changes.txt could not be applied", result.stdout)
+            self.assertNotIn("not-reached", result.stdout)
+
+    def test_the_launcher_calls_upgrade_failed_when_the_changes_cannot_be_applied(self) -> None:
+        upgrade = launcher_function("upgrade_apply")
+        self.assertRegex(upgrade, r'apply_env_changes \|\| upgrade_failed "[^"]+"')
+        self.assertNotIn('die "docker/env-changes.txt', launcher_function("apply_env_changes"), "a bare die would leave the writers stopped without the way back")
 
     def test_the_shipped_file_lists_no_change_and_the_launcher_calls_it_during_an_upgrade(self) -> None:
         lines = [l for l in (ROOT / "docker" / "env-changes.txt").read_text(encoding="utf-8").splitlines() if l.strip() and not l.startswith("#")]

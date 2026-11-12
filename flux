@@ -1278,7 +1278,7 @@ apply_env_changes() {
         fi ;;
       remove)
         if grep -q "^$name=" "$ENV_FILE"; then say "NOTE: $name in ${ENV_FILE#"$FLUX_ROOT"/} is no longer used: $other. Remove it."; fi ;;
-      *) die "docker/env-changes.txt: unknown action '$action' (use rename or remove)" ;;
+      *) warn "docker/env-changes.txt: unknown action '$action' (use rename or remove)"; return 1 ;;
     esac
   done < "$changes"
 }
@@ -1289,7 +1289,8 @@ upgrade_apply() {
   (need_docker) || upgrade_failed "this version cannot run on this Docker (see above)"
   # `./flux upgrade --pull` run by a v0.1 launcher backs up and stops the writers, then comes here (#1176): stop before the build.
   if v01_database; then v01_explain >&2; UPGRADE_NO_RETRY=1; upgrade_failed "the database was written by Flux v0.1, which v0.2 does not upgrade"; fi
-  apply_env_changes
+  # After the backup, so a file of changes that this launcher cannot read fails like any other step: the writers are stopped, the backup is named.
+  apply_env_changes || upgrade_failed "docker/env-changes.txt could not be applied (see above)"
   to_schema=$(code_schema)
   say "Building the new version (schema $to_schema, commit $(git_commit))..."
   build_main || upgrade_failed "the build failed"

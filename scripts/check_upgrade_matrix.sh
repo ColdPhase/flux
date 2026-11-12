@@ -35,7 +35,9 @@
 #   FLUX_MATRIX_ONLY="v0.2.0 ..."   only these releases (default every published release from v0.2.0 on before the candidate)
 #   FLUX_MATRIX_RELEASES_DIR=DIR    DIR/<tag>/ holds the release's downloaded assets (default: gh release download)
 #   FLUX_MATRIX_CANDIDATE_ASSETS=DIR, FLUX_MATRIX_VERSION=vX.Y.Z   the candidate's assets, and its version when it is built here
-#   FLUX_MATRIX_SOURCE=0            skip the source-checkout legs; FLUX_MATRIX_RELEASE_INSTALL=0 skips the release-installation legs
+#   FLUX_MATRIX_SOURCE=0            skip the source-checkout legs; FLUX_MATRIX_RELEASE_INSTALL=0 skips the release-installation legs.
+#                                   A skipped leg is listed as SKIPPED in the result and the run says it is not the full matrix; it never
+#                                   writes FLUX_MATRIX_TESTED_FILE, so a release cannot claim an upgrade that was not tested.
 #   FLUX_MATRIX_TESTED_FILE=FILE    on success, the releases that were tested, space separated (the release notes say them)
 #   FLUX_MATRIX_DUMP_DIR=DIR        also writes each release's seeded database as DIR/<tag>.sql.gz (the fixtures of
 #                                   app/tests/app/released-databases.test.ts)
@@ -175,6 +177,7 @@ if [ "$control" = old-data ]; then
 fi
 
 n=0
+skipped=""
 for tag in $releases; do
   n=$((n + 1))
   if [ "${FLUX_MATRIX_RELEASE_INSTALL:-1}" != 0 ]; then
@@ -193,6 +196,9 @@ for tag in $releases; do
       bash "$root/scripts/release/smoke_artifacts.sh" "$candidate_assets" "$work/state-$tag" "$run_id-i$n" "$run_id-r$n" | tee "$work/install-$tag.out"
     unset FLUX_SMOKE_DUMP
     record "$tag -> $candidate_version  release installation  PASS  $(( $(date +%s) - started )) s$([ -z "$recovery" ] || echo '  (+ a migration that breaks old data stops it, the backup restores)')"
+  else
+    record "$tag -> $candidate_version  release installation  SKIPPED  (FLUX_MATRIX_RELEASE_INSTALL=0: not tested)"
+    skipped="$skipped release-installation"
   fi
   if [ "${FLUX_MATRIX_SOURCE:-1}" != 0 ]; then
     step "$tag -> $candidate_version: source checkout (./flux up on the tag's tree, seed, replace by the candidate's tree, ./flux upgrade -y, read back, write)"
@@ -229,10 +235,23 @@ for tag in $releases; do
     ( cd "$checkout" && FLUX_PORT=$port FLUX_DEV_PORT=$((port + 1)) FLUX_MAILPIT_PORT=$((port + 2)) ./flux clean -y >/dev/null 2>&1 ) || true
     docker rm -fv "$run_id-s$n-provider-mock" >/dev/null 2>&1 || true
     rm -rf "$checkout"
+  else
+    record "$tag -> $candidate_version  source checkout        SKIPPED  (FLUX_MATRIX_SOURCE=0: not tested)"
+    skipped="$skipped source-checkout"
   fi
 done
 
 step "Upgrade matrix"
 cat "$results"
+if [ -n "$skipped" ]; then
+  legs_off=$(printf '%s\n' $skipped | sort -u | tr '\n' ' ' | sed 's/ $//')
+  echo "NOT THE FULL MATRIX: switched off: $legs_off. The legs that ran passed, the others were not tested, and no tested-releases file is written."
+  if [ "$(printf '%s\n' $skipped | sort -u | wc -l)" -ge 2 ]; then
+    echo "NOTHING WAS UPGRADED: every leg is switched off."
+  else
+    echo "PARTIAL: $candidate_version upgrades from $(printf '%s ' $releases)by the leg that ran, with the data read back and new work accepted."
+  fi
+  exit 0
+fi
 [ -z "${FLUX_MATRIX_TESTED_FILE:-}" ] || printf '%s' "$(printf '%s ' $releases | sed 's/ $//')" > "$FLUX_MATRIX_TESTED_FILE"
 echo "PASS: $candidate_version upgrades from $(printf '%s ' $releases)by release installation and source checkout, with the data read back and new work accepted."

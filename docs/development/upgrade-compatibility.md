@@ -37,7 +37,7 @@ list of versions that upgrade to which, is [Upgrade](../operations/upgrade.md); 
 | `scripts/release/check_released_migrations.py` and `tests/test_released_migrations.py` | Repository checks (every pull request; the checkout fetches the release tags) and the first step of the matrix | Every migration file of every release from v0.2.0 on is byte-identical to the file of its tag; a new migration is numbered after the last released one. A clone without the tags fails in Actions rather than passing unchecked. |
 | `app/tests/app/released-databases.test.ts` | `./scripts/check_application.sh` | The real migrator (`node tooling/dist/migrate.js`, as the `migrate` service runs it) runs on a database dumped from each release (`app/tests/app/fixtures/released-databases/<tag>.sql.gz`), applies every later migration, ends on the exact ledger of the files, loses no row of a content table and is a no-op the second time. |
 | `./scripts/check_upgrade_matrix.sh` | Release acceptance ([evaluation](../agents/evaluation.md#at-release-acceptance)) and the `upgrade` job of `final-release.yml` | Every published release from v0.2.0 on upgrades to the candidate, by release installation and by source checkout, with the data below read back and new work accepted. |
-| `scripts/release/smoke_artifacts.sh` leg 2 | The `package` job of `final-release.yml` | The upgrade from the **previous** release to the candidate's own assets and image digest, followed literally from the release guide, with a backup and restore of both sides. |
+| `scripts/release/smoke_artifacts.sh` | The `package` job of `final-release.yml` | Leg 1: a clean install exactly as INSTALL.md says, with its default settings and no overlay, with a backup and restore. Leg 2: the upgrade from the **previous** release to the candidate's own assets and image digest, followed literally from the release guide, with a backup and restore of both sides. Only leg 2 (and 3) sets the agents' switches and adds the provider mock. |
 | `./scripts/check_backup.sh` | Backup and restore acceptance | `./flux upgrade` from the previous source version, the failing migration's restore instructions, and the v0.1 refusal. |
 
 ## The upgrade matrix
@@ -66,6 +66,9 @@ the workflow's `release-assets` (`FLUX_MATRIX_CANDIDATE_ASSETS`). For each publi
 - **Source checkout.** The release's tree (`git archive <tag>`) is started with `./flux up`, seeded, replaced by the candidate's tree (as `git pull` would,
   keeping `docker/.env`), moved with `./flux upgrade -y`, read back and written to.
 - Every release goes straight to the candidate: with two or more earlier releases the older ones are the skip-version case.
+- A leg that is switched off (`FLUX_MATRIX_SOURCE=0`, `FLUX_MATRIX_RELEASE_INSTALL=0`) is listed as `SKIPPED` in the result, the run says
+  `NOT THE FULL MATRIX`, and it writes no list of tested releases, so the release workflow, which needs that list, fails instead of claiming an
+  upgrade that did not run.
 
 Once, against the oldest release: a migration that works on an empty database and fails on the data of a release
 (`ALTER TABLE project_messages ADD CONSTRAINT … CHECK (false)`) is mounted into the candidate's `migrate` service. The upgrade must stop, `migrate` must

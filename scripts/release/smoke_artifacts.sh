@@ -4,11 +4,16 @@
 #   smoke_artifacts.sh <assets> <state dir> <install project> <restore project>
 #   FLUX_SMOKE_PREVIOUS_ASSETS=<previous release's assets> smoke_artifacts.sh ...   (adds the upgrade leg)
 #
-# Leg 1, always: a clean install of the candidate's assets, an account, workspace and content created
-# through the API, an encrypted workspace (the keyring secrets of INSTALL.md), a paired PostgreSQL + files backup and its restore into fresh volumes.
+# Leg 1 (unless FLUX_SMOKE_LEGS=upgrade): a clean install of the candidate's assets EXACTLY as INSTALL.md says, with its default settings
+# and no overlay: an account, workspace and content created through the API (smoke_data.py seed: people, a guest, spaces, an encrypted
+# space with the keyring secrets of INSTALL.md, conversations, a wiki, a map, tasks, notification settings, a second device), a paired
+# PostgreSQL + files backup and its restore into fresh volumes. The agents' settings and the provider mock are not part of it.
 #
 # Leg 2, only when FLUX_SMOKE_PREVIOUS_ASSETS names the downloaded assets of the PREVIOUS release (its
-# compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally.
+# compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally. The previous release is ANY published
+# release from v0.2.0 on, not only the last one: check_upgrade_matrix.sh runs this leg for each of them (#1241). It is the leg that
+# seeds the agents' data: its environment file also sets the three switches of "Agents on your own AI key" and its projects carry the
+# provider mock overlay (an AI connection on an API key, an agent with memory and schedules, a run).
 #   1. Install the previous release, create the same content through its API and a file in the files volume.
 #   2. Take a paired backup with the previous release's files, then stop the writers with them.
 #   3. Pull and start the candidate's compose.yaml with the SAME environment file and project (same volumes).
@@ -27,7 +32,7 @@
 # FLUX_SMOKE_INJECT=old-data adds that migration to Leg 2's upgrade itself: the leg must fail (the negative control).
 #
 # final-release.yml runs Leg 2 from the previous release in its `package` job and the matrix of every earlier release in its
-# `upgrade` job; the draft needs both. The agents' data is on a provider mock (provider-mock.compose.yaml, provider_mock.mjs).
+# `upgrade` job; the draft needs both. The agents' data is on a provider mock (provider-mock.compose.yaml, provider_mock.mjs), in Leg 2 and after only.
 #
 # Ports default to 18081 (installation) and 18082 (restore); set FLUX_SMOKE_PORT and FLUX_SMOKE_RESTORE_PORT for
 # a machine where those are taken. Both legs use them one after the other. Runs on GNU/Linux and macOS (bash 3.2).
@@ -87,11 +92,14 @@ export FLUX_SMOKE_MOCK_IMAGE=$candidate_image FLUX_SMOKE_MOCK_FILE="$root/script
 provider_overlay="$root/scripts/release/provider-mock.compose.yaml"
 provider_url=http://provider-mock:8091/v1
 background_key="$state_dir/background.key"
-[ -f "$background_key" ] || { head -c 32 /dev/urandom > "$background_key"; chmod 644 "$background_key"; }
 inject_overlay="" # set while the candidate runs with the injected migration (Leg 3, FLUX_SMOKE_INJECT)
+# A project has the provider mock exactly when its environment file names the background key file (make_env ... agents): the default
+# install of Leg 1 has neither the settings nor the overlay.
+agents_on() { [ -f "$1" ] && grep -q '^FLUX_BACKGROUND_KEY_HOST_FILE=.' "$1"; }
 dc() { # project, environment file, assets directory, then docker compose arguments
-  local project=$1 env_file=$2 dir=$3 files=(-f "$3/compose.yaml" -f "$provider_overlay")
+  local project=$1 env_file=$2 dir=$3 files=(-f "$3/compose.yaml")
   shift 3
+  if agents_on "$env_file"; then files+=(-f "$provider_overlay"); fi
   if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
   docker compose --env-file "$env_file" -p "$project" "${files[@]}" "$@"
 }
@@ -184,11 +192,14 @@ set_env() { # file, key, value: replaces the key's line or appends it (a value w
   if grep -q "^$2=" "$1"; then sed "s#^$2=.*#$2=$3#" "$1" > "$1.edit" && mv "$1.edit" "$1"; else printf '%s=%s\n' "$2" "$3" >> "$1"; fi
   chmod 600 "$1"
 }
-make_env() { # template, destination, port: INSTALL.md's values, and the three switches of "Agents on your own AI key" (on the provider mock)
+make_env() { # template, destination, port, [agents]: INSTALL.md's values; with `agents` also the three switches of "Agents on your own AI key", on the provider mock
   python3 "$root/scripts/release/write_test_env.py" --source "$1" --destination "$2" --port "$3"
-  set_env "$2" FLUX_PERSONAL_RUNS on
-  set_env "$2" FLUX_AI_PRIVATE_TARGETS provider-mock
-  set_env "$2" FLUX_BACKGROUND_KEY_HOST_FILE "$background_key"
+  if [ "${4:-}" = agents ]; then
+    [ -f "$background_key" ] || { head -c 32 /dev/urandom > "$background_key"; chmod 644 "$background_key"; }
+    set_env "$2" FLUX_PERSONAL_RUNS on
+    set_env "$2" FLUX_AI_PRIVATE_TARGETS provider-mock
+    set_env "$2" FLUX_BACKGROUND_KEY_HOST_FILE "$background_key"
+  fi
 }
 restore_env_from() { # source environment file, destination, port
   sed -e "s/^FLUX_PORT=.*/FLUX_PORT=$3/" -e "s#^FLUX_PUBLIC_ORIGIN=.*#FLUX_PUBLIC_ORIGIN=http://127.0.0.1:$3#" "$1" > "$2"
@@ -207,7 +218,7 @@ if [ "$legs" = all ]; then
   dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
   health "$source_port" >/dev/null
   echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
-  python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json" --provider-url "$provider_url"
+  python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
   # The database holds the account; this file in the files volume proves the paired archive too.
   probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
   write_probe "$source_project" "$source_env" "$assets" "$probe"
@@ -232,7 +243,7 @@ previous_digest=${previous_image##*@}
 candidate_digest=${candidate_image##*@}
 step "Leg 2: upgrade $previous_version ($previous_digest) to $candidate_version ($candidate_digest), then backup and restore"
 mkdir -p "$up_dir"
-make_env "$previous_assets/env.example" "$up_env" "$source_port"
+make_env "$previous_assets/env.example" "$up_env" "$source_port" agents
 restore_env_from "$up_env" "$up_restore_env" "$restore_port"
 candidate_ledger=$(expected_ledger)
 [ -n "$candidate_ledger" ] || fail "no migration files found under app/packages/db/migrations"
