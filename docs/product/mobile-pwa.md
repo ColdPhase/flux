@@ -224,15 +224,18 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   counted among your newest 100 Inbox items (`notifying` on `GET /api/v1/needs-you`, read
   with the sidebar's count, so no new request). The installed app shows the same number
   with `navigator.setAppBadge` where the engine supports it. Reading the items clears it.
-- **Asking for push.** After the first direct message or mention arrives, Home and the
-  Inbox show one dismissible card, once: "Get notified when someone writes to you or
-  calls · Turn on · Not now". **Turn on** calls `Notification.requestPermission()`
-  directly from the tap. The same offer is in the call strip when someone invites you.
-  Not now is remembered and offered again after 14 days at most. A denied permission
-  shows how to allow it again in the browser or system settings. On iOS outside the
-  Home Screen app, the card first explains Add to Home Screen with its steps; the
-  installed app then makes the offer. Android shows the same card and, where the browser
-  offers it, Install.
+- **Asking for push.** After the first direct message, mention or question to you
+  arrives (seen as a notice, or in Home's waiting items), Home shows one dismissible
+  card, last on the page, once: "Get notified when someone writes to you or calls ·
+  Turn on · Not now" ([drawn](../design/final/README.md#asking-for-notifications)).
+  **Turn on** calls `Notification.requestPermission()` directly from the tap, before any
+  other await. It shows only while the browser has not been asked (`default`), the server
+  can push, and no Not now was given in the last 14 days (remembered per person in this
+  browser). Block shows how to allow notifications again in the browser or system
+  settings. On iPhone and iPad in Safari, the card first explains Add to Home Screen with
+  its steps; the Home Screen app then makes the offer. Android adds Install Flux where the
+  browser offers installation. The same offer in the call strip when someone invites you
+  comes with the call strip's own change (#1223).
 
 **What triggers what.** One table for the in-app notice, push and the count on the
 tab and the badge. The level is the lowest level that interrupts: "Everything" includes

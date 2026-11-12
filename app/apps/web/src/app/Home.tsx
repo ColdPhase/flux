@@ -16,6 +16,7 @@ import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
 import { RefLink } from '../place/origin';
+import { PushOffer } from '../notifications/PushOffer';
 
 const dateFormat = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
 
@@ -239,6 +240,8 @@ export function Home() {
       ) : null}
 
       <ContinueSection reads={reads} />
+      {/* The one-time offer to turn notifications on (#1243): last on the page, since it may not come (motion rule 6). */}
+      <PushOffer userId={me.user.id} ready={(queue.items ?? []).some((item) => item.kind === 'mention' || item.reason === 'question')} />
     </div></div>
   );
 }

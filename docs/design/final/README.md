@@ -713,6 +713,27 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   the computer, down from the top on the phone) and leaves in `--dur-out` on `--ease-in`; reduced
   motion shows and removes it at once.
 
+### Asking for notifications
+
+Founder direction (Hubert, 2026-11-10, [#1243](https://github.com/ColdPhase/flux/issues/1243)); drawn by the agents before it was
+built. The contract is in [mobile and PWA](../../product/mobile-pwa.md#while-flux-is-open-1243).
+
+![The offer on Home, light and dark: the offer, iPhone's Add to Home Screen steps, blocked](screens/push-offer.webp)
+
+- **One card on Home, last on the page** (after Continue, [motion](../motion.md) rule 6: it may not come, so nothing sits
+  under it). A Home card (`--el`, `--sh-card`, `--r-card`) with the bell in a 32 px icon face, a title and a line in 14 / 20,
+  and its buttons under the text.
+- **When.** After the first direct message, mention or question to you, while this browser has not been asked, Flux can push
+  and you did not say Not now in the last 14 days. Once.
+- **The offer.** "Get notified when someone writes to you or calls" · "Flux asks your browser once. You can turn it off in
+  Settings." · **Turn on** (the screen's one primary; it asks the browser from the tap) and **Not now** (text button).
+  Turned on, the card goes and a toast says "Notifications are on for this device".
+- **iPhone and iPad in Safari** (no Home Screen app yet): "Get notified on this iPhone" with the three numbered steps (Share,
+  then Add to Home Screen; open Flux from the Home Screen; turn notifications on there) and Not now. The Home Screen app then
+  makes the offer. **Android** adds **Install Flux** (text button) where the browser offers installation.
+- **Blocked.** When the browser answers Block, the card says "Notifications are blocked for Flux", how to allow them for
+  this browser, that the Inbox has everything, and **Got it**.
+
 ### A space: header, conversation and message actions
 
 | | |

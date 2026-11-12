@@ -1,0 +1,1 @@
+- After the first direct message, mention or question to you, Home offers once to turn notifications on (Turn on asks the browser from the tap; Not now waits 14 days; a block shows how to allow them again); an iPhone in Safari is shown the Add to Home Screen steps first, and Android can install Flux there ([#1243](https://github.com/ColdPhase/flux/issues/1243)).
