@@ -6,10 +6,12 @@
 # Licences: PostgreSQL and pgvector, PostgreSQL Licence; pg_search, AGPL-3.0-or-later (source: the v${PG_SEARCH_VERSION} tag of
 # https://github.com/paradedb/paradedb, also in /usr/share/doc/postgresql-18-pg-search/); OpenBLAS (a pg_search dependency), BSD-3-Clause.
 #
-# Same behaviour as the Alpine image of v0.2.0, so an existing data directory starts here unchanged (docs/operations/upgrade.md):
+# Same behaviour as the Alpine image of v0.2.0, so an existing data directory starts here (docs/operations/upgrade.md):
 # - Sorting. musl's en_US.utf8 compares text byte by byte; glibc's en_US.UTF-8 would sort by language and leave every text index
 #   of an existing database in the wrong order. Here en_US.UTF-8 is built from glibc's C locale (byte order, Unicode case rules),
-#   so indexes stay valid and ORDER BY gives the same order as before.
+#   so ordinary indexes stay valid and ORDER BY gives the same order as before. Case mapping and character classes still differ
+#   for about 100 (lower/upper) and 9,900 (to_tsvector, show_trgm) rare or recent code points: migration 0065 recomputes the
+#   stored search columns and rebuilds the indexes derived from those functions.
 # - The postgres user and group keep Alpine's ids (70), so the data directory's owner does not change in either direction.
 ARG PG_SEARCH_VERSION=0.26.6
 

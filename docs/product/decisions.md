@@ -537,9 +537,11 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   command the container is given. The release publishes it as `ghcr.io/coldphase/flux-database`, by digest, built, attested,
   scanned and signed with the application image; a source checkout builds it.
 - **Same behaviour as the Alpine image.** v0.2.0's database (musl) compares text byte by byte under `en_US.utf8`. The new image
-  builds `en_US.UTF-8` from glibc's C locale, so every existing text index stays valid and `ORDER BY` gives the same order, and
-  the `postgres` user keeps Alpine's id 70, so the data directory's owner does not change. The switch therefore needs no
-  reindex and no dump and restore ([upgrade](../operations/upgrade.md#v021-the-database-image-changes)).
+  builds `en_US.UTF-8` from glibc's C locale, so ordinary text indexes stay valid and `ORDER BY` gives the same order, and
+  the `postgres` user keeps Alpine's id 70, so the data directory's owner does not change. No dump and restore is needed. Case
+  mapping and character classes still differ for rare and recent Unicode characters (independent review of #1314), so migration
+  0065 recomputes the stored search columns that differ and rebuilds every index built from an expression, a text-dependent
+  predicate or a non-B-tree method ([upgrade](../operations/upgrade.md#v021-the-database-image-changes)).
 - **One BM25 index over `search_documents`**, the table people's search already keeps current in the writer's transaction:
   title and body each indexed twice, with a Polish and an English stemmer and accents folded, plus the kind, audience, space,
   author and time as filter fields. Sealed rows (encrypted spaces) are placeholders without text and are left out of the index.

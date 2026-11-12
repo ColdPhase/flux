@@ -123,17 +123,18 @@ describe('BM25 search: any word, Polish and English stems, accents folded, only 
     assert.equal((await found(human(olek), 'pluwiometr')).length, 1);
     await pool.query('DELETE FROM project_messages WHERE id = $1', [gone.id]);
     assert.deepEqual(await found(human(olek), 'pluwiometr'), [], 'a deleted row is not found');
-    void lampThread;
   });
 
-  test('a sealed placeholder (an encrypted space) is never in the index', async () => {
-    const audiences = await access.audiences(human(nia));
+  test('a sealed row (an encrypted space) cannot carry words, and the index and the statement leave sealed rows out', async () => {
     const key = `project:${lamp.id}`;
-    // Encrypted spaces keep only empty placeholders in search_documents; even one that carried words would not be indexed.
-    await pool.query(`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, title, body, at, sealed)
-      VALUES ($1, 'message', $2, $3, $4, $5, '', '', now(), true)`, [`message:${randomUUID()}`, ws.id, key, lamp.id, randomUUID()]);
-    const counted = await pool.query(`SELECT count(*)::int AS n FROM search_documents WHERE sealed AND audience_key = $1`, [key]);
-    assert.equal((counted.rows[0] as { n: number }).n, 1);
-    assert.deepEqual((await rows.ranked(audiences, plan('kalibracja', nia.id))).map((hit) => hit.kind), ['message']);
+    // Encrypted spaces keep only empty placeholders in search_documents: a sealed row with words is refused outright.
+    await assert.rejects(pool.query(`INSERT INTO search_documents (doc_key, kind, workspace_id, audience_key, project_id, object_id, title, body, at, sealed)
+      VALUES ($1, 'message', $2, $3, $4, $5, '', 'Kalibracja czujników', now(), true)`, [`message:${randomUUID()}`, ws.id, key, lamp.id, randomUUID()]),
+    /search_documents_sealed_placeholder/);
+    // A plaintext row that becomes sealed (its words gone, as sealing does) drops out of the index and the next search.
+    const message = await say(nia, lampThread.id, 'Barometr BMP390 skalibrowany.');
+    assert.equal((await found(human(nia), 'barometr')).length, 1);
+    await pool.query(`UPDATE search_documents SET sealed = true, title = '', body = '' WHERE doc_key = $1`, [`message:${message.id}`]);
+    assert.deepEqual(await found(human(nia), 'barometr'), []);
   });
 });

@@ -317,10 +317,16 @@ async function planned(db: SearchExecutor, statement: SQL, ranking: SearchRankin
   if (ranking === 'bm25') {
     // pg_search's custom scan scores BM25 and is off by default in Flux's database image (docker/database, F-042): on for this
     // statement only. Not read-only: pg_search records each field alias it meets in its own table (paradedb._typmod_cache).
+    // When `db` is itself a transaction this is a savepoint, after which SET LOCAL would stay for the rest of the caller's
+    // transaction (and pg_search's scan would then refuse its other statements on search_documents): the settings are put back.
     return db.transaction(async (tx) => {
-      await tx.execute(sql`SET LOCAL enable_seqscan = off`);
-      await tx.execute(sql`SET LOCAL paradedb.enable_custom_scan = on`);
-      return tx.execute(statement);
+      const before = await tx.execute(sql`SELECT (SELECT current_setting('enable_seqscan')) AS seq,
+        (SELECT current_setting('paradedb.enable_custom_scan')) AS scan,
+        set_config('enable_seqscan', 'off', true), set_config('paradedb.enable_custom_scan', 'on', true)`);
+      const { seq, scan } = before.rows[0] as { seq: string; scan: string };
+      const result = await tx.execute(statement);
+      await tx.execute(sql`SELECT set_config('enable_seqscan', ${seq}, true), set_config('paradedb.enable_custom_scan', ${scan}, true)`);
+      return result;
     });
   }
   return db.transaction(async (tx) => {

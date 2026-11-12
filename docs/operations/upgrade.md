@@ -87,15 +87,23 @@ Nothing to do by hand: the release's `compose.yaml` names the new image, and `./
 database on it before migrating.
 
 - **The data directory stays as it is.** The same PostgreSQL major (18) reads it unchanged. The old image (musl) sorted text
-  byte by byte; the new one (glibc) is built to sort the same way, so no index has to be rebuilt and `ORDER BY` returns the
+  byte by byte; the new one (glibc) is built to sort the same way, so ordinary indexes stay valid and `ORDER BY` returns the
   same order as before. The `postgres` user keeps the old image's id (70), so file owners do not change either.
-- **Migration `0065`** creates the extension and the search index. It takes seconds for a few hundred thousand messages. On a
+- **Case and character classes differ for rare characters.** For letters added to Unicode in recent years, the circled letters
+  and a few others (about 100 characters for `lower`/`upper`, 9,900 for word and trigram splitting), the two C libraries
+  disagree. Polish, English and the common scripts are unaffected. Migration `0065` therefore recomputes what was derived from
+  those functions under the old image: the stored search columns of the rows whose values differ, and every index built from an
+  expression (such as `lower(email)`), a text-dependent condition or a method other than B-tree. Nothing to do by hand.
+- **Migration `0065`** also creates the extension and the search index. It takes seconds for a few hundred thousand messages. On a
   database that is not running Flux's image (for example your own PostgreSQL), it stops with
   `FLUX_DATABASE_IMAGE Flux v0.2.1 needs its own database image …` before it changes anything; API and worker do not start.
   Run the release's `compose.yaml` (or `./flux upgrade`), or install `pg_search` in your PostgreSQL and add it to
   `shared_preload_libraries`.
 - **Backups** keep working the same way: a dump holds the index's definition, and a restore rebuilds it. A backup from before
   the upgrade restores with the old release's files, as always ([when it fails](#when-it-fails)).
+- **Settings of your own.** The image's entrypoint adds `pg_search` to `shared_preload_libraries` and turns pg_search's custom
+  scan and planner notes off unless you set them: on the command line, in `postgresql.conf` or with `ALTER SYSTEM`. A list of
+  preloaded libraries you set keeps its entries and gains `pg_search`.
 - **Memory and disk.** The memory limits are unchanged. The image is about 500 MB larger (800 MB); the index adds about 4 MB per
   10,000 messages.
 

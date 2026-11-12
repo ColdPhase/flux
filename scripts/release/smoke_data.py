@@ -210,6 +210,9 @@ def seed_vault(owner: Client, company_id: str, tag: str) -> dict[str, Any]:
     return {"workspace_id": workspace_id, "project_id": project_id, "thread_id": thread["id"], "password": password, "message": body}
 
 
+UNICODE_WORD = "\ua7c0\ua7c1\ua7c0\ua7c1"  # ꟀꟁꟀꟁ; its lower case is ꟁꟁꟁꟁ
+
+
 def seed_more(owner: Client, origin: str, company_id: str, tag: str, provider_url: str | None) -> dict[str, Any]:
     member_client, ben = join(owner, origin, company_id, "member", "Ben Member", tag)
     guest_client, gina = join(owner, origin, company_id, "guest", "Gina Guest", tag)
@@ -242,6 +245,10 @@ def seed_more(owner: Client, origin: str, company_id: str, tag: str, provider_ur
     member_client.expect("POST", f"/api/v1/dms/{pair['id']}/threads/{dm_root['id']}/replies", {"body": f"DM-reply-{tag}", "clientMessageId": new_id()})
     group = owner.expect("POST", f"/api/v1/workspaces/{company_id}/dms", {"participantIds": [ben["id"], gina["id"]], "title": f"Garden crew {tag}"})
     owner.expect("POST", f"/api/v1/dms/{group['id']}/messages", {"body": f"GROUP-hello-{tag}", "clientMessageId": new_id()})
+    # A word of Latin Extended-D letters (Unicode 14), which musl (the Alpine image of v0.2.0) does not count as letters and glibc (the
+    # database image from v0.2.1, F-042) does: people's search finds it after an upgrade only if migration 0065 recomputed the stored
+    # search columns.
+    owner.expect("POST", f"/api/v1/dms/{group['id']}/messages", {"body": f"{UNICODE_WORD} UNICODE-{tag}", "clientMessageId": new_id()})
 
     # A wiki page: three versions by two people.
     doc_title = f"GARDEN-wiki-{tag}"
@@ -281,7 +288,8 @@ def seed_more(owner: Client, origin: str, company_id: str, tag: str, provider_ur
         "ben": ben, "gina": gina, "garden_id": garden_id, "garden_file_id": garden_file_id, "garden_file_hex": GARDEN_FILE_BYTES.hex(),
         "garden_thread_id": thread["id"], "garden_messages": thread_messages,
         "dm_id": pair["id"], "dm_root_id": dm_root["id"], "dm_bodies": [f"DM-hello-{tag}", f"DM-reply-{tag}"],
-        "group_id": group["id"], "group_title": f"Garden crew {tag}", "group_bodies": [f"GROUP-hello-{tag}"],
+        "group_id": group["id"], "group_title": f"Garden crew {tag}", "group_bodies": [f"GROUP-hello-{tag}", f"{UNICODE_WORD} UNICODE-{tag}"],
+        "unicode_search": {"q": UNICODE_WORD.lower(), "find": f"UNICODE-{tag}"},
         "wiki_id": doc["id"], "wiki_title": doc_title, "wiki_versions": doc_versions,
         "map_id": sketch["id"], "map_thoughts": [["Soil", 10, 10], ["Water", 220, 10], ["Shade", 220, 120]],
         "map_links": [["Soil", "Water", "needs"], ["Water", "Shade", "next to"]],
@@ -632,6 +640,12 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
     )
     if "more" in state:
         problems = check_more(state["more"], read_more(client, client.origin, state))
+        unicode_search = state["more"].get("unicode_search")
+        if unicode_search:
+            found = client.expect("GET", "/api/v1/search?" + urllib.parse.urlencode({"q": unicode_search["q"]}))
+            texts = [" ".join(part["text"] for part in (item.get("title") or []) + (item.get("snippet") or [])) for item in found["items"]]
+            if not any(unicode_search["find"] in text for text in texts):
+                problems.append(f"people's search does not find {unicode_search['q']!r} (stored search columns not recomputed, F-042): {texts!r}")
         if problems:
             raise RuntimeError("restored content differs: " + "; ".join(problems))
         print(
