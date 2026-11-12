@@ -166,6 +166,12 @@ class ProjectHeader(unittest.TestCase):
         page.unroute_all(behavior="ignoreErrors")
         page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/people$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(people)))
 
+        def shell(route) -> None:
+            # Entering a space reads its people with its frame (#1109).
+            response = route.fetch()
+            route.fulfill(response=response, json={**response.json(), "people": people})
+        page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/space-shell$"), shell)
+
     def test_03_the_people_pill_hugs_its_touching_faces_inside_a_slot_that_never_moves(self) -> None:
         """#1236: the faces touch with whole initials; a header pane of 70 rem and up draws three people, the agent and "+N", a narrower one two
         people, the agent and "+N" (two digits too); the pill is as wide as its faces and ends at the slot's right edge; the slot (the width #873
