@@ -205,7 +205,9 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
 - **The tab decides only where you are.** No notice for the place on screen (the space
   or the direct message you are in, while the tab is visible), and none for your own
   actions (the actor is never notified). Something that arrived while the tab was hidden
-  is not shown later as a notice; push and the Inbox have it.
+  is not shown later as a notice; push and the Inbox have it. How old a notice is, is
+  measured on the server's clock (against the freshest event the tab has seen), never on
+  the device's.
 - **Accessible.** `role=status`, announced politely; it never takes focus, never covers
   the composer, Send or an open dialog, and is instant with reduced motion.
 - **Sound** (founder decision, Hubert, 2026-11-12): off by default, one switch in
@@ -236,7 +238,7 @@ hold the notice, the sound and push alike; the Inbox always keeps the row.
 | A mention of me | `mention` | Only what needs me |
 | A question to me (`@me …?`, or an agent's question card) | `question` | Only what needs me |
 | A task assigned to me, waiting for me, or able to continue | `assigned` | Only what needs me |
-| A task due | none: tasks have no due date | — |
+| A task of mine reaching its due date (`dueOn`) | not yet a notification: the date shows on the task and in My tasks | Only what needs me, once it is one |
 | A decision about my work, or one my agent proposed | `review` | Only what needs me |
 | My agent waiting for my OK | `approval` | Only what needs me |
 | My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat's unread dot | Everything, once it is one |

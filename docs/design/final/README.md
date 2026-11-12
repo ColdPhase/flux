@@ -575,9 +575,10 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
 - **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
   (#1206); a notice never replaces a toast and a toast never replaces a notice.
 - **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
-  it stands 8 px above a composer, a toast or the phone's bar that reaches its corner, so it never
+  it stands 8 px above a composer, a toast or the map's toolbar that reaches its corner, so it never
   covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
-  each side. While a dialog or a sheet is open, it waits and shows when that closes.
+  each side, on a band of the page's ground (`--bg`) from the screen's top edge to 8 px under the card, so
+  nothing of the header shows at its corners. While a dialog or a sheet is open, it waits and shows when that closes.
 - **The card.** `--el`, `--sh-pop` (the dark theme's inset outline comes with it) and `--r-card`.
   The sender's face on the left: `Avatar` 32 for a person, Kreska 32 for an agent. Then two lines:
   the title in 14 / 20, 500, `--t1` ("Jonas Berg sent you a message"), and the preview in 14 / 20
@@ -585,17 +586,19 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   is at the top right. The buttons are a row under the text, 32 px high:
   - a direct message: **Reply** (outline) and **Open** (text button);
   - a mention, a question, a task, a decision or an agent: **Open** (outline);
-  - a call: **Join**, the card's one primary button, and the title says who started it and where
-    ("Maja started a call in Tool library").
+  - a call: **Join**, the card's one primary button, and the title says who started it or invited you,
+    and where ("Maja started a call in Tool library", "Maja invited you to a call in Tool library").
 - **One at a time.** A newer notice replaces the one shown, in place and without motion. Notices
   from one place in a row are grouped: "3 new messages in Community garden sensors", with the
-  newest face and preview ("Maja: I moved the calibration notes…"); Open opens the newest. A call notice is replaced only by another call;
+  newest face and preview, which in a space always starts with the sender's first name ("Maja: I moved the
+  calibration notes…"; a preview that opens with "@" and your own name drops it); Open opens the newest. A call notice is replaced only by another call;
   while it shows, other notices are not shown (they are in the Inbox).
 - **How long.** About 6 s, paused while the pointer is over it or focus is in it. A call notice
   stays until the call ends or the person closes it.
 - **Calm.** Nothing for your own actions, and nothing for the place you are looking at (the space
   or the direct message on screen). It follows your level and quiet hours; Nothing shows none. It
-  is announced politely (`role=status`) and never takes focus; Tab reaches its buttons.
+  is announced politely (`role=status`) and never takes focus. Tab reaches its buttons (the actions, then
+  Close), and Escape inside it closes it and gives focus back to where it came from.
 - **Motion** is the surfaces' ([motion](../motion.md#how-the-rules-apply-to-existing-motion)): it
   enters in `--dur-in` on `--ease-out` with an 8 px travel from its edge (up from the bottom on
   the computer, down from the top on the phone) and leaves in `--dur-out` on `--ease-in`; reduced

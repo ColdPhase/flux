@@ -21,8 +21,9 @@
 }
 .ui-notice__close { grid-column: 3; grid-row: 1; align-self: start; }
 .ui-notice__actions { grid-column: 2 / 4; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px; }
-.ui-notice__actions .ui-btn--outline { padding-inline: 13px; }
-/* The phone (MEDIA.phone): at the top, under the safe area, with the page's 16 px gutters. */
+/* The phone (MEDIA.phone): at the top, under the safe area, with the page's 16 px gutters.
+   The card stands on a band of the page's ground from the screen's top edge, so no part of the header shows at its corners. */
 @media (max-width: 640px) {
-  .ui-notices { top: calc(env(safe-area-inset-top) + 8px); bottom: auto; left: 16px; right: 16px; width: auto; }
+  .ui-notices { top: 0; bottom: auto; left: 0; right: 0; width: auto; padding: calc(env(safe-area-inset-top) + 8px) 16px 8px; }
+  .ui-notices:has(.ui-notice) { background: var(--bg); pointer-events: auto; }
 }

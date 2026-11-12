@@ -878,7 +878,7 @@ function AppLayoutContent() {
       {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
       <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; }} />
       {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
-      <Notices identity={me.user.id} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
+      <Notices identity={me.user.id} meName={me.user.name} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </LiveProvider>

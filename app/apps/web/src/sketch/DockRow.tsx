@@ -8,5 +8,6 @@ import { publishTopEdge } from '../ui';
 export function DockRow({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => (ref.current ? publishTopEdge(ref.current, '--ui-map-dock-inset') : undefined), []);
-  return <div ref={ref} className="sk-dock__row">{children}</div>;
+  // A notice (#1243) stands above it too.
+  return <div ref={ref} className="sk-dock__row" data-notice-avoid="">{children}</div>;
 }

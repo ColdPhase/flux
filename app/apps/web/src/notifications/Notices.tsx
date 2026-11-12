@@ -22,6 +22,18 @@ const NOTICE_EVENT = /^(project|dm)\.notice\.v1$/;
 export const NOTICE_MS = 6000;
 /** Older than this when it reaches the tab (it was held while the tab was hidden): the Inbox and push have it, the card does not. */
 const STALE_MS = 60_000;
+/**
+ * How old an event is, from the server's own times: the gap between the client's clock and an event's `createdAt` is smallest for an
+ * event that arrived the moment it was written, so the smallest gap seen stands for "now" on the server's clock, whatever the client's
+ * clock says (a clock minutes ahead or behind changes nothing).
+ */
+let nearest = Infinity;
+function eventAge(createdAt: string) {
+  const gap = Date.now() - Date.parse(createdAt);
+  if (!Number.isFinite(gap)) return 0;
+  nearest = Math.min(nearest, gap);
+  return gap - nearest;
+}
 const MESSAGE_REASONS = new Set(['dm', 'mention', 'question', 'reply']);
 const LIVE_URL = /^\/projects\/[0-9a-f-]+\/live\/([0-9a-f-]+)/i;
 
@@ -39,17 +51,32 @@ function looksAt(pathname: string, type: string, id: string) {
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] ?? name;
 
-/** The title and preview of a notice: the one item's own, or the group's ("3 new messages in Tool library"). */
-export function noticeWords(notice: Pick<Notice, 'family' | 'items'>, placeName: (projectId: string) => string | null): { title: string; body: string } {
+const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A preview that opens by naming the reader ("@Ada Kowalska the east bed…") says the rest: the card is already theirs. */
+function withoutReader(body: string, meName: string) {
+  return meName ? body.replace(new RegExp(`^@${escape(meName)}[,:]?\\s+`, 'i'), '') : body;
+}
+
+/**
+ * The title and preview of a notice: the one item's own, or the group's ("3 new messages in Tool library", "Maja: I moved…"). A call
+ * invitation names the place it is in.
+ */
+export function noticeWords(notice: Pick<Notice, 'family' | 'items'>, placeName: (projectId: string) => string | null, meName = ''): { title: string; body: string } {
   const newest = notice.items.at(-1)!;
   const count = notice.items.length;
-  if (count === 1) return { title: newest.title, body: newest.body };
+  const body = withoutReader(newest.body, meName);
+  const space = newest.source.type === 'project' ? placeName(newest.source.id) : null;
+  if (count === 1) {
+    const title = notice.family === 'call' && newest.reason === 'invitation' && newest.from && space ? `${newest.from.name} invited you to a call in ${space}` : newest.title;
+    return { title, body };
+  }
   const senders = new Set(notice.items.map((item) => item.from?.name ?? ''));
   const noun = notice.family === 'message' ? 'new messages' : 'updates';
-  const where = newest.source.type === 'project' ? ` in ${placeName(newest.source.id) ?? 'a space'}`
+  const where = newest.source.type === 'project' ? ` in ${space ?? 'a space'}`
     : senders.size === 1 && newest.from ? ` from ${newest.from.name}` : '';
-  const body = newest.body && newest.from && senders.size > 1 ? `${firstName(newest.from.name)}: ${newest.body}` : newest.body;
-  return { title: `${count} ${noun}${where}`, body };
+  // In a space the newest preview always says whose it is, as drawn; a direct message's group already names its one sender.
+  const named = body && newest.from && (newest.source.type === 'project' || senders.size > 1) ? `${firstName(newest.from.name)}: ${body}` : body;
+  return { title: `${count} ${noun}${where}`, body: named };
 }
 
 /** Keeps the card 8 px above whatever reaches its corner on a computer: a composer, a toast, the map's dock. */
@@ -95,7 +122,7 @@ function useModalOpen(active: boolean): boolean {
   return active && open;
 }
 
-export function Notices({ identity, placeName }: { identity: string; placeName: (projectId: string) => string | null }) {
+export function Notices({ identity, meName, placeName }: { identity: string; meName: string; placeName: (projectId: string) => string | null }) {
   const location = useLocation();
   const navigate = useNavigate();
   const live = useLive();
@@ -103,6 +130,7 @@ export function Notices({ identity, placeName }: { identity: string; placeName: 
   const [notice, setNotice] = useState<Notice | null>(null);
   const [leaving, setLeaving] = useState(false);
   const [held, setHeld] = useState({ hover: false, focus: false });
+  const returnTo = useRef<HTMLElement | null>(null);
   const serial = useRef(0);
   const here = useRef(location.pathname);
   useEffect(() => { here.current = location.pathname; }, [location.pathname]);
@@ -133,9 +161,19 @@ export function Notices({ identity, placeName }: { identity: string; placeName: 
 
   const dismiss = useCallback(() => setLeaving(true), []);
 
+  // Events held while the tab was hidden are delivered when it shows again, before this listener hears that it shows (the stream's own
+  // listener runs first): they were for push and the Inbox, not for a card now.
+  const hidden = useRef(typeof document !== 'undefined' && document.visibilityState === 'hidden');
+  useEffect(() => {
+    const onVisibility = () => { hidden.current = document.visibilityState === 'hidden'; };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, []);
+
   useStreamEvents(identity, (event: StreamEvent) => {
+    const age = eventAge(event.createdAt);
     if (NOTICE_EVENT.test(event.kind)) {
-      if (Date.now() - Date.parse(event.createdAt) > STALE_MS) return;
+      if (hidden.current || age > STALE_MS) return;
       if (looksAt(here.current, event.objectType, event.objectId)) return;
       void getInboxItem(event.id).then((item) => {
         if (item.readAt || looksAt(here.current, item.source.type, item.source.id)) return;
@@ -217,14 +255,26 @@ export function Notices({ identity, placeName }: { identity: string; placeName: 
   }, [notice, dismiss, navigate, live]);
 
   const newest = notice?.items.at(-1) ?? null;
-  const words = notice ? noticeWords(notice, placeName) : null;
+  const words = notice ? noticeWords(notice, placeName, meName) : null;
   return createPortal(
     <div className="ui-notices" role="status" aria-live="polite" aria-atomic="true"
       style={lift ? { '--notice-lift': `${lift}px` } as CSSProperties : undefined}>
       {visible && newest && words ? (
         <div ref={card} className="ui-notice" data-family={notice!.family} data-count={notice!.items.length}
           onMouseEnter={() => setHeld((value) => ({ ...value, hover: true }))} onMouseLeave={() => setHeld((value) => ({ ...value, hover: false }))}
-          onFocus={() => setHeld((value) => ({ ...value, focus: true }))}
+          onFocus={(event) => {
+            setHeld((value) => ({ ...value, focus: true }));
+            // Where focus came from, so Escape can give it back.
+            const from = event.relatedTarget as HTMLElement | null;
+            if (from && !event.currentTarget.contains(from)) returnTo.current = from;
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== 'Escape') return;
+            event.stopPropagation();
+            const back = returnTo.current;
+            dismiss();
+            if (back?.isConnected) back.focus({ preventScroll: true }); else (document.activeElement as HTMLElement | null)?.blur();
+          }}
           onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setHeld((value) => ({ ...value, focus: false })); }}>
           <span className="ui-notice__face" aria-hidden="true">
             {newest.from?.kind === 'agent' || (!newest.from && newest.reason === 'approval') ? <Kreska size={32} /> : <Avatar name={newest.from?.name ?? ''} size="lg" />}
@@ -233,12 +283,13 @@ export function Notices({ identity, placeName }: { identity: string; placeName: 
             <p className="ui-notice__title">{words.title}</p>
             {words.body ? <p className="ui-notice__body">{words.body}</p> : null}
           </div>
-          <IconButton icon="x" label="Close" className="ui-notice__close" onClick={dismiss} />
+          {/* The actions come before Close in the reading and Tab order; the grid still draws Close at the top right. */}
           <div className="ui-notice__actions">
             {notice!.family === 'call' ? <Button variant="primary" onClick={() => void join()}>Join</Button>
               : newest.reason === 'dm' ? <><Button variant="outline" onClick={() => open(true)}>Reply</Button><Button variant="secondary" onClick={() => open()}>Open</Button></>
                 : <Button variant="outline" onClick={() => open()}>Open</Button>}
           </div>
+          <IconButton icon="x" label="Close" className="ui-notice__close" onClick={dismiss} />
         </div>
       ) : null}
     </div>,

@@ -209,7 +209,9 @@ class NoticeJourney(unittest.TestCase):
         expect(card).to_contain_text("Jonas Berg assigned you", timeout=5000)
         expect(card).to_contain_text("Replace the corroded probe")
         card.get_by_role("button", name="Open").click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/tasks\?open=work:"))
+        # The task opens in its panel (the address's ?open= is short-lived, so the panel is what is checked).
+        expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/tasks"))
+        expect(page.locator("#details")).to_contain_text("Replace the corroded probe in bed 4")
 
     def test_05_a_burst_from_one_place_is_one_grouped_card(self) -> None:
         page = self.home()
@@ -217,7 +219,8 @@ class NoticeJourney(unittest.TestCase):
             self.say(line)
         card = self.card(page)
         expect(card).to_contain_text(f"3 new messages in {SPACE}", timeout=8000)
-        expect(card).to_contain_text("calibration notes")
+        # The newest preview says whose it is, and drops the opening mention of Ada herself.
+        expect(card.locator(".ui-notice__body")).to_have_text("Jonas: I moved the calibration notes to the Wiki")
         self.assertEqual(page.locator(".ui-notice").count(), 1, "never more than one card")
         page.mouse.move(10, 10)
         shot(page, "notices-desktop-1440-light-grouped")
@@ -234,6 +237,21 @@ class NoticeJourney(unittest.TestCase):
         expect(card).to_be_visible()
         page.mouse.move(10, 10)
         expect(card).to_have_count(0, timeout=8000)
+
+    def test_06b_tab_reaches_the_actions_then_close_and_escape_closes_it(self) -> None:
+        page = self.home()
+        self.dm("Quick one: the shed key is under the pot.")
+        card = self.card(page)
+        expect(card).to_be_visible(timeout=5000)
+        page.locator("#content").focus()
+        card.get_by_role("button", name="Reply").focus()
+        page.keyboard.press("Tab")
+        expect(card.get_by_role("button", name="Open")).to_be_focused()
+        page.keyboard.press("Tab")
+        expect(card.get_by_role("button", name="Close")).to_be_focused()
+        page.keyboard.press("Escape")
+        expect(card).to_have_count(0)
+        self.assertEqual(page.evaluate("document.activeElement?.id"), "content", "focus goes back where it came from")
 
     def test_07_quiet_hours_hold_it(self) -> None:
         self.quiet("ada", True)
