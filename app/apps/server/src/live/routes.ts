@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { LiveContextRef, LivePresentationRef, PresentLiveContextCommand, StartLiveSessionCommand } from '@flux/contracts';
-import { LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
+import { LIVE_CONTEXT_TYPES, LIVE_SESSIONS_PATH, liveJoinPath, liveLeavePath, livePresentPath, livePresentationsPath, liveSessionPath } from '@flux/contracts';
 import { DomainError, liveUseCases, RateLimitedError, type LivePorts } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -15,7 +15,7 @@ interface Options { ports: LivePorts; sessions: SessionResolver; lifecycle?: Pic
 
 const id = { type: 'string', pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' } as const;
 const context = { type: 'object', required: ['type', 'id'], additionalProperties: false,
-  properties: { type: { type: 'string', enum: ['conversation', 'work', 'sketch', 'doc'] }, id } } as const;
+  properties: { type: { type: 'string', enum: [...LIVE_CONTEXT_TYPES] }, id } } as const;
 const presentation = { type: 'object', required: ['type', 'id', 'version'], additionalProperties: false,
   properties: { type: { type: 'string', enum: ['message', 'material', 'work', 'sketch'] }, id,
     version: { type: 'integer', minimum: 1 }, selectedThoughtIds: { type: 'array', maxItems: 100, uniqueItems: true, items: id } } } as const;

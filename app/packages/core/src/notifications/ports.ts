@@ -92,7 +92,7 @@ export interface LiveInvitationFacts {
   projectName: string;
   inviterId: string;
   recipientId: string;
-  anchor: { type: 'conversation' | 'work' | 'sketch' | 'doc'; label: string };
+  anchor: { type: 'space' | 'conversation' | 'work' | 'sketch' | 'doc'; label: string };
 }
 
 /**

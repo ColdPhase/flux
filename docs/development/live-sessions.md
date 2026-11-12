@@ -23,6 +23,9 @@ restrictive-network acceptance remain in [#63](https://github.com/ColdPhase/flux
   A wiki doc anchor uses the existing project material ID only when its kind is
   `doc`; every admission and recipient read checks current project access and
   the anchor again. A regular project material cannot impersonate a doc.
+  A call of the space itself (F-041, context `{ type: 'space', id: <project> }`,
+  migration 0055) names no object: its row has none of the four object ids, and
+  its place is checked as project read access only. The conversation's Call starts one.
 - `POST /api/v1/live-sessions/:id/leave` disconnects this device: it revokes the admissions
   of the caller's **current** authentication session (the request's cookie session) to that
   live session and removes exactly their participants (#128). The same person's other tab

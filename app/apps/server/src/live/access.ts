@@ -8,6 +8,11 @@ export async function requireLiveContext(principal: Principal, ref: LiveContextR
   projectId: string, db: Executor, lock = false): Promise<void> {
   enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(db), { lock }), 'project');
   const missing = () => { throw new NotFoundError('Context', 'LIVE_CONTEXT_NOT_FOUND'); };
+  // A call of the space (F-041): its place is the space, which project.read above has checked (and locked with `lock`).
+  if (ref.type === 'space') {
+    if (ref.id !== projectId) missing();
+    return;
+  }
   if (ref.type === 'conversation') {
     const query = db.select({ projectId: schema.projectConversations.projectId })
       .from(schema.projectConversations).where(eq(schema.projectConversations.id, ref.id));
@@ -93,6 +98,10 @@ export function liveAccess(db: Executor): LiveAccess {
     assertAuthorized(principal, 'project.read', { type: 'project', id }, accessReader(db));
 
   const projectOf = async (type: LiveContextRef['type'] | LivePresentationRef['type'], id: string): Promise<string | null> => {
+    if (type === 'space') {
+      const [row] = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, id));
+      return row?.id ?? null;
+    }
     if (type === 'conversation') {
       const [row] = await db.select({ projectId: schema.projectConversations.projectId }).from(schema.projectConversations)
         .where(eq(schema.projectConversations.id, id));

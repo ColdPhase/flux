@@ -6,18 +6,14 @@ import { DomainError, InvalidInputError, NotFoundError, type LiveMedia, type Pri
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { liveAccess, requireLiveContext } from './access.js';
+import { liveContextOf } from './context.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const BATCH = 50;
 const MAX_SCAN = 500;
 type Row = typeof schema.liveSessions.$inferSelect;
 
-function anchor(row: Row): LiveContextRef {
-  if (row.conversationId) return { type: 'conversation', id: row.conversationId };
-  if (row.workId) return { type: 'work', id: row.workId };
-  if (row.sketchId) return { type: 'sketch', id: row.sketchId };
-  return { type: 'doc', id: row.docId! };
-}
+const anchor = (row: Row): LiveContextRef => liveContextOf(row);
 
 function limitOf(value: unknown): number {
   const limit = value === undefined ? 20 : Number(value);

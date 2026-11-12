@@ -238,8 +238,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const inviter = (await facts.names([invitation.inviterId])).get(invitation.inviterId) ?? 'Someone';
       return [{
         userId: recipientId, reason: 'invitation', source: { type: 'project', id: invitation.projectId },
-        title: `${inviter} invited you to work together`,
-        body: `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
+        title: invitation.anchor.type === 'space' ? `${inviter} invited you to a call` : `${inviter} invited you to work together`,
+        body: invitation.anchor.type === 'space' ? `Call in ${invitation.projectName}` : `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
         url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
       }];
     }

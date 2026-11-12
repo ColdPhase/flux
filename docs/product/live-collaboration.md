@@ -27,13 +27,82 @@ result and any authorized edits → leave and continue independently. Repeat wit
 four participants. Joining a person, discussing a task or ending a session never
 automatically resolves a blocker or completes work.
 
-“Let's work on this together” is the primary action. Starting gives permitted
-people a quiet opportunity to join. A targeted invitation is one ordinary inbox
-item, with join, later or text response and the recipient's notification controls.
-Avoid a meeting wizard, default ringing, an answer/reject takeover, missed-call
-pressure, or a separate meeting home that replaces the material being worked on.
-The useful difference is continuity of context and outcomes; silence alone is
-not a claim of market uniqueness.
+“Let's work on this together” is the primary action. Starting tells the space's
+people that a call is on and lets them join with one click
+([calls are noticed](#calls-are-noticed-f-041), which replaced the earlier quiet
+start). A targeted invitation is one ordinary inbox item, with join, later or text
+response and the recipient's notification controls. Avoid a meeting wizard, ringing
+in a loop, an answer/reject takeover, missed-call pressure, or a separate meeting
+home that replaces the material being worked on. The useful difference is
+continuity of context and outcomes.
+
+### Calls are noticed (F-041)
+
+**Founder decision, Hubert, 2026-11-12** ([#1223](https://github.com/ColdPhase/flux/issues/1223),
+all seven points accepted as written; [#1230](https://github.com/ColdPhase/flux/issues/1230);
+the sound rule from [#1243](https://github.com/ColdPhase/flux/issues/1243)). In use
+the quiet start read as broken: nobody knew a call had started, it was named after
+the conversation's last message, and Join hid as a dot on More. This section
+supersedes the quiet start of #59 (2026-09-27).
+
+1. **Place and label.** A call started from a space's conversation (the stream or an
+   open thread) is the space's call: the strip says "Call in Gesture lamp", never the
+   text of a message. A task, a map or a Wiki page is the call's place only when the
+   call is started from it (the task's Work on this together, or Call while that task,
+   map or page is open). The session's context is then `{ type: 'space', id: <space> }`.
+2. **Join where you are** (#1230). Any call of the space with someone in it takes the
+   header's Call slot on every view of the space (Conversation, Tasks, Map, Wiki), on
+   the computer, the tablet and the phone, within 2 s of starting. It says who is in it
+   and, for a call at another task, map or page than the one open, where: "Join · Nia ·
+   at “Loan rules”". More keeps any further calls and **Start a call here** for a
+   separate call. Under 360 px, where Call is in More, More carries the live dot and
+   its first row is Join.
+3. **Others are told.** Starting a call sends each of the space's other people an
+   in-app notice with **Join**: an Inbox item "Nia started a call in Gesture lamp",
+   live on open tabs and on the phone. Push follows the person's level: "Everything"
+   pushes for any call in their spaces; "Only what needs me" pushes only for an
+   invitation (point 4). Quiet hours hold push as for every notice. The notice is
+   never emailed (a call may be over before the mail is read), and it stops asking
+   anything when the call ends. While a call runs, the space carries the live dot in
+   the sidebar and in the Spaces list.
+4. **Invite.** After starting, the strip offers **Invite…** with the space's people
+   who are not in the call. An invitation is an Inbox item and a push with Join / Later,
+   as before, plus one soft chime on the invited person's open tab.
+5. **Sound.** Only for a direct invitation, never for an open call in a space. One
+   soft chime, no ringing loop and no answer/reject takeover screen. It is on by
+   default and follows the one Sound switch in Settings › Notifications (#1243: sound
+   is otherwise off by default), the level (no chime at "Nothing") and quiet hours.
+6. **Nobody joined.** While nobody else has joined, the starter's strip says "Nobody
+   joined · Invite someone". A call nobody else joins ends after **10 minutes** alone;
+   its conversation line then reads "Hubert called · nobody joined". (The existing
+   grace periods for an empty room are unchanged.)
+7. **A line in the conversation.** Starting a call from a space's conversation, thread
+   or task posts one compact event line in that conversation, in the style of the
+   task-update lines: "**Hubert** started a call · **Join**".
+   - While the call runs, the line updates live: who is in it, with faces, and how long
+     it has run.
+   - It is not a message: no reply, no reactions and no notification of its own (point
+     3 does that).
+   - When the call ends, the same line becomes "Call · 12 min · Hubert, Maurycy"; a
+     call nobody joined becomes "Hubert called · nobody joined".
+   - It is anchored to the call's context: a call from a task posts in the task's
+     discussion, a call from the space in its main conversation. A call started at a
+     map or a Wiki page posts no line.
+   - What was decided or made keeps its durable home ([section 4](#4-outcomes-stay-in-existing-work));
+     the line may link the optional exit recap.
+   - Never in a place the reader can't read. In an encrypted space the line holds only
+     who and when, never a recap of content.
+   - An agent's brief sees the line as an event ("a call took place, 12 min, Hubert and
+     Maurycy"), not as a message to answer.
+8. **A shared screen is seen.** When someone starts sharing, each other participant's
+   stage opens on that screen once, unless they closed the stage for that share; on a
+   phone a sheet offers **View Nia's screen**. A line in the strip says "**Nia** is
+   sharing her screen · View", and her face in the strip carries a screen badge while
+   she shares. A screen that stops sharing closes its stage and says so ("Nia stopped
+   sharing"). The sharer's own line stays: "You are sharing your screen. Everyone in
+   the session can see it."
+
+The appearance of each piece is drawn in the [final design](../design/final/README.md#calls).
 
 ## 2. States people can understand
 

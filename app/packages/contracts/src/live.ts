@@ -9,10 +9,16 @@ export const livePresentPath = (id: string) => `${liveSessionPath(id)}/present`;
 export const livePresentationsPath = (id: string) => `${liveSessionPath(id)}/presentations`;
 export const liveInvitePath = (id: string) => `${liveSessionPath(id)}/invitations`;
 export const LIVE_INVITATIONS_PATH = '/api/v1/live-invitations';
+/** Every kind of place a call can belong to. */
+export const LIVE_CONTEXT_TYPES = ['space', 'conversation', 'work', 'sketch', 'doc'] as const satisfies readonly LiveContextRef['type'][];
 export const liveInvitationReplyPath = (id: string) => `${LIVE_INVITATIONS_PATH}/${id}/reply`;
 
-/** The anchor is an existing object; a live session does not duplicate its saved work. */
+/**
+ * The anchor is an existing object; a live session does not duplicate its saved work. `space` is a call of the space itself, started from
+ * its conversation ("Call in <space>", F-041); its id is the space's (project) id.
+ */
 export type LiveContextRef =
+  | { type: 'space'; id: string }
   | { type: 'conversation'; id: string }
   | { type: 'work'; id: string }
   | { type: 'sketch'; id: string }
