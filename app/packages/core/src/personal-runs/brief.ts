@@ -266,7 +266,8 @@ function toolRules(input: Placed): string[] {
   if (!tools.length) return place.kind === 'chat' ? ['Flux tools', 'You have no Flux tools here: use the chat so far and general knowledge.']
     : place.kind === 'dm' ? [] : ['Flux tools', 'You have no Flux tools in this run: use what is below.'];
   if (place.kind === 'dm') return ['Flux tools', `The only Flux tool you have reads a public web page. ${web.join(' ')} ${REFUSED}`.trim(), ...searchLine];
-  if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...web, ...searchLine];
+  if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...web,
+    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
   const changes = tools.some((name) => EFFECTS.has(name));
   const onTask = input.kind === 'task' || input.kind === 'task_answer';
   const ids = [`space id ${place.spaceId}`, ...(input.task ? [`task id ${input.task.id}`] : []),

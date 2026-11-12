@@ -98,9 +98,16 @@ export interface FileStorage {
   sweepScratch(olderThanMs: number): Promise<number>;
 }
 
+/** #1217 (C-59): a picture an agent attached to its answer in its private chat, the run's owner's alone. */
+export interface RunPictureRepository {
+  find(id: string): Promise<{ id: string; ownerUserId: string; name: string; size: number; sha256: string } | null>;
+}
+
 export interface FilePorts {
   access: Pick<WorkAccess, 'requireProject'>;
   files: FileRepository;
+  /** Absent where no chat picture is served. */
+  runPictures?: RunPictureRepository;
 }
 export interface FileUnitOfWork {
   run<T>(action: (ports: FilePorts) => Promise<T>): Promise<T>;

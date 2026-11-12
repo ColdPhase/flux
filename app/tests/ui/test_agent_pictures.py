@@ -218,6 +218,29 @@ class AgentPictures(unittest.TestCase):
         card.get_by_role("button", name="Dismiss").click()
         expect(card).to_have_count(0)
 
+    def test_06_in_the_agents_private_chat_the_picture_sits_above_its_answer_for_jo_alone(self) -> None:
+        """Founder decision on #1217 (2026-11-12): the agent's answer in its private chat can carry a picture too, at once and with no Undo."""
+        attach("Raised bed for the chat", "Here is a raised bed you could copy for the fence.")
+        for phone in (False, True):
+            jo = self.page("jo", phone=phone)
+            jo.goto(f"/agents/{self.ids['agent']}")
+            box = jo.locator("#agent-composer")
+            expect(box).to_be_visible()
+            if not phone:
+                box.fill("Show me a raised bed")
+                jo.get_by_role("button", name="Send to Assistant").click()
+            answer = jo.locator("[data-chat-agent]").filter(has_text="raised bed you could copy")
+            expect(answer).to_be_visible(timeout=20000)
+            self.loaded(answer.locator(".photo-grid img"))
+            expect(answer.get_by_role("button", name="Undo")).to_have_count(0)
+            self.no_horizontal_scroll(jo)
+            shot(jo, f"agent-picture-{'390' if phone else '1440'}-light-agent-chat")
+        runs = self.api(self.page("jo"), "GET", f"/api/v1/assistant-runs?chatAgentId={self.ids['agent']}", status=200)["items"]
+        picture = next(run for run in runs if run.get("pictures"))["pictures"][0]
+        kai = self.page("kai")
+        response = kai.request.get(f"{ORIGIN}/api/v1/files/{picture['id']}")
+        self.assertEqual(response.status, 404, "nobody else opens it")
+
 
 if __name__ == "__main__":
     unittest.main()

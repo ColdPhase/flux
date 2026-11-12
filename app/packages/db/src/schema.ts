@@ -1749,6 +1749,21 @@ export const agentChatMessages = pgTable('agent_chat_messages', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [unique().on(table.agentId, table.key)]);
 
+/**
+ * 0064 (#1217, C-59): a picture an agent attached to its answer in its private chat: the run's own, its owner's alone, its bytes in the files
+ * volume under `id`. Deleted with its run; the bytes then go to `file_garbage` (a trigger).
+ */
+export const personalRunPictures = pgTable('personal_run_pictures', {
+  id: uuid('id').primaryKey(),
+  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  name: text('name').notNull(),
+  size: integer('size').notNull(),
+  sha256: text('sha256').notNull(),
+  position: smallint('position').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique('personal_run_pictures_position').on(table.runId, table.position)]);
+
 /** 0022 (#842): until when the owner has read one agent's chat. */
 export const agentChatReads = pgTable('agent_chat_reads', {
   agentId: uuid('agent_id').primaryKey().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),

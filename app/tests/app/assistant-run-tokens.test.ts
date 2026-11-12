@@ -360,13 +360,14 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
     assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_web']);
 
-    // A chat: every read tool, in every space its owner reaches, and no tool that changes anything.
+    // A chat: every read tool, in every space its owner reaches, a picture for its own answer, and no tool that changes anything.
     compute.respond = calls(doc(other.id, otherDocId), { id: 'make', name: 'flux_create_task', input: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } },
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 19, 'the 19 read tools (flux_view_image, #1217)');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.every((tool) => !names.includes(tool)), 'no change tool');
+    assert.equal(names.length, 20, 'the 19 read tools (flux_view_image, #1217) and a picture for its answer (flux_attach_image, #1217)');
+    assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).

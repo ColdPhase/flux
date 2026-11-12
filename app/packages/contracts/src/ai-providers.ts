@@ -39,7 +39,7 @@ export interface AiProviderInfo {
    */
   searchesWeb: boolean;
   /**
-   * Whether its models take pictures as input on the wire format Flux speaks to it (#1217, C-58), unless `AI_MODELS_WITHOUT_VISION` names
+   * Whether its models take pictures as input on the wire format Flux speaks to it (#1217, C-59), unless `AI_MODELS_WITHOUT_VISION` names
    * one. Flux cannot tell for OpenRouter or an OpenAI-compatible server, whose models differ, so those are taken to see none.
    */
   seesPictures: boolean;
@@ -213,7 +213,7 @@ export const aiModelSearchesWeb = (provider: AiProviderKind, model: string): boo
   AI_PROVIDERS[provider].searchesWeb && !AI_MODELS_WITHOUT_WEB_SEARCH.some((entry) => entry.provider === provider && entry.model === model);
 
 /**
- * Models of a provider that sees pictures which do not (#1217, C-58): an agent on one is not given `flux_view_image` and says it sees only
+ * Models of a provider that sees pictures which do not (#1217, C-59): an agent on one is not given `flux_view_image` and says it sees only
  * the names of attached files; the model list says "Can't see pictures". A dated table; recheck a row before relying on it after its date.
  */
 export const AI_MODELS_WITHOUT_VISION: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [

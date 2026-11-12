@@ -9,7 +9,7 @@ import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError } from './tool-results.js';
 
 /**
- * `flux_view_image` (#1217, F-036 AG-8, C-58): a run looks at a picture attached to a message it may read, and its model gets it as image
+ * `flux_view_image` (#1217, F-036 AG-8, C-59): a run looks at a picture attached to a message it may read, and its model gets it as image
  * input: an MCP image result, which the worker turns into an image of the request on the owner's API key and which Claude Code and Codex hand
  * to their model. Only a PNG, JPEG, WebP or GIF by its bytes, within the same size and pixel bounds as a picture an agent attaches, and sent
  * as `cleanPicture` keeps it (no metadata, nothing after its end). The message must be one the run reaches (`requireObject`: its own space,

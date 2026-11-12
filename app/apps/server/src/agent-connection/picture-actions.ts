@@ -4,7 +4,7 @@ import { and, asc, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { AGENT_OPERATION_CLASSES, FILE_LIMITS, PICTURE_RUN_KINDS, type AgentJsonValue, type StagedFile } from '@flux/contracts';
 import { addressChain, ADDRESS_MAX, DomainError, derivedUuid, normalizedAddress, pictureName, requireSpaceAi, SpaceAiOffError, type FileStorage,
   type PrivateTextIndex } from '@flux/core';
-import { accessReader, assistantChangeRows, fileRows, personalRunWebReadRows, schema, type Database, type DbExecutor } from '@flux/db';
+import { accessReader, assistantChangeRows, fileRows, personalRunWebReadRows, runPictureRows, schema, type Database, type DbExecutor } from '@flux/db';
 import { fileUseCases } from '../files/adapters.js';
 import { PICTURE_WORDS, type PictureResult, type WebReader } from '../web-reads/reader.js';
 import { actionAnnotations as annotations, actionInput, nativeActionExecutor } from './action-execution.js';
@@ -73,7 +73,9 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   const runId = claims.run?.id ?? claims.approval?.runId ?? null;
   if (!runId) refuse('Only an answer to /ai in a space can carry a picture.');
   // A run changes only its place (AST-5.3): the same refusal as every other change tool, before anything is read.
-  if (claims.run && input.projectId !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+  if (claims.run && (input.projectId ?? null) !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+  // The agent's private chat (founder decision on #1217, 2026-11-12): no space, no change log; the picture is part of its answer to its owner.
+  if (claims.run && claims.run.projectId === null) return attachInChat(db, current!, input, claims);
   // What decides whether to fetch, read before anything is sent: the run, its space, and "What it may do". A run's own call checks its token
   // and place first; an owner's Approve is checked again by the change executor, and here only for what makes the fetch pointless.
   const facts = await db.transaction(async (tx) => {
@@ -202,4 +204,49 @@ async function checkedAddress(db: Database, runId: string, url: string) {
     const checked = await checkRunAddress(db as DbExecutor, runId, url, addressChain());
     if (checked.fragment) refuse(`${PICTURE_WORDS.private_text} (It carries "${checked.fragment}".)`);
   } catch (error) { forgetRunPrivateText(runId); throw error; }
+}
+
+/**
+ * A picture on the agent's answer in its private chat (founder decision on #1217, 2026-11-12; C-59). The chat changes nothing (C-38) and has no
+ * change log: the picture is part of the agent's answer to its owner alone, made at once whatever "What it may do" says, as a page read is.
+ * It is downloaded and checked exactly as in a space, and kept as the run's own picture (`personal_run_pictures`), which only its owner can
+ * open, with the run. At most 10 to an answer.
+ */
+async function attachInChat(db: Database, services: PictureServices, input: { clientCommandId: string; url: string; caption?: string | undefined },
+  claims: ToolCall['claims']) {
+  const run = claims.run!;
+  const facts = await db.transaction(async (tx) => {
+    await agentConnectionInTransaction(tx, claims, 'read', null);
+    const r = schema.personalRuns;
+    const [row] = await tx.select({ kind: r.kind, dmId: r.dmId, workspaceId: r.workspaceId }).from(r).where(eq(r.id, run.id));
+    const [space] = row ? await tx.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, row.workspaceId)) : [];
+    const pictures = await runPictureRows(tx as DbExecutor).forRun(run.id);
+    return { row, encrypted: !space || space.encrypted, pictures };
+  });
+  if (!facts.row || facts.row.dmId !== null || facts.row.kind !== 'ask') refuse('Only an answer in a space or in your private chat can carry a picture.');
+  if (facts.encrypted) refuse('This space is encrypted, so no picture from the web can be attached here.');
+  const id = derivedUuid('flux.agent-chat-picture.v1', run.id, input.clientCommandId.toLowerCase());
+  const again = facts.pictures.find((picture) => picture.id === id);
+  if (again) return toolResult({ attached: again.name, size: again.size, replayed: true });
+  if (facts.pictures.length >= FILE_LIMITS.messageFiles) refuse(`An answer carries at most ${FILE_LIMITS.messageFiles} pictures.`);
+  const fetched = await fetchPicture(db, services.reader, run.id, input.url);
+  if (!fetched.ok) refuse(PICTURE_WORDS[fetched.reason]);
+  const ok = fetched as Extract<PictureResult, { ok: true }>;
+  const name = pictureName(input.caption, ok.finalUrl, ok.type);
+  const received = await services.storage.receive(Readable.from([Buffer.from(ok.bytes)]), { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 });
+  try {
+    await received.commit(id);
+    await db.transaction(async (tx) => {
+      // The run is checked live again before the picture is its: a run stopped meanwhile keeps nothing.
+      await agentConnectionInTransaction(tx, claims, 'read', null);
+      const rows = runPictureRows(tx as DbExecutor);
+      await rows.add({ id, runId: run.id, ownerUserId: claims.ownerUserId, name, size: received.size, sha256: received.sha256, position: (await rows.forRun(run.id)).length });
+    });
+  } catch (error) {
+    await received.discard().catch(() => undefined);
+    await services.storage.remove(id).catch(() => undefined);
+    throw error;
+  }
+  return toolResult({ attached: name, size: received.size,
+    note: 'The picture is attached to your answer in this chat; only your owner sees it. Do not describe it as seen unless you looked at it.' });
 }

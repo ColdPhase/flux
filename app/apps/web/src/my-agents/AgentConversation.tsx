@@ -8,7 +8,7 @@ import { AnswerBody } from '../assistant/ConversationParts';
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
-import { MessageBubble } from '../composer/Attachments';
+import { MessageBubble, PhotoGrid } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ConnectionLine } from '../composer/Outbox';
 import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
@@ -69,6 +69,8 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
           <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
           <div className="dm-msg__main">
             {first ? <p className="dm-msg__meta"><b>{agent.name}</b></p> : null}
+            {/* The pictures the agent attached to its answer (#1217), as a message's photos: above its words. */}
+            {run.answer && run.pictures?.length ? <PhotoGrid photos={run.pictures} context={{ author: agent.name }} /> : null}
             {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={lookups} /></div></MessageBubble>
               : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? workingText(run) : ended ?? 'Nothing to say.'}</div>}
             {prepared ? <ReadySchedule job={prepared} state={schedules} agent={agent} /> : null}

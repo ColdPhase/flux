@@ -20,7 +20,7 @@ export interface AssistantModelOption {
   note: string;
   /** False: the model can answer but can't make changes (AST-8.3). */
   callsTools: boolean;
-  /** False: the model can't see pictures, so its agent sees attached files only by name (#1217, C-58). Absent: it sees them. */
+  /** False: the model can't see pictures, so its agent sees attached files only by name (#1217, C-59). Absent: it sees them. */
   seesPictures?: boolean;
 }
 

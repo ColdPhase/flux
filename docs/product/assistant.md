@@ -315,7 +315,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Search | Everything the owner can see, in spaces with AI on |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
-| Pictures | Attach a public picture from the web to its answer to `/ai` in a space, downloaded by the Flux server under the web rules, with the waits and Undo of AG-3; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
+| Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
 | Not allowed | Code, email, other apps, generating pictures |
 
 Code changes come only from the owner's own Claude Code or Codex on their computer
@@ -370,13 +370,16 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   when the agent asks, before anything waits, and its line names it ("Attach the picture Raised bed from example.org/beds/1.jpg").
   While a picture waits for the owner's OK the run keeps the private text it read, so that Approve checks the address and every
   redirect hop as the run's own call did, and lists each address asked; that text goes once nothing of the run waits.
+- **In the agent's private chat** (founder decision, Hubert, 2026-11-12) the agent attaches a picture to its answer the same way and
+  under the same rules. The chat changes nothing (C-38), so there is no wait and no Undo: the picture is part of its answer to its owner
+  alone, as a page it reads is, and stays with the answer. A DM between people and a task's or a schedule's report have none.
 - **An agent looks at a picture it was given** with `flux_view_image`: a PNG, JPEG, WebP or GIF attached to a message the run may read
   (the same 5 MiB and pixel limits) goes to the model as image input. On the owner's API key it is an image in the request; on Claude
   Code and Codex it is an MCP image result, which the CLI hands to its model. The tool is offered only when the run's model sees
   pictures. The model list says when a model does not ("Can't see pictures"); such an agent is told, as before, that it sees only
   the names of attached files, and says so.
-- **Not in this version:** generating pictures (it needs its own provider decision, cost and approvals), pictures in an agent's
-  private chat, a DM or a task's report (C-59), and image previews of link cards (F-031).
+- **Not in this version:** generating pictures (it needs its own provider decision, cost and approvals), pictures in a DM between
+  people or in a task's or a schedule's report (C-59), and image previews of link cards (F-031).
 
 ## AG-9 — Schedules
 

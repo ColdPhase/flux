@@ -172,6 +172,8 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
   webReads(runId: string): Promise<{ finalUrl: string; outcome: string; writable: boolean }[]>;
+  /** #1217: the pictures an agent attached to its answer in its private chat, in order. Absent from a port that serves no chat. */
+  runPictures?(runId: string): Promise<MessageFile[]>;
   /** The run's searches (#954): their queries and the addresses the answers cited, each once, in the order found. */
   webSearches(runId: string): Promise<{ queries: string[]; cited: string[] }>;
   /** Records what one response's web search brought (#954), before any tool call the same response asked for runs. */

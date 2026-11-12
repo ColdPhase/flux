@@ -9,7 +9,7 @@ import { expectStatus, type Person } from './support/people.js';
 import { assistantScene, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 import { png, SVG } from './support/pictures.js';
 
-// A run looks at a picture it was given (#1217, F-036 AG-8, C-58): `flux_view_image` gives a model that sees pictures a PNG, JPEG, WebP or GIF
+// A run looks at a picture it was given (#1217, F-036 AG-8, C-59): `flux_view_image` gives a model that sees pictures a PNG, JPEG, WebP or GIF
 // attached to a message the run may read, as image input, on the real /mcp route and through the real worker loop with a fake provider.
 // A model without vision is not given the tool and is told it sees only names. Each wire format carries the picture as its own image input.
 
