@@ -32,8 +32,12 @@ export interface DateFieldProps extends Omit<ComponentProps<'input'>, 'value' | 
   max?: string;
   /** Opens the picker as the field appears (a value edited in place), with the caret in the field on a computer. */
   defaultOpen?: boolean;
-  /** The picker closed without a new value (Esc, a press outside, the same day again). */
-  onDismiss?: () => void;
+  /**
+   * The picker closed without a new value. `how` is 'close' for Esc, the chevron, the sheet's scrim or the same day again (focus goes
+   * back to where it came from), and 'away' for a press or a Tab outside it, which took focus where the person meant to go: the
+   * caller must not take it back.
+   */
+  onDismiss?: (how: 'close' | 'away') => void;
   /** Classes of the field's frame (the box with the chevron), not of the text inside it. */
   className?: string;
   ref?: Ref<HTMLInputElement>;
@@ -87,14 +91,18 @@ export function DateField({ value, onChange, clearable, min = '1970-01-01', max 
     if (!open) return;
     setOpen(false);
     if (restore && !sheet) (returnTo.current ?? input.current)?.focus({ preventScroll: true });
-    if (dismissed) onDismiss?.();
+    if (dismissed) onDismiss?.(restore ? 'close' : 'away');
   };
   const openPicker = (from: HTMLElement | null, focusDay = true) => {
     if (disabled || open) return;
     returnTo.current = from;
     takeFocus.current = focusDay;
-    const parsed = draft === null ? null : parseDay(draft);
-    setCursor(clamp(parsed ?? (splitDay(value) ? value : now), min, max));
+    // The month opens on the day that is typed, else the chosen one, else today.
+    const typed = draft === null ? null : parseDay(draft);
+    setCursor(clamp(typed && inRange(typed) ? typed : splitDay(value) ? value : now, min, max));
+    // The phone's sheet covers the field: what was typed is kept (or put back) before it opens, so closing the sheet with no
+    // choice never leaves text in the field that was not committed.
+    if (sheet && draft !== null && !commit(draft)) settle();
     setOpen(true);
   };
   const choose = (day: string) => {
@@ -277,7 +285,7 @@ export function DateField({ value, onChange, clearable, min = '1970-01-01', max 
       data-disabled={disabled ? '' : undefined} onBlur={onFocusOut}>
       <input {...rest} ref={setRefs} type="text" aria-invalid={invalid || undefined} aria-describedby={[rest['aria-describedby'], hintId].filter(Boolean).join(' ')}
         autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={disabled} className="ui-pick__input"
-        value={text} placeholder={rest.placeholder ?? ''} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
+        value={text} placeholder={rest.placeholder ?? formatDay('2026-11-14')} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
       <button ref={chevron} type="button" className="ui-pick__btn" aria-label="Choose a date" aria-haspopup="dialog" aria-expanded={open}
         aria-controls={open ? popId : undefined} disabled={disabled}
         onClick={() => { if (open) close({ dismissed: true }); else openPicker(chevron.current); }}>

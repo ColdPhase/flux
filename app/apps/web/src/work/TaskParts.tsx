@@ -53,7 +53,17 @@ const todayKey = () => { const now = new Date(); return `${now.getFullYear()}-${
 export function DueField({ value, editable, finished, disabled, onSave }: { value: string | null; editable: boolean; finished: boolean; disabled?: boolean; onSave: (day: string | null) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
   const opener = useRef<HTMLButtonElement>(null);
-  const leave = () => { setEditing(false); requestAnimationFrame(() => opener.current?.focus({ preventScroll: true })); };
+  // The editor is left. Focus goes back to the "Due" button only when it was inside the editor or its calendar (a key closed it, or a
+  // day was chosen), so nothing is on `body` once they are gone; a press elsewhere (the composer, the Status menu) took focus where
+  // the person meant to go, and it stays there.
+  const leave = (how: 'close' | 'away' = 'close') => {
+    setEditing(false);
+    if (how === 'away') return;
+    requestAnimationFrame(() => {
+      const now = document.activeElement;
+      if (!now || now === document.body) opener.current?.focus({ preventScroll: true });
+    });
+  };
   const late = !!value && !finished && value < todayKey();
   const text = value ? dueLabel(value) : 'Add a date';
   if (!editable) return <span className="wd-value">{value ? <>{text}{late ? <span className="wd-muted"> · overdue</span> : null}</> : <span className="wd-muted">No date</span>}</span>;
@@ -66,7 +76,7 @@ export function DueField({ value, editable, finished, disabled, onSave }: { valu
   }
   return (
     <span className="wd-due-edit" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leave(); } }}>
-      <DateField aria-label="Due date" value={value ?? ''} clearable defaultOpen onDismiss={leave}
+      <DateField aria-label="Due date" value={value ?? ''} clearable defaultOpen onDismiss={(how) => leave(how)}
         onChange={(next) => void onSave(next || null).then((ok) => { if (ok) leave(); })} />
     </span>
   );

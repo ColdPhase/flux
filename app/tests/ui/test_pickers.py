@@ -77,7 +77,37 @@ class DateAndTimePickers(unittest.TestCase):
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        # What happened to the page, kept for the message of a failed wait (see `diag`): a run on a slow runner shows what the page did.
+        started = time.monotonic()
+        trace: list[str] = []
+        stamp = lambda: f"{(time.monotonic() - started) * 1000:7.0f} ms"  # noqa: E731
+        page.on("console", lambda message: trace.append(f"{stamp()} console.{message.type}: {message.text[:160]}") if message.type in ("error", "warning") else None)
+        page.on("framenavigated", lambda frame: trace.append(f"{stamp()} navigated {frame.url}") if frame == page.main_frame else None)
+        page.on("response", lambda response: trace.append(f"{stamp()} {response.status} {response.request.method} {response.url.replace(ORIGIN, '')[:110]}")
+                if response.request.method != "GET" or response.status >= 400 else None)
+        page.on("requestfailed", lambda request: trace.append(f"{stamp()} FAILED {request.method} {request.url.replace(ORIGIN, '')[:110]} {request.failure}"))
+        page.on("websocket", lambda socket: (trace.append(f"{stamp()} websocket {socket.url.replace(ORIGIN, '')}"), socket.on("close", lambda _: trace.append(f"{stamp()} websocket closed"))))
+        page.on("crash", lambda _: trace.append(f"{stamp()} CRASH"))
+        page.on("close", lambda _: trace.append(f"{stamp()} page closed"))
+        page.trace = trace  # type: ignore[attr-defined]
         return page
+
+    def diag(self, page: Page) -> str:
+        """What a failed wait should say: where the page is, who it is signed in as, what it shows and what it did lately."""
+        lines = [f"page url: {page.url}"]
+        try:
+            lines.append("cookies: " + ", ".join(f"{c['name']}@{c['domain']}{c['path']} expires={c.get('expires')}" for c in page.context.cookies()))
+        except Exception as error:  # noqa: BLE001
+            lines.append(f"cookies: {str(error)[:120]}")
+        try:
+            lines.append("details: " + page.locator("#details").inner_text(timeout=2000)[:300].replace("\n", " | "))
+        except Exception as error:  # noqa: BLE001
+            lines.append(f"details: {str(error)[:120]}")
+        try:
+            lines.append("focus: " + page.evaluate("() => { const a = document.activeElement; return a ? `${a.tagName}.${a.className} [${a.getAttribute('aria-label') || ''}]` : 'none'; }"))
+        except Exception as error:  # noqa: BLE001
+            lines.append(f"focus: {str(error)[:120]}")
+        return "\n".join(lines + ["recent page events:"] + list(getattr(page, "trace", []))[-40:])
 
     def new_task(self, title: str) -> dict:
         task = api(self.ada, "POST", self.root + "/work", {"title": title}, 201)
@@ -87,14 +117,17 @@ class DateAndTimePickers(unittest.TestCase):
     def stored(self, task: dict) -> dict:
         return api(self.ada, "GET", f"/api/v1/work/{task['id']}")
 
-    def due(self, task: dict, expected: str | None) -> str | None:
-        """A task's stored due day once it is `expected` (a change saves a moment after the click), else what it is."""
+    def due(self, task: dict, expected: str | None, page: Page | None = None) -> str | None:
+        """A task's stored due day once it is `expected` (a change saves a moment after the click), else what it is.
+        With a `page`, a day that never arrives fails with what the page showed and did."""
         value = None
         for _ in range(40):
             value = self.stored(task)["dueOn"]
             if value == expected:
                 break
             time.sleep(0.25)
+        if page is not None and value != expected:
+            self.fail(f"the stored due day is {value!r}, not {expected!r}\n{self.diag(page)}")
         return value
 
     def prefs(self, until=None) -> dict:
@@ -200,6 +233,7 @@ class DateAndTimePickers(unittest.TestCase):
         expect(start).to_have_value("soon")
         expect(page.locator(".ui-pick[data-invalid]")).to_have_count(1)
         expect(page.get_by_role("status").filter(has_text="Not a time")).to_have_count(1)
+        shot(page, f"pickers-time-invalid-1440-light-{UI_BROWSER}")
         # The hint is what a screen reader hears after the name.
         described = start.get_attribute("aria-describedby")
         self.assertIn("Type a time", page.locator(f'[id="{described.split()[-1]}"]').inner_text())
@@ -326,6 +360,7 @@ class DateAndTimePickers(unittest.TestCase):
         # The field takes the caret as it appears and the month is open under it, with nothing chosen yet.
         expect(field).to_be_focused()
         expect(field).to_have_value("")
+        expect(field).to_have_attribute("placeholder", re.compile(r"\d"))  # an empty field shows how a day is written
         dialog = page.get_by_role("dialog", name="Due date")
         expect(dialog).to_be_visible()
         expect(self.day(dialog, self.today(page))).to_have_attribute("data-today", "")
@@ -334,7 +369,7 @@ class DateAndTimePickers(unittest.TestCase):
         expect(dialog.get_by_role("heading", name="November 2027")).to_be_visible()
         field.press("Enter")
         expect(panel.get_by_role("button", name="Due 14 Nov 2027")).to_be_visible()
-        self.assertEqual(self.stored(task)["dueOn"], "2027-11-14")
+        self.assertEqual(self.due(task, "2027-11-14", page), "2027-11-14")
         expect(panel.get_by_role("button", name="Due 14 Nov 2027")).to_be_focused()
         for typed, expected in (("tomorrow", self.today(page, 1)), ("2028-03-02", "2028-03-02"), ("9 Jan 2029", "2029-01-09"), ("14.11.2027", "2027-11-14")):
             with self.subTest(typed=typed):
@@ -343,7 +378,7 @@ class DateAndTimePickers(unittest.TestCase):
                 field.fill(typed)
                 field.press("Enter")
                 expect(panel.get_by_label("Due date", exact=True)).to_have_count(0)
-                self.assertEqual(self.due(task, expected), expected)
+                self.assertEqual(self.due(task, expected, page), expected)
         # Text that is not a day is marked and keeps the editor open; Esc leaves with the date unchanged.
         panel.get_by_role("button", name=re.compile(r"^Due ")).click()
         field = panel.get_by_label("Due date", exact=True)
@@ -470,6 +505,48 @@ class DateAndTimePickers(unittest.TestCase):
         expect(panel.get_by_role("button", name="Due, add a date")).to_be_visible()
         self.assertIsNone(self.due(task, None))
 
+    def test_09b_a_press_outside_the_calendar_closes_it_and_leaves_focus_where_the_press_went(self) -> None:
+        """Review of #1287: leaving the editor took focus back to "Due", so a press on the composer or on Status lost what was typed
+        next. Only a key (Esc, Enter, a chosen day) gives focus back to "Due"; a press elsewhere keeps it."""
+        task = self.new_task("Paint the fence")
+        page = self.page()
+        panel = self.open_task(page, task)
+        dialog = page.get_by_role("dialog", name="Due date")
+        composer = panel.get_by_placeholder(f"Write about #{task['number']} · @ · /")
+        # The composer: pressed with the calendar open, then typed into.
+        panel.get_by_role("button", name="Due, add a date").click()
+        expect(dialog).to_be_visible()
+        composer.click()
+        expect(dialog).to_have_count(0)
+        page.keyboard.type("hello")
+        expect(composer).to_have_value("hello")
+        expect(composer).to_be_focused()
+        self.assertIsNone(self.stored(task)["dueOn"])
+        composer.fill("")
+        # Another control: Status opens its menu and the focus stays with it.
+        panel.get_by_role("button", name="Due, add a date").click()
+        expect(dialog).to_be_visible()
+        panel.get_by_role("button", name="Status", exact=True).click()
+        expect(page.get_by_role("menu", name="Status")).to_be_visible()
+        expect(dialog).to_have_count(0)
+        expect(panel.get_by_role("button", name="Due, add a date")).not_to_be_focused()
+        composer.click()
+        expect(page.get_by_role("menu", name="Status")).to_have_count(0)
+        # A day that was typed is kept by a press outside, and the focus still goes where the press went.
+        panel.get_by_role("button", name="Due, add a date").click()
+        panel.get_by_label("Due date", exact=True).fill("20 Dec 2027")
+        composer.click()
+        expect(dialog).to_have_count(0)
+        self.assertEqual(self.due(task, "2027-12-20", page), "2027-12-20")
+        page.keyboard.type("hi")
+        expect(composer).to_have_value("hi")
+        expect(composer).to_be_focused()
+        # A key still gives focus back to the button.
+        panel.get_by_role("button", name=re.compile(r"^Due ")).click()
+        expect(dialog).to_be_visible()
+        page.keyboard.press("Escape")
+        expect(panel.get_by_role("button", name=re.compile(r"^Due "))).to_be_focused()
+
     def test_10_the_date_dialog_is_named_its_days_are_read_in_full_and_axe_finds_nothing(self) -> None:
         task = self.new_task("Count the probes")
         for dark in (False, True):
@@ -579,6 +656,7 @@ class DateAndTimePickers(unittest.TestCase):
                 self.assertGreaterEqual(field.bounding_box()["height"], 44 - 0.5, "the field is a touch target")
                 chevron = page.get_by_role("button", name="Choose a time").first
                 self.assertGreaterEqual(chevron.bounding_box()["width"], 44 - 0.5, "so is its chevron")
+                start.evaluate("el => el.scrollIntoView({ block: 'center' })")
                 shot(page, f"pickers-quiet-hours-390-{'dark' if dark else 'light'}-{UI_BROWSER}")
                 chevron.tap()
                 sheet = page.locator(".ui-select-sheet")
@@ -599,6 +677,14 @@ class DateAndTimePickers(unittest.TestCase):
                 end.fill("6")
                 end.press("Enter")
                 expect(end).to_have_value("6:00")
+                # What was typed is kept before the sheet opens, so dismissing the sheet with no choice leaves no stray text behind.
+                start.fill("9pm")
+                chevron.tap()
+                expect(sheet).to_be_visible()
+                page.keyboard.press("Escape")
+                expect(sheet).to_have_count(0)
+                expect(start).to_have_value("21:00")
+                self.assertEqual(self.prefs(lambda prefs: prefs["quietHours"]["start"] == "21:00")["quietHours"]["start"], "21:00")
                 self.axe(page, "the phone's time sheet", ".nset__times")
                 chevron.tap()
                 self.axe(page, "the phone's time sheet", ".ui-select-sheet")
@@ -637,6 +723,8 @@ class DateAndTimePickers(unittest.TestCase):
                 # A day by touch; Clear by touch.
                 panel.get_by_role("button", name=re.compile(r"^Due ")).tap()
                 expect(self.day(page.locator(".ui-select-sheet"), self.today(page, 1))).to_have_attribute("data-selected", "")
+                page.wait_for_function(SETTLED)
+                shot(page, f"pickers-date-390-chosen-{'dark' if dark else 'light'}-{UI_BROWSER}")
                 page.locator(".ui-select-sheet").get_by_role("button", name="Next month").tap()
                 target = page.locator('.ui-select-sheet button[data-day$="-20"]:not([data-outside])')
                 iso = target.get_attribute("data-day")

@@ -465,12 +465,14 @@ Field (32 px, 44 on touch)          Date picker, a popover under the field      
 ```
 
 - **The field** looks like the select: `--el` fill, 1 px `--line2`, radius 14, `--fs-md` text with tabular numbers, the
-  same soft focus (a `--t1` hairline inside and a `--sub` ring). It is a text field with a chevron at its right edge; the
+  same soft focus (a `--t1` hairline inside and a `--sub` ring); in Quiet hours it is 36 px on a computer, level with the Time
+  zone select beside it. It is a text field with a chevron at its right edge; the
   chevron (a 44 px target on touch) opens the picker, so a click or tap on the text puts the caret there and **typing
   always works**, on every device. The value reads as the app writes it everywhere else ("14 Nov 2026", "9:00") and is
   stored as `YYYY-MM-DD` and `HH:MM`.
 - **Typed entry** takes what people say. A date: "14 Nov", "14 November 2026", "Nov 14", "14.11", "2026-11-14", "today",
-  "tomorrow" (no year means this year). A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
+  "tomorrow" (no year means the next time that day comes, so "5 Jan" typed in December is next January). An empty date
+  field shows how a day is written ("14 Nov 2026") in `--t3`. A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
   leaving the field, commits it and shows it in the field's own form; Esc puts the last value back. Enter in a field
   that holds no change is left to the form around it. Text that is not a date or a time keeps what was typed, marks the
   field invalid (the 1.5 px `--t1` inset ring of the other invalid fields) and says why in a live region ("Not a date.
@@ -489,7 +491,11 @@ Field (32 px, 44 on touch)          Date picker, a popover under the field      
   in the field; Enter or a click chooses it.
 - **On a phone** (and any narrow window) either picker is the same bottom sheet as the select's: a grabber, the field's
   name as its title, the calendar or the list inside it, the 44 px targets; the scrim, Esc and choosing close it and focus
-  returns to the field. A task's Due opens it as soon as "Add a date" is tapped.
+  returns to the field. Text typed in the field is kept (or put back) as the sheet opens, so closing the sheet with no choice
+  leaves nothing half-typed behind. A task's Due opens it as soon as "Add a date" is tapped.
+- **Focus.** A key gives focus back to where the picker came from: Esc, Enter, a chosen day (a task's "Due" button again). A
+  press outside the picker closes it and keeps nothing from it, and focus stays where the press went (the composer, the Status
+  menu), so the next thing typed goes there.
 - **Keys.** The chevron, Down and Alt+Down open the picker; Esc closes it and keeps the value. In the calendar: the arrows
   move by a day and by a week, Home and End to the start and end of the week, Page Up and Page Down by a month (with Shift a
   year), Enter or Space chooses, Tab moves through the month arrows, the days and the footer and wraps inside it. In the time

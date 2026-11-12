@@ -15,7 +15,7 @@ test('a date is read the way people write it', () => {
   assert.equal(read('Nov 14'), '2026-11-14');
   assert.equal(read('nov 14, 2027'), '2027-11-14');
   assert.equal(read('14th Nov'), '2026-11-14');
-  assert.equal(read('3 sept'), '2026-09-03');
+  assert.equal(read('3 sept 2026'), '2026-09-03');
   assert.equal(read('14 Nov 26'), '2026-11-14');
   assert.equal(read('14.11'), '2026-11-14');
   assert.equal(read('14/11/2026'), '2026-11-14');
@@ -24,6 +24,20 @@ test('a date is read the way people write it', () => {
   assert.equal(read('today'), '2026-11-12');
   assert.equal(read('Tomorrow'), '2026-11-13');
   assert.equal(read('29 Feb 2028'), '2028-02-29');
+});
+
+test('a day without a year is the next time that day comes', () => {
+  const read = (text: string) => parseDay(text, NOW);
+  assert.equal(read('12 Nov'), '2026-11-12', 'today is today');
+  assert.equal(read('13 Nov'), '2026-11-13');
+  assert.equal(read('11 Nov'), '2027-11-11', 'a day that has passed is next year\'s');
+  assert.equal(read('5 Jan'), '2027-01-05');
+  assert.equal(read('3 sept'), '2027-09-03');
+  assert.equal(read('14.1'), '2027-01-14');
+  assert.equal(read('29 Feb'), '2028-02-29', 'waits for a leap year');
+  assert.equal(parseDay('5 Jan', new Date(2027, 0, 5, 23, 59)), '2027-01-05');
+  assert.equal(parseDay('5 Jan', new Date(2027, 0, 6, 0, 1)), '2028-01-05');
+  assert.equal(read('31 Nov'), null);
 });
 
 test('text that is not a day is not read', () => {

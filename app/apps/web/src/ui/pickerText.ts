@@ -84,15 +84,24 @@ export function firstWeekday(): number {
 
 const wordsOf = (text: string) => text.toLowerCase().replace(/\./g, '. ').replace(/(\d)(st|nd|rd|th)\b/g, '$1').replace(/[,]/g, ' ').trim().split(/\s+/).filter(Boolean);
 
-/** The month names a person may type: English and the browser's language, in full; three letters or more of one count. */
+/**
+ * The month names a person may type: English and the browser's language, each as the month alone (nominative) and as the language
+ * writes it after a day ("listopad", "listopada"); three letters or more of one count.
+ */
 function monthNames(): string[][] {
   const english = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
-  let local: string[] = [];
+  const names = english.map((name) => [name]);
   try {
-    const format = new Intl.DateTimeFormat(undefined, { month: 'long' });
-    local = english.map((_, index) => format.format(new Date(2000, index, 15)).toLowerCase());
+    const alone = new Intl.DateTimeFormat(undefined, { month: 'long' });
+    const withDay = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long' });
+    for (let index = 0; index < 12; index += 1) {
+      const date = new Date(2000, index, 15);
+      names[index]!.push(alone.format(date).toLowerCase());
+      const after = withDay.formatToParts(date).find((part) => part.type === 'month')?.value.toLowerCase();
+      if (after) names[index]!.push(after);
+    }
   } catch { /* English only. */ }
-  return english.map((name, index) => [name, local[index] ?? name]);
+  return names;
 }
 const monthOf = (word: string): number => {
   const bare = word.replace(/\.$/, '');
@@ -116,7 +125,8 @@ const fullYear = (text: string) => (text.length <= 2 ? 2000 + Number(text) : Num
 
 /**
  * A day from what a person types, or null: "14 Nov", "14 November 2026", "Nov 14, 2026", "14.11", "14/11/2026", "2026-11-14",
- * "today", "tomorrow". Without a year it is this year. `now` is for tests.
+ * "today", "tomorrow". Without a year it is the next time that day comes: today's date is today, and a date that has passed this
+ * year is next year's ("5 Jan" typed in December is in January). `now` is for tests.
  */
 export function parseDay(input: string, now: Date = new Date()): string | null {
   const text = input.trim().toLowerCase();
@@ -124,7 +134,16 @@ export function parseDay(input: string, now: Date = new Date()): string | null {
   if (text === 'today') return dayOf(now);
   if (text === 'tomorrow') return addDays(dayOf(now), 1);
   if (text === 'yesterday') return addDays(dayOf(now), -1);
+  const asOf = dayOf(now);
   const year = now.getFullYear();
+  /** A day without a year: this year's if it has not passed, else the first later year that has it (29 Feb waits for a leap year). */
+  const upcoming = (month: number, day: number): string | null => {
+    for (let ahead = 0; ahead <= 8; ahead += 1) {
+      const found = makeDay(year + ahead, month, day);
+      if (found && found >= asOf) return found;
+    }
+    return null;
+  };
   let match = /^(\d{4})[-./](\d{1,2})[-./](\d{1,2})$/.exec(text);
   if (match) return makeDay(Number(match[1]), Number(match[2]), Number(match[3]));
   match = /^(\d{1,2})[-./\s](\d{1,2})(?:[-./\s](\d{2}|\d{4}))?\.?$/.exec(text);
@@ -133,7 +152,7 @@ export function parseDay(input: string, now: Date = new Date()): string | null {
     const second = Number(match[2]);
     const dayFirst = first > 12 || (second <= 12 && !monthFirst());
     const [day, month] = dayFirst ? [first, second] : [second, first];
-    return makeDay(match[3] ? fullYear(match[3]) : year, month, day);
+    return match[3] ? makeDay(fullYear(match[3]), month, day) : upcoming(month, day);
   }
   // Words: a month name, a day and maybe a year, in either order.
   const words = wordsOf(text);
@@ -149,7 +168,7 @@ export function parseDay(input: string, now: Date = new Date()): string | null {
   const yearText = numbers.find((number) => number !== dayText) ?? null;
   if (!dayText || (numbers.length === 2 && !yearText)) return null;
   if (yearText && yearText.length !== 4 && yearText.length !== 2) return null;
-  return makeDay(yearText ? fullYear(yearText) : year, month, Number(dayText));
+  return yearText ? makeDay(fullYear(yearText), month, Number(dayText)) : upcoming(month, Number(dayText));
 }
 
 // ---------------------------------------------------------------- times

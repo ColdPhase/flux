@@ -83,6 +83,9 @@ export function TimeField({ value, onChange, className, disabled, ref, onKeyDown
     (sheet ? chevron.current : input.current)?.focus({ preventScroll: true });
     setTitle(nameOfField(input.current));
     setActive(nearest(parseTime(draft ?? '') ?? (value || DEFAULT_START)));
+    // The phone's sheet covers the field: what was typed is kept (or put back) before it opens, so closing the sheet with no
+    // choice never leaves text in the field that was not committed.
+    if (sheet && draft !== null && !commit(draft)) settle();
     setOpen(true);
   };
   const choose = (index: number) => {
@@ -205,7 +208,7 @@ export function TimeField({ value, onChange, className, disabled, ref, onKeyDown
         aria-controls={open ? listId : undefined} aria-activedescendant={open && !sheet && active >= 0 ? optionId(active) : undefined}
         aria-invalid={invalid || undefined} aria-describedby={[rest['aria-describedby'], hintId].filter(Boolean).join(' ')}
         autoComplete="off" autoCapitalize="off" autoCorrect="off" spellCheck={false} disabled={disabled} className="ui-pick__input"
-        value={text} placeholder={rest.placeholder ?? '0:00'} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
+        value={text} placeholder={rest.placeholder ?? formatTime('09:00')} onChange={onType} onKeyDown={onKey} onBlur={onLeave} />
       <button ref={chevron} type="button" tabIndex={-1} className="ui-pick__btn" aria-label="Choose a time" aria-haspopup="listbox" aria-expanded={open}
         aria-controls={open ? listId : undefined} disabled={disabled} onMouseDown={(event) => { if (!sheet) event.preventDefault(); }}
         onClick={() => { if (open) close(); else openList(); }}>
