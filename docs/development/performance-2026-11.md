@@ -21,7 +21,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | An open tab: at most 4 requests a minute | not measured here | 0 in each of Home, Inbox, Conversation, Tasks, Map and Wiki (was 3 to 70) | met, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4; with kept reads (#862) 2, 3, 15, 7, 4, 5, 15, 16, 4; with live invalidation 2, 3, 14, 7, 4, 4, 11, 16, 4 | not met for the three moves into a Conversation in v0.2, see [Live invalidation](#live-invalidation-and-no-idle-polling-862-the-data-layers-second-part) and [#1109](https://github.com/ColdPhase/flux/issues/1109) |
-| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms. With [#1178](https://github.com/ColdPhase/flux/issues/1178): the warm @1cpu phases 19 and 16 ms, 0 of 38 over; the concurrent @1cpu phase 42 ms, 10 of 38 over | warm phases at the target, not reliably under it: at the release candidate 0 to 3 of 38 requests reached 51–58 ms (see [At the release candidate](#at-the-release-candidate-2233996ad-2026-11-10)); the concurrent phase is deferred to v0.3 (founder decision, 2026-11-10), see [The concurrent phase](#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10) |
+| p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms. With [#1178](https://github.com/ColdPhase/flux/issues/1178): the warm @1cpu phases 19 and 16 ms, 0 of 38 over; the concurrent @1cpu phase 42 ms, 10 of 38 over | warm phases at the target, not reliably under it: at the release candidate 0 to 3 of 38 requests reached 51–58 ms (see [At the release candidate](#at-the-release-candidate-2233996ad-2026-11-10)); the concurrent phase is deferred to v0.3 (founder decision, 2026-11-10), see [The concurrent phase](#the-concurrent-phase-deferred-to-v03-founder-decision-2026-11-10). With [#1191](https://github.com/ColdPhase/flux/issues/1191), on a host that was not quiet: concurrent 22–26 ms, 1 to 4 of 38 over; warm 0 over, see [v0.2.1](#the-concurrent-phase-v021-1191-2026-11-12) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files; 241 KB, 36 files with [#1178](https://github.com/ColdPhase/flux/issues/1178) | met with #1178, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
 
@@ -177,6 +177,64 @@ run to run and cross it by 1 to 8 ms, the noise of this host. They are the same 
 
 **Decision** (Hubert, 2026-11-10): v0.2 ships with these numbers recorded; the warm requests join the concurrent phase's work in
 v0.3 ([#1191](https://github.com/ColdPhase/flux/issues/1191)).
+
+### The concurrent phase, v0.2.1 ([#1191](https://github.com/ColdPhase/flux/issues/1191), 2026-11-12)
+
+**Changed** (branch `claude-hubert/1191-api-cpu`, from the #1178 attempts above, reviewed and finished):
+- **The session read.** Once Better Auth has accepted a signed cookie in an API process, later requests with that exact value
+  read the session row and its person in one prepared statement (`identity/session.ts`). Nothing is trusted from memory: the
+  row is read on every request, so a sign-out, a revoked session ("Sign out all other devices", one session), a password reset,
+  an expired session or a deleted account is refused on the very next request, on `api` and `api2`
+  (`tests/app/session-fast-path.test.ts`, now through the real routes and with the maximum age). A session that is gone,
+  expired or due for renewal goes back to Better Auth, which renews or refuses it; the maximum age, single sign-on only, the
+  provider standing and the provider confirmation are checked as before. A forged signature never matches a stored value.
+- **Prepared, composed once.** The access policy's lookups, the lock gate's read, the work reads' fingerprint and relation
+  counts and a person's read of a space (from #1178).
+- **Since you left** reads, in SQL, only the rows it can tell (the kinds it describes, someone else's change or a rule's on the
+  reader's behalf) and, for a space or a conversation, only that place's rows. At most the reader's newest 8,000 rows after the
+  point are looked at, as before, now bounded by one index walk (`audienceFloor`), so no filter makes the database scan further.
+  Its other lookups (points, places, tasks, decisions, messages, conversations, materials, docs, sketches, names) are constant
+  prepared statements over one array parameter, and its times are read as numbers.
+- **Compression.** JSON answers are Brotli quality 3 (was 5), compressed on the request's thread up to 128 KiB. On the answers
+  of one pass over every view (18 answers of 2.7–127 KB): 0.28 ms of CPU an answer against about 1.0 ms, 10.9% of the raw size
+  against 10.4%. At quality 5 compression was about a fifth of the API's CPU in the concurrent phase.
+
+**Observed** (exploratory, **not a quiet host**: other agents' Docker suites ran throughout). One seeded `check_performance.sh`
+stack kept (`FLUX_PERF_KEEP=1`), the API container swapped between an image of `main` (`8cef27ca1`) and of this branch, the
+phases run alternately, API and database at 1.0 CPU each; API and database CPU are the containers' cgroup counters over the
+concurrent phase (3,400 requests):
+
+| Run | API CPU | DB CPU | concurrent p95 of all | over 50 ms | warm, warm (member) |
+| --- | ---: | ---: | ---: | ---: | --- |
+| `main` 1 | 16.6 s | 11.2 s | 44 ms | 12 of 38 | 1 and 4 over |
+| branch 1 | 8.4 s | 9.7 s | 26 ms | 4 of 38 (the four Tasks work views, 58–77) | 0 and 0 over |
+| `main` 2 | 17.3 s | 11.7 s | 45 ms | 11 of 38 | 7 and 3 over |
+| branch 2 | 7.2 s | 8.4 s | 22 ms | 1 of 38 (Tasks work view finished, 51) | 0 and 0 over |
+
+Steps measured the same way: the session read, prepared statements and the place filter took the API's CPU from about 16.8 s to
+8.3 s; Brotli 3 took it from 9.5 to 8.0 s; Since you left's lookups took a summary from about 10 to 8 ms of CPU (Home) and from
+8 to 6 ms (a space), measured in the API image over 200 summaries, two runs each.
+
+**Inferred.** The API needs about half the CPU it did. The requests still crossing 50 ms are the ones a view sends together:
+the Tasks view's four work views and two relation reads, and the Conversation's associations and notice references, sent by
+both clients at once. Each work read makes about 26 statements (12 of them the session and access checks of its final fence)
+and costs 4–5 ms of API CPU.
+
+**Tried and not kept** (same method, within the noise of this host): a faster `is()` for Drizzle's query building (about 4% of
+the API's CPU), a larger V8 young generation (`--max-semi-space-size=32`) and generic plans inside work reads
+(`plan_cache_mode`, about 3% of the database's CPU).
+
+**What is left, by size** (CPU profile of the API under the concurrent phase, and `pg_stat_statements`):
+- Drizzle composing statements, most of them the work reads' key, object and plan statements (about a sixth of the API's CPU),
+  and the work reads' fence;
+  changing the fence is a matter for the read contract, not this change.
+- The database plans more than it executes: over a short concurrent run on a
+  restarted API, 1.3 s of planning against 1.0 s of execution (part of it each new connection's first plans). The
+  visible-edge statements with array parameters plan in 2–4 ms each and are planned every time.
+- `select distinct workspace_id from notifications where user_id = …` (the Inbox's audience) takes about 1.2 ms of database
+  time on every Inbox and Inbox-dot read: no index covers it.
+
+The acceptance run of `FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh` on a quiet host is still to be made.
 
 ## Editors
 

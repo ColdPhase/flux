@@ -1,5 +1,5 @@
 import { promisify } from 'node:util';
-import { brotliCompress, constants, gzip } from 'node:zlib';
+import { brotliCompress, brotliCompressSync, constants, gzip, gzipSync } from 'node:zlib';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AUTH_BASE_PATH } from '@flux/contracts';
 import { isRouted } from './routed-path.js';
@@ -9,6 +9,16 @@ const gzipAsync = promisify(gzip);
 
 /** Below this size compression saves less than the headers and the CPU cost. */
 export const JSON_COMPRESS_MIN_BYTES = 2048;
+/**
+ * Up to this size an answer is compressed on the request's own thread (#1191): handing it to libuv's pool cost more than compressing it,
+ * a few tenths of a millisecond. A larger one goes to the pool, so it never holds the event loop for long.
+ */
+export const JSON_COMPRESS_INLINE_MAX_BYTES = 128 * 1024;
+/**
+ * Brotli quality 3 (#1191): on the answers of a pass over every view, a third of quality 5's CPU for answers 5% larger (10.9% of their raw
+ * size, against 10.4%). At quality 5 compression was about a fifth of the API's CPU in the concurrent phase of check_performance.sh.
+ */
+const BROTLI_QUALITY = 3;
 
 /** The encoding to use for this request, preferring Brotli; null when the client accepts neither. */
 export function chooseEncoding(acceptEncoding: string | undefined): 'br' | 'gzip' | null {
@@ -45,9 +55,11 @@ export function useJsonCompression(app: FastifyInstance) {
     const encoding = chooseEncoding(request.headers['accept-encoding']);
     // HEAD carries the same Vary as GET; its body is never sent, so it is not compressed.
     if (!encoding || request.method === 'HEAD') return payload;
+    const inline = bytes.length <= JSON_COMPRESS_INLINE_MAX_BYTES;
+    const brotliOptions = { params: { [constants.BROTLI_PARAM_QUALITY]: BROTLI_QUALITY, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length } };
     const compressed = encoding === 'br'
-      ? await brotli(bytes, { params: { [constants.BROTLI_PARAM_QUALITY]: 5, [constants.BROTLI_PARAM_SIZE_HINT]: bytes.length } })
-      : await gzipAsync(bytes, { level: 6 });
+      ? inline ? brotliCompressSync(bytes, brotliOptions) : await brotli(bytes, brotliOptions)
+      : inline ? gzipSync(bytes, { level: 6 }) : await gzipAsync(bytes, { level: 6 });
     reply.header('content-encoding', encoding);
     reply.removeHeader('content-length');
     return compressed;

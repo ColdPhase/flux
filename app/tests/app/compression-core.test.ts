@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import { describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { chooseEncoding, JSON_COMPRESS_MIN_BYTES, useJsonCompression } from '../../apps/server/src/http/compress.js';
+import { chooseEncoding, JSON_COMPRESS_INLINE_MAX_BYTES, JSON_COMPRESS_MIN_BYTES, useJsonCompression } from '../../apps/server/src/http/compress.js';
 
 // JSON compression for the API (#266 item 9). No database or network: Fastify's inject only.
 describe('choosing a response encoding', () => {
@@ -19,10 +19,13 @@ describe('choosing a response encoding', () => {
 
 describe('compressing JSON answers', () => {
   const big = { items: Array.from({ length: 200 }, (_, index) => ({ id: index, title: `Task number ${index} about the raised beds` })) };
+  // Past the size compressed on the request's thread (#1191): it goes to libuv's pool, and decodes the same.
+  const huge = { items: Array.from({ length: 4000 }, (_, index) => ({ id: index, title: `Task number ${index} about the raised beds` })) };
   async function app() {
     const instance = Fastify();
     useJsonCompression(instance);
     instance.get('/api/v1/big', async () => big);
+    instance.get('/api/v1/huge', async () => huge);
     instance.get('/api/v1/small', async () => ({ ok: true }));
     instance.get('/api/auth/token', async () => big);
     instance.get('/api/v1/text', async (_request, reply) => reply.type('text/plain').send('x'.repeat(JSON_COMPRESS_MIN_BYTES * 2)));
@@ -41,6 +44,12 @@ describe('compressing JSON answers', () => {
     const gz = await instance.inject({ url: '/api/v1/big', headers: { 'accept-encoding': 'gzip' } });
     assert.equal(gz.headers['content-encoding'], 'gzip');
     assert.deepEqual(JSON.parse(gunzipSync(gz.rawPayload).toString()), big);
+    assert.ok(JSON.stringify(huge).length > JSON_COMPRESS_INLINE_MAX_BYTES);
+    for (const encoding of ['br', 'gzip']) {
+      const large = await instance.inject({ url: '/api/v1/huge', headers: { 'accept-encoding': encoding } });
+      assert.equal(large.headers['content-encoding'], encoding);
+      assert.deepEqual(JSON.parse((encoding === 'br' ? brotliDecompressSync : gunzipSync)(large.rawPayload).toString()), huge);
+    }
     await instance.close();
   });
 

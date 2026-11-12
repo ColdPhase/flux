@@ -1,7 +1,7 @@
 import type { FastifyInstance, FastifyRequest, RouteOptions } from 'fastify';
 import { CROSS_WORKSPACE_READ_ROUTES } from '@flux/contracts';
 import { sealFor, type ProcessKeys } from '@flux/core';
-import { lockedReadScope, sql, workspaceEncryptionRows, type DbExecutor, type Database } from '@flux/db';
+import { lockedReadScope, queryPrepared, sql, workspaceEncryptionRows, type DbExecutor, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 
 /**
@@ -15,6 +15,9 @@ export function lockedRouteKey(method: string, url: string) {
   return `${method === 'HEAD' ? 'GET' : method} ${url}`;
 }
 
+const SEALED_OF_PERSON = `SELECT w.id, w.name FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
+  WHERE w.encrypted AND m.user_id = $1 ORDER BY w.name, w.id`;
+
 const UUIDS = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
 
 export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: { db: Database; sessions: SessionResolver; keys: ProcessKeys }) {
@@ -25,8 +28,8 @@ export function registerLockGate(app: FastifyInstance, { db, sessions, keys }: {
   async function lockedOf(request: FastifyRequest, skipped: ReadonlySet<string>) {
     const session = await sessions.resolveSession(request.headers);
     if (!session || session.principal.kind !== 'human') return [];
-    const sealed = (await db.execute(sql`SELECT w.id, w.name FROM workspaces w JOIN workspace_members m ON m.workspace_id = w.id
-      WHERE w.encrypted AND m.user_id = ${session.principal.id} ORDER BY w.name, w.id`)).rows as { id: string; name: string }[];
+    // On every cross-workspace read, so prepared and not built by Drizzle (#1178).
+    const sealed = (await queryPrepared<{ id: string; name: string }>(db, SEALED_OF_PERSON, [session.principal.id])).rows;
     const locked: { id: string; name: string }[] = [];
     for (const row of sealed) {
       if (skipped.has(row.id)) { locked.push(row); continue; }

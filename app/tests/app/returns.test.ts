@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem } from '@flux/contracts';
-import { pool } from './support/db.js';
+import { returnRows } from '@flux/db';
+import { db, pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { inBatches } from './support/batches.js';
@@ -362,5 +363,46 @@ describe('return view: a task that became yours while you were away (#763 H11-5)
     const later = await summary(marta, place);
     assert.deepEqual(texts(later.items), ['New task: Print flyers']);
     assert.equal(later.nextStep, null);
+  });
+});
+
+describe('return view: the rows a summary reads (#1178, #1191)', () => {
+  // The audience read keeps, in SQL, only what a summary can tell: of its place, of the kinds it tells, someone else's change or a rule's on
+  // the reader's behalf. The floor bounds how many of the reader's rows any summary looks at.
+  test('a space, a conversation and Home read only their own rows that a summary can tell, newest first; the floor bounds them', async () => {
+    const owner = await person('Rows');
+    const ws = await workspace(owner, 'Rows studio');
+    const reader = `human:${randomUUID()}`;
+    const someone = `human:${randomUUID()}`;
+    const [space, otherSpace, talk, otherTalk] = [randomUUID(), randomUUID(), randomUUID(), randomUUID()];
+    const row = async (kind: string, actor: string, objectId: string, data: Record<string, unknown>, workspaceId: string | null = ws.id) => {
+      const id = randomUUID();
+      const { rows: [{ seq }] } = await pool.query<{ seq: string }>('INSERT INTO events (id, kind, object_id, actor_id, data, workspace_id) VALUES ($1, $2, $3, $4, $5, $6) RETURNING seq',
+        [id, kind, objectId, actor, data, workspaceId]);
+      await pool.query('INSERT INTO event_audience (recipient, seq, event_id) VALUES ($1, $2, $3)', [reader, seq, id]);
+      return { id, seq: Number(seq) };
+    };
+    const message = 'project.message_sent.v1';
+    const inTalk = await row(message, someone, space, { conversationId: talk.toUpperCase(), messageId: randomUUID() });
+    const inOtherTalk = await row(message, someone, space, { conversationId: otherTalk, messageId: randomUUID() });
+    await row(message, reader, space, { conversationId: talk, messageId: randomUUID() });
+    const byRule = await row('project.work_updated.v1', reader, space, { workId: randomUUID(), automation: 'github_rule' });
+    const elsewhere = await row('project.work_created.v1', someone, otherSpace, { workId: randomUUID() });
+    await row('project.member_added.v1', someone, space, {});
+    await row(message, someone, space, { conversationId: talk, messageId: randomUUID() }, null);
+
+    const rows = returnRows(db);
+    const told = { kinds: [message, 'project.work_created.v1', 'project.work_updated.v1'], automation: 'github_rule' };
+    const ids = async (...args: Parameters<typeof rows.audienceAfter>) => (await rows.audienceAfter(...args)).map((event) => event.id);
+    assert.deepEqual(await ids(reader, 0, 400, null, { projectId: space }, told), [byRule.id, inOtherTalk.id, inTalk.id], 'the space: its rows, a rule\'s on the reader\'s behalf');
+    assert.deepEqual(await ids(reader, 0, 400, null, { conversationId: talk }, told), [inTalk.id], 'the conversation: its messages, whatever the case of the id');
+    assert.deepEqual(await ids(reader, 0, 400, null, null, told), [elsewhere.id, byRule.id, inOtherTalk.id, inTalk.id], 'Home: every place');
+    assert.deepEqual(await ids(reader, 0, 400, byRule.seq, { projectId: space }, told), [inOtherTalk.id, inTalk.id], 'a later page starts below the last row');
+    assert.equal((await ids(reader, 0, 400)).length, 7, 'without filters, every row');
+    assert.deepEqual(await ids(reader, inTalk.seq, 1, null, { projectId: space }, told), [byRule.id], 'after the point, at most the limit');
+
+    assert.equal(await rows.audienceFloor(reader, 0, 2), elsewhere.seq, 'the newest two rows lie above the third newest');
+    assert.equal(await rows.audienceFloor(reader, 0, 7), 0, 'fewer rows than the budget: the point itself');
+    assert.equal(await rows.audienceFloor(reader, inOtherTalk.seq, 100), inOtherTalk.seq);
   });
 });
