@@ -273,7 +273,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as one segmented control with equal slots, the people's faces (with a working agent's
   face only while it works), **Call** and ⋯. The faces are an avatar stack: each overlaps the one
-  before by 6 px with a 2 px ring in the header's colour, at most three people and one agent, then
+  before by 2 px (so whole initials stay readable) with a 2 px ring in the header's colour, at most three people and one agent, then
   one "+N" face of the same size (a circle for "+5"). The people's button is as wide as its faces
   and ends at the right edge of its slot, so no grey area shows where there is no face; the slot
   keeps its width whatever the number of people. The ⋯ menu holds the space's settings. There is no

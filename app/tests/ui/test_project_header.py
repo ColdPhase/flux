@@ -160,7 +160,7 @@ class ProjectHeader(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/people$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(people)))
 
     def test_03_the_people_pill_hugs_its_overlapping_faces_inside_a_slot_that_never_moves(self) -> None:
-        """#1236: the faces overlap by 6 px, the fourth person on is one "+N" face, and the pill is as wide as its faces and ends at the slot's
+        """#1236: the faces overlap by 2 px (whole initials stay readable), the fourth person on is one "+N" face, and the pill is as wide as its faces and ends at the slot's
         right edge; the slot (the width #873 keeps) and the header's other controls are where they were whatever the number of people."""
         self.ensure_project()
         engine = UI_BROWSER
@@ -187,7 +187,7 @@ class ProjectHeader(unittest.TestCase):
                 self.assertLessEqual(faces["pill"]["width"], faces["slot"]["width"] + 0.5, f"{where}: the pill fits its slot")
                 self.assertEqual(faces["background"], "rgba(0, 0, 0, 0)", f"{where}: no grey area while nobody hovers it")
                 for before, after in zip(faces["faces"], faces["faces"][1:]):
-                    self.assertAlmostEqual(before["right"] - after["left"], 6, delta=1, msg=f"{where}: each face overlaps the one before by 6 px: {faces['faces']}")
+                    self.assertAlmostEqual(before["right"] - after["left"], 2, delta=1, msg=f"{where}: each face overlaps the one before by 2 px: {faces['faces']}")
                 more = humans + agents - shown
                 if more:
                     self.assertIsNotNone(faces["more"], f"{where}: the fourth person on is a +N face")

@@ -333,7 +333,7 @@ a.me__item { text-decoration: none; }
 .top__audience.top__faces { --face-ring: var(--bg); max-width: none; min-height: 32px; margin: 0; padding: 0 6px; gap: 0; border-radius: var(--r-pill); }
 .top__audience.top__faces:hover { --face-ring: var(--hov); }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; box-shadow: 0 0 0 2px var(--face-ring); }
-.top__face + .top__face, .top__face + .top__more-faces { margin-left: -6px; }
+.top__face + .top__face, .top__face + .top__more-faces { margin-left: -2px; }
 .top__face .ui-avatar, .top__face.kreska { background: var(--el); }
 /* "+N" is a face of the same size: a circle for one digit, a short pill for two. */
 .top__more-faces { display: inline-grid; place-items: center; flex: none; min-width: 20px; height: 20px; padding: 0 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: 0 0 0 2px var(--face-ring), inset 0 0 0 1px var(--line); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; color: var(--t2); }
