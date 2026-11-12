@@ -216,8 +216,17 @@ function exactNumber(plan: SearchPlanRows): SQL {
 function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
   const q = ranking === 'bm25' ? anyWord(plan) : tsquery(plan);
   const score = ranking === 'bm25'
-    ? sql`round(pdb.score(sd.id)::numeric, 6)`
+    ? sql`round(sd.bm25::numeric, 6)`
     : sql`round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)`;
+  const columns = sql`sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
+        sd.author_kind, sd.author_id, sd.at`;
+  // pg_search scores only in its own scan, so BM25 hits are scored in a CTE of their own before the window that keeps one row per object.
+  const scored = ranking === 'bm25'
+    ? sql`scored AS MATERIALIZED (
+      SELECT ${columns}, pdb.score(sd.id) AS bm25 FROM search_documents sd WHERE ${hitConditions(plan, ranking)}
+    ),`
+    : sql``;
+  const from = ranking === 'bm25' ? sql`scored sd` : sql`search_documents sd WHERE ${hitConditions(plan)}`;
   // The BM25 statement needs only the audiences; the index keys of today's index are not looked up.
   const audience = ranking === 'bm25' ? sql`aud AS MATERIALIZED (SELECT ${visibleKeys(audiences)} AS keys)` : audienceCte(audiences, plan);
   const after = plan.after
@@ -226,13 +235,12 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
   return sql`
     WITH ${audience},
+    ${scored}
     matched AS (
-      SELECT sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
-        sd.author_kind, sd.author_id, sd.at,
+      SELECT ${columns},
         ${score}${exactNumber(plan)} AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
-      FROM search_documents sd
-      WHERE ${hitConditions(plan, ranking)}
+      FROM ${from}
     ),
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
@@ -256,7 +264,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
-    LEFT JOIN project_work_items wi ON h.kind = 'work' AND wi.id = h.object_id::uuid
+    LEFT JOIN project_work_items wi ON wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }

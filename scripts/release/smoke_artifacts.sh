@@ -142,9 +142,9 @@ database_check() { # project, environment file, assets directory
   [ "$(sql "$1" "$2" "$3" "SHOW shared_preload_libraries" | tr ',' '\n' | grep -cx 'pg_search')" = 1 ] || fail "pg_search is not preloaded"
   checked=$(sql "$1" "$2" "$3" "BEGIN; CREATE EXTENSION IF NOT EXISTS amcheck; SELECT count(bt_index_check(c.oid, true)) FROM pg_index i
     JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE a.amname = 'btree' AND i.indisvalid AND c.relpersistence = 'p' AND n.nspname NOT IN ('pg_catalog', 'pg_toast'); ROLLBACK;" | grep -E '^[0-9]+$') \
+    WHERE a.amname = 'btree' AND c.relkind = 'i' AND i.indisvalid AND c.relpersistence = 'p' AND n.nspname NOT IN ('pg_catalog', 'pg_toast'); ROLLBACK;" | grep -E '^[0-9]+$') \
     || fail "a B-tree index does not pass amcheck on the candidate's database image"
-  echo "database: $(sql "$1" "$2" "$3" "SELECT version()" | cut -d, -f1); $checked B-tree indexes pass amcheck (heap included)"
+  echo "database: $(sql "$1" "$2" "$3" "SELECT version()" | cut -d, -f1); $checked B-tree indexes pass amcheck (heap included; partitioned parents are checked through their partitions)"
 }
 expected_ledger() { # the candidate's migration files, as the migrator numbers them
   ls "$root/app/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -
