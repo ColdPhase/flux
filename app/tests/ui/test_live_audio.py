@@ -81,15 +81,21 @@ POWER = """async (ms) => {
   await context.resume();
   const source = context.createMediaStreamSource(element.srcObject);
   const node = context.createScriptProcessor(1024, 1, 1);
-  let sum = 0, count = 0;
-  node.onaudioprocess = (event) => { const data = event.inputBuffer.getChannelData(0); for (let i = 0; i < data.length; i += 1) sum += data[i] * data[i]; count += data.length; };
+  let sum = 0, count = 0, peak = 0, active = 0, buffers = 0, loudSum = 0, loudCount = 0;
+  node.onaudioprocess = (event) => {
+    const data = event.inputBuffer.getChannelData(0);
+    let top = 0, energy = 0;
+    for (let i = 0; i < data.length; i += 1) { energy += data[i] * data[i]; top = Math.max(top, Math.abs(data[i])); }
+    sum += energy; count += data.length; buffers += 1; peak = Math.max(peak, top);
+    if (top > 0.02) { active += 1; loudSum += energy; loudCount += data.length; }
+  };
   source.connect(node);
   node.connect(context.destination);
   await new Promise((resolve) => setTimeout(resolve, ms));
   source.disconnect();
   node.disconnect();
   await context.close();
-  return count ? sum / count : 0;
+  return { power: count ? sum / count : 0, beep: loudCount ? loudSum / loudCount : 0, peak, active, buffers };
 }"""
 
 SET_RANGE = """(element, value) => {
@@ -225,19 +231,24 @@ class LiveAudio(LiveBase):
         slider = dialog.get_by_role("slider", name="Microphone volume")
         expect(slider).to_have_attribute("aria-valuetext", "100%")
         nia.wait_for_timeout(1500)
-        base = jonas.evaluate(POWER, 4000)
+        measured: dict[int, dict] = {}
+        for index, percent in enumerate((100, 0, 50, 200, 150)):
+            if index:
+                set_range(slider, percent)
+                expect(slider).to_have_attribute("aria-valuetext", f"{percent}%")
+                nia.wait_for_timeout(1500)
+            measured[percent] = jonas.evaluate(POWER, 5000)
+            print(f"receiver at {percent} %: {measured[percent]}")
+        base, silent, half = (measured[key]["power"] for key in (100, 0, 50))
         self.assertGreater(base, 1e-6, "the fake microphone is heard before any change")
-        set_range(slider, 0)
-        expect(slider).to_have_attribute("aria-valuetext", "0%")
-        nia.wait_for_timeout(1200)
-        silent = jonas.evaluate(POWER, 4000)
+        self.assertLess(silent, base * 0.02, "0 % is silence for the receiver")
+        # While a beep sounds (the buffers that are not silent), 50 % carries a fraction of the power of 100 %, and 200 % more: the
+        # fake microphone's beep is close to full scale, so above 100 % it clips and cannot carry the full four times.
+        self.assertLess(measured[50]["beep"], measured[100]["beep"] * 0.6, "50 % is quieter than 100 %")
+        self.assertGreater(measured[200]["beep"], measured[100]["beep"] * 1.1, "200 % is louder than 100 %")
+        self.assertGreater(measured[150]["beep"], measured[100]["beep"] * 1.05, "150 % is louder than 100 %")
         set_range(slider, 200)
         expect(slider).to_have_attribute("aria-valuetext", "200%")
-        nia.wait_for_timeout(1200)
-        loud = jonas.evaluate(POWER, 4000)
-        print(f"receiver power at 0 %: {silent:.3e}, 100 %: {base:.3e}, 200 %: {loud:.3e}")
-        self.assertLess(silent, base * 0.02, "0 % is silence for the receiver")
-        self.assertGreater(loud, base * 2, "200 % carries about four times the power of 100 %")
         self.assertEqual(remembered(nia)["micVolume"], 200)
         set_range(slider, 120)
         expect(slider).to_have_attribute("aria-valuetext", "120%")
@@ -374,7 +385,8 @@ class LiveAudio(LiveBase):
         self.seed()
         nia = self.page("nia")
         self.open_conversation(nia)
-        nia.locator("header.top, header.phead").get_by_role("button", name="Call").click()
+        # The call of the first test may still be joinable for a moment after everyone left: Join then, Call otherwise.
+        nia.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Call|Join)$")).click()
         expect(self.bar(nia)).to_be_visible()
 
         # An Android-sized phone (Chromium): ⋯ opens the sheet, its Audio settings row opens the same settings as a sheet, with the
