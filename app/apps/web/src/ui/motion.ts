@@ -148,10 +148,12 @@ export function useLoopPause<T extends HTMLElement>(): (node: T | null) => void 
 /**
  * Gives a feed's genuinely new entries a short arrival (opacity and a 4px rise over --dur-in) when the
  * reader can see them arrive (#155, UI116-5). Restored history, earlier pages and refreshed entries never
- * move. Each arrived element records `data-arrival` ("animated" or "static"); `onArrived` hears the ids.
+ * move. Each arrived element records `data-arrival` ("animated" or "static"); `onArrived` hears the ids, and whether the reader
+ * was at the end of the feed (so they follow what arrives there). `animate: false` only reports: a feed that has no arrival
+ * motion still needs to know what arrived (the "N new" line, #1246).
  * Call it after the feed's own layout effects, so visibility is measured where the reader now is.
  */
-export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly string[], elementFor: (id: string) => HTMLElement | null, onArrived?: (ids: string[]) => void) {
+export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly string[], elementFor: (id: string) => HTMLElement | null, onArrived?: (ids: string[], following: boolean) => void, options: { animate?: boolean } = {}) {
   const previous = useRef<readonly string[] | null>(null);
   const key = ids.join('\n');
   useLayoutEffect(() => {
@@ -160,7 +162,8 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
     const arrived = arrivals(before, previous.current);
     const pane = feed.current;
     if (!arrived.length || !pane) return;
-    const ms = duration('--dur-in');
+    const animated = options.animate !== false;
+    const ms = animated ? duration('--dur-in') : 0;
     const box = pane.getBoundingClientRect();
     // A reader at the end follows it (#170's position owner may scroll after this runs): entries that
     // only extend the feed below that reader arrive where they are looking (#266). Arrivals are always
@@ -173,7 +176,7 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
       ? arrived.reduce((sum, id) => sum + (elementFor(id)?.getBoundingClientRect().height ?? 0), 0)
       : Math.max(0, ...arrived.map((id) => (elementFor(id)?.getBoundingClientRect().bottom ?? end) - end));
     const following = pane.scrollHeight - pane.scrollTop - pane.clientHeight <= added + 8;
-    for (const id of arrived) {
+    for (const id of animated ? arrived : []) {
       const el = elementFor(id);
       if (!el) continue;
       const rect = el.getBoundingClientRect();
@@ -181,7 +184,7 @@ export function useArrivals(feed: RefObject<HTMLElement | null>, ids: readonly s
       el.dataset.arrival = animate ? 'animated' : 'static';
       if (animate) void play(el, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], ms, '--ease-out');
     }
-    onArrived?.(arrived);
+    onArrived?.(arrived, following);
     // Runs on each change of the ids; the element lookup and listener are read when it does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);

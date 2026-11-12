@@ -343,7 +343,7 @@ class MotionJourney(unittest.TestCase):
         second = self.bob_posts_root("Another note from Bob while Ada reads earlier notes.")
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         line = page.locator(".convo-newbelow")
-        expect(line.get_by_role("button")).to_have_text("1 new message")
+        expect(line.get_by_role("button")).to_have_text("1 new")
         late = page.locator(f"#message-{second['messages'][0]['id']}")
         expect(late).to_have_attribute("data-arrival", "static")
         page.wait_for_timeout(300)

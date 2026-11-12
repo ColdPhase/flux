@@ -1,6 +1,6 @@
 import { messageOpening, messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, isNull, lt, sql, type SQL } from 'drizzle-orm';
 import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage,
@@ -99,6 +99,24 @@ async function requireProject(principal: Principal, projectId: string, db: Execu
   uuid(projectId, 'projectId');
   const checked = enforce(await evaluateProject(principal, write ? 'project.write' : 'project.read', projectId, accessReader(db), { lock }), 'project');
   return checked.project!;
+}
+
+/**
+ * Where the caller left off in a conversation (#1246, `UnreadFrom`): the first reply by someone else after the newest message they observed
+ * here (#534), or the first reply of all when they observed none. The opening message is the thread's header, never the divider's place.
+ * Only a person has a read of their own.
+ */
+async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string): Promise<{ unreadFrom?: string | null }> {
+  if (principal.kind !== 'human') return {};
+  const o = schema.projectMessageObservations;
+  const m = schema.projectMessages;
+  // By space and person first: `project_message_observations_viewer_idx` is on (project_id, viewer_id).
+  const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(o).innerJoin(m, eq(m.id, o.messageId))
+    .where(and(eq(o.projectId, projectId), eq(o.viewerId, principal.id), eq(m.conversationId, conversationId)));
+  const [next] = await db.select({ id: m.id }).from(m)
+    .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, 1)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
+    .orderBy(asc(m.sequence)).limit(1);
+  return { unreadFrom: next?.id ?? null };
 }
 
 async function locateConversation(principal: Principal, conversationId: string, db: Executor, write = false, lock = false): Promise<ConversationRow> {
@@ -363,7 +381,8 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         audience: { kind: 'project', projectId: row.projectId }, ...creator(row, names),
         ...(task ? { task } : {}),
         createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
-        messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit } };
+        messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
+        ...(await unreadFrom(db, principal, row.projectId, row.id)) };
     },
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {

@@ -250,10 +250,10 @@ class Round2Flows(unittest.TestCase):
         rule = self.post("ada", f"/api/v1/projects/{project}/decisions", {"title": "Water at dawn only", "rationale": "Less evaporation."})
         self.post("ada", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": rule["version"]})
         time.sleep(1.5)
-        # H11-3: the Unread divider sits right above the decision, the first thing that changed.
+        # H11-3: the New divider sits right above the decision, the first thing that changed.
         page = self.page("jonas")
         page.goto(f"/projects/{project}")
-        divider = page.get_by_role("separator", name="Unread")
+        divider = page.get_by_role("separator", name="New")
         expect(divider).to_have_count(1)
         self.assertTrue(divider.evaluate("el => !!el.nextElementSibling && el.nextElementSibling.matches('.convo-object')"), "the divider is above the decision")
         # #865: no "Since you left" line floats over the stream, on a computer or a phone.
@@ -261,7 +261,7 @@ class Round2Flows(unittest.TestCase):
         shot(page, f"r2-unread-divider-1440-{UI_BROWSER}")
         phone = self.page("jonas", phone=True)
         phone.goto(f"/projects/{project}")
-        expect(phone.get_by_role("separator", name="Unread")).to_have_count(1)
+        expect(phone.get_by_role("separator", name="New")).to_have_count(1)
         expect(phone.get_by_role("region", name="Since you left")).to_have_count(0)
 
 

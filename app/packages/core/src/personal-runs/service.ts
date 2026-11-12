@@ -897,6 +897,16 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       });
     },
 
+    /** When the caller last had their agent's chat open (#1246): what the agent said after it is new to them. Null when they never did. */
+    async agentChatReadAt(principal: Principal, agentId: unknown): Promise<string | null> {
+      const owner = ownerOf(principal);
+      if (!isId(agentId)) throw agentNotFound();
+      return uow.run(async (ports) => {
+        if (!(await ports.runs.enablement(owner, { agentId: agentId.toLowerCase() }))) throw agentNotFound();
+        return ports.runs.agentChatReadAt(agentId.toLowerCase());
+      });
+    },
+
     /** The caller has read the chat of their agent up to now. */
     async readAgentChat(principal: Principal, agentId: unknown): Promise<void> {
       const owner = ownerOf(principal);

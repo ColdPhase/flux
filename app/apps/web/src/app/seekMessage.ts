@@ -6,15 +6,15 @@
 export interface MessagePage<T> { messages: T[]; messagePage: { nextBeforeSequence: number | null } }
 
 const PAGE = 100;
-/** At most this many pages (10,000 messages) are read to reach one message. */
+/** At most this many pages (10,000 messages) are read to reach one message (a link, a search result). */
 const MAX_PAGES = 100;
 
 export async function pageBackTo<T extends { id: string }, P extends MessagePage<T>>(
-  target: string, cursor: number | null, fetchPage: (beforeSequence: number, limit: number) => Promise<P>,
+  target: string, cursor: number | null, fetchPage: (beforeSequence: number, limit: number) => Promise<P>, maxPages = MAX_PAGES,
 ): Promise<{ pages: P[]; cursor: number | null; found: boolean }> {
   const pages: P[] = [];
   let next = cursor;
-  for (let index = 0; index < MAX_PAGES && next; index += 1) {
+  for (let index = 0; index < maxPages && next; index += 1) {
     const page = await fetchPage(next, PAGE);
     pages.push(page);
     next = page.messagePage.nextBeforeSequence;

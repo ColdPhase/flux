@@ -296,6 +296,8 @@ export interface PersonalRunRepository {
   agentChatSummaries(ownerUserId: string): Promise<AgentChatSummary[]>;
   /** The owner has read the chat up to now. */
   readAgentChat(agentId: string): Promise<void>;
+  /** When the owner last had this chat open (#1246); null when they never did. */
+  agentChatReadAt(agentId: string): Promise<string | null>;
   /** Whether this DM exists, whoever may read it; callers must authorize before using it. */
   locateDm(dmId: string): Promise<{ workspaceId: string } | null>;
   openWork(projectId: string, limit: number): Promise<WorkSource[]>;

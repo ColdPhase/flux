@@ -171,6 +171,7 @@ async function detail(ports: DmPorts, record: DmRecord, self: string, window: { 
   return {
     ...toSummary(record, self), messages: items, people: await peopleOf(ports, record, messages),
     messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? items[0]!.sequence : null, limit: window.limit },
+    unreadFrom: await ports.dms.unreadFrom(record.id, self, null),
   };
 }
 
@@ -390,6 +391,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
         return {
           root: toMessage(rootMessage), replies, people: await peopleOf(ports, record, [rootMessage, ...messages]),
           messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? replies[0]!.sequence : null, limit: window.limit },
+          unreadFrom: await ports.dms.unreadFrom(dmId, principal.id, root),
         };
       });
     },

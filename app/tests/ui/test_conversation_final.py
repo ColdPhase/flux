@@ -1,7 +1,7 @@
 """Browser tests for the conversation as drawn in the final design (F-026 S5-S8, P5, #343).
 
 Other authors share one left edge and your own messages one right edge (#481); task notices say where the task came from and fold when several arrive in a
-row; a quiet "Unread" divider marks the first unread item and nothing floats over the stream (#865); the composer offers "@" and "/" instead of Ask and
+row; a quiet "New" divider marks the first unread item and nothing floats over the stream (#865, #1246); the composer offers "@" and "/" instead of Ask and
 Cite buttons; a computer shows hover actions, a phone swipe right and long press. Runs at 1440x900 and
 390x844 with touch, in light and dark, and with the keyboard. Ada manages the project and Jonas writes.
 Screenshots (conversation-final-*.png) go to FLUX_UI_SCREENSHOTS.
@@ -236,11 +236,15 @@ class ConversationFinal(unittest.TestCase):
             # "Since you left" and its jump are gone (#865); the divider is the one mark of what is new.
             expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
             expect(page.get_by_role("button", name="Jump to the first unread")).to_have_count(0)
-            divider = page.get_by_role("separator", name="Unread")
+            divider = page.get_by_role("separator", name="New")
             expect(divider).to_have_count(1)
             target = self.message(page, self.ids["first_unread"])
             self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", self.ids["first_unread"]), "the divider is right above the first unread item")
-            self.assertFalse(target.evaluate("el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }"), "the first unread item starts out of view")
+            # #1246: opening scrolls to what is new, so the divider is where the stream starts and the first unread item is in view below it.
+            expect(target).to_be_in_viewport()
+            feed = page.locator(".project-convo__feed.is-stream")
+            gap = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
+            self.assertLess(abs(gap), 40, f"the divider opens at the top of the stream, not {gap}px below it")
             if not phone:
                 shot(page, "conversation-final-unread-desktop")
 
@@ -666,7 +670,7 @@ class ConversationFinal(unittest.TestCase):
 
     def test_16_leaving_the_conversation_is_what_since_you_left_counts_from(self) -> None:
         """#763 A3: Jonas opens the project, leaves for Home, Ada writes, Jonas comes back: the line says so and a quiet
-        "Unread" divider sits right above Ada's message."""
+        "New" divider sits right above Ada's message."""
         ada = self.page("ada")
         ada.goto("/")
         page = self.page("jonas")
@@ -683,7 +687,7 @@ class ConversationFinal(unittest.TestCase):
         target = self.message(page, posted["messages"][0]["id"])
         expect(target).to_be_visible()
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
-        divider = page.get_by_role("separator", name="Unread")
+        divider = page.get_by_role("separator", name="New")
         expect(divider).to_have_count(1)
         self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", posted["messages"][0]["id"]), "the divider is right above the first unread message")
 

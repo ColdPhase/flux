@@ -576,7 +576,8 @@ way in, `postToAgentChat(ports, { agentId, runId, key, body })` (`packages/core/
 worker in the caller's unit of work: once per `key` for the agent, redacted like every agent text, and it sends the run's owner-only event so an open
 chat reads again. What is unread is `unreadAgentChats(ports, ownerUserId)`: per agent, the lines and chat answers after `agent_chat_reads.read_at`, which
 opening the chat sets (`POST /api/v1/agent-chats/:agentId/read`); `GET /api/v1/agent-chats` lists it and
-`GET /api/v1/agent-chats/:agentId/messages` the lines. An agent has one owner, so per agent is per person.
+`GET /api/v1/agent-chats/:agentId/messages` the lines, with `readAt` (#1246): when the owner last had the chat open, read before the chat's own "read" moves it, so the open chat
+can put its "New" divider above what the agent said after it. An agent has one owner, so per agent is per person.
 
 **Locks (#921).** Unchanged: the owner's lock first (`enablement(…, { lock: true })`), then the task graph (`prepareTaskUse`, which holds nothing
 for a run outside a space), then the run row. Dismiss and `markShown` take only the run row; Show everyone posts in its own transaction

@@ -72,8 +72,3 @@ button.convo-notice__src:focus-visible { outline: 2px solid var(--t1); outline-o
   .convo-notice__meta, .convo-notice__task, .convo-fold__b { font-size: var(--fs-base); }
 }
 @media (max-width: 680px) and (hover: none) { .project-convo__message { width: 100%; } }
-
-
-/* Where the unread part of the stream begins (#763 A3): one quiet rule with a word, like a day line. */
-.convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); list-style: none; }
-.convo-unread::before, .convo-unread::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line2, var(--line)); }

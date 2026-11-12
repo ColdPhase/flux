@@ -155,8 +155,19 @@ export interface ConversationFields {
     nextBeforeSequence: number | null;
     limit: number;
   };
+  /** Where the caller left off in this conversation (#1246); only a person's own read says it. See {@link UnreadFrom}. */
+  unreadFrom?: UnreadFrom;
 }
 export type Conversation = ConversationFields & ConversationIdentity;
+
+/**
+ * Where a person left off in a conversation (#1246), from the messages they observed in it (the viewing receipts of #534, so no other
+ * write): the id of the first message by someone else after the newest one they observed, where the "New" divider goes. A conversation they
+ * have never opened, with nothing observed, is all new: it names the first message by someone else (a thread's first reply). `null` when
+ * they have observed everything up to the newest. A message removed since, and the line "used AI here" of a DM, never count. Absent for a
+ * reader that is not a person.
+ */
+export type UnreadFrom = string | null;
 
 /** Stable, newest-first window returned in ascending display order. */
 export interface ConversationWindowQuery {

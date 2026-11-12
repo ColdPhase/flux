@@ -4,6 +4,7 @@ import {
   AGENT_CHATS_PATH,
   agentChatMessagesPath,
   agentChatReadPath,
+  type AgentChatLines,
   AGENT_LIMITS,
   MY_AGENTS_PATH,
   myAgentMemoryItemPath,
@@ -172,7 +173,10 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   });
   app.get<{ Params: { agentId: string } }>(agentChatMessagesPath(':agentId'), async (request, reply) => {
     reply.header('cache-control', 'no-store');
-    return { items: await runs.agentChatMessages(await principal(request), request.params.agentId) };
+    const caller = await principal(request);
+    // `readAt` is read first: the chat's own "read" that follows its first read moves it (#1246).
+    const readAt = await runs.agentChatReadAt(caller, request.params.agentId);
+    return { items: await runs.agentChatMessages(caller, request.params.agentId), readAt } satisfies AgentChatLines;
   });
   app.post<{ Params: { agentId: string } }>(agentChatReadPath(':agentId'), async (request, reply) => {
     await runs.readAgentChat(await principal(request), request.params.agentId);
