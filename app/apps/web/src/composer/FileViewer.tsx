@@ -6,12 +6,12 @@ import { readFileBytes } from '../api/files';
 import { Button, Icon, Spinner, trapTab } from '../ui';
 import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 import type { ParsedFormat, PreviewModel } from './previewParse';
-import { JsonErrorView, JsonView, TableView, TextView, hiddenColumns, tableRows } from './previewViews';
+import { JsonErrorView, JsonView, MarkdownView, TableView, TextView, hiddenColumns, tableRows } from './previewViews';
 
 // A file preview in the photo viewer's frame (C-60, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
 // Someone else's HTML never runs on Flux's origin: it is framed from the preview route, which sandboxes it to an opaque origin
-// and lets it fetch nothing; the frame's own `sandbox` attribute says the same. Text, JSON and tables are read through the download
-// route, parsed in a Web Worker and drawn as text.
+// and lets it fetch nothing; the frame's own `sandbox` attribute says the same. Text, Markdown, JSON and tables are read through the
+// download route, parsed in a Web Worker and drawn by React (Markdown by the message renderer, #1247), never as HTML.
 
 /** No feature a page could ask the browser for: Flux may hold the camera and microphone for a call, the preview never does. */
 const NOTHING_ALLOWED = "camera 'none'; microphone 'none'; display-capture 'none'; geolocation 'none'; fullscreen 'none'; payment 'none'; usb 'none'; serial 'none'; clipboard-read 'none'; clipboard-write 'none'";
@@ -84,7 +84,7 @@ function PdfPage({ file }: { file: MessageFile }) {
   return <iframe className="file-viewer__frame" title={`Preview of ${file.name}`} src={filePreviewPath(file.id)} allow={NOTHING_ALLOWED} referrerPolicy="no-referrer" />;
 }
 
-const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', json: 'json', csv: 'csv', tsv: 'tsv' };
+const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv' };
 
 export function FileViewer({ file, format, onClose }: { file: MessageFile; format: PreviewFormat; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
@@ -122,7 +122,8 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
   else if (parsed.status === 'ready') {
     const model = parsed.model;
     const label = `Contents of ${file.name}`;
-    body = model.kind === 'json' ? <JsonView model={model} label={label} />
+    body = model.kind === 'markdown' ? <MarkdownView model={model} label={label} />
+      : model.kind === 'json' ? <JsonView model={model} label={label} />
       : model.kind === 'json-error' ? <JsonErrorView model={model} label={label} />
         : model.kind === 'table' ? <TableView model={model} label={label} />
           : <TextView model={model} numbers={numbers} label={label} />;
@@ -132,7 +133,7 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
     if (model.encoding === 'windows-1252') notes.push('Shown as Windows-1252 text.');
     if (model.kind === 'text') notes.push(quiet(numbers ? 'Hide line numbers' : 'Show line numbers', () => setNumbers((on) => !on)));
   }
-  if (format === 'html' && state !== 'denied') notes.push(quiet(source ? 'Preview' : 'View source', () => { setSource((on) => !on); setScripts(false); }));
+  if ((format === 'html' || format === 'markdown') && state !== 'denied') notes.push(quiet(source ? 'Preview' : 'View source', () => { setSource((on) => !on); setScripts(false); }));
   return createPortal(
     <div ref={root} className="photo-viewer file-viewer" role="dialog" aria-modal="true" aria-labelledby={titleId} onKeyDown={onKeyDown}
       data-theme-fixed="dark" data-preview-format={format}>

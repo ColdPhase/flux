@@ -4,7 +4,7 @@
  * million small strings to copy), and slices only the lines or cells it draws. Nothing here is ever drawn as HTML.
  */
 
-export type ParsedFormat = 'text' | 'json' | 'csv' | 'tsv';
+export type ParsedFormat = 'text' | 'json' | 'csv' | 'tsv' | 'markdown';
 export type Encoding = 'utf-8' | 'utf-16le' | 'utf-16be' | 'windows-1252';
 
 /** Lines of text: line i is `text.slice(starts[i], ends[i])`; `columns[i]` is its width in monospace cells (tabs to the next stop of 8). */
@@ -22,7 +22,18 @@ export interface JsonErrorModel { kind: 'json-error'; encoding: Encoding; messag
  * every sampled value of it is a number. Row 0 is the header.
  */
 export interface TableModel { kind: 'table'; encoding: Encoding; text: string; cellStart: Uint32Array; cellEnd: Uint32Array; quoted: Uint8Array; rowStart: Uint32Array; columns: number; widths: Uint16Array; numeric: Uint8Array }
-export type PreviewModel = TextModel | JsonModel | JsonErrorModel | TableModel;
+/**
+ * Markdown in chunks of about {@link CHUNK} characters, cut at a blank line outside a code fence, so each chunk is whole blocks and
+ * the page draws only the chunks in view. A text with no blank line for {@link CHUNK_MOST} characters (one long list, one huge code
+ * block) is cut at its next line break: a list goes on as a second list, a code block as a second block. `lines[i]` is how many lines
+ * chunk i holds.
+ */
+export interface MarkdownModel {
+  kind: 'markdown'; encoding: Encoding; text: string; starts: Uint32Array; ends: Uint32Array; lines: Uint32Array;
+  /** Per chunk: 1 when it starts inside a code fence (the page opens one before it), 2 when it ends inside one (the page closes it). */
+  fence: Uint8Array;
+}
+export type PreviewModel = TextModel | JsonModel | JsonErrorModel | TableModel | MarkdownModel;
 
 /** UTF-8 (a BOM is dropped), UTF-16 with its BOM, else Windows-1252, which decodes any byte. */
 export function decode(bytes: Uint8Array): { text: string; encoding: Encoding } {
@@ -230,8 +241,48 @@ export function cellText(model: TableModel, cell: number): string {
   return model.quoted[cell] ? raw.replaceAll('""', '"') : raw;
 }
 
+const CHUNK = 4000;
+const CHUNK_MOST = 4 * CHUNK;
+
+export function markdownModel(text: string, encoding: Encoding): MarkdownModel {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  const counts: number[] = [];
+  const fences: number[] = [];
+  let start = 0;
+  let lines = 0;
+  let fenced = false;
+  let openedInFence = false;
+  let at = 0;
+  while (at <= text.length) {
+    const next = text.indexOf('\n', at);
+    const end = next < 0 ? text.length : next;
+    const line = text.slice(at, end);
+    if (/^\s*(?:```|~~~)/.test(line)) fenced = !fenced;
+    lines++;
+    const blank = !line.trim();
+    if ((blank && !fenced && end - start >= CHUNK) || end - start >= CHUNK_MOST || next < 0) {
+      starts.push(start); ends.push(end); counts.push(lines);
+      fences.push((openedInFence ? 1 : 0) | (fenced && next >= 0 ? 2 : 0));
+      openedInFence = fenced && next >= 0;
+      start = end + 1; lines = 0;
+    }
+    if (next < 0) break;
+    at = next + 1;
+  }
+  return { kind: 'markdown', encoding, text, starts: Uint32Array.from(starts), ends: Uint32Array.from(ends), lines: Uint32Array.from(counts), fence: Uint8Array.from(fences) };
+}
+
+/** A chunk's Markdown, its code fence opened or closed where the chunk cuts through one. */
+export function markdownChunk(model: MarkdownModel, index: number): string {
+  const body = model.text.slice(model.starts[index], model.ends[index]);
+  const fence = model.fence[index]!;
+  return `${fence & 1 ? '```\n' : ''}${body}${fence & 2 ? '\n```' : ''}`;
+}
+
 export function parsePreview(bytes: Uint8Array, format: ParsedFormat): PreviewModel {
   const { text, encoding } = decode(bytes);
+  if (format === 'markdown') return markdownModel(text, encoding);
   if (format === 'json') return jsonModel(text, encoding);
   if (format === 'csv' || format === 'tsv') return tableModel(text, encoding, format === 'csv' ? ',' : '\t');
   return textModel(text, encoding);
@@ -242,6 +293,7 @@ export function transferablesOf(model: PreviewModel): ArrayBuffer[] {
   const arrays: ArrayBufferView[] = model.kind === 'text' ? [model.starts, model.ends, model.columns]
     : model.kind === 'json' ? [model.starts, model.ends, model.columns, model.depth, model.close, model.items]
       : model.kind === 'json-error' ? [model.lines.starts, model.lines.ends, model.lines.columns]
-        : [model.cellStart, model.cellEnd, model.quoted, model.rowStart, model.widths, model.numeric];
+        : model.kind === 'markdown' ? [model.starts, model.ends, model.lines, model.fence]
+          : [model.cellStart, model.cellEnd, model.quoted, model.rowStart, model.widths, model.numeric];
   return arrays.map((array) => array.buffer as ArrayBuffer);
 }

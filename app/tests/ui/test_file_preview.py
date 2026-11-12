@@ -172,6 +172,16 @@ JSON_OK = b'{"gateway": "gw-3", "beds": [{"name": "far east", "rssi": -112}, {"n
 JSON_BAD = b'{\n  "gateway": "gw-3",\n  "beds": [1, 2,, 3]\n}\n'
 CSV = b'bed,rssi,note\nfar east,-112,"behind the hedge, low"\nnorth,-98,"=HYPERLINK(""https://leak.invalid/x"",""click"")"\nshed,-87,@SUM(1+1)\nsouth,+5,-2+3\n'
 TSV = b"bed\trssi\nfar east\t-112\nnorth\t-98\n"
+MARKDOWN = b"""# Sensor notes
+
+Mount **sensor 3** on the *post*, not the fence. See https://example.org/garden-guide for the bracket.
+
+- far east: -112 dBm
+- north: -98 dBm
+
+<script>parent.postMessage('markdown', '*')</script>
+![pixel](https://leak.invalid/md.png)
+"""
 SOURCE = b"def rssi(beds):\n    return {b: -112 for b in beds}\n"
 
 
@@ -224,7 +234,7 @@ class FilePreview(unittest.TestCase):
             root(f"utf16{order}", f"A UTF-16{order.upper()} page", f"report-{order}.html", data)
         for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
-                                ("source", "rssi.py", SOURCE), ("pdf", "placement.pdf", pdf_bytes()),
+                                ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", pdf_bytes()),
                                 ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
                                 ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE)):
             root(key, f"File {name}", name, data)
@@ -629,6 +639,33 @@ class FilePreview(unittest.TestCase):
                 long = page.evaluate("window.__long")
                 print(f"{name}: ready in {time.time() - started:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
+
+    def test_12_markdown_is_drawn_by_the_message_renderer_and_loads_nothing(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page, outside, _ = self.open("markdown", phone=phone, dark=dark)
+                    _, dialog = self.viewer(page, "markdown", "notes.md")
+                    doc = self.contents(dialog, "notes.md")
+                    expect(doc.locator("strong")).to_have_text("sensor 3")
+                    expect(doc.locator("em")).to_have_text("post")
+                    expect(doc.get_by_role("listitem")).to_have_text(["far east: -112 dBm", "north: -98 dBm"])
+                    link = doc.get_by_role("link", name="https://example.org/garden-guide")
+                    expect(link).to_have_attribute("target", "_blank")
+                    expect(link).to_have_attribute("rel", re.compile(r"\bnoopener\b"))
+                    # HTML and an image stay as typed: nothing runs and nothing loads.
+                    expect(doc).to_contain_text("<script>parent.postMessage('markdown', '*')</script>")
+                    expect(doc).to_contain_text("![pixel](https://leak.invalid/md.png)")
+                    expect(doc.locator("img, script, iframe")).to_have_count(0)
+                    self.shot(page, f"file-preview-markdown-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    dialog.get_by_role("button", name="View source").click()
+                    expect(self.contents(dialog, "notes.md")).to_contain_text("Mount **sensor 3** on the *post*")
+                    expect(self.contents(dialog, "notes.md").locator("strong")).to_have_count(0)
+                    dialog.get_by_role("button", name="Preview", exact=True).click()
+                    expect(self.contents(dialog, "notes.md").locator("strong")).to_have_text("sensor 3")
+                    page.wait_for_timeout(300)
+                    self.assertEqual(page.evaluate("window.__messages"), [])
+                    self.assertEqual(outside, [])
 
     def test_99_a_reader_who_lost_access_sees_nothing(self) -> None:
         page, outside, _ = self.open("report", quiet_stream=True)

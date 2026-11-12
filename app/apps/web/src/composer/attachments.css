@@ -121,7 +121,9 @@ span.photo-grid__open { cursor: default; }
 .file-viewer { grid-template-columns: minmax(0, 1fr); }
 .file-viewer__note { line-height: 1.6; }
 .file-viewer__note .ui-btn--link { display: inline; height: auto; min-height: 0; padding: 0 0 2px; vertical-align: baseline; color: #f4f4f5; font-size: inherit; line-height: inherit; }
-.file-viewer__sheet--text, .file-viewer__sheet--json { width: min(100% - 32px, var(--col)); }
+.file-viewer__sheet--text, .file-viewer__sheet--json, .file-viewer__sheet--markdown { width: min(100% - 32px, var(--col)); }
+.file-viewer__markdown { padding: 20px 28px; }
+.file-viewer__chunk { white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-base); line-height: var(--lh); }
 .file-viewer__state--column { flex-direction: column; }
 .file-viewer__state--column p { margin: 0; }
 .file-viewer__split { display: flex; flex-direction: column; flex: 1; min-height: 0; }
@@ -147,7 +149,7 @@ span.photo-grid__open { cursor: default; }
 .file-viewer__cell { padding: 6px 12px; overflow: hidden; white-space: pre; text-overflow: ellipsis; }
 .file-viewer__cell.is-number { font-family: var(--mono); text-align: right; }
 .file-viewer__cell.is-end { text-align: right; }
-@media (max-width: 680px) { .file-viewer__sheet, .file-viewer__sheet--text, .file-viewer__sheet--json { width: 100%; border-radius: 0; } .file-viewer__scroll { padding: 12px 16px; } .file-viewer__table-scroll { padding: 0; } }
+@media (max-width: 680px) { .file-viewer__sheet, .file-viewer__sheet--text, .file-viewer__sheet--json, .file-viewer__sheet--markdown { width: 100%; border-radius: 0; } .file-viewer__scroll, .file-viewer__markdown { padding: 12px 16px; } .file-viewer__table-scroll { padding: 0; } }
 
 /* Before sending: thumbnails with × in the composer; several choices on a phone are numbered in send order. */
 .composer-files .composer-files__list { display: flex; flex-wrap: wrap; gap: 10px; max-height: 176px; padding: 8px 6px 2px 0; }
