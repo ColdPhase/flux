@@ -117,6 +117,8 @@ span.photo-grid__open { cursor: default; }
 .file-viewer__state { display: flex; align-items: center; gap: 10px; margin: auto; padding: 24px; color: var(--t2); font-size: var(--fs-base); text-align: center; overflow-wrap: anywhere; }
 /* The quiet line under the sheet: centred under the title, its link buttons as tall as the text (the whole line is the target). */
 .file-viewer .photo-viewer__caption { text-align: center; }
+/* One column no wider than the screen: a wide table scrolls inside its sheet and never widens the viewer. */
+.file-viewer { grid-template-columns: minmax(0, 1fr); }
 .file-viewer__note { line-height: 1.6; }
 .file-viewer__note .ui-btn--link { display: inline; height: auto; min-height: 0; padding: 0 0 2px; vertical-align: baseline; color: #f4f4f5; font-size: inherit; line-height: inherit; }
 .file-viewer__sheet--text, .file-viewer__sheet--json { width: min(100% - 32px, var(--col)); }

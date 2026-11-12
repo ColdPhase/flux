@@ -533,6 +533,9 @@ class FilePreview(unittest.TestCase):
                     expect(table.get_by_role("cell", name="-2+3")).to_be_visible()
                     expect(table.get_by_role("link")).to_have_count(0)
                     expect(dialog.get_by_role("status")).to_have_text("4 rows")
+                    # A wide table scrolls inside its sheet: the viewer keeps the screen's width.
+                    self.assertLessEqual(page.evaluate("document.querySelector('.file-viewer').scrollWidth"), page.viewport_size["width"])
+                    self.assertLessEqual(dialog.locator(".photo-viewer__top").bounding_box()["width"], page.viewport_size["width"])
                     self.shot(page, f"file-preview-csv-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
                     self.assertEqual(outside, [])
         page, _, _ = self.open("tsv")
