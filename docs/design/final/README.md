@@ -441,6 +441,74 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   saved label, keeps the draft, and requires explicit review before retry. Network errors
   retain the draft. Phone layouts retain S15's view/add boundary.
 
+### Date and time pickers
+
+Founder direction (Hubert, 2026-11-10, [#1251](https://github.com/ColdPhase/flux/issues/1251)): the browser's own date
+and time controls draw their popup outside the app, so it ignores the tokens, the dark theme and the phone sheet. The
+app has none. A **date field** and a **time field** (`ui/DateField.tsx`, `ui/TimeField.tsx`) are the only way to choose a
+day or a clock time: a task's Due, a schedule's time and Quiet hours' From and Until. No `<input type="date">`,
+`type="time"` or `<datalist>` stays anywhere (a test fails when one comes back). They add no colour, radius, shadow or
+icon: they are made of the select's field, its list and sheet, the quiet buttons and the tokens.
+
+```
+Field (32 px, 44 on touch)          Date picker, a popover under the field        Time picker, a list under the field
++---------------------------+       +--------------------------------+            +-----------+
+| 14 Nov 2026            v  |       |  <     November 2026     >     |            | 8:00      |
++---------------------------+       |  Mo  Tu  We  Th  Fr  Sa  Su    |            | 8:30      |
+  text you can type in, and a       |  27  28  29  30  31   1   2    |            | 9:00  [v] |   the chosen one is ticked,
+  chevron that opens the picker     |   3   4   5   6   7   8   9    |            | 9:30      |   the arrows' one is --sub
+                                    |  10  11 (12) 13 [14] 15  16    |            | 10:00     |
+ (12) today, outlined --t2          |  17  18  19  20  21  22  23    |            +-----------+
+ [14] the chosen day, --inv fill    |  24  25  26  27  28  29  30    |
+                                    |  Today   Tomorrow        Clear |
+                                    +--------------------------------+
+```
+
+- **The field** looks like the select: `--el` fill, 1 px `--line2`, radius 14, `--fs-md` text with tabular numbers, the
+  same soft focus (a `--t1` hairline inside and a `--sub` ring); in Quiet hours it is 36 px on a computer, level with the Time
+  zone select beside it. It is a text field with a chevron at its right edge; the
+  chevron (a 44 px target on touch) opens the picker, so a click or tap on the text puts the caret there and **typing
+  always works**, on every device. The value reads as the app writes it everywhere else ("14 Nov 2026", "9:00") and is
+  stored as `YYYY-MM-DD` and `HH:MM`.
+- **Typed entry** takes what people say. A date: "14 Nov", "14 November 2026", "Nov 14", "14.11", "2026-11-14", "today",
+  "tomorrow" (no year means the next time that day comes, so "5 Jan" typed in December is next January). An empty date
+  field shows how a day is written ("14 Nov 2026") in `--t3`. A time: "9:00", "9", "9.30", "0930", "21:15", "9 pm", "9:30am", "noon". Enter, or
+  leaving the field, commits it and shows it in the field's own form; Esc puts the last value back. Enter in a field
+  that holds no change is left to the form around it. Text that is not a date or a time keeps what was typed, marks the
+  field invalid (the 1.5 px `--t1` inset ring of the other invalid fields) and says why in a live region ("Not a date.
+  Try 14 Nov or 2026-11-14."); leaving the field then puts the last value back.
+- **Date picker.** A popover under the field (over it when there is no room), the select's list surface (`--el`,
+  `--line`, radius 14, the pop-over shadow). A header with the month and year between two quiet arrows (previous and next
+  month), the weekdays in `--t3`, the month as a grid of 36 px days (44 on touch), the first day of the week from the
+  language (Monday when unknown). Days of the neighbouring months are shown in `--t3` and can be chosen. **Today** has a 1 px
+  `--t2` outline; **the chosen day** is filled `--inv` with `--oninv`; a hovered day takes `--sub`; a day outside the
+  allowed range is `--t3` and cannot be chosen. A footer of three quiet small buttons: **Today**, **Tomorrow** and
+  **Clear** (only where a date may be empty, such as a task's Due; disabled while empty). Choosing a day, Today, Tomorrow
+  or Clear saves at once and closes it; nothing needs a second confirmation.
+- **Time picker.** A list of the day in 30-minute steps, 0:00 to 23:30, in the select's own list (tick on the chosen
+  one, `--sub` under the arrows, 36 px rows, 44 on touch), opening on the chosen time. A time that is not on the half hour
+  (8:45, typed) is added to the list in its place, so what is chosen is always seen. Moving through the list shows each time
+  in the field; Enter or a click chooses it.
+- **On a phone** (and any narrow window) either picker is the same bottom sheet as the select's: a grabber, the field's
+  name as its title, the calendar or the list inside it, the 44 px targets; the scrim, Esc and choosing close it and focus
+  returns to the field. Text typed in the field is kept (or put back) as the sheet opens, so closing the sheet with no choice
+  leaves nothing half-typed behind. A task's Due opens it as soon as "Add a date" is tapped.
+- **Focus.** A key gives focus back to where the picker came from: Esc, Enter, a chosen day (a task's "Due" button again). A
+  press outside the picker closes it and keeps nothing from it, and focus stays where the press went (the composer, the Status
+  menu), so the next thing typed goes there.
+- **Keys.** The chevron, Down and Alt+Down open the picker; Esc closes it and keeps the value. In the calendar: the arrows
+  move by a day and by a week, Home and End to the start and end of the week, Page Up and Page Down by a month (with Shift a
+  year), Enter or Space chooses, Tab moves through the month arrows, the days and the footer and wraps inside it. In the time
+  list: Up, Down, Page Up and Page Down move, Enter chooses, typing narrows to a time, Tab leaves and keeps what is in the
+  field.
+- **Screen readers.** The field is a labelled text field described by "Type a date, for example 14 Nov" (or a time);
+  its chevron is a button, "Choose a date" or "Choose a time", `aria-expanded`. The date picker is a dialog named by the
+  field, a `grid` of day buttons that read in full ("Saturday, 14 November 2026", with "today" and "selected"), the month
+  announced when it changes. The time list is a `listbox` with `aria-activedescendant`, as the select's. Reduced motion
+  and the other [motion](../motion.md) rules are the select's: the pop-over fades in 180 ms and out in 120 ms, nothing scales.
+- **Where it is used.** A task's Due (the value in the task panel opens the field and the picker together), a schedule's
+  time (Change in My agents), Quiet hours' From and Until (Settings, Notifications).
+
 ### Kept map and board behaviour
 
 These functional rules from UI116-4 remain required:

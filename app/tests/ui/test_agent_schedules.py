@@ -173,7 +173,10 @@ class AgentSchedulesJourney(unittest.TestCase):
         form = ready.get_by_role("form", name="Change Garden summary")
         form.locator("textarea").fill("Summarise what changed in Garden sensors and Rain barrels")
         expect(form).to_contain_text("The web addresses Assistant may read are the ones in your request")
-        form.get_by_label("Time", exact=True).fill("08:30")
+        time_field = form.get_by_label("Time", exact=True)
+        time_field.fill("08:30")
+        time_field.press("Enter")  # a typed time commits on Enter or on leaving the field
+        expect(time_field).to_have_value("8:30")
         form.get_by_role("button", name="Save").click()
         expect(ready).to_contain_text("Weekdays at 8:30")
         expect(ready).to_contain_text("Summarise what changed in Garden sensors and Rain barrels")

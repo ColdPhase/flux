@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { checkManifests, checkSources, compare, layerOf, loadExceptions, nativeSelects, reachableImports, scanRepository, WEB_LIBRARIES } from './support/architecture.js';
+import { checkManifests, checkSources, compare, layerOf, loadExceptions, nativePickers, nativeSelects, reachableImports, scanRepository, WEB_LIBRARIES } from './support/architecture.js';
 
 // Repository-wide Clean Architecture rules (issue #46). The layers and their allowed
 // dependencies are defined in support/architecture.ts and explained in
@@ -111,6 +111,18 @@ describe('architecture boundaries', () => {
     assert.deepEqual(found, [], 'use Select and Option from ../ui (apps/web/src/ui/Select.tsx), not a native <select>');
   });
 
+  test('product UI has no native date or time input and no datalist: DateField and TimeField replace them (#1251)', () => {
+    const sources = uiSources(join(root, 'apps/web/src'));
+    assert.ok(sources.some((path) => path.endsWith('ui/DateField.tsx')) && sources.some((path) => path.endsWith('ui/TimeField.tsx')), 'the shared pickers exist in the design system');
+    // TODO(#1218): Connect AI's model suggestions are still a <datalist> until the model dropdown replaces it; then this list is empty.
+    const until1218 = ['ai/ConnectionFields.tsx'];
+    const found = sources.flatMap((path) => {
+      const lines = nativePickers(readFileSync(path, 'utf8'));
+      return until1218.some((allowed) => path.endsWith(`/${allowed}`)) ? [] : lines.map((line) => `${relative(root, path)}:${line}`);
+    });
+    assert.deepEqual(found, [], 'use DateField or TimeField from ../ui (apps/web/src/ui), not a native date/time input, a <datalist> or showPicker()');
+  });
+
   test('the web app has one transport: no fetch and no hand-written API path outside api/client.ts (#93)', () => {
     const sources = uiSources(join(root, 'apps/web/src')).filter((path) => !path.endsWith('/api/client.ts'));
     const found = sources.flatMap((path) => readFileSync(path, 'utf8').split('\n').flatMap((line, index) =>
@@ -144,6 +156,16 @@ describe('architecture boundaries', () => {
     assert.deepEqual(nativeSelects("h('div'); createElement('select', {})"), [1]);
     assert.deepEqual(nativeSelects('// a native <select> is not used\n/* nor <select> here\n<select> */\nconst ok = <Select />;'), []);
     assert.deepEqual(nativeSelects("const url = 'https://x.test'; <select>"), [1]);
+  });
+
+  test('the native picker rule finds inputs, datalists and showPicker, and ignores comments (self-test)', () => {
+    assert.deepEqual(nativePickers('<input type="date" value={x} />'), [1]);
+    assert.deepEqual(nativePickers("<input\n  type='time'"), [2]);
+    assert.deepEqual(nativePickers('<input type={"datetime-local"} />'), [1]);
+    assert.deepEqual(nativePickers('el.type = "month"; <datalist id="a">'), [1]);
+    assert.deepEqual(nativePickers('field.current?.showPicker?.();\nfield.showPicker()'), [1, 2]);
+    assert.deepEqual(nativePickers('<input type="text" /> <input type="checkbox" /> <Select />'), []);
+    assert.deepEqual(nativePickers('// <input type="date">\n/* <datalist>\nshowPicker() */\nconst ok = <DateField />;'), []);
   });
 
   test('the rules reject each kind of boundary violation (self-test)', () => {
