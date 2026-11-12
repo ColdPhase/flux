@@ -28,7 +28,7 @@ function generator(preferences: StoredPreferences, options: { muted?: boolean; m
     advanceCursor: async () => { log.push('cursor'); },
     eventsAfter: async (seq) => (seq ? [] : events),
     facts: {
-      audience: async () => ['ada', 'jonas'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null, waitingChange: async () => null,
+      audience: async () => ['ada', 'jonas'], projectMessage: async () => null, work: async () => null, decision: async () => null, liveInvitation: async () => null, liveSession: async () => null, waitingChange: async () => null,
       dmMessage: async (id, messageId) => ({ id: messageId, workspaceId, dmId: id, kind: 'pair', title: null, authorId: 'jonas', body: 'Can you check the probes?', participantIds: ['ada', 'jonas'] }),
       names: async (ids) => new Map(ids.map((id) => [id, id === 'jonas' ? 'Jonas Berg' : 'Ada'])),
     },
