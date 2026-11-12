@@ -47,7 +47,7 @@ export FLUX_IMAGE_TAG="$project"
 export FLUX_CLI_TOOLS_VOLUME="$project-claude-tools"
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.source.runtime.yaml:docker/compose.test.yaml:docker/compose.cli-runtime.test.yaml"
 . scripts/test_images.sh
-compose="docker compose -p $project --profile test --profile runtime"
+compose="docker compose --env-file /dev/null -p $project --profile test --profile runtime"
 installer="flux-agent-runtime-install:$project"
 # The API keys "Ada" signs in with: written into her own CLI home in the runtime, as her user. The revoked one the mock refuses.
 claude_key="sk-ant-mock-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"

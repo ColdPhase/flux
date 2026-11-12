@@ -51,7 +51,7 @@ candidate=${FLUX_SIM_LIVEKIT_CANDIDATE:-livekit/livekit-server:v1.13.11@sha256:2
 runs=${FLUX_SIM_RUNS:-"chromium:chromium:connect,profiles chromium:chromium:connect,four,profiles chromium:chromium:connect,text chromium:chromium:connect,four,text chromium:chromium:connect,ai-off,drop,loss,weak,access chromium:chromium:connect,sfu-update chromium:chromium:connect,sfu-restart chromium:chromium:connect,api-restart firefox:chromium:connect,drop,access chromium:firefox:connect,drop,access chromium:webkit:connect,drop,access webkit@turn-udp:chromium:connect,drop webkit@ice-tcp:chromium:connect,drop firefox:chromium:connect,screen webkit@turn-udp:chromium:connect,screen chromium+pixel7:chromium:connect,drop webkit+iphone13@turn-udp:chromium:connect,drop chromium:webkit+ipad:connect,access webkit:chromium:turn-tls-probe"}
 printf 'Public simulation %s, results in %s\n' "$project" "$artifacts"
 
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.turn.yaml -f docker/public-sim/compose.yaml"
 cleanup() {
   status=$?
   if [ -n "${ctl_pid:-}" ]; then kill "$ctl_pid" 2>/dev/null || true; fi

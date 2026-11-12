@@ -24,7 +24,7 @@ export FLUX_LIVEKIT_ICE_TCP_PORT="${FLUX_LIVE_TEST_ICE_TCP_PORT:-18763}"
 export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_TEST_ICE_UDP_PORT:-18764}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TEST_TURN_UDP_PORT:-18765}"
 
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile live-test"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile live-test"
 marker_dir=$(mktemp -d)
 chmod 1777 "$marker_dir"
 restart_pid=""

@@ -78,7 +78,7 @@ elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ] && [ "${FLUX_TEST_MCP_LIVE_CLIE
 elif [ "${FLUX_TEST_MCP_LIVE_WORKFLOW:-0}" = 1 ]; then
   export COMPOSE_FILE="$COMPOSE_FILE:docker/compose.mcp-live.test.yaml"
 fi
-compose="docker compose -p $project --profile test --profile mcp-clients"
+compose="docker compose --env-file /dev/null -p $project --profile test --profile mcp-clients"
 
 cleanup() {
   status=$?

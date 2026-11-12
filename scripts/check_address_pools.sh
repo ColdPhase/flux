@@ -54,7 +54,7 @@ projects=0
 error=
 while [ "$projects" -lt "$limit" ]; do
   if ! out=$(in_dind env POSTGRES_PASSWORD=x FLUX_AUTH_SECRET=x FLUX_PUBLIC_ORIGIN=http://127.0.0.1 FLUX_FIXTURE_TOKEN=x FLUX_PROJECT=p \
-      docker compose -p "p$projects" "${files[@]}" -f /stub.yaml ${profile[@]+"${profile[@]}"} up --no-start --pull never "${services[@]}" 2>&1); then
+      docker compose --env-file /dev/null -p "p$projects" "${files[@]}" -f /stub.yaml ${profile[@]+"${profile[@]}"} up --no-start --pull never "${services[@]}" 2>&1); then
     error=$(printf '%s\n' "$out" | grep -m 1 -iE 'pool|subnet|overlap' || printf '%s\n' "$out" | tail -n 1)
     break
   fi

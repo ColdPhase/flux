@@ -44,7 +44,7 @@ export FLUX_STREAM_HEARTBEAT_MS=1000
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 . scripts/database_outage.sh
 
 # No password hash and no personal data may reach a log (#1088, found in the reviews of #1093). A failed statement is quoted with its parameters

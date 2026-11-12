@@ -278,6 +278,13 @@ against the running API and mail catcher, including a session check across
 `docker compose --env-file docker/.env restart api`. Set `FLUX_TEST_PORT` / `FLUX_TEST_MAILPIT_PORT`
 to avoid port clashes with another concurrent run.
 
+Every check script that starts a source stack (`check_*.sh`, `visual_audit.sh`, `record_*.sh`) runs
+`docker compose --env-file /dev/null`, so the `docker/.env` that `./flux up` wrote in the same checkout never changes a test
+stack (`FLUX_PERSONAL_RUNS`, `FLUX_AGENT_RUNTIME`, VAPID keys and the rest come only from the script, #1210).
+`tests/test_check_scripts_env.py` fails when a script drops the flag. The scripts that run the operator's own stack on
+purpose (`check_flux_cli.sh`, `check_agent_runtime.sh`, `check_runtime_install.sh`, `check_backup.sh`, the release smoke
+tests) pass their own `--env-file`.
+
 Set `FLUX_E2E_EVIDENCE_DIR` to an absolute host directory to retain the configured
 Chromium screenshots/transcripts. The
 script mounts it at `/evidence` with the SELinux label; other test data stays in
