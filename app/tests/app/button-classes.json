@@ -13,7 +13,6 @@
         "wiki-menu__new",
         "nym__item",
         "wd-menu__item",
-        "aset-model__item",
         "aset-where__item",
         "sk-outline-menu__item",
         "sk-options__action",
@@ -25,7 +24,6 @@
     "trigger": {
       "description": "A control that opens a menu, a panel or a picker and shows its current value, like a field. Dropdowns of plain values use Select.",
       "classes": [
-        "aset-model__btn",
         "wiki-switch",
         "top__audience",
         "top__faces",
@@ -80,7 +78,6 @@
         "convo-notice__src",
         "ask__connect",
         "assistant-cite",
-        "assistant-answer__who",
         "ws-attach__more",
         "sk-outline-also__b"
       ]
