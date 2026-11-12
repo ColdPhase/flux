@@ -18,8 +18,6 @@ export const filePath = (fileId: string) => `/api/v1/files/${fileId}`;
  * Other previews (text, Markdown, JSON, CSV/TSV) read `filePath(id)` and are drawn by the web app as text.
  */
 export const filePreviewPath = (fileId: string, scripts = false) => `/api/v1/files/${fileId}/preview${scripts ? '?scripts=1' : ''}`;
-/** The names a frame preview serves: an HTML page or a PDF, by extension. */
-export const FRAME_PREVIEW = /\.(html?|pdf)$/i;
 
 export const FILE_LIMITS = {
   /** One file: 1 byte to 5 MiB. Empty files are refused. */

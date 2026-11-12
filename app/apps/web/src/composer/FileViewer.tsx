@@ -10,7 +10,7 @@ import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 // and lets it fetch nothing; the frame's own `sandbox` attribute says the same.
 
 /** No feature a page could ask the browser for: Flux may hold the camera and microphone for a call, the preview never does. */
-const NOTHING_ALLOWED = "camera 'none'; microphone 'none'; display-capture 'none'; geolocation 'none'; fullscreen 'none'; payment 'none'; usb 'none'; serial 'none'";
+const NOTHING_ALLOWED = "camera 'none'; microphone 'none'; display-capture 'none'; geolocation 'none'; fullscreen 'none'; payment 'none'; usb 'none'; serial 'none'; clipboard-read 'none'; clipboard-write 'none'";
 
 type Access = 'checking' | 'ready' | 'denied';
 
