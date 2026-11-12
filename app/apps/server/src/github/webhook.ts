@@ -32,7 +32,7 @@ export function parseGithubDelivery(id: string, event: string, raw: Buffer, appI
   const special = ['installation', 'installation_repositories', 'github_app_authorization'].includes(event);
   const installationId = event === 'github_app_authorization' ? null : githubId(obj(payload.installation).id);
   const repositoryId = special ? null : githubId(obj(payload.repository).id);
-  let providerObjectId: string | null = null;
+  let providerObjectId: string | null;
   if (event === 'github_app_authorization') {
     if (payload.action !== 'revoked') throw new InvalidInputError('Unsupported authorization event', 'GITHUB_INVALID_EVENT');
     providerObjectId = githubId(obj(payload.sender).id);

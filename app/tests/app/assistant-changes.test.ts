@@ -911,7 +911,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       }],
     ];
     for (const [name, trial] of trials) for (const offset of [0, 3, 8]) for (const swap of [false, true]) {
-      try { await trial(offset, swap); } catch (error) { throw new Error(`${name} offset ${offset} swap ${swap}: ${(error as Error).message}`); }
+      try { await trial(offset, swap); } catch (error) { throw new Error(`${name} offset ${offset} swap ${swap}: ${(error as Error).message}`, { cause: error }); }
     }
   }));
 
@@ -952,7 +952,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     for (let i = 0; i < 12; i++) {
       const kind = (['from-decision', 'mention-decision', 'mention-map'] as const)[i % 3]!;
       const run = await liveRun();
-      let objectId = ''; let table = '';
+      let objectId: string; let table: string;
       if (kind === 'from-decision' || kind === 'mention-decision') {
         objectId = value(await run.call('flux_propose_decision', { decision: { title: `Doc race decision ${i}`, rationale: 'x' } })).decisionId; table = 'project_decisions';
       } else {

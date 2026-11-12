@@ -118,7 +118,7 @@ async function claudeLogin(argv: string[], flags: string[]): Promise<number> {
     return 1;
   }
   const next = lineReader();
-  let accepted = '';
+  let accepted: string;
   for (;;) {
     const line = await next();
     if (line === null) await forever(); // closed input: the real CLI keeps waiting (for the browser's callback)

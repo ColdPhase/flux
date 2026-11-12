@@ -53,7 +53,7 @@ export class Browser {
       else this.cookies.set(name, value);
     }
     const text = await response.text();
-    let json: unknown = null;
+    let json: unknown;
     try { json = text ? JSON.parse(text) : null; } catch { json = null; }
     return { status: response.status, headers: response.headers, setCookies, json, text };
   }

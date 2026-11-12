@@ -158,7 +158,7 @@ export default function SignInConsole({ ticket, methodTitle, onEnd, cliName = 'C
   async function pasteFromClipboard() {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    let value = '';
+    let value: string;
     try { value = (await navigator.clipboard.readText()).trim(); } catch { setPasted('unreadable'); setDetails(true); return; }
     if (!value) { setPasted('empty'); return; }
     for (const part of chunks(`${value}\r`)) socket.send(JSON.stringify({ t: 'in', d: part } satisfies AgentRuntimeConsoleClientMessage));

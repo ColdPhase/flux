@@ -205,7 +205,7 @@ describe('space AI switch: flip and cutover', () => {
   test('the flip locks the policy row: two concurrent changes to the same state, one flips and the other finds it flipped', async () => {
     const at = await spaceAiRow(scene.place.id);
     const client = await pool.connect();
-    let results: Awaited<ReturnType<typeof put>>[] = [];
+    let results: Awaited<ReturnType<typeof put>>[];
     try {
       await client.query('BEGIN');
       await client.query('SELECT 1 FROM project_ai_policies WHERE project_id = $1 FOR SHARE', [scene.place.id]);

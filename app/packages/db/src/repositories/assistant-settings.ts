@@ -83,9 +83,8 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       const [agent] = await tx.select({ name: a.name }).from(a).where(eq(a.id, agentId));
       const colour = setup.colour ?? nextAgentColour((await rows(ownerUserId, workspaceId)).map((row) => row.s.colour));
       const [existing] = await tx.select().from(s).where(eq(s.agentId, agentId)).for('update');
-      let connectionId = existing?.connectionId;
       if (!existing) {
-        connectionId = randomUUID();
+        const connectionId = randomUUID();
         await tx.insert(k).values({ id: connectionId, workspaceId, ownerUserId, agentId, name: agent?.name ?? 'Agent', clientDesignation: 'other',
           computeSource: 'owner_assistant' });
         await tx.insert(s).values({ workspaceId, ownerUserId, agentId, connectionId, instructions: setup.instructions, colour,

@@ -172,7 +172,7 @@ export function useApiRateLimit(app: FastifyInstance, options: ApiRateLimitOptio
     const at = now();
     const credential = credentialOf(request, sessionCookie);
     const address = addressKey(request.ip);
-    let wait = 0;
+    let wait: number;
     if (!credential) wait = take(`anon:${address}`, anonymousLimit, at);
     else {
       const key = `c:${credential.key}`;

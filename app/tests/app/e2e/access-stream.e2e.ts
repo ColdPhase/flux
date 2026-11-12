@@ -69,7 +69,7 @@ class Person {
         body: body === undefined ? undefined : JSON.stringify(body),
       });
       const text = await response.text();
-      let json: unknown = null;
+      let json: unknown;
       try { json = text ? JSON.parse(text) : null; } catch { json = text; }
       return { status: response.status, json };
     }, { method, path, body, headers });

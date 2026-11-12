@@ -66,7 +66,7 @@ export async function verifyLogoutToken(oidc: Pick<OidcConfig, 'issuer' | 'clien
   let key: Jwk | null;
   try { key = await jwks(typeof header.kid === 'string' ? header.kid : undefined, algorithm.kty); } catch { return bad('the provider keys could not be read'); }
   if (!key) return bad('no matching signing key');
-  let valid = false;
+  let valid: boolean;
   try {
     valid = verify(algorithm.hash, Buffer.from(`${parts[0]}.${parts[1]}`), {
       key: createPublicKey({ key, format: 'jwk' }),

@@ -59,9 +59,9 @@ export async function chooseAssistantModel(pick: AssistantModelPick): Promise<st
     emit();
     return sentence;
   } catch (error) {
-    if (error instanceof NetworkError) throw new Error(`Offline. It is still ${modelOption(choice, choice?.current)?.name ?? 'the same'}.`);
-    if (error instanceof ApiError && error.status < 500) { await refreshAssistantModel(); throw new Error(error.message); }
-    throw new Error(`Couldn't change the model. It is still ${modelOption(choice, choice?.current)?.name ?? 'the same'}.`);
+    if (error instanceof NetworkError) throw new Error(`Offline. It is still ${modelOption(choice, choice?.current)?.name ?? 'the same'}.`, { cause: error });
+    if (error instanceof ApiError && error.status < 500) { await refreshAssistantModel(); throw new Error(error.message, { cause: error }); }
+    throw new Error(`Couldn't change the model. It is still ${modelOption(choice, choice?.current)?.name ?? 'the same'}.`, { cause: error });
   }
 }
 

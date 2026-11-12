@@ -24,7 +24,7 @@ function browserTimeZone() {
 }
 
 function timeZones(current: string) {
-  let zones: string[] = [];
+  let zones: string[];
   try { zones = (Intl as { supportedValuesOf?: (key: string) => string[] }).supportedValuesOf?.('timeZone') ?? []; } catch { zones = []; }
   return [...new Set([current, browserTimeZone(), 'UTC', ...zones])].sort((a, b) => a.localeCompare(b));
 }
