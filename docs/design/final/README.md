@@ -597,6 +597,32 @@ These functional rules from UI116-4 remain required:
   - Before sending, thumbnails with × sit in the composer.
   - On the phone the picker numbers your choices in send order. The full-screen viewer is always
     dark, with Reply, Create task, Save and Share.
+- **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
+  [C-58](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
+  CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
+  row's download button still downloads. Other files keep the whole row as the download.
+  - **The frame** is the photo viewer's: always dark, full screen on every size (on the phone it is
+    the full sheet), Close (×) at the top left, the file name with "type · size" under it in the
+    middle, Esc closes and focus returns to the row. The bottom bar holds Download; nothing else
+    takes its place.
+  - **The stage** holds the file on one page sheet: `--el` with `--t1` text, radius `--r`, the
+    reading column wide (`--col`) for text and Markdown and up to 1200 px for tables, HTML and PDF.
+    On the phone the sheet fills the stage edge to edge without a radius. HTML keeps a white page,
+    as its author wrote it; PDF shows the browser's own viewer.
+  - **Under the sheet** one quiet meta line in the caption place says what is not shown. HTML:
+    "External images and scripts are blocked." followed by a quiet link button **Run scripts**.
+    After the press the line reads "Scripts are on for this preview. A script may contact the
+    internet." and closing the viewer turns them off again. Markdown and HTML: **View source** /
+    **Preview** as the same quiet link button. A file that is not valid UTF-8 adds "Shown as
+    Windows-1252 text." A PDF the browser cannot show here says "This browser can't show a PDF
+    here." with Download as the one button on the sheet.
+  - **While it opens** the sheet shows the spinner with the file name; a person who lost access
+    sees "You no longer have access to this file." and nothing else.
+  - Text and source: Geist Mono `--fs-base`, wrapped, no line numbers. JSON: pretty, two-space
+    indents, each object and array folds with a chevron; a large file starts folded below the
+    second level; invalid JSON shows the text with the parse error line above it. CSV/TSV: a table
+    of every row with the header row sticky, mono numbers right-aligned, a cell that starts with
+    `=`, `+`, `-` or `@` shown as written text.
 
 | | |
 | --- | --- |

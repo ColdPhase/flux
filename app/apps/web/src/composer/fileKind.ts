@@ -38,6 +38,17 @@ export function fileLabel(name: string): string {
   if (kind === 'other' || !ext || ext.length > 4) return 'FILE';
   return ext === 'jpeg' ? 'JPG' : ext.toUpperCase();
 }
+/** A size as file rows and viewers show it: 512 B, 4.1 KiB, 2.4 MiB. */
+export const fileSize = (size: number) => size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+
+/**
+ * How a file is previewed in the viewer (C-58, #1252), by its name; null for a file that only downloads. HTML is framed from the
+ * sandboxed preview route; nothing is ever drawn as HTML on Flux's page.
+ */
+export type PreviewFormat = 'html';
+const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html' };
+export const previewFormat = (name: string): PreviewFormat | null => PREVIEW[extensionOf(name)] ?? null;
+
 /** Named like a photo (a hint only; the bytes decide). */
 export const looksLikePhoto = (name: string) => PHOTO.has(extensionOf(name));
 
