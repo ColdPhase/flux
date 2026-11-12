@@ -12,7 +12,9 @@ import {
   createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, NO_WEB_SEARCH_LINE, OPEN_ANY_ADDRESS_LINE, recoverLostRuntimeRuns, recoverPersonalRuns, REDACTED_SECRET, RUNTIME_WEB_SEARCH_LINE, sweepSpaceAi,
   type AgentRuntimeConfig, type Principal,
 } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { accessPorts, runLiveText } from '@flux/db';
+import type { StreamRunText } from '@flux/contracts';
+import { StreamClient } from './support/stream.js';
 import { setSpaceAi } from './support/space-ai.js';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
@@ -390,6 +392,57 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(stored.answer_redacted, true);
     const everything = (await pool.query(`SELECT row_to_json(r)::text AS text FROM personal_runs r WHERE id = $1`, [started.run.id])).rows[0].text as string;
     assert.doesNotMatch(everything, /sk-ant-api03|eyJ[A-Za-z0-9_-]{10,}\./);
+  });
+
+  test('#1248: Claude Code\'s streamed words reach the asker as it writes, never the run token; Stop keeps the words so far', async () => {
+    const live = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
+      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10 }, live: runLiveText(db) });
+    const words = (runId: string, client: StreamClient) => {
+      let text = '';
+      for (const message of client.messages) {
+        const piece = message as StreamRunText;
+        if (piece.type === 'run_text' && piece.runId === runId && 'at' in piece) text = text.slice(0, piece.at) + piece.text;
+      }
+      return text;
+    };
+    const stream = await StreamClient.connect(owner.browser);
+    await stream.ready();
+    await scenario('run_secret_answer');
+    await script({ calls: [{ name: 'flux_list_contexts' }], stream: true, streamGapMs: 30 });
+    const started = await ask();
+    assert.equal(await live.process(started.run.id), 'completed');
+    await stream.until(() => words(started.run.id, stream).includes('and Bearer'), 5000, 'the streamed words');
+    const shown = words(started.run.id, stream);
+    assert.ok(shown.startsWith(`Here: ${REDACTED_SECRET} and the token ${REDACTED_SECRET} and Bearer`), shown);
+    assert.doesNotMatch(JSON.stringify(stream.messages), /sk-ant-api03|eyJ[A-Za-z0-9_-]{10,}\./, 'no piece carried a secret or the run token');
+    assert.ok(stream.messages.some((message) => message.type === 'run_text' && 'step' in message && message.step === 'flux_list_contexts'), 'the step it was on');
+    assert.ok(String((await row(started.run.id)).answer_body).includes(REDACTED_SECRET));
+
+    // Stop while it writes: the words so far stay as the answer, marked stopped.
+    await resetFake();
+    await script({ calls: [{ name: 'flux_list_contexts' }], answer: 'The sensor is a PIR and it works well. ', stream: true, streamForever: true, streamGapMs: 40 });
+    const stopping = await ask();
+    const processing = live.process(stopping.run.id);
+    await stream.until(() => words(stopping.run.id, stream).includes('works well'), 8000, 'the first words');
+    await runs.stop(human(owner), stopping.run.id);
+    assert.equal(await processing, 'stopped');
+    const kept = String((await row(stopping.run.id)).answer_body);
+    assert.match(kept, /^The sensor is a PIR and it works well\./, 'what was written stays');
+
+    // The owner loses the agent while it writes, then presses Stop in the tab still open: the refusal wins and nothing is stored.
+    await resetFake();
+    await script({ calls: [{ name: 'flux_list_contexts' }], answer: 'The sensor is a PIR and it works well. ', stream: true, streamForever: true, streamGapMs: 40 });
+    const revoked = await ask();
+    const revoking = live.process(revoked.run.id);
+    await stream.until(() => words(revoked.run.id, stream).includes('works well'), 8000, 'the first words');
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/agent-connections/${(await settings()).connectionId}`), 204);
+    await runs.stop(human(owner), revoked.run.id);
+    assert.ok(['stopped', 'revoked'].includes(await revoking));
+    assert.equal((await row(revoked.run.id)).answer_body, null, 'nothing is stored after the refusal');
+    await stream.close();
+    await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
+    await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
   test('revoking the assistant connection mid-run makes the next MCP call fail with 403 and ends the run', async () => {

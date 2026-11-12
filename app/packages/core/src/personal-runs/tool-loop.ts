@@ -6,6 +6,7 @@ import type {
 } from './ports.js';
 import { notePages, notesPages, pageRead, type PageRead } from './page-notes.js';
 import { WebSearchRefusedError } from './ports.js';
+import type { LiveText } from './live-text.js';
 
 // The bounded tool loop of a `server` run (F-027 AST-8, PROV-3 revised 2026-10-09). The loop only
 // decides when another request may be sent and what each one cost; what a tool does belongs to
@@ -134,6 +135,8 @@ export interface LoopOptions {
    */
   withoutSearch?: (request: PersonalComputeRequest) => PersonalComputeRequest;
   onSearchRefused?: () => void;
+  /** The asker's live view (#1248): each request is a turn whose words stream to it, and each call names its step. */
+  live?: LiveText;
 }
 
 const aborted: Extract<PersonalComputeResult, { kind: 'failed' }> = { kind: 'failed', reason: 'aborted', billed: 'none' };
@@ -160,7 +163,7 @@ async function runCall(session: PersonalToolSession, offered: ReadonlySet<string
  * the gate and the input count, at the dispatch boundary. Calls already made stay made.
  */
 export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
-  const { compute, session, first, price, reservedMicros, maxTurns, deadline, now, gate, signal, onWebSearch, onSearchRefused } = options;
+  const { compute, session, first, price, reservedMicros, maxTurns, deadline, now, gate, signal, onWebSearch, onSearchRefused, live } = options;
   const withoutSearch = options.withoutSearch ?? dropSearch;
   const account = emptyAccount();
   // Whether the provider's own search is still offered: it is not once the provider refused it, and its searches are not counted (#1113).
@@ -173,8 +176,9 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
   let request = first;
   for (let turn = 1; ; turn += 1) {
     let result: PersonalComputeResult;
+    live?.turn();
     try {
-      result = await compute.dispatch(request, signal);
+      result = await compute.dispatch(request, signal, live ? (delta) => live.push(delta) : undefined);
     } catch {
       // An unexpected adapter failure is a lost response: the most it could have cost stays counted.
       result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
@@ -219,6 +223,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
     const results: PersonalToolResult[] = [];
     for (const call of calls) {
       if (signal.aborted) return { end: { kind: 'failed', result: aborted }, account, turns: turn };
+      live?.step(call.name);
       results.push(await runCall(session, offered, call, signal));
     }
     if (signal.aborted) return { end: { kind: 'failed', result: aborted }, account, turns: turn };

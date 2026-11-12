@@ -189,7 +189,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id, threadRootId: null }, onShown: () => { void refresh(); toBottom(); } });
   // A new answer, or the agent at work, comes into view at the end, also when the working line becomes the taller answer (#842).
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
-  useFollowEnd(() => feedRef.current, privateItems.replaceAll(',', '') ? privateItems : '');
+  useFollowEnd(() => feedRef.current, privateItems.replaceAll(',', '') ? privateItems : '', assistant.run?.id ?? null);
   useStreamEvents(me.user.id, (event) => {
     // A notice (#1243) is for the notice card; the message it is about came as its own event.
     if (event.objectType !== 'dm' || event.objectId !== initial.id || event.kind === 'dm.notice.v1') return;

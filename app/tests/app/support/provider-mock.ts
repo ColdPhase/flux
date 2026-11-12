@@ -22,6 +22,10 @@ import { handleCliVendor } from './cli-vendor-mock.js';
  * `malformed` (2xx that is not JSON), `no_usage`, `redirect` (302 to /__redirected, which records a
  * hit), `oversized` (2 MB body), `paused` (Anthropic: the answer stops with `pause_turn`, the server's own search loop limit, #1116).
  *
+ * A request with `stream: true` (#1248) is answered as the provider streams it: the same answer as Server-Sent Events (Anthropic's
+ * `message_start` … `message_stop`, the Responses API's `response.output_text.delta` … `response.completed`), its text in small pieces,
+ * `streamGapMs` apart (default 5).
+ *
  * `search` (#954): the answer also carries the provider's own web search in its wire format: `{ query, results: [url…], cite: url }`
  * becomes a `server_tool_use` and a `web_search_tool_result` block and a text block citing `cite` (`web_search_result_location`), with
  * `usage.server_tool_use.web_search_requests: 1` on Anthropic; a `web_search_call` item with `action.sources` and a message whose
@@ -31,13 +35,13 @@ import { handleCliVendor } from './cli-vendor-mock.js';
 type Wire = 'anthropic' | 'openai';
 type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused';
 interface Search { query: string; results: string[]; cite: string }
-interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null }
+interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null; streamGapMs: number; crlf: boolean }
 export interface RecordedProviderRequest {
   wire: Wire | 'other'; method: string; path: string; key: string | null; headers: Record<string, string | string[] | undefined>;
   body: unknown; aborted: boolean; at: number;
 }
 
-const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null };
+const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null, streamGapMs: 5, crlf: false };
 const scripts: Record<Wire, Script> = { anthropic: { ...DEFAULT }, openai: { ...DEFAULT } };
 const requests: RecordedProviderRequest[] = [];
 
@@ -83,6 +87,58 @@ function responsesAnswer(script: Script, body: { model?: string }) {
       message,
     ],
     ...(script.mode === 'no_usage' ? {} : { usage: { input_tokens: script.usage.input, output_tokens: script.usage.output, total_tokens: script.usage.input + script.usage.output } }) };
+}
+
+/** Words of a text in small pieces, as a provider streams them. */
+const textPieces = (text: string) => text.match(/\S*\s*/g)!.filter(Boolean).flatMap((word) => (word.length > 8 ? word.match(/.{1,8}/gs)! : [word]));
+
+/** Writes Server-Sent Events `gapMs` apart, then ends the response (#1248). */
+function sse(response: http.ServerResponse, events: { event: string; data: unknown }[], gapMs: number, crlf = false) {
+  if (response.destroyed) return;
+  response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
+  let index = 0;
+  const next = () => {
+    if (response.destroyed) return;
+    if (index >= events.length) { response.end(); return; }
+    const { event, data } = events[index++]!;
+    if (!crlf) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // `crlf`: the line ends a server may write, the last one split across two writes (#1248).
+    else { response.write(`event: ${event}\r\ndata: ${JSON.stringify(data)}\r\n\r`); setTimeout(() => { if (!response.destroyed) response.write('\n'); }, Math.max(1, gapMs / 2)); }
+    setTimeout(next, gapMs);
+  };
+  next();
+}
+
+/** An Anthropic answer as its stream: the blocks opened, text in pieces (a citation as its own delta), the stop and usage at the end. */
+function anthropicEvents(answer: ReturnType<typeof anthropicAnswer>) {
+  const { content, usage, stop_reason } = answer as { content: Record<string, unknown>[]; usage?: Record<string, unknown>; stop_reason: string };
+  const events: { event: string; data: unknown }[] = [{ event: 'message_start', data: { type: 'message_start', message: { ...answer, content: [], stop_reason: null,
+    ...(usage ? { usage: { input_tokens: usage.input_tokens, output_tokens: 1 } } : {}) } } }];
+  content.forEach((block, index) => {
+    if (block.type === 'text') {
+      events.push({ event: 'content_block_start', data: { type: 'content_block_start', index, content_block: { type: 'text', text: '', ...(block.citations ? { citations: [] } : {}) } } });
+      for (const citation of (block.citations as unknown[] | undefined) ?? []) events.push({ event: 'content_block_delta', data: { type: 'content_block_delta', index, delta: { type: 'citations_delta', citation } } });
+      for (const text of textPieces(String(block.text))) events.push({ event: 'content_block_delta', data: { type: 'content_block_delta', index, delta: { type: 'text_delta', text } } });
+    } else if (block.type === 'server_tool_use' || block.type === 'tool_use') {
+      events.push({ event: 'content_block_start', data: { type: 'content_block_start', index, content_block: { ...block, input: {} } } });
+      events.push({ event: 'content_block_delta', data: { type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: JSON.stringify(block.input) } } });
+    } else events.push({ event: 'content_block_start', data: { type: 'content_block_start', index, content_block: block } });
+    events.push({ event: 'content_block_stop', data: { type: 'content_block_stop', index } });
+  });
+  events.push({ event: 'message_delta', data: { type: 'message_delta', delta: { stop_reason, stop_sequence: null }, usage: usage ? { output_tokens: usage.output_tokens, ...(usage.server_tool_use ? { server_tool_use: usage.server_tool_use } : {}) } : {} } });
+  events.push({ event: 'message_stop', data: { type: 'message_stop' } });
+  return events;
+}
+
+/** A Responses answer as its stream: created, the message's text in pieces, then the whole response as `response.completed` (or `response.incomplete`). */
+function responsesEvents(answer: ReturnType<typeof responsesAnswer>) {
+  const { output, status } = answer as { output: { type: string; content?: { type: string; text?: string }[] }[]; status: string };
+  const events: { event: string; data: unknown }[] = [{ event: 'response.created', data: { type: 'response.created', sequence_number: 0, response: { ...answer, status: 'in_progress', output: [] } } }];
+  for (const item of output) for (const part of item.type === 'message' ? item.content ?? [] : []) if (part.type === 'output_text')
+    for (const delta of textPieces(part.text ?? '')) events.push({ event: 'response.output_text.delta', data: { type: 'response.output_text.delta', sequence_number: events.length, item_id: 'msg_mock_1', output_index: 0, content_index: 0, delta } });
+  const final = status === 'incomplete' ? 'response.incomplete' : 'response.completed';
+  events.push({ event: final, data: { type: final, sequence_number: events.length, response: answer } });
+  return events;
 }
 
 function openAiAnswer(script: Script, body: { model?: string }) {
@@ -156,8 +212,11 @@ const server = http.createServer((request, response) => {
       if (script.mode === 'malformed') { response.writeHead(200, { 'content-type': 'application/json' }); return response.end(`not json {${key}`); }
       if (script.mode === 'oversized') return json(response, 200, { padding: 'x'.repeat(2_000_000) });
       if (url.pathname === '/anthropic/v1/messages/count_tokens') return json(response, 200, { input_tokens: Math.max(1, Math.ceil(raw.length / 4)) });
+      const streamed = (body as { stream?: unknown } | null)?.stream === true;
+      if (url.pathname === '/anthropic/v1/messages' && streamed) return sse(response, anthropicEvents(anthropicAnswer(script, body as { model?: string })), script.streamGapMs);
       if (url.pathname === '/anthropic/v1/messages') return json(response, 200, anthropicAnswer(script, body as { model?: string }));
       if (url.pathname === '/openai/v1/chat/completions') return json(response, 200, openAiAnswer(script, body as { model?: string }));
+      if (url.pathname === '/openai/v1/responses' && streamed) return sse(response, responsesEvents(responsesAnswer(script, body as { model?: string })), script.streamGapMs, script.crlf);
       if (url.pathname === '/openai/v1/responses') return json(response, 200, responsesAnswer(script, body as { model?: string }));
       return json(response, 404, { error: 'not found' });
     };

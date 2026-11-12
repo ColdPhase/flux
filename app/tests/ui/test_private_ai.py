@@ -701,6 +701,122 @@ class PrivateAiJourney(unittest.TestCase):
         expect(menu.locator(".cmenu__cmd", has_text="/ai")).to_have_count(0)
         expect(menu.locator(".cmenu__o--ask")).to_have_count(0)
 
+    # ---------------------------------------------------------------- the answer as it is written (#1248)
+
+    def test_12_an_answer_appears_as_it_is_written_then_copy_and_try_again_and_stop_keeps_the_words(self) -> None:
+        streamed = ("Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet {first}. "
+                    + "The gateway stays near the shed, where the power is. " * 4).strip()
+        mock("/__script", {"reset": True, "text": streamed, "stream_gap": 0.12})
+        jo = self.thread("jo")
+        if UI_BROWSER == "chromium":
+            jo.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=ORIGIN)
+        kai = self.thread("kai")
+        self.ask_in(jo, "#thread-composer", "how do the far beds connect")
+        writing = jo.locator(".assistant-writing")
+        expect(writing).to_be_visible(timeout=20000)
+        expect(writing).to_contain_text("writing…")
+        expect(writing).to_contain_text("Only you can see this")
+        expect(writing.get_by_role("button", name="Stop")).to_be_visible()
+        words = writing.locator("[data-writing-words]")
+        first = words.inner_text().strip()
+        self.assertTrue(first, "the first words show while it works")
+        self.assertNotIn("[S", first, "source marks are not shown while it writes")
+        # The text grows: later it is longer and begins with what was shown first.
+        jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 20", arg=[words.element_handle(), len(first)], timeout=10000)
+        self.assertTrue(words.inner_text().strip().startswith(first[:20]))
+        expect(writing.locator(".assistant-writing__caret")).to_have_count(1)
+        # The thread panel follows the growing words while Jo is at its end: the newest words and Stop stay in view, unscrolled.
+        jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 60", arg=[words.element_handle(), len(first)], timeout=10000)
+        expect(writing.get_by_role("button", name="Stop")).to_be_in_viewport()
+        expect(writing.locator(".assistant-writing__caret")).to_be_in_viewport()
+        shot(jo, "streaming-1440-writing-light")
+        jo.emulate_media(color_scheme="dark")
+        shot(jo, "streaming-1440-writing-dark")
+        jo.emulate_media(color_scheme="light")
+        # Nobody else sees the words.
+        expect(kai.locator(".assistant-writing")).to_have_count(0)
+        self.assertNotIn("The gateway stays near the shed", kai.locator("body").inner_text())
+
+        # Done: the answer card, with Copy and Try again in its own quiet line.
+        card = jo.locator(".assistant-private").filter(has_text="The gateway stays near the shed").last
+        expect(card).to_contain_text("Show everyone posts it", timeout=20000)
+        expect(writing).to_have_count(0)
+        final = ("Fact: the far beds will use LoRa because Wi-Fi drops when the hedge is wet. "
+                 + "The gateway stays near the shed, where the power is. " * 4).strip()
+        card.get_by_role("button", name="Copy").click()
+        expect(card.get_by_role("button", name="Copied")).to_be_visible()
+        if UI_BROWSER == "chromium":
+            self.assertEqual(jo.evaluate("navigator.clipboard.readText()"), final, "Copy copies the final answer's words")
+        shot(jo, "streaming-1440-done-light")
+        jo.emulate_media(color_scheme="dark")
+        shot(jo, "streaming-1440-done-dark")
+        jo.emulate_media(color_scheme="light")
+
+        # Try again: a new run of the same request, slower this time; Stop while it writes keeps the words so far, marked stopped.
+        mock("/__script", {"text": "Second try: the far beds use LoRa. " * 12, "stream_gap": 0.3})
+        before = len([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"])
+        card.get_by_role("button", name="Try again").click()
+        again = jo.locator(".assistant-writing")
+        expect(again).to_contain_text("Second try", timeout=20000)
+        self.assertEqual(len([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]), before + 1, "Try again starts one new run")
+        again.get_by_role("button", name="Stop").click()
+        stopped = jo.locator(".assistant-private").filter(has_text="Second try").last
+        expect(stopped).to_contain_text("Stopped by you, so this answer is incomplete.", timeout=20000)
+        expect(stopped.get_by_role("button", name="Copy")).to_be_visible()
+        expect(stopped.get_by_role("button", name="Show everyone")).to_be_visible()
+        self.assertLess(stopped.locator(".assistant-answer__body").inner_text().count("Second try"), 12, "only what was written before Stop")
+
+    def test_13_on_the_phone_the_growing_answer_fits_and_reduced_motion_types_nothing(self) -> None:
+        mock("/__script", {"reset": True, "text": "First paragraph about the far beds and LoRa.\n\n" + "The gateway stays near the shed. " * 30, "stream_gap": 0.1})
+        jo = self.thread("jo", phone=True)
+        self.ask_in(jo, "#thread-composer", "explain the network")
+        writing = jo.locator(".assistant-writing")
+        expect(writing).to_be_visible(timeout=20000)
+        # Nothing is scrolled by hand: the thread follows the words, and Stop stays clear of the suggestions under the feed.
+        jo.wait_for_timeout(1500)
+        stop = writing.get_by_role("button", name="Stop")
+        expect(stop).to_be_in_viewport()
+        chips = jo.locator(".assistant-suggestions").first
+        if chips.count() and chips.is_visible():
+            self.assertLessEqual(stop.bounding_box()["y"] + stop.bounding_box()["height"], chips.bounding_box()["y"] + 1, "Stop is above the suggestions row")
+        self.no_horizontal_scroll(jo)
+        box = stop.bounding_box()
+        self.assertIsNotNone(box)
+        self.assertGreaterEqual(box["height"], 43, "Stop is a touch target")
+        shot(jo, "streaming-390-writing-light")
+        jo.emulate_media(color_scheme="dark")
+        shot(jo, "streaming-390-writing-dark")
+        # Reduced motion: no caret, and only a finished paragraph shows.
+        jo.emulate_media(color_scheme="light", reduced_motion="reduce")
+        expect(writing.locator(".assistant-writing__caret")).to_have_count(0)
+        expect(writing.locator("[data-writing-words]")).to_have_text("First paragraph about the far beds and LoRa.")
+        card = jo.locator(".assistant-private").filter(has_text="The gateway stays near the shed").last
+        expect(card).to_be_visible(timeout=30000)
+        for name in ("Copy", "Try again"):
+            tool = card.get_by_role("button", name=name).bounding_box()
+            self.assertIsNotNone(tool)
+            self.assertGreaterEqual(tool["height"], 43, f"{name} is a touch target")
+        self.no_horizontal_scroll(jo)
+        shot(jo, "streaming-390-done-light")
+
+    def test_14_the_agents_chat_follows_its_growing_answer_and_keeps_stop_in_view(self) -> None:
+        mock("/__script", {"reset": True, "text": "Here is the plan for the far beds. " * 40, "stream_gap": 0.05})
+        jo = self.page("jo")
+        jo.goto(f"/agents/{self.ids['agent']}")
+        box = jo.locator("#agent-composer")
+        box.fill("Plan the far beds")
+        jo.get_by_role("button", name="Send to Assistant").click()
+        bubble = jo.locator("[data-writing-run]")
+        expect(bubble).to_be_visible(timeout=20000)
+        jo.wait_for_function("(el) => el.innerText.length > 600", arg=bubble.element_handle(), timeout=15000)
+        stop = jo.locator("[data-chat-agent]").last.get_by_role("button", name="Stop")
+        expect(stop).to_be_in_viewport()
+        expect(bubble.locator(".assistant-writing__caret")).to_be_in_viewport()
+        shot(jo, "streaming-1440-chat-writing-light")
+        answer = jo.locator("[data-chat-agent]").last
+        expect(answer.get_by_role("button", name="Copy")).to_be_visible(timeout=30000)
+        expect(answer.get_by_role("button", name="Try again")).to_be_in_viewport()
+
 
 if __name__ == "__main__":
     unittest.main()

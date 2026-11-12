@@ -71,7 +71,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     onShown: () => { if (conversation) void thread.refresh(); else onSending?.(); } });
   // The person's own agent at work, and what it answered, are at the end of the stream or thread: a new one comes into view (#842).
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
-  useFollowEnd(() => document.querySelector<HTMLElement>(conversation ? '.thread__feed' : '.project-convo__feed.is-stream'), privateItems.replaceAll(',', '') ? privateItems : '');
+  useFollowEnd(() => document.querySelector<HTMLElement>(conversation ? '.thread__feed' : '.project-convo__feed.is-stream'), privateItems.replaceAll(',', '') ? privateItems : '', assistant.run?.id ?? null);
   const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
   const reading = useThreadReading(core, { messages, pendingCount: outbox.pending.length, rootMessageId, assistant, accessLost, hideIfDenied });
   // Typing (#155) is the thread's: an ephemeral signal to the people who can read this conversation. The

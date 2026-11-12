@@ -219,6 +219,45 @@ describe('wire details beyond the shared contract', () => {
     assert.ok(!printed.some((line) => line.includes(openAiWire.key)), 'the key is never printed');
   });
 
+  test('with a reader of the words, Anthropic and the Responses API stream: the words come as they are written, and the answer is the same (#1248)', async () => {
+    const cases: [WireCase, Partial<PersonalComputeRequest>][] = [[WIRES[0]!, {}], [{ ...openai('openai'), key: `sk-proj-${'owner-budget-key-'.repeat(3)}OA03` }, { model: 'gpt-model' }]];
+    for (const [wire, overrides] of cases) {
+      await control('/__reset', {});
+      const text = 'The camera fails below 5 lux, so the ToF sensor takes over at night [S1].';
+      await script(wire.wire, { text, streamGapMs: 25 });
+      const words: { delta: string; at: number }[] = [];
+      const whole = await personal(wire).dispatch(request(wire, overrides), new AbortController().signal);
+      const streamed = await personal(wire).dispatch(request(wire, overrides), new AbortController().signal, (delta) => words.push({ delta, at: Date.now() }));
+      const done = Date.now();
+      assert.deepEqual(streamed, whole, `${wire.provider}: a streamed answer is the same result as a whole one`);
+      assert.equal(words.map((word) => word.delta).join(''), text, `${wire.provider}: every word, in order`);
+      assert.ok(words.length > 5, `${wire.provider}: in pieces (${words.length})`);
+      assert.ok(done - words[0]!.at > 100, `${wire.provider}: the first words came before the answer ended`);
+      const asked = (await sent(wire.wire)).map((item) => (item.body as { stream?: unknown }).stream);
+      assert.deepEqual(asked, [undefined, true], `${wire.provider}: only the request with a reader is streamed`);
+    }
+    // A server that ends its lines with CRLF, one of them split across two chunks, is read the same.
+    const crlfWire = { ...openai('openai'), key: `sk-proj-${'owner-budget-key-'.repeat(3)}OA04` };
+    await control('/__reset', {});
+    await script('openai', { crlf: true, streamGapMs: 10 });
+    const crlfWhole = await personal(crlfWire).dispatch(request(crlfWire, { model: 'gpt-model' }), new AbortController().signal);
+    const crlfStreamed = await personal(crlfWire).dispatch(request(crlfWire, { model: 'gpt-model' }), new AbortController().signal, () => undefined);
+    assert.deepEqual(crlfStreamed, crlfWhole);
+    // With the provider's own search the streamed answer keeps what the search found and its usage (#954).
+    await control('/__reset', {});
+    await script('anthropic', { search: { query: 'lux sensors', results: ['https://example.com/a', 'https://example.com/b'], cite: 'https://example.com/a' } });
+    const tools = [{ name: 'flux_list_work', description: 'List the tasks', inputSchema: { type: 'object' as const, properties: {} } }];
+    const searchWhole = await personal(WIRES[0]!).dispatch(request(WIRES[0]!, { tools, webSearch: true }), new AbortController().signal);
+    const searchStreamed = await personal(WIRES[0]!).dispatch(request(WIRES[0]!, { tools, webSearch: true }), new AbortController().signal, () => undefined);
+    assert.deepEqual(searchStreamed, searchWhole);
+    // A stopped stream is an abort, as for a whole answer.
+    await control('/__reset', {});
+    await script('anthropic', { streamGapMs: 200 });
+    const stop = new AbortController();
+    const pending = personal(WIRES[0]!).dispatch(request(WIRES[0]!), stop.signal, () => stop.abort());
+    assert.deepEqual(await pending, { kind: 'failed', reason: 'aborted', billed: 'unknown' });
+  });
+
   test('only the Anthropic wire format counts tokens; the registry returns null elsewhere', async () => {
     const counted = await personal(WIRES[0]!).countInputTokens!(request(WIRES[0]!));
     assert.ok(typeof counted === 'number' && counted > 0);

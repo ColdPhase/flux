@@ -233,6 +233,22 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   brief an agent reads see it as text, while Copy text and previews show the words without the marks.
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
+- **The answer appears as it is written ([#1248](https://github.com/ColdPhase/flux/issues/1248),
+  founder pick 2026-11-10).** For `/ai` and the private chat, the asker's open tabs see the answer
+  grow while the agent writes it; nobody else sees anything until Show everyone. An API key's run
+  asks its provider to stream (Anthropic's Messages and OpenAI's Responses; Chat Completions
+  providers answer whole), and the owner's Claude Code forwards the text it streams (Codex: each
+  message it finishes). The worker sends the asker the new words about every 150 ms over the live
+  stream (`run_text`, not stored, never in the event log, so a dropped stream misses only
+  the growing view: the answer replaces it when it is done; no extra polling, #862). Before the
+  first words the working line names the agent's current step ("Reading the conversation…").
+  What is shown while it grows has token-shaped strings removed (AG-11), and a word is sent only
+  once it is complete; the stored answer is the final text with its sources, validation, schedule
+  and address cleaning applied at the end, exactly as before. **Stop while it writes keeps the
+  words written so far** as the answer, cleaned the same way, with the run `stopped` ("Stopped by
+  you, so this answer is incomplete."); it prepares no schedule and asks nothing. A task's run, a
+  schedule's run and a stop before any words post nothing, as before. The answer then offers Copy
+  and Try again. The drawn states are in the [final design](../design/final/README.md).
 - **No drafts for other people.** An agent never prepares or sends a message to another person.
   A line a server agent writes in a task's discussion (its report, a blocker, what came of the task, its
   question to another agent, C-51) shows there for everyone, but it notifies nobody except the

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
+import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage, type StreamRunText } from '@flux/contracts';
 import { reconnectDelay } from './busy.js';
 import { forgetKeptFor, forgetKeptReads } from './client.js';
 import { onPageLive, pageLeaving } from './pageLeaving.js';
@@ -132,6 +132,8 @@ function connect() {
   ws.onmessage = (message) => {
     let data: StreamMessage;
     try { data = JSON.parse(String(message.data)) as StreamMessage; } catch { return; }
+    // The asker's live view of their own run (#1248): not an event, no cursor, never held or replayed.
+    if (data.type === 'run_text') { for (const listener of [...runTextListeners]) listener(data); return; }
     cursor = data.cursor;
     retry = 0;
     if (data.type !== 'event' || seen.has(data.id)) return;
@@ -207,6 +209,17 @@ export const WORK_EVENT = /^project\.(work_|decision_|result_|assistant_change_u
  */
 export function streamLive(): boolean {
   return socket !== null && typeof WebSocket !== 'undefined' && socket.readyState === WebSocket.OPEN;
+}
+
+const runTextListeners = new Set<(piece: StreamRunText) => void>();
+
+/**
+ * The words of the person's own runs as they are written (#1248), while the stream is open (a view that shows them also listens for
+ * events, which keeps it open). Pieces missed while it was closed are not replayed: the run's answer replaces them when it is done.
+ */
+export function onRunText(listener: (piece: StreamRunText) => void) {
+  runTextListeners.add(listener);
+  return () => { runTextListeners.delete(listener); };
 }
 
 /** One listener for the signed-in person `owner`; `useStreamEvents` is the way components use it. */

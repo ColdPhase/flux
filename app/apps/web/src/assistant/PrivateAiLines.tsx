@@ -3,7 +3,9 @@ import { type AssistantRun } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { Button, Icon, Kreska } from '../ui';
-import { AnswerBody, BehindLine, sourceSummary, WorkingLine, type SourceLookups } from './ConversationParts';
+import { AnswerBody, AnswerTools, BehindLine, sourceSummary, WorkingLine, WritingAnswer, type SourceLookups } from './ConversationParts';
+import { isWorking } from './format';
+import { useForgetLiveRun, useLiveRun } from './liveRun';
 import type { ConversationAssistant } from './useConversationAssistant';
 import { useRunChanges, WaitingChanges } from './WaitingChanges';
 import { PhotoGrid } from '../composer/Attachments';
@@ -54,6 +56,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
   const answer = run.answer!;
   // The pictures its agent attached (#1217): the asker's alone until Show everyone posts them with the answer, shown as a message's photos are.
   const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
+  useForgetLiveRun(run.id, true);
   return (
     <li id={`answer-${run.id}`} tabIndex={-1} className="assistant-private" role="note" aria-label="Private answer" data-answer-run={run.id} data-private-answer="">
       <div className="assistant-private__who">
@@ -65,6 +68,8 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       <AnswerBody answer={answer} lookups={lookups} />
       {pictures.length ? <PhotoGrid photos={pictures} context={{ author: name }} /> : null}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
+      {run.status === 'stopped' ? <p className="assistant-answer__truncated" data-stopped-answer=""><Icon name="alert" size={13} />Stopped by you, so this answer is incomplete.</p> : null}
+      <AnswerTools answer={answer} onRetry={() => assistant.retry(run.id)} />
       {changes.length ? <WaitingChanges changes={changes} onChanged={refresh} meId={meId} /> : null}
       {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}
       <div className="assistant-private__foot">
@@ -77,6 +82,13 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
     </li>
   );
+}
+
+/** The working run's line: the working line, or, once its words come (#1248), the card where they are written. */
+function RunLine({ run, assistant, composerId, changed, lookups }: { run: AssistantRun; assistant: ConversationAssistant; composerId: string | undefined; changed: number; lookups: SourceLookups }) {
+  const live = useLiveRun(isWorking(run) ? run.id : null);
+  if (isWorking(run) && run.status === 'dispatching' && live.text.trim()) return <WritingAnswer run={run} text={live.text} onStop={assistant.stop} people={lookups.people ?? null} />;
+  return <WorkingLine run={run} onStop={assistant.stop} onRetry={() => assistant.retry(run.id)} onDismiss={assistant.dismissRun} {...(composerId ? { composerId } : {})} changed={changed} />;
 }
 
 /**
@@ -94,7 +106,7 @@ export function PrivateAiLines({ assistant, meId, meName, others, composerId, lo
   if (own && !run && !queued && !privateAnswers.length) return null;
   const items = <>
     {privateAnswers.map((answered) => <PrivateAnswer key={answered.id} run={answered} assistant={assistant} meId={meId} meName={meName} others={others} composerId={composerId} lookups={lookups} refreshKey={tick} />)}
-    {run ? <WorkingLine key="assistant-working" run={run} onStop={assistant.stop} onRetry={() => assistant.retry(run.id)} onDismiss={assistant.dismissRun} {...(composerId ? { composerId } : {})} changed={changed} /> : null}
+    {run ? <RunLine key="assistant-working" run={run} assistant={assistant} composerId={composerId} changed={changed} lookups={lookups} /> : null}
     {queued?.behind && queued.behind.authority !== 'owner_request' ? <BehindLine label={queued.behind.label} onStop={assistant.stopBehind} />
       : queued ? <li className="assistant-queued" aria-live="polite">Next: “{queued.prompt.length > 60 ? `${queued.prompt.slice(0, 60)}…` : queued.prompt}”. It starts when this one ends ·
         <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}

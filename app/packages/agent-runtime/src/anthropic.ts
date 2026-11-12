@@ -13,7 +13,7 @@ import { anthropicMessages, anthropicText, anthropicToolCalls, anthropicTools, a
 // `tools`, the earlier turns and their `tool_result`s in `messages`, no `tool_choice`; with `request.webSearch`, #954, also Anthropic's own
 // `web_search` server tool); the optional preflight uses the token-counting endpoint, which may only raise the Flux
 // estimate. The SDK's automatic retries are off, a stop aborts the HTTP request through the
-// AbortSignal, the transport is the guarded fetch every adapter uses, and every failure maps to
+// AbortSignal, the transport is the guarded fetch every adapter uses (which hands a streamed answer over as it arrives, #1248), and every failure maps to
 // the port's closed set of reasons with a billing hint. The key is resolved from the connection's
 // opaque `keyRef` only for the request at hand and is never logged, returned or kept.
 
@@ -114,18 +114,25 @@ export function anthropicPersonalCompute({ enabled, resolveKey, baseURL = AI_PRO
       }
     },
 
-    async dispatch(request, signal) {
+    async dispatch(request, signal, onText) {
       checkRequestLimits(request, 'anthropic_messages');
       try {
         const api = await client(request.connection.keyRef);
-        const message = await api.messages.create({
+        const params = {
           model: request.model,
           max_tokens: request.maxTokens,
           system: request.system,
           messages: anthropicMessages(request.input, request.turns) as unknown as Anthropic.MessageParam[],
           ...toolsOf(request),
           output_config: { effort: request.effort },
-        }, { signal });
+        };
+        // With a reader of the words as they come (#1248) the same request is streamed: its final message is the same answer, with the
+        // same usage, stop reason and blocks, so everything below reads it as it reads a whole one.
+        const message = onText ? await (() => {
+          const stream = api.messages.stream(params, { signal });
+          stream.on('text', (delta) => { try { onText(delta); } catch { /* the view only */ } });
+          return stream.finalMessage();
+        })() : await api.messages.create(params, { signal });
         const text = anthropicText(message.content);
         // No caching is requested, so these should be zero. If a workspace default caches anyway, they
         // are counted conservatively in base-input equivalents: a read as full input (priced 0.1x) and a

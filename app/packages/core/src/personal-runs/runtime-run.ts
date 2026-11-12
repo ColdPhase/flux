@@ -5,8 +5,9 @@ import type { Principal } from '../principal.js';
 import type {
   AgentBrief,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalRuntimeEnd, PersonalRuntimeEvent, PersonalRuntimeRunRequest,
-  RunChanges, RunEndStatus, RunRecord,
+  RunChanges, RunEndStatus, RunLiveText, RunRecord,
 } from './ports.js';
+import { liveText } from './live-text.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
@@ -47,6 +48,8 @@ export interface RuntimeRunDeps {
   /** Lower bounds for tests; production uses RUNTIME_RUN_LIMITS (#843: safety bounds only). */
   caps?: Partial<RuntimeCaps>;
   now?: () => number;
+  /** The asker's live view (#1248): the words the CLI streams for `/ai` and a chat, and the Flux tool it uses now. */
+  live?: RunLiveText;
 }
 
 /**
@@ -162,7 +165,7 @@ function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext
   };
 }
 
-export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now }: RuntimeRunDeps) {
+export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now, live }: RuntimeRunDeps) {
   const caps: RuntimeCaps = {
     maxTurns: Math.min(lowered.maxTurns ?? RUNTIME_RUN_LIMITS.maxTurns, RUNTIME_RUN_LIMITS.maxTurns),
     wallClockSeconds: Math.min(lowered.wallClockSeconds ?? RUNTIME_RUN_LIMITS.wallClockSeconds, RUNTIME_RUN_LIMITS.wallClockSeconds),
@@ -276,10 +279,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         return finish(run.id, 'dispatching', () => ended('unavailable', 'before_dispatch', free));
       }
 
+      // `/ai` and a chat are shown to the asker while the CLI writes them (#1248); the run token is never shown, even half.
+      const shown = live && isAsked(run) ? liveText(live, run, { secrets: [grant.token] }) : undefined;
       let stopWhy: 'owner' | 'limit' | 'standing' | 'local_tool' | null = null;
       let stopSent: Promise<void> | null = null;
       const stop = (why: 'owner' | 'limit' | 'standing' | 'local_tool') => {
         stopWhy ??= why;
+        // Once the run is to stop, the asker is sent no more of its words (#1248): not through the CLI's grace, and none after a refusal.
+        shown?.abandon();
         stopSent ??= (async () => {
           const answer = await runtime!.stop(target, run.id).catch(() => 'failed' as const);
           // Requested and acknowledged are separate states (F-022 "Stop").
@@ -300,6 +307,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       let searched = false;
       const onEvent = (event: PersonalRuntimeEvent) => {
         if (event.kind === 'init') { if (localToolInInit(event, grant.tools, webSearch)) stop('local_tool'); return; }
+        if (event.kind === 'text') { shown?.turn(event.turn); shown?.push(event.text); return; }
         if (event.kind === 'search' || event.kind === 'found') {
           if (!webSearch) return;
           searched = true;
@@ -315,6 +323,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
           }
           return;
         }
+        shown?.step(event.name);
         // Owner-only progress: one more Flux tool call (O-008 §4; the audience is the owner alone).
         void uow.run((ports) => ports.events.record({ kind: 'human', id: run.ownerUserId }, run.workspaceId, ASSISTANT_RUN_CHANGED_EVENT, run.id,
           { status: 'dispatching', step: 'tool', tool: event.name })).catch(() => undefined);
@@ -345,6 +354,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         end = { kind: 'ended', reason: 'unknown' };
       } finally {
         stopWatching();
+        await shown?.close();
         await tokens!.close(run.id).catch(() => undefined);
       }
       await stopSent;
@@ -355,12 +365,21 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       // text, and that transaction holds the space's task lock. AIM-3 "Committed answer": token patterns and the exact run token become
       // "[removed: looked like a secret]"; then its final text is cleaned (#1143, #1149, C-30): after its schedule block is taken out (and the
       // schedule's instruction cleaned), before Flux lists its sources; the `<ask>` question decoded and cleaned.
-      const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await (async (text: string) => {
+      const prepare = async (text: string) => {
         const redacted = redactSecrets(text, [grant.token]);
         const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(run.id)));
         const searches = await uow.run((ports) => ports.runs.webSearches(run.id));
         return { redacted, prepared: await preparedAnswer(redacted.text, cleaner, searches.cited) };
-      })(end.text) : null;
+      };
+      const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await prepare(end.text) : null;
+      // The words the CLI had written when its owner stopped it (#1248), cleaned the same way; a `<schedule>` or `<ask>` block, whole or
+      // begun, and what follows it are left out, so a stopped answer prepares and asks nothing.
+      // A stop that lands as the answer completes keeps that answer, the same way.
+      const all = end.kind === 'answer' ? end.text : shown ? shown.written : '';
+      const cut = all.search(/<(?:schedule|ask)\b/);
+      const written = cut >= 0 ? all.slice(0, cut) : all;
+      const kept = !shown ? null : answer && cut < 0 ? answer
+        : written.trim() && Buffer.byteLength(written, 'utf8') <= caps.maxAnswerBytes ? await prepare(written) : null;
 
       return uow.run(async (ports) => {
         const located = await ports.runs.findRun(run.id);
@@ -372,7 +391,15 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const save = async (changes: RunChanges) => (await updateAndAnnounce(ports, run.id, changes)).status;
         // F-029: a run stopped because AI was turned off says so; nothing it produced is posted.
         if (refusal === 'ai_off') return save(ended('ai_off', 'before_commit', used));
-        if (current.stopRequestedAt) return save(ended('stopped', 'before_commit', used));
+        if (current.stopRequestedAt) {
+          // Stopped while it wrote (#1248): the words so far stay as its answer, marked stopped, only while the owner still stands where the
+          // run was: a refusal stores nothing.
+          if (kept && kept.prepared.text.trim() && !refusal) {
+            const words = await answerWithWebSources(ports, run, kept.prepared.text, kept.prepared.cited);
+            return save(ended('stopped', 'before_commit', { ...used, answerBody: words.trim(), answerTruncated: false, answerSources: [], answerRedacted: kept.redacted.changed, committedAt: new Date() }));
+          }
+          return save(ended('stopped', 'before_commit', used));
+        }
         if (stopWhy === 'local_tool' || (end.kind === 'ended' && end.reason === 'local_tool')) return save(ended('unavailable', null, { ...used, endReason: 'local_tool' }));
         if (current.mcpLimit) return save(ended('cap_reached', 'before_commit', { ...used, endReason: 'mcp_results_too_large' }));
         // Access, pause, removal or a revoked connection after the start: nothing is posted.
