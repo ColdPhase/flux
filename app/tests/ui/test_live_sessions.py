@@ -612,9 +612,10 @@ class LiveJourney(LiveBase):
         shot(ada, "live-desktop-1440-call-line-ended")
 
     def test_00e_a_shared_screen_opens_the_others_stage_once_and_says_when_it_stops(self) -> None:
-        """#1223 point 7 (F-041): when Nia shares, Jonas's stage opens on it within 2 s with the line "Kai is sharing a screen", and her face
-        carries a screen badge; closed, it stays closed for that share; when she stops, it closes and says "Kai stopped sharing". A new
-        share opens it again."""
+        """#1223 point 8 (F-041): when Kai shares, Jonas's stage opens on it within 2 s with the line "Kai is sharing a screen", and Kai's face
+        carries a screen badge; closed, it stays closed for that share, also across a reconnect; when Kai stops, it closes and says "Kai
+        stopped sharing". A new share opens it again. While Jonas types in the composer the stage does not open (it would cover the field):
+        the line's View is the offer."""
         self.seed()
         ada = self.page("ada")
         project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Bike kitchen", "visibility": "restricted"}, status=201)
@@ -633,26 +634,45 @@ class LiveJourney(LiveBase):
         composer.click()
         composer.type("Brake pads are in")
         stage = jonas.get_by_role("region", name="Shared screens and cameras")
+        sharing = self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen")
         expect(stage).to_have_count(0)
 
+        # Typing in the composer: the share is offered in the strip, the stage stays shut and the field stays in view.
+        self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
+        expect(sharing.get_by_role("button", name="View")).to_be_visible(timeout=2500)
+        jonas.wait_for_timeout(1500)
+        expect(stage).to_have_count(0)
+        expect(composer).to_be_visible()
+        expect(composer).to_be_focused()
+        composer.type(" the drawer")
+        expect(composer).to_have_value("Brake pads are in the drawer")
+        self.bar(nia).get_by_role("button", name="Stop sharing your screen").click()
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai stopped sharing")).to_be_visible()
+
+        # Not typing: a new share opens the stage by itself, at once, without taking focus.
+        jonas.evaluate("() => document.activeElement && document.activeElement.blur()")
         self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
         started = time.monotonic()
         expect(stage).to_be_visible(timeout=2500)
         self.assertLess(time.monotonic() - started, 3, "the stage opens within about 2 s")
-        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen")).to_be_visible()
+        expect(sharing).to_be_visible()
         expect(self.bar(jonas).locator(".lv-face[data-sharing] .lv-face__screen")).to_have_count(1)
-        expect(composer).to_be_focused()
-        composer.type(" the drawer")
-        expect(composer).to_have_value("Brake pads are in the drawer")
+        expect(composer).not_to_be_focused()
         shot(jonas, "live-desktop-1440-stage-opened-by-share")
-        # Closed for this share, it stays closed.
+        # Closed for this share, it stays closed, also after the connection drops and comes back.
         stage.get_by_role("button", name="Back to work").click()
         expect(stage).to_be_hidden()
         jonas.wait_for_timeout(2500)
         expect(stage).to_be_hidden()
-        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen").get_by_role("button", name="View")).to_be_visible()
-        # View brings it back; when she stops, it closes and says so.
-        self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen").get_by_role("button", name="View").click()
+        expect(sharing.get_by_role("button", name="View")).to_be_visible()
+        jonas.evaluate("window.__live.rtc.filter((s) => s.readyState === 1).forEach((s) => s.close())")
+        expect(self.bar(jonas).get_by_role("status").first).to_contain_text("Reconnecting", timeout=15000)
+        expect(self.bar(jonas).get_by_role("status").first).to_contain_text("Live", timeout=30000)
+        jonas.wait_for_timeout(3000)
+        expect(stage).to_be_hidden()
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai stopped sharing")).to_have_count(0)
+        # View brings it back; when Kai stops, it closes and says so.
+        sharing.get_by_role("button", name="View").click()
         expect(stage).to_be_visible()
         self.bar(nia).get_by_role("button", name="Stop sharing your screen").click()
         expect(stage).to_be_hidden()

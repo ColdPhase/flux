@@ -99,12 +99,15 @@ supersedes the quiet start of #59 (2026-09-27).
    - An agent's brief sees the line as an event ("a call took place, 12 min, Hubert and
      Maurycy"), not as a message to answer.
 8. **A shared screen is seen.** When someone starts sharing, each other participant's
-   stage opens on that screen once, unless they closed the stage for that share; on a
-   phone a sheet offers **View Nia's screen**. A line in the strip says "**Nia** is
-   sharing her screen · View", and her face in the strip carries a screen badge while
-   she shares. A screen that stops sharing closes its stage and says so ("Nia stopped
-   sharing"). The sharer's own line stays: "You are sharing your screen. Everyone in
-   the session can see it."
+   stage opens on that screen once, unless they closed the stage for that share (a
+   reconnect does not open it again); on a phone a sheet offers **View Nia's screen**.
+   While the person is typing (a text field, the composer included, has focus) nothing
+   opens: the stage would cover the field they type in, so the strip's **View** is the
+   offer. A line in the strip says "**Nia** is sharing a screen · View", and the
+   sharer's face in the strip carries a screen badge while they share. A screen that
+   stops sharing closes its stage and says so ("Nia stopped sharing"). The sharer's own
+   line stays: "You are sharing your screen. Everyone in the session can see it." Joining
+   a call where a screen is already shared opens the stage as a new share does.
 
 The appearance of each piece is drawn in the [final design](../design/final/README.md#calls).
 

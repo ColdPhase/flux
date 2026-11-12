@@ -1074,11 +1074,15 @@ Live strip, someone shares a screen
 - **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab, by #1243's notice.
   It follows Settings › Notifications › **Sound when someone calls me** (on by default; #1243 draws the two switches).
 - **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
-  badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing a screen" (the decision's "her screen": Flux
-  does not know anyone's pronouns) and a secondary **View** while the stage is closed. The
+  badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing a screen" (Flux does not know anyone's
+  pronouns) and a secondary **View** while the stage is closed. The
   stage opens by itself once per share, with no motion (motion rule 5), and stays closed when you close it for that
-  share. When the share stops, the stage closes and the line reads "Nia stopped sharing" for a few seconds. On a phone
-  the stage does not open by itself: a half-height sheet offers **View Nia's screen** and Not now.
+  share, also after a reconnect. It does not open while a text field has focus: the stage covers the whole pane, so it
+  would hide the composer the person is typing in (WCAG 2.2, 2.4.11 Focus Not Obscured); the line's **View** is the offer
+  then. Joining a call where a screen is already shared opens the stage as a new share does. When the share stops, the
+  stage closes and the line reads "Nia stopped sharing" for a few seconds. On a phone
+  the stage does not open by itself: a half-height sheet offers **View Nia's screen** and Not now (not while a text field
+  has focus either: the strip's View is there).
 
 ### Create
 

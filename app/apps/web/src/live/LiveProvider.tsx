@@ -133,6 +133,14 @@ function readable(error: unknown): string {
 
 const REJOIN_DELAYS = [800, 2500, 6000];
 
+/** Whether the person is typing now: a text field, the composer included, has focus. A stage opening by itself would cover it (F-041 point 8). */
+function typingNow(): boolean {
+  const field = document.activeElement;
+  if (!(field instanceof HTMLElement)) return false;
+  if (field.isContentEditable || field instanceof HTMLTextAreaElement) return true;
+  return field instanceof HTMLInputElement && !/^(button|checkbox|radio|submit|reset|file|range|color|image)$/.test(field.type);
+}
+
 export function LiveProvider({ meId, children }: { meId: string; children: ReactNode }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -172,29 +180,42 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const othersJoined = !!session && (joinedIn === session.id || session.joinedBy.some((userId) => userId !== session.createdBy));
   useEffect(() => { if (session) othersJoinedRef.current = othersJoined; });
 
-  // A shared screen is seen (F-041 point 7): a screen someone starts sharing opens each other person's stage on it once (a sheet offers it
-  // on a phone); closing the stage keeps it closed for that share. A screen that stops closes its stage and says so for a few seconds.
-  const screenList = phase === 'in' ? media?.screens ?? [] : [];
-  const screenKeys = screenList.map((screen) => `${screen.key}\u0000${screen.userId}`).join('\u0001');
-  const [screensSeen, setScreensSeen] = useState('');
+  // A shared screen is seen (F-041 point 8): a screen someone starts sharing opens each other person's stage on it once (a sheet offers it
+  // on a phone); closing the stage keeps it closed for that share, also across a reconnect. A person who is typing is not interrupted: the
+  // stage would cover the field they type in, so the strip's View is the offer. A screen that stops closes its stage and says so.
+  const sessionId = session?.id ?? null;
+  const screenKeys = phase === 'in' ? (media?.screens ?? []).map((screen) => `${screen.key}\u0000${screen.userId}`).join('\u0001') : null;
+  // The shares this call has already offered; it is kept while the connection is away (rejoining), reset for another call.
+  const [screensSeen, setScreensSeen] = useState<{ session: string | null; keys: string }>({ session: null, keys: '' });
   const [screensGone, setScreensGone] = useState<Record<string, string>>({});
-  if (screenKeys !== screensSeen) {
+  if (screensSeen.session !== sessionId) {
+    setScreensSeen({ session: sessionId, keys: '' });
+    setScreensGone({});
+  } else if (screenKeys !== null && screenKeys !== screensSeen.keys) {
     // Compared with the screens of the previous render (React's "information from previous renders"), not in an effect.
     const parse = (keys: string) => new Map(keys ? keys.split('\u0001').map((entry) => entry.split('\u0000') as [string, string]) : []);
-    const before = parse(screensSeen);
+    const before = parse(screensSeen.keys);
     const now = parse(screenKeys);
-    setScreensSeen(screenKeys);
-    // A screen sent again (its mode switched) leaves and comes back within moments: the same share, not a new one or an end.
+    setScreensSeen({ session: sessionId, keys: screenKeys });
+    // A screen sent again (its mode switched, or the connection came back) leaves and returns within moments: the same share, not a new one or an end.
     const back = [...now.keys()].filter((key) => screensGone[key]);
     if (back.length) setScreensGone((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !back.includes(key))));
+    const typing = typingNow();
     for (const [key, userId] of now) {
-      if (before.has(key) || screensGone[key]) continue;
+      if (before.has(key) || screensGone[key] || typing) continue;
       if (phoneWide) setScreenOffer({ key, userId });
       else setStage((current) => current.open ? current : { open: true, focus: key, auto: true });
     }
     const gone = [...before].filter(([key]) => !now.has(key));
-    if (gone.length && phase === 'in') setScreensGone((current) => ({ ...current, ...Object.fromEntries(gone) }));
+    if (gone.length) setScreensGone((current) => ({ ...current, ...Object.fromEntries(gone) }));
   }
+  // After a reconnect the other people's screens take a moment to come back: a share is not over until it has been gone longer than that.
+  const returned = useRef(0);
+  const phaseBefore = useRef<Phase>('idle');
+  useEffect(() => {
+    if (phase === 'in' && phaseBefore.current === 'rejoining') returned.current = Date.now();
+    phaseBefore.current = phase;
+  }, [phase]);
   // A screen still gone after a moment has stopped: its stage closes and the strip says so.
   useEffect(() => {
     const entries = Object.entries(screensGone);
@@ -206,7 +227,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
         setScreenStopped(userId);
       }
       setScreensGone({});
-    }, 2_500);
+    }, Date.now() - returned.current < 15_000 ? 10_000 : 2_500);
     return () => window.clearTimeout(timer);
   }, [screensGone]);
   useEffect(() => {
