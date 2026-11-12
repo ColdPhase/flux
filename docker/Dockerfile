@@ -69,7 +69,7 @@ RUN set -eu; cd node_modules; \
 
 # Browser checks only (issue #41): the built workspace on the official Playwright image,
 # whose bundled Chromium matches the pinned playwright 1.63.0 package. Never deployed.
-FROM mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27 AS e2e
+FROM mcr.microsoft.com/playwright:v1.65.0-noble@sha256:9beb546099e11f52d62e505537914870e01a67e0e6b00ae41da4775324e73dbe AS e2e
 WORKDIR /app
 COPY --from=build /app /app
 CMD ["node_modules/.bin/tsx", "--test", "tests/app/e2e/pwa.e2e.ts"]
