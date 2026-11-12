@@ -568,6 +568,17 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
 - **Licences.** `pg_search` is AGPL-3.0-or-later, which Flux (AGPL-3.0-only) may ship; its source is the release tag the
   Dockerfile names. PostgreSQL and `pgvector` are under the PostgreSQL Licence, OpenBLAS (a `pg_search` dependency) BSD-3-Clause.
 
+**Engineering choices (#1293, people's search).**
+
+- **Plain words** (⌘K, the search API, `flux_search_project`) are answered by the BM25 statement: any of the words, Polish and English
+  stems, accents folded, ranked by rarity with a word in a title counting double; the word being typed is also a prefix, and a title
+  tolerates one typo in a word of four letters or more. Quotes, `or` and `-word` ask for exactly what they say and stay on the exact
+  index (every word, no stems). The groups of the dialog, its keys and its one request per debounce are unchanged.
+- **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
+  need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
+- **Encrypted spaces** keep their in-memory search (their content is never in the BM25 index); a position's score is squashed to
+  (0, 1) so that their rows and the BM25 rows merge in one order.
+
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.
 

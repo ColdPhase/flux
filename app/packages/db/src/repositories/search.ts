@@ -1,4 +1,5 @@
 import { sql, type SQL } from 'drizzle-orm';
+import { foldSearchWord } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
@@ -169,19 +170,54 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
 export type SearchRanking = 'prefix' | 'bm25';
 
 /** The BM25 index's text fields (migration 0065): title and body, each with a Polish and an English stemmer. */
-const BM25_FIELDS = [
-  sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`,
-  sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`,
-];
+const BM25_TITLES = [sql`sd.title::pdb.alias('title_pl')`, sql`sd.title::pdb.alias('title_en')`];
+const BM25_BODIES = [sql`sd.body::pdb.alias('body_pl')`, sql`sd.body::pdb.alias('body_en')`];
+const BM25_FIELDS = [...BM25_TITLES, ...BM25_BODIES];
+/** A word in a title counts this much more than the same word in a body, as a title does in the exact search. */
+const TITLE_BOOST = 2;
+/** What a prefix of the word being typed counts next to a whole word (a prefix query scores a constant of 1). */
+const PREFIX_BOOST = 0.3;
+/** A title also matches a word with one typo, for words of this many letters or more and for this many words at most. */
+const TYPO_MIN_LETTERS = 4;
+const TYPO_MAX_WORDS = 6;
+/** BM25 scores are unbounded; a hit's position carries this one, `bm25 / (bm25 + SQUASH)`, in (0, 1), so that an encrypted space's rows (ranked 0 to 1.5 in memory) merge with them. The order is the same. */
+const SQUASH = 10;
 
-/** Any of the plan's plain words in any BM25 field. Only letters and digits reach it (`plan.words`), so it carries no query syntax. */
-function bm25Match(plan: SearchPlanRows): SQL {
-  return sql`(${sql.join(BM25_FIELDS.map((field) => sql`${field} ||| ${plan.words}::text`), sql` OR `)})`;
+/** The word a person is still typing: the last word of the prefix query (`lamp & sens:*`), folded, when it has two letters or more. */
+function typingWord(plan: SearchPlanRows): string | null {
+  const word = /([\p{L}\p{N}]+):\*$/u.exec(plan.prefix ?? '')?.[1];
+  const folded = word ? foldSearchWord(word) : '';
+  // Only letters and digits reach a pattern, so it carries no regular expression syntax.
+  return /^[\p{L}\p{N}]{2,}$/u.test(folded) ? folded : null;
 }
 
-/** The plan's plain words as an "any of them" `tsquery`, to mark them in BM25 snippets. */
+/**
+ * What a hit must match: any of the plan's plain words in any BM25 field (stems, accents folded), and, for a person's own search,
+ * also the word being typed as a prefix of what is indexed ("sens" finds "sensors": the index holds stems, so a prefix is looked up in
+ * them), and a title with one typo. Titles count double. Only letters and digits reach it (`plan.words`), so it carries no query syntax.
+ */
+function bm25Match(plan: SearchPlanRows): SQL {
+  const clauses = [
+    ...BM25_TITLES.map((field) => sql`${field} ||| ${plan.words}::text::pdb.boost(${sql.raw(String(TITLE_BOOST))})`),
+    ...BM25_BODIES.map((field) => sql`${field} ||| ${plan.words}::text`),
+  ];
+  const typing = typingWord(plan);
+  if (typing) clauses.push(...BM25_FIELDS.map((field) => sql`${field} @@@ (pdb.regex(${`${typing}.*`}::text)::pdb.boost(${sql.raw(String(PREFIX_BOOST))}))`));
+  // An agent's statement matches exactly (`fuzzy` is false); a person's also tolerates a typo in a title, but a task number names one task.
+  if (plan.fuzzy && plan.number === null)
+    for (const word of [...new Set(plan.words.split(' '))].filter((item) => [...item].length >= TYPO_MIN_LETTERS).slice(0, TYPO_MAX_WORDS))
+      clauses.push(...BM25_TITLES.map((field) => sql`${field} ||| ${word}::text::pdb.fuzzy(1)`));
+  return sql`(${sql.join(clauses, sql` OR `)})`;
+}
+
+/**
+ * The plan's plain words as an "any of them" `tsquery`, to mark them in BM25 snippets: each word, and a longer form of it as the prefix
+ * of the word without its last letters (`czujn:*` marks "czujników", `calibra:*` "calibrated" and "calibration").
+ */
 function anyWord(plan: SearchPlanRows): SQL {
-  return sql`to_tsquery('simple', array_to_string(ARRAY(SELECT DISTINCT lexeme FROM unnest(to_tsvector('simple', ${plan.words}))), ' | '))`;
+  return sql`to_tsquery('simple', array_to_string(ARRAY(SELECT DISTINCT CASE
+    WHEN length(lexeme) >= 6 THEN left(lexeme, length(lexeme) - 2) || ':*' WHEN length(lexeme) >= 4 THEN left(lexeme, length(lexeme) - 1) || ':*' ELSE lexeme END
+    FROM unnest(to_tsvector('simple', ${plan.words}))), ' | '))`;
 }
 
 /** Everything a hit must satisfy apart from the cursor. */
@@ -231,7 +267,7 @@ function exactNumber(plan: SearchPlanRows): SQL {
 function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ranking: SearchRanking = 'prefix'): SQL {
   const q = ranking === 'bm25' ? anyWord(plan) : tsquery(plan);
   const score = ranking === 'bm25'
-    ? sql`round(sd.bm25::numeric, 6)`
+    ? sql`round((sd.bm25 / (sd.bm25 + ${sql.raw(String(SQUASH))}))::numeric, 6)`
     : sql`round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)`;
   const columns = sql`sd.id, sd.kind, sd.workspace_id, sd.object_id, sd.parent_id, sd.project_id, sd.version, sd.status, sd.title, sd.body,
         sd.author_kind, sd.author_id, sd.at`;

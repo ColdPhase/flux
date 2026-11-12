@@ -125,7 +125,8 @@ class SearchJourney(unittest.TestCase):
         thread = self.api(nia, "POST", f"/api/v1/projects/{p}/conversations", {"body": "Camera or sensor for the bedside lamp?", "clientMessageId": str(uuid.uuid4())}, status=201)
         for body in ["I ordered an infrared sensor, it should arrive on Wednesday.",
                      "The infrared sensor reacts at 5 lux in the hallway test.",
-                     "Nia, can you check the sensor angle before Friday?"]:
+                     "Nia, can you check the sensor angle before Friday?",
+                     "Kalibracja czujników jest zaplanowana na piątek."]:
             self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)
         material = self.api(ari, "POST", f"/api/v1/projects/{p}/materials", {"clientMutationId": str(uuid.uuid4()), "title": "Sensor comparison",
                                                                            "body": "The capacitive option drifts with humidity in the bedroom."}, status=201)
@@ -168,9 +169,11 @@ class SearchJourney(unittest.TestCase):
         expect(dialog.get_by_text("All places")).to_have_count(0)
         expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
         shot(page, "search-jump-desktop-1440")
+        # Any of the words matches (BM25, F-042), so the groups keep their order and the message with both words is one row among the results.
         field.fill("sensor reacts")
-        expect(dialog.locator("[role=option].sr").first).to_contain_text("The infrared sensor reacts at 5 lux in the hallway test.")
-        dialog.locator("[role=option].sr").first.click()
+        reacts = dialog.locator("[role=option].sr").filter(has_text="The infrared sensor reacts at 5 lux in the hallway test.")
+        expect(reacts).to_have_count(1)
+        reacts.first.click()
         expect(dialog).to_be_hidden()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/conversations/{self.ids['thread']}#message-"))
         expect(page.locator(".project-convo__message.is-arrived")).to_contain_text("hallway test")
@@ -212,10 +215,10 @@ class SearchJourney(unittest.TestCase):
         page = self.page("nia")
         page.goto("/")
         dialog, field = self.jump(page, "spare sensor")
-        first = dialog.locator("[role=option].sr").first
+        first = dialog.locator("[role=option].sr").filter(has_text="Did the spare sensor arrive at your place?").first
         expect(first).to_contain_text("With Ari Nowak")
         self.assertIn("Messages", self.groups(dialog))
-        dialog.locator("[role=option].sr").first.click()
+        first.click()
         expect(page).to_have_url(re.compile(rf"/dm/{self.ids['dm']}#message-"))
         expect(page.locator(".dm-msg.is-arrived")).to_contain_text("spare sensor")
         dialog, field = self.jump(page, "brass collar")
@@ -576,6 +579,31 @@ class SearchJourney(unittest.TestCase):
                     page.keyboard.press("Control+k")
                     expect(dialog.get_by_role("option", name=re.compile("Ask my assistant"))).to_have_count(1)  # the next time it is there
                 shot(page, f"search-open-stable-desktop-1440-{delay}")
+
+    # ---------------------------------------------------------------- Polish words and accents (BM25, #1293)
+
+    def test_13a_another_form_of_a_word_and_a_word_without_its_accents_find_the_text_and_mark_it(self) -> None:
+        page = self.page("nia")
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        kalibracja = "Kalibracja czujników jest zaplanowana na piątek."
+        # "czujnik" is the base form of "czujników", and "kalibr" is the word as far as it is typed.
+        for query, marked in (("czujnik", ["czujników"]), ("czujnikow piatek", ["czujników", "piątek"]), ("kalibr", ["Kalibracja"])):
+            with self.subTest(query=query):
+                dialog, field = self.jump(page, query)
+                row = dialog.locator("[role=option].sr").filter(has_text=kalibracja)
+                expect(row).to_have_count(1)
+                expect(row.first.locator(".sr__hit")).to_have_text(marked)
+                page.keyboard.press("Escape")
+                expect(dialog).to_be_hidden()
+        # Any of the words matches, so one that is nowhere does not hide the others.
+        dialog, field = self.jump(page, "czujnik zeppelin")
+        expect(dialog.locator("[role=option].sr").filter(has_text=kalibracja)).to_have_count(1)
+        shot(page, "search-polish-form-desktop-1440")
+        # The key opens the message, as for any other result.
+        dialog.locator("[role=option].sr").filter(has_text=kalibracja).first.click()
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/conversations/{self.ids['thread']}#message-"))
+        expect(page.locator(".project-convo__message.is-arrived")).to_contain_text("zaplanowana na piątek")
 
     # ---------------------------------------------------------------- more than the dialog lists
 
