@@ -86,9 +86,11 @@ if [ -z "$sha" ]; then
 fi
 
 request="ci-$(date +%s)-$$-$(od -An -N3 -tx1 /dev/urandom | tr -d ' \n')"
+# The concurrency group names the module list by a digest: a long list would pass GitHub's 400-character cap on the group.
+modules_key=$(printf '%s' "$modules" | sha256sum | cut -c1-16)
 printf 'ci_test: %s %s %s shard(s) of %s @ %s\n' "$suite" "$browser" "$shards" "$modules" "$sha"
 gh workflow run test-modules.yml -R "$repo" --ref "$workflow_ref" \
-  -f "ref=$sha" -f "suite=$suite" -f "browser=$browser" -f "modules=$modules" -f "shards=$shards" -f "request_id=$request" >/dev/null \
+  -f "ref=$sha" -f "suite=$suite" -f "browser=$browser" -f "modules=$modules" -f "shards=$shards" -f "modules_key=$modules_key" -f "request_id=$request" >/dev/null \
   || { echo 'ci_test: the dispatch was refused (is test-modules.yml on the default branch?)' >&2; exit 3; }
 
 # The run name carries the request id, so concurrent dispatches of other people are never mistaken for this one.

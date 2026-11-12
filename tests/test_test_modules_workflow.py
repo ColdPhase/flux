@@ -114,7 +114,7 @@ class WorkflowShape(unittest.TestCase):
         self.assertEqual(jobs, ["plan", "test"])
         self.assertEqual(len(re.findall(r"^    timeout-minutes: \d+$", WORKFLOW, re.M)), len(jobs))
         group = re.search(r"^  group: (.+)$", WORKFLOW, re.M).group(1)
-        for part in ("inputs.ref", "inputs.suite", "inputs.modules", "inputs.browser"):
+        for part in ("inputs.ref", "inputs.suite", "inputs.modules_key", "inputs.browser"):
             self.assertIn(part, group)
         self.assertIn("cancel-in-progress: true", WORKFLOW)
         self.assertIn("fail-fast: false", WORKFLOW)
