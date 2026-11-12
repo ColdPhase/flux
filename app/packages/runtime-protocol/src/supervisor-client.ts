@@ -1,5 +1,5 @@
 import { request as httpRequest } from 'node:http';
-import { parseSupervisorFrame, resultMatches, type RunFrame, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorResult } from './frames.js';
+import { parseSupervisorFrame, resultMatches, TEXT_FRAME_LIMITS, type RunFrame, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorResult } from './frames.js';
 import { DEFAULT_FRAME_LIMITS, FrameStreamError, NdjsonReader, type FrameLimits } from './ndjson.js';
 import { RUNTIME_PORTS } from './names.js';
 import { requestBody, RUN_CAP_BOUNDS, type SupervisorRequest } from './requests.js';
@@ -23,9 +23,9 @@ const MAX_STEPS = 16;
 
 /**
  * A run's stream (F-022 T5): its start-up lists, one frame per Flux tool call and the answer, which may be
- * up to the largest answer bound once JSON-escaped.
+ * up to the largest answer bound once JSON-escaped, and the words it writes as it writes them (#1248), within their own bounds.
  */
-export const RUN_FRAME_LIMITS: FrameLimits = { lineBytes: 512 * 1024, totalBytes: 4 * 1024 * 1024, frames: 2048 };
+export const RUN_FRAME_LIMITS: FrameLimits = { lineBytes: 512 * 1024, totalBytes: 4 * 1024 * 1024 + 6 * TEXT_FRAME_LIMITS.total, frames: 2048 + TEXT_FRAME_LIMITS.frames };
 /** A runtime's report lists every person's binding directory (#860): one long line, at most `MAX_REPORTED_BINDINGS` ids. */
 export const REPORT_FRAME_LIMITS: FrameLimits = { lineBytes: 2 * 1024 * 1024, totalBytes: 3 * 1024 * 1024, frames: 16 };
 

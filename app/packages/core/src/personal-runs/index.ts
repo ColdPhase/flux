@@ -10,6 +10,7 @@ export { readBriefFacts, type BriefFacts } from './brief-facts.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { notedPageResult, PAGE_NOTE_MIN_CHARS, READ_WEB_TOOL } from './page-notes.js';
 export { announce as announceRunProgress } from './progress.js';
+export { LIVE_TEXT_MS, liveText, type LiveText } from './live-text.js';
 export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections } from './test-fixture.js';
 export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, runtimeModelFlag } from './model.js';
 export { createRuntimeRunProcessor, localToolInInit } from './runtime-run.js';

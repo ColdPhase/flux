@@ -117,6 +117,17 @@ export class StreamConnection implements DeliveryTarget {
     }
   }
 
+  /** Whether this connection is the signed-in person `userId`'s: the one reader of their own run's live view (#1248). */
+  isPerson(userId: string) {
+    return !this.closed && this.subscription.principal.kind === 'human' && this.subscription.principal.id === userId;
+  }
+
+  /** A live piece that is not an event (#1248): no cursor, nothing to replay; a failed send only drops it. */
+  sendLive(message: StreamMessage) {
+    if (this.closed) return;
+    this.send(message).catch(() => undefined);
+  }
+
   /** Backpressure: close a client that buffers too much or does not accept a frame in time. */
   send(message: StreamMessage) {
     if (this.socket.bufferedAmount > MAX_BUFFERED_BYTES) {

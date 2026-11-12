@@ -234,6 +234,13 @@ interface RunScript {
   delayMs?: number;
   /** The plan's limit comes after the calls: the run changed things first. */
   limitAfterCalls?: boolean;
+  /**
+   * #1248: the answer is streamed first, as `--include-partial-messages` writes it (`message_start`, then `text_delta` pieces, `streamGapMs`
+   * apart), with `streamForever` its words again and again until the run is stopped.
+   */
+  stream?: boolean;
+  streamGapMs?: number;
+  streamForever?: boolean;
 }
 
 /**
@@ -357,6 +364,17 @@ async function claudeRun(argv: string[]): Promise<number> {
   let answer = (script.answer ?? 'Done: I read {{count}} things in this project.').replace('{{count}}', String(results.length)).replace('{{results}}', JSON.stringify(results));
   if (mode === 'run_big_answer') answer = 'x'.repeat(70 * 1024);
   if (mode === 'run_secret_answer') answer = `Here: sk-ant-api03-${randomBytes(12).toString('hex')} and the token ${token} and Bearer ${token}.`;
+  if (script.stream) {
+    emit({ type: 'stream_event', session_id: session, parent_tool_use_id: null, event: { type: 'message_start', message: { id: 'msg_answer', role: 'assistant', content: [] } } });
+    const words = answer.match(/\S*\s*/g)!.filter(Boolean);
+    for (let index = 0; script.streamForever || index < words.length; index += 1) {
+      if (stopping) return 130;
+      emit({ type: 'stream_event', session_id: session, parent_tool_use_id: null,
+        event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: words[index % words.length] } } });
+      await pause(script.streamGapMs ?? 20);
+    }
+    emit({ type: 'assistant', session_id: session, message: { id: 'msg_answer', role: 'assistant', content: [{ type: 'text', text: answer }] } });
+  }
   emit({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: results.length + 1, session_id: session, total_cost_usd: 0 });
   return 0;
 }

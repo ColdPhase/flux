@@ -11,7 +11,7 @@ import {
   type PersonalRuntime,
   type PersonalToolHost,
 } from '@flux/core';
-import type { Database } from '@flux/db';
+import { runLiveText, type Database } from '@flux/db';
 import { personalRunWorkerUnitOfWork } from './adapters.js';
 import { startPersonalRunRecovery } from './recovery.js';
 
@@ -44,6 +44,8 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
     ...(options.tools ? { tools: options.tools } : {}),
     ...(options.tokens ? { tokens: options.tokens } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
+    // The asker sees `/ai` and a chat answered as they are written (#1248), over the API's live stream.
+    live: runLiveText(db),
   });
   // A run may take an hour, and many people's agents run at once (#860): the job only starts it, and one long run never holds
   // up the next person's. Who may start is decided in the claim. A worker that dies mid-run is covered by the recovery below.

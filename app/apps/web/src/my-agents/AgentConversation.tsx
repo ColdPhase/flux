@@ -5,7 +5,8 @@ import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
 import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
-import { AnswerBody } from '../assistant/ConversationParts';
+import { AnswerBody, AnswerTools, WritingWords } from '../assistant/ConversationParts';
+import { shownWords, stepWords, useForgetLiveRun, useLiveRun, useReducedMotion } from '../assistant/liveRun';
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
@@ -58,6 +59,12 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
   };
   const working = isWorking(run);
   const ended = !working && !run.answer ? endedText(run) : null;
+  // The answer as it is written (#1248): its words grow in the bubble, and before them the line names the step the agent is on.
+  const live = useLiveRun(working ? run.id : null);
+  const reduced = useReducedMotion();
+  useForgetLiveRun(run.id, !working);
+  const writing = working && run.status === 'dispatching' && !!live.text.trim();
+  const step = working && run.status === 'dispatching' && !run.stopRequested ? stepWords(live.step) : null;
   const prepared = run.answer ? schedules.jobs?.find((job) => job.preparedRunId === run.id) ?? null : null;
   return (
     <>
@@ -73,11 +80,14 @@ function Turn({ run, agent, chat, schedules, first, newDay }: { run: AssistantRu
             {/* The pictures the agent attached to its answer (#1217), as a message's photos: above its words. */}
             {run.answer && run.pictures?.length ? <PhotoGrid photos={run.pictures} context={{ author: agent.name }} /> : null}
             {run.answer ? <MessageBubble><div className="dm-msg__body agc__answer"><AnswerBody answer={run.answer} lookups={lookups} /></div></MessageBubble>
-              : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? workingText(run) : ended ?? 'Nothing to say.'}</div>}
+              : writing ? <MessageBubble><div className="dm-msg__body agc__answer" data-writing-run={run.id} aria-busy="true"><WritingWords words={shownWords(live.text, reduced)} reduced={reduced} people={lookups.people} /></div></MessageBubble>
+                : <div className="dm-msg__body agc__state" data-run-status={run.status}>{working ? step ?? workingText(run) : ended ?? 'Nothing to say.'}</div>}
             {prepared ? <ReadySchedule job={prepared} state={schedules} agent={agent} /> : null}
             {run.answer?.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
+            {run.answer && run.status === 'stopped' ? <p className="assistant-answer__truncated" data-stopped-answer=""><Icon name="alert" size={13} />Stopped by you, so this answer is incomplete.</p> : null}
+            {run.answer ? <AnswerTools answer={run.answer} onRetry={() => chat.retry(run)} /> : null}
             <div className="agc__actions">
-              {working && !run.stopRequested ? <Button variant="quiet" busy={busy === 'stop'} onClick={() => void act('stop', () => chat.stop(run))}>Stop</Button> : null}
+              {working && !run.stopRequested ? <Button variant="outline" icon="stop" busy={busy === 'stop'} onClick={() => void act('stop', () => chat.stop(run))}>Stop</Button> : null}
               {!working && !run.answer && canRetry(run) ? <Button variant="quiet" busy={busy === 'retry'} onClick={() => void act('retry', () => chat.retry(run))}>Try again</Button> : null}
               {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--quiet" to="/settings/agents">Sign in</Link> : null}
               {!working && run.endReason === 'model_unavailable' ? <Link className="ui-btn ui-btn--quiet" to={`/settings/agents/${agent.id}`}>Choose a model</Link> : null}

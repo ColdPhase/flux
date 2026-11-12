@@ -197,6 +197,7 @@ export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
 
 export * from './repositories/typing.js';
+export * from './repositories/run-text.js';
 export * from './repositories/cowork.js';
 export * from './repositories/cowork-references.js';
 export * from './repositories/cowork-unit-creation.js';

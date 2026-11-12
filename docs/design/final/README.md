@@ -1008,6 +1008,25 @@ the composer. The right-hand phone above shows the sheet.
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
     two suggestions only (the task has no other slash commands), once the task has its first message;
     choosing a row keeps the words written around the `/`, as in the conversation's composer.
+- **An answer appears as it is written** ([#1248](https://github.com/ColdPhase/flux/issues/1248), founder pick
+  2026-11-10). Not drawn as a screen; it is the `/ai` card and the agent's chat bubble above, in three moments, with no
+  new screen, setting or button style:
+  - **Before the first words** the working line stays as it is, with what the agent is doing now: "Reading the
+    conversation…", "Looking at the tasks…", "Reading a web page…", "Making a change…".
+  - **While it writes** the card (or the bubble) stands where the answer will be. Its top line is Kreska and
+    "Assistant · writing…" ("writing…" in `--t3`), with "Only you can see this" as on the answer. The text grows in
+    the message formatting, with a thin caret (a 2 px `--t1` bar, `--dur-loop` opacity blink) at its end; a web
+    address in it is plain words until the answer is done. Its one control is **Stop**, the `outline`
+    Button, in the card's own line under the text. Nobody else sees any of it.
+  - **When it is done** it is the answer card (or bubble) as drawn, with one quiet line under the text: **Copy**
+    (quiet small buttons with the `copy` icon; "Copied" with `check` for two seconds; it copies the answer's plain
+    words) and **Try again** (a new run of the same request; the answer stays until it is put away). Dismiss and
+    Show everyone keep their place in the card's foot.
+  - **Stopped while it wrote**, the words written so far stay as the answer, with "Stopped by you, so this answer is
+    incomplete." in the length-limit line's style; Copy, Try again, Dismiss and Show everyone as usual. Stopped
+    before any words, the line says "Stopped. Nothing was posted." as before.
+  - **Reduced motion** (either setting): no caret and no typing; the text shows a finished paragraph at a time. A
+    dropped connection keeps what was shown and the answer replaces it when it is done.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

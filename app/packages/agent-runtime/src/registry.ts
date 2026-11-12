@@ -40,6 +40,7 @@ export function providerPersonalCompute(options: ProviderRegistryOptions & { ena
       const adapter = adapters[wireOf(request.connection.provider)];
       return adapter.countInputTokens ? adapter.countInputTokens(request) : null;
     },
-    dispatch: (request, signal) => adapters[wireOf(request.connection.provider)].dispatch(request, signal),
+    // Chat Completions answers whole (#1248): its compatible servers differ in how they stream usage and calls, so its words appear at the end.
+    dispatch: (request, signal, onText) => adapters[wireOf(request.connection.provider)].dispatch(request, signal, onText),
   };
 }

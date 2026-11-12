@@ -1,4 +1,4 @@
-import { useCallback, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { type AssistantAnswer, type AssistantRun, type AssistantSourceRef, type ConversationMessage, type NativeWorkRow } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
@@ -13,6 +13,9 @@ import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 import { RefLink } from '../place/origin';
 import { MessageText, type NamedPerson } from '../app/MessageText';
+import { useShellData } from '../app/data';
+import { plainWords } from '../work/messageWords';
+import { shownWords, stepWords, useLiveRun, useReducedMotion } from './liveRun';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
@@ -52,8 +55,10 @@ export function AskBar({ id, state, onExit, onAction, error }: {
   );
 }
 
-/** "<name> is thinking…" while the run composes (F-026 P5); queued, reading and stopping say what they are. */
+/** "<name> is thinking…" while the run composes (F-026 P5); queued, reading and stopping say what they are; then the step it is on (#1248). */
 function WorkingWords({ run }: { run: AssistantRun }) {
+  const step = stepWords(useLiveRun(run.status === 'dispatching' && !run.stopRequested ? run.id : null).step);
+  if (step) return <>{step}</>;
   if (run.stopRequested || run.status === 'queued' || run.status === 'reading' || onRuntime(run)) return <>{workingText(run)}</>;
   return <><b>Your assistant</b> is thinking…</>;
 }
@@ -110,6 +115,81 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
         {!working ? <IconButton icon="x" label="Dismiss" onClick={dismiss} /> : null}
       </div>
     </li>
+  );
+}
+
+/**
+ * The answer while it is written (#1248; final design, "An answer appears as it is written"): the card where the answer will be, which only
+ * its asker sees, with the words so far and Stop in its own line. A web address in it stays plain words until the answer is done.
+ */
+export function WritingAnswer({ run, text, onStop, people = null }: { run: AssistantRun; text: string; onStop: () => Promise<void>; people?: readonly NamedPerson[] | null }) {
+  const { agents } = useShellData();
+  const agent = agents.find((item) => item.id === run.agentId);
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const reduced = useReducedMotion();
+  const words = shownWords(text, reduced);
+  const stop = async () => {
+    setBusy(true); setFailed('');
+    try { await onStop(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : 'Couldn’t reach Flux. Try again.'); } finally { setBusy(false); }
+  };
+  return (
+    <li className="assistant-writing" data-writing-run={run.id} data-run-status={run.status} aria-busy="true">
+      <div className="assistant-private__who">
+        <Kreska size={24} {...(agent ? { hue: agent.colour } : {})} />
+        <strong>{agent?.name ?? 'Assistant'}</strong>
+        <span className="assistant-writing__state">· {run.stopRequested ? 'stopping…' : 'writing…'}</span>
+        <span className="assistant-private__lock"><Icon name="lock" size={13} />Only you can see this</span>
+      </div>
+      <p className="assistant-private__asked">You asked: <code>/ai</code> {run.prompt}</p>
+      <WritingWords words={words} reduced={reduced} people={people} />
+      {run.stopRequested ? null : <div className="assistant-writing__foot"><Button variant="outline" icon="stop" busy={busy} onClick={() => void stop()}>Stop</Button></div>}
+      {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
+    </li>
+  );
+}
+
+/** The words so far, formatted, with the caret at their end (none with reduced motion). Read out once done, not word by word. */
+export function WritingWords({ words, reduced, people = null }: { words: string; reduced: boolean; people?: readonly NamedPerson[] | null }) {
+  return (
+    <div className="assistant-answer__body assistant-writing__words" aria-live="off" data-writing-words="">
+      <MessageText body={words} linked={false} people={people} />
+      {reduced ? null : <span className="assistant-writing__caret" aria-hidden="true" />}
+    </div>
+  );
+}
+
+/** The answer's words for the clipboard: plain, without the marks (Copy text, #1247), and without its `[n]` source marks. */
+export function answerWords(answer: Pick<AssistantAnswer, 'body' | 'sources'>): string {
+  return plainWords(answer.body).replace(/[ \t]?\[(\d{1,3})\]/g, (mark, number: string) => (Number(number) >= 1 && Number(number) <= answer.sources.length ? '' : mark));
+}
+
+/** Copy and Try again under a finished answer (#1248), quiet and in the answer's own line. */
+export function AnswerTools({ answer, onRetry }: { answer: Pick<AssistantAnswer, 'body' | 'sources'>; onRetry: () => Promise<void> }) {
+  const [copied, setCopied] = useState<'' | 'copied' | 'failed'>('');
+  const [busy, setBusy] = useState(false);
+  const [failed, setFailed] = useState('');
+  const timer = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const copy = async () => {
+    let next: 'copied' | 'failed' = 'copied';
+    try { await navigator.clipboard.writeText(answerWords(answer)); } catch { next = 'failed'; }
+    setCopied(next);
+    window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setCopied(''), 2000);
+  };
+  const retry = async () => {
+    setBusy(true); setFailed('');
+    try { await onRetry(); } catch (error) { setFailed(error instanceof NetworkError ? 'Offline' : error instanceof ApiError && error.message ? error.message : 'Couldn’t reach Flux. Try again.'); }
+    finally { setBusy(false); }
+  };
+  return (
+    <div className="assistant-answer__tools" data-answer-tools="">
+      <Button variant="quiet" size="sm" icon={copied === 'copied' ? 'check' : 'copy'} onClick={() => void copy()}>{copied === 'copied' ? 'Copied' : copied === 'failed' ? 'Couldn’t copy' : 'Copy'}</Button>
+      <Button variant="quiet" size="sm" busy={busy} onClick={() => void retry()}>Try again</Button>
+      <span className="ui-vh" role="status">{copied === 'copied' ? 'Answer copied' : ''}</span>
+      {failed ? <span className="assistant-answer__error" role="alert">{failed}</span> : null}
+    </div>
   );
 }
 

@@ -371,4 +371,17 @@ export interface StreamReady {
   cursor: string;
 }
 
-export type StreamMessage = StreamEvent | StreamReady;
+/**
+ * The words of the asker's own agent as it writes them (#1248), sent only to the run's owner while it works and never stored or replayed:
+ * it has no cursor and no id. `turn` counts the agent's turns (a new turn starts a new text); within a turn the shown text becomes
+ * `shown.slice(0, at) + text`, and a piece whose `at` is past what the client has means one was missed: it waits for the final answer.
+ * `step` instead names the Flux tool the agent is using now, for the working line before its words.
+ */
+export type StreamRunText =
+  | { type: 'run_text'; runId: string; turn: number; at: number; text: string }
+  | { type: 'run_text'; runId: string; step: string };
+
+/** The longest piece of `StreamRunText.text`: one notification carries one piece. */
+export const RUN_TEXT_PIECE_CHARS = 1000;
+
+export type StreamMessage = StreamEvent | StreamReady | StreamRunText;

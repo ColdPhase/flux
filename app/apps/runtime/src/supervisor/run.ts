@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { FLUX_TOOL_NAME, INIT_NAME, SEARCH_FRAME_LIMITS, WEB_ADDRESS, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
+import { FLUX_TOOL_NAME, INIT_NAME, SEARCH_FRAME_LIMITS, TEXT_FRAME_LIMITS, WEB_ADDRESS, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
 import { openAppServer, readRateLimits, readUsage, type UsageReading } from './app-server.js';
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
@@ -38,6 +38,8 @@ export const STOP_GRACE_MS = 5_000;
 const MAX_LINE_BYTES = 1024 * 1024;
 const MAX_STDOUT_BYTES = 16 * 1024 * 1024;
 const MCP_PREFIX = 'mcp__flux__';
+/** How long the CLI's words are gathered before they go out as one `text` frame (#1248). */
+const TEXT_BATCH_MS = 150;
 /** Transcript and session state a CLI could leave in its home; removed after every run (no transcript is kept). */
 const TRANSCRIPT_DIRS: Record<RunRequest['client'], string[]> = {
   claude_code: ['projects', 'todos', 'shell-snapshots', 'session-env', 'transcripts'],
@@ -331,6 +333,33 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       killGroup('SIGINT');
       later(STOP_GRACE_MS, () => { killGroup('SIGTERM'); later(STOP_GRACE_MS, () => killGroup('SIGKILL')); });
     } });
+    // The words the CLI writes (#1248): gathered for about 150 ms into one `text` frame of their message (`turn`), within the run's text
+    // bounds; past them the words are not sent (the answer still comes whole). A new message sends what is left of the one before first.
+    let textTurn = 0;
+    let textPending = '';
+    let textTimer: NodeJS.Timeout | null = null;
+    let textFrames = 0;
+    let textTotal = 0;
+    const flushText = () => {
+      if (textTimer) { clearTimeout(textTimer); textTimer = null; }
+      while (textPending && textFrames < TEXT_FRAME_LIMITS.frames && textTotal < TEXT_FRAME_LIMITS.total) {
+        let piece = textPending.slice(0, Math.min(TEXT_FRAME_LIMITS.chars, TEXT_FRAME_LIMITS.total - textTotal));
+        const last = piece.charCodeAt(piece.length - 1);
+        if (piece.length > 1 && piece.length < textPending.length && last >= 0xd800 && last <= 0xdbff) piece = piece.slice(0, -1);
+        textPending = textPending.slice(piece.length);
+        textFrames += 1;
+        textTotal += piece.length;
+        send({ t: 'run', e: 'text', turn: textTurn, text: piece });
+      }
+      textPending = '';
+    };
+    const sayText = (turn: number, words: string) => {
+      const clean = words.split('\u0000').join('');
+      if (!clean || turn < 1) return;
+      if (turn !== textTurn) { flushText(); textTurn = turn; }
+      textPending += clean;
+      if (!textTimer) { textTimer = setTimeout(flushText, TEXT_BATCH_MS); textTimer.unref(); }
+    };
     let idle = later(request.caps.idleSeconds * 1000, () => terminate('no_event'));
     later(request.caps.wallClockSeconds * 1000, () => terminate('wall_clock'));
 
@@ -340,6 +369,9 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     /** Claude Code: the `error` category of the last `assistant` event, if any (#1129). */
     let lastError: string | null = null;
     const toolItems = new Set<string>();
+    /** Codex's messages so far, and Claude Code's (`message_start` of the top-level stream): the `turn` of the words (#1248). */
+    let codexMessages = 0;
+    let claudeMessages = 0;
     const handleCodex = (event: Record<string, unknown>) => {
       if (outcome) return;
       const type = typeof event.type === 'string' ? event.type : '';
@@ -348,7 +380,11 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         const kind = item && typeof item.type === 'string' ? item.type : '';
         if (kind === 'reasoning') return;
         if (kind === 'agent_message') {
-          if (type === 'item.completed' && typeof item!.text === 'string') lastMessage = item!.text;
+          if (type === 'item.completed' && typeof item!.text === 'string') {
+            lastMessage = item!.text;
+            // Codex hands each message whole (#1248): the asker sees it when it is done.
+            sayText(++codexMessages, item!.text);
+          }
           return;
         }
         if (kind === 'mcp_tool_call') {
@@ -423,6 +459,15 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         const otherServer = servers.length !== 1 || servers[0]!.name !== 'flux' || servers[0]!.status !== 'connected'
           || (Array.isArray(event.mcp_servers) && event.mcp_servers.length !== 1);
         if (extraTool || otherServer) terminate('local_tool');
+        return;
+      }
+      if (event.type === 'stream_event') {
+        // The words as Claude Code streams them (`--include-partial-messages`, #1248); a subagent's are not the answer.
+        if (event.parent_tool_use_id) return;
+        const inner = isObject(event.event) ? event.event : null;
+        if (inner?.type === 'message_start') { claudeMessages += 1; return; }
+        const delta = inner?.type === 'content_block_delta' && isObject(inner.delta) ? inner.delta : null;
+        if (delta?.type === 'text_delta' && typeof delta.text === 'string') sayText(Math.max(1, claudeMessages), delta.text);
         return;
       }
       if (event.type === 'assistant') {
@@ -514,6 +559,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     const settle = (code: number | null) => {
       if (done) return;
       done = true;
+      // What the CLI wrote last goes out before the result, so a stop keeps it (#1248).
+      flushText();
       for (const timer of timers) clearTimeout(timer);
       killGroup('SIGKILL');
       // No result: a clean exit with a cut stream is unknown; any other exit is a crash (Codex: classified by its last error).

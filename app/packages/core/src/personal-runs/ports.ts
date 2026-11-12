@@ -535,8 +535,20 @@ export interface PersonalCompute {
    * raise the conservative Flux estimate that bounds every provider's input (PROV-3).
    */
   countInputTokens?(request: PersonalComputeRequest): Promise<number | null>;
-  /** Sends the request once. `signal` aborts it as best effort when the owner stops the run. */
-  dispatch(request: PersonalComputeRequest, signal: AbortSignal): Promise<PersonalComputeResult>;
+  /**
+   * Sends the request once. `signal` aborts it as best effort when the owner stops the run. `onText` (#1248): the answer's words as the
+   * provider streams them, in order; an adapter that cannot stream calls it never, and the result is the same either way.
+   */
+  dispatch(request: PersonalComputeRequest, signal: AbortSignal, onText?: (delta: string) => void): Promise<PersonalComputeResult>;
+}
+
+/**
+ * The asker's live view of a run (#1248): what the agent writes, as it writes it, and the Flux tool it uses now. Delivered to the run's
+ * owner over the live stream only, never stored; best effort (a failure only leaves their view to the final answer).
+ */
+export type RunLivePiece = { runId: string; turn: number; at: number; text: string } | { runId: string; step: string };
+export interface RunLiveText {
+  send(ownerUserId: string, piece: RunLivePiece): Promise<void>;
 }
 
 /**
@@ -610,7 +622,9 @@ export type PersonalRuntimeEvent =
   | { kind: 'init'; tools: string[]; mcpServers: { name: string; status: string }[] }
   | { kind: 'tool'; name: string }
   | { kind: 'search'; n: number; query: string }
-  | { kind: 'found'; n: number; results: string[]; queries?: string[] };
+  | { kind: 'found'; n: number; results: string[]; queries?: string[] }
+  /** The CLI's words as it streams them (#1248): `turn` is its message; Codex hands each message whole. */
+  | { kind: 'text'; turn: number; text: string };
 
 /** How a runtime run ended. `unavailable`: the slot refused or could not be reached before the CLI ran. */
 export type PersonalRuntimeEnd =

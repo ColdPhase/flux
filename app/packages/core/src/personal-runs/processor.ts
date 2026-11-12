@@ -6,8 +6,9 @@ import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
   AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
-  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
+  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunLiveText, RunRecord,
 } from './ports.js';
+import { liveText, type LiveText } from './live-text.js';
 import { isAsked, isPrivateAnswer, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
@@ -89,6 +90,8 @@ export interface PersonalRunProcessorDeps {
   tokens?: PersonalRunTokenIssuer;
   /** Test seam: lower runtime run caps (within the protocol's bounds); production uses RUNTIME_RUN_LIMITS. */
   runtimeCaps?: Partial<RuntimeCaps>;
+  /** The asker's live view (#1248): the words of `/ai` and of a chat as they are written, and the current step. Without it nothing is sent. */
+  live?: RunLiveText;
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
@@ -237,7 +240,7 @@ const SEARCH_REFUSED_MS = 6 * 3600_000;
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
 
 export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
-  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps }: PersonalRunProcessorDeps) {
+  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps, live }: PersonalRunProcessorDeps) {
   /**
    * The keys and models whose provider refused its own web search tool (#954), until when: their runs are not offered it, so not every
    * run sends a refused request first. In this worker's memory only; a restart asks again.
@@ -252,7 +255,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     searchRefusedUntil.delete(`${connectionId}:${model}`);
     return true;
   }
-  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}) });
+  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}) });
   /** Aborts the provider request as soon as the owner's stop is recorded. */
   function watchStop(runId: string, controller: AbortController) {
     let active = true;
@@ -327,9 +330,21 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     return { redacted, parsed, prepared: await preparedAnswer(parsed.body, cleaner, searches.cited) };
   }
 
+  /**
+   * The words a run had written when its owner stopped it (#1248), as they will be committed: the same cleaning as an answer's. A
+   * `<schedule>` or `<ask>` block, whole or begun, and everything after it are left out, so a stopped answer prepares and asks nothing.
+   */
+  async function keptToCommit(runId: string, written: string, sources: SuppliedSource[]) {
+    const cut = written.search(/<(?:schedule|ask)\b/);
+    const words = cut >= 0 ? written.slice(0, cut) : written;
+    return words.trim() ? answerToCommit(runId, words, sources) : null;
+  }
+
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
-    settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
+    settle: (run: RunRecord) => Settlement, early: Early | null = null, written = ''): Promise<PersonalRunOutcome> {
     const answer = result?.kind === 'completed' && !early ? await answerToCommit(runId, result.text, sources) : null;
+    // What was written before a stop is worked out only for a run that did not answer: a stop is decided inside the transaction.
+    const kept = !answer && written.trim() ? await keptToCommit(runId, written, sources) : null;
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
@@ -341,7 +356,16 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const { charge, withhold } = settle(run);
       // F-029: a run stopped because AI was turned off (the sweep's stop request, or the check itself) says so; nothing is posted.
       if ('refusal' in initial && initial.refusal === 'ai_off') return (await updateAndAnnounce(ports, run.id, ended('ai_off', 'before_commit', charge))).status;
-      if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
+      if (run.stopRequestedAt) {
+        // Stopped while it wrote `/ai`'s or a chat's answer (#1248): the words so far stay as its answer, marked stopped.
+        if (kept && isAsked(run) && kept.prepared.text.trim()) {
+          const body = await answerWithWebSources(ports, run, kept.prepared.text, kept.prepared.cited);
+          return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', {
+            ...charge, answerBody: body, answerTruncated: false, answerSources: kept.parsed.sources, answerRedacted: kept.redacted.changed, committedAt: new Date(),
+          }))).status;
+        }
+        return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
+      }
       // A tool result passed the MCP route's bound (F-022 "Caps"): the run ends in its own state, nothing is posted.
       if (run.mcpLimit) return (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_commit', { ...charge, endReason: 'mcp_results_too_large' }))).status;
       if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, { ...charge, ...(early.endReason ? { endReason: early.endReason } : {}) }))).status;
@@ -377,17 +401,17 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** The loop's end, as the run's commit: an answer is committed like a single request's; every other end closes the run. */
-  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[], price: AiPrice | null, search: boolean): Promise<PersonalRunOutcome> {
+  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[], price: AiPrice | null, search: boolean, written: string): Promise<PersonalRunOutcome> {
     const settle = (run: RunRecord) => settleAccount(run, loop.account, price, search);
     const { end } = loop;
     switch (end.kind) {
       case 'answer': return commit(runId, end.result, sources, settle);
-      case 'failed': return commit(runId, end.result, sources, settle);
-      case 'lost': return commit(runId, null, sources, settle);
+      case 'failed': return commit(runId, end.result, sources, settle, null, written);
+      case 'lost': return commit(runId, null, sources, settle, null, written);
       // The key's daily budget, or a safety bound (steps, the clock, one request's input).
       case 'limit': return commit(runId, null, sources, settle, end.limit === 'input' ? { status: 'input_too_large', stage: 'before_dispatch' }
-        : { status: 'cap_reached', stage: 'before_dispatch', endReason: end.limit === 'money' ? 'budget' : end.limit === 'turns' ? 'max_turns' : 'wall_clock' });
-      case 'halted': return end.status === 'gone' ? Promise.resolve('skipped') : commit(runId, null, sources, settle, { status: end.status, stage: 'before_dispatch' });
+        : { status: 'cap_reached', stage: 'before_dispatch', endReason: end.limit === 'money' ? 'budget' : end.limit === 'turns' ? 'max_turns' : 'wall_clock' }, written);
+      case 'halted': return end.status === 'gone' ? Promise.resolve('skipped') : commit(runId, null, sources, settle, { status: end.status, stage: 'before_dispatch' }, written);
     }
   }
 
@@ -462,6 +486,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
 
     const controller = new AbortController();
     const stopWatching = watchStop(run.id, controller);
+    // `/ai` and a chat are answered to the asker while they are written (#1248): a task's or a schedule's run has nobody watching it.
+    const shown: LiveText | undefined = live && isAsked(run) ? liveText(live, run) : undefined;
     if (session) {
       // A standing check between the turns of the loop: the same as before a dispatch. It also
       // touches the row, so a long loop is not swept as a crashed worker's.
@@ -490,27 +516,31 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           // Refused by the provider: this run goes on without the search, told so in its brief, and the key's model is not offered it for a while.
           withoutSearch: (request) => ({ ...dropSearch(request), system: brief([], false, false).system }),
           onSearchRefused: () => { rememberRefusal(); search = false; },
+          ...(shown ? { live: shown } : {}),
         });
       } catch {
         // An unexpected failure inside the loop is a lost response: its largest cost stays counted.
         loop = { end: { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'unknown' } }, account: { micros: 0, inputTokens: 0, outputTokens: 0, requests: 0, unknown: true }, turns: 0 };
       } finally {
         stopWatching();
+        await shown?.close();
       }
       await hooks.afterDispatch?.(run);
-      return commitLoop(run.id, loop, ready.fitted.sources, connection.price, search);
+      return commitLoop(run.id, loop, ready.fitted.sources, connection.price, search, shown?.written ?? '');
     }
     let result: PersonalComputeResult;
     try {
-      result = await compute.dispatch(ready.fitted.request, controller.signal);
+      shown?.turn();
+      result = await compute.dispatch(ready.fitted.request, controller.signal, shown ? (delta) => shown.push(delta) : undefined);
     } catch {
       // An unexpected adapter failure is a lost response: the reservation stays counted.
       result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
     } finally {
       stopWatching();
+      await shown?.close();
     }
     await hooks.afterDispatch?.(run);
-    return commit(run.id, result, ready.fitted.sources, (current) => settleRequest(current, result, connection.price));
+    return commit(run.id, result, ready.fitted.sources, (current) => settleRequest(current, result, connection.price), null, shown?.written ?? '');
   }
 
   return {

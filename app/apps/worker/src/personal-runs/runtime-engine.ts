@@ -31,6 +31,7 @@ function eventOf(frame: RunFrame): PersonalRuntimeEvent {
     case 'tool': return { kind: 'tool', name: frame.name };
     case 'search': return { kind: 'search', n: frame.n, query: frame.query };
     case 'found': return { kind: 'found', n: frame.n, results: [...frame.results], queries: [...(frame.queries ?? [])] };
+    case 'text': return { kind: 'text', turn: frame.turn, text: frame.text };
   }
 }
 

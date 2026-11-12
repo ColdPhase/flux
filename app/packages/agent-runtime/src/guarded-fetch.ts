@@ -56,11 +56,20 @@ export function guardedFetch(policy: AiEndpointPolicy, limits: TransportLimits =
 
     return new Promise<Response>((resolvePromise, reject) => {
       let settled = false;
-      const finish = (error: unknown, response?: Response) => {
-        if (settled) return;
-        settled = true;
+      /** A streamed body still open after the response was handed over: it ends with the same bounds (#1248). */
+      let streaming: ReadableStreamDefaultController<Uint8Array> | null = null;
+      const release = () => {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onAbort);
+      };
+      const finish = (error: unknown, response?: Response) => {
+        if (settled) {
+          // After the response was handed over only its streamed body can still fail: the bound, an abort or the clock.
+          if (error && streaming) { const body = streaming; streaming = null; release(); try { body.error(error); } catch { /* already closed */ } }
+          return;
+        }
+        settled = true;
+        if (error || !streaming) release();
         if (error) reject(error); else resolvePromise(response!);
       };
       const transport = url.protocol === 'https:' ? https : http;
@@ -74,8 +83,41 @@ export function guardedFetch(policy: AiEndpointPolicy, limits: TransportLimits =
           incoming.destroy();
           return finish(new ResponseTooLargeError(limits.maxResponseBytes));
         }
-        const chunks: Buffer[] = [];
+        const responseHeaders = () => {
+          const result = new Headers();
+          for (const [name, value] of Object.entries(incoming.headers)) {
+            for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) result.append(name, item);
+          }
+          return result;
+        };
         let size = 0;
+        // A successful event stream (#1248: the answer as it is written) is handed over at once and read as it arrives, under the same
+        // size bound and clock as any body; every other answer is read whole first.
+        if (status >= 200 && status < 300 && method !== 'HEAD' && /^text\/event-stream\b/i.test(String(incoming.headers['content-type'] ?? ''))) {
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) { streaming = controller; },
+            cancel() { streaming = null; release(); incoming.destroy(); outgoing.destroy(); },
+          });
+          incoming.on('data', (chunk: Buffer) => {
+            size += chunk.length;
+            if (size > limits.maxResponseBytes) {
+              incoming.destroy();
+              finish(new ResponseTooLargeError(limits.maxResponseBytes));
+              return;
+            }
+            streaming?.enqueue(new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength));
+          });
+          incoming.on('error', (error) => finish(error));
+          incoming.on('end', () => {
+            const done = streaming;
+            streaming = null;
+            release();
+            try { done?.close(); } catch { /* already errored */ }
+          });
+          finish(null, new Response(body, { status, statusText: incoming.statusMessage ?? '', headers: responseHeaders() }));
+          return;
+        }
+        const chunks: Buffer[] = [];
         incoming.on('data', (chunk: Buffer) => {
           size += chunk.length;
           if (size > limits.maxResponseBytes) {
@@ -87,13 +129,9 @@ export function guardedFetch(policy: AiEndpointPolicy, limits: TransportLimits =
         });
         incoming.on('error', (error) => finish(error));
         incoming.on('end', () => {
-          const responseHeaders = new Headers();
-          for (const [name, value] of Object.entries(incoming.headers)) {
-            for (const item of Array.isArray(value) ? value : value === undefined ? [] : [value]) responseHeaders.append(name, item);
-          }
           if (status < 200 || status > 599) return finish(new Error(`The provider answered with HTTP status ${status}`));
           const noBody = status === 204 || status === 205 || status === 304 || method === 'HEAD';
-          finish(null, new Response(noBody ? null : Buffer.concat(chunks), { status, statusText: incoming.statusMessage ?? '', headers: responseHeaders }));
+          finish(null, new Response(noBody ? null : Buffer.concat(chunks), { status, statusText: incoming.statusMessage ?? '', headers: responseHeaders() }));
         });
       });
       const onAbort = () => {
