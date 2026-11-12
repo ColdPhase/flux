@@ -27,7 +27,7 @@ const NOT_A_WORKSPACE_OBJECT: Readonly<Record<string, string>> = {
   changeId: 'assistant changes (AI)', jobId: 'assistant schedules (AI)', requestId: 'assistant join and coordination requests (AI)',
   agentId: 'agents (AI)', questionId: 'agent questions (AI)',
   commandId: 'live Wiki receipts (refused until S2b)', bindingId: 'GitHub (refused)', installationId: 'GitHub (refused)',
-  providerId: 'the person\'s sign-in links', pictureId: 'profile photos (account metadata, F-039)', ownerUserId: 'a person\'s assistant (AI)', owner: 'a person\'s assistant (AI)',
+  providerId: 'the person\'s sign-in links', pictureId: 'profile photos (account metadata, F-039) and space icons (never of an encrypted space, F-040)', ownerUserId: 'a person\'s assistant (AI)', owner: 'a person\'s assistant (AI)',
 };
 /** Generic `:id` parameters by route: an Inbox notification of A, or the person's own account rows. */
 const ID_ROUTES: Readonly<Record<string, 'notification' | 'account' | 'decision'>> = {
