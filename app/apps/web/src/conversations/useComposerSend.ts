@@ -46,7 +46,7 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     const consume = () => publicComposer.consumeBody(submitted);
     // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
     const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
-    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread ? { source: fromThread } : {}) }); consume(); return; }
+    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread ? { source: { ...fromThread, text: plainMessageText(fromThread.text) } } : {}) }); consume(); return; }
     // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
     // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
     openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
