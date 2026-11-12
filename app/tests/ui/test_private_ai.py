@@ -799,7 +799,7 @@ class PrivateAiJourney(unittest.TestCase):
         self.no_horizontal_scroll(jo)
         shot(jo, "streaming-390-done-light")
 
-    def test_11_the_agents_chat_follows_its_growing_answer_and_keeps_stop_in_view(self) -> None:
+    def test_14_the_agents_chat_follows_its_growing_answer_and_keeps_stop_in_view(self) -> None:
         mock("/__script", {"reset": True, "text": "Here is the plan for the far beds. " * 40, "stream_gap": 0.05})
         jo = self.page("jo")
         jo.goto(f"/agents/{self.ids['agent']}")
