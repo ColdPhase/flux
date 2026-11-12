@@ -282,7 +282,7 @@ function PhoneSettings() {
       <div className="pane-in sset-in">
         {/* The header already says "Settings": one title on the phone. */}
         <Link to="/settings/account" className="sset-card sset-me sset-me--link">
-          <Avatar name={me.user.name} tone="me" size="lg" />
+          <Avatar name={me.user.name} id={me.user.id} tone="me" size="lg" />
           <span className="sset-me__b"><b>{me.user.name}</b><span>{me.user.email}</span></span>
           <Icon name="chevron-right" size={14} className="sset-row__go" />
         </Link>
@@ -426,14 +426,14 @@ export function SettingsAccount() {
         <PageHead title="Account" />
         <SingleSignOnLink />
         <section className="sset-card sset-me" aria-label="Signed in as">
-          <Avatar name={me.user.name} tone="me" size="lg" />
+          <Avatar name={me.user.name} id={me.user.id} tone="me" size="lg" />
           <div className="sset-me__b">
             <b>{me.user.name}</b>
             <span>{me.user.email}</span>
             <span className="sset-me__session">Signed in on this device until <time dateTime={me.session.expiresAt}>{Number.isNaN(expires.getTime()) ? me.session.expiresAt : dateFormat.format(expires)}</time></span>
           </div>
         </section>
-        <AccountEditing name={me.user.name} email={me.user.email} />
+        <AccountEditing userId={me.user.id} name={me.user.name} email={me.user.email} />
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
           <button type="submit" className="sset-row sset-row--link" aria-disabled={signingOut || undefined}>
             <span className="sset-row__ic" aria-hidden="true">{signingOut ? <Spinner /> : <Icon name="sign-out" size={16} />}</span>

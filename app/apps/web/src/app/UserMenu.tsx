@@ -6,19 +6,19 @@ import { Avatar, Icon, Spinner, trapTab, usePop } from '../ui';
  * Account button at the foot of the sidebar; opens a small popover with the name, Settings and Sign out (C-34).
  * This device's notifications and the theme are in Settings.
  */
-export function UserMenu({ name, email, asLink = false, compact = false, onNavigate }: { name: string; email: string; asLink?: boolean; compact?: boolean; onNavigate?: () => void }) {
+export function UserMenu({ id, name, email, asLink = false, compact = false, onNavigate }: { id: string; name: string; email: string; asLink?: boolean; compact?: boolean; onNavigate?: () => void }) {
   // In the phone drawer the account row is a plain way into Settings (#266 PF-5), not a popover
   // squeezed over the drawer's own list.
-  if (asLink) return <AccountLink name={name} email={email} onNavigate={onNavigate} />;
-  return <AccountMenu name={name} email={email} compact={compact} />;
+  if (asLink) return <AccountLink id={id} name={name} email={email} onNavigate={onNavigate} />;
+  return <AccountMenu id={id} name={name} email={email} compact={compact} />;
 }
 
-function AccountLink({ name, email, onNavigate }: { name: string; email: string; onNavigate?: () => void }) {
+function AccountLink({ id, name, email, onNavigate }: { id: string; name: string; email: string; onNavigate?: () => void }) {
   const current = useLocation().pathname === '/settings';
   return (
     <div className="me">
       <Link to="/settings" className="me__btn" aria-current={current ? 'page' : undefined} onClick={onNavigate}>
-        <Avatar name={name} tone="me" />
+        <Avatar name={name} id={id} tone="me" />
         <span className="me__text"><b>{name}</b><span>{email}</span></span>
         <Icon name="gear" className="me__chev" />
         <span className="ui-vh">, settings and sign out</span>
@@ -27,7 +27,7 @@ function AccountLink({ name, email, onNavigate }: { name: string; email: string;
   );
 }
 
-function AccountMenu({ name, email, compact }: { name: string; email: string; compact: boolean }) {
+function AccountMenu({ id, name, email, compact }: { id: string; name: string; email: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -89,7 +89,7 @@ function AccountMenu({ name, email, compact }: { name: string; email: string; co
       <div className="me__row">
         <button ref={buttonRef} type="button" className="me__btn" aria-expanded={open} aria-controls={open ? popId : undefined}
           aria-haspopup="dialog" title={compact ? `${name}, account and sign out` : undefined} onClick={() => { if (open) close(false); else { setLeft(false); setOpen(true); } }}>
-          <Avatar name={name} tone="me" size={compact ? 'lg' : 'sm'} />
+          <Avatar name={name} id={id} tone="me" size={compact ? 'lg' : 'sm'} />
           {compact ? <span className="ui-vh">{name}, {email}</span>
             : <span className="me__text"><b>{name}</b><span className="ui-vh">{email}</span></span>}
           <span className="ui-vh">, account and sign out</span>

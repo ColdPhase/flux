@@ -385,7 +385,7 @@ function DmContent({ initial }: { initial: Dm }) {
             // The start of the conversation: who is in it. The top bar keeps the name and audience in view.
             <header className="dm__head">
               <span className="dm__faces" aria-hidden="true">
-                {(others.length ? others : dm.counterpart ? [dm.counterpart] : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} size="lg" />)}
+                {(others.length ? others : dm.counterpart ? [dm.counterpart] : [{ id: me.user.id, name: me.user.name }]).slice(0, 3).map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="lg" />)}
               </span>
               <div className="dm__who">
                 <h2>{title}</h2>

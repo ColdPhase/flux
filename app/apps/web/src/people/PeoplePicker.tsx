@@ -28,7 +28,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
           <ul className="pick__chips" aria-label="Chosen people">
             {chosen.map((member) => (
               <li className="pick__chip" key={member.userId}>
-                <Avatar name={member.name} size="sm" />
+                <Avatar name={member.name} id={member.userId} size="sm" />
                 <span className="pick__name">{member.name}</span>
                 <button type="button" className="pick__x" aria-label={`Remove ${member.name}`} disabled={disabled} onClick={() => toggle(member.userId, false)}><Icon name="x" size={12} /></button>
               </li>
@@ -48,7 +48,7 @@ export function PeoplePicker({ candidates, value, onChange, disabled = false, co
                 <li key={member.userId}>
                   <label className="pick__row">
                     <input type="checkbox" checked={value.includes(member.userId)} disabled={disabled} onChange={(event) => toggle(member.userId, event.target.checked)} />
-                    <Avatar name={member.name} size="md" />
+                    <Avatar name={member.name} id={member.userId} size="md" />
                     <span className="pick__who"><b>{member.name}{member.role === 'guest' ? ' (guest)' : ''}</b><span>{member.email}</span></span>
                   </label>
                 </li>

@@ -20,7 +20,7 @@ export function DmRows() {
       {directMessages.map((dm) => (
         <li key={dm.id}>
           <Link to={`/dm/${dm.id}`} className="dm-index__item">
-            <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
+            <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
             <span className="dm-index__text"><b>{dm.title}</b><span>{dm.preview ?? 'No messages yet'}</span></span>
             {dm.lastAt ? <time dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
           </Link>
@@ -181,7 +181,7 @@ export function NewDm() {
                 <li key={member.userId}>
                   <label className={`dm-new__person${checked ? ' is-on' : ''}`}>
                     <input type="checkbox" checked={checked} onChange={() => toggle(member.userId)} />
-                    <Avatar name={member.name} size="md" />
+                    <Avatar name={member.name} id={member.userId} size="md" />
                     <span className="dm-new__name"><b>{member.name}</b><span>{member.email}{member.role === 'guest' ? ' · guest' : ''}</span></span>
                     {checked ? <Icon name="check" size={14} className="dm-new__tick" /> : null}
                   </label>

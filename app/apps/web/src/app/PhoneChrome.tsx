@@ -127,8 +127,8 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
 }
 
 /** The account's round avatar: Settings, the account and signing out live behind it. */
-export function PhoneAvatar({ name }: { name: string }) {
-  return <Link to="/settings" className="phead__avatar" aria-label="Settings and account"><Avatar name={name} size="md" /></Link>;
+export function PhoneAvatar({ id, name }: { id: string; name: string }) {
+  return <Link to="/settings" className="phead__avatar" aria-label="Settings and account"><Avatar name={name} id={id} size="md" /></Link>;
 }
 
 export function PhoneHomeLead() {

@@ -21,6 +21,8 @@ export class NetworkError extends Error {
 export interface ApiRequestInit {
   method?: string;
   body?: unknown;
+  /** Raw bytes to send instead of a JSON `body`, with their own type (a profile photo, F-039). */
+  bytes?: Blob;
   signal?: AbortSignal;
   /** Extra request headers such as If-Match or Idempotency-Key. */
   headers?: Record<string, string>;
@@ -177,8 +179,9 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
       return await fetch(path, {
         method: init.method ?? 'GET',
         credentials: 'same-origin',
-        headers: { ...(init.accept ? { accept: init.accept } : {}), ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        headers: { ...(init.accept ? { accept: init.accept } : {}), ...(init.bytes ? { 'content-type': init.bytes.type || 'application/octet-stream' }
+          : init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
+        body: init.bytes ?? (init.body === undefined ? undefined : JSON.stringify(init.body)),
         signal: init.signal,
         keepalive: init.keepalive,
         cache: init.cache,
@@ -193,7 +196,7 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
     // The API is busy (429 with Retry-After, the floor of rate limits): a read is asked again after the wait, with the page saying so
     // (#838). Only a read: a write could have been done, and the person decides whether to send it again. A shared read is one request,
     // so it waits and retries once for all the callers that joined it.
-    const readOnly = (!init.method || init.method === 'GET' || init.method === 'HEAD') && init.body === undefined && !init.keepalive;
+    const readOnly = (!init.method || init.method === 'GET' || init.method === 'HEAD') && init.body === undefined && !init.bytes && !init.keepalive;
     for (let tries = 0; response.status === 429 && readOnly && tries < BUSY_RETRIES; tries += 1) {
       await waitOutBusy(busyWaitMs(response), init.signal);
       response = await attempt();

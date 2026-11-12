@@ -13,7 +13,7 @@ import { LiveDot, namesLine } from './LiveEntry';
 function Face({ person, name }: { person: MediaPerson; name: string }) {
   return (
     <span className={`lv-face${person.speaking ? ' is-speaking' : ''}${person.quality === 'poor' || person.quality === 'lost' ? ' is-weak' : ''}`}>
-      <Avatar name={name} size="sm" tone={person.local ? 'me' : 'neutral'} />
+      <Avatar name={name} id={person.userId} size="sm" tone={person.local ? 'me' : 'neutral'} />
       {!person.mic ? <span className="lv-face__muted" aria-hidden="true"><Icon name="mic-off" size={9} /></span> : null}
     </span>
   );
@@ -45,7 +45,7 @@ export function LiveBar() {
     return (
       <section className="lv-bar lv-bar--invite" aria-label="Invitation to work together">
         <div className="lv-row">
-          <span className="lv-row__lead"><Avatar name={live.fullName(invitation.inviterId)} size="sm" /></span>
+          <span className="lv-row__lead"><Avatar name={live.fullName(invitation.inviterId)} id={invitation.inviterId} size="sm" /></span>
           <p className="lv-row__text"><b>{live.nameOf(invitation.inviterId)}</b> asked you to work together on <b>“{invitation.anchor.label}”</b>
             <span className="lv-row__muted"> · {KIND_WORD[invitation.anchor.context.type]}, microphone and camera stay off</span></p>
           <span className="lv-row__acts">

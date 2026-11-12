@@ -17,7 +17,7 @@ import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 export function Details({ view, dm = null, onBack }: {
   view: Exclude<DetailsView, OwnedView>;
   /** The open direct message (#107): its other people and audience line. */
-  dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
+  dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; meId: string; people: string[]; peopleIds: string[]; audience: string } | null;
   onBack: () => void;
 }) {
   const inProject = !!useProjectShell();
@@ -39,8 +39,8 @@ export function Details({ view, dm = null, onBack }: {
         <section className="details__sec" aria-labelledby="details-dm-people">
           <h4 id="details-dm-people">People in this conversation</h4>
           <ul className="details__rows">
-            <li className="details__person"><Avatar name={dm.me} size="md" tone="me" /><b>{dm.me} (you)</b></li>
-            {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} size="md" /><b>{name}</b></li>)}
+            <li className="details__person"><Avatar name={dm.me} id={dm.meId} size="md" tone="me" /><b>{dm.me} (you)</b></li>
+            {dm.people.map((name, index) => <li key={`${name}-${index}`} className="details__person"><Avatar name={name} id={dm.peopleIds[index]} size="md" /><b>{name}</b></li>)}
           </ul>
         </section>
         <section className="details__sec" aria-labelledby="details-dm-rules">

@@ -136,7 +136,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
         onClick={act} data-tip={joinable ? 'Join with microphone and camera off' : `${audience}. Nothing turns on until you choose.`} aria-describedby={noteId}
         aria-label={joinable ? 'Join' : 'Call'}>
         {joinable ? <LiveDot on /> : null}
-        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 2).map((id) => <Avatar key={id} name={live.fullName(id)} size="sm" />)}</span> : null}
+        {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 2).map((id) => <Avatar key={id} name={live.fullName(id)} id={id} size="sm" />)}</span> : null}
         <span className="lv-entry__label">{joinable ? 'Join' : 'Call'}</span>
       </Button>
       <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}. Nothing turns on until you choose.`}</span>

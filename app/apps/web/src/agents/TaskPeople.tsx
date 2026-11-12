@@ -22,7 +22,7 @@ export function TaskPeople({ workId, revision }: { workId: string; revision: unk
       <dt>In this task</dt>
       <dd>
         <span className="wd-people" role="img" aria-label={`${people.map((person) => person.name).join(', ')} and ${agents === 1 ? 'their agent' : 'their agents'}`}>
-          {people.map((person) => <Avatar key={person.id} name={person.name} size="sm" />)}
+          {people.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
           {people.flatMap((person) => person.agents.map((agent) => <Kreska key={agent.id} size={16} />))}
         </span>
         <span className="wd-muted"> {names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0]} and {agents === 1 ? 'their agent' : 'their agents'}</span>

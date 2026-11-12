@@ -92,7 +92,7 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
       data-sequence={message.sequence} data-message-id={message.id} {...(observed ? { 'data-observe-id': message.id } : {})} aria-label={label}>
       {day ? <MessageDay as="p" label={day} /> : null}
       <div className="dm-msg__row">
-        <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} size="lg" tone="neutral" />}</span>
+        <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} id={message.authorId} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
           {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
           {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}

@@ -11,6 +11,7 @@ import { listMyAgents } from '../my-agents/api';
 import { audienceLine, dmTitle, othersIn } from '../dm/names';
 import { listAccessibleProjects } from '../project/api';
 import type { EncryptedWorkspace, WorkspaceEncryption } from '../encryption/api';
+import { readPeoplePhotos } from '../people/photos';
 
 /**
  * Shapes the shell renders. Projects (spaces) and direct messages come from the workspace, conversation
@@ -40,7 +41,9 @@ export interface ProjectSummary {
 }
 /** A private conversation with one or more people, independent of any project. */
 export interface DirectMessageSummary {
-  id: string; workspaceId: string; kind: 'pair' | 'group'; title: string; people: string[]; participantIds: string[];
+  id: string; workspaceId: string; kind: 'pair' | 'group'; title: string; people: string[];
+  /** The user ids of `people`, in the same order (their avatars' photos, F-039). */
+  peopleIds: string[]; participantIds: string[];
   /** "Only you and Kai". */
   audience: string; preview: string | null; lastAt: string | null; hasNew?: boolean;
 }
@@ -60,6 +63,8 @@ export interface ShellData {
   directMessages: DirectMessageSummary[];
   /** The person's own agents, oldest first: the first is Assistant, pinned first in Messages (F-036 AG-1). */
   agents: MyAgent[];
+  /** User id → photo id of the people this person can see (F-039): every avatar of one of them draws the photo. */
+  photos: Record<string, string>;
 }
 
 /** The latest shell read, so a route loader can ask whether a space has AI off before it asks the server (#614). */
@@ -93,8 +98,10 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   // The person and the workspaces are read beside each other, then the projects and the conversations of every workspace beside each
   // other: two round trips before the shell, not four in a row (#850, #862). Without a session both answer a 200 `null`, as the probe
   // header asks, not a 401 that the browser console logs (#546); the person is sent to sign in.
-  const [me, read] = await Promise.all([getMe(request.signal),
-    apiRead<EncryptedWorkspace[] | null>(WORKSPACES_PATH, { signal: request.signal, headers: { [ME_PROBE_HEADER]: '1' } }).catch(() => null)]);
+  // The photos are read beside them (F-039): no round trip of their own, and a failure only leaves everyone with initials.
+  const [me, read, photos] = await Promise.all([getMe(request.signal),
+    apiRead<EncryptedWorkspace[] | null>(WORKSPACES_PATH, { signal: request.signal, headers: { [ME_PROBE_HEADER]: '1' } }).catch(() => null),
+    readPeoplePhotos(request.signal).catch((): Record<string, string> => ({}))]);
   if (!me) {
     // No session: no page that was shown for one is kept for the next person who signs in here (#1141).
     forgetKeptPages();
@@ -112,10 +119,10 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   const projects = reachableSpaces.filter((project) => project.member !== false);
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
-    people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
+    people: othersIn(dm, me.user.id).map((person) => person.name), peopleIds: othersIn(dm, me.user.id).map((person) => person.id), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody && dm.lastMessageVia ? `via ${dm.lastMessageVia}: ${plainMessageText(dm.lastMessageBody)}` : dm.lastMessageBody && plainMessageText(dm.lastMessageBody), lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents };
+  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents, photos };
 }
 
 export function useShellData(): ShellData {

@@ -92,7 +92,7 @@ export function NotNowButton({ buttonRef, open, onToggle, className = '' }: { bu
 export function Face({ item }: { item: NeedsYouItem }) {
   if (item.kind === 'blocked') return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="blocked" size={16} /></span>;
   if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} /></span>;
-  if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} size="lg" /></span>;
+  if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} id={item.from.id} size="lg" /></span>;
   return <span className="nyc__face nyc__face--icon"><Icon name={NOTE_ICON[item.kind === 'question' ? 'question' : 'mention']} size={16} /></span>;
 }
 
@@ -107,10 +107,10 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
   const names = rest > 0 ? `${named.map((person) => person.name).join(', ')} and ${rest} more` : named.map((person) => person.name).join(' and ');
   return (
     <span className="nyc__waiting">
-      {named.map((person) => <Avatar key={person.id} name={person.name} size="sm" />)}
+      {named.map((person) => <Avatar key={person.id} name={person.name} id={person.id} size="sm" />)}
       {/* The separator ends the first part, so a wrap never starts the next line with a lone "·". */}
       {others.length ? <span>{names} can accept too{you ? <span aria-hidden="true"> ·</span> : null}</span> : null}
-      {you ? <span className="nyc__waiting-you"><Avatar name={you.name} size="sm" tone="me" /><b>waiting for you</b></span> : null}
+      {you ? <span className="nyc__waiting-you"><Avatar name={you.name} id={you.id} size="sm" tone="me" /><b>waiting for you</b></span> : null}
     </span>
   );
 }

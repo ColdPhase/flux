@@ -19,7 +19,7 @@ export interface SidebarProps {
   directMessages: DirectMessageSummary[];
   /** The person's agents, the first (Assistant) pinned at the top of Messages. */
   agents?: MyAgent[];
-  user: { name: string; email: string };
+  user: { id: string; name: string; email: string };
   /** In the drawer: a close button and closing after navigation. */
   onClose?: () => void;
   /** How many Inbox items are unread; 0 shows no count. */
@@ -149,7 +149,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
               aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dm.hasNew && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
-              <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
+              <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
               {dm.hasNew && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
@@ -157,7 +157,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         </div>
         </div>
         <WorkingAgent compact />
-        <UserMenu compact name={user.name} email={user.email} />
+        <UserMenu compact id={user.id} name={user.name} email={user.email} />
       </div>
     );
   }
@@ -257,7 +257,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
                 <li key={dm.id}>
                   <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}
                     aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
-                    <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
+                    <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="sm" /><span className="side__label">{dm.title}</span>
                     {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" />
                       : dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
                   </NavLink>
@@ -268,7 +268,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         </nav>
       </div>
       <WorkingAgent />
-      <UserMenu name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
+      <UserMenu id={user.id} name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
     </div>
   );
 }

@@ -24,7 +24,7 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
         <span className="ui-vh">{audience}, who can see this space</span>
         {shown.map((person, at) => person.kind === 'agent'
           ? <Kreska key={person.id} size={20} className="top__face" />
-          : <span key={person.id} className={`top__face${at === 2 ? ' top__face--wide' : ''}`}><Avatar name={person.name} size="sm" /></span>)}
+          : <span key={person.id} className={`top__face${at === 2 ? ' top__face--wide' : ''}`}><Avatar name={person.name} id={person.id} size="sm" /></span>)}
         {rest(narrow) > 0 ? <span className="top__more-faces top__more-faces--narrow" aria-hidden="true">{count(narrow)}</span> : null}
         {rest(shown.length) > 0 ? <span className="top__more-faces top__more-faces--wide" aria-hidden="true">{count(shown.length)}</span> : null}
       </button>

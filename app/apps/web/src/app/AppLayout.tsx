@@ -38,6 +38,7 @@ import { beginNotificationSession, retireNotificationSession } from '../notifica
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
+import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -127,9 +128,13 @@ function isTyping(target: EventTarget | null) {
  * overlays below 1000px and becomes a full-screen sheet on the phone.
  */
 export function AppLayout() {
-  const { me } = useShellData();
+  const { me, photos } = useShellData();
   const { projectId } = useParams();
-  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></AgentChatDotsProvider></WorkReadProvider>;
+  return (
+    <PhotosContext.Provider value={photos}>
+      <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></AgentChatDotsProvider></WorkReadProvider>
+    </PhotosContext.Provider>
+  );
 }
 
 function AppLayoutContent() {
@@ -774,7 +779,7 @@ function AppLayoutContent() {
         {/* The same two controls in every space view and direct message (Spokój #507); Call is dimmed where it is unavailable. */}
         {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={20} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
-        {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar name={me.user.name} /> : null}
+        {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {activeProject && projectViews && !backOnly ? <Tabs variant="segmented" className="phead__views" label="Space views" items={projectViews} /> : null}
     </header>
@@ -847,7 +852,7 @@ function AppLayoutContent() {
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {opening ? <ThreadOpening /> : null}
-            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

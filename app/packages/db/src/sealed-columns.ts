@@ -30,7 +30,7 @@ const ai = [
 ] as const;
 const account = [
   'auth_accounts', 'auth_email_claims', 'auth_identity_audit', 'auth_idp_standing', 'auth_link_intents', 'auth_logout_tokens',
-  'auth_session_identities', 'auth_sessions', 'auth_users', 'auth_verifications', 'oauth_access_token', 'oauth_client', 'oauth_client_assertion',
+  'auth_session_identities', 'auth_sessions', 'auth_users', 'person_photos', 'auth_verifications', 'oauth_access_token', 'oauth_client', 'oauth_client_assertion',
   'oauth_client_resource', 'oauth_consent', 'oauth_grant_authentication', 'oauth_refresh_token', 'oauth_resource', 'jwks', 'push_subscriptions',
   'notification_addresses', 'notification_address_tokens', 'notification_address_sends', 'notification_preferences', 'notification_verification_sends', 'github_credentials',
   'github_oauth_flows',

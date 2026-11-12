@@ -176,8 +176,8 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
 
 export type TaskActivityState = ReturnType<typeof useTaskActivity>;
 
-function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; name: string }; mine: boolean }) {
-  return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" /> : <Avatar name={actor.name} size="sm" tone={mine ? 'me' : 'neutral'} />;
+function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; id?: string | null; name: string }; mine: boolean }) {
+  return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" /> : <Avatar name={actor.name} id={actor.id} size="sm" tone={mine ? 'me' : 'neutral'} />;
 }
 
 /**
@@ -265,7 +265,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             const mine = message.authorId === me.id;
             return (
               <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id}>
-                <Face actor={{ kind: agent ? 'agent' : 'human', name }} mine={mine} />
+                <Face actor={{ kind: agent ? 'agent' : 'human', id: message.authorId, name }} mine={mine} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
                     {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b title={name}>{firstName(name)}</b>}

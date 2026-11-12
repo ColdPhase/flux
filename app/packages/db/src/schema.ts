@@ -55,6 +55,19 @@ export const authUsers = pgTable('auth_users', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * A person's profile photo (F-039, #1226, migration 0062): `id` is its version in the immutable URL; the three WebP renditions are
+ * file objects. A deleted row queues its objects in `file_garbage` (trigger), so a new photo, a removal and a deleted account all free them.
+ */
+export const personPhotos = pgTable('person_photos', {
+  id: uuid('id').primaryKey(),
+  userId: text('user_id').notNull().unique().references(() => authUsers.id, { onDelete: 'cascade' }),
+  object64: uuid('object_64').notNull(),
+  object128: uuid('object_128').notNull(),
+  object256: uuid('object_256').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const authSessions = pgTable('auth_sessions', {
   id: text('id').primaryKey(),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
