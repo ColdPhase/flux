@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import http from 'node:http';
+import net from 'node:net';
 import { after, before, test } from 'node:test';
 import { chromium, devices, type Browser, type BrowserContext, type Page } from 'playwright';
 import type { PushSubscriptionSummary } from '@flux/contracts';
@@ -24,6 +25,20 @@ const proxy = http.createServer((request, response) => {
   });
   forward.on('error', () => response.destroy());
   request.pipe(forward);
+});
+// The notice that makes the offer due rides on the live stream: WebSocket upgrades are forwarded too (as access-stream.e2e.ts does).
+proxy.on('upgrade', (request, socket, head) => {
+  const target = net.connect(Number(upstream.port || 80), upstream.hostname, () => {
+    const lines = [`${request.method} ${request.url} HTTP/${request.httpVersion}`];
+    for (let i = 0; i < request.rawHeaders.length; i += 2) lines.push(`${request.rawHeaders[i]}: ${request.rawHeaders[i + 1]}`);
+    target.write(`${lines.join('\r\n')}\r\n\r\n`);
+    if (head.length) target.write(head);
+    target.pipe(socket);
+    socket.pipe(target);
+  });
+  const end = () => { target.destroy(); socket.destroy(); };
+  target.on('error', end);
+  socket.on('error', end);
 });
 before(async () => { await new Promise<void>((resolve) => proxy.listen(Number(new URL(origin).port), '127.0.0.1', resolve)); });
 after(async () => { proxy.closeAllConnections(); await new Promise((resolve) => proxy.close(resolve)); });
@@ -173,6 +188,7 @@ test('an iPhone in Safari is shown the Add to Home Screen steps first; Android g
     const android = await browser.newContext({ ...devices['Pixel 7'], locale: 'en-GB', serviceWorkers: 'allow' });
     await android.addInitScript(browserStub(testSubscription('push'), 'granted'));
     const { page: pixel } = await home(android, ada);
+    await write('And on the Pixel?');
     await offer(pixel).getByRole('button', { name: 'Turn on' }).waitFor({ timeout: 10_000 });
     if (process.env.FLUX_E2E_EVIDENCE_DIR) await pixel.screenshot({ path: `${process.env.FLUX_E2E_EVIDENCE_DIR}/push-offer-android.png`, fullPage: true });
     await android.close();
