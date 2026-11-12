@@ -10,7 +10,7 @@ import { type ClientResponse } from './support/http.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, workspace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
-// The BM25 index of migration 0065 (F-041, #1296): any word, Polish and English stems, accents folded, ranked by word rarity, and
+// The BM25 index of migration 0065 (F-042, #1296): any word, Polish and English stems, accents folded, ranked by word rarity, and
 // filtered in the same statement by the audiences the access policy gives the caller now. Nothing about access is stored in the
 // index, so a lost grant, a space whose AI was turned off, a removed, deleted or edited message shows in the very next query.
 

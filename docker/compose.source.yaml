@@ -1,4 +1,4 @@
-# Flux's database image (F-041: PostgreSQL 18 with pg_search, docker/database/Dockerfile), shared by the database and the
+# Flux's database image (F-042: PostgreSQL 18 with pg_search, docker/database/Dockerfile), shared by the database and the
 # backup helper (issue #123).
 x-postgres-image: &postgres-image flux-database:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
 

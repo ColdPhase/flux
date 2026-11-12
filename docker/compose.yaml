@@ -20,7 +20,7 @@ name: ${FLUX_PROJECT:-flux}
 
 services:
   db:
-    # Flux's database image (F-041): PostgreSQL 18 with pg_search, built by the release from docker/database/Dockerfile.
+    # Flux's database image (F-042): PostgreSQL 18 with pg_search, built by the release from docker/database/Dockerfile.
     image: ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST
     restart: unless-stopped
     environment:

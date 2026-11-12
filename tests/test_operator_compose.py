@@ -16,7 +16,7 @@ COMPOSE = ROOT / "docker" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
 SOURCE_ENV_EXAMPLE = ROOT / "app" / ".env.example"
 MARKER = "ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST"
-# Flux's database image (F-041): built by the same release, so its digest is a marker too, on the db service only.
+# Flux's database image (F-042): built by the same release, so its digest is a marker too, on the db service only.
 DATABASE_MARKER = "ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST"
 FLUX_SERVICES = ("migrate", "api", "worker", "keyring")
 PINNED = re.compile(r"[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")

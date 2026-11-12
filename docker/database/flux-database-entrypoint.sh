@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Flux's database entrypoint (F-041): the official docker-entrypoint.sh, with pg_search always in shared_preload_libraries.
+# Flux's database entrypoint (F-042): the official docker-entrypoint.sh, with pg_search always in shared_preload_libraries.
 # pg_search refuses to work unless it is preloaded, and a Compose file or an operator may replace the command (log settings,
 # pg_stat_statements): a value they give keeps its libraries and gains pg_search; without one, pg_search is added.
 # Two pg_search defaults, unless the command sets them:

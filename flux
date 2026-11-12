@@ -244,7 +244,7 @@ ensure_env() {
 
 build_main() {
   say "Building Flux from this checkout (the first build takes a few minutes)..."
-  # The application image and Flux's database image (F-041, docker/database).
+  # The application image and Flux's database image (F-042, docker/database).
   if [ "${FLUX_NO_CACHE:-}" = 1 ]; then compose_main build --no-cache migrate db; else compose_main build migrate db; fi
 }
 
@@ -949,7 +949,7 @@ write_manifest() {
   dirty=false
   if [ "$(git_commit)" != unknown ] && ! git -C "$FLUX_ROOT" diff --quiet HEAD 2>/dev/null; then dirty=true; fi
   pg_image=$(compose_main config --images 2>/dev/null | grep -E '^(postgres@|flux-database:|.*/flux-database@)' | head -n 1)
-  # A checkout builds Flux's database image (F-041) under a local tag: record the image it is, by its id.
+  # A checkout builds Flux's database image (F-042) under a local tag: record the image it is, by its id.
   case "$pg_image" in
     *@sha256:*|'') ;;
     *) pg_id=$(docker image inspect -f '{{.Id}}' "$pg_image" 2>/dev/null) && pg_image="${pg_image%%:*}@$pg_id" ;;

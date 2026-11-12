@@ -90,7 +90,7 @@ digest replaces the marker.
 
 | Service | Image | Role |
 | --- | --- | --- |
-| `db` | `ghcr.io/coldphase/flux-database@sha256:…` | Flux's database image: PostgreSQL 18 with `pg_search` (F-041), volume `pgdata`, not published. |
+| `db` | `ghcr.io/coldphase/flux-database@sha256:…` | Flux's database image: PostgreSQL 18 with `pg_search` (F-042), volume `pgdata`, not published. |
 | `migrate` | release digest | One-shot `node tooling/dist/migrate.js`: applies each new `app/packages/db/migrations/NNNN_*.sql` in its own transaction, then exits. |
 | `api` | release digest | HTTP API and web app on `127.0.0.1:${FLUX_PORT}`, volume `files`; its health check verifies the exact migration ledger, the queue schema and a write to the files volume. |
 | `worker` | release digest | Background jobs (notification mail, Web Push, runs), volume `files`. |

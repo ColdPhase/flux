@@ -25,7 +25,7 @@
 set -euo pipefail
 
 here=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)
-# The image docker/compose.yaml runs: Flux's database image (F-041), built from docker/database unless FLUX_BASELINE_PG_IMAGE names one.
+# The image docker/compose.yaml runs: Flux's database image (F-042), built from docker/database unless FLUX_BASELINE_PG_IMAGE names one.
 image=${FLUX_BASELINE_PG_IMAGE:-}
 if [ -z "$image" ]; then
   image=$(docker build -q "$here/docker/database") || { echo "db_baseline: the database image did not build" >&2; exit 2; }

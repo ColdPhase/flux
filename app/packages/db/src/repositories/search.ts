@@ -152,7 +152,7 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
 }
 
 /**
- * How a search matches and ranks (F-041). `prefix`: today's index, every word required, the last as a prefix, ranked by `ts_rank`.
+ * How a search matches and ranks (F-042). `prefix`: today's index, every word required, the last as a prefix, ranked by `ts_rank`.
  * `bm25`: the BM25 index of migration 0065 (pg_search): any of the words, Polish and English stems, accents folded, ranked by
  * word rarity. Both apply the same audiences and filters in the same statement.
  */
@@ -315,7 +315,7 @@ function toRecord(row: PageRow): SearchRowRecord {
  */
 async function planned(db: SearchExecutor, statement: SQL, ranking: SearchRanking = 'prefix') {
   if (ranking === 'bm25') {
-    // pg_search's custom scan scores BM25 and is off by default in Flux's database image (docker/database, F-041): on for this
+    // pg_search's custom scan scores BM25 and is off by default in Flux's database image (docker/database, F-042): on for this
     // statement only. Not read-only: pg_search records each field alias it meets in its own table (paradedb._typmod_cache).
     return db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL enable_seqscan = off`);
@@ -400,7 +400,7 @@ export function searchRows(db: SearchExecutor) {
     },
 
     /**
-     * One page like `page`, ranked by BM25 (F-041, migration 0065): any of the plan's plain words, Polish and English stems,
+     * One page like `page`, ranked by BM25 (F-042, migration 0065): any of the plan's plain words, Polish and English stems,
      * accents folded. The same audiences, filters, cursor and one-row-per-object rule; the access policy decides the audiences
      * on every call, so a lost grant, a space whose AI was turned off, a removed or edited row is reflected by the next call.
      */

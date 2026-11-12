@@ -268,7 +268,7 @@ jobs:
         id: build_database
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
-          # Flux's database image (F-041): the official PostgreSQL 18 on Debian with pg_search and pgvector, every input pinned.
+          # Flux's database image (F-042): the official PostgreSQL 18 on Debian with pg_search and pgvector, every input pinned.
           context: ./docker/database
           file: ./docker/database/Dockerfile
           platforms: ${{ needs.candidate.outputs.platforms }}

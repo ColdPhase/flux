@@ -101,7 +101,7 @@ class UpgradeLegRefusalTest(StubbedDocker):
         self.assert_refused(self.run_script(previous), "pins no database image")
 
     def test_a_changed_database_image_reaches_the_upgrade(self) -> None:
-        # v0.2.1 moves from the official PostgreSQL image to Flux's own (F-041): the major is checked on the upgraded data, not refused.
+        # v0.2.1 moves from the official PostgreSQL image to Flux's own (F-042): the major is checked on the upgraded data, not refused.
         previous = write_assets(self.dir / "previous", "sha256:" + "a" * 64, postgres="postgres@sha256:" + "e" * 64)
         result = self.run_script(previous)
         self.assertNotEqual(result.returncode, 0)  # the stub docker fails the first compose call

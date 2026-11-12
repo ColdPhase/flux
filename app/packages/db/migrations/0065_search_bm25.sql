@@ -1,4 +1,4 @@
--- Agents and people's search rank by BM25 inside PostgreSQL (F-041, #1242, #1296).
+-- Agents and people's search rank by BM25 inside PostgreSQL (F-042, #1242, #1296).
 --
 -- One BM25 index (ParadeDB pg_search, in Flux's database image from v0.2.1) over search_documents, the table that triggers keep
 -- current in the writer's own transaction for every searchable object (space and DM messages, the Wiki, tasks, decisions, maps,

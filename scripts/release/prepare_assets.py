@@ -15,7 +15,7 @@ MARKER = f"{IMAGE}@sha256:RELEASE_DIGEST"
 # The separate agent-runtime image (#358): the slot supervisor with the pinned official Codex.
 RUNTIME_IMAGE = "ghcr.io/coldphase/flux-agent-runtime"
 RUNTIME_MARKER = f"{RUNTIME_IMAGE}@sha256:RUNTIME_DIGEST"
-# Flux's database image (F-041): PostgreSQL 18 with pg_search, built from docker/database/Dockerfile.
+# Flux's database image (F-042): PostgreSQL 18 with pg_search, built from docker/database/Dockerfile.
 DATABASE_IMAGE = "ghcr.io/coldphase/flux-database"
 DATABASE_MARKER = f"{DATABASE_IMAGE}@sha256:DATABASE_DIGEST"
 VERSION = re.compile(r"v(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-rc\.[1-9][0-9]*)?\Z")

@@ -35,7 +35,7 @@ Download **every** asset of the release into an empty directory:
 | `release.json` | Version, source commit and the images (`ghcr.io/coldphase/flux@sha256:…`, `ghcr.io/coldphase/flux-agent-runtime@sha256:…` and, from v0.2.1, the database image `ghcr.io/coldphase/flux-database@sha256:…`) with their platforms, the pinned Codex release and the media server image (`live_media_image`). |
 | `sbom.spdx.json`, `THIRD_PARTY_NOTICES.json` | SPDX software bill of materials of the application image and the dependency notices derived from it. |
 | `sbom-agent-runtime.spdx.json`, `THIRD_PARTY_NOTICES.agent-runtime.json` | The same for the agent-runtime image; the notices also record the pinned official Codex (Apache-2.0). |
-| `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image (PostgreSQL 18 with `pg_search`, AGPL-3.0-or-later, and `pgvector`; [F-041](https://github.com/ColdPhase/flux/blob/main/docs/product/decisions.md#f-041--agents-find-what-they-need-with-bm25-search-in-postgresql)). |
+| `sbom-database.spdx.json`, `THIRD_PARTY_NOTICES.database.json` | The same for the database image (PostgreSQL 18 with `pg_search`, AGPL-3.0-or-later, and `pgvector`; [F-042](https://github.com/ColdPhase/flux/blob/main/docs/product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)). |
 | `LICENSE` | The Flux license. |
 | `SHA256SUMS` | SHA-256 of every other asset. |
 

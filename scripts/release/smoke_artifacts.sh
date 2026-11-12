@@ -67,7 +67,7 @@ wait_timeout=${FLUX_SMOKE_WAIT:-300}
 step() { printf '\n== %s\n' "$*"; }
 json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"; }
 candidate_image=$(json_field "$assets/release.json" image)
-# The database image a release pins: the official PostgreSQL image before v0.2.1, Flux's own database image from it on (F-041).
+# The database image a release pins: the official PostgreSQL image before v0.2.1, Flux's own database image from it on (F-042).
 db_image() { sed -n 's/^ *image: *\(\(postgres\|[^ ]*\/flux-database\)@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
 check_sums() { # in the current directory
   if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256SUMS >/dev/null; else shasum -a 256 -c SHA256SUMS >/dev/null; fi
@@ -132,7 +132,7 @@ sql() { # project, environment file, assets directory, statement
   dc "$1" "$2" "$3" exec -T db sh -c 'psql -X -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' sh "$4" </dev/null
 }
 ledger() { sql "$1" "$2" "$3" "SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version"; }
-# The database runs the candidate's database image (F-041: Debian with pg_search, also when the previous release ran the official
+# The database runs the candidate's database image (F-042: Debian with pg_search, also when the previous release ran the official
 # Alpine image), and every B-tree index of the data it kept is intact under that image's collation (amcheck, in a transaction that
 # is rolled back, so nothing is left behind).
 database_check() { # project, environment file, assets directory

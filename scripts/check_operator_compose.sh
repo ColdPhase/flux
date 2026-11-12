@@ -49,7 +49,7 @@ set_env() {
 # One retry for a transient registry or package download error.
 docker build -q -f docker/Dockerfile -t "$image" app >/dev/null ||
   docker build -q -f docker/Dockerfile -t "$image" app >/dev/null
-# Flux's database image (F-041), as the release builds it.
+# Flux's database image (F-042), as the release builds it.
 docker build -q -t "$database_image" docker/database >/dev/null ||
   docker build -q -t "$database_image" docker/database >/dev/null
 

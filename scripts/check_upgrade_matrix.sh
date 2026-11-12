@@ -147,7 +147,7 @@ if [ -z "$candidate_assets" ]; then
   digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
     "http://127.0.0.1:$registry_port/v2/flux/manifests/matrix" | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
   [ -n "$digest" ] || fail "the registry did not report the candidate's digest"
-  # The candidate's database image (F-041), built from this tree like the release builds it: an upgrade from a release before v0.2.1
+  # The candidate's database image (F-042), built from this tree like the release builds it: an upgrade from a release before v0.2.1
   # also switches the database from the official Alpine image to it.
   ( cd "$work/candidate-src" && docker buildx build --platform "$platform" -f docker/database/Dockerfile \
       --label "org.opencontainers.image.revision=$sha" --label "org.opencontainers.image.version=$candidate_version" \

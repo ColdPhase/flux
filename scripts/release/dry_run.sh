@@ -125,7 +125,7 @@ registry_digest() { # repository tag
 build_push() { # target repository tag [directory holding docker/Dockerfile and app/; default the candidate] [revision] [version]
   start=$(date +%s)
   dir=${4:-$work/src}; rev=${5:-$sha}; ver=${6:-$version}
-  # The target `database` is the database image (F-041): its own Dockerfile and context, no target stage.
+  # The target `database` is the database image (F-042): its own Dockerfile and context, no target stage.
   if [ "$1" = database ]; then file=docker/database/Dockerfile context=docker/database target=(); else file=docker/Dockerfile context=app target=(--target "$1"); fi
   labels=(--label org.opencontainers.image.source=https://github.com/ColdPhase/flux
     --label "org.opencontainers.image.revision=$rev" --label "org.opencontainers.image.version=$ver")
@@ -297,7 +297,7 @@ previous_env=()
 if [ -n "$previous_rev" ]; then
   # The previous release is rendered by ITS OWN script from ITS OWN templates, as its workflow would have. The SBOMs and the
   # runtime image are this commit's (the SBOM files only have to exist, the upgrade leg never pulls the runtime image).
-  # A previous release from before F-041 ran the official PostgreSQL image and takes no database digest.
+  # A previous release from before F-042 ran the official PostgreSQL image and takes no database digest.
   previous_database=()
   grep -q -- '--database-digest' "$work/prev-src/scripts/release/prepare_assets.py" &&
     previous_database=(--database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json")

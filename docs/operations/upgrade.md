@@ -82,7 +82,7 @@ them with `./flux clean` and start again.
 
 From v0.2.1 the database runs Flux's own image, `ghcr.io/coldphase/flux-database` (a source checkout builds it from
 [`docker/database/Dockerfile`](../../docker/database/Dockerfile)), instead of the official `postgres:18.6-alpine`. It is the
-official PostgreSQL 18 on Debian with the `pg_search` extension, which ranks search by BM25 ([F-041](../product/decisions.md#f-041--agents-find-what-they-need-with-bm25-search-in-postgresql)).
+official PostgreSQL 18 on Debian with the `pg_search` extension, which ranks search by BM25 ([F-042](../product/decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql)).
 Nothing to do by hand: the release's `compose.yaml` names the new image, and `./flux upgrade` builds it and restarts the
 database on it before migrating.
 
