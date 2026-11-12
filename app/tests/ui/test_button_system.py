@@ -150,7 +150,8 @@ class ButtonSystem(unittest.TestCase):
                     page.wait_for_load_state("networkidle")
                     if ready:
                         expect(page.get_by_text(ready, exact=False).first).to_be_visible()
-                    self.check(page, name, needs_buttons=name in ("Empty wiki", "Conversation"))
+                    # A conversation's header has no button of the system on the phone any more: Search and Call are rows of More (#1239).
+                    self.check(page, name, needs_buttons=name == "Empty wiki" or (name == "Conversation" and not phone))
                     if name == "Account":
                         self.account_rows_fit(page, phone)
                     self.row_actions_shown(page, name)
@@ -162,15 +163,19 @@ class ButtonSystem(unittest.TestCase):
         shown = {"Account": (".sset-row .ui-btn", "Sign out", 1), "Company": (".people__row .ui-btn", "Revoke", 1)}.get(screen)
         if shown:
             selector, text, count = shown
+            if screen == "Company":  # the invitations are under the page's Invite
+                invite = page.get_by_role("button", name="Invite", exact=True)
+                if invite.get_attribute("aria-expanded") != "true":
+                    invite.click()
             expect(page.locator(selector, has_text=text)).to_have_count(count)
             if screen == "Company":
                 expect(page.locator(selector, has_text="Copy")).to_have_count(count)
             self.check(page, f"{screen} rows", needs_buttons=True)
 
     def account_rows_fit(self, page: Page, phone: bool) -> None:
-        expect(page.locator(".sset-acct")).to_have_count(3)  # Name, Email and Password, once the sign-in capabilities have loaded
+        expect(page.locator(".sset-acct")).to_have_count(4)  # Photo, Name, Email and Password, once the sign-in capabilities have loaded
         rows = page.evaluate(ACCOUNT_ROWS)
-        self.assertEqual(len(rows), 3, f"Account has its Name, Email and Password rows {rows}")
+        self.assertEqual(len(rows), 4, f"Account has its Photo, Name, Email and Password rows {rows}")
         for row in rows:
             where = f"Account's {row['title']} row ({'phone' if phone else 'computer'}): {row}"
             self.assertLessEqual(row["overflow"], 1, f"the value stays inside its box, wrapped, not running on {where}")
