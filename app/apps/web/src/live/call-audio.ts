@@ -2,9 +2,9 @@ import { createLocalAudioTrack, TrackEvent, type AudioCaptureOptions, type Local
 import {
   MAX_MASTER, MAX_VOLUME, clampVolume, meterLevel, missingDeviceNote, readPrefs, resolveDevice, withPerson, writePrefs,
   type AudioPrefs, type DeviceChoice, type PersonSound,
-} from './audio-prefs';
-import { GainProcessor, LevelTap } from './mic-gain';
-import { Playback } from './playback';
+} from './audio-prefs.js';
+import { GainProcessor, LevelTap } from './mic-gain.js';
+import { Playback } from './playback.js';
 
 /**
  * Sound settings of a call (#1244), all local to this browser: which microphone and speakers, how loud the microphone is and how

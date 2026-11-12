@@ -1,4 +1,4 @@
-import { personSound, voiceLevel, type AudioPrefs } from './audio-prefs';
+import { personSound, voiceLevel, type AudioPrefs } from './audio-prefs.js';
 
 /** What the browser can do on the speaker side; the interface draws only what works (docs/product/live-collaboration.md). */
 export interface PlaybackSupport {
