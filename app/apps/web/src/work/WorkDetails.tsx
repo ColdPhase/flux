@@ -35,6 +35,9 @@ import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
 import { DueField, StatusControl, TitleField, useStateKeys } from './TaskParts';
 import { stateWords } from './taskState';
 
+/** The user id in an owner choice's value (`human:<id>`), for the person's photo (F-039); null for an agent or nobody. */
+const humanId = (value: string | null | undefined) => value?.startsWith('human:') ? value.slice('human:'.length) : null;
+
 // The Details panel for work items and decisions, and the two forms that start from a
 // message (#101). Everything shown here is visible to the people with access to the project;
 // the panel says so. Changes send If-Match and an Idempotency-Key that retries reuse.
@@ -387,14 +390,14 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
-    ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} size="sm" /> })),
+    ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} id={humanId(person.value)} size="sm" /> })),
     ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} /> })),
   ];
   const shownOwner = ownerDraft ?? ownerValue;
   const ownerView = shownOwner
     ? (shownOwner.startsWith('agent:')
       ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} />
-      : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
+      : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} id={humanId(shownOwner)} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
   // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
   const choosingWait = editingBlocker && writable;

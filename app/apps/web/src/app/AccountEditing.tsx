@@ -1,9 +1,10 @@
-import { useEffect, useId, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useRevalidator, useSearchParams } from 'react-router';
 import type { IdentityCapabilities, SessionSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { changeEmail, changePassword, endOtherSessions, endSession, getCapabilities, getMe, listSessions, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, updateName } from '../api/auth';
-import { Button, Icon, Input, Spinner } from '../ui';
+import { Avatar, Button, Icon, Input, Spinner } from '../ui';
+import { photoProblem, removeMyPhoto, setMyPhoto, usePhotoOf } from '../people/photos';
 import { SwitchRow } from '../ui/SwitchRow';
 
 // Settings → Account (#763 SG-1): the person changes their own name, address and password and sees where they are signed
@@ -31,11 +32,12 @@ function EditRow({ title, value, open, onOpen, done, children }: {
   );
 }
 
-export function AccountEditing({ name, email }: { name: string; email: string }) {
+export function AccountEditing({ userId, name, email }: { userId: string; name: string; email: string }) {
   const revalidator = useRevalidator();
   const [params] = useSearchParams();
   const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
-  const [open, setOpen] = useState<'name' | 'email' | 'password' | null>(null);
+  const [open, setOpen] = useState<'photo' | 'name' | 'email' | 'password' | null>(null);
+  const photo = usePhotoOf(userId);
   const [done, setDone] = useState<Record<string, string>>(params.get('email') === 'confirmed' ? { email: 'Your new address is confirmed.' } : {});
   useEffect(() => {
     const controller = new AbortController();
@@ -45,11 +47,14 @@ export function AccountEditing({ name, email }: { name: string; email: string })
   // The provider owns the address and the password under single sign-on (F-024); the server refuses both there too.
   const passwords = capabilities ? !capabilities.ssoOnly && !capabilities.sso : false;
   const finish = (key: string, message: string) => { setOpen(null); setDone((current) => ({ ...current, [key]: message })); revalidator.revalidate(); };
-  const toggle = (key: 'name' | 'email' | 'password') => (next: boolean) => { setOpen(next ? key : null); setDone((current) => ({ ...current, [key]: '' })); };
+  const toggle = (key: 'photo' | 'name' | 'email' | 'password') => (next: boolean) => { setOpen(next ? key : null); setDone((current) => ({ ...current, [key]: '' })); };
   return (
     <section aria-labelledby="account-edit">
       <h3 className="sset-sub" id="account-edit">Your details</h3>
       <ul className="sset-card">
+        <EditRow title="Photo" value={photo ? 'Your photo' : 'Your initials'} open={open === 'photo'} onOpen={toggle('photo')} done={done.photo ?? ''}>
+          <PhotoForm name={name} hasPhoto={!!photo} onDone={(message) => finish('photo', message)} />
+        </EditRow>
         <EditRow title="Name" value={name} open={open === 'name'} onOpen={toggle('name')} done={done.name ?? ''}>
           <NameForm current={name} onDone={() => finish('name', 'Name saved. People see it from now on.')} />
         </EditRow>
@@ -66,6 +71,58 @@ export function AccountEditing({ name, email }: { name: string; email: string })
       </ul>
       <Sessions />
     </section>
+  );
+}
+
+/**
+ * The person's photo (F-039, #1226; design README, "Profile photos"): choose a picture, see it as the circles people will see, save.
+ * The server keeps the middle square, so the preview shows exactly that. Remove goes back to the initials.
+ */
+function PhotoForm({ name, hasPhoto, onDone }: { name: string; hasPhoto: boolean; onDone: (message: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [chosen, setChosen] = useState<{ file: File; url: string } | null>(null);
+  const [busy, setBusy] = useState<'save' | 'remove' | null>(null);
+  const [error, setError] = useState('');
+  useEffect(() => () => { if (chosen) URL.revokeObjectURL(chosen.url); }, [chosen]);
+  async function pick(file: File | undefined) {
+    if (!file) return;
+    setError('');
+    const problem = await photoProblem(file);
+    if (problem) { setChosen(null); setError(problem); return; }
+    setChosen({ file, url: URL.createObjectURL(file) });
+  }
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!chosen) { input.current?.click(); return; }
+    setBusy('save'); setError('');
+    try { await setMyPhoto(chosen.file); onDone('Photo saved. People see it from now on.'); }
+    catch (cause) { setError(failure(cause, 'Your photo could not be saved. Try again.')); }
+    finally { setBusy(null); }
+  }
+  async function remove() {
+    setBusy('remove'); setError('');
+    try { await removeMyPhoto(); onDone('Photo removed. People see your initials.'); }
+    catch (cause) { setError(failure(cause, 'Your photo could not be removed. Try again.')); }
+    finally { setBusy(null); }
+  }
+  return (
+    <form className="sset-acct__fields" noValidate onSubmit={(event) => void save(event)}>
+      <input ref={input} className="ui-vh" type="file" accept="image/png,image/jpeg,image/webp" tabIndex={-1} aria-hidden="true"
+        onChange={(event) => { void pick(event.target.files?.[0]); event.target.value = ''; }} />
+      {chosen ? (
+        <div className="sset-photo" data-photo-preview="">
+          <Avatar name={name} photo={chosen.url} size="lg" tone="me" />
+          <Avatar name={name} photo={chosen.url} size="sm" tone="me" />
+          <span className="sset-row__s">Flux keeps the middle square.</span>
+        </div>
+      ) : null}
+      {error ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{error}</p> : null}
+      <div className="details__actions">
+        <Button variant="quiet" onClick={() => input.current?.click()} disabled={busy !== null}>{chosen ? 'Choose another…' : 'Choose a picture…'}</Button>
+        {hasPhoto ? <Button variant="quiet" busy={busy === 'remove'} disabled={busy === 'save'} onClick={() => void remove()}>Remove photo</Button> : null}
+        {chosen ? <Button type="submit" variant="primary" busy={busy === 'save'} disabled={busy === 'remove'}>Save photo</Button> : null}
+      </div>
+    </form>
   );
 }
 

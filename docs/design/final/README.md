@@ -40,8 +40,9 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
    message bubble.
 4. **Shape, not colour, carries meaning.** The surfaces are monochrome. Status is a glyph plus a
    word. The only colours are user content (photos) and each agent's own colour on its Kreska.
-5. **Agents are recognisable, never mistaken for people.** People are grey circles with initials.
-   Agents are Kreska and carry one label everywhere: "Planner · Ada's agent".
+5. **Agents are recognisable, never mistaken for people.** People are grey circles with initials,
+   or with the photo they chose (F-039). Agents are Kreska and carry one label everywhere:
+   "Planner · Ada's agent", and never have a photo.
 6. **Undo instead of confirmations.** Quick actions apply at once and offer Undo. Deleting and
    other people's things always wait for an OK.
 7. **One plain word per thing, and controls stay put.** Space, Task, Thought, Map, Decision, Page:
@@ -122,6 +123,22 @@ a long name ends in an ellipsis.
 the inner radius plus the gap. A space tile (radius 6) inside a place picker with a 4 px inset sits
 in a 10 px frame, not in a pill. Spaces stay rounded squares and people stay circles, so a lettered
 circle never stands for a space.
+
+**Profile photos** (founder request, Hubert, 2026-11-10, [#1226](https://github.com/ColdPhase/flux/issues/1226),
+[F-039](../../product/decisions.md)): a person's photo is user content, the one colour allowed beside Kreska.
+- It fills the same avatar circle, at the same sizes (20, 26 and 32 px), with the same hairline ring, in every place
+  an avatar is drawn: messages, people lists, owners, mentions, the live strip, the faces in a header and the
+  account row. Nothing else about the row or the bubble changes, so a photo never moves a control.
+- The initials stay underneath: they show while the photo loads, when it cannot load and after the person removes
+  it. There is no placeholder graphic and no coloured initials.
+- Agents never have a photo; they keep Kreska everywhere.
+- **Settings › Account** holds it as the first row of "Your details": **Photo**, its value "Your photo" or "Your
+  initials", and Change. Change opens the form in place like the other rows: **Choose a picture…** (a text
+  button that opens the device's file chooser for PNG, JPEG or WebP), then a preview of the chosen picture as the
+  32 and 20 px circles people will see, with the line "Flux keeps the middle square.", and one primary
+  **Save photo**. With a photo set, the form also offers **Remove photo** (a text button), which goes back to the
+  initials. Errors are one plain line under the buttons ("Choose a PNG, JPEG or WebP picture.", "A photo is at
+  most 5 MB."). On the phone it is the same row in Settings › Account.
 
 **Typography:** Geist 400 / 500 / 600 and Geist Mono for numbers (#12), times, keys and file
 labels.

@@ -180,7 +180,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
           </ul>
         ) : (
           <ul className="people__list">
-            <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
+            <li className="people__item"><div className="people__row"><Avatar name={me.user.name} id={me.user.id} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
           </ul>
         )}
         </div>
@@ -236,7 +236,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
       <ul className="people__list sset-card" aria-label="People who were removed">
         {people.map((person) => (
           <li className="people__item" key={person.userId}><div className="people__row">
-            <Avatar name={person.name} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
+            <Avatar name={person.name} id={person.userId} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
             <Button variant="quiet" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
           </div></li>
         ))}
@@ -409,7 +409,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
   return (
     <li className={`people__item${editing ? ' is-editing' : ''}`} data-row-key={member.userId}>
       <div className="people__row">
-        <Avatar name={member.name} size="md" tone={self ? 'me' : 'neutral'} />
+        <Avatar name={member.name} id={member.userId} size="md" tone={self ? 'me' : 'neutral'} />
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><span>{member.email}</span></span>
         {/* On the company's page the role is the control: "Admin ▾" opens the same editor under the row. */}
         {page && editable ? (

@@ -20,6 +20,7 @@
 # are covered by tests/app/api-rate-limit-core.test.ts and the API suite.
 # FLUX_DAST_PORT / FLUX_DAST_MAILPIT_PORT pick the loopback ports; FLUX_DAST_PEOPLE narrows the API scans (default "ada jonas");
 # FLUX_DAST_SKIP_BASELINE=1 skips the baseline scan, FLUX_DAST_SKIP_API=1 the API scans (a quick check of the pages' headers).
+# FLUX_DAST_ONLY, a regular expression, limits the API scans to the paths it matches (one change's routes, e.g. '/photo|/pictures/').
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -83,7 +84,7 @@ $compose exec -T -e FLUX_PUBLIC_ORIGIN="$FLUX_PUBLIC_ORIGIN" \
   api node --input-type=module - < scripts/flux-demo.mjs
 python3 scripts/dast/prepare.py --api "http://127.0.0.1:$FLUX_PORT" --origin "$FLUX_PUBLIC_ORIGIN" --server "$FLUX_PUBLIC_ORIGIN" \
   --fixture-token "$FLUX_FIXTURE_TOKEN" --out "$out" \
-  --person "ada=ada@demo.flux.test:$ada_password" --person "jonas=jonas@demo.flux.test:$jonas_password"
+  --person "ada=ada@demo.flux.test:$ada_password" --person "jonas=jonas@demo.flux.test:$jonas_password" --only "${FLUX_DAST_ONLY:-}"
 cp scripts/dast/zap-rules.conf "$out/zap-rules.conf"
 
 api_container=$($compose ps -q api)

@@ -289,6 +289,14 @@ places, with no change to the rules above:
 
 Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
 
+**Profile photos** ([F-039](../product/decisions.md), [#1226](https://github.com/ColdPhase/flux/issues/1226)). `PUT /api/v1/me/photo`
+(raw PNG, JPEG or WebP bytes, at most 5 MiB) and `DELETE /api/v1/me/photo` change only the signed-in person's own photo; an agent
+has none (`403 PHOTO_PEOPLE_ONLY`). `GET /api/v1/people/photos` lists, and `GET /api/v1/pictures/:id/:size` serves, only the photos of
+people the caller can see: someone who shares a workspace with them, and for a guest only the people of the spaces the guest is
+added to (the members of a space everyone is in, and anyone with a grant on one of the guest's spaces). One condition decides both,
+`personSeenBySql` in `app/packages/db/src/repositories/access.ts`; a photo the caller cannot see is a `404`, the same as one that
+was replaced or removed.
+
 ## Invite links (F-035)
 
 Founder decision 2026-10-31 ([F-035](../product/decisions.md), #763 PE-2). An invite link lets

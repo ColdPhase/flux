@@ -408,6 +408,11 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-avatar--md { width: 26px; height: 26px; font-size: var(--fs-glyph); }
 .ui-avatar--lg { width: 32px; height: 32px; font-size: var(--fs-xs); }
 .ui-avatar--me { background: var(--el); color: var(--t1); }
+/* A person's photo (F-039, #1226) fills the same circle over the initials, which show while it loads or if it cannot; the circle's
+   hairline ring stays on top so a photo keeps the avatar's edge. */
+.ui-avatar { position: relative; }
+.ui-avatar__photo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+.ui-avatar:has(.ui-avatar__photo)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
 
 /* ---------- Press, hover and selection (#593 AC-5, #863) ----------
    A press is colour. Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr):

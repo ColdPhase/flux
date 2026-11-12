@@ -9,6 +9,8 @@ the test deployment lists, with its body and query schemas, and the ids of the s
 Standard library only. The route listing exists only in a test deployment (`GET /api/v1/test/routes` with the fixture bearer).
 """
 import argparse
+import struct
+import zlib
 import http.cookiejar
 import json
 import re
@@ -42,6 +44,15 @@ LISTS = {
     "agentId": "/api/v1/workspaces/{workspaceId}/agents",
 }
 UUID = "00000000-0000-4000-8000-000000000000"
+# Routes whose body is raw bytes, not JSON (F-039: a profile photo), described as such so the scan sends bytes there.
+RAW_BODY_ROUTES = {("PUT", "/api/v1/me/photo"): "image/png"}
+
+
+def small_png():
+    """A 4 × 4 PNG, written by hand: the photo the first person sets, so the picture route has a real id to scan."""
+    chunk = lambda kind, data: struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)  # noqa: E731
+    raw = b"".join(b"\x00" + bytes((40, 150, 140)) * 4 for _ in range(4))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", 4, 4, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
 
 
 class Person:
@@ -56,9 +67,10 @@ class Person:
             sys.exit(f"dast: {email} could not sign in (answered {status})")
 
     def call(self, method, path, body=None, headers=None):
-        data = None if body is None else json.dumps(body).encode()
-        request = urllib.request.Request(self.api + path, data=data, method=method,
-                                         headers={"origin": self.origin, **({"content-type": "application/json"} if body is not None else {}), **(headers or {})})
+        raw = isinstance(body, bytes)
+        data = None if body is None else body if raw else json.dumps(body).encode()
+        kind = {"content-type": "application/octet-stream" if raw else "application/json"} if body is not None else {}
+        request = urllib.request.Request(self.api + path, data=data, method=method, headers={"origin": self.origin, **kind, **(headers or {})})
         try:
             with self.opener.open(request, timeout=30) as response:
                 text = response.read().decode("utf-8", "replace")
@@ -134,18 +146,20 @@ def schema_of(raw):
     return out or {"type": "string"}
 
 
-def openapi(routes, server, ids):
-    """An OpenAPI 3.0 document of the listed routes. `ids` give the path parameters their real values as examples."""
+def openapi(routes, server, ids, only=None, examples=None):
+    """An OpenAPI 3.0 document of the listed routes. `ids` give the path parameters their real values as examples, and `examples` one
+    route's own (by its url). `only`, a regular expression, keeps the paths it matches (a scan of one change's routes)."""
     paths = {}
     wanted = [(route["method"], route["url"], route.get("body"), route.get("query")) for route in routes
               if route["url"].startswith("/api/") and not any(skip.match(route["url"]) for skip in SKIP)]
     wanted += [(method, url, body, None) for method, url, body in AUTH_ROUTES]
     for method, url, body, query in wanted:
-        if method in ("HEAD", "OPTIONS"):
+        if method in ("HEAD", "OPTIONS") or (only and not re.search(only, url)):
             continue
         parameters = []
         for name in re.findall(r":(\w+)", url):
-            parameters.append({"name": name, "in": "path", "required": True, "schema": {"type": "string"}, "example": ids.get(name, UUID)})
+            example = (examples or {}).get(url, {}).get(name, ids.get(name, UUID))
+            parameters.append({"name": name, "in": "path", "required": True, "schema": {"type": "string"}, "example": example})
         path = re.sub(r":(\w+)", r"{\1}", url)
         if isinstance(query, dict):
             required = set(query.get("required") or [])
@@ -153,7 +167,9 @@ def openapi(routes, server, ids):
                 parameters.append({"name": name, "in": "query", "required": name in required, "schema": schema_of(value)})
         operation = {"operationId": f"{method.lower()}_{re.sub(r'[^A-Za-z0-9]+', '_', path).strip('_')}", "parameters": parameters,
                      "responses": {"default": {"description": "Whatever the API answers"}}}
-        if isinstance(body, dict) and method in ("POST", "PUT", "PATCH", "DELETE"):
+        if (method, url) in RAW_BODY_ROUTES:
+            operation["requestBody"] = {"required": True, "content": {RAW_BODY_ROUTES[(method, url)]: {"schema": {"type": "string", "format": "binary"}}}}
+        elif isinstance(body, dict) and method in ("POST", "PUT", "PATCH", "DELETE"):
             operation["requestBody"] = {"required": bool(body.get("required")), "content": {"application/json": {"schema": schema_of(body)}}}
         paths.setdefault(path, {})[method.lower()] = operation
     return {"openapi": "3.0.3", "info": {"title": "Flux API (from the test deployment's route listing)", "version": "dast"},
@@ -168,6 +184,7 @@ def main():
     parser.add_argument("--fixture-token", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--person", action="append", required=True, metavar="NAME=EMAIL:PASSWORD")
+    parser.add_argument("--only", default="", help="a regular expression: describe only the API paths it matches")
     args = parser.parse_args()
     people = []
     for spec in args.person:
@@ -185,7 +202,12 @@ def main():
         with open(f"{args.out}/cookie-{person.name}", "w", encoding="utf-8") as handle:
             handle.write(person.cookie())
     ids["userId"] = (people[1] if len(people) > 1 else first).call("GET", "/api/v1/me")[1].get("user", {}).get("id", UUID)
-    document = openapi(routes, args.server, ids)
+    # A real photo, so the picture route is scanned with an id that exists (F-039); the second person can see the first's.
+    examples = {}
+    status, photo = first.call("PUT", "/api/v1/me/photo", small_png())
+    if status == 200 and isinstance(photo, dict):
+        examples["/api/v1/pictures/:id/:size"] = {"id": photo["photo"], "size": "128"}
+    document = openapi(routes, args.server, ids, args.only or None, examples)
     with open(f"{args.out}/openapi.json", "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=1)
     with open(f"{args.out}/routes.json", "w", encoding="utf-8") as handle:

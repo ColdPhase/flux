@@ -217,7 +217,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
           <ul className="sset-card" aria-label={`People in ${project.name}`} aria-busy={manager && !roster ? true : undefined}>
             {rows.map((row) => (
               <li className="sset-row" key={row.userId} data-person={row.userId}>
-                <Avatar name={row.name} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
+                <Avatar name={row.name} id={row.userId} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
                 <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> · you</span> : null}</b>{row.email ? <span>{row.email}</span> : null}</span>
                 {manager && row.userId !== meId && !row.company ? (
                   <span className="spset__rolecell">

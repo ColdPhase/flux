@@ -6,7 +6,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import fastifyStatic from '@fastify/static';
 import websocket from '@fastify/websocket';
 import { PgBoss } from 'pg-boss';
-import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
+import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERSION, isPersonPhotoObject, readAppliedMigrationVersions, readMigrationManifest, sealResolverScope, sql as dbSql, type DbExecutor } from '@flux/db';
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
@@ -25,6 +25,8 @@ import { linkPreviewRoutes } from './link-previews/routes.js';
 import { messagePlaceRoutes } from './conversation/message-place.js';
 import { diskFileStorage } from './files/storage.js';
 import { fileRoutes } from './files/routes.js';
+import { pictureRoutes } from './pictures/routes.js';
+import { sharpPictureRenderer } from './pictures/render.js';
 import { workRoutes } from './work/routes.js';
 import { workReadRoutes } from './work-read/routes.js';
 import { liveRoutes } from './live/routes.js';
@@ -193,8 +195,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const fileStorage = await diskFileStorage(filesDir, { cipherFor: async (objectId) => {
     const executor = db as unknown as DbExecutor;
     const [row] = (await executor.execute<{ workspace_id: string }>(dbSql`SELECT workspace_id FROM project_files WHERE id = ${objectId}::uuid`)).rows;
-    // An object without its row is refused, never written or served as plaintext (#707 review).
-    if (!row) throw new Error('A stored file needs its row before its bytes');
+    // A profile photo's rendition is account data, never sealed (F-039). An object without its row is refused, never written or served
+    // as plaintext (#707 review).
+    if (!row) { if (await isPersonPhotoObject(executor, objectId)) return null; throw new Error('A stored file needs its row before its bytes'); }
     return fileCipherOf(executor, row.workspace_id, objectId, { write: false });
   } });
   const editingConfirmation = identityConfig.oidc ? { providerId: identityConfig.oidc.providerId, confirmationMaxAgeMs: identityConfig.oidc.confirmationMaxAgeMs } : null;
@@ -209,6 +212,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
   await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
+  await app.register(pictureRoutes, { db, sessions: identity, storage: fileStorage, renderer: sharpPictureRenderer() });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(linkPreviewRoutes, { db, sessions: identity, config: config.linkPreviews });
   await app.register(messagePlaceRoutes, { db, sessions: identity });

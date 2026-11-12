@@ -39,7 +39,7 @@ export function ObjectNoticeItem({ notice, meId, owners, authorOf, inThread = fa
       : <span className="convo-notice__src">{phrase.link}</span> : null;
   return (
     <li className={`convo-object${follows ? ' is-follow' : ''}`} id={`object-${notice.id}`} data-object-kind={notice.kind} data-object-id={target.id} data-object-state={state.state}>
-      <AuthorFace kind={by.kind} name={name} mine={mine} />
+      <AuthorFace kind={by.kind} id={by.id} name={name} mine={mine} />
       <div className="convo-notice__body">
         <p className="convo-notice__meta">
           {by.kind === 'agent' ? <strong><AgentIdentity name={name} owner={agentAuthorOwner(by, owners)} icon={false} /></strong> : <strong>{name}{mine ? ' · you' : ''}</strong>}

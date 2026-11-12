@@ -120,6 +120,7 @@ export * from './push.js';
 export * from './conversation.js';
 export * from './files.js';
 export * from './message-format.js';
+export * from './pictures.js';
 export * from './sketch.js';
 export * from './work.js';
 export * from './work-read.js';

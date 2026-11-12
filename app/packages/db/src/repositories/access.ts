@@ -292,6 +292,19 @@ function humanProjectRead(role: WorkspaceRole) {
 }
 
 /**
+ * SQL (F-039, #1226): the viewer can see the person in `person` (a user id column or value), so the person's photo shows to them. Both
+ * are in one workspace, and a guest there sees only the people of the spaces they are added to (guests may not read the roster): those
+ * with a grant on one of the guest's spaces, and the members of a space everyone is in. Anyone sees themselves. Someone removed from
+ * the company is in none of its workspaces any more, so their photo is hidden with them, and someone who left sees nobody's.
+ */
+export function personSeenBySql(viewerId: string, person: SQLWrapper): SQL {
+  return sql`(${person} = ${viewerId} OR EXISTS (SELECT 1 FROM workspace_members sv JOIN workspace_members sp ON sp.workspace_id = sv.workspace_id
+    WHERE sv.user_id = ${viewerId} AND sp.user_id = ${person} AND (sv.role <> 'guest' OR EXISTS (SELECT 1 FROM project_grants gv
+      JOIN projects pv ON pv.id = gv.project_id WHERE gv.user_id = ${viewerId} AND gv.workspace_id = sv.workspace_id
+      AND ((pv.visibility = 'workspace' AND sp.role <> 'guest') OR EXISTS (SELECT 1 FROM project_grants gp WHERE gp.project_id = gv.project_id AND gp.user_id = ${person}))))))`;
+}
+
+/**
  * Core's `AccessReader` over one executor. One method is one statement (or the single guarded
  * statement pair of `lockProjectAccess`); core's evaluators call them in the documented lock order.
  * The rows it returns are whole table rows, so core's evaluations carry them to callers unchanged.

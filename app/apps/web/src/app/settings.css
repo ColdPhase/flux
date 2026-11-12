@@ -191,6 +191,9 @@
 /* Settings → Account (#763 SG-1): a fact with Change, its form under it. */
 .sset-acct__form { padding: 4px 18px 16px; }
 .sset-acct__fields { display: grid; gap: 12px; max-width: 420px; }
+/* The chosen photo as the circles people will see (F-039): the same 32 and 20 px avatars, then one line. */
+.sset-photo { display: flex; align-items: center; gap: 10px; }
+.sset-acct__fields .details__actions { flex-wrap: wrap; }
 .sset-acct__switch .sset-row { padding-inline: 0; min-height: 44px; }
 .sset-acct__done { margin: 0; padding: 0 18px; font-size: var(--fs-sm); color: var(--t2); }
 .sset-acct__done:empty { display: none; }

@@ -52,7 +52,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
           <ul className="lv-people">
             {people.map((person) => (
               <li key={person.userId} className={`lv-person${person.speaking ? ' is-speaking' : ''}`}>
-                <Avatar name={live.fullName(person.userId)} size="md" tone={person.local ? 'me' : 'neutral'} />
+                <Avatar name={live.fullName(person.userId)} id={person.userId} size="md" tone={person.local ? 'me' : 'neutral'} />
                 <span className="lv-person__b"><b>{person.local ? 'You' : live.nameOf(person.userId)}</b><span>{person.local && live.quiet ? 'quiet: not sending or hearing' : presence(person)}</span></span>
                 {person.speaking ? <span className="lv-person__speaking">speaking</span> : null}
               </li>
@@ -65,7 +65,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
             <ul className="lv-people">
               {absent.map((person) => (
                 <li key={person.id} className="lv-person lv-person--absent">
-                  <Avatar name={person.name} size="md" />
+                  <Avatar name={person.name} id={person.id} size="md" />
                   <span className="lv-person__b"><b>{person.name}</b><span>{invited[person.id] === 'sent' ? 'Invited · one quiet item in their inbox' : invited[person.id] === 'failed' ? 'Could not invite. They may no longer have access.' : 'Not in the session'}</span></span>
                   {invited[person.id] === 'sent' ? <Icon name="check" size={14} /> : (
                     <Button variant="quiet" busy={invited[person.id] === 'sending'} onClick={() => void invite(person.id)}>Invite</Button>

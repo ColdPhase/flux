@@ -13,6 +13,8 @@ export interface ComposerOption {
   kind: 'action' | 'person' | 'agent';
   /** "/task", or the person's name. */
   label: string;
+  /** A person's user id: their avatar's photo (F-039). */
+  personId?: string;
   hint: string;
   /** What replaces the typed trigger when it is chosen. */
   insert: string;
@@ -59,7 +61,7 @@ export function composerOptions(trigger: ComposerTrigger, { people, meId, assist
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))
     .slice(0, 8)
     .map((person) => ({ id: `mention-${person.kind}-${person.id}`, kind: person.kind === 'agent' ? 'agent' as const : 'person' as const,
-      label: person.name, hint: person.kind === 'agent' ? 'Agent' : 'Person', insert: `@${person.name} ` }));
+      ...(person.kind === 'agent' ? {} : { personId: person.id }), label: person.name, hint: person.kind === 'agent' ? 'Agent' : 'Person', insert: `@${person.name} ` }));
   return assistant?.last ? [...others, ...mine] : [...mine, ...others];
 }
 
@@ -92,7 +94,7 @@ function ComposerMenuList({ id, options, active, onPick, onHover, trigger, aiOff
           data-ai-surface={option.kind === 'agent' || option.slash && AI_ACTIONS.has(option.slash) ? 'composer-ai-option' : undefined}
           onMouseMove={() => { if (index !== active) onHover(index); }} onClick={() => onPick(option)}>
           {option.kind === 'action' ? <code className="cmenu__cmd">{option.label}</code>
-            : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
+            : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} id={option.personId} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
           <span className="cmenu__hint">{option.hint}</span>
           {index === active ? <kbd className="cmenu__kbd" aria-hidden="true">↵</kbd> : null}
         </div>

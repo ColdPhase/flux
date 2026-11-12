@@ -91,7 +91,7 @@ export function ProjectsIndex() {
                 {directMessages.map((dm) => (
                   <li key={dm.id}>
                     <Link to={`/dm/${dm.id}`} className="set-row" aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
-                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
+                      <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} id={dm.kind === 'pair' ? dm.peopleIds[0] : null} size="lg" />
                       <span className="set-row__b">
                         <span className="set-row__t proj-index__one">{dm.title}</span>
                         <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
