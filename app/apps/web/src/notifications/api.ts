@@ -8,12 +8,17 @@ import {
   notificationAddressPath,
   notificationAddressResendPath,
   NOTIFICATION_MUTES_PATH,
+  notificationFollowPath,
+  NOTIFICATION_FOLLOWS_PATH,
   NOTIFICATION_PREFERENCES_PATH,
   NOTIFICATION_UNSUBSCRIBE_PATH,
   type InboxItem,
   type InboxResponse,
+  type MutedPlacesResponse,
   type NotificationPreferences,
+  type SetFollowCommand,
   type SetMuteCommand,
+  type ThreadFollow,
   type UnsubscribeResponse,
   type UpdateNotificationPreferencesCommand,
   type VerifiedNotificationAddress,
@@ -30,6 +35,11 @@ export const markAllInboxRead = () => request<{ updated: number }>(INBOX_READ_AL
 export const getPreferences = (signal?: AbortSignal) => request<NotificationPreferences>(NOTIFICATION_PREFERENCES_PATH, { signal });
 export const updatePreferences = (change: UpdateNotificationPreferencesCommand) =>
   request<NotificationPreferences>(NOTIFICATION_PREFERENCES_PATH, { method: 'PATCH', body: change });
+/** The ids of the muted places, for the sidebar's mark and the ⋯ menus (#1249); Settings reads the names with the preferences. */
+export const getMutedPlaces = (signal?: AbortSignal) => request<MutedPlacesResponse>(NOTIFICATION_MUTES_PATH, { signal });
+/** Whether the person follows a thread (its replies notify them), and the choice to follow or unfollow it (#1249). */
+export const getFollow = (conversationId: string, signal?: AbortSignal) => request<ThreadFollow>(notificationFollowPath(conversationId), { signal });
+export const setFollow = (command: SetFollowCommand) => request<ThreadFollow>(NOTIFICATION_FOLLOWS_PATH, { method: 'PUT', body: command });
 export const setMute = (command: SetMuteCommand) => request<NotificationPreferences>(NOTIFICATION_MUTES_PATH, { method: 'PUT', body: command });
 export const addAddress = (email: string) => request<NotificationPreferences>(NOTIFICATION_ADDRESSES_PATH, { method: 'POST', body: { email } });
 export const setAddressEnabled = (id: string, enabled: boolean) => request<NotificationPreferences>(notificationAddressPath(id), { method: 'PATCH', body: { enabled } });

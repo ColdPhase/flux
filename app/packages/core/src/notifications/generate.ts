@@ -51,6 +51,8 @@ export interface Candidate {
   aiOrigin?: boolean;
   /** Who acted, as the title names them: an account name, `Someone` or `An agent` (F-030 content-free titles). */
   who: string;
+  /** The conversation this notice is about, for a mention or a question in it: the person follows that thread from now on (#1249). */
+  thread?: string;
 }
 
 /**
@@ -111,6 +113,10 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // A person's message posted through a client or an assistant is marked in every notice, like on the message: "Ada · via Claude Code".
       const author = authorId ? `${names.get(authorId) ?? 'Someone'}${message.via ? ` · via ${message.via}` : ''}` : `${message.authorName ?? 'Agent'} (agent)`;
       const involved = new Set([...(message.conversationCreatedBy.kind === 'human' ? [message.conversationCreatedBy.id] : []), ...message.earlierAuthors]);
+      // Who gets the replies of a thread (#1249): the people who follow it. A person's own choice (Follow, Unfollow) wins over the default,
+      // which is that its starter and earlier writers follow it.
+      const chosen = new Map((message.threadFollows ?? []).map((choice) => [choice.userId, choice.following]));
+      const follows = (userId: string) => chosen.get(userId) ?? involved.has(userId);
       const url = `/projects/${message.projectId}/conversations/${message.conversationId}#message-${message.id}`;
       const result: Candidate[] = [];
       for (const userId of people) {
@@ -119,14 +125,15 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const askedThis = message.asked?.userId === userId;
         if (message.asked && !askedThis) continue;
         const addressed = mentions(message.body, name);
-        const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : involved.has(userId) ? 'reply' : null;
+        const reason: NotificationReason | null = askedThis ? 'question' : addressed ? (isQuestion(message.body) ? 'question' : 'mention') : follows(userId) ? 'reply' : null;
         if (!reason) continue;
         const title = reason === 'question' ? `${author} asked you in ${message.projectName}`
           : reason === 'mention' ? `${author} mentioned you in ${message.projectName}`
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
-          aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent' });
+          aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent',
+          ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}) });
       }
       return result;
     }
@@ -135,14 +142,20 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const message = messageId ? await facts.dmMessage(event.objectId, messageId) : null;
       if (!message) return [];
       const people = message.participantIds.filter((userId) => userId !== message.authorId && reachable(userId));
-      const names = await facts.names([message.authorId]);
+      const names = await facts.names([message.authorId, ...people]);
       const author = names.get(message.authorId) ?? 'Someone';
       const marked = message.via ? `${author} · via ${message.via}` : author;
-      const title = message.kind === 'pair' ? `${marked} sent you a message` : `${marked} in ${message.title ? quote(message.title) : 'a group message'}`;
-      return people.map((userId) => ({
-        userId, reason: 'dm' as const, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
-        url: `/dm/${message.dmId}#message-${message.id}`, who: author, ...(message.via ? { aiOrigin: true } : {}),
-      }));
+      const place = message.kind === 'pair' ? '' : ` in ${message.title ? quote(message.title) : 'a group message'}`;
+      return people.map((userId) => {
+        // A message that names the person with "@" (or opens with their name) is a mention, or a question when it asks something, as in a
+        // space (#1249): those reasons still arrive from a place the person muted, while every other message of the conversation does not.
+        const addressed = mentions(message.body, names.get(userId) ?? '');
+        const reason: NotificationReason = addressed ? (isQuestion(message.body) ? 'question' : 'mention') : 'dm';
+        const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
+          : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
+        return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
+          url: `/dm/${message.dmId}#message-${message.id}`, who: author, ...(message.via ? { aiOrigin: true } : {}) };
+      });
     }
     case 'project.work_created.v1':
     case 'project.work_updated.v1': {
@@ -245,7 +258,9 @@ export interface GenerationOptions {
 /** Stores one candidate's notification and queues its push and email, as their preferences say. */
 async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: Candidate, options: GenerationOptions) {
   const preferences = await ports.preferences.get(candidate.userId);
-  if (await ports.preferences.isMuted(candidate.userId, candidate.source)) return false;
+  // A muted place keeps its ordinary messages quiet; what needs the person (a mention, a question, a task, a decision, an invitation, an agent
+  // waiting) still arrives (#1249). The one rule is `quiet`.
+  if (await ports.preferences.quiet(candidate.userId, candidate.source, candidate.reason)) return false;
   const channels = channelsOf(preferences)[candidate.reason];
   if (!channels.inApp && !channels.push && !channels.email) return false;
   // Access now, not only at event time: someone removed since then gets nothing.
@@ -311,7 +326,12 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
       try {
         created += await ports.isolate(async () => {
           let count = 0;
-          for (const candidate of await candidatesFor(event, ports.facts)) if (await deliver(ports, event, candidate, options)) count++;
+          for (const candidate of await candidatesFor(event, ports.facts)) {
+            // Mentioned or asked in a thread: the person follows it from now on, whatever the notice does (a muted place, the level), unless
+            // they chose either way before (#1249).
+            if (candidate.thread) await ports.followThread?.(candidate.userId, candidate.thread);
+            if (await deliver(ports, event, candidate, options)) count++;
+          }
           return count;
         });
       } catch (error) {

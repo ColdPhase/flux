@@ -167,7 +167,16 @@ export interface DmReferences {
   save(messageId: string, workspaceId: string, references: readonly MessageReference[]): Promise<void>;
 }
 
+/**
+ * A person's reply in a direct message answers what they were asked or mentioned in it (#1249, as #1170 does in a space thread): their
+ * unread mention and question notifications of that conversation are read and done. Returns the Inbox keys it took out.
+ */
+export interface DmInbox {
+  answerIn(userId: string, dmId: string): Promise<string[]>;
+}
+
 export interface DmPorts {
+  inbox?: DmInbox;
   access: DmAccess;
   references: DmReferences;
   taskCopy: DmTaskCopy;

@@ -37,6 +37,7 @@ import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
+import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -128,7 +129,7 @@ function isTyping(target: EventTarget | null) {
 export function AppLayout() {
   const { me } = useShellData();
   const { projectId } = useParams();
-  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><AppLayoutContent /></AgentChatDotsProvider></WorkReadProvider>;
+  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><PlaceMutesProvider identity={me.user.id}><AppLayoutContent /></PlaceMutesProvider></AgentChatDotsProvider></WorkReadProvider>;
 }
 
 function AppLayoutContent() {
@@ -292,6 +293,8 @@ function AppLayoutContent() {
       revalidator.revalidate();
       return;
     }
+    // This person muted a place or followed a thread in another tab (#1249): the mutes and the open thread read it themselves.
+    if (notificationsChanged(event)) return;
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);
@@ -603,6 +606,10 @@ function AppLayoutContent() {
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeAgent = agents.find((agent) => agent.id === location.pathname.match(/^\/agents\/([^/]+)/)?.[1]);
   const activeDm = directMessages.find((dm) => dm.id === dmId);
+  // Mute and Unmute in a place's ⋯ menu (#1249): the same mutes as Settings and the sidebar's mark.
+  const spaceMute = useMuteRow('project', activeProject?.id);
+  const dmMute = useMuteRow('dm', activeDm?.id);
+  const placeMute = spaceMute ?? dmMute;
   // A direct message has one view, Messages; its sketches are gone (#866).
   const dmViews = activeDm ? [{ id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` }] : null;
   const matches = useMatches();
@@ -677,6 +684,7 @@ function AppLayoutContent() {
     ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
+    ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
@@ -725,6 +733,7 @@ function AppLayoutContent() {
   const phoneMoreItems: MoreItem[] = projectId ? [
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
+    ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
   ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
@@ -745,7 +754,7 @@ function AppLayoutContent() {
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
-            onDetails={detailsEntry} detailsLabel={placeDetailsLabel}
+            onDetails={detailsEntry} detailsLabel={placeDetailsLabel} mute={dmMute ?? undefined}
             subtitle={activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'} /></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">

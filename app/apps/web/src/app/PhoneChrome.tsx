@@ -78,8 +78,10 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
  * A direct message's title menu: it names the conversation and opens the places inside it. "Message info" is the last row.
  * (A space's title is plain: its views are the segmented control, #873.)
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Message info', lead }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Message info', lead, mute }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
+  /** Mute or Unmute this conversation, with the line that says what still arrives (#1249); the row sits above "Message info". */
+  mute?: { label: string; hint: string; run: () => void };
 }) {
   const [open, setOpen] = useState(false);
   const titleId = useId();
@@ -109,6 +111,11 @@ export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel
             </li>
           ))}
         </ul>
+        {mute ? (
+          <button type="button" className="phone-menu__item phone-menu__mute" onClick={() => { setOpen(false); mute.run(); }}>
+            <Icon name="quiet" size={20} /><span className="phone-menu__l">{mute.label}<small className="phone-menu__hint">{mute.hint}</small></span>
+          </button>
+        ) : null}
         {onDetails ? (
           <button type="button" className="phone-menu__item phone-menu__details" onClick={() => { setOpen(false); onDetails(); }}>
             <Icon name="panel" size={20} /><span className="phone-menu__l">{detailsLabel}</span>

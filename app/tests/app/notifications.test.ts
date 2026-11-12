@@ -273,22 +273,26 @@ describe('notifications from committed events', () => {
     assert.ok([...perEvent.values()].every((count) => count === 1));
   });
 
-  test('a muted place notifies nothing, on any channel; unmuting brings it back', async () => {
+  test('a muted place keeps ordinary notices quiet but a mention still arrives; unmuting brings the rest back (#1249)', async () => {
     const muted = expectStatus(await cy.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: projectId, muted: true } }), 200) as NotificationPreferences;
     assert.deepEqual(muted.muted, [{ type: 'project', id: projectId, name: 'Tide tables' }]);
-    const thread = await conversation(ada, projectId, '@Cyra Lind the harbour master sent new times');
+    // Cyra writes first, so Ada's next message in her thread is a reply for her: ordinary, so a muted place keeps it quiet.
+    const thread = await conversation(cy, projectId, 'Cyra opens a thread for the harbour master');
+    const plain = await reply(ada, thread.id, 'The harbour master sent new times');
+    const named = await reply(ada, thread.id, '@Cyra Lind the harbour master sent new times');
     const dmId = await dm(ada, workspaceId, cy);
     const message = await dmMessage(ada, dmId, 'Did you see the new times?');
-    // The DM (later in the event log) arrives, so the muted mention before it was skipped.
+    // The mention and the DM (a place that is not muted) arrive; the plain reply, earlier in the event log, was skipped.
+    await waitForItem(cy, (item) => item.url?.endsWith(named.id) === true && item.reason === 'mention', 'Cyra\'s mention in the muted space');
     await waitForItem(cy, (item) => item.url?.endsWith(message.id) === true, 'Cyra\'s DM');
-    assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(thread.messages[0]!.id)).length, 0);
+    assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(plain.id)).length, 0);
     // Someone else cannot mute a place they cannot read.
     const outsider = await person('Oli Outsider');
     expectStatus(await outsider.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: projectId, muted: true } }), 404);
     const unmuted = expectStatus(await cy.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: projectId, muted: false } }), 200) as NotificationPreferences;
     assert.deepEqual(unmuted.muted, []);
-    const again = await conversation(ada, projectId, '@Cyra Lind and one more change');
-    await waitForItem(cy, (item) => item.url?.endsWith(again.messages[0]!.id) === true, 'Cyra\'s mention after unmuting');
+    const again = await reply(ada, thread.id, 'And one more change');
+    await waitForItem(cy, (item) => item.url?.endsWith(again.id) === true, 'Cyra\'s reply after unmuting');
   });
 
   test('Nothing still fills the inbox but sends no push; Only what needs me pushes a question, not a plain reply', async () => {

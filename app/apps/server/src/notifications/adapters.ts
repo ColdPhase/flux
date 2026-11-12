@@ -1,8 +1,10 @@
 import {
   notificationAddressRows,
   notificationEmailRows,
+  notificationFollowRows,
   notificationPlaceRows,
   notificationPreferenceRows,
+  recordNotificationsChanged,
   accessReader, type Database
 } from '@flux/db';
 import {
@@ -37,10 +39,17 @@ export function verificationMailer(smtp: SmtpConfig | null): VerificationMailer 
   };
 }
 
-/** Stored preferences with an atomic partial change: row lock, merge and write in one transaction. */
+/**
+ * Stored preferences with an atomic partial change: row lock, merge and write in one transaction. A mute is written with the event that
+ * tells the person's other tabs (#1249), in the same transaction.
+ */
 function preferenceStore(db: Database) {
   return {
     ...notificationPreferenceRows(db),
+    setMuted: (userId: string, place: { type: 'project' | 'dm'; id: string }, muted: boolean) => db.transaction(async (tx) => {
+      await notificationPreferenceRows(tx).setMuted(userId, place, muted);
+      await recordNotificationsChanged(tx, userId, place);
+    }),
     modify: (userId: string, change: (current: StoredPreferences) => StoredPreferences) => db.transaction(async (tx) => {
       const rows = notificationPreferenceRows(tx);
       const next = change(await rows.lock(userId) as StoredPreferences);
@@ -55,6 +64,16 @@ export function settingsPorts(db: Database, mailer: VerificationMailer, origin: 
   const places = notificationPlaceRows(db);
   return {
     preferences: preferenceRepository(preferenceStore(db)),
+    follows: {
+      ...notificationFollowRows(db),
+      // The choice and the event that tells the person's other tabs, in one transaction (#1249).
+      set: (userId, conversationId, following) => db.transaction(async (tx) => {
+        const rows = notificationFollowRows(tx);
+        const thread = await rows.locate(conversationId);
+        await rows.set(userId, conversationId, following);
+        if (thread) await recordNotificationsChanged(tx, userId, { type: 'project', id: thread.projectId });
+      }),
+    },
     addresses: notificationAddressRows(db),
     unsubscribes: notificationEmailRows(db),
     authorizer,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Conversation, Decision, InboxResponse, Material, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, Workspace, WorkItem } from '@flux/contracts';
+import type { Conversation, Decision, InboxResponse, Material, NeedsYouItem, NeedsYouResponse, Project, SentConversationMessage, SentDmMessage, Workspace, WorkItem } from '@flux/contracts';
 import type { ClientResponse } from './support/http.js';
 import { register } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project as createProject, workspace, type Person } from './support/people.js';
@@ -213,6 +213,48 @@ describe('the Inbox needs-you queue', () => {
     assert.deepEqual(inThread(await queue(owner)).map((item) => item.key).sort(), keys, 'Undo brings both back');
     for (const key of keys) assert.equal(await readAt(key), null);
     for (const key of [...keys, waiting.there.key]) json(await resolve(owner, key, { action: 'done' }), 200);
+  });
+
+  test('a reply in a direct message that names you answers it as in a space thread: it leaves the Inbox as Done takes it, and Undo brings it back (#1249)', async () => {
+    const openDm = async (from: Person, to: Person) => {
+      const created = await post(from, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [to.id] });
+      assert.ok(created.status === 200 || created.status === 201, created.text);
+      return (created.json as { id: string }).id;
+    };
+    const dm = await openDm(partner, owner);
+    const elsewhere = await openDm(second, owner);
+    const say = (from: Person, id: string, body: string) => post(from, `/api/v1/dms/${id}/messages`, { body, clientMessageId: randomUUID() });
+    json(await say(partner, dm, 'Needs Owner, can you check the invoice for the probes?'), 201);
+    json(await say(partner, dm, '@Needs Owner the totals are on the second page'), 201);
+    json(await say(partner, dm, 'No rush on any of it'), 201);
+    json(await say(second, elsewhere, '@Needs Owner can you bring the ladder tomorrow?'), 201);
+    const inDm = (response: NeedsYouResponse, id = dm) => response.items.filter((item) => item.url.startsWith(`/dm/${id}`));
+    const waiting = await waitFor(async () => {
+      const current = await queue(owner);
+      return inDm(current).length === 2 && inDm(current, elsewhere).length === 1 ? current : undefined;
+    }, 'the question and the mention of the DM reach the queue, and the question of the other DM');
+    assert.deepEqual(inDm(waiting).map((item) => item.kind).sort(), ['mention', 'question'], 'a plain message of the DM is no need');
+    const keys = inDm(waiting).map((item) => item.key).sort();
+
+    // Opening the conversation answers nothing.
+    json(await owner.browser.request('GET', `/api/v1/dms/${dm}`), 200);
+    assert.equal(inDm(await queue(owner)).length, 2, 'before the reply: 2 wait');
+
+    const command = { body: 'The totals look right to me.', clientMessageId: randomUUID() };
+    const sent = json<SentDmMessage>(await post(owner, `/api/v1/dms/${dm}/messages`, command), 201);
+    assert.deepEqual([...(sent.answered ?? [])].sort(), keys, 'the reply names what it answered');
+    const after = await queue(owner);
+    assert.equal(inDm(after).length, 0, 'after the reply: 0 wait');
+    assert.equal(after.count, after.items.length);
+    assert.equal(inDm(after, elsewhere).length, 1, 'a question in another DM still waits');
+    // A retry answers nothing more, and a message from the person who asked answers nothing of the owner's.
+    assert.equal(json<SentDmMessage>(await post(owner, `/api/v1/dms/${dm}/messages`, command), 201).answered, undefined);
+    assert.equal(json<SentDmMessage>(await say(second, elsewhere, 'Thanks, tomorrow is fine'), 201).answered, undefined);
+
+    // Undo is Done's: each comes back, unread.
+    for (const key of keys) assert.equal((await restore(owner, key)).status, 204);
+    assert.deepEqual(inDm(await queue(owner)).map((item) => item.key).sort(), keys, 'Undo brings both back');
+    for (const key of [...keys, ...inDm(await queue(owner), elsewhere).map((item) => item.key)]) json(await resolve(owner, key, { action: 'done' }), 200);
   });
 
   test('a message in a task\'s discussion answers what was asked there, with the same Undo (#1170)', async () => {

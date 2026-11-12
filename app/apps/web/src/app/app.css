@@ -139,6 +139,10 @@ body:has(.app) { background: var(--side); }
 /* An encrypted space has a small lock after its name, at the row's end as drawn (F-026 §4); a dot of news follows it. */
 .side__lock { margin-left: auto; flex: none; color: var(--t3); }
 .side__lock + .side__dot { margin-left: 0; }
+/* A muted place has a small muted mark in the lock's slot, and what is new there is a quiet count in the dot's slot (#1249): never bold. */
+.side__muted { margin-left: auto; flex: none; color: var(--t3); }
+.side__lock + .side__muted { margin-left: 0; }
+.side__quiet { flex: none; min-width: 12px; text-align: right; font-size: var(--fs-xs); font-weight: 400; color: var(--t3); font-variant-numeric: tabular-nums; }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }
@@ -347,6 +351,10 @@ a.me__item { text-decoration: none; }
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: 32px; padding: 0 10px; border-radius: var(--r-sm);
   color: var(--t1); font: inherit; font-size: var(--fs-sm); line-height: 1.25; text-align: left; text-decoration: none; cursor: pointer; transition: background-color var(--dur-1) var(--ease-out);
 }
+/* A row with a hint (Mute, #1249): the label and one small muted line under it, wrapping inside the menu's width. */
+.top__more-menu .newmenu__item:has(.top__more-text) { align-items: flex-start; padding-block: 6px; }
+.top__more-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; white-space: normal; }
+.top__more-text small { font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }
 /* The rows a narrow header moves into More (Spokój rule 3) stay hidden here: the menu rule above would otherwise
    show them at every width. The narrow container rule below still shows them (higher specificity). */
 .top__more-menu .top__more-narrow { display: none; }
@@ -690,6 +698,10 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-menu__n { font-size: var(--fs-xs); color: var(--t2); }
 .phone-menu__ok { flex: none; }
 .phone-menu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t2); }
+/* Mute (#1249): the label and one small muted line under it; it shares the separator with "Message info" under it. */
+.phone-menu__mute { margin-top: 6px; padding-block: 8px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t1); }
+.phone-menu__mute + .phone-menu__details { margin-top: 0; border-top: 0; }
+.phone-menu__hint { display: block; margin-top: 2px; font-size: var(--fs-xs); line-height: 1.35; color: var(--t3); }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }

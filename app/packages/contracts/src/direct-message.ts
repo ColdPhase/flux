@@ -70,6 +70,13 @@ export type DmMessage = HumanConversationMessage & { threadRootId: string | null
    */
   notice?: 'ai_used' };
 
+/**
+ * `POST /api/v1/dms/:dmId/messages` (and a thread reply): the stored message. `answered` (#1249) names the Inbox items this reply answered
+ * (`note:<id>`: what its author was asked or mentioned in this conversation), as for a reply in a space thread (#1170, `SentConversationMessage`);
+ * `DELETE /api/v1/needs-you/:key` (Undo) brings each back. Absent when the reply answered nothing, and on a retried send.
+ */
+export type SentDmMessage = DmMessage & { answered?: string[] };
+
 /** A DM with its newest window of ROOT messages, in ascending display order (as #36 conversations). */
 export interface Dm extends DmSummary {
   messages: DmMessage[];

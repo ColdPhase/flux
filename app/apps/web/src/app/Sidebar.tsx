@@ -11,6 +11,7 @@ import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
+import { usePlaceMutes } from '../notifications/mutes';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -57,6 +58,8 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
+  // The places this person muted (#1249): a small muted mark after the name; what is new there is a quiet count, not the dot.
+  const { muted } = usePlaceMutes();
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current only on Home (#763 NV-1): a page reached from it (the Wiki, New space, a missing page) is no place
@@ -128,7 +131,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         <nav className="side__rail-projects" aria-label="Spaces" ref={railProjects}>
           <span className="side__rail-glide" ref={railGlide} aria-hidden="true" />
           {projects.map((project) => (
-            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={encrypted(project) ? `${project.name}, encrypted` : project.name} title={encrypted(project) ? `${project.name} · Encrypted` : project.name}
+            <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
               <ProjectTile name={project.name} size={28} />
@@ -145,9 +148,9 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
-              aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={dm.title}>
+              aria-label={`${dm.title}${muted.has(`dm:${dm.id}`) ? ', muted' : ''}${dm.hasNew && !muted.has(`dm:${dm.id}`) ? ', new messages' : ''}`} title={`${dm.title}${muted.has(`dm:${dm.id}`) ? ' · Muted' : ''}`}>
               <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
-              {dm.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
+              {dm.hasNew && !muted.has(`dm:${dm.id}`) ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
           ))}
         </nav>
@@ -207,17 +210,20 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
               <li className="side__glide" ref={glide} aria-hidden="true" role="none" />
               {projects.map((project) => {
                 const open = project.id === projectId;
+                const quiet = muted.has(`project:${project.id}`);
+                const fresh = news.get(project.id) ?? 0;
                 return (
                   <li key={project.id}>
                     <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
                       title={project.name}
-                      aria-label={news.has(project.id) || encrypted(project) ? `${project.name}${encrypted(project) ? ', encrypted' : ''}${news.has(project.id) ? ', new activity' : ''}` : undefined}
+                      aria-label={fresh || quiet || encrypted(project) ? `${project.name}${encrypted(project) ? ', encrypted' : ''}${quiet ? ', muted' : ''}${fresh ? (quiet ? `, ${fresh} new` : ', new activity') : ''}` : undefined}
                       data-encrypted={encrypted(project) ? '' : undefined}>
                       <ProjectTile name={project.name} />
                       <span className="side__label">{project.name}</span>
                       {encrypted(project) ? <Icon name="lock" size={12} className="side__lock" /> : null}
-                      {news.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
+                      {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
+                      {fresh ? (quiet ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : <span className="side__dot" aria-hidden="true" />) : null}
                     </NavLink>
                   </li>
                 );
@@ -249,9 +255,11 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
               {agents.map((agent, index) => <ListAgent key={agent.id} agent={agent} pinned={index === 0} onNavigate={navigate} />)}
               {directMessages.map((dm) => (
                 <li key={dm.id}>
-                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}>
+                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}
+                    aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
                     <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
-                    {dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
+                    {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" />
+                      : dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
                   </NavLink>
                 </li>
               ))}

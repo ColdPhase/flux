@@ -6,7 +6,8 @@ This page is the contract for foundation area 8.9 as built in
 [#44](https://github.com/ColdPhase/flux/issues/44) (email delivery, 2026-09-27). It builds on
 the #41 inbox and Web Push ([mobile PWA](../product/mobile-pwa.md#lock-screen-privacy)).
 Migration `0015_notifications.sql`, `FLUX_SCHEMA_VERSION` 15. Migration `0023_notifications_level.sql` (#872) keeps
-the level and `email_me` and drops the per-reason `channels` and `email_destination`.
+the level and `email_me` and drops the per-reason `channels` and `email_destination`. Migration `0057_notification_follows.sql`
+(#1249) adds `notification_follows`, the thread follow choices below.
 
 ## What notifies, and why
 
@@ -14,10 +15,10 @@ A notification exists only for a reason a person can act on (`reason` on every r
 
 | Reason | Event | Who |
 | --- | --- | --- |
-| `mention` | `project.message_sent.v1` / `project.conversation_created.v1` | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them. |
+| `mention` | `project.message_sent.v1` / `project.conversation_created.v1`, and `dm.message_sent.v1` (#1249) | People named with `@Name` (or opened with `Name,`), as the return view (#106) matches them, in a space or in a direct message. |
 | `question` | same | A mention that asks something (`?`); or, for an agent's question card (`flux_ask_question`, #347), exactly the one person asked, and nobody else because of that message. |
-| `reply` | same | The conversation's starter and earlier writers, unless the message mentions them. |
-| `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants. |
+| `reply` | same | The people who **follow** the conversation (a thread), unless the message mentions them: by default its starter and earlier writers, and whoever followed it (see "Follow a thread" under Preferences, #1249). |
+| `dm` | `dm.message_sent.v1` (now carries `messageId`) | The other current participants, except those the message names (they get a `mention` or a `question`, #1249; their reply in that DM answers it: it leaves Needs You as in a space thread, #1170). |
 | `assigned` | `project.work_created.v1` / `project.work_updated.v1` with `assignedTo` | A person someone else made the owner. |
 | `review` | `project.decision_proposed.v1` | Owners of work the decision affects, and the owner of the agent that produced it. |
 | `invitation` | `project.live_invited.v1` (`{ sessionId, invitationId, recipientId }`, recorded only when a new invitation row is inserted) | The invited person, while the invitation is still `pending` and its live session `available` ([live sessions](live-sessions.md), #62). |
@@ -41,7 +42,7 @@ dead-lettered (`dead_at` set, logged) and passed, so one poisoned event cannot b
 For each candidate the generator requires, in this order:
 
 1. the person was in the event's recorded audience (`event_audience`, decided at write time);
-2. the place (project or DM) is not muted and the person's level lets the reason through (not `nothing`);
+2. the place (project or DM) is not muted for this reason (`quiet`, below) and the person's level lets the reason through (not `nothing`);
 3. the access policy lets them read the source **now** (`policySourceReader`, which now
    includes `dm.read`); someone removed in between gets nothing.
 
@@ -89,8 +90,32 @@ The settings page sends its saves one after another, numbered, and shows only th
   address gets anything whatever its own switch says. `GET` reports `level`, `emailMe`, `email` (`accountAddress`,
   `accountEnabled`, `addresses`, `available`, `lastFailureAt`), `quietHours` and `muted`; `PATCH` takes `accountEnabled`
   for the sign-in address's switch (`notification_preferences.account_enabled`, default on).
-- **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
-  channel. The page keeps it behind a "Muted places" row with Change.
+- **Mute a place** (a space or a DM the person can read; #1249): only its ordinary messages are quiet, on every channel: a
+  `reply` in a thread and a `dm` get no inbox item, push, email or sound. Everything that needs the person still arrives (founder
+  decision on #1249): a **mention** of them, a **question** to them, a task given to them (`assigned`), a decision about their work
+  (`review`), a live call invitation (`invitation`) and an agent waiting for their OK (`approval`): the reasons of "Only what needs me"
+  except an ordinary direct message (in a DM, a message that names the person is a `mention` or a `question`, not `dm`, so it arrives
+  too). The same rule is applied in every place that
+  decides, from one function (`quiet` on the preference repository, `app/packages/core/src/notifications/preferences.ts`): the
+  generator before a row is stored, the push job before it sends, and the email job before it sends. Muted is a flag on the place
+  (`notification_mutes`), shown as the **Mute** / **Unmute** row of a space's ⋯ menu and of a direct message's header menu, a small
+  muted mark after the place's name in the sidebar, and still as the overview in Settings › Notifications (behind Change). The
+  unread of a muted place shows as a quiet count, not the dot. All of them read and write `GET`/`PUT …/mutes`: there is no second
+  state, so they cannot disagree.
+- **Follow a thread** (a conversation of a space; #1249): a person follows a thread, and gets its `reply` notices, when they started it
+  or wrote in it, when they were mentioned or asked in it (the generator records it), or when they chose **Follow** in the thread's
+  header. **Unfollow** stops its replies. A person's own choice, either way, is kept in `notification_follows` and wins over the
+  default until they change it; it applies to the messages sent after it, so reading an old event again (a rewound cursor) decides as
+  it did the first time (only the latest choice is kept, so a message processed late that was sent between an Unfollow and a later Follow is
+  judged by the default, not by the choice in force when it was sent). Writing in a thread the person unfollowed does not follow it
+  again: their own choice wins until they change it. A mention of, or a question to, the person in a thread they unfollowed still arrives (like everything that
+  needs them through a mute), and does not make them follow it again. `GET …/follows/:conversationId` answers
+  `{ conversationId, following }` for a thread the person can read (`404` otherwise); `PUT …/follows` takes `{ conversationId,
+  following }`. The thread's panel head shows **Follow** or **Following**.
+- **Both sync to other open tabs** through the existing stream, with no polling: a change records `project.notifications_changed.v1`
+  (`dm.notifications_changed.v1` for a DM), with the place's id, for the person who made it alone, by name (like
+  `project.access_ended.v1`; nobody else's stream carries it, and it names no content). The shell reads the muted places again
+  and an open thread reads its follow state again.
 - **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`; C-31): while they last Flux
   sends no push and no email, and **nothing is sent when they end**. The inbox keeps everything. The window is the
   person's wall clock in their zone (`inQuietHours`, daylight-saving aware). It is checked when the notification is
@@ -101,7 +126,8 @@ The settings page sends its saves one after another, numbered, and shows only th
   column (dropped by migration 0019). Quiet hours are the only way to stop push and email for a while.
 
 Push delivery (#41) rechecks the same preferences before each send (`stillWanted`): a level that no longer
-pushes the reason, a muted place or quiet hours skip it. The payload and its lock-screen rule are unchanged.
+pushes the reason, a place that is muted for this reason (`quiet`) or quiet hours skip it. A thread's follow is decided when the notice is
+written, not again at send time: a reply notice queued before an Unfollow is still sent. The payload and its lock-screen rule are unchanged.
 
 ## Delivery addresses
 
@@ -193,16 +219,26 @@ offers it. The account menu has no notifications row any more: the name, Setting
 ## Tests
 
 - `app/tests/app/notifications.test.ts`: generation per reason, once per (person, event) after a
-  cursor rewind, mute, Nothing keeping the inbox, generic email content through Mailpit with
+  cursor rewind, mute (ordinary messages quiet, everything that needs the person still arriving, in a space and in a DM, on every channel),
+  follow and unfollow of a thread, the stream event of both, Nothing keeping the inbox, generic email content through Mailpit with
   one-click unsubscribe, access recheck before email and push, push preferences, duplicate and
   concurrent sends, extra address verification and expiry, a second address with its own switch, the limit of five,
   per-address unsubscribe, extra address never signing in or receiving a reset, the two-SSO-user Email me too matrix (#113), quiet hours dropping what a queued job held,
   STARTTLS and smtps paths. `notification-levels-core.test.ts` and `notifications-core.test.ts`: the level and
   Email me too rules, and quiet hours across daylight-saving changes.
+- `app/tests/app/mute-follow.test.ts` (#1249): the one rule for a muted place (`quiet`) for every reason; a muted space sending no
+  notice, push or email for an ordinary reply while a mention, a question, a task for the person and a decision about their work still
+  arrive, and unmuting bringing replies back; the push job's recheck for every reason; a muted direct message and one that names the person; a thread followed by default by its starter and writers,
+  Unfollow stopping replies but not a mention, Follow for someone who never wrote, a mention following the thread; a thread of an
+  unreadable space and bad requests; persistence in a new session and the stream event to the person's other tab, and to nobody else.
 - `app/tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
   repeated invites, the inviter, and invitations that lost access, were answered or whose
   session ended before generation (the cursor is held while they change).
 - `app/tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
+- `app/tests/ui/test_mute_follow.py` (#1249), Chromium and WebKit: Mute and Unmute from a space's ⋯ menu and a conversation's header
+  menu (on a computer and on a phone), the muted mark and the quiet count, the same state in Settings and in another open tab without a
+  reload, Follow and Following in a thread's header (also in the phone's sheet), a failed follow put back, 44 px targets, screenshots at
+  1440 and 390 in light and dark.
 - `app/tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, the level, Email me too,
   quiet hours, muting, verifying an address through Mailpit and switching each address, phone layout, dark mode and the unsubscribe page, a
   failed add keeping its error and address, the first-load error and its Retry, queued saves acknowledging only

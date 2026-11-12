@@ -62,6 +62,14 @@ export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>)
   return result;
 }
 
+/**
+ * Muting a place keeps only its ordinary messages quiet (#1249, founder decision): a reply in a thread and a direct message. Everything that
+ * needs the person still arrives, on every channel: a mention of them, a question to them, a task given to them, a decision about their
+ * work, a live invitation and an agent waiting for their OK (the reasons of "Only what needs me", except an ordinary direct message).
+ * This is the one rule: the generator, the push job and the email job all ask `PreferenceRepository.quiet`, which asks it.
+ */
+export const REACHES_MUTED_PLACE = new Set<NotificationReason>(NEEDS_YOU_REASONS.filter((reason) => reason !== 'dm'));
+
 export function channelOn(stored: Pick<StoredPreferences, 'level' | 'emailMe'>, reason: NotificationReason, channel: NotificationChannel) {
   return channelsOf(stored)[reason][channel];
 }
@@ -156,6 +164,7 @@ export function preferenceRepository(store: PreferenceStore): PreferenceReposito
     get: async (userId) => (await store.find(userId)) ?? { ...DEFAULT_PREFERENCES },
     save: (userId, preferences) => store.save(userId, preferences),
     isMuted: (userId, source) => store.isMuted(userId, source),
+    quiet: async (userId, source, reason) => !(reason && REACHES_MUTED_PLACE.has(reason)) && await store.isMuted(userId, source),
     mutes: (userId) => store.mutes(userId),
     setMuted: (userId, source, muted) => store.setMuted(userId, source, muted),
     async modify(userId, change) {

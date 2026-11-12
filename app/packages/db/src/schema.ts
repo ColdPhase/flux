@@ -1557,6 +1557,18 @@ export const notificationMutes = pgTable('notification_mutes', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [primaryKey({ columns: [table.userId, table.sourceType, table.sourceId] })]);
 
+/** Migration 0057 (#1249): a person's own choice to follow or unfollow a thread; absent, the defaults of `candidatesFor` apply. */
+export const notificationFollows = pgTable('notification_follows', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  conversationId: uuid('conversation_id').notNull().references(() => projectConversations.id, { onDelete: 'cascade' }),
+  following: boolean('following').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  primaryKey({ columns: [table.userId, table.conversationId] }),
+  index('notification_follows_conversation_idx').on(table.conversationId),
+]);
+
 export const notificationAddresses = pgTable('notification_addresses', {
   id: uuid('id').primaryKey(),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),

@@ -4,6 +4,7 @@ import { plainMessageText, type Conversation, type ConversationMessage, type Con
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { PanelMeta } from '../ui';
+import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { excerpt } from '../live/anchors';
@@ -180,6 +181,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
       {thread && slot ? (
         <OwnedPanelContent slot={slot} className="thread" id="thread">
           <PanelMeta>{replies} {replies === 1 ? 'reply' : 'replies'}</PanelMeta>
+          <ThreadFollow conversationId={thread.id} projectId={project.id} />
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}

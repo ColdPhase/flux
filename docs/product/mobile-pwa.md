@@ -441,6 +441,11 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
 - A notification exists only for a recipient who can read its source (a workspace,
   project, draft or direct message) when it is created, and follows that person's
   preferences, muted places and quiet hours ([#116](../development/notifications.md)).
+  A place the person muted (from its ⋯ menu or Settings, [#1249](https://github.com/ColdPhase/flux/issues/1249)) sends no
+  push for an ordinary message (a reply or a direct message), but still for everything that needs them (a mention, a question, a task for
+  them, a decision about their work, a call invitation, an agent waiting for their OK); a thread they
+  unfollowed sends no reply notice, so no push. The push job rechecks the mute just before it sends; a thread's follow is decided when the
+  notice is written, so a reply notice queued before an Unfollow is still sent.
 - Right before sending, the worker rechecks the source through the access policy. A
   recipient who can no longer see the source receives nothing. The title and body
   are included only while the recipient can read the source; otherwise the device

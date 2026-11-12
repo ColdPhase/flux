@@ -57,7 +57,9 @@ person's own choice (204; idempotent).
   message of that conversation. In the reply's transaction each is
   read and marked `done`, exactly as Done marks it, and the reply's answer names them (`answered`, `note:<id>` keys), so the
   composer says "Replied. Out of your Inbox" with Undo (the `DELETE` above). Opening the thread, someone else's reply and a retried
-  send answer nothing. An agent's question card (S14) is answered with its own answers and stays.
+  send answer nothing. An agent's question card (S14) is answered with its own answers and stays. The same holds in a direct message
+  (#1249): a message there that names the person is a `mention` or a `question` (source `dm`, URL `/dm/:id#message-…`), and their own
+  message in that DM (`POST /api/v1/dms/:id/messages`, or a thread reply) answers the unread ones the same way and names them in `answered`.
 - A choice about a decision or a task that is no longer a need is forgotten, so the same task blocked again
   later asks again.
 - `needs_you_states` rows cascade with the account.

@@ -40,6 +40,7 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     preferences: preferenceRepository(notificationPreferenceRows(tx)),
     authorizer: policySourceReader(accessReader(tx)),
     insertNotification: (notification) => rows.insertNotification(notification),
+    followThread: (userId, conversationId) => rows.followThread(userId, conversationId),
     deliverableSubscriptions: (userId) => pushSubscriptionRepository(tx).deliverableIdsForUser(userId),
     emailedRecently: (userId, source, since) => rows.emailedRecently(userId, source, since),
     insertEmails: (row) => rows.insertEmails(row),
@@ -103,7 +104,7 @@ export function smtpNotificationMailer(config: Extract<NotificationMailConfig, {
 export function pushPreferenceCheck(db: Database) {
   const preferences = preferenceRepository(notificationPreferenceRows(db));
   return async (userId: string, notification: NotificationRecord) => {
-    if (await preferences.isMuted(userId, notification.source)) return false;
+    if (await preferences.quiet(userId, notification.source, notification.reason)) return false;
     return !notification.reason || channelOn(await preferences.get(userId), notification.reason, 'push');
   };
 }
