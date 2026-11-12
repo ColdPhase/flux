@@ -280,8 +280,15 @@ function toolRules(input: Placed): string[] {
   const change = input.kind === 'task_answer' ? 'You only read: no tool changes anything.'
     : changes ? `${input.kind === 'task' ? 'Make the changes the task needs, and no others.' : `Make a change only when the request asks for it.`} Some changes wait for ${owner}'s OK; the tool then says so: do not try again.`
       : `You can only read here: ${owner} set what you may do to Only read. If you are asked for a change, say so instead.`;
-  return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web, ...searchLine];
+  return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web,
+    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
 }
+
+/**
+ * Attaching a picture (#1217, AG-8, C-59): the tool, and that an answer's Markdown has no images (FORMAT), so a picture written in it would never show (and
+ * the reader's browser loads nothing from outside Flux).
+ */
+export const PICTURE_LINE = 'To show a picture, attach it to your answer with flux_attach_image: give the address of the picture file itself (PNG, JPEG, WebP or GIF), not of the page it is on, and say in a line what it shows and where it is from. Never write a picture in Markdown: it would not show. If the tool refuses, say why in your own words.';
 
 /** Schedules are made in the private chat and nowhere else (AG-9, C-53): the owner says it in a sentence, the agent prepares it, the owner turns it on. */
 const SCHEDULE_BLOCK = (owner: string) => ['Schedules',

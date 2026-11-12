@@ -9,7 +9,9 @@ name is the only rule bypassed. No real site is ever fetched. `GET /__hits` retu
 from __future__ import annotations
 
 import json
+import struct
 import threading
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 lock = threading.Lock()
@@ -31,6 +33,18 @@ PAGES = {
     "/title-only": page("<title>A page with a title and no description</title>"),
     "/secret": page('<title>SECRET internal page</title><meta name="description" content="should never be fetched">'),
 }
+
+
+def png(width: int, height: int) -> bytes:
+    """#1217: a real picture an agent attaches (green and brown squares, like boards of a raised bed), with a text chunk the server drops."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\0" + b"".join(bytes((76, 140, 74) if ((x // 24) + (y // 24)) % 2 == 0 else (150, 110, 70)) for x in range(width)) for y in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"tEXt", b"Author\0Somebody") + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+PICTURES = {"/pic/raised-bed.png": png(480, 320)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -63,6 +77,14 @@ class Handler(BaseHTTPRequestHandler):
                          "referer": self.headers.get("referer"), "authorization": self.headers.get("authorization")})
         if path in PAGES:
             return self.reply(200, PAGES[path])
+        if path in PICTURES:
+            data = PICTURES[path]
+            self.send_response(200)
+            self.send_header("content-type", "image/png")
+            self.send_header("content-length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+            return None
         if path == "/redirect-private":
             return self.reply(302, "", headers={"location": "http://link-mock/secret"})
         return self.reply(404, "not found", "text/plain")

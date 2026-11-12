@@ -14,6 +14,7 @@ import { registerAgentQuestionActions } from './agent-questions.js';
 import { registerAgentCoworkActions } from './cowork-actions.js';
 import { registerAgentGithubActions } from './github-actions.js';
 import { registerAgentWebReads } from './web-reads.js';
+import { registerAgentPictureActions } from './picture-actions.js';
 import type { WebReader } from '../web-reads/reader.js';
 import type { Provider as GithubActionProvider } from '../github/adapters.js';
 import { withAgentConnection, type VerifiedFluxMcpClaims } from './context.js';
@@ -83,6 +84,7 @@ function serverFactory(db: Database, cursorSecret: string, github: GithubActionP
   registerAgentCoworkActions(tools, db);
   registerAgentGithubActions(tools, db, github);
   registerAgentWebReads(tools, db, webReader);
+  registerAgentPictureActions(tools, db);
   registerAgentProposal(tools, db);
   tools.verifyManifest();
   manifest.verifyRegistrations();

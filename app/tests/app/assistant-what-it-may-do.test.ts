@@ -450,6 +450,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       ['flux_create_doc', { ...elsewhere, doc: { title: 'Outside the place' } }],
       ['flux_create_map', { ...elsewhere, title: 'Outside the place' }],
       ['flux_propose_decision', { ...elsewhere, decision: { title: 'Outside the place' } }],
+      ['flux_attach_image', { ...elsewhere, url: 'http://public.test/pic/raised-bed.png' }],
     ];
     assert.deepEqual([...new Set(changes.map(([name]) => name))].sort(), [...ASSISTANT_RUN_EFFECT_TOOLS].sort(), 'every change kind is covered');
     for (const mode of ['act', 'ask'] as const) {

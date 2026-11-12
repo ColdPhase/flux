@@ -1,5 +1,6 @@
 import http from 'node:http';
 import { CORPUS_PL, pageHtml, searchCorpus } from './web-corpus-pl.js';
+import { APPENDED, jpeg, png, SVG, WEBP } from './pictures.js';
 
 /**
  * TEST ONLY (#469): pages for the link card suite, run as the Compose `linkmock` service of `scripts/check_application.sh`.
@@ -98,6 +99,30 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
   if (path === '/redirect-ftp') return redirect(response, 'ftp://public.test/secret');
   if (path === '/redirect-file') return redirect(response, 'file:///etc/passwd');
   if (path === '/redirect-empty') { response.writeHead(302); return response.end(); }
+  // #1217: pictures an agent attaches, and what must never become one.
+  const picture = (body: Buffer, type: string) => { response.writeHead(200, { 'content-type': type, 'content-length': String(body.length) }); response.end(body); };
+  if (path === '/pic/raised-bed.png') return picture(Buffer.concat([png(96, 64, { metadata: true }), APPENDED]), 'image/png');
+  if (path === '/pic/photo.jpg') return picture(jpeg({ metadata: true }), 'image/jpeg');
+  if (path === '/pic/leaf.webp') return picture(WEBP, 'image/webp');
+  if (path === '/pic/untyped') return picture(png(), 'application/octet-stream');
+  if (path === '/pic/drawing.svg') return picture(SVG, 'image/svg+xml');
+  if (path === '/pic/disguised.png') return picture(SVG, 'image/png');
+  if (path === '/pic/page.html') return html(response, page('<title>A page about garden beds</title>'));
+  if (path === '/pic/bomb.png') return picture(png(4, 4, { declared: { width: 30_000, height: 30_000 } }), 'image/png');
+  if (path === '/pic/huge.png') {
+    // Six MiB with no Content-Length: refused as it arrives, never cut short and kept.
+    response.writeHead(200, { 'content-type': 'image/png' });
+    response.write(png());
+    return response.end(Buffer.alloc(6 * 1024 * 1024));
+  }
+  if (path === '/pic/huge-declared.png') { response.writeHead(200, { 'content-type': 'image/png', 'content-length': String(6 * 1024 * 1024) }); return response.end(); }
+  if (path === '/pic/moved.png') return redirect(response, '/pic/raised-bed.png');
+  if (path === '/pic/to-private') return redirect(response, 'http://linkmock/pic/raised-bed.png');
+  if (path === '/pic/to-loopback') return redirect(response, 'http://127.0.0.1/pic/raised-bed.png');
+  if (path === '/pic/to-metadata') return redirect(response, 'http://169.254.169.254/latest/meta-data/');
+  if (path === '/pic/to-ipv6') return redirect(response, 'http://[::1]/pic/raised-bed.png');
+  if (path === '/pic/to-mapped') return redirect(response, 'http://[::ffff:127.0.0.1]/pic/raised-bed.png');
+  if (path === '/pic/to-port') return redirect(response, 'http://public.test:8098/pic/raised-bed.png');
   html(response, 'not found', 'text/plain', 404);
 });
 server.listen(8098, '0.0.0.0', () => console.log('link mock listening on :8098'));

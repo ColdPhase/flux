@@ -6,6 +6,7 @@ import { Button, Icon, Kreska } from '../ui';
 import { AnswerBody, BehindLine, sourceSummary, WorkingLine, type SourceLookups } from './ConversationParts';
 import type { ConversationAssistant } from './useConversationAssistant';
 import { useRunChanges, WaitingChanges } from './WaitingChanges';
+import { PhotoGrid } from '../composer/Attachments';
 import './assistant.css';
 
 // The answer to `/ai` (#842, F-036 AG-4; mockup AiPrivate): a card only its asker sees, in the place they asked. Show everyone posts it as their
@@ -51,6 +52,8 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
     finally { setBusy(''); }
   }
   const answer = run.answer!;
+  // The pictures its agent attached (#1217): the asker's alone until Show everyone posts them with the answer, shown as a message's photos are.
+  const pictures = changes.flatMap((change) => (change.file && (change.state === 'applied' || change.state === 'applied_after_wait') ? [change.file] : []));
   return (
     <li id={`answer-${run.id}`} tabIndex={-1} className="assistant-private" role="note" aria-label="Private answer" data-answer-run={run.id} data-private-answer="">
       <div className="assistant-private__who">
@@ -60,6 +63,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       </div>
       <p className="assistant-private__asked">You asked: <code>/ai</code> {run.prompt}</p>
       <AnswerBody answer={answer} lookups={lookups} />
+      {pictures.length ? <PhotoGrid photos={pictures} context={{ author: name }} /> : null}
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {changes.length ? <WaitingChanges changes={changes} onChanged={refresh} meId={meId} /> : null}
       {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}

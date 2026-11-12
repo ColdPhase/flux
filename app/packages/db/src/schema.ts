@@ -1840,7 +1840,7 @@ export const assistantChanges = pgTable('assistant_changes', {
   fingerprint: text('fingerprint').notNull(),
   tool: text('tool').notNull(),
   operation: text('operation').notNull(),
-  objectType: text('object_type', { enum: ['work', 'doc', 'map', 'thought', 'link', 'message', 'decision'] }).notNull(),
+  objectType: text('object_type', { enum: ['work', 'doc', 'map', 'thought', 'link', 'message', 'decision', 'picture'] }).notNull(),
   objectId: uuid('object_id'),
   objectTitle: text('object_title').notNull().default(''),
   state: text('state', { enum: ASSISTANT_CHANGE_STATES }).notNull(),

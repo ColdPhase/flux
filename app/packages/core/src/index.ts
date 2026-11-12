@@ -106,6 +106,7 @@ export * from './agent-connection/agent-stops.js';
 export * from './agent-connection/agent-questions.js';
 
 export * from './files/detail.js';
+export * from './files/picture.js';
 export * from './files/ports.js';
 export * from './files/service.js';
 export * from './pictures/ports.js';

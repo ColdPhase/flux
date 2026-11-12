@@ -146,7 +146,8 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
             const redacted = redactCall({ ...args, ...(place ? { projectId: args.projectId ?? place.projectId } : {}), ...(place && !private_ ? { sources: [] } : {}) });
             // A run's change may not write a web address that carries private text the run read (#1138, C-30): read back, it would pass as
             // a link a person wrote. Refused before anything is prepared or stored; a link a person wrote, copied as it is, passes.
-            const refused = place ? await refusedPrivateAddress(db, place.id, redacted) : null;
+            // A picture's address is checked by its own tool, hop by hop, and refused in its own plain words (#1217).
+            const refused = place && name !== 'flux_attach_image' ? await refusedPrivateAddress(db, place.id, redacted) : null;
             if (refused) return refused;
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, call) as ToolOutput);
           };
