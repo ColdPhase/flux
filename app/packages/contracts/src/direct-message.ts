@@ -2,7 +2,7 @@
 // independent of projects. The audience is exactly the current participants. Workspace
 // owners and admins who are not participants cannot see a DM, its existence or its count.
 // Messages reuse the #36 message shape, ordering and `clientMessageId` retry rule.
-import type { HumanConversationMessage, MessageReference } from './conversation.js';
+import type { HumanConversationMessage, MessageReference, UnreadFrom } from './conversation.js';
 import type { WorkItem } from './work.js';
 
 export const DMS_PATH = '/api/v1/dms';
@@ -83,6 +83,8 @@ export interface Dm extends DmSummary {
   /** Names for participants and for former participants who wrote messages in this window. */
   people: DmPerson[];
   messagePage: { hasMoreBefore: boolean; nextBeforeSequence: number | null; limit: number };
+  /** Where the caller left off among the roots (#1246). It may name a message older than this window. */
+  unreadFrom?: UnreadFrom;
 }
 
 /**
@@ -119,6 +121,8 @@ export interface DmThread {
   replies: DmMessage[];
   people: DmPerson[];
   messagePage: { hasMoreBefore: boolean; nextBeforeSequence: number | null; limit: number };
+  /** Where the caller left off among the replies (#1246). It may name a reply older than this window. */
+  unreadFrom?: UnreadFrom;
 }
 
 /** `POST /api/v1/dms/:dmId/observations` (#534): the caller saw these messages of this DM. */

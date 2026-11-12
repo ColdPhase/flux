@@ -71,6 +71,11 @@ export interface AgentChatMessage {
   /** The schedule that said it: its name and when it runs ("Every weekday at 9:00"); `failed` when there is no result to show. Null for any other line. */
   schedule: { title: string; words: string; failed: boolean } | null;
 }
+/**
+ * `GET /api/v1/agent-chats/:agentId/messages`: the agent's lines, and `readAt`, when the owner last had this chat open (#1246): what the agent said
+ * after it is new to them, where the chat's "New" divider goes. Null when they never opened it.
+ */
+export interface AgentChatLines { items: AgentChatMessage[]; readAt: string | null }
 /** `GET /api/v1/agent-chats`: for each of the caller's agents, what they have not read in its chat (answers and reports) and when it last said something. */
 export interface AgentChatSummary { agentId: string; unread: number; lastAt: string | null }
 

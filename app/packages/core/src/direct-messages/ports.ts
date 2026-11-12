@@ -130,6 +130,12 @@ export interface DmRepository {
   observe(workspaceId: string, dmId: string, viewerId: string, ids: string[]): Promise<number>;
   /** Current participants other than `excludeId` who observed every one of `ids`. */
   viewersOfAll(dmId: string, ids: string[], excludeId: string): Promise<DmPerson[]>;
+  /**
+   * Where `viewerId` left off at one level (the roots when `rootId` is null, else that root's replies; #1246): the first message by
+   * someone else, neither removed nor the "used AI here" line, after the newest message of that level they observed. Null when nothing
+   * is unread; undefined when they have observed nothing at that level.
+   */
+  unreadFrom(dmId: string, viewerId: string, rootId: string | null): Promise<string | null | undefined>;
   /** Display names of these people. */
   names(userIds: string[]): Promise<DmPerson[]>;
 }

@@ -1,6 +1,6 @@
 import {
   AGENT_CHATS_PATH, agentChatMessagesPath, agentChatReadPath, MY_AGENTS_PATH, myAgentMemoryItemPath, myAgentMemoryPath, myAgentPath,
-  type AddAgentMemoryCommand, type AgentChatMessage, type AgentChatSummary, type AgentMemory, type AgentMemoryItem, type CreateMyAgentCommand, type EditAgentMemoryCommand, type MyAgent, type MyAgentList, type UpdateMyAgentCommand,
+  type AddAgentMemoryCommand, type AgentChatLines, type AgentChatSummary, type AgentMemory, type AgentMemoryItem, type CreateMyAgentCommand, type EditAgentMemoryCommand, type MyAgent, type MyAgentList, type UpdateMyAgentCommand,
 } from '@flux/contracts';
 import { KEEP_MS, request } from '../api/client';
 
@@ -26,5 +26,5 @@ export const deleteAgentMemory = (agentId: string, itemId: string) => request<nu
  */
 export const listAgentChats = (signal?: AbortSignal, fresh = false) =>
   request<{ items: AgentChatSummary[] }>(AGENT_CHATS_PATH, { signal, share: true, keep: KEEP_MS, fresh }).then((list) => list.items);
-export const listAgentChatMessages = (agentId: string, signal?: AbortSignal) => request<{ items: AgentChatMessage[] }>(agentChatMessagesPath(agentId), { signal }).then((list) => list.items);
+export const listAgentChatMessages = (agentId: string, signal?: AbortSignal) => request<AgentChatLines>(agentChatMessagesPath(agentId), { signal });
 export const readAgentChat = (agentId: string) => request<null>(agentChatReadPath(agentId), { method: 'POST' });

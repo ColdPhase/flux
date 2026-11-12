@@ -1,6 +1,8 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
+import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { MessageDay } from '../app/messageParts';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { NavigateWithNote } from '../app/NavigateWithNote';
@@ -19,7 +21,7 @@ import { CiteTile } from '../composer/References';
 import { takeHeldCite } from '../app/citeBus';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
+import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
@@ -87,6 +89,9 @@ function DmContent({ initial }: { initial: Dm }) {
   const [messages, setMessages] = useState(initial.messages);
   const [people, setPeople] = useState(() => new Map(initial.people.map((p) => [p.id, p])));
   const [olderCursor, setOlderCursor] = useState(initial.messagePage.nextBeforeSequence);
+  // Where the person left off (#1246), as this conversation was opened: the "New" divider stands above this message and opening scrolls to it.
+  // Later reads move it (what is seen is read), so it is kept as it was when the conversation opened.
+  const [unreadFrom] = useState(initial.unreadFrom ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   // The shared composer record, kept in this tab: the draft and the messages being sent (#264).
   const composer = useComposerDraft(me.user.id, 'dm', `dm:${initial.id}`);
@@ -216,27 +221,44 @@ function DmContent({ initial }: { initial: Dm }) {
   }, [initial.id, learn, olderCursor]);
   const returned = useReturnPlace({ wanted, loaded: true, have: (id) => messages.some((message) => `message-${message.id}` === id), hasOlder: olderCursor !== null, seek: seekPlace });
   useMessageReadingPosition(feedRef, returned.pending ? null : feedNode, !returned.pending, '', returned.restore, 'dm-stream');
-  // Older than the loaded window: page back until the message is loaded, then show it.
+  // Older than the loaded window: page back until the message is loaded, then show it. A link names a message; with none, the first new one does (#1246).
+  const unreadWanted = !arrived && !wanted && !!unreadFrom;
+  const seek = arrived ?? (unreadWanted ? unreadFrom : null);
+  const [sought, setSought] = useState(false);
   useEffect(() => {
-    if (!arrived || arrivedLoaded || !olderCursor) return;
+    if (!seek || messages.some((message) => message.id === seek) || !olderCursor) return;
     let cancelled = false;
-    void pageBackTo(arrived, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit)).then(({ pages, cursor }) => {
+    void pageBackTo(seek, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit)).then(({ pages, cursor }) => {
       if (cancelled) return;
       for (const page of pages) learn(page.people);
       setMessages((current) => pages.reduce((all, page) => merge(all, page.messages), current));
       setOlderCursor(cursor);
-    }).catch((cause: unknown) => { denied(cause); });
+    }).catch((cause: unknown) => { denied(cause); }).finally(() => { if (!cancelled) setSought(true); });
     return () => { cancelled = true; };
     // Seek once per target; later pages come from "Show earlier messages".
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrived]);
+  }, [seek]);
+  // The divider is where the conversation opens once its message is loaded; until then (and when it never loads) it opens on the latest.
+  const unreadLoaded = unreadWanted && messages.some((message) => message.id === unreadFrom);
+  const waitingForUnread = unreadWanted && !unreadLoaded && olderCursor !== null && !sought;
+  const columnRef = useRef<HTMLDivElement>(null);
+  const unreadPlaced = useRef(false);
+  const stopUnread = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor) { anchor.scrollIntoView({ block: 'start' }); anchor.focus({ preventScroll: true }); return; }
-    // A return positions itself, once its message is loaded; everything else opens on the latest.
-    if (returned.pending || returned.restore) return;
-    const el = feedRef.current; if (el) el.scrollTop = el.scrollHeight;
-  }, [arrived, arrivedLoaded, returned.pending, returned.restore]);
+    // A return positions itself, once its message is loaded; everything else opens on the latest, or on what is new.
+    if (returned.pending || returned.restore || waitingForUnread) return;
+    const el = feedRef.current;
+    if (!el) return;
+    if (unreadLoaded && !unreadPlaced.current) {
+      unreadPlaced.current = true;
+      stopUnread.current = openAtUnread(el, columnRef.current);
+      if (stopUnread.current) return;
+    }
+    if (!stopUnread.current) el.scrollTop = el.scrollHeight;
+  }, [arrived, arrivedLoaded, returned.pending, returned.restore, unreadLoaded, waitingForUnread]);
+  useEffect(() => () => stopUnread.current?.(), []);
 
   const autosize = () => {
     const el = textareaRef.current;
@@ -320,9 +342,14 @@ function DmContent({ initial }: { initial: Dm }) {
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
   const rows = groupRows(lines);
   // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
-  const columnRef = useRef<HTMLDivElement>(null);
   const liftRef = useRef<HTMLDivElement>(null);
   useSpareHeight(feedRef, columnRef, liftRef, rows.length, feedNode);
+  // What arrives while the person reads above the end is counted in "↓ N new" (#1246); nothing moves under them.
+  const newBelow = useNewBelow(feedNode);
+  const entryIds = [...shown.map((message) => `message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)];
+  useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrivedIds, following) => {
+    if (!following) newBelow.add(countBelow(feedRef.current, arrivedIds, (id) => document.getElementById(id)));
+  }, { animate: false });
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending, feed: feedBox,
@@ -386,7 +413,8 @@ function DmContent({ initial }: { initial: Dm }) {
     <div className="convo-split dm-split">
     <div className="convo-split__stream">
     <div ref={root} className="dm" data-dm-id={dm.id}>
-      <div className={`dm__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
+      <div className="convo-stream">
+      <div className={`dm__feed${returned.pending || waitingForUnread ? ' is-returning' : ''}`} ref={attachFeed}>
         <div className="dm__lift" aria-hidden="true" ref={liftRef} />
         <div className="dm__in" ref={columnRef}>
           {olderCursor ? null : (
@@ -404,7 +432,7 @@ function DmContent({ initial }: { initial: Dm }) {
           {olderCursor ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier messages</Button></div> : null}
           {rows.length ? (
             <ol className="dm__list" aria-label="Messages">
-              {rows.map(({ line, label, newDay, continued, groupLast }) => {
+              {rows.flatMap(({ line, label, newDay, continued, groupLast }) => {
                 if (!line.message) {
                   const item = line.item!;
                   return <DmBubble dmId={dm.id} key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
@@ -414,10 +442,12 @@ function DmContent({ initial }: { initial: Dm }) {
                 const message = line.message;
                 const mine = message.authorId === me.user.id;
                 // A message confirmed from its queued one keeps that list item: nothing moves (#264).
-                return <DmBubble dmId={dm.id} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
-                  day={newDay ? label : null} writable={!recipientGone} arrived={arrived === message.id}
+                const bubble = <DmBubble dmId={dm.id} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
+                  day={newDay && message.id !== unreadFrom ? label : null} writable={!recipientGone} arrived={arrived === message.id}
                   observed={!mine} seenBy={(seen.get(message.id) ?? []).map((p) => p.name)} nav="stream"
                   onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;
+                // Where what is new begins (#1246): its day line first, then the divider, then the message.
+                return message.id === unreadFrom ? [newDay ? <MessageDay key={`day-${message.id}`} label={label} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;
               })}
             </ol>
           ) : (
@@ -427,6 +457,8 @@ function DmContent({ initial }: { initial: Dm }) {
           <PrivateAiLines own assistant={assistant} meId={me.user.id} meName={me.user.name} others={firstNames(others.map((person) => person.name))} composerId="dm-composer"
             lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf, people: [...others, { name: me.user.name }].map((person) => ({ kind: 'human' as const, name: person.name })) }} />
         </div>
+      </div>
+      <NewBelow count={newBelow.count} onClick={newBelow.toEnd} />
       </div>
       <div className="composer dm__composer">
         <div className="composer__in">

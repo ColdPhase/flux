@@ -6,13 +6,6 @@
 .project-convo__feed.is-stream { overflow-anchor: none; }
 /* The spare height above a short stream (ConversationStream sets its height): the stream sits against its composer. */
 .project-convo__lift, .thread__lift { height: 0; flex: none; }
-/* The stream's frame (#155): its feed, and over it the quiet "new below" line, which takes no layout space. */
-.convo-stream { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
-.convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; margin: 0; pointer-events: none; }
-.convo-newbelow__b { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--el);
-  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); color: var(--t2); font-size: var(--fs-sm); font-weight: 500; pointer-events: auto; transition: var(--tr); }
-.convo-newbelow__b:hover { color: var(--t1); }
-@media (pointer: coarse) { .convo-newbelow__b { min-height: 44px; } }
 
 /* Under a root: the size of its thread and the reply action. Both open the thread. */
 .convo-replies { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 6px 0 0 -7px; font-size: var(--fs-sm); }

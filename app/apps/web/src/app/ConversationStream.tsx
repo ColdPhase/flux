@@ -2,7 +2,6 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, use
 import { FORMER_MEMBER } from '../docs/format';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
-import { newBelowText } from '../ui/motion-rules';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
@@ -26,6 +25,7 @@ import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
+import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from './unreadReading';
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
@@ -388,14 +388,36 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const { openDetails } = useShellActions();
 
   // Open on whole messages at the latest, unless a link names a root or the person is coming back to a place.
+  const closeOpening = useRef<(() => void) | null>(null);
   useEffect(() => {
     const feed = feedRef.current;
     const column = columnRef.current;
     if (reveal || restore || !feed || !column) return;
-    return openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-object, .convo-fold');
+    const stop = openOnWholeMessages(feed, column, '.project-convo__message, .convo-notice, .convo-object, .convo-fold');
+    closeOpening.current = stop;
+    return () => { stop(); closeOpening.current = null; };
     // Once, when the stream opens; later arrivals are handled below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // Where the person left off (#1246): when the stream is shown and has the "New" divider, it opens there instead of at the latest. Once: a
+  // divider that arrives later (the summary was slow, the stream showed after its time limit) never moves a reader who is already reading.
+  const unreadPlaced = useRef(false);
+  const stopUnread = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    if (!revealed || unreadPlaced.current) return;
+    unreadPlaced.current = true;
+    const feed = feedRef.current;
+    const column = columnRef.current;
+    if (reveal || restore || pendingRestore.current || !feed || !column) return;
+    const stop = openAtUnread(feed, column);
+    if (!stop) return;
+    closeOpening.current?.();
+    stopUnread.current = stop;
+    stickRef.current = false;
+    // The first entry in view at the old end is no place to come back to; the next scroll records the new one.
+    anchorRef.current = null;
+  }, [revealed, reveal, restore]);
+  useEffect(() => () => stopUnread.current?.(), []);
 
   // Coming back (#592): the first entry that was in view returns to where it was, as soon as it is loaded: read back to it
   // when it is older than the newest window. If it is gone (or never loads), the stream opens at its latest as usual.
@@ -477,25 +499,15 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
 
   // Genuine arrivals (#155, UI116-5): a short rise for new entries the reader sees arrive. A reader who is
   // with earlier content is never moved; a quiet line says what is new below until they reach the end.
-  const [newBelow, setNewBelow] = useState({ messages: 0, tasks: 0 });
+  const newBelow = useNewBelow(feedNode);
   const entryIds = [...entries.flatMap((entry) => entry.kind === 'root' ? [domId(entry.root)] : entry.kind === 'notice' ? [`notice-${entry.notice.id}`] : entry.kind === 'object' ? [`object-${entry.object.id}`] : []), ...outbox.pending.map((item) => `pending-${item.id}`)];
   useArrivals(feedRef, entryIds, (id) => document.getElementById(id), (arrived) => {
     const feed = feedRef.current;
     if (!feed || stickRef.current) return;
-    const bottom = feed.getBoundingClientRect().bottom;
-    const below = arrived.filter((id) => (document.getElementById(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1);
-    const tasks = below.filter((id) => id.startsWith('notice-')).length;
     // A decision line is neither a message nor a task update: it comes in quietly, uncounted.
-    const quiet = below.filter((id) => id.startsWith('object-')).length;
-    if (below.length - quiet) setNewBelow((current) => ({ messages: current.messages + below.length - tasks - quiet, tasks: current.tasks + tasks }));
+    newBelow.add(countBelow(feed, arrived.filter((id) => !id.startsWith('object-')), (id) => document.getElementById(id)));
   });
-  const toEnd = () => {
-    const feed = feedRef.current;
-    if (!feed) return;
-    stickRef.current = true;
-    feed.scrollTop = feed.scrollHeight;
-    setNewBelow({ messages: 0, tasks: 0 });
-  };
+  const toEnd = () => { stickRef.current = true; newBelow.toEnd(); };
 
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
   // at the same place (otherwise the first root in view, or the end when they were reading the end).
@@ -527,7 +539,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       if (!userMoved && (feed.clientWidth !== width || (!!column && column.offsetHeight !== height) || performance.now() <= settleUntil)) return;
       const { top, bottom } = feed.getBoundingClientRect();
       stickRef.current = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48;
-      if (stickRef.current) setNewBelow((current) => current.messages || current.tasks ? { messages: 0, tasks: 0 } : current);
       if (userMoved) {
         const pinned = pinRef.current ? document.getElementById(pinRef.current.id)?.getBoundingClientRect() : null;
         pinRef.current = pinned && pinned.bottom > top && pinned.top < bottom ? { id: pinRef.current!.id, offset: pinned.top - top } : null;
@@ -614,7 +625,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // The divider goes before the first notice of an unread decision (#763 H11-3).
   const unreadObjectKey = unread && 'objectId' in unread
     ? display.find((entry) => entry.kind === 'object' && objectTarget(entry.object).id === unread.objectId)?.key ?? null : null;
-  const below = newBelowText(newBelow.messages, newBelow.tasks);
   return (<>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
@@ -680,7 +690,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
       </div>
     </div>
     {/* Static and announced once per change; it takes no layout space and moves nobody. */}
-    <p className="convo-newbelow" role="status" aria-live="polite">{below ? <button type="button" className="convo-newbelow__b" onClick={toEnd}><Icon name="chevron-down" size={14} />{below}</button> : null}</p>
+    <NewBelow count={newBelow.count} onClick={toEnd} />
     </div>
     <MessageWorkPages read={messageWork} />
   </>);
@@ -801,11 +811,6 @@ function useUnreadStart(projectId: string) {
   }, [projectId]);
   // Settled once read (or refused), so the opening reveal can wait for the unread divider and nothing shifts.
   return read?.projectId === projectId ? { summary: read.summary, settled: true } : { summary: null, settled: false };
-}
-
-/** A quiet divider where the unread part of the stream begins (#763 A3). */
-function UnreadDivider() {
-  return <li className="convo-unread" role="separator" aria-label="Unread"><span>Unread</span></li>;
 }
 
 type RootItemProps = {

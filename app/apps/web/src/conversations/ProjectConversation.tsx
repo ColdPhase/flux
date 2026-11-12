@@ -82,7 +82,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const menu = useComposerMenu(core, { drafts, assistant, ask, typing, openSources: () => materials.setSourcesOpen(true) });
   const actions = useComposerSend(core, { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd: reading.scrollToEnd, hideIfDenied,
     closeSources: () => materials.setSourcesOpen(false), onPosted, onSending });
-  const { arrived, seen } = useThreadPlace(core, { thread, reading, answers: assistant.answers, outbox, rootMessageId, hideIfDenied });
+  const { arrived, seen, unreadFrom, newBelow } = useThreadPlace(core, { thread, reading, answers: assistant.answers, outbox, rootMessageId, hideIfDenied });
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
   const makeWork = useCreateWorkFromMessage(project);
@@ -108,7 +108,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
     {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={answers.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} answers={answers} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
-      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} />}
+      waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} />}
     {conversation ? <MessageWorkPages read={messageWork} /> : null}
     {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <button type="button" className="ws-none__b" onClick={referenceWork.refresh}>Refresh task references</button></div> : null}
     <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} materials={materials} typing={typing}

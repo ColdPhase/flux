@@ -1,0 +1,13 @@
+/* Opening where the person left off (#1246): the same frame, divider and "↓ N new" line in every surface that reads a feed of messages. */
+
+/* The frame of a feed (#155): the feed, and over its foot the quiet "N new" line, which takes no layout space. */
+.convo-stream { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.convo-newbelow { position: absolute; left: 0; right: 0; bottom: 10px; display: flex; justify-content: center; margin: 0; pointer-events: none; }
+.convo-newbelow__b { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; border-radius: 999px; background: var(--el);
+  box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line2); color: var(--t2); font-size: var(--fs-sm); font-weight: 500; pointer-events: auto; transition: var(--tr); }
+.convo-newbelow__b:hover { color: var(--t1); }
+@media (pointer: coarse) { .convo-newbelow__b { min-height: 44px; } }
+
+/* Where what is new begins (#763 A3): one quiet rule with a word, like a day line. */
+.convo-unread { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 5px 0 27px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); list-style: none; }
+.convo-unread::before, .convo-unread::after { content: ""; flex: 0 0 25px; height: 1px; background: var(--line2, var(--line)); }

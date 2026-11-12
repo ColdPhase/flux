@@ -1,8 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
 import type { AssistantAnswer } from '@flux/contracts';
 import type { outboxView } from '../composer/draft';
 import { pageBackTo } from '../app/seekMessage';
+import { countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
 import { useArrivals } from '../ui';
 import { observeProjectMessages, olderMessages, projectReceipts } from './api';
@@ -22,13 +23,17 @@ interface Options {
  */
 export function useThreadPlace({ me, project, conversation }: PaneCore, { thread, reading, answers, outbox, rootMessageId, hideIfDenied }: Options) {
   const { messages, olderCursor } = thread;
-  const { threadRestore, scrollRef, feedNode, revealed } = reading;
+  const { threadRestore, scrollRef, feedNode, columnRef, revealed } = reading;
+  // Where the person left off (#1246), as the thread was opened (what is seen is read, so a later read says something else): a message
+  // the "New" divider stands above, "caught up" (null) or nothing known yet (undefined). The pane is made again for each thread.
+  const [leftOff] = useState(conversation?.unreadFrom);
+  const unreadFrom = typeof leftOff === 'string' ? leftOff : null;
   const hash = useLocation().hash;
   // The root is the stream's message; the thread arrives only at its replies.
   const arrived = conversation && hash.startsWith('#message-') && hash.slice('#message-'.length) !== rootMessageId ? hash.slice('#message-'.length) : null;
   const arrivedLoaded = !!arrived && messages.some((message) => message.id === arrived);
   // A search result or source older than the loaded window (#114), or the message a return brings back (#592): page back until it is loaded.
-  const seek = arrived ?? (threadRestore?.id.startsWith('message-') ? threadRestore.id.slice('message-'.length) : null);
+  const seek = arrived ?? (threadRestore?.id.startsWith('message-') ? threadRestore.id.slice('message-'.length) : null) ?? (threadRestore ? null : unreadFrom);
   const seekLoaded = !!seek && messages.some((message) => message.id === seek);
   useEffect(() => {
     if (!conversation || !seek || seekLoaded || !olderCursor) return;
@@ -42,8 +47,13 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     // Seek once per conversation and target; later pages come from "Load earlier replies".
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id, seek]);
+  const unreadLoaded = !!unreadFrom && messages.some((message) => message.id === unreadFrom);
+  const unreadPlaced = useRef(false);
+  const stopUnread = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopUnread.current?.(), []);
   useEffect(() => {
-    // A source link from a notice or search opens on that whole message. Otherwise an open thread starts at
+    // A source link from a notice or search opens on that whole message. Otherwise an open thread opens where the person left off
+    // (#1246): on the "New" divider, or at the end when they have read all of it. A thread they have not read any of starts at
     // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
     // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).
@@ -51,8 +61,14 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     const feed = scrollRef.current;
     const anchor = arrived ? document.getElementById(`message-${arrived}`) : null;
     if (anchor && feed?.contains(anchor)) { anchor.scrollIntoView({ block: 'start' }); if (revealed) anchor.focus({ preventScroll: true }); return; }
-    if (feed) feed.scrollTop = 0;
-  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef]);
+    if (!feed) return;
+    if (revealed && unreadLoaded && !unreadPlaced.current) {
+      unreadPlaced.current = true;
+      stopUnread.current = openAtUnread(feed, columnRef.current);
+    }
+    if (stopUnread.current) return;
+    feed.scrollTop = revealed && leftOff === null ? feed.scrollHeight : 0;
+  }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff]);
   // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
@@ -61,7 +77,11 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   const replyEntries = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), answers, !!olderCursor) : [];
   const threadIds = conversation ? [...replyEntries
     .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : entry.type === 'answer' ? `answer-${entry.answer.runId}` : entry.key), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
-  useArrivals(scrollRef, threadIds, (id) => document.getElementById(id));
+  // What arrives below a reader who is above the end is counted in "↓ N new" (#1246); a reader at the end follows it.
+  const newBelow = useNewBelow(feedNode);
+  useArrivals(scrollRef, threadIds, (id) => document.getElementById(id), (arrivedIds, following) => {
+    if (!following) newBelow.add(countBelow(scrollRef.current, arrivedIds, (id) => document.getElementById(id)));
+  });
   // #534: a thread's replies are watched like the stream's roots, and "Seen by" needs every reply of the person's own run.
   const receiptLines = [...replyEntries.map((entry) => entry.type === 'message'
     ? { id: entry.message.id as string | null, authorId: entry.message.authorId === null ? entry.message.author.id : entry.message.authorId, createdAt: entry.message.createdAt }
@@ -72,5 +92,5 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   const seen = useReceipts({ scope: `${project.id}/${conversation?.id ?? ''}`, fetchReceipts: (list, signal) => projectReceipts(project.id, list, signal), runs: receiptRuns, tick: receiptTick });
   useObservation({ scope: project.id, observe: (ids) => observeProjectMessages(project.id, ids), enabled: !!conversation && revealed, feed: scrollRef,
     ids: replyEntries.flatMap((entry) => entry.type === 'message' && entry.message.authorId !== me.user.id ? [entry.message.id] : []), depend: replyEntries.length });
-  return { arrived, seen };
+  return { arrived, seen, unreadFrom: unreadLoaded ? unreadFrom : null, newBelow };
 }

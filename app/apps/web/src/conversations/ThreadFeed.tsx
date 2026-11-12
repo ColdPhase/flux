@@ -15,6 +15,7 @@ import type { FeedEntry } from './feed';
 import type { PaneCore } from './paneCore';
 import { answerElements, type AnswerContext } from './ThreadAnswers';
 import { ThreadReply } from './ThreadReply';
+import { NewBelow, UnreadDivider } from '../app/unreadReading';
 import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
 
@@ -24,6 +25,8 @@ interface Props {
   makeWork: ReturnType<typeof useCreateWorkFromMessage>; arrived: string | null; seen: Map<string, { name: string }[]>;
   messageAuthor: (message: ConversationMessage) => string; openDetails: ShellActions['openDetails']; hideIfDenied: (cause: unknown) => void;
   waitingHere: { clientRunId: string }[]; rootHeader: PaneProps['rootHeader']; rootMessageId: string | null;
+  /** The reply the "New" divider stands above, and the "↓ N new" line for a reader above the end (#1246). */
+  unreadFrom: string | null; newBelow: { count: number; toEnd: () => void };
 }
 
 /** The open thread (UI116-1): its root whole at the top, then replies, answers and what came of them, in time order. */
@@ -47,7 +50,7 @@ export function ThreadFeed(props: Props) {
       const nextMessage = next?.type === 'message' ? next.message : !next && outbox.pending[0] ? { authorId: me.user.id, createdAt: outbox.pending[0].at } : undefined;
       const groupLast = !sameMessageAuthor(message, nextMessage);
       // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
-      withDay(entry.at, dayKey, [<ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
+      withDay(entry.at, dayKey, [...(message.id === props.unreadFrom ? [<UnreadDivider key="unread" />] : []), <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
         project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable} onDenied={props.hideIfDenied}
         observed={message.authorId !== me.user.id} seenBy={(seen.get(message.id) ?? []).map((person) => person.name)} />]);
     }
@@ -61,7 +64,7 @@ export function ThreadFeed(props: Props) {
   const firstDay = props.rootHeader && entries[0]?.type === 'message' && rows[0] ? day(rows[0].at) : null;
   const list = rows.flatMap((row, index) => !row.items.length ? [] : day(row.at) !== (index ? day(rows[index - 1]!.at) : '') && !(index === 0 && firstDay)
     ? [<MessageDay key={row.key} label={day(row.at)} />, ...row.items] : row.items);
-  return <>
+  return <div className="convo-stream">
   {/* The replies are laid out but hidden until their first reads settle (#155); quiet rows stand in their place from the first frame (#863 rule 6), so the panel never opens empty. */}
   {revealed ? null : <div className="thread__opening"><OpeningRows rows={Math.min(4, Math.max(2, thread.messages.length))} /></div>}
   <div className={`thread__feed${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}>
@@ -81,5 +84,6 @@ export function ThreadFeed(props: Props) {
       </section>
     </div>
   </div>
-  </>;
+  <NewBelow count={props.newBelow.count} onClick={props.newBelow.toEnd} />
+  </div>;
 }

@@ -32,10 +32,9 @@ export interface ArrivalState { reduced: boolean; hidden: boolean; visible: bool
  */
 export const arrivalShouldAnimate = ({ reduced, hidden, visible, obscured }: ArrivalState): boolean => !reduced && !hidden && visible && !obscured;
 
-/** The quiet "new below" line for a reader who is reading earlier content (UI116-5 New messages). */
-export function newBelowText(messages: number, tasks: number): string {
-  const parts = [messages ? `${messages} new ${messages === 1 ? 'message' : 'messages'}` : null, tasks ? `${tasks} new ${tasks === 1 ? 'task' : 'tasks'}` : null];
-  return parts.filter(Boolean).join(' · ');
+/** The quiet "new below" line for a reader who is reading earlier content: "3 new" (UI116-5, #1246). */
+export function newBelowText(count: number): string {
+  return count > 0 ? `${count} new` : '';
 }
 
 /**

@@ -36,12 +36,11 @@ test('a looping mark runs only while it can be seen (#155 AC-4)', () => {
   assert.equal(loopShouldRun({ hidden: false, intersecting: true, obscured: true }), false);
 });
 
-test('the new-below line names messages and tasks exactly', () => {
-  assert.equal(newBelowText(0, 0), '');
-  assert.equal(newBelowText(1, 0), '1 new message');
-  assert.equal(newBelowText(3, 0), '3 new messages');
-  assert.equal(newBelowText(0, 1), '1 new task');
-  assert.equal(newBelowText(2, 2), '2 new messages · 2 new tasks');
+test('the new-below line says how many are new, and nothing when none are (#1246)', () => {
+  assert.equal(newBelowText(0), '');
+  assert.equal(newBelowText(-1), '');
+  assert.equal(newBelowText(1), '1 new');
+  assert.equal(newBelowText(30), '30 new');
 });
 
 test('CSS times read in milliseconds whatever unit the minifier chose (#264)', () => {

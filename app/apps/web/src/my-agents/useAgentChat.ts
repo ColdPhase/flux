@@ -16,6 +16,9 @@ export function useAgentChat(agentId: string, meId: string) {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [failed, setFailed] = useState(false);
   const [reads, setReads] = useState(0);
+  // When the person last had this chat open, as it was when they opened it now (#1246): what the agent said after is new to them. The chat reads
+  // itself (below), which moves it; the first read is the one that tells where they left off. Null: never opened, or not told.
+  const [opening, setOpening] = useState<{ since: string | null } | null>(null);
   // What the chat's neighbours (the schedules) read again with: the stream's events and the person's own doing, not the timer below.
   const [signal, setSignal] = useState(0);
   const refresh = useCallback(() => { setReads((value) => value + 1); setSignal((value) => value + 1); }, []);
@@ -26,7 +29,8 @@ export function useAgentChat(agentId: string, meId: string) {
         const said = await listAgentChatMessages(agentId).catch(() => null);
         if (!alive) return;
         setRuns(page.items.reverse());
-        if (said) setLines(said);
+        if (said) setLines(said.items);
+        setOpening((current) => current ?? { since: said?.readAt ?? null });
         setFailed(false);
         // Opening the chat, or having it open when something arrives, reads it.
         void readAgentChat(agentId).catch(() => undefined);
@@ -50,7 +54,7 @@ export function useAgentChat(agentId: string, meId: string) {
   }, [working]);
 
   return {
-    runs, lines, status, failed, working, refresh, version: signal,
+    runs, lines, status, failed, working, refresh, version: signal, opening,
     async send(prompt: string) {
       const started = await askAssistant({ kind: 'chat', agentId }, { clientRunId: crypto.randomUUID(), kind: 'ask', prompt });
       setRuns((items) => [...(items ?? []).filter((item) => item.id !== started.id), started]);

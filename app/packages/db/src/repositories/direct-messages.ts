@@ -1,4 +1,4 @@
-import { and, asc, count, desc, eq, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
@@ -181,6 +181,16 @@ export function dmRows(db: DbExecutor) {
         .groupBy(users.id, users.name, p.joinedAt)
         .having(sql`count(distinct ${obs.messageId}) = ${distinct.length}`)
         .orderBy(asc(p.joinedAt), asc(users.name), asc(users.id));
+    },
+    async unreadFrom(dmId: string, viewerId: string, rootId: string | null) {
+      const level = rootId ? eq(m.threadRootId, rootId) : isNull(m.threadRootId);
+      const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(obs).innerJoin(m, eq(m.id, obs.messageId))
+        .where(and(eq(obs.dmId, dmId), eq(obs.viewerId, viewerId), level));
+      if (seen?.top === null || seen?.top === undefined) return undefined;
+      const [next] = await db.select({ id: m.id }).from(m)
+        .where(and(eq(m.dmId, dmId), level, gt(m.sequence, seen.top), sql`${m.authorId} <> ${viewerId}`, eq(m.kind, 'text'), isNull(m.removedAt)))
+        .orderBy(asc(m.sequence)).limit(1);
+      return next?.id ?? null;
     },
     async names(userIds: string[]) {
       if (!userIds.length) return [];

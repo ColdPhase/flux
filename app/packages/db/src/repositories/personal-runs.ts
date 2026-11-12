@@ -438,6 +438,11 @@ export function personalRunRows(db: DbExecutor) {
         .map((row) => ({ agentId: row.agent_id, unread: Number(row.unread), lastAt: row.last_at ? new Date(row.last_at).toISOString() : null }));
     },
 
+    async agentChatReadAt(agentId: string) {
+      const [row] = await db.select({ readAt: schema.agentChatReads.readAt }).from(schema.agentChatReads).where(eq(schema.agentChatReads.agentId, agentId));
+      return row ? row.readAt.toISOString() : null;
+    },
+
     async readAgentChat(agentId: string) {
       await db.execute(sql`INSERT INTO agent_chat_reads (agent_id, read_at) VALUES (${agentId}, now()) ON CONFLICT (agent_id) DO UPDATE SET read_at = now()`);
     },

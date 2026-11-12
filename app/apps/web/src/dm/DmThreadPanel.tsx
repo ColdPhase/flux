@@ -11,7 +11,7 @@ import { useShellData } from '../app/data';
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
-import { Button, Icon, MEDIA, PanelMeta, sendsOnEnter, useMediaQuery } from '../ui';
+import { Button, Icon, MEDIA, PanelMeta, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import '../app/one-conversation.css';
 import { DmBubble } from './DmBubble';
 import { onMessageChanged } from '../conversations/messageChanges';
@@ -21,6 +21,8 @@ import { pageBackTo } from '../app/seekMessage';
 import { useMessageReadingPosition } from '../work/readingPosition';
 import { useLeftPlace, useReturnPlace } from './returnPlace';
 import { useSpareHeight } from '../ui/spareHeight';
+import { MessageDay } from '../app/messageParts';
+import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 
 function merge(current: DmMessage[], incoming: DmMessage[]) {
   const byId = new Map(current.map((message) => [message.id, message]));
@@ -49,7 +51,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   // The cursor to earlier replies: undefined until the thread is first read, null once every earlier reply is loaded.
   const [older, setOlder] = useState<number | null | undefined>(undefined);
   const [olderBusy, setOlderBusy] = useState(false);
+  // Where the person left off (#1246), as the thread was first read: the reply the "New" divider stands above, null when none, undefined until read.
+  const [unreadFrom, setUnreadFrom] = useState<string | null | undefined>(undefined);
   const feed = useRef<HTMLDivElement | null>(null);
+  const columnRef = useRef<HTMLDivElement>(null);
   // The feed element as state too, so the reading-position owner starts once it is on screen.
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((element: HTMLDivElement | null) => { feed.current = element; setFeedNode(element); }, []);
@@ -83,6 +88,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
       setThread(next); learn(next.people);
       setReplies((current) => merge(current, next.replies));
       setOlder((current) => (current === undefined ? next.messagePage.nextBeforeSequence : current));
+      setUnreadFrom((current) => current === undefined ? next.unreadFrom ?? null : current);
       onCount(rootId, next.root.replyCount);
     } catch (cause) { onDenied(cause); }
     finally { loading.current = false; }
@@ -150,12 +156,23 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   const assistant = useConversationAssistant({ meId, place: { kind: 'dm', dmId, threadRootId: rootId }, onShown: () => { stick.current = true; void load(); toEnd(); } });
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
   useFollowEnd(() => feed.current, privateItems.replaceAll(',', '') ? privateItems : '');
+  // Opening is on the "New" divider when there is one in the replies read (#1246), otherwise at the end.
+  const unreadLoaded = !opening && !!unreadFrom && shown.some((message) => message.id === unreadFrom);
+  const unreadPlaced = useRef(false);
+  const stopUnread = useRef<(() => void) | null>(null);
+  useEffect(() => () => stopUnread.current?.(), []);
   useLayoutEffect(() => {
     // A return positions itself, once its reply is loaded.
     if (returned.pending || returned.restore || target) return;
     const el = feed.current;
-    if (el && (opening || stick.current)) el.scrollTop = el.scrollHeight;
-  }, [opening, shown.length, returned.pending, returned.restore, target]);
+    if (!el) return;
+    if (unreadLoaded && !unreadPlaced.current) {
+      unreadPlaced.current = true;
+      stopUnread.current = openAtUnread(el, columnRef.current);
+      if (stopUnread.current) { stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; return; }
+    }
+    if (opening || stick.current) el.scrollTop = el.scrollHeight;
+  }, [opening, shown.length, returned.pending, returned.restore, target, unreadLoaded]);
   useEffect(() => { if (!opening && focusComposer) field.current?.focus({ preventScroll: true }); }, [opening, focusComposer]);
   useLayoutEffect(() => {
     const el = field.current;
@@ -217,9 +234,13 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
     ...outbox.pending.map((item) => ({ message: null, item, authorId: meId, at: item.at }))];
   const rows = groupRows(lines);
   // A short thread sits against its reply field instead of at the top of a tall panel (ui/spareHeight.ts).
-  const columnRef = useRef<HTMLDivElement>(null);
   const liftRef = useRef<HTMLDivElement>(null);
   useSpareHeight(feed, columnRef, liftRef, (root ? 1 : 0) + rows.length, feedNode);
+  // What arrives while the person reads above the end is counted in "↓ N new" (#1246).
+  const newBelow = useNewBelow(feedNode);
+  useArrivals(feed, [...shown.map((message) => `thread-message-${message.id}`), ...outbox.pending.map((item) => `pending-${item.id}`)], (id) => document.getElementById(id), (ids, atEnd) => {
+    if (!atEnd) newBelow.add(countBelow(feed.current, ids, (id) => document.getElementById(id)));
+  }, { animate: false });
   const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
   const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), runs, tick: receiptTick });
   useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
@@ -230,6 +251,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
     <>
       <PanelMeta>{count} {count === 1 ? 'reply' : 'replies'}</PanelMeta>
       <div className="thread__pane dm-thread" data-dm-thread={rootId}>
+        <div className="convo-stream">
         <div className={`thread__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
           <div className="thread__lift" aria-hidden="true" ref={liftRef} />
           <div className="thread__in dm__in" ref={columnRef}>
@@ -243,7 +265,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
             <p className="thread__hint">{count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
             {older ? <div className="dm__older"><Button variant="quiet" busy={olderBusy} onClick={() => void loadOlder()}>Show earlier replies</Button></div> : null}
             <ol className="dm__list thread__list" aria-label="Replies">
-              {rows.map(({ line, label: dayLabel, newDay, continued, groupLast }) => {
+              {rows.flatMap(({ line, label: dayLabel, newDay, continued, groupLast }) => {
                 const mine = line.authorId === meId;
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
@@ -252,16 +274,21 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
                     onCreateTask={onCreateTask} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
-                return <DmBubble dmId={dmId} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
-                  day={newDay ? dayLabel : null} writable={writable} arrived={target === message.id} observed={!mine} nav="thread"
+                const starts = message.id === unreadFrom;
+                const bubble = <DmBubble dmId={dmId} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
+                  day={newDay && !starts ? dayLabel : null} writable={writable} arrived={target === message.id} observed={!mine} nav="thread"
                   seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
+                // Where what is new begins (#1246): its day line first, then the divider, then the reply.
+                return starts ? [newDay ? <MessageDay key={`day-${message.id}`} label={dayLabel} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;
               })}
             </ol>
             {/* The person's own agent at work in this thread and what it answered them: theirs alone, at the end like a reply about to be sent (#1016). */}
             <PrivateAiLines own assistant={assistant} meId={meId} meName={meName} others={others} composerId="dm-thread-composer"
               lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf, people: [...people.values(), { name: meName }].map((person) => ({ kind: 'human' as const, name: person.name })) }} />
           </div>
+        </div>
+        <NewBelow count={newBelow.count} onClick={newBelow.toEnd} />
         </div>
         <div className="composer dm__composer dm-thread__composer">
           <div className="composer__in">

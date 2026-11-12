@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router';
 import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
+import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { AnswerBody } from '../assistant/ConversationParts';
 import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
@@ -11,7 +12,7 @@ import { askError, askState, canRetry, endedText, isWorking, workingText } from 
 import { MessageBubble } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ConnectionLine } from '../composer/Outbox';
-import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { Button, Icon, Kreska, MEDIA, sendsOnEnter, useArrivals, useMediaQuery } from '../ui';
 import { ReadySchedule, ScheduleHeader } from './AgentSchedules';
 import { useAgentChat, type AgentChat } from './useAgentChat';
 import { useAgentSchedules, type AgentSchedulesState } from './useAgentSchedules';
@@ -181,16 +182,51 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState('');
   const [sending, setSending] = useState(false);
-  const feed = useRef<HTMLDivElement>(null);
+  const feed = useRef<HTMLDivElement | null>(null);
+  const column = useRef<HTMLDivElement>(null);
+  const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
+  const attachFeed = useCallback((node: HTMLDivElement | null) => { feed.current = node; setFeedNode(node); }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const state = askState(chat.status);
   // What was said, in the order it happened: the owner's words with their answers, and the agent's own lines.
-  const entries = [...(chat.runs ?? []).map((run) => ({ at: run.createdAt, run, line: null as AgentChatMessage | null })),
-    ...chat.lines.map((line) => ({ at: line.createdAt, run: null as AssistantRun | null, line }))].sort((a, b) => a.at.localeCompare(b.at));
+  const entries = [...(chat.runs ?? []).map((run) => ({ at: run.createdAt, key: `run-${run.id}`, run, line: null as AgentChatMessage | null })),
+    ...chat.lines.map((line) => ({ at: line.createdAt, key: `line-${line.id}`, run: null as AssistantRun | null, line }))].sort((a, b) => a.at.localeCompare(b.at));
   const count = entries.length;
   const working = chat.working;
-  // The newest turn is in view when the chat opens and whenever one arrives or changes.
-  useLayoutEffect(() => { const el = feed.current; if (el) el.scrollTop = el.scrollHeight; }, [count, working]);
+  // Where the person left off (#1246): the first thing the agent said after they last had this chat open, as it was when they opened it
+  // (later things are not "new" to a chat that is open: it reads itself as they arrive).
+  const since = chat.opening?.since ?? null;
+  const [newFrom, setNewFrom] = useState<string | null | undefined>(undefined);
+  if (newFrom === undefined && chat.opening) {
+    setNewFrom(since ? entries.find((entry) => entry.run ? (entry.run.completedAt ?? '') > since : entry.line!.createdAt > since)?.key ?? null : null);
+  }
+  // Opening is on the "New" divider, or on the newest turn. After that the newest turn comes into view as it arrives or changes only for a
+  // reader who is at the end; one who is reading above is never moved, and what arrives is counted in "↓ N new".
+  const following = useRef(true);
+  const placed = useRef(false);
+  const stopUnread = useRef<(() => void) | null>(null);
+  useLayoutEffect(() => {
+    const el = feed.current;
+    if (!el || !chat.opening || newFrom === undefined) return;
+    if (!placed.current) {
+      placed.current = true;
+      stopUnread.current = newFrom ? openAtUnread(el, column.current) : null;
+      if (stopUnread.current) { following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; return; }
+    }
+    if (following.current) el.scrollTop = el.scrollHeight;
+  }, [count, working, chat.opening, newFrom]);
+  useEffect(() => () => stopUnread.current?.(), []);
+  useEffect(() => {
+    if (!feedNode) return;
+    const track = () => { following.current = feedNode.scrollHeight - feedNode.scrollTop - feedNode.clientHeight < 48; };
+    feedNode.addEventListener('scroll', track, { passive: true });
+    return () => feedNode.removeEventListener('scroll', track);
+  }, [feedNode]);
+  const newBelow = useNewBelow(feedNode);
+  const elementFor = (key: string) => feed.current?.querySelector<HTMLElement>(key.startsWith('run-') ? `[data-run-id="${key.slice(4)}"][data-chat-agent]` : `[data-line-id="${key.slice(5)}"]`) ?? null;
+  useArrivals(feed, entries.map((entry) => entry.key), elementFor, (keys, atEnd) => {
+    if (!atEnd) newBelow.add(countBelow(feed.current, keys, elementFor));
+  }, { animate: false });
   useLayoutEffect(() => { const el = field.current; if (el) { el.style.height = 'auto'; el.style.height = `${Math.min(el.scrollHeight, 180)}px`; } }, [draft]);
   useEffect(() => { field.current?.focus({ preventScroll: true }); }, [agent.id]);
 
@@ -199,6 +235,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (!prompt || sending) return;
     if (state.kind !== 'ready') { setError(state.note); return; }
     setSending(true); setError('');
+    // What the person sends is theirs to see at once, wherever they were reading.
+    following.current = true;
     try { await chat.send(prompt); setDraft(''); }
     catch (cause) { setError(askError(cause)); }
     finally { setSending(false); requestAnimationFrame(() => field.current?.focus({ preventScroll: true })); }
@@ -217,21 +255,26 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
           <ScheduleHeader agent={agent} state={schedules} />
         </div>
       </div>
-      <div className="dm__feed" ref={feed}>
-        <div className="dm__in agc">
+      <div className="convo-stream">
+      <div className="dm__feed" ref={attachFeed}>
+        <div className="dm__in agc" ref={column}>
           <p className="agc__note"><Icon name="lock" size={13} />Only you talk to {agent.name}. Reports of its work arrive here.</p>
           {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">Couldn’t read this chat. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
             : entries.length ? (
               <ol className="dm__list" aria-label={`Your chat with ${agent.name}`}>
-                {entries.map((entry, index) => {
+                {entries.flatMap((entry, index) => {
                   const previous = entries[index - 1];
                   const newDay = !previous || day(previous.at) !== day(entry.at);
-                  return entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} schedules={schedules} first newDay={newDay} />
-                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} onChanged={chat.refresh} />;
+                  const item = entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} schedules={schedules} first newDay={newDay && entry.key !== newFrom} />
+                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay && entry.key !== newFrom} onChanged={chat.refresh} />;
+                  // Where what is new begins (#1246): its day line first, then the divider, then what the agent said.
+                  return entry.key === newFrom ? [newDay ? <MessageDay key={`day-${entry.key}`} label={day(entry.at)} /> : null, <UnreadDivider key="unread" />, item] : item;
                 })}
               </ol>
             ) : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}
         </div>
+      </div>
+      <NewBelow count={newBelow.count} onClick={newBelow.toEnd} />
       </div>
       <div className="composer dm__composer">
         <div className="composer__in">
