@@ -352,6 +352,7 @@ printf '%s\\n' "$*" >> "$STUB_DIR/calls"
 case "$1 $2" in
   "repo view") echo ColdPhase/flux ;;
   "api repos/ColdPhase/flux/commits/"*) [ "$STUB_KNOWN_SHA" = "${2##*/}" ] && echo "$STUB_FULL_SHA" || exit 1 ;;
+  "api repos/ColdPhase/flux/actions/runs/"*) echo completed ;;
   "api repos/ColdPhase/flux/git/ref/heads/"*) [ "${2##*/heads/}" = "$STUB_BRANCH" ] && echo "$STUB_FULL_SHA" || exit 1 ;;
   "api repos/ColdPhase/flux/git/ref/tags/"*) exit 1 ;;
   "workflow run") ;;
@@ -385,7 +386,7 @@ class CiTestScript(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
-        for name, body in (("gh", STUB_GH), ("sleep", '#!/bin/sh\n[ "$1" = 120 ] && exit 1\nexit 0\n')):
+        for name, body in (("gh", STUB_GH), ("sleep", '#!/bin/sh\n[ "$1" = 180 ] && exit 1\nexit 0\n')):
             path = self.dir / name
             path.write_text(body, encoding="utf-8")
             path.chmod(path.stat().st_mode | stat.S_IXUSR)
