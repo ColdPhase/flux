@@ -438,6 +438,18 @@ only after an independent exact artifact review. Their assets, flow, design note
 that remain open (credential, package visibility, candidate acceptance, platform evidence)
 are in the [release pipeline](../development/release-pipeline.md).
 
+## Upgrades are gated (#1241)
+
+Every release is proved to upgrade from every earlier release from v0.2.0 on, before the draft ([upgrade compatibility](../development/upgrade-compatibility.md)).
+In [`final-release.yml`](../../.github/workflows/final-release.yml): the `candidate` job names the releases it upgrades from (`scripts/release/release_versions.py from`,
+published releases from v0.2.0 on before the version); the `package` job runs the packaged upgrade from the **previous** release's own assets and image
+(`smoke_artifacts.sh` leg 2) with a failing migration restored from its backup (leg 3); the `upgrade` job runs `scripts/check_upgrade_matrix.sh` on the candidate's
+`release-assets` for **every** such release, by release installation and by source checkout; `sign` and `draft` need `upgrade`, so a release whose upgrade fails is neither
+signed nor drafted. The draft's notes carry the "Upgrades from" line of the versions the `upgrade` job actually tested. The checkout of
+[`repository-checks.yml`](../../.github/workflows/repository-checks.yml) fetches the release tags (`fetch-tags: true`), because `tests/test_released_migrations.py`
+compares every released migration file with its tag and fails in Actions when the tags are missing. No PR check runs the matrix: it builds and runs a whole
+installation per release, and is part of release acceptance ([evaluation](evaluation.md#at-release-acceptance)).
+
 ## Evidence for completion
 
 A delivery task reports the workflow PR, successful/failing run evidence, effective

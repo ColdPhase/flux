@@ -1,0 +1,5 @@
+# Settings that a release renamed or removed in docker/.env (#1241). `./flux upgrade` reads this file of the NEW version:
+#   rename OLD NEW          the value moves to NEW and the upgrade says so
+#   remove NAME reason...   the upgrade names the setting and the reason, and leaves the line to you
+# A new setting needs no line here: it has a default that keeps the old behaviour. Lines are added in the release that changes a setting and
+# are never edited afterwards (an instance may upgrade from any release since v0.2.0). No setting has been renamed or removed since v0.2.0.

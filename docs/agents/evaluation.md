@@ -68,6 +68,7 @@ affected behavior, selected checks and any remaining uncertainty briefly.
 | Isolated core function | Its regression tests and affected callers; current required build/type/lint/portable CI. |
 | API or persistence | Affected API tests with real disposable storage, including relevant access, failure and migration cases. |
 | Local UI behavior | Affected browser modules/journeys and API/storage paths; applicable phone/desktop and browser engines, plus separate visual assessment when required. |
+| A migration, or anything that changes what an upgrade must carry (schema, `.env` settings, the release assets) | `python3 scripts/release/check_released_migrations.py` (no released file changed), `app/tests/app/released-databases.test.ts` (the migrator on a database dumped from each release) and, before review, `./scripts/check_upgrade_matrix.sh` for the releases it affects; see [upgrade compatibility](../development/upgrade-compatibility.md). |
 | Shared shell, routing, authorization, schema or runtime | Expand to dependent features and cross-feature journeys; run the full applicable suite when the impact cannot be bounded confidently. |
 | Release candidate | Complete configured release checks and integrated acceptance below. |
 
@@ -243,6 +244,11 @@ contract. Verify:
 - the actual configured release suite and agreed UI acceptance scenarios;
 - distributable artifacts built from the candidate, their installation/startup
   checks, and public download verification when publication is in scope;
+- upgrades ([#1241](https://github.com/ColdPhase/flux/issues/1241)): `./scripts/check_upgrade_matrix.sh` passes on the candidate, so
+  every published release from v0.2.0 on, installed from its own release assets and from its source tree, upgrades to it with its data
+  read back and new work accepted, and an edited released migration and a migration that breaks old data each make it fail (its negative
+  controls, `FLUX_MATRIX_CONTROL=edited-migration` and `old-data`). Cite the result lines, the same run's `upgrade` job in the release
+  workflow, and the "Upgrades from" line of the draft's notes. A failed upgrade is a release blocker, never a known limit;
 - deployment and post-deployment checks when delivery is in the release scope.
 
 The two workers divide the acceptance scenarios so each is evaluated by a peer

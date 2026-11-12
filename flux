@@ -1248,12 +1248,48 @@ upgrade_failed() {
 }
 
 # The second half of an upgrade, after the backup (and, with --pull, in the pulled launcher).
+# Removes the KEY= lines from an env file, via a private temporary copy (see set_env_line).
+drop_env_line() {
+  file=$1 key=$2
+  (
+    umask 077
+    awk -v k="$key" 'index($0, k "=") != 1 { print }' "$file" > "$file.flux-tmp"
+  )
+  cat "$file.flux-tmp" > "$file" && rm -f "$file.flux-tmp"
+}
+
+# Settings that a release renamed or removed are listed in docker/env-changes.txt (#1241): `rename OLD NEW` and `remove NAME reason...`, `#` for a
+# comment. An upgrade carries a renamed setting over to its new name with its value and says so, and names a removed one with the reason: it
+# never ignores one silently, and a new setting needs no line, because it has a default. The backup taken first holds the old docker/.env.
+apply_env_changes() {
+  changes="$FLUX_ROOT/docker/env-changes.txt"
+  [ -f "$changes" ] && [ -f "$ENV_FILE" ] || return 0
+  while read -r action name other; do
+    case "$action" in ''|'#'*) continue ;; esac
+    case "$action" in
+      rename)
+        grep -q "^$name=" "$ENV_FILE" || continue
+        if grep -q "^$other=" "$ENV_FILE"; then
+          say "NOTE: $name in ${ENV_FILE#"$FLUX_ROOT"/} is the old name of $other, which is set too, so $other is used. Remove $name."
+        else
+          set_env_line "$ENV_FILE" "$other" "$(sed -n "s/^$name=//p" "$ENV_FILE" | tail -n 1)"
+          drop_env_line "$ENV_FILE" "$name"
+          say "NOTE: renamed $name to $other in ${ENV_FILE#"$FLUX_ROOT"/}; the value is kept. The old file is in the backup."
+        fi ;;
+      remove)
+        if grep -q "^$name=" "$ENV_FILE"; then say "NOTE: $name in ${ENV_FILE#"$FLUX_ROOT"/} is no longer used: $other. Remove it."; fi ;;
+      *) die "docker/env-changes.txt: unknown action '$action' (use rename or remove)" ;;
+    esac
+  done < "$changes"
+}
+
 upgrade_apply() {
   UPGRADE_ARCHIVE=$1 UPGRADE_FROM_SCHEMA=$2 UPGRADE_FROM_COMMIT=$3
   # The pulled launcher may require more of Docker than the one that started the upgrade (v0.1.0 did not check the engine).
   (need_docker) || upgrade_failed "this version cannot run on this Docker (see above)"
   # `./flux upgrade --pull` run by a v0.1 launcher backs up and stops the writers, then comes here (#1176): stop before the build.
   if v01_database; then v01_explain >&2; UPGRADE_NO_RETRY=1; upgrade_failed "the database was written by Flux v0.1, which v0.2 does not upgrade"; fi
+  apply_env_changes
   to_schema=$(code_schema)
   say "Building the new version (schema $to_schema, commit $(git_commit))..."
   build_main || upgrade_failed "the build failed"

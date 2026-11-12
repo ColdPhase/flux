@@ -66,7 +66,10 @@ the publication workflow on the draft and again on the public downloads.
    limits and networks and purge cleanly (`scripts/release/smoke_runtime.sh`; the overlay is compared with
    the source stack by `scripts/release/compare_runtime_overlay.py`), and the live-media overlays must resolve on the
    packaged `compose.yaml` (`scripts/release/check_live_overlay.sh`) before the workflow creates a **draft** GitHub
-   Release. The draft job checks the asset set against `SHA256SUMS` first. The `scan` job (#835) scans both pushed
+   Release. The same job upgrades from the previous release's own assets (`smoke_artifacts.sh` leg 2, with a failing migration restored from its
+   backup), and the `upgrade` job (`scripts/check_upgrade_matrix.sh`) upgrades from every earlier release from v0.2.0 on, by release installation and by
+   source checkout; neither the signing nor the draft happens when one fails, and the draft's notes say which versions it upgrades from
+   ([#1241](https://github.com/ColdPhase/flux/issues/1241), [upgrade compatibility](upgrade-compatibility.md)). The draft job checks the asset set against `SHA256SUMS` first. The `scan` job (#835) scans both pushed
    digests on every requested platform with the pinned Trivy of `scripts/security_scan.py`: a HIGH or CRITICAL
    finding that has a fixed version fails the run unless `.github/security-allowlist.json` names it with a reason, a
    tracking link and an expiry; the draft job needs it. Its summary is the job's summary and the `release-scan`

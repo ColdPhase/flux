@@ -22,6 +22,8 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The release tags: tests/test_released_migrations.py compares every released migration with the file of its tag (#1241).
+          fetch-tags: true
       - name: Validate shared instructions, skills, and document links
         run: python3 scripts/check_agent_setup.py
       - name: Test the foundation checks

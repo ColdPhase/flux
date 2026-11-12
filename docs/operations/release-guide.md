@@ -340,12 +340,18 @@ with a new `FLUX_PROJECT` (new volumes) and a new `.env`, or remove the old proj
 need (the project export of v0.1 gives files you can read; neither version imports it). Restoring a v0.1 dump into v0.2 is refused the same way. Everything below is for an
 upgrade between v0.2 releases and later.
 
+**From any release since v0.2.0 to any later one.** You do not have to take every release in between: the new release applies the
+migrations of the releases you skip, in order. Every release is tested this way before it is drafted: each earlier release is installed from its
+own assets, filled with data, upgraded to the candidate and read back, and the release notes name the versions it was tested to
+upgrade from. A downgrade is not supported: forward migrations are not reversible, so the way back is the backup you took first (below).
+
 1. Check that the Docker Engine is 25 or newer (`docker version --format '{{.Server.Version}}'`), because Compose refuses the new files on an older one only after step 4 has stopped the writers. Then take and verify a paired backup with the **old** release.
 2. Download and verify the **new** release's assets into a new directory. Keep the old directory, its
    image digest and the backup.
 3. Copy your existing `.env` into the new directory, unchanged: the same `FLUX_PROJECT` keeps the same
    volumes. Compare the new `env.example` with your `.env`; add a new setting that your file lacks
-   (a new required one stops Compose before anything starts).
+   (a new setting has a default that keeps the old behaviour, and a new required one stops Compose before anything starts).
+   A setting that a release renames or removes is named in its release notes: rename it in your `.env`, or delete it.
 4. Stop the writers with the **old** files, then pull and start with the new ones:
 
    ```sh

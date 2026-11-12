@@ -107,7 +107,7 @@ class Workflows(unittest.TestCase):
 
     def test_the_sign_job_runs_after_the_gates_and_the_draft_waits_for_it(self):
         sign = job(FINAL, "sign")
-        self.assertRegex(sign, r"needs: \[candidate, image, package, scan\]")
+        self.assertRegex(sign, r"needs: \[candidate, image, package, scan, upgrade\]")
         self.assertIn("id-token: write", sign)
         self.assertIn("packages: write", sign)
         self.assertNotIn("contents: write", sign)
@@ -116,7 +116,7 @@ class Workflows(unittest.TestCase):
         self.assertIn('cosign sign --yes "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"', sign)
         self.assertIn("scripts/release/verify_signatures.sh", sign)
         self.assertNotRegex(sign, r"cosign sign[^\n]*:\$")  # never a tag
-        self.assertRegex(job(FINAL, "draft"), r"needs: \[candidate, image, package, scan, sign\]")
+        self.assertRegex(job(FINAL, "draft"), r"needs: \[candidate, image, package, scan, upgrade, sign\]")
         # The image job still has no cosign: only the job that follows the gates signs.
         self.assertNotIn("cosign", job(FINAL, "image"))
 
