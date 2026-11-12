@@ -130,9 +130,11 @@ class ProjectHeader(unittest.TestCase):
         menu = page.get_by_role("menu", name="More")
         # "People" is in More only where the header has no room for the faces (a narrow main column).
         items = menu.locator("[role^=menuitem]:visible")
-        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Settings", "Space details", "Hide the sidebar"])
+        # Mute space (#1249) carries a one-line hint inside its label, so only the single-line labels are compared.
+        labels = [text.strip() for text in items.locator("span").all_inner_texts() if "\n" not in text.strip()]
+        self.assertEqual(labels, ["Settings", "Mute space", "Space details", "Hide the sidebar"])
         # Each key shows next to its action (S18) and is announced as its shortcut.
-        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, "["])
+        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, None, "["])
         self.assertEqual(items.locator("kbd").all_inner_texts(), ["["])
         expect(menu.get_by_role("menuitem", name="Settings")).to_be_focused()
         page.keyboard.press("Escape")
