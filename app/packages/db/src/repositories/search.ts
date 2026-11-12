@@ -233,6 +233,11 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     ? sql`WHERE (hits.score, hits.at, hits.id) < (${plan.after.score}::numeric, ${plan.after.at}::timestamptz, ${plan.after.id}::bigint)`
     : sql``;
   const clean = (column: SQL) => sql`translate(left(${column}, ${HEADLINE_INPUT}), ${START + STOP}, '')`;
+  // The BM25 plan joins the hits from a CTE, where PostgreSQL may cast before it checks the kind: only a task's id is cast there.
+  // The prefix plan keeps its join as it was (its rows examined are what the hidden-work tests pin).
+  const workJoin = ranking === 'bm25'
+    ? sql`wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)`
+    : sql`h.kind = 'work' AND wi.id = h.object_id::uuid`;
   return sql`
     WITH ${audience},
     ${scored}
@@ -264,7 +269,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     LEFT JOIN dm_messages dmv ON dmv.id = (CASE WHEN h.kind = 'dm_message' THEN h.object_id::uuid END)
     LEFT JOIN project_materials pm ON pm.id = (CASE WHEN h.kind IN ('material', 'doc') THEN h.object_id::uuid END)
     LEFT JOIN sketches sk ON h.kind = 'thought' AND sk.id = h.parent_id
-    LEFT JOIN project_work_items wi ON wi.id = (CASE WHEN h.kind = 'work' THEN h.object_id::uuid END)
+    LEFT JOIN project_work_items wi ON ${workJoin}
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
 }
