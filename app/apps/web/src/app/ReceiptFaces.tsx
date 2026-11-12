@@ -46,7 +46,7 @@ export function ReceiptFaces({ receipt }: { receipt: Receipt }) {
           setByKeyboard(event.detail === 0);
           open('pinned');
         }}>
-        {faces.map((reader) => <Avatar key={reader.id} name={reader.name} size="xs" />)}
+        {faces.map((reader) => <Avatar key={reader.id} name={reader.name} id={reader.id} size="xs" />)}
         {more > 0 ? <span className="seen__more" aria-hidden="true">+{more}</span> : null}
       </button>
       {mode ? <ReaderList receipt={receipt} place={place} pinned={mode === 'pinned'} focusList={byKeyboard} onClose={close}
@@ -172,7 +172,7 @@ function ReaderList({ receipt, place, pinned, focusList, onClose, onEnter, onLea
           <ul className="seen-list__rows">
             {rows.map((reader) => (
               <li key={reader.id} className="seen-list__row">
-                <Avatar name={reader.name} size="sm" />
+                <Avatar name={reader.name} id={reader.id} size="sm" />
                 <span className="seen-list__name">{reader.name}</span>
                 <time className="seen-list__at" dateTime={reader.at}>{stamp(reader.at)}</time>
               </li>
