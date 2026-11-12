@@ -51,6 +51,7 @@ import { configureAgentPictures } from './agent-connection/picture-actions.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
 import { returnRoutes } from './returns/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
+import { sidebarRoutes } from './sidebar/routes.js';
 import { docRoutes } from './docs/routes.js';
 import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
@@ -328,6 +329,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
+  await app.register(sidebarRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.

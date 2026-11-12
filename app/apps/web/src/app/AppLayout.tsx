@@ -24,7 +24,8 @@ import { arrivalEntry, entryOf, noteSpaceLost, onFlush, recall, remember as keep
 import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
-import { SPACE_AI_POLICY_CHANGED_EVENT } from '@flux/contracts';
+import { SPACE_AI_POLICY_CHANGED_EVENT, SPACE_ORDER_CHANGED_EVENT } from '@flux/contracts';
+import { useMarkAllRead } from './markAllRead';
 import { audienceLine, useProjectShell } from '../project/data';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveCue, LiveEntry, LiveNowRows } from '../live/LiveEntry';
@@ -254,6 +255,7 @@ function AppLayoutContent() {
   // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
   const revalidator = useRevalidator();
   const toast = useToast();
+  const markAllRead = useMarkAllRead();
   // F-029 (#614): a workspace's AI was turned off or on (the stream), or a refusal says so: the shell reads the policy again.
   // Coming back to the tab does too, at most once a minute, so a missed event never leaves AI showing for long.
   const revalidate = revalidator.revalidate;
@@ -287,6 +289,9 @@ function AppLayoutContent() {
     };
   }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
+    // The person moved a space in another tab or on another device (#1250): the shell reads their order again. It is shown without
+    // animation: rows only move in answer to the person's own input here.
+    if (event.kind === SPACE_ORDER_CHANGED_EVENT) { revalidator.revalidate(); return; }
     // A space's AI switch, name, icon (F-040) or existence changed (AG-10): the sidebar, its header and its views read them again at once.
     if (event.kind === SPACE_AI_POLICY_CHANGED_EVENT || event.kind === 'project.renamed.v1' || event.kind === 'project.updated.v1' || event.kind === 'project.deleted.v1') { revalidator.revalidate(); return; }
     // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
@@ -550,7 +555,7 @@ function AppLayoutContent() {
   useQuietViewKeys(!!switching);
   const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
-  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, inboxUnread };
+  const sidebarProps = { workspace, directMessages, agents, user: me.user, inboxUnread };
   const where = placeOf(location.pathname);
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
@@ -701,7 +706,10 @@ function AppLayoutContent() {
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
   const heading = panelHeading(detailsView, placeDetailsLabel);
+  // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox.
+  const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox\/?$/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
+    ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
     ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
@@ -799,6 +807,7 @@ function AppLayoutContent() {
             A direct message and a space's settings keep Call and Search, as before; Call is dimmed where it is unavailable. */}
         {spaceHeader ? <LiveEntry /> : activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
+        {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
       {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}

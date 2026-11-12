@@ -2,8 +2,13 @@ import { useEffect, useMemo, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
+import { useKeyboardMove, useReorder } from '../ui/reorder';
+import { MoreMenu, type MoreItem } from './HeaderParts';
+import { useNeedsYouSpaces } from '../notifications/dot';
+import { useMarkAllRead } from './markAllRead';
+import { spaceRowLabel, useOrderedProjects, useSpaceMoves } from './spaceOrder';
 import type { MyAgent } from '@flux/contracts';
-import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
+import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary, useShellData } from './data';
 import { placeOf } from './place';
 import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
@@ -17,7 +22,7 @@ import { usePlaceMutes } from '../notifications/mutes';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
-  projects: ProjectSummary[];
+  // The spaces come from the person's own order (`useOrderedProjects`), not from a prop.
   directMessages: DirectMessageSummary[];
   /** The person's agents, the first (Assistant) pinned at the top of Messages. */
   agents?: MyAgent[];
@@ -48,7 +53,7 @@ function LockTile({ size = 20 }: { size?: number }) {
  * the account and Settings. Collapsed, it is the 64px rail of icons. A space has one conversation (UI116-1): its roots
  * and threads live in its Conversation view, not in this list. A space never reveals another's contents.
  */
-export function Sidebar({ projects, directMessages, agents = [], user, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
+export function Sidebar({ directMessages, agents = [], user, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { openSearch, openCreate } = useShellActions();
   // Encrypted spaces that wait to be unlocked (F-030, #655): one row each, in place of their projects.
   const locked = useLockedWorkspaces();
@@ -59,9 +64,13 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
   const location = useLocation();
   const place = placeOf(location.pathname);
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
+  // The person's own order (#1250): Everyone first, then the spaces they moved, then the rest as they were made.
+  const projects = useOrderedProjects();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
-  // The places this person muted (#1249): a small muted mark after the name; what is new there is a quiet count, not the dot.
+  // The places this person muted (#1249): a small muted mark after the name; what is new there is a quiet count, never bold.
   const { muted } = usePlaceMutes();
+  // The dot is for what needs the person: a space that holds an Inbox item (a question to them, a decision, a blocked task).
+  const needing = useNeedsYouSpaces(useShellData().me.user.id);
   const navigate = onClose ? () => onClose() : undefined;
   const sketchbook = place === 'home' && /^\/map(\/|$)/.test(location.pathname);
   // Home is current only on Home (#763 NV-1): a page reached from it (the Wiki, New space, a missing page) is no place
@@ -76,6 +85,19 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
   const pendingProject = navigation.state !== 'idle' ? navigation.location?.pathname.match(/^\/projects\/([^/]+)/)?.[1] ?? null : null;
   const projectList = useRef<HTMLUListElement>(null);
   const glide = useRef<HTMLLIElement>(null);
+  // Moving a space (#1250): a drag, or a long press on touch, on the expanded list; ⋯ › Move up / Move down for the keyboard.
+  const moves = useSpaceMoves(projects);
+  const markAll = useMarkAllRead();
+  const expanded = !(collapsed && !onClose);
+  const rows = 'li[data-space-id]';
+  useReorder(projectList, { rows, idOf: (row) => row.dataset.spaceId ?? '', fixed: moves.fixed, onMove: moves.moveTo, enabled: expanded && projects.length - moves.fixed > 1 });
+  const move = useKeyboardMove(projectList, rows);
+  // The row's own ⋯ keeps the focus, wherever the row went.
+  const moveBy = (id: string, step: -1 | 1) => move(() => { moves.moveTo(id, projects.findIndex((project) => project.id === id) + step); }, `[data-space-id="${CSS.escape(id)}"] .side__more`);
+  const moveItems = (id: string, at: number): MoreItem[] => [
+    ...(at > moves.fixed ? [{ label: 'Move up', run: () => moveBy(id, -1) }] : []),
+    ...(at < projects.length - 1 ? [{ label: 'Move down', run: () => moveBy(id, 1) }] : []),
+  ];
   const glideTo = useTravelingHighlight(projectList, glide, ['.side__project[data-pending]', '.side__project.is-open']);
   // The collapsed rail (a tablet's sidebar, or `[` on a computer) has the same highlight over its project tiles; only one
   // of the two lists is rendered at a time, and the other's refs are empty.
@@ -204,29 +226,37 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         {projects.length || locked.length || onClose ? <nav className="side__sec" aria-labelledby="side-projects">
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Spaces</h2>
-            {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
-            {onClose ? <button type="button" className="side__add" aria-label="New space" onClick={() => { onClose(); openCreate({ kind: 'space' }); }}><Icon name="plus" size={14} /></button> : null}
+            <span className="side__head-end">
+              {/* One action for everything unread (#1250), in the heading's ⋯ and in the Inbox's. */}
+              {projects.length ? <MoreMenu label="More for Spaces" size={14} className="side__add side__more-head" items={[{ label: 'Mark all as read', run: markAll }]} /> : null}
+              {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
+              {onClose ? <button type="button" className="side__add" aria-label="New space" onClick={() => { onClose(); openCreate({ kind: 'space' }); }}><Icon name="plus" size={14} /></button> : null}
+            </span>
           </div>
           {projects.length || locked.length ? (
             <ul className="side__list" ref={projectList}>
               <li className="side__glide" ref={glide} aria-hidden="true" role="none" />
-              {projects.map((project) => {
+              {projects.map((project, at) => {
                 const open = project.id === projectId;
                 const quiet = muted.has(`project:${project.id}`);
                 const fresh = news.get(project.id) ?? 0;
+                // Unread is bold; a muted space is never bold, its unread is the quiet count (#1249, #1250).
+                const unread = fresh > 0 && !quiet;
+                const items = at < moves.fixed ? [] : moveItems(project.id, at);
                 return (
-                  <li key={project.id}>
-                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
+                  <li key={project.id} className="side__row" data-space-id={project.id} data-everyone={at < moves.fixed ? '' : undefined}>
+                    <NavLink to={`/projects/${project.id}`} end={false} className={`side__item side__project${open ? ' is-open' : ''}${unread ? ' is-unread' : ''}`} onClick={(event) => { if (choosesInPlace(event)) glideTo(event.currentTarget); navigate?.(); }}
                       data-glide-id={project.id} data-pending={pendingProject === project.id && !open ? '' : undefined}
-                      title={project.name}
-                      aria-label={fresh || quiet || encrypted(project) ? `${project.name}${encrypted(project) ? ', encrypted' : ''}${quiet ? ', muted' : ''}${fresh ? (quiet ? `, ${fresh} new` : ', new activity') : ''}` : undefined}
+                      title={project.name} draggable={false}
+                      aria-label={spaceRowLabel(project.name, { encrypted: encrypted(project), quiet, fresh, needsYou: needing.has(project.id) })}
                       data-encrypted={encrypted(project) ? '' : undefined}>
                       <ProjectTile name={project.name} icon={project.icon} />
                       <span className="side__label">{project.name}</span>
                       {encrypted(project) ? <Icon name="lock" size={12} className="side__lock" /> : null}
                       {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}
-                      {fresh ? (quiet ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : <span className="side__dot" aria-hidden="true" />) : null}
+                      {fresh && quiet ? <span className="side__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="side__dot" aria-hidden="true" /> : null}
                     </NavLink>
+                    {items.length ? <MoreMenu label={`More for ${project.name}`} size={14} className="side__more" items={items} /> : null}
                   </li>
                 );
               })}
@@ -245,6 +275,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
           ) : (
             <p className="side__empty">No spaces yet. Use + to start one, or it appears here when someone adds you to one.</p>
           )}
+          <span className="ui-vh" role="status" aria-live="polite">{moves.status}</span>
         </nav> : null}
 
         <nav className="side__sec" aria-labelledby="side-dms">

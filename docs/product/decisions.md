@@ -267,6 +267,13 @@ the detail):
     makes one motion. Nothing animates on first appearance or on a refetch.
   - #863 updated `docs/design/` (the [motion guide](../design/motion.md), through #876). The application
     differs from it until #863's fixes land.
+- **The Spaces list is yours to order** (Hubert, 2026-11-10, [#1250](https://github.com/ColdPhase/flux/issues/1250), v0.2.1):
+  one flat list, per person and the same on every device; you move a space by dragging it (a long press on touch), or with
+  ⋯ › Move up and Move down; Everyone stays first and a new space goes to the end. **There are no favourites:** ordering is
+  enough to keep the main spaces on top, and the sidebar stays one list. A space with unread messages is bold; the dot is for what
+  needs you; **Mark all as read** (the Spaces heading's ⋯ and the Inbox) has Undo and does not clear the Inbox items that need an
+  action. Details: [design guide](../design/final/README.md#ordering-spaces-unread-and-mark-all-as-read), motion in
+  [Motion in Flux](../design/motion.md#reordering-spaces).
 - **Fast and light** (Hubert, 2026-11-03, [#862](https://github.com/ColdPhase/flux/issues/862)):
   Flux must feel quick on a VPS with 2 vCPU and 4 GB RAM, for a team of a few people with a few
   server agents.

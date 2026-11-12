@@ -1540,6 +1540,13 @@ export const returnPoints = pgTable('return_points', {
   previousSavedAt: timestamp('previous_saved_at', { withTimezone: true }),
 }, (table) => [primaryKey({ columns: [table.userId, table.placeKey] })]);
 
+// The order of a person's Spaces list (migration 0061, #1250): the spaces they moved, from position 0. Everyone is never stored.
+export const spaceOrder = pgTable('space_order', {
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  position: integer('position').notNull(),
+}, (table) => [primaryKey({ columns: [table.userId, table.projectId] })]);
+
 // Notification generation, preferences, delivery addresses and the email outbox (migration 0015, #116).
 export const notificationCursor = pgTable('notification_cursor', {
   id: text('id').primaryKey(),
