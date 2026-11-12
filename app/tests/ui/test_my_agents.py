@@ -220,6 +220,7 @@ class MyAgentsJourney(unittest.TestCase):
                     where = f"{label}: {group['name']} / {option['label']}"
                     self.assertGreaterEqual(option["left"], 12, f"{where} keeps 12 px left of its label: {option}")
                     self.assertGreaterEqual(option["right"], 12, f"{where} keeps 12 px right of its label: {option}")
+                    self.assertLessEqual(option["left"] + option["right"], 30, f"{where} is as wide as its label and 14 px each side, also alone on a wrapped row: {option}")
                     self.assertEqual(option["lines"], 1, f"{where} stays on one line")
                     self.assertTrue(option["inside"], f"{where} stays inside its group")
             self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, f"{label}: no sideways scroll")

@@ -144,64 +144,69 @@ class ProjectHeader(unittest.TestCase):
 
     NAMES = ("Ada Kowalska", "Maja Wiśniewska", "Jonas Berg", "Piotr Nowak", "Sara Olsen", "Kai Tanaka", "Lee Moreno", "Nia Okafor", "Ben Okafor", "Zoe Lindqvist", "Ari Haddad", "Mia Novak")
     FACES = """() => {
+      const visible = (el) => el.getClientRects().length > 0;
       const slot = document.querySelector('header.top .top__faces-slot'), pill = slot.querySelector('.top__faces');
       const box = (el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, width: r.width, height: r.height }; };
-      const faces = [...pill.querySelectorAll('.top__face, .top__more-faces')];
-      const more = pill.querySelector('.top__more-faces');
-      return { slot: box(slot), pill: box(pill), faces: faces.map(box), drawn: pill.querySelectorAll('.top__face').length, more: more ? { ...box(more), text: more.textContent } : null,
-        background: getComputedStyle(pill).backgroundColor };
+      const faces = [...pill.querySelectorAll('.top__face, .top__more-faces')].filter(visible);
+      const more = faces.find((el) => el.classList.contains('top__more-faces'));
+      return { slot: box(slot), pill: box(pill), faces: faces.map(box), drawn: faces.filter((el) => el.classList.contains('top__face')).length,
+        more: more ? { ...box(more), text: more.textContent } : null, background: getComputedStyle(pill).backgroundColor,
+        wide: document.querySelector('.app__main').clientWidth >= 70 * 16 };
     }"""
 
     def people_of(self, page: Page, humans: int, agents: int) -> None:
         """The space's audience as the server would answer it for that many people and agents (the header only draws what it is given)."""
-        people = [{"kind": "human", "id": f"00000000-0000-4000-8000-{n:012d}", "name": self.NAMES[n], "access": "contributor"} for n in range(humans)]
+        people = [{"kind": "human", "id": f"00000000-0000-4000-8000-{n:012d}", "name": self.NAMES[n % len(self.NAMES)], "access": "contributor"} for n in range(humans)]
         people += [{"kind": "agent", "id": f"00000000-0000-4000-9000-{n:012d}", "name": f"Agent {n + 1}", "access": "contributor"} for n in range(agents)]
         page.unroute_all(behavior="ignoreErrors")
         page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/people$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(people)))
 
-    def test_03_the_people_pill_hugs_its_overlapping_faces_inside_a_slot_that_never_moves(self) -> None:
-        """#1236: the faces overlap by 2 px (whole initials stay readable), the fourth person on is one "+N" face, and the pill is as wide as its faces and ends at the slot's
-        right edge; the slot (the width #873 keeps) and the header's other controls are where they were whatever the number of people."""
+    def test_03_the_people_pill_hugs_its_touching_faces_inside_a_slot_that_never_moves(self) -> None:
+        """#1236: the faces touch with whole initials; a header pane of 70 rem and up draws three people, the agent and "+N", a narrower one two
+        people, the agent and "+N" (two digits too); the pill is as wide as its faces and ends at the slot's right edge; the slot (the width #873
+        keeps: 100 px, 120 px from 70 rem) and the header's other controls are where they were whatever the number of people."""
         self.ensure_project()
         engine = UI_BROWSER
-        for width, height, cases in (
-            (1440, 900, [(h, a) for h in (1, 2, 3, 4, 12) for a in (0, 2)]),
-            (820, 1180, [(2, 0), (4, 2), (12, 0)]),
-        ):
+        counts = [(h, a) for h in (1, 2, 3, 4, 12, 99) for a in (0, 2)] + [(120, 0)]
+        for width, height in ((820, 1180), (1280, 800), (1440, 900)):
             page = self.page("light", {"width": width, "height": height})
             slots, places = set(), []
-            for humans, agents in cases:
+            for humans, agents in counts:
                 where = f"{width}: {humans} people and {agents} agents"
                 self.people_of(page, humans, agents)
                 page.goto(f"/projects/{self.ids['project']}")
                 header = self.header(page)
                 expect(header.get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
                 faces = page.evaluate(self.FACES)
-                shown = min(humans, 3) + min(agents, 1)
-                self.assertEqual(faces["drawn"], shown, f"{where}: three people and one agent at most")
+                self.assertEqual(faces["wide"], width >= 1440, f"{width}: the header pane is {'wide' if width >= 1440 else 'narrow'}")
+                people_shown = min(humans, 3 if faces["wide"] else 2)
+                shown = people_shown + min(agents, 1)
+                self.assertEqual(faces["drawn"], shown, f"{where}: {3 if faces['wide'] else 2} people and one agent at most")
                 content = faces["faces"][-1]["right"] - faces["faces"][0]["left"]
-                padding = faces["pill"]["width"] - content
-                self.assertAlmostEqual(padding, 12, delta=1.5, msg=f"{where}: the pill is its faces and 6 px each side, no empty area: {faces}")
+                self.assertAlmostEqual(faces["pill"]["width"] - content, 12, delta=1.5, msg=f"{where}: the pill is its faces and 6 px each side, no empty area: {faces}")
                 self.assertAlmostEqual(faces["faces"][0]["left"] - faces["pill"]["left"], faces["pill"]["right"] - faces["faces"][-1]["right"], delta=1, msg=f"{where}: equal padding")
                 self.assertAlmostEqual(faces["pill"]["right"], faces["slot"]["right"], delta=1, msg=f"{where}: the pill ends at the slot's right edge")
-                self.assertLessEqual(faces["pill"]["width"], faces["slot"]["width"] + 0.5, f"{where}: the pill fits its slot")
+                self.assertLessEqual(faces["pill"]["width"], faces["slot"]["width"] + 0.5, f"{where}: the pill fits its slot: {faces}")
+                self.assertAlmostEqual(faces["slot"]["width"], 120 if faces["wide"] else 100, delta=1.5, msg=f"{where}: the slot keeps its width")
                 self.assertEqual(faces["background"], "rgba(0, 0, 0, 0)", f"{where}: no grey area while nobody hovers it")
                 for before, after in zip(faces["faces"], faces["faces"][1:]):
-                    self.assertAlmostEqual(before["right"] - after["left"], 2, delta=1, msg=f"{where}: each face overlaps the one before by 2 px: {faces['faces']}")
-                more = humans + agents - shown
-                if more:
-                    self.assertIsNotNone(faces["more"], f"{where}: the fourth person on is a +N face")
-                    self.assertEqual(faces["more"]["text"], f"+{more}")
+                    self.assertAlmostEqual(after["left"] - before["right"], 0, delta=0.6, msg=f"{where}: the faces touch, none overlaps: {faces['faces']}")
+                rest = humans + agents - shown
+                if rest:
+                    self.assertIsNotNone(faces["more"], f"{where}: what does not fit is a +N face")
+                    self.assertEqual(faces["more"]["text"], "99+" if rest > 99 else f"+{rest}")
                     self.assertAlmostEqual(faces["more"]["height"], 20, delta=0.5)
-                    if more < 10:
-                        self.assertAlmostEqual(faces["more"]["width"], 20, delta=0.5, msg=f"{where}: +{more} is a circle")
+                    if rest < 10:
+                        self.assertAlmostEqual(faces["more"]["width"], 20, delta=0.5, msg=f"{where}: +{rest} is a circle")
+                    else:
+                        self.assertLessEqual(faces["more"]["width"], 28, f"{where}: a two-digit count is a short pill")
                 else:
-                    self.assertIsNone(faces["more"], f"{where}: no +N up to three people and an agent")
+                    self.assertIsNone(faces["more"], f"{where}: no +N when everyone is drawn")
                 slots.add((round(faces["slot"]["left"]), round(faces["slot"]["right"])))
                 places.append({"More": header.get_by_role("button", name="More", exact=True).bounding_box(),
                                "views": header.get_by_role("navigation", name="Space views").bounding_box(), "name": header.locator(".top__title").bounding_box()})
                 self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, f"{where}: no sideways scroll")
-                if (humans, agents) in ((2, 0), (4, 2), (12, 0)):
+                if (humans, agents) in ((2, 0), (4, 2), (12, 0), (99, 2)):
                     shot_both(page, f"1236-header-people-{width}-{humans}p{agents}a-{engine}")
             self.assertEqual(len(slots), 1, f"{width}: the slot is the same for every number of people: {slots}")
             for key in ("More", "views", "name"):
