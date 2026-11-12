@@ -324,7 +324,7 @@ class DmThreadsReceipts(unittest.TestCase):
     def post_receipts(self, page: Page, runs: list[list[str]]) -> list[list[str]]:
         response = page.request.post(f"/api/v1/dms/{self.dm_id}/receipts", data={"runs": runs}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 200, response.text())
-        return [sorted(p["name"] for p in run["seenBy"]) for run in response.json()["runs"]]
+        return [sorted(p["name"] for p in run["readers"]) for run in response.json()["runs"]]
 
     # ------------------------------------------------------------------ excerpt to a project task
 
@@ -492,7 +492,7 @@ class DmThreadsReceipts(unittest.TestCase):
         shot(ada, "dm-threads-desktop-project-thread-seen-light")
         # The API agrees, and an outsider to the project's audience learns nothing.
         runs = ada.request.post(f"/api/v1/projects/{self.project_id}/receipts", data={"runs": [[a, b]]}, headers={"origin": ORIGIN})
-        self.assertEqual([[p["name"] for p in run["seenBy"]] for run in runs.json()["runs"]], [["Kai Tanaka"]])
+        self.assertEqual([[p["name"] for p in run["readers"]] for run in runs.json()["runs"]], [["Kai Tanaka"]])
 
     def test_09_dark_theme_screens(self) -> None:
         page = self.page("ada", dark=True)

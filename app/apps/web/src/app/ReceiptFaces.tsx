@@ -56,6 +56,12 @@ export function ReceiptFaces({ receipt }: { receipt: Receipt }) {
 }
 
 const FACES = 3;
+/**
+ * The list is drawn in the page's body, but React lets its events rise to the message it belongs to, whose touch gestures (a long press,
+ * a swipe) must not start from a finger scrolling the list.
+ */
+const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+const isolated = { onPointerDown: stop, onPointerMove: stop, onPointerUp: stop, onPointerCancel: stop, onContextMenu: stop };
 /** The tooltip wait before a hover opens the list, and the grace for the pointer to cross the gap to it. */
 const HOVER_WAIT_MS = 450;
 const HOVER_GRACE_MS = 220;
@@ -159,10 +165,10 @@ function ReaderList({ receipt, place, pinned, focusList, onClose, onEnter, onLea
 
   return createPortal(
     <>
-      {pinned ? <div {...pop.props} data-pop-fade="" className="msg-menu__scrim" onPointerDown={() => onClose(false)} /> : null}
-      <div {...pop.props} className="seen-list" role="dialog" aria-label="Seen by" style={place} onKeyDown={onKeyDown}
+      {pinned ? <div {...pop.props} data-pop-fade="" className="msg-menu__scrim" onPointerDown={(event) => { event.stopPropagation(); onClose(false); }} /> : null}
+      <div {...pop.props} {...isolated} className="seen-list" role="dialog" aria-label="Seen by" style={place} onKeyDown={onKeyDown}
         onPointerEnter={(event) => { if (event.pointerType === 'mouse') onEnter(); }} onPointerLeave={(event) => { if (event.pointerType === 'mouse' && !pinned) onLeave(); }}>
-        <div ref={scroller} className="seen-list__scroll" tabIndex={0} aria-label="People who have read this">
+        <div ref={scroller} className="seen-list__scroll" role="region" tabIndex={0} aria-label="People who have read this">
           <ul className="seen-list__rows">
             {rows.map((reader) => (
               <li key={reader.id} className="seen-list__row">
