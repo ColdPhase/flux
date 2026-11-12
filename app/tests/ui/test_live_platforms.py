@@ -491,6 +491,8 @@ class PlatformRows(LiveBase):
         expect(rejoin).to_be_visible()
         rejoin.click()
         expect(bar.get_by_role("status").first).to_contain_text("Live")
+        # The host still shares: a phone is offered the screen in a sheet, which is put off here (a tablet's stage opened by itself).
+        self.put_off_shared_screen_if_offered(page)
         self.observed[row.name]["rejoinAfterReload"] = "verified: Join after the reload returns the person to the open session"
         # The reloaded document's counters are live, so the zero above was observable: turning the microphone on counts.
         bar.get_by_role("button", name=re.compile("^Microphone off")).click()

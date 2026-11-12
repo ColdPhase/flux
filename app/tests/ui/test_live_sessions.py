@@ -259,6 +259,17 @@ class LiveBase(unittest.TestCase):
             offer.get_by_role("button", name=re.compile(r"^View .*’s screen$")).click()
         expect(stage).to_be_visible()
 
+    def put_off_shared_screen_if_offered(self, page: Page) -> None:
+        """Joining a call where a screen is already shared offers it on a phone (a sheet) and opens the stage on a tablet or a computer:
+        a phone's sheet, if it comes, is put off with Not now."""
+        offer = page.get_by_role("dialog", name="Shared screen")
+        try:
+            offer.wait_for(state="visible", timeout=5000)
+        except Exception:  # no sheet: the stage opened by itself, or nothing is shared
+            return
+        offer.get_by_role("button", name="Not now").click()
+        expect(offer).to_have_count(0)
+
     def put_off_shared_screen(self, page: Page) -> None:
         """On a phone, answers the sheet that offers a shared screen with Not now: the strip's View is then the way to it."""
         offer = page.get_by_role("dialog", name="Shared screen")
