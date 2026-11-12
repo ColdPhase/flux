@@ -286,7 +286,8 @@ export function Notices({ identity, meName, placeName }: { identity: string; meN
           {/* The actions come before Close in the reading and Tab order; the grid still draws Close at the top right. */}
           <div className="ui-notice__actions">
             {notice!.family === 'call' ? <Button variant="primary" onClick={() => void join()}>Join</Button>
-              : newest.reason === 'dm' ? <><Button variant="outline" onClick={() => open(true)}>Reply</Button><Button variant="secondary" onClick={() => open()}>Open</Button></>
+              // Anything said in a direct message (a message, or a question asked there) can be answered there: Reply follows the place.
+              : notice!.family === 'message' && newest.source.type === 'dm' ? <><Button variant="outline" onClick={() => open(true)}>Reply</Button><Button variant="secondary" onClick={() => open()}>Open</Button></>
                 : <Button variant="outline" onClick={() => open()}>Open</Button>}
           </div>
           <IconButton icon="x" label="Close" className="ui-notice__close" onClick={dismiss} />

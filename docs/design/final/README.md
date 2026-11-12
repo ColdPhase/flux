@@ -584,7 +584,7 @@ Drawn by the agents before it was built; the rules of what triggers a notice are
   the title in 14 / 20, 500, `--t1` ("Jonas Berg sent you a message"), and the preview in 14 / 20
   `--t2`, each at most two lines with an ellipsis. The close × (`IconButton`, 44 px on touch)
   is at the top right. The buttons are a row under the text, 32 px high:
-  - a direct message: **Reply** (outline) and **Open** (text button);
+  - anything said in a direct message (a message, or a question asked there): **Reply** (outline) and **Open** (text button);
   - a mention, a question, a task, a decision or an agent: **Open** (outline);
   - a call: **Join**, the card's one primary button, and the title says who started it or invited you,
     and where ("Maja started a call in Tool library", "Maja invited you to a call in Tool library").
