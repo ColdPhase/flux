@@ -51,7 +51,11 @@ def seed():
 
 def connect():
     # No server-side prepared statements, as Flux (node-postgres via Drizzle) sends them: a generic plan would also drop ParadeDB's scan.
-    return psycopg.connect(DB, autocommit=True, prepare_threshold=None)
+    # As in Flux's database image (F-041): pg_search's custom scan is off for every statement but the BM25 ones, which turn it on in
+    # their own transaction; with it on, any other condition on `body` (indexed twice, once per stemmer) fails as ambiguous.
+    db = psycopg.connect(DB, autocommit=True, prepare_threshold=None)
+    db.execute("SET paradedb.enable_custom_scan = off")
+    return db
 
 
 def pct(values, p):
@@ -339,8 +343,10 @@ def sql_for(variant):
               FROM messages m, qq WHERE m.tsv_lang @@ qq.q AND {FILTERS} ORDER BY rk LIMIT {DEEP}"""
             pre = f", qq AS (SELECT {LANG_QUERY} AS q)"
         else:
-            keyword = f"""SELECT m.id, row_number() OVER (ORDER BY pdb.score(m.id) DESC, m.created_at DESC) AS rk
-              FROM messages m WHERE m.body ||| %(q)s AND {FILTERS} ORDER BY rk LIMIT {DEEP}"""
+            keyword = f"""SELECT id, row_number() OVER (ORDER BY s DESC, created_at DESC) AS rk FROM (
+              SELECT m.id, m.created_at, pdb.score(m.id) AS s FROM messages m
+              WHERE (m.body::pdb.alias('body_pl') ||| %(q)s OR m.body::pdb.alias('body_en') ||| %(q)s) AND {FILTERS}
+              ORDER BY s DESC, m.created_at DESC LIMIT {DEEP}) b"""
             pre = ""
         return f"""WITH {READABLE}{pre},
         kw AS ({keyword}),
@@ -385,6 +391,10 @@ class Searcher:
                 params["place"] = place
                 with self.db.transaction():
                     self.db.execute("SET LOCAL enable_seqscan = off")
+                    rows = self.db.execute(sql_for(variant), params).fetchall()
+            elif variant in ("bm25", "hybrid_bm25"):
+                with self.db.transaction():
+                    self.db.execute("SET LOCAL paradedb.enable_custom_scan = on")
                     rows = self.db.execute(sql_for(variant), params).fetchall()
             else:
                 rows = self.db.execute(sql_for(variant), params).fetchall()

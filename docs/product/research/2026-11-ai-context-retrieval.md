@@ -1,9 +1,10 @@
 # How agents read long conversations: retrieval, search engine, summaries and context
 
-**Status:** research for [#1242](https://github.com/ColdPhase/flux/issues/1242) (milestone v0.2.1), 2026-11-12. This note
-proposes; it does not decide. `decisions.md`, `assistant.md`, `ai-modes.md` and the threat model are unchanged until Hubert
-answers [the questions at the end](#questions-for-hubert) and the decision is recorded and peer-reviewed (#1242's order:
-research, then decision, then implementation issues). Every figure below was measured on this host in Docker unless it is
+**Status:** research for [#1242](https://github.com/ColdPhase/flux/issues/1242) (milestone v0.2.1), 2026-11-12. Hubert answered
+[the questions at the end](#questions-for-hubert) on #1242 the same day; the decision is
+F-041 in `decisions.md`, implemented from [#1296](https://github.com/ColdPhase/flux/issues/1296). The
+[answer-accuracy run on Claude](#answer-accuracy-on-claude-sonnet-55-2026-11-12) and the recall of the index exactly as migration
+0065 builds it were added after the decision. Every figure below was measured on this host in Docker unless it is
 labelled a **vendor claim**, a **published result** or an **inference**.
 
 ## In short
@@ -131,8 +132,15 @@ read and applies the question's date range when it has one.
 | vec (pgvector HNSW, e5-small) | 0.40 | 0.28 | 0.32 | 0.38 | 0.8 / 1.6 + 10 / 17 to embed the query |
 | hybrid_lang (RRF of fts_lang and vec) | 0.53 | 0.48 | 0.65 | 0.42 | 5.1 / 9.4 + embedding |
 | hybrid_bm25 (RRF of bm25 and vec) | 0.57 | 0.55 | 0.70 | 0.49 | 3.3 / 6.5 + embedding |
+| bm25 as migration 0065 builds it (Polish **and** English stemmer, any field; rerun 2026-11-12) | 0.58 | 0.57 | 0.73 | 0.55 | p95 5.2 (a loaded host) |
+| hybrid_bm25 on that index | 0.55 | 0.52 | 0.70 | 0.49 | p95 4.5 + embedding |
 | meili (Meilisearch keyword, `frequency` matching) | 0.42 | 0.62 | 0.65 | 0.41 | 5.2 / 11.8 |
 | meili_hybrid (semantic ratio 0.5, same vectors) | 0.33 | 0.30 | 0.25 | 0.31 | 7.3 / 15.0 |
+
+The English stemmer next to the Polish one (F-041's index, [raw results](evidence/1242/results-migration-0065-index.json)) cost one
+question as asked, one keyword search and three bilingual ones against the Polish stemmer alone: its matches add score to
+messages that only share an English stem. The difference is within a few questions of this one-author set; the answer-accuracy
+run below uses this index.
 
 "Bilingual" is a simulated agent: the query words were translated by hand (see [Limits](#limits-of-this-research)).
 
@@ -504,9 +512,46 @@ files. Migrations follow #1241: forward-only, never editing a released file, wor
 
 Dependencies: 1 → 2 → 3; 5 can start at once (it measures today first); 4 after the decision on summaries.
 
+## Answer accuracy on Claude Sonnet 5.5 (2026-11-12)
+
+Hubert's decision 7: the accuracy run uses a real API key instead of strata. `answer.py` with `BENCH_LLM=anthropic` calls the
+Messages API through the official SDK (`anthropic` 2.7.0), model `claude-sonnet-5-5`, adaptive thinking at effort `low`, no
+fallback model (a refusal would count as a wrong answer; there were none). The key was read from a file outside the repository
+into the environment of the run and passed to the container by name only. Each of the 60 questions is answered once from the
+context a strategy builds (static: the agent does not call tools here; that is #1295), scored by its `answer_check`. Search is
+BM25 on the index as migration 0065 builds it. Input tokens are the API's own count. Commands: `scripts/eval/retrieval/run.sh
+recall`, then `BENCH_LLM=anthropic BENCH_ANSWER_SEARCH=bm25 run.sh answer --strategies window40,window20,window20_search` and the
+same with `BENCH_ANSWER_QUERY=bilingual --strategies window20_search,search_around`.
+
+| Strategy (what the run starts with) | Search asked with | Accuracy | Input tokens per answer |
+|---|---|---|---|
+| window40: today's brief, the last 40 messages | — | **0.10** | 2,436 |
+| window20: the last 20 messages | — | 0.03 | 1,310 |
+| window20 + BM25 search page with 3 messages around each of the top 3 hits | the question as asked | 0.60 | 2,874 |
+| window20 + the same search | keywords in both languages | **0.75** | 2,697 |
+| the search page with read-around only, no window | keywords in both languages | **0.77** | **1,549** |
+
+By category (window40 → window20 + bilingual search): exact 0 → 1.0, Polish inflection 0.12 → 1.0, no diacritics 0 → 1.0, typo
+0 → 0.67, paraphrase 0 → 0.42, across languages 0.06 → 0.69, temporal 0 → 0.6, recent 1.0 → 1.0. Raw answers:
+[question form](evidence/1242/answers-claude-sonnet-5-5-question.json), [bilingual form](evidence/1242/answers-claude-sonnet-5-5-bilingual.json).
+
+- **The design beats today's window on answer accuracy** (0.75–0.77 against 0.10) **and on recall@10** (0.58–0.73 against
+  0.08), #1242's first acceptance criterion, measured on an API engine. Asking the search in both languages is worth 15 points
+  (0.60 → 0.75), which is why F-041's tool description asks for it.
+- **Tokens.** A window of 20 plus the search page costs more input than today's 40 (2,697 against 2,436 per answer); the search
+  page with read-around alone costs 36% less (1,549) and answers as well. So for #1291 the window can shrink further than 20
+  without losing accuracy here: the recent questions (4) were answered from the read-around too. The final size is #1291's, from
+  the agentic run of #1295, where the agent also pays for its tool calls.
+- **Cost:** 300 calls, 651,897 input and 22,040 output tokens, **1.53 USD** at 2 / 10 USD per million tokens (`answer.py` adds it
+  up from the API's usage and stops before a call that could pass `BENCH_COST_CAP_USD`, 3.50 per run here). The v0.2.1 budget for
+  this evaluation is 8 USD.
+- **Not measured:** strata (decision 7 replaced it), Codex (no OpenAI key), summaries (decision 3: on demand only, #1292), and
+  the agentic run with the real tools (#1295).
+
 ## Evaluation still to run
 
-#1242's acceptance asks for answer accuracy on strata and an API engine. Neither was run here:
+#1242's acceptance asks for answer accuracy on strata and an API engine. Neither was run before the decision (the API engine was,
+afterwards: the section above):
 
 - **strata** (the local Qwen model, llama.cpp) is stopped because it uses about 50 GB of RAM; the coordinator schedules it on
   a quiet host. **The scenario is ready:**

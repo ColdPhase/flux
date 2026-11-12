@@ -1,0 +1,1012 @@
+{
+ "model": "claude-sonnet-5-5",
+ "mock": false,
+ "search": "bm25",
+ "query": "bilingual",
+ "strategies": {
+  "window20_search": {
+   "accuracy": 0.75,
+   "by_category": {
+    "crosslang": 0.69,
+    "exact": 1,
+    "inflect": 1,
+    "nodiacritics": 1,
+    "paraphrase": 0.42,
+    "recent": 1,
+    "temporal": 0.6,
+    "typo": 0.67
+   },
+   "input_tokens_mean": 2697,
+   "seconds_p50": 1.49,
+   "per_question": [
+    {
+     "id": "q01",
+     "category": "exact",
+     "ok": true,
+     "answer": "Numer zamówienia na 400 sztuk SHT45 w TME to TME-2026-04471 (Bogdan Kowalski, 14 kwietnia 2026).",
+     "input_tokens": 3043,
+     "seconds": 1.23
+    },
+    {
+     "id": "q02",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach z września nie ma żadnej decyzji dotyczącej czujników. Są tylko zgłoszenia, np. rozbieżności odczytów temperatury między stacjami (Przymorze 2 stopnie, Gdynia 20 i 30 stopni, Pruszcz 3 i 12 stopni) oraz dryf wilgotności (średnio 2,1% RH, maksymalnie 4,5% przy morzu), ale bez ustaleń.",
+     "input_tokens": 3026,
+     "seconds": 2.29
+    },
+    {
+     "id": "q03",
+     "category": "temporal",
+     "ok": true,
+     "answer": "We ustaliliśmy 17 września (Ada Nowak), że w nowej wersji stacji zostajemy przy czujniku Sensirion SHT45, a BME688 odpada, bo w trybie gazowym zużywał za dużo prądu.",
+     "input_tokens": 3012,
+     "seconds": 1.37
+    },
+    {
+     "id": "q04",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how long a station runs on batteries at a ten-minute measurement interval. They only mention battery levels at specific stations and that after firmware 2.2.3 the units report every 10 minutes (Ada Nowak, 2026-06-12), and she was asking whether anyone had measured the battery sleep current.",
+     "input_tokens": 3124,
+     "seconds": 1.67
+    },
+    {
+     "id": "q05",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Po kalibracji w komorze klimatycznej wyszedł stały offset +0,8°C dla serii z lutego (Marta Wiśniewska, 3 czerwca); poprawkę wpisała do firmware 2.3.1.",
+     "input_tokens": 3241,
+     "seconds": 1.57
+    },
+    {
+     "id": "q06",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Wersję 2.4.0 wycofano ze wszystkich stacji terenowych, ponieważ po resecie watchdoga powodowała zablokowanie (tzw. \"brick\") radia LoRa. Do czasu poprawki Marty stacje wróciły na wersję 2.3.1 (Jonas Berg, 8 lipca).",
+     "input_tokens": 3225,
+     "seconds": 1.86
+    },
+    {
+     "id": "q07",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o zasięgu sygnału bramki na biurowcu.",
+     "input_tokens": 2874,
+     "seconds": 2.08
+    },
+    {
+     "id": "q08",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Według Oli Lewandowskiej (19.08) pękała uszczelka przy dławiku, po 200 cyklach termicznych. Obudowy przeszły test szczelności IP67, a zaproponowano zmianę materiału uszczelki na EPDM.",
+     "input_tokens": 2980,
+     "seconds": 1.93
+    },
+    {
+     "id": "q09",
+     "category": "exact",
+     "ok": true,
+     "answer": "Cena dla klientów hurtowych na 2027 wynosi 1 290 zł netto za stację, a przy zamówieniu 50+ sztuk obowiązuje rabat 12%.",
+     "input_tokens": 2969,
+     "seconds": 2.21
+    },
+    {
+     "id": "q10",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Fundusz Black Pine oferuje 2,5 mln zł za 15% udziałów. Term sheet ma być gotowy do końca października.",
+     "input_tokens": 1608,
+     "seconds": 1.51
+    },
+    {
+     "id": "q11",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say that anyone was hired as the embedded developer or give a start date. They only mention offers rejected by embedded developer candidates, interviews, CVs and reference checks.",
+     "input_tokens": 2736,
+     "seconds": 1.9
+    },
+    {
+     "id": "q12",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Widełki dla junior QA to 7–9 tys. zł brutto na umowę o pracę (wiadomość Marty Wiśniewskiej z 2026-06-12).",
+     "input_tokens": 2832,
+     "seconds": 1.1
+    },
+    {
+     "id": "q13",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, kto montuje płytki ani o zmianie firmy i jej powodach.",
+     "input_tokens": 2907,
+     "seconds": 1.74
+    },
+    {
+     "id": "q14",
+     "category": "exact",
+     "ok": true,
+     "answer": "Dla paczki z Shenzhen podaliśmy kod HS 9025 80 40 (Bogdan Kowalski, 2 kwietnia), ponieważ na fakturze brakowało kodu, a paczka utknęła na odprawie celnej w Małaszewiczach.",
+     "input_tokens": 1710,
+     "seconds": 1.33
+    },
+    {
+     "id": "q15",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zrezygnowaliśmy z DPD, ponieważ było za dużo uszkodzonych paczek. Ola Lewandowska napisała 9 września, że od października wysyłki krajowe robimy przez InPost.",
+     "input_tokens": 2858,
+     "seconds": 1.16
+    },
+    {
+     "id": "q16",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how many complete stations were in the Pruszcz warehouse at the end of June, and they contain no messages from that time about warehouse stock.",
+     "input_tokens": 3118,
+     "seconds": 1.89
+    },
+    {
+     "id": "q17",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Ostatni podany stan magazynu w Pruszczu (na koniec września) to 12 kompletnych stacji, 210 płytek i 0 obudów. Nowszych danych o kompletnych stacjach nie ma, więc aktualnej liczby nie znam. W październiku i listopadzie nie podano też żadnej aktualizacji tego stanu, a 9 listopada wspomniano tylko, że zostało 15 płytek.",
+     "input_tokens": 2881,
+     "seconds": 2.75
+    },
+    {
+     "id": "q18",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Nowa strona internetowa startuje 24 listopada, a zamrożenie treści jest planowane na 17 listopada.",
+     "input_tokens": 2550,
+     "seconds": 1.61
+    },
+    {
+     "id": "q19",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention which content management system was chosen for the site or the reasons for it.",
+     "input_tokens": 2715,
+     "seconds": 1.45
+    },
+    {
+     "id": "q20",
+     "category": "exact",
+     "ok": true,
+     "answer": "zielonydach.eu renews on 2027-03-11, according to Jonas Berg's message. The domain is on Ada's OVH account.",
+     "input_tokens": 1486,
+     "seconds": 1.08
+    },
+    {
+     "id": "q21",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jakiego narzędzia do statystyk odwiedzin używacie na stronie. Wspomniano tylko o Listmonk (narzędzie do newslettera), ale nie o analityce.",
+     "input_tokens": 2692,
+     "seconds": 1.35
+    },
+    {
+     "id": "q22",
+     "category": "exact",
+     "ok": true,
+     "answer": "Kara umowna wynosi 0,2% za każdy dzień zwłoki (umowa z Gdańskiem na 60 stacji, montaż do 30 września).",
+     "input_tokens": 2205,
+     "seconds": 2.0
+    },
+    {
+     "id": "q23",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Według wiadomości z 24 września montaż na przystankach jest opóźniony o 2 tygodnie, ponieważ ZTM nie wydał jeszcze zgody na podłączenie zasilania w wiatach.",
+     "input_tokens": 2899,
+     "seconds": 1.72
+    },
+    {
+     "id": "q24",
+     "category": "exact",
+     "ok": true,
+     "answer": "Halina Kurek (inż., kontakt po stronie miasta) ma numer telefonu 58 323 11 47.",
+     "input_tokens": 2763,
+     "seconds": 1.64
+    },
+    {
+     "id": "q25",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Jedna stacja może wysłać do 120 zapytań na godzinę; powyżej tego limitu chmura zwraca błąd 429 (informacja od Jonasa Berga z 2026-08-04).",
+     "input_tokens": 3013,
+     "seconds": 1.29
+    },
+    {
+     "id": "q26",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Raport z laboratorium EMC w Gliwicach ma numer EMC/2026/1187 (dotyczy certyfikatu CE, według wiadomości Oli Lewandowskiej z 14 października 2026).",
+     "input_tokens": 2942,
+     "seconds": 1.29
+    },
+    {
+     "id": "q27",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Na północnych dachach trzeba dać panel 10 W (panel 6 W wystarcza do całorocznej pracy tylko na południowych dachach).",
+     "input_tokens": 2198,
+     "seconds": 1.4
+    },
+    {
+     "id": "q28",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Po pół roku w terenie dryf wilgotności wynosi średnio 2,1% RH, a maksymalnie 4,5% na stacjach przy morzu (według wiadomości Marty Wiśniewskiej z 29 września).",
+     "input_tokens": 3040,
+     "seconds": 1.86
+    },
+    {
+     "id": "q29",
+     "category": "recent",
+     "ok": true,
+     "answer": "Od przyszłego tygodnia stand-up jest przeniesiony na 9:30 (wtorki i czwartki), według wiadomości Ady Nowak z 9 listopada. Godziny obowiązującej obecnie, w tym tygodniu, wiadomości nie podają.",
+     "input_tokens": 2887,
+     "seconds": 1.66
+    },
+    {
+     "id": "q30",
+     "category": "recent",
+     "ok": true,
+     "answer": "According to Jonas Berg, the units reboot every 49.7 days because the millis() counter overflows. A patch for this is planned for firmware 2.5.2.",
+     "input_tokens": 2697,
+     "seconds": 1.14
+    },
+    {
+     "id": "q31",
+     "category": "recent",
+     "ok": true,
+     "answer": "Kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada (wiadomość Oli Lewandowskiej z 7 listopada).",
+     "input_tokens": 2798,
+     "seconds": 1.39
+    },
+    {
+     "id": "q32",
+     "category": "recent",
+     "ok": true,
+     "answer": "Yes, Sarah Mitchell said on 2026-11-10 that the pricing page copy is approved by Bogdan, and that the Polish translation is due Friday.",
+     "input_tokens": 2025,
+     "seconds": 1.09
+    },
+    {
+     "id": "q33",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Aktualizacje OTA wysyłamy falami po 10% floty, z 24-godzinną przerwą między kolejnymi falami (Jonas Berg, 19 maja 2026).",
+     "input_tokens": 2934,
+     "seconds": 1.4
+    },
+    {
+     "id": "q34",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Surowe pomiary trzymamy 13 miesięcy, potem zostają tylko agregaty godzinowe (Ada Nowak, 2026-08-27).",
+     "input_tokens": 2883,
+     "seconds": 1.39
+    },
+    {
+     "id": "q35",
+     "category": "inflect",
+     "ok": true,
+     "answer": "OC produktu w Warcie jest ubezpieczone na sumę 2 mln zł (składka wynosi 6 400 zł rocznie).",
+     "input_tokens": 2658,
+     "seconds": 1.04
+    },
+    {
+     "id": "q36",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The office is moving to Garbary 8 from 1 January, with rent of 9 800 zł per month (Ada Nowak, 2026-09-12).",
+     "input_tokens": 2652,
+     "seconds": 1.33
+    },
+    {
+     "id": "q37",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Zofia Bąk (kandydatka na QA) według Marty Wiśniewskiej z 6 sierpnia jest bardzo dobra z automatyzacji w Playwright, a słabsza z SQL. Zapadła decyzja, żeby złożyć jej ofertę. Wiadomości nie mówią, czy oferta została przyjęta.",
+     "input_tokens": 1711,
+     "seconds": 1.38
+    },
+    {
+     "id": "q38",
+     "category": "exact",
+     "ok": true,
+     "answer": "Według wiadomości Piotra Zielińskiego (23.04.2026) wszystkie stacje nadają w paśmie EU868, na kanałach 1–8, z domyślnym SF9.",
+     "input_tokens": 2852,
+     "seconds": 1.35
+    },
+    {
+     "id": "q39",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The Vaisala HM40 reference hygrometer's certificate is valid until April 2027, according to Marta Wiśniewska's message of 2026-04-29, after the hygrometer returned from calibration.",
+     "input_tokens": 1903,
+     "seconds": 1.21
+    },
+    {
+     "id": "q40",
+     "category": "exact",
+     "ok": true,
+     "answer": "Faktura FV/0812/2026 od Plastmetu ma złą stawkę VAT: naliczono 23% zamiast 0% (WDT). Bogdan Kowalski poprosił o korektę.",
+     "input_tokens": 2908,
+     "seconds": 1.25
+    },
+    {
+     "id": "q41",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Nie wiem, czy chodzi o \"nowego montażystę\", bo w wiadomościach nie ma takiej informacji. Jedyna zbliżona informacja dotyczy pierwszej partii od Eurocircuits: 3 z 250 płytek nie przeszły ICT, wszystkie z zimnym lutem na złączu USB-C.",
+     "input_tokens": 2837,
+     "seconds": 2.14
+    },
+    {
+     "id": "q42",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak mocuje się stacje do wiat przystankowych. Są tylko wzmianki o zakończonych montażach (np. na przystanku Hucisko i Jaśkowa Dolina), bez szczegółów sposobu mocowania.",
+     "input_tokens": 2945,
+     "seconds": 1.41
+    },
+    {
+     "id": "q43",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Miasto zgłosiło problem z 4 stacjami na Przymorzu, które pokazują temperaturę o 5 stopni za wysoką. Podejrzewana przyczyna to nagrzewanie osłony przez słońce (wiadomość Ady Nowak z 27 października).",
+     "input_tokens": 2881,
+     "seconds": 1.94
+    },
+    {
+     "id": "q44",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The green in the logo is #2E7D32. Jonas Berg posted it on 2026-06-02 as the green roof outline colour, with the wordmark set in Inter Tight.",
+     "input_tokens": 2454,
+     "seconds": 1.59
+    },
+    {
+     "id": "q45",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Pierwszy numer newslettera trafi do 340 subskrybentów (Sarah Mitchell, 2026-09-01, narzędzie Listmonk z włączonym double opt-in).",
+     "input_tokens": 2751,
+     "seconds": 1.62
+    },
+    {
+     "id": "q46",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The DST switch on the night before 30 March shifted all chart timestamps by an hour, because the backend stored local time instead of UTC. Jonas Berg said this was fixed in API 1.8.3.",
+     "input_tokens": 2939,
+     "seconds": 1.37
+    },
+    {
+     "id": "q47",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say what is used for stations that are out of LoRa range.",
+     "input_tokens": 2843,
+     "seconds": 1.53
+    },
+    {
+     "id": "q48",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o przerwie wakacyjnej ani o tym, kto wtedy pełni dyżur telefoniczny. Pojawiają się tylko pojedyncze komunikaty typu „Out tomorrow, ping me on the phone if urgent\", ale nie dotyczą one przerwy wakacyjnej.",
+     "input_tokens": 2758,
+     "seconds": 1.48
+    },
+    {
+     "id": "q49",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Wniosek do NCBR (Szybka Ścieżka) ma budżet projektu 3,1 mln zł; wynik miał być znany w listopadzie.",
+     "input_tokens": 2780,
+     "seconds": 1.1
+    },
+    {
+     "id": "q50",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Klient z Sopotu chce sterować pompą nawadniania na podstawie wilgotności gleby, a przekaźnik jako dodatek wycenili na 180 zł (wiadomość Oli Lewandowskiej z 2026-10-07).",
+     "input_tokens": 2862,
+     "seconds": 1.35
+    },
+    {
+     "id": "q51",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Tak. Według Marty Wiśniewskiej (24 lipca) pojemnościowy czujnik wilgotności gleby trzeba kalibrować osobno dla piasku i gliny, a różnica dochodzi do 18 punktów.",
+     "input_tokens": 3115,
+     "seconds": 1.5
+    },
+    {
+     "id": "q52",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o teście penetracyjnym ani jego wynikach w stacjach.",
+     "input_tokens": 2904,
+     "seconds": 1.32
+    },
+    {
+     "id": "q53",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Wydania firmware zatwierdza teraz Marta Wiśniewska. Ada Nowak ogłosiła to 15 października 2026, zastępując wcześniejszy podział, w którym wydania kontrolował Jonas Berg (teraz zajmuje się chmurą).",
+     "input_tokens": 2846,
+     "seconds": 1.96
+    },
+    {
+     "id": "q54",
+     "category": "typo",
+     "ok": true,
+     "answer": "The messages mention a domain spelled \"zielonydach.eu\" (not \"zielonydah.eu\"), which Jonas Berg said renews on 2027-03-11 and is on Ada's OVH account. If that is the domain you mean, it renews on 2027-03-11. The messages give no information about \"zielonydah.eu\" as spelled in your question.",
+     "input_tokens": 1489,
+     "seconds": 1.47
+    },
+    {
+     "id": "q55",
+     "category": "typo",
+     "ok": true,
+     "answer": "Wiadomości podają telefon inż. Haliny Kurek (kontakt po stronie miasta): 58 323 11 47. Nazwisko jest zapisane jako „Kurek\", nie „Kurrek\", więc zakładam, że chodzi o tę samą osobę.",
+     "input_tokens": 2759,
+     "seconds": 1.53
+    },
+    {
+     "id": "q56",
+     "category": "typo",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o wysyłce przez InPsot ani o tym, od kiedy ją stosujemy.",
+     "input_tokens": 1307,
+     "seconds": 1.71
+    },
+    {
+     "id": "q57",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages never mention a gas sensor, or any problem with one, for the new station version. They only ask repeatedly whether the next version should keep the sensor, the battery, the solar panel or the gateway, and none of those questions gets an answer.",
+     "input_tokens": 2870,
+     "seconds": 1.43
+    },
+    {
+     "id": "q58",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zamówiliśmy 400 sztuk SHT45 (zamówienie w TME, numer TME-2026-04471, złożone 14 kwietnia 2026). Dostawa miała nastąpić za 3 tygodnie od tej daty, czyli około 5 maja 2026.",
+     "input_tokens": 3294,
+     "seconds": 1.95
+    },
+    {
+     "id": "q59",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Paczka z Shenzhen utknęła na odprawie celnej w Małaszewiczach, bo na fakturze brakowało kodu HS. Bogdan Kowalski podał kod 9025 80 40.",
+     "input_tokens": 2783,
+     "seconds": 1.84
+    },
+    {
+     "id": "q60",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o łącznej liczbie urządzeń dla miasta ani o terminie. Pojawiają się tylko pojedyncze liczby, np. 24 stacje do montażu na Bramie Wyżynnej (wiadomość z 9 marca), 3 na Hucisku i 2 na Oliwie PKP, ale bez terminu końcowego.",
+     "input_tokens": 2827,
+     "seconds": 1.58
+    }
+   ]
+  },
+  "search_around": {
+   "accuracy": 0.767,
+   "by_category": {
+    "crosslang": 0.69,
+    "exact": 1,
+    "inflect": 1,
+    "nodiacritics": 1,
+    "paraphrase": 0.5,
+    "recent": 1,
+    "temporal": 0.6,
+    "typo": 0.67
+   },
+   "input_tokens_mean": 1549,
+   "seconds_p50": 1.52,
+   "per_question": [
+    {
+     "id": "q01",
+     "category": "exact",
+     "ok": true,
+     "answer": "Numer zamówienia na 400 sztuk SHT45 w TME to TME-2026-04471 (Bogdan Kowalski, 14 kwietnia 2026).",
+     "input_tokens": 1833,
+     "seconds": 1.29
+    },
+    {
+     "id": "q02",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem. W wiadomościach nie ma żadnej decyzji dotyczącej czujników z września, są tylko zgłoszenia, np. że czujniki temperatury różnią się o 2 stopnie na Przymorzu (22.09) i o 20 stopni na Gdyni (21.09), oraz pytania typu „Co myślicie?\" bez rozstrzygnięć.",
+     "input_tokens": 1816,
+     "seconds": 1.8
+    },
+    {
+     "id": "q03",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Na spotkaniu 17 września ustaliliśmy, że w nowej wersji stacji zostajemy przy czujniku Sensirion SHT45, a BME688 odpada, bo w trybie gazowym zużywał za dużo prądu.",
+     "input_tokens": 1802,
+     "seconds": 1.32
+    },
+    {
+     "id": "q04",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how long a station lasts on batteries at any measurement interval. They only mention a battery at 5% on the Grunwaldzka station and report intervals after various firmware versions, including 10 minutes after 2.2.3 (Ada Nowak, 2026-06-12), and Ada asked there whether anyone had measured the battery sleep current.",
+     "input_tokens": 1780,
+     "seconds": 1.86
+    },
+    {
+     "id": "q05",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Po kalibracji w komorze klimatycznej wyszedł stały offset +0,8°C dla serii z lutego (Marta Wiśniewska, 3 czerwca 2026); poprawkę wpisała do firmware 2.3.1.",
+     "input_tokens": 1913,
+     "seconds": 1.34
+    },
+    {
+     "id": "q06",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Wersję 2.4.0 wycofaliśmy ze wszystkich stacji w terenie, ponieważ po resecie watchdoga blokowała (brickowała) radio LoRa. Jonas Berg poinformował o tym 2026-07-08; do czasu wdrożenia poprawki Marty wróciliśmy do wersji 2.3.1.",
+     "input_tokens": 2015,
+     "seconds": 2.17
+    },
+    {
+     "id": "q07",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o zasięgu sygnału bramki na biurowcu.",
+     "input_tokens": 1705,
+     "seconds": 1.07
+    },
+    {
+     "id": "q08",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Pękała uszczelka przy dławiku – po 200 cyklach termicznych (obudowy przeszły test szczelności IP67, ale Ola Lewandowska zaleca zmianę materiału uszczelki na EPDM).",
+     "input_tokens": 1770,
+     "seconds": 1.55
+    },
+    {
+     "id": "q09",
+     "category": "exact",
+     "ok": true,
+     "answer": "Cena dla klientów hurtowych na 2027 to 1 290 zł netto za stację, a przy zamówieniu 50+ sztuk obowiązuje rabat 12% (informacja od Bogdana Kowalskiego z 25 czerwca 2026).",
+     "input_tokens": 1822,
+     "seconds": 1.43
+    },
+    {
+     "id": "q10",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Fundusz Black Pine oferuje 2,5 mln zł za 15% udziałów, a term sheet ma być gotowy do końca października.",
+     "input_tokens": 461,
+     "seconds": 2.02
+    },
+    {
+     "id": "q11",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say that anyone was hired as the embedded developer or give a start date. They only mention rejected offers, reference checks, job postings and interviews for that role, the latest being an interview on Friday at 14:15.",
+     "input_tokens": 1584,
+     "seconds": 1.35
+    },
+    {
+     "id": "q12",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Widełki dla junior QA to 7–9 tys. zł brutto na umowę o pracę (wiadomość Marty Wiśniewskiej z 12 czerwca 2026).",
+     "input_tokens": 1680,
+     "seconds": 1.13
+    },
+    {
+     "id": "q13",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, kto montuje płytki ani o zmianie firmy i jej powodach.",
+     "input_tokens": 1735,
+     "seconds": 1.28
+    },
+    {
+     "id": "q14",
+     "category": "exact",
+     "ok": true,
+     "answer": "Dla paczki z Shenzhen, która utknęła na odprawie celnej w Małaszewiczach, Bogdan Kowalski podał kod HS 9025 80 40.",
+     "input_tokens": 538,
+     "seconds": 1.56
+    },
+    {
+     "id": "q15",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zrezygnowaliśmy z DPD, bo było za dużo uszkodzonych paczek. Od października wysyłki krajowe robimy przez InPost (wiadomość Oli Lewandowskiej z 2026-09-09).",
+     "input_tokens": 1686,
+     "seconds": 1.23
+    },
+    {
+     "id": "q16",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how many complete stations were left in the Pruszcz warehouse at the end of June. Pruszcz appears only in reports of offline stations and sensor readings, not in any warehouse stock count.",
+     "input_tokens": 1934,
+     "seconds": 1.47
+    },
+    {
+     "id": "q17",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Według ostatniego dostępnego stanu, na koniec września (wpis Piotra Zielińskiego z 30.09.2026) w magazynie w Pruszczu było 12 kompletnych stacji (oraz 210 płytek i 0 obudów). Nowszych danych w wiadomościach nie ma, więc aktualnej liczby na dziś nie znam.",
+     "input_tokens": 1709,
+     "seconds": 2.1
+    },
+    {
+     "id": "q18",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Nowa strona startuje 24 listopada, a zamrożenie treści zaplanowano na 17 listopada (według wiadomości Sarah Mitchell z 20 października).",
+     "input_tokens": 1582,
+     "seconds": 1.5
+    },
+    {
+     "id": "q19",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention which content management system was chosen for the site or why.",
+     "input_tokens": 1708,
+     "seconds": 1.59
+    },
+    {
+     "id": "q20",
+     "category": "exact",
+     "ok": true,
+     "answer": "zielonydach.eu renews on 2027-03-11; it's on Ada's OVH account.",
+     "input_tokens": 479,
+     "seconds": 1.0
+    },
+    {
+     "id": "q21",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o narzędziu do statystyk odwiedzin na stronie. Wspomniano tylko o narzędziu do newslettera (Listmonk), ale to nie to samo.",
+     "input_tokens": 1685,
+     "seconds": 1.72
+    },
+    {
+     "id": "q22",
+     "category": "exact",
+     "ok": true,
+     "answer": "Kara umowna w umowie z Gdańskiem wynosi 0,2% za każdy dzień zwłoki (umowa dotyczy 60 stacji na przystankach, z montażem do 30 września).",
+     "input_tokens": 1042,
+     "seconds": 1.7
+    },
+    {
+     "id": "q23",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The installations are delayed by 2 weeks because ZTM has not yet given approval to connect power in the shelters (message from Tomasz Wójcik, 2026-09-24).",
+     "input_tokens": 1736,
+     "seconds": 1.15
+    },
+    {
+     "id": "q24",
+     "category": "exact",
+     "ok": true,
+     "answer": "Numer telefonu do inż. Haliny Kurek (kontakt po stronie miasta) to 58 323 11 47.",
+     "input_tokens": 1600,
+     "seconds": 1.48
+    },
+    {
+     "id": "q25",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Jedna stacja może wysłać do chmury 120 zapytań na godzinę; powyżej tego limitu API zwraca błąd 429 (informacja Jonasa Berga z 2026-08-04).",
+     "input_tokens": 1803,
+     "seconds": 1.9
+    },
+    {
+     "id": "q26",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Raport z laboratorium EMC w Gliwicach ma numer EMC/2026/1187 (dotyczy certyfikatu CE, według wiadomości Oli Lewandowskiej z 14 października 2026).",
+     "input_tokens": 1732,
+     "seconds": 1.77
+    },
+    {
+     "id": "q27",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Na północnych dachach trzeba dać panel 10 W (według Piotra Zielińskiego z 15 lipca); panel 6 W wystarcza do całorocznej pracy tylko na południowych dachach.",
+     "input_tokens": 1479,
+     "seconds": 1.6
+    },
+    {
+     "id": "q28",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Po pół roku w terenie dryf wilgotności wynosi średnio 2,1% RH, a maksymalnie 4,5% na stacjach przy morzu (wiadomość Marty Wiśniewskiej z 29.09.2026).",
+     "input_tokens": 1712,
+     "seconds": 1.89
+    },
+    {
+     "id": "q29",
+     "category": "recent",
+     "ok": true,
+     "answer": "Od przyszłego tygodnia stand-up jest o 9:30 we wtorki i czwartki (według wiadomości Ady Nowak z 9 listopada). Z wiadomości nie wynika, o której godzinie odbywa się obecnie, przed tą zmianą.",
+     "input_tokens": 1677,
+     "seconds": 1.48
+    },
+    {
+     "id": "q30",
+     "category": "recent",
+     "ok": true,
+     "answer": "Według Jonasa Berga urządzenia restartują się co 49,7 dnia, ponieważ przepełnia się licznik millis(). Poprawka trafi do wersji 2.5.2.",
+     "input_tokens": 1798,
+     "seconds": 1.35
+    },
+    {
+     "id": "q31",
+     "category": "recent",
+     "ok": true,
+     "answer": "Kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada.",
+     "input_tokens": 1820,
+     "seconds": 1.61
+    },
+    {
+     "id": "q32",
+     "category": "recent",
+     "ok": true,
+     "answer": "Yes. On 2026-11-10 Sarah Mitchell wrote that the pricing page copy is approved by Bogdan, and that the Polish translation is due Friday.",
+     "input_tokens": 1356,
+     "seconds": 1.2
+    },
+    {
+     "id": "q33",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Aktualizacje OTA wychodzą falami po 10% floty, z 24-godzinną przerwą między kolejnymi falami (Jonas Berg, 19 maja).",
+     "input_tokens": 1724,
+     "seconds": 1.78
+    },
+    {
+     "id": "q34",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Surowe pomiary trzymamy 13 miesięcy, potem zostają tylko agregaty godzinowe (według wiadomości Ady Nowak z 27.08.2026).",
+     "input_tokens": 1714,
+     "seconds": 1.7
+    },
+    {
+     "id": "q35",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Polisa OC produktu w Warcie ma sumę ubezpieczenia 2 mln zł (składka wynosi 6 400 zł rocznie).",
+     "input_tokens": 1511,
+     "seconds": 1.09
+    },
+    {
+     "id": "q36",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The office is moving to Garbary 8 from 1 January, with rent of 9 800 zł per month (Ada Nowak, 2026-09-12).",
+     "input_tokens": 1505,
+     "seconds": 1.66
+    },
+    {
+     "id": "q37",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Marta Wiśniewska napisała 6 sierpnia 2026, że Zofia Bąk jest bardzo dobra z automatyzacji w Playwright, a słabsza z SQL, i że dają jej ofertę na stanowisko QA. Wiadomości nie mówią, czy kandydatka tę ofertę przyjęła.",
+     "input_tokens": 559,
+     "seconds": 1.5
+    },
+    {
+     "id": "q38",
+     "category": "exact",
+     "ok": true,
+     "answer": "Stacje nadają w paśmie EU868, na kanałach 1–8, z domyślnym SF9 (według wiadomości Piotra Zielińskiego z 2026-04-23).",
+     "input_tokens": 1642,
+     "seconds": 2.04
+    },
+    {
+     "id": "q39",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The Vaisala HM40 reference hygrometer's calibration certificate is valid until April 2027, according to Marta Wiśniewska's message of 2026-04-29.",
+     "input_tokens": 575,
+     "seconds": 1.05
+    },
+    {
+     "id": "q40",
+     "category": "exact",
+     "ok": true,
+     "answer": "Faktura FV/0812/2026 od Plastmetu ma złą stawkę VAT: jest 23% zamiast 0% WDT. Bogdan Kowalski poprosił o korektę (12 sierpnia 2026).",
+     "input_tokens": 1736,
+     "seconds": 1.13
+    },
+    {
+     "id": "q41",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Pytanie dotyczy pierwszej partii od „nowego montażysty”, ale w wiadomościach nie ma żadnej informacji o montażyście. Jedyna pierwsza partia z wadami to ta od Eurocircuits (14 lipca): 3 z 250 płytek nie przeszły ICT, wszystkie z zimnym lutem na złączu USB-C. Nie jest jednak jasne, czy Eurocircuits to ten montażysta, o którego chodzi.",
+     "input_tokens": 1665,
+     "seconds": 2.67
+    },
+    {
+     "id": "q42",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak mocujemy stacje do wiat przystankowych.",
+     "input_tokens": 1770,
+     "seconds": 1.1
+    },
+    {
+     "id": "q43",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The city reported that 4 stations at Przymorze show a temperature 5 degrees too high. The suspected cause is the sun heating up the enclosure (the shield).",
+     "input_tokens": 1718,
+     "seconds": 1.95
+    },
+    {
+     "id": "q44",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The green in the logo is #2E7D32. Jonas Berg gave this in the final logo message on 2026-06-02: the green roof outline in #2E7D32, with the wordmark set in Inter Tight.",
+     "input_tokens": 1447,
+     "seconds": 1.63
+    },
+    {
+     "id": "q45",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Pierwszy numer newslettera trafi do 340 subskrybentów (narzędzie: Listmonk na naszym serwerze, z włączonym double opt-in).",
+     "input_tokens": 1744,
+     "seconds": 1.1
+    },
+    {
+     "id": "q46",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The daylight saving time switch shifted all chart timestamps by an hour because the backend stored local time instead of UTC. Jonas Berg said this was fixed in API 1.8.3.",
+     "input_tokens": 1729,
+     "seconds": 1.6
+    },
+    {
+     "id": "q47",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say what is used for stations that are out of LoRa range.",
+     "input_tokens": 1621,
+     "seconds": 1.19
+    },
+    {
+     "id": "q48",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o przerwie wakacyjnej ani o tym, kto wtedy jest pod telefonem. Pojawia się tylko wielokrotnie komunikat „Out tomorrow, ping me on the phone if urgent\" (m.in. od Marty Wiśniewskiej, Piotra Zielińskiego, Jonasa Berga, Oli Lewandowskiej, Bogdana Kowalskiego i Sarah Mitchell), ale dotyczy on pojedynczych dni nieobecności, a nie przerwy wakacyjnej.",
+     "input_tokens": 1599,
+     "seconds": 1.96
+    },
+    {
+     "id": "q49",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Wniosek do NCBR (Szybka Ścieżka) ma budżet projektu 3,1 mln zł; wynik miał być znany w listopadzie.",
+     "input_tokens": 1682,
+     "seconds": 1.06
+    },
+    {
+     "id": "q50",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Klient z Sopotu chce sterować pompą nawadniania na podstawie wilgotności gleby, a przekaźnik jako dodatek zostanie wyceniony na 180 zł.",
+     "input_tokens": 1652,
+     "seconds": 1.65
+    },
+    {
+     "id": "q51",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Tak. Według Marty Wiśniewskiej (24 lipca) pojemnościowy czujnik wilgotności gleby trzeba kalibrować osobno dla piasku i gliny, a różnica dochodzi do 18 punktów.",
+     "input_tokens": 1787,
+     "seconds": 1.31
+    },
+    {
+     "id": "q52",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma żadnych informacji o teście penetracyjnym stacji ani o jego wynikach.",
+     "input_tokens": 1694,
+     "seconds": 1.96
+    },
+    {
+     "id": "q53",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Wydania firmware zatwierdza teraz Marta Wiśniewska. Ada Nowak ogłosiła tę zmianę 2026-10-15, a wcześniej (kwiecień) tę rolę miał Jonas Berg, który teraz zajmuje się chmurą.",
+     "input_tokens": 1636,
+     "seconds": 1.42
+    },
+    {
+     "id": "q54",
+     "category": "typo",
+     "ok": true,
+     "answer": "The question spells the domain \"zielonydah.eu\", but the messages mention \"zielonydach.eu\", so I can't be sure it's the same one. If you mean zielonydach.eu, it renews on 2027-03-11 on Ada's OVH account. The messages give a renewal date rather than an expiry date, and they say nothing about \"zielonydah.eu\".",
+     "input_tokens": 482,
+     "seconds": 2.02
+    },
+    {
+     "id": "q55",
+     "category": "typo",
+     "ok": true,
+     "answer": "Halina Kurek (w wiadomości pisana jako „Kurek”, nie „Kurrek”), inż. po stronie miasta, ma telefon 58 323 11 47.",
+     "input_tokens": 1596,
+     "seconds": 1.82
+    },
+    {
+     "id": "q56",
+     "category": "typo",
+     "ok": false,
+     "answer": "Nie wiem – w podanych wiadomościach nie ma żadnych informacji na ten temat. Lista wiadomości jest pusta, więc nie mogę podać daty, od której wysyłamy przez InPost (InPsot).",
+     "input_tokens": 123,
+     "seconds": 1.33
+    },
+    {
+     "id": "q57",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages never mention a gas sensor having a problem. The closest items are a firmware 2.5.0 regression in sensor handling (Ada Nowak, 2026-05-18) and Ada testing a new sensor from Farnell with good first results (2026-10-16), but neither is about a gas sensor.",
+     "input_tokens": 1660,
+     "seconds": 1.41
+    },
+    {
+     "id": "q58",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zamówiliśmy 400 sztuk SHT45 (zamówienie w TME, numer TME-2026-04471, złożone 14 kwietnia 2026). Dostawa miała nastąpić za 3 tygodnie od tej daty, czyli około 5 maja 2026.",
+     "input_tokens": 2084,
+     "seconds": 1.46
+    },
+    {
+     "id": "q59",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Paczka z Shenzhen utknęła na odprawie celnej w Małaszewiczach, bo na fakturze brakowało kodu HS. Bogdan Kowalski podał kod 9025 80 40.",
+     "input_tokens": 1611,
+     "seconds": 1.64
+    },
+    {
+     "id": "q60",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o łącznej liczbie urządzeń dla miasta ani o terminie. Pojawiają się tylko pojedyncze ekipy montażowe (np. 24 stacje na Bramie Wyżynnej, 3 na Hucisku, 2 na Oliwie PKP), bez podanego ogólnego planu i daty końcowej.",
+     "input_tokens": 1664,
+     "seconds": 1.57
+    }
+   ]
+  }
+ },
+ "spend": {
+  "calls": 120,
+  "input_tokens": 254721,
+  "output_tokens": 9312,
+  "usd": 0.603,
+  "price_per_million": [
+   2.0,
+   10.0
+  ]
+ }
+}
