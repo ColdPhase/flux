@@ -471,9 +471,9 @@ progress never leave the owner. The event carries identifiers and the status onl
 client refetches `GET /api/v1/assistant-runs/:id`.
 
 F-027 AST-6 ("Visible to everyone", 2026-10-17, #404) told the others that an assistant was working
-(`project.assistant_working.v1`, and `GET /api/v1/conversations/:id/assistant-activity`). Since #842 that is
-gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still sent for a
-task's run, which posts its result as a message in the task's discussion.
+(`project.assistant_working.v1`; the route `GET /api/v1/conversations/:id/assistant-activity` that listed who was working is gone, and
+it answers 404). Since #842 that is gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still
+sent for a task's run, which posts its result as a message in the task's discussion.
 
 ## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
@@ -746,7 +746,6 @@ from the request.
 | `POST /api/v1/assistant-runs/:id/retry` | the run's owner | `{ clientRunId }`: a new, separately capped run with the same request (202). |
 | `GET /api/v1/conversations/:id/assistant-changes` | project readers | The run messages of the conversation: the owner's own rows in every state, everyone else's what was done (applied, approved, undone, skipped) with `undoable` true only for someone who may edit (F-027 A4). Non-readers get 404. |
 | `GET /api/v1/projects/:id/assistant-changes?kind=work\|doc\|map&id=` | project readers | The local clients' applied changes (applied, approved, undone) to one task, Wiki page or map of the space, oldest first, the newest 50, with `via` ("Claude Code", "Codex" or the client's name) and `undoable` as for a conversation's list (#868, LC-2). A waiting change and a run's change are not listed. Non-readers get 404, a wrong `kind` or `id` 400. |
-| `GET /api/v1/conversations/:id/assistant-activity` | project readers | `{ working: [{ ownerId, ownerName }] }`: whose assistant is working there now, nothing more (F-027 AST-6). |
 | `POST /api/v1/assistant-changes/:id/apply`, `…/skip`, `…/edit`; `POST /api/v1/assistant-runs/:id/changes/apply`, `…/skip` | the owner only, in their own session | Decide waiting changes (F-036 AG-3). Everyone else gets 404. |
 | `POST /api/v1/assistant-changes/:id/undo`, `POST /api/v1/assistant-runs/:id/changes/undo` | the owner, or anyone who may edit | Take back one change or the whole message (F-027 A4). A reader who may not edit gets 403, a non-reader 404; only the owner takes back a created task. |
 
@@ -828,7 +827,7 @@ the manager grant, the working line only for the owner, the attributed answer an
 citations for peers, Stop, a provider failure, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
 The keyboard and modal-focus checks of AC-8 (08b to 08d, 10b) use Tab and Enter only: ask with `/ai`, reach Stop, Retry
-and Dismiss, and open the assistant's panel and the Details sheet, whose focus
+and Dismiss, and open the Details sheet, whose focus
 must stay inside until Esc returns it to the opener. They found, and the code now fixes, a Stop, Retry, Accept, Apply or Undo
 that dropped focus to the page when its button went away, a `/a` left in the reply box by typing `/ai` key by key, and a
 result opened from a thread button that did not take focus. `FLUX_UI_BROWSER=webkit` runs the same files in WebKit.
