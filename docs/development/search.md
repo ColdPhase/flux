@@ -23,7 +23,10 @@ The service (`createSearchUseCases`) picks by `usesSearchSyntax(text)`; the curs
   (`pdb.fuzzy(1)`), as the trigram match did ("ensor", "omparison", "comparisn" find "Sensor comparison"). A task number
   names one task, so it gets no typo.
 - **The score** in a position is `bm25 / (bm25 + 10)`, in (0, 1) and in the same order, so that the rows of an encrypted space,
-  which the in-memory index ranks from 0 to 1.5, merge with them. Encrypted spaces keep their own search unchanged.
+  which the in-memory index ranks from 0 to 1.5, merge with them. Encrypted spaces keep their own search unchanged: its in-memory index
+  still requires every word and has no stems (it cannot use the database's index; their content is never in it). So several plain words
+  find more in a plain space than in an encrypted one, and `encryption-search-live.test.ts` holds the parity to single words,
+  prefixes and quoted words or phrases (`"sensor" "lamp"`), which both sides answer alike.
 - **Snippets and marks.** `ts_headline` picks the passage and marks the query words and their longer forms (`czujn:*` for
   "czujnik"); `markSearchWords` (core) marks the rest in the text of the result: a longer form, the word without its
   accents ("piatek" marks "piątek") and the word as far as it was typed. Both use the same stem rule (`searchWordStem`).
