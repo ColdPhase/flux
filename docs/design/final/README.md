@@ -677,11 +677,12 @@ These functional rules from UI116-4 remain required:
     here." with Download as the one button on the sheet.
   - **While it opens** the sheet shows the spinner with the file name; a person who lost access
     sees "You no longer have access to this file." and nothing else.
-  - Text and source: Geist Mono `--fs-base`, wrapped, no line numbers. JSON: pretty, two-space
+  - Text and source: Geist Mono `--fs-base`, wrapped; line numbers stay off until the quiet
+    **Show line numbers** under the sheet. JSON: pretty, two-space
     indents, each object and array folds with a chevron; a large file starts folded below the
     second level; invalid JSON shows the text with the parse error line above it. CSV/TSV: a table
     of every row with the header row sticky, mono numbers right-aligned, a cell that starts with
-    `=`, `+`, `-` or `@` shown as written text.
+    `=`, `+`, `-` or `@` shown as written text; the line under the sheet says how many rows.
 
 | | |
 | --- | --- |
