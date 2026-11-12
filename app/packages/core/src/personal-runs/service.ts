@@ -736,7 +736,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         if (change.name !== undefined && change.name !== current.name) await agents.rename(current.id, change.name);
         if (change.model) {
           const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${modelNameOf(current.model)}.`);
-          await agents.change(current.id, placement(chosen.item, chosen.model));
+          // Choosing the model it already has changes nothing (no new version of the agent).
+          if (current.model.connection !== chosen.item.ref || current.model.model !== chosen.model) await agents.change(current.id, placement(chosen.item, chosen.model));
         }
         if (change.instructions !== undefined) await agents.change(current.id, { instructions: change.instructions });
         return (await agents.get(owner, current.id))!;

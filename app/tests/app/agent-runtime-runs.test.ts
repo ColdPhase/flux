@@ -663,9 +663,13 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(((await runs.get(human(owner), early.run.id)).model), 'opus');
 
     // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
-    for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id', '', 42]) {
-      await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
-        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', String(bad));
+    for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id']) {
+      await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
+        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', bad);
+    }
+    // Not even an id (an empty or non-text value) is refused as input before the account's list is asked.
+    for (const bad of ['', 42]) {
+      await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad as string }), (error: unknown) => (error as Error).message === 'model must be a model id', String(bad));
     }
     // A ChatGPT plan the owner is not signed in to offers nothing (#854): never a switch to another vendor.
     await assert.rejects(chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
