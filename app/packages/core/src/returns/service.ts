@@ -25,7 +25,7 @@ const automated = (event: AudienceEvent) => event.data?.automation === GITHUB_RU
 const SCAN = 400;
 /** Stop once this many visible changes are kept: there is more than one short list to show. */
 const VISIBLE_ENOUGH = 400;
-/** At most this many of the reader's own rows are read per summary (of the rows it can tell, of the place for a space or a conversation). */
+/** At most the reader's newest this many rows after the point are looked at per summary, whatever the place and the kinds keep of them. */
 const BUDGET = 8000;
 const MAX_ITEMS = 40;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -139,14 +139,14 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const visible = new Map<string, Set<string>>();
     const kept: AudienceEvent[] = [];
     let before: number | null = null;
-    let read = 0;
     let enough = false;
+    // The budget bounds the rows the database looks at, not the rows its filters keep (#1191).
+    const floor = await returns.audienceFloor(recipient, base.seq, BUDGET);
     for (;;) {
-      // A space or a conversation reads only its own rows, and only rows a summary can tell (#1178); the row budget counts those rows. The
-      // filters below stay.
-      const page = await returns.audienceAfter(recipient, base.seq, SCAN, before, resolved.type === 'project' ? { projectId: resolved.projectId! }
+      // A space or a conversation reads only its own rows, and only rows a summary can tell, the reader's own changes left out (#1178).
+      // The filters below stay.
+      const page = await returns.audienceAfter(recipient, floor, SCAN, before, resolved.type === 'project' ? { projectId: resolved.projectId! }
         : resolved.type === 'conversation' ? { conversationId: resolved.conversationId! } : null, SUMMARY_ROWS);
-      read += page.length;
       const candidates = page.filter((event) => RELEVANT.has(event.kind) && (event.actorId !== recipient || automated(event)) && event.workspaceId);
       const newSketches = [...new Set(candidates.filter((event) => event.kind.startsWith('sketch.') && !sketches.has(event.objectId)).map((event) => event.objectId))];
       for (const [id, sketch] of await returns.sketches(newSketches)) sketches.set(id, sketch);
@@ -191,7 +191,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
         kept.push(event);
       }
       if (kept.length >= VISIBLE_ENOUGH) { enough = true; break; }
-      if (page.length < SCAN || read >= BUDGET) break;
+      if (page.length < SCAN) break;
       before = page.at(-1)!.seq;
     }
 

@@ -94,6 +94,11 @@ export interface ReturnRepository {
    * space's rows to find its own (#1178).
    */
   audienceAfter(recipient: string, afterSeq: number, limit: number, beforeSeq?: number | null, place?: AudiencePlace | null, of?: AudienceKinds | null): Promise<AudienceEvent[]>;
+  /**
+   * The position after which the recipient's newest `budget` audience rows after `afterSeq` lie (`afterSeq` when there are fewer): the
+   * bound of one summary's reading, whatever its filters keep (#1191).
+   */
+  audienceFloor(recipient: string, afterSeq: number, budget: number): Promise<number>;
   /** The recipient's own audience position of an event, or null when it is not theirs. */
   audienceSeq(recipient: string, eventId: string): Promise<number | null>;
   /** The recipient's last audience row. */

@@ -43,6 +43,7 @@ type AudienceKinds = { kinds: string[]; automation: string };
 type AudienceRow = { id: string; seq: number | string; kind: string; workspaceId: string | null; objectId: string; actorId: string; data: Record<string, unknown>; createdAt: Date };
 const AUDIENCE_COLUMNS = `SELECT e.id, a.seq, e.kind, e.workspace_id AS "workspaceId", e.object_id AS "objectId", e.actor_id AS "actorId", e.data, e.created_at AS "createdAt"
   FROM event_audience a JOIN events e ON e.id = a.event_id WHERE a.recipient = $1 AND a.seq > $2`;
+const AUDIENCE_FLOOR = 'SELECT seq FROM event_audience WHERE recipient = $1 AND seq > $2 ORDER BY seq DESC OFFSET $3 LIMIT 1';
 // The rows of a summary's tasks and messages, read as they come (#1178). `due_on` as text, as Drizzle's string mode gives it.
 type SummaryWorkRow = { id: string; workspaceId: string; projectId: string; title: string; creationRevertedAt: Date | null; status: string; blocker: string | null;
   ownerUserId: string | null; ownerAgentId: string | null; createdByKind: string; createdById: string; createdAt: Date; dueOn: string | null };
@@ -106,6 +107,12 @@ export function returnRows(db: DbExecutor) {
       if (of) text += ` AND e.workspace_id IS NOT NULL AND e.kind = ANY(${next(of.kinds)}::text[]) AND (e.actor_id <> $1 OR e.data->>'automation' = ${next(of.automation)})`;
       const { rows } = await queryPrepared<AudienceRow>(db, `${text} ORDER BY a.seq DESC LIMIT $3`, values);
       return rows.map((row) => ({ ...row, seq: Number(row.seq) }));
+    },
+
+    /** The seq of the recipient's row just older than their newest `budget` rows after `afterSeq`: an index-only walk of at most `budget`. */
+    async audienceFloor(recipient: string, afterSeq: number, budget: number) {
+      const [row] = (await queryPrepared<{ seq: string }>(db, AUDIENCE_FLOOR, [recipient, afterSeq, budget])).rows;
+      return row ? Number(row.seq) : afterSeq;
     },
 
     async audienceSeq(recipient: string, eventId: string) {

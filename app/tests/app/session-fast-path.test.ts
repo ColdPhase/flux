@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { AUTH_SIGN_OUT_PATH } from '@flux/contracts';
+import { AUTH_SIGN_OUT_PATH, REVOKE_OTHER_SESSIONS_PATH, SESSIONS_PATH } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { Browser, publicOrigin } from './support/http.js';
 import { person, secondSession, type Person } from './support/people.js';
@@ -33,7 +33,7 @@ async function session(owner: Person) {
   return { ...second, browsers };
 }
 
-test('a sign-out, a revoked session, an expiry and a deleted account are refused on the very next request on both API processes', async () => {
+test('a sign-out, a revoked session, an expiry, the maximum age and a deleted account are refused on the very next request on both API processes', async () => {
   const owner = await person('session-fast-path');
 
   const signedOut = await session(owner);
@@ -41,9 +41,23 @@ test('a sign-out, a revoked session, an expiry and a deleted account are refused
   // The browser dropped its cookie; the same cookie sent again (a copy of it, read on both processes before) is refused too.
   await refusedEverywhere(signedOut.browsers, 'signed out on api');
 
+  // Ended from another browser of the person, on the other API process: one session, then "Sign out all other devices".
   const revoked = await session(owner);
-  await pool.query('DELETE FROM auth_sessions WHERE id = $1', [revoked.sessionId]);
-  await refusedEverywhere(revoked.browsers, 'revoked');
+  assert.equal((await onApi2(owner.browser).request('DELETE', `${SESSIONS_PATH}/${revoked.sessionId}`)).status, 204);
+  await refusedEverywhere(revoked.browsers, 'revoked from another browser');
+  const others = [await session(owner), await session(owner)];
+  assert.equal((await onApi2(owner.browser).request('POST', REVOKE_OTHER_SESSIONS_PATH, { body: {} })).status, 200);
+  for (const other of others) await refusedEverywhere(other.browsers, 'signed out everywhere else');
+
+  const removed = await session(owner);
+  await pool.query('DELETE FROM auth_sessions WHERE id = $1', [removed.sessionId]);
+  await refusedEverywhere(removed.browsers, 'its row deleted');
+
+  // Signed in longer ago than the maximum (30 days in the check stack), used a moment ago: the fast path checks the absolute limit too (#993).
+  const old = await session(owner);
+  await pool.query("UPDATE auth_sessions SET created_at = clock_timestamp() - interval '31 days' WHERE id = $1", [old.sessionId]);
+  await refusedEverywhere(old.browsers, 'past the maximum age');
+  assert.equal((await pool.query('SELECT 1 FROM auth_sessions WHERE id = $1', [old.sessionId])).rowCount, 0, 'and its row goes');
 
   const expired = await session(owner);
   await pool.query("UPDATE auth_sessions SET expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [expired.sessionId]);
