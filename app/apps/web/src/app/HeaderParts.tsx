@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, IconButton, Kreska, usePop } from '../ui';
+import { activeFirst } from '../people/lastActive';
 
 /**
  * The people and agents of a project as faces, one button to the space's people (F-026 §4 header).
@@ -10,9 +11,11 @@ import { Avatar, IconButton, Kreska, usePop } from '../ui';
  * and up has room for three people, the agent and "+N"; a narrower one for two people, the agent and "+N" (a two-digit one too), so both
  * counts are drawn and the pane's width chooses (project-header.css). The order is the space's own: people first, then the agent.
  */
-export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerson[]; audience: string; onOpen: () => void }) {
-  const humans = people.filter((person) => person.kind === 'human');
-  const agents = people.filter((person) => person.kind === 'agent');
+export function HeaderFaces({ people, meId, audience, onOpen }: { people: ProjectPerson[]; meId: string; audience: string; onOpen: () => void }) {
+  // The people active now come first (#1236, #1225), then the others as the list has them, and an agent last.
+  const ordered = activeFirst(people, meId);
+  const humans = ordered.filter((person) => person.kind === 'human');
+  const agents = ordered.filter((person) => person.kind === 'agent');
   const shown = [...humans.slice(0, 3), ...agents.slice(0, 1)];
   const narrow = Math.min(humans.length, 2) + Math.min(agents.length, 1);
   /** What is left beyond `faces` drawn: "+5", and "99+" from a hundred so it stays as wide as "+99". */

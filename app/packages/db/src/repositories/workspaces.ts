@@ -81,7 +81,7 @@ export function workspaceRepository(db: DbExecutor) {
     },
 
     members(workspaceId: string) {
-      return db.select({ member: schema.workspaceMembers, email: schema.authUsers.email, name: schema.authUsers.name })
+      return db.select({ member: schema.workspaceMembers, email: schema.authUsers.email, name: schema.authUsers.name, lastActiveAt: schema.authUsers.lastActiveAt, showLastActive: schema.authUsers.showLastActive })
         .from(schema.workspaceMembers)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
         .where(eq(schema.workspaceMembers.workspaceId, workspaceId))

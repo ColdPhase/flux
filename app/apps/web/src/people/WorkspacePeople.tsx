@@ -15,6 +15,7 @@ import { listCompanyEncryptedSpaces } from '../encryption/api';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, problemText, removeMember, renameCompany,
   revokeInvite } from './api';
 import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
+import { PersonLine } from './LastActive';
 import './people.css';
 
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
@@ -410,7 +411,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
     <li className={`people__item${editing ? ' is-editing' : ''}`} data-row-key={member.userId}>
       <div className="people__row">
         <Avatar name={member.name} id={member.userId} size="md" tone={self ? 'me' : 'neutral'} />
-        <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><span>{member.email}</span></span>
+        <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
         {/* On the company's page the role is the control: "Admin ▾" opens the same editor under the row. */}
         {page && editable ? (
           <Button ref={changeRef} variant="quiet" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}

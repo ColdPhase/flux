@@ -129,7 +129,7 @@ export function projectRepository(db: DbExecutor) {
 
     /** The workspace's people, for the audience of a project. */
     members(workspaceId: string) {
-      return db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name })
+      return db.select({ id: schema.workspaceMembers.userId, name: schema.authUsers.name, lastActiveAt: schema.authUsers.lastActiveAt, showLastActive: schema.authUsers.showLastActive })
         .from(schema.workspaceMembers)
         .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.workspaceMembers.userId))
         .where(eq(schema.workspaceMembers.workspaceId, workspaceId));

@@ -11,7 +11,7 @@ import { AgentsList } from '../my-agents/AgentsList';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
 import { WorkspacePeople } from '../people/WorkspacePeople';
-import { AccountEditing } from './AccountEditing';
+import { AccountEditing, LastActiveSwitch } from './AccountEditing';
 import '../agent-connection/connection.css';
 import { useShellData } from './data';
 import { setSmallMoments, useSmallMoments } from './smallMoments';
@@ -434,6 +434,7 @@ export function SettingsAccount() {
           </div>
         </section>
         <AccountEditing userId={me.user.id} name={me.user.name} email={me.user.email} />
+        <LastActiveSwitch shows={me.user.showLastActive} />
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
           <button type="submit" className="sset-row sset-row--link" aria-disabled={signingOut || undefined}>
             <span className="sset-row__ic" aria-hidden="true">{signingOut ? <Spinner /> : <Icon name="sign-out" size={16} />}</span>

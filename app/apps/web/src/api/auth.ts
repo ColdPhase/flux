@@ -1,7 +1,8 @@
 import {
   AUTH_CHANGE_EMAIL_PATH, AUTH_CHANGE_PASSWORD_PATH, AUTH_UPDATE_USER_PATH, REVOKE_OTHER_SESSIONS_PATH, SESSIONS_PATH, type SessionSummary,
   AUTH_REQUEST_PASSWORD_RESET_PATH, AUTH_RESET_PASSWORD_PATH, AUTH_SIGN_IN_EMAIL_PATH, AUTH_SIGN_IN_SOCIAL_PATH, AUTH_SIGN_UP_EMAIL_PATH,
-  IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
+  IDENTITY_CLAIM_PATH, IDENTITY_LINK_PATH, identityLinkPath, IDENTITY_CAPABILITIES_PATH, ME_LAST_ACTIVE_PATH, ME_PATH, ME_PROBE_HEADER, type IdentityCapabilities, type MeResponse,
+  type SetLastActive,
 } from '@flux/contracts';
 import { ApiError, request } from './client';
 
@@ -108,4 +109,9 @@ export function endSession(id: string) {
 export function endOtherSessions() {
   // `disconnected` counts the person's local AI clients that were disconnected with the other devices (#989).
   return request<{ revoked: number; disconnected: number }>(REVOKE_OTHER_SESSIONS_PATH, { method: 'POST' });
+}
+
+/** "Show when I was last active" (#1225, C-58): off, the server erases the time it holds and stops writing it. */
+export function setShowLastActive(show: boolean) {
+  return request<null>(ME_LAST_ACTIVE_PATH, { method: 'PUT', body: { show } satisfies SetLastActive });
 }

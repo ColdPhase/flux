@@ -253,7 +253,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | --- | --- |
 | `GET /api/v1/workspaces` | `listWorkspaces` (`POST` `createWorkspace` only on a test deployment, F-037) |
 | `GET/PATCH /api/v1/workspaces/:id` | `getWorkspace`, `renameWorkspace` (owners and admins rename the company) |
-| `GET/POST /api/v1/workspaces/:id/members` | `listMembers`, `addMember` (by `email` or `userId`) |
+| `GET/POST /api/v1/workspaces/:id/members` | `listMembers` (each person with `lastActiveAt`, rounded as above; a guest cannot read the list, `workspace.read_members`), `addMember` (by `email` or `userId`) |
 | `PATCH/DELETE /api/v1/workspaces/:id/members/:userId` | `changeRole`, `removeMember` |
 | `GET/POST /api/v1/workspaces/:id/invites` | `listInvites`, `createInvite` ([invite links](#invite-links-f-035)) |
 | `DELETE /api/v1/workspaces/:id/invites/:inviteId` | `revokeInvite` |
@@ -262,7 +262,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `GET/PATCH/DELETE /api/v1/projects/:id` | `getProject` (with `ai`, the space's switch), `renameProject`, `deleteProject` |
 | `POST /api/v1/projects/:id/leave` | `leaveProject` |
 | `PUT /api/v1/projects/:id/ai-policy` | `setSpaceAi` (`state`: `allowed` or `blocked`); answers `{ ai, changed, stopped }` |
-| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
+| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so removed and revoked principals are left out. Names only the project's audience, never the workspace roster. Each person carries `lastActiveAt` (C-58, #1225), rounded by the server (to the minute under an hour, to the hour under a day, the reader's own day from a day on), and none when they turned it off or have not been active; an agent has none. Only the HTTP read asks for it: the audience the server's other readers use (export, receipts, direct messages, an agent's tools) never carries it. |
 | (no `/views`) | A space stores no views (#1043): every space shows Conversation, Tasks, Map and Wiki, so there is no `views` column, no `POST /api/v1/projects/:id/views`, no `project.view_added.v1` and no starting views. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |

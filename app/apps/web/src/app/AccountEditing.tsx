@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } fr
 import { useRevalidator, useSearchParams } from 'react-router';
 import type { IdentityCapabilities, SessionSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { changeEmail, changePassword, endOtherSessions, endSession, getCapabilities, getMe, listSessions, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, updateName } from '../api/auth';
+import { changeEmail, changePassword, endOtherSessions, endSession, getCapabilities, getMe, listSessions, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, setShowLastActive, updateName } from '../api/auth';
 import { Avatar, Button, Icon, Input, Spinner } from '../ui';
 import { photoProblem, removeMyPhoto, setMyPhoto, usePhotoOf } from '../people/photos';
 import { SwitchRow } from '../ui/SwitchRow';
@@ -267,5 +267,37 @@ function Sessions() {
       {others > 1 ? <div className="details__actions sset-gap"><Button variant="secondary" busy={busy === 'others'} onClick={() => void end('others')}>Sign out all other devices</Button></div> : null}
       <p className="sset-acct__done" role="status">{status}</p>
     </section>
+  );
+}
+
+/**
+ * "Show when I was last active" (#1225, C-58): the person's own switch, on by default. Off, the server erases the time it holds and the people
+ * lists show no line for them. The switch shows the new state at once and goes back, with the reason, when the server did not accept it.
+ */
+export function LastActiveSwitch({ shows }: { shows: boolean }) {
+  const revalidator = useRevalidator();
+  // What the person just chose, until the shell has read it back; then the shell's own value again.
+  const [chosen, setChosen] = useState<boolean | null>(null);
+  const [failed, setFailed] = useState(false);
+  const busy = useRef(false);
+  const on = chosen ?? shows;
+  async function change(next: boolean) {
+    if (busy.current) return;
+    busy.current = true; setChosen(next); setFailed(false);
+    try {
+      await setShowLastActive(next);
+      await revalidator.revalidate();
+    } catch {
+      setFailed(true);
+    } finally { busy.current = false; setChosen(null); }
+  }
+  return (
+    <>
+      <div className="sset-card sset-gap" data-last-active-switch={on ? 'on' : 'off'}>
+        <SwitchRow label="Show when I was last active" checked={on} onChange={(next) => void change(next)}
+          detail="People who can see you in Flux see when you were last active, never where. Turn it off and nobody does." />
+      </div>
+      {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />That didn’t work. Nothing changed; try again.</p> : null}
+    </>
   );
 }

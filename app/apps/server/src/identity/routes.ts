@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   IDENTITY_CAPABILITIES_PATH,
+  ME_LAST_ACTIVE_PATH,
   ME_PATH,
   ME_PROBE_HEADER,
   ME_TIME_ZONE_PATH,
@@ -10,6 +11,7 @@ import {
   type IdentityCapabilities,
   type MeResponse,
   type SessionSummary,
+  type SetLastActive,
   type SetTimeZone,
 } from '@flux/contracts';
 import { isTimeZone } from '@flux/core';
@@ -41,6 +43,12 @@ export interface PersonTimeZones {
   set(userId: string, timeZone: string): Promise<void>;
 }
 
+/** Whether others may see when a person was last active (#1225, C-58). `@flux/db`'s `personLastActive` implements it; turning it off erases the time held. */
+export interface PersonLastActiveSwitch {
+  shows(userId: string): Promise<boolean>;
+  setShows(userId: string, show: boolean): Promise<void>;
+}
+
 /** Disconnects every local AI client of a person (#989): the connections, their runtime sessions and every OAuth token. Returns how many connections. */
 export interface ClientDisconnector {
   disconnectClients(userId: string): Promise<number>;
@@ -53,6 +61,7 @@ export interface IdentityRouteOptions {
   store: SessionStore;
   clients: ClientDisconnector;
   timeZones: PersonTimeZones;
+  lastActive: PersonLastActiveSwitch;
   passwordReset: IdentityCapabilities['passwordReset'];
   signup: IdentityCapabilities['signup'];
   /** With a provider in SSO-only mode, the sign-in page offers no password form (#315). */
@@ -66,7 +75,7 @@ export interface IdentityRouteOptions {
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, timeZones, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, timeZones, lastActive, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
   app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
@@ -75,8 +84,8 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices
       if (!found) return reply.type('application/json').send('null') as never;
     }
     const context = await sessions.requirePrincipal(request);
-    const timeZone = await timeZones.get(context.principal.id);
-    return { principal: context.principal, user: { ...context.user, timeZone }, session: { id: context.sessionId, expiresAt: context.expiresAt.toISOString() } };
+    const [timeZone, showLastActive] = await Promise.all([timeZones.get(context.principal.id), lastActive.shows(context.principal.id)]);
+    return { principal: context.principal, user: { ...context.user, timeZone, showLastActive }, session: { id: context.sessionId, expiresAt: context.expiresAt.toISOString() } };
   });
 
   // The web app's browser zone, saved on the person when it is another one (#1168, C-57): no setting, nothing for the person to do.
@@ -85,6 +94,14 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices
     const context = await sessions.requirePrincipal(request);
     if (!isTimeZone(request.body.timeZone)) return reply.code(400).send({ error: 'timeZone must be an IANA time zone', code: 'INVALID_TIME_ZONE' } satisfies ApiError);
     await timeZones.set(context.principal.id, request.body.timeZone);
+    return reply.code(204).send();
+  });
+
+  // "Show when I was last active" (#1225, C-58): the person's own switch, on until they turn it off.
+  app.put<{ Body: SetLastActive }>(ME_LAST_ACTIVE_PATH, { schema: { body: { type: 'object', required: ['show'], additionalProperties: false,
+    properties: { show: { type: 'boolean' } } } } }, async (request, reply) => {
+    const context = await sessions.requirePrincipal(request);
+    await lastActive.setShows(context.principal.id, request.body.show);
     return reply.code(204).send();
   });
 

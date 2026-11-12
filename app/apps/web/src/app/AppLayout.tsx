@@ -840,7 +840,7 @@ function AppLayoutContent() {
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
+            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} onOpen={openAudience} /> : null}
             {activeProject ? <LiveEntry /> : null}
             <MoreMenu items={moreItems} cue={activeProject ? (id, buttonId) => <LiveCue id={id} buttonId={buttonId} /> : undefined} />
           </div>

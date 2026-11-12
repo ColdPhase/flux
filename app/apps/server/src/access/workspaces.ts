@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { ME_PROBE_HEADER, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand } from '@flux/contracts';
 import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listRemovedPeople, listWorkspaces, removeMember, renameWorkspace, restoreMember } from '@flux/core';
-import { accessPorts, accessReader } from '@flux/db';
+import { accessPorts, accessReader, personTimeZones } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
 import { nameSchema } from '../http/schemas.js';
 import { UnauthenticatedError } from '../identity/index.js';
@@ -43,8 +43,11 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     replay: requires('workspace', 'workspace.read', () => request.params.workspaceId),
   }));
 
-  app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members`, async (request) =>
-    listMembers(await principal(request), request.params.workspaceId, db, accessPorts));
+  // The company's people with their rounded last-active time, the days counted in the reader's own zone (C-58). A guest cannot read this list.
+  app.get<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members`, async (request) => {
+    const reader = await principal(request);
+    return listMembers(reader, request.params.workspaceId, db, accessPorts, { lastActive: { timeZone: await personTimeZones(db).get(reader.id) } });
+  });
   app.post<{ Params: { workspaceId: string }; Body: AddMemberCommand }>(`${WORKSPACES_PATH}/:workspaceId/members`, {
     schema: { body: { type: 'object', required: ['role'], additionalProperties: false, properties: { userId: { type: 'string' }, email: { type: 'string' }, role: roleSchema } } },
   }, async (request, reply) => command(request, reply, {

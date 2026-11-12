@@ -180,6 +180,8 @@ Test deployments register a public PKCE client for the MCP resource with
 `{"name": "...", "redirectUris": ["http://127.0.0.1:19737/callback"]}`; the only scope there is is `offline_access`.
 The route answers `{"clientId": "..."}`. It exists only when `FLUX_TEST_FAILURE_INJECTION=true`
 is also set, which `./flux up` never does. The browser tests (`ui-test`) receive the token for it.
+The same two switches open `PUT /api/v1/integration/last-active` (`{"userId": "...", "minutesAgo": 140}`, or `null` to erase it): it sets when a person was
+last active (C-58, #1225), so a browser test can show "Active 2 h ago" without waiting.
 
 ## Checks and isolation
 

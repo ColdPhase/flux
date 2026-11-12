@@ -4,6 +4,7 @@ import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
 import { ConflictError, InvalidInputError, RuleViolationError } from './errors.js';
+import { roundedLastActive, type LastActiveOptions } from './last-active.js';
 import { enforce, evaluateProject, evaluateWorkspace, accessName, LEVEL } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { ProjectRecord } from './records.js';
@@ -128,12 +129,18 @@ export async function getProject(principal: Principal, projectId: string, db: Da
  * member is left out exactly as on their own next request. The candidates are the
  * workspace's members and agents; a project that nobody else can read lists only its managers.
  */
-export async function listProjectPeople(principal: Principal, projectId: string, db: Database, ports: ProjectPorts): Promise<ProjectPerson[]> {
+export async function listProjectPeople(principal: Principal, projectId: string, db: Database, ports: ProjectPorts, options: { lastActive?: LastActiveOptions } = {}): Promise<ProjectPerson[]> {
   const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, ports.access(db)), 'project');
   const workspaceId = project!.workspaceId;
   const projects = ports.projects(db);
   const humans = await projects.members(workspaceId);
   const agents = await projects.audienceAgents(principal, projectId, workspaceId);
+  // The rounded last-active time (C-58) is read from the same rows as the names, for whoever the policy lists below; agents have none.
+  const now = new Date();
+  const lastActive = new Map(options.lastActive ? humans.flatMap((row) => {
+    const at = roundedLastActive(row, options.lastActive!, now);
+    return at ? [[row.id, at] as const] : [];
+  }) : []);
   const candidates = [
     ...humans.map((row) => ({ kind: 'human' as const, id: row.id, name: row.name })),
     ...agents.map((row) => ({ kind: 'agent' as const, id: row.id, name: row.name })),
@@ -142,7 +149,9 @@ export async function listProjectPeople(principal: Principal, projectId: string,
   for (const candidate of candidates) {
     const decision = await evaluateProject({ kind: candidate.kind, id: candidate.id }, 'project.read', projectId, ports.access(db));
     const access = decision.allowed ? accessName(decision.level) : null;
-    if (access) people.push({ ...candidate, access });
+    if (!access) continue;
+    const at = candidate.kind === 'human' ? lastActive.get(candidate.id) : undefined;
+    people.push({ ...candidate, access, ...(at ? { lastActiveAt: at } : {}) });
   }
   // Owner names reuse the authorized audience, never the workspace candidate roster.
   const visibleHumans = new Map(people.filter((person) => person.kind === 'human').map((person) => [person.id, person.name]));
@@ -160,8 +169,8 @@ export async function listProjectPeople(principal: Principal, projectId: string,
  * was not added reaches the space but is not one of its people, so the Owner field, mentions, the faces in the header and the settings
  * page all show the same list. An agent is listed with its owner, when its owner is listed.
  */
-export async function listSpacePeople(principal: Principal, projectId: string, db: Database, ports: ProjectPorts): Promise<ProjectPerson[]> {
-  const audience = await listProjectPeople(principal, projectId, db, ports);
+export async function listSpacePeople(principal: Principal, projectId: string, db: Database, ports: ProjectPorts, options: { lastActive?: LastActiveOptions } = {}): Promise<ProjectPerson[]> {
+  const audience = await listProjectPeople(principal, projectId, db, ports, options);
   const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, ports.access(db)), 'project');
   if (project!.visibility === 'workspace') return audience;
   const added = new Set((await ports.projects(db).listGrants(principal, projectId)).map((grant) => grant.userId));
