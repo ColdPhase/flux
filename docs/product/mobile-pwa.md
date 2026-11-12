@@ -183,6 +183,68 @@ An accepted send is not proof that an OS displayed a notification; power/network
 policies and user settings affect delivery. The agent runtime executes server-side
 or in its supported runtime and must survive the mobile web app being suspended.
 
+### While Flux is open (#1243)
+
+Founder report and direction (Hubert, 2026-11-10 and 2026-11-12,
+[#1243](https://github.com/ColdPhase/flux/issues/1243)): in v0.2.0 nothing told a person
+that someone wrote to them or called while Flux was open elsewhere, and nothing led
+anyone to turn push on. The rules below are the contract; the card is drawn in the
+[final design](../design/final/README.md#notices).
+
+- **An in-app notice** is a card of its own (bottom right on a computer, top under the
+  safe area on a phone), separate from the Undo toasts. One at a time: the newest
+  replaces the older, and several from one place are grouped ("3 new messages in Tool
+  library"). It stays about 6 s, pauses while hovered or focused, and has Close. A call
+  notice with **Join** stays until the call ends or the person closes it.
+- **What decides it is the server's**, the same as push: the notification generator
+  stores the Inbox row and, when the person's level lets that reason interrupt, it is
+  not muted, and it is not quiet hours, it also records one `<source>.notice.v1` event
+  for that person alone on the live stream ([notifications](../development/notifications.md)).
+  The open tab reads that one item and shows it. There is no new polling: an idle tab
+  stays at 0 requests a minute (#862).
+- **The tab decides only where you are.** No notice for the place on screen (the space
+  or the direct message you are in, while the tab is visible), and none for your own
+  actions (the actor is never notified). Something that arrived while the tab was hidden
+  is not shown later as a notice; push and the Inbox have it.
+- **Accessible.** `role=status`, announced politely; it never takes focus, never covers
+  the composer, Send or an open dialog, and is instant with reduced motion.
+- **Sound** (founder decision, Hubert, 2026-11-12): off by default, one switch in
+  Settings › Notifications. The one exception is a direct call invitation's single soft
+  chime (#1223, F-039), on by default, which follows that same switch, the level and
+  quiet hours. Never a loop.
+- **The tab and the app.** The tab title gets "(N)" and the favicon a dot while
+  something unread waits that the level lets interrupt; the installed app sets the same
+  number with `navigator.setAppBadge` where the engine supports it. Reading it clears it.
+- **Asking for push.** After the first direct message or mention arrives, Home and the
+  Inbox show one dismissible card, once: "Get notified when someone writes to you or
+  calls · Turn on · Not now". **Turn on** calls `Notification.requestPermission()`
+  directly from the tap. The same offer is in the call strip when someone invites you.
+  Not now is remembered and offered again after 14 days at most. A denied permission
+  shows how to allow it again in the browser or system settings. On iOS outside the
+  Home Screen app, the card first explains Add to Home Screen with its steps; the
+  installed app then makes the offer. Android shows the same card and, where the browser
+  offers it, Install.
+
+**What triggers what.** One table for the in-app notice, push and the count on the
+tab and the badge. The level is the lowest level that interrupts: "Everything" includes
+everything "Only what needs me" does; "Nothing" interrupts for none of them. Quiet hours
+hold the notice, the sound and push alike; the Inbox always keeps the row.
+
+| What happens | Reason | Interrupts at |
+| --- | --- | --- |
+| A direct message to me | `dm` | Only what needs me |
+| A mention of me | `mention` | Only what needs me |
+| A question to me (`@me …?`, or an agent's question card) | `question` | Only what needs me |
+| A task assigned to me, waiting for me, or able to continue | `assigned` | Only what needs me |
+| A task due | none: tasks have no due date | — |
+| A decision about my work, or one my agent proposed | `review` | Only what needs me |
+| My agent waiting for my OK | `approval` | Only what needs me |
+| My agent finished a task ("Done: #4 …" in its chat) | not yet a notification: the chat's unread dot | Everything, once it is one |
+| A reply in a conversation I am part of | `reply` | Everything |
+| A call started in my space ([F-039](live-collaboration.md), #1223) | the call's notice | Notice at Only what needs me; push at Everything |
+| An invitation to a call | `invitation` | Only what needs me (with the chime) |
+| Being added to a space | not yet a notification | Only what needs me, once it is one |
+
 ## Platform research and release gate
 
 Record exact tested engine versions and the platform versions each documented

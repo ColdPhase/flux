@@ -26,6 +26,10 @@ happen (a conversation, the Messages list, Tasks) and by push and email, and sti
 waits. **Agent questions with ready-made answers (S14) have no contract yet**, so none are listed;
 the `question` kind is for people's questions today.
 
+The queue is what waits; it does not interrupt. What interrupts a person while Flux is open (the notice card), on
+the tab and the badge, and by push is one table, by reason and level, in
+[mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243) (#1243).
+
 Order: decisions, questions, blocked tasks, mentions; newest first within a kind. At most 300 items, of which
 at most 200 are decisions.
 

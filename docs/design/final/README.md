@@ -562,6 +562,45 @@ Community garden sensors, Rain barrel monitor and Tool library.
   people's things always wait for your OK." The same requests also show in the task's discussion.
 - A decision opens as its card (P4). An empty Inbox is a small moment.
 
+### Notices
+
+Founder direction (Hubert, 2026-11-10 and 2026-11-12, [#1243](https://github.com/ColdPhase/flux/issues/1243)).
+Drawn by the agents before it was built; the rules of what triggers a notice are in
+[mobile and PWA](../../product/mobile-pwa.md#while-flux-is-open-1243).
+
+| | |
+| --- | --- |
+| ![Notices on the computer, light and dark: one notice, a grouped notice, a call](screens/desktop-notices.webp) | ![Notices on the phone, light and dark](screens/phone-notices.webp) |
+
+- **A notice is its own card**, not a toast. Undo toasts stay at the bottom centre, one at a time
+  (#1206); a notice never replaces a toast and a toast never replaces a notice.
+- **Where.** At the bottom right on the computer and the tablet, 20 px from the edges, 360 px wide;
+  it stands 8 px above a composer, a toast or the phone's bar that reaches its corner, so it never
+  covers the composer or Send. On the phone it is at the top, 8 px under the safe area, 16 px from
+  each side. While a dialog or a sheet is open, it waits and shows when that closes.
+- **The card.** `--el`, `--sh-pop` (the dark theme's inset outline comes with it) and `--r-card`.
+  The sender's face on the left: `Avatar` 32 for a person, Kreska 32 for an agent. Then two lines:
+  the title in 14 / 20, 500, `--t1` ("Jonas Berg sent you a message"), and the preview in 14 / 20
+  `--t2`, each at most two lines with an ellipsis. The close × (`IconButton`, 44 px on touch)
+  is at the top right. The buttons are a row under the text, 32 px high:
+  - a direct message: **Reply** (outline) and **Open** (text button);
+  - a mention, a question, a task, a decision or an agent: **Open** (outline);
+  - a call: **Join**, the card's one primary button, and the title says who started it and where
+    ("Maja started a call in Tool library").
+- **One at a time.** A newer notice replaces the one shown, in place and without motion. Notices
+  from one place in a row are grouped: "3 new messages in Community garden sensors", with the
+  newest face and preview ("Maja: I moved the calibration notes…"); Open opens the newest. A call notice is replaced only by another call;
+  while it shows, other notices are not shown (they are in the Inbox).
+- **How long.** About 6 s, paused while the pointer is over it or focus is in it. A call notice
+  stays until the call ends or the person closes it.
+- **Calm.** Nothing for your own actions, and nothing for the place you are looking at (the space
+  or the direct message on screen). It follows your level and quiet hours; Nothing shows none. It
+  is announced politely (`role=status`) and never takes focus; Tab reaches its buttons.
+- **Motion** is the surfaces' ([motion](../motion.md#how-the-rules-apply-to-existing-motion)): it
+  enters in `--dur-in` on `--ease-out` with an 8 px travel from its edge (up from the bottom on
+  the computer, down from the top on the phone) and leaves in `--dur-out` on `--ease-in`; reduced
+  motion shows and removes it at once.
+
 ### A space: header, conversation and message actions
 
 | | |

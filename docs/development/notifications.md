@@ -58,6 +58,20 @@ the same session converge on one invitation row and record no second event, so t
 inbox row and one push. Migration `0021_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
 21) adds the reason to the `notifications.reason` check.
 
+### The notice on an open tab (#1243)
+
+A stored notification that interrupts the person (its reason is in their level's push channel, it is not quiet
+hours, and the place is not muted) is also announced on the live stream, so an open tab shows its
+[notice](../product/mobile-pwa.md#while-flux-is-open-1243) within the same second. The generator collects these
+while it works through its batch and writes them last, just before the transaction commits, so the events'
+sequence lock is held only for those inserts: one event per notification, `project.notice.v1` or `dm.notice.v1`,
+whose `objectId` is the source (space or direct message) and whose **id is the notification's id**, with one
+`event_audience` row for the recipient by name. Delivery checks again that they can read the source. The event,
+like every stream event, carries no content: the tab reads `GET /api/v1/inbox/:id`, which also returns `from` (the
+person's or agent's name, from the actor of the event the notification came from) for the sender's face. Every
+other open view ignores the kind. Nothing is announced during quiet hours, for a muted place or at the level
+Nothing, and push and email are unchanged.
+
 ## Edited and deleted messages (#1006)
 
 A notice keeps the words it was sent with: an **edit** neither rewrites the notices already stored nor sends new ones (nobody newly

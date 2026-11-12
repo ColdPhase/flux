@@ -87,6 +87,12 @@ separate founder decisions.
   takes the full height at once and its top edge rises from where it was. Going down it keeps the full height while it
   travels, so its bottom edge stays on the screen's edge, and takes the half height when it arrives.
 - **Toasts** follow the surface vocabulary of rule 3.
+- **Notices** ([#1243](https://github.com/ColdPhase/flux/issues/1243), [final design](final/README.md#notices)) are
+  surfaces too, and the one arrival that someone else causes which moves: the card enters in `--dur-in` on `--ease-out`
+  with an 8 px travel from its edge (`translateY(8px)` at the bottom right of the computer, `translateY(-8px)` at the
+  top of the phone) and leaves in `--dur-out` on `--ease-in`. A newer notice that replaces or joins the one shown
+  changes its text in place with no motion, so a burst of messages moves the card once. Reduced motion shows and
+  removes it at once.
 
 ## Tokens (`app/apps/web/src/ui/tokens.css`)
 
@@ -121,6 +127,7 @@ The values after #863:
 | The detail panel | `ui/SidePanel.tsx` |
 | Menus and popovers | `ui/pop.ts` (`usePop`) and `[data-pop]` in `ui/ui.css` |
 | Toasts | `ui/Toast.tsx` |
+| Notices | `notifications/Notices.tsx` |
 | View and place switches | `ui/ViewFade.tsx` around the routes in `app/AppLayout.tsx`; `ui/motion-rules.ts` |
 | Surfaces that load their code | `app/DeferredSurfaces.tsx` (preloaded when the browser is idle soon after the shell is up, and on the first pointer-down or ⌘/Ctrl); their skeletons in `app/SurfaceSkeletons.tsx` |
 | The loading state of a screen a switch goes to | `app/PendingView.tsx` (the loading state, the thread's panel and the hidden view's keys) over the old view, in `app/AppLayout.tsx`; the code of a project's other views is fetched when idle in `app/viewChunks.ts` |
