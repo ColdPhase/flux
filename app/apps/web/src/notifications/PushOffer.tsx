@@ -74,7 +74,7 @@ export function PushOffer({ userId, ready }: { userId: string; ready: boolean })
       if (!live) return;
       if (state.state === 'prompt') setView({ kind: 'offer', publicKey: state.publicKey });
       // The Home Screen steps only where the installed app could then be notified: this server must be able to push (#763 SG-3).
-      else if (state.state === 'needs-install' && await pushOnServer() && live) setView({ kind: 'home-screen' });
+      else if (state.state === 'needs-install' && await pushOnServer().catch(() => false) && live) setView({ kind: 'home-screen' });
     }, () => undefined);
     return () => { live = false; };
   }, [userId, due]);
