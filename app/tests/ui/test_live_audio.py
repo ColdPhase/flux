@@ -81,8 +81,8 @@ AUDIO_INSTRUMENT = """
 
 # The mean power of what the first remote voice carries to this page, measured on the received stream itself, before the element's
 # volume: every sample of the window counts (a ScriptProcessor sees all of them), so the short beeps of the fake microphone cannot be missed.
-POWER = """async (ms) => {
-  const element = document.querySelector('[data-live-audio] audio');
+POWER = """async ({ ms, who }) => {
+  const element = document.querySelector(`[data-live-audio] audio[data-live-person="${who}"]`);
   const context = new AudioContext();
   await context.resume();
   const source = context.createMediaStreamSource(element.srcObject);
@@ -123,8 +123,21 @@ def remembered(page: Page) -> dict:
     return json.loads(page.evaluate("localStorage.getItem('flux.live.audio') || '{}'"))
 
 
-def voices(page: Page) -> list[dict]:
-    return page.evaluate("[...document.querySelectorAll('[data-live-audio] audio')].map((e) => ({ volume: e.volume, muted: e.muted, gain: e.dataset.liveGain || null }))")
+def uid(key: str) -> str:
+    return PEOPLE[key]["id"]
+
+
+def voice_js(key: str) -> str:
+    """The playing element of one person's voice (the page names it by person, so a leftover of an earlier call cannot be mistaken for it)."""
+    return f"document.querySelector('[data-live-audio] audio[data-live-person=\"{uid(key)}\"]')"
+
+
+def voices(page: Page, key: str) -> list[dict]:
+    return page.evaluate(f"[...document.querySelectorAll('[data-live-audio] audio[data-live-person=\"{uid(key)}\"]')].map((e) => ({{ volume: e.volume, muted: e.muted, gain: e.dataset.liveGain || null }}))")
+
+
+def hears(page: Page, key: str) -> Locator:
+    return page.locator(f'[data-live-audio] audio[data-live-person="{uid(key)}"]')
 
 
 @unittest.skipUnless(LIVE, "needs the media server of the live test profile")
@@ -231,8 +244,8 @@ class LiveAudio(LiveBase):
         expect(nbar.get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
         jbar.get_by_role("button", name=re.compile("^Microphone off")).click()
         expect(jbar.get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
-        expect(jonas.locator("[data-live-audio] audio")).to_have_count(1)
-        expect(nia.locator("[data-live-audio] audio")).to_have_count(1)
+        expect(hears(jonas, "nia")).to_have_count(1)
+        expect(hears(nia, "jonas")).to_have_count(1)
 
         # Browser switches: all three on by default; turning one off restarts the running capture with it.
         arrow.click()
@@ -270,7 +283,7 @@ class LiveAudio(LiveBase):
                 set_range(slider, percent)
                 expect(slider).to_have_attribute("aria-valuetext", f"{percent}%")
                 nia.wait_for_timeout(1500)
-            measured[percent] = jonas.evaluate(POWER, 5000)
+            measured[percent] = jonas.evaluate(POWER, {"ms": 5000, "who": uid("nia")})
             print(f"receiver at {percent} %: {measured[percent]}")
         base, silent, half = (measured[key]["power"] for key in (100, 0, 50))
         self.assertGreater(base, 1e-6, "the fake microphone is heard before any change")
@@ -313,9 +326,9 @@ class LiveAudio(LiveBase):
         master = dialog.get_by_role("slider", name="Everything you hear")
         expect(master).to_have_attribute("aria-valuetext", "100%")
         set_range(master, 50)
-        until(nia, "Math.abs(document.querySelector('[data-live-audio] audio').volume - 0.5) < 0.01")
-        self.assertAlmostEqual(voices(nia)[0]["volume"], 0.5, delta=0.01)
-        self.assertEqual(voices(jonas)[0]["volume"], 1, "nobody else's sound changed")
+        until(nia, f"Math.abs({voice_js('jonas')}.volume - 0.5) < 0.01")
+        self.assertAlmostEqual(voices(nia, "jonas")[0]["volume"], 0.5, delta=0.01)
+        self.assertEqual(voices(jonas, "nia")[0]["volume"], 1, "nobody else's sound changed")
         shot(nia, "live-audio-desktop-1440-light-changed")
         set_range(master, 100)
         nia.keyboard.press("Escape")
@@ -340,31 +353,31 @@ class LiveAudio(LiveBase):
         requests.clear()
         set_range(volume, 80)
         expect(volume).to_have_attribute("aria-valuetext", "80%")
-        until(jonas, "Math.abs(document.querySelector('[data-live-audio] audio').volume - 0.8) < 0.01")
-        self.assertAlmostEqual(voices(jonas)[0]["volume"], 0.8, delta=0.01)
-        self.assertEqual(voices(nia)[0]["volume"], 1, "Nia's playback of Jonas is untouched")
+        until(jonas, f"Math.abs({voice_js('nia')}.volume - 0.8) < 0.01")
+        self.assertAlmostEqual(voices(jonas, "nia")[0]["volume"], 0.8, delta=0.01)
+        self.assertEqual(voices(nia, "jonas")[0]["volume"], 1, "Nia's playback of Jonas is untouched")
         self.assertEqual(requests, [], "a person's volume writes nothing to the server")
         self.assertEqual(person.get_by_role("switch", name="Mute for me").get_attribute("aria-checked"), "false")
         person.get_by_role("switch", name="Mute for me").click()
         expect(person.get_by_role("switch", name="Mute for me")).to_have_attribute("aria-checked", "true")
-        self.assertTrue(voices(jonas)[0]["muted"], "muted for me is the element's own")
-        self.assertFalse(voices(nia)[0]["muted"])
+        self.assertTrue(voices(jonas, "nia")[0]["muted"], "muted for me is the element's own")
+        self.assertFalse(voices(nia, "jonas")[0]["muted"])
         self.assertEqual(requests, [], "muting for me writes nothing to the server")
         expect(nbar.get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
         expect(jbar.get_by_role("button", name="Sound from Nia Okafor, muted for you")).to_be_visible()
         person.get_by_role("switch", name="Mute for me").click()
-        self.assertFalse(voices(jonas)[0]["muted"])
+        self.assertFalse(voices(jonas, "nia")[0]["muted"])
         # Above 100 % the voice goes through a gain stage and its element is silent, so it is never heard twice.
         set_range(volume, 200)
         expect(volume).to_have_attribute("aria-valuetext", "200%")
-        until(jonas, "document.querySelector('[data-live-audio] audio').dataset.liveGain === '2'")
-        self.assertTrue(voices(jonas)[0]["muted"])
+        until(jonas, f"{voice_js('nia')}.dataset.liveGain === '2'")
+        self.assertTrue(voices(jonas, "nia")[0]["muted"])
         set_range(volume, 150)
-        until(jonas, "document.querySelector('[data-live-audio] audio').dataset.liveGain === '1.5'")
+        until(jonas, f"{voice_js('nia')}.dataset.liveGain === '1.5'")
         set_range(volume, 80)
-        until(jonas, "!document.querySelector('[data-live-audio] audio').dataset.liveGain")
-        self.assertFalse(voices(jonas)[0]["muted"])
-        self.assertAlmostEqual(voices(jonas)[0]["volume"], 0.8, delta=0.01)
+        until(jonas, f"!{voice_js('nia')}.dataset.liveGain")
+        self.assertFalse(voices(jonas, "nia")[0]["muted"])
+        self.assertAlmostEqual(voices(jonas, "nia")[0]["volume"], 0.8, delta=0.01)
         self.assertEqual(remembered(jonas)["people"].get(PEOPLE["nia"]["id"]), {"volume": 80, "muted": False})
         jonas.keyboard.press("Escape")
 
@@ -458,7 +471,7 @@ class LiveAudio(LiveBase):
             assert box
             self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, f"touch target {button.get_attribute('aria-label') or button.inner_text()}")
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
-        expect(jonas.locator("[data-live-audio] audio")).to_have_count(1)
+        expect(hears(jonas, "nia")).to_have_count(1)
 
         bar.get_by_role("button", name="Session details and more").click()
         sheet = jonas.get_by_role("dialog", name="Live session")
@@ -471,7 +484,7 @@ class LiveAudio(LiveBase):
         shot(jonas, "live-audio-phone-390-person-ios")
         inline.get_by_role("switch", name="Mute for me").click()
         expect(inline.get_by_role("switch", name="Mute for me")).to_have_attribute("aria-checked", "true")
-        self.assertTrue(voices(jonas)[0]["muted"], f"muted for me is the element's own: {voices(jonas)} {remembered(jonas)}")
+        self.assertTrue(voices(jonas, "nia")[0]["muted"], f"muted for me is the element's own: {voices(jonas, "nia")} {remembered(jonas)}")
         inline.get_by_role("switch", name="Mute for me").click()
         expect(inline.get_by_role("switch", name="Mute for me")).to_have_attribute("aria-checked", "false")
         sheet.get_by_role("button", name="Audio settings").click()
@@ -511,7 +524,7 @@ class LiveAudio(LiveBase):
         expect(self.bar(jonas)).to_be_visible()
         self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
         expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
-        expect(jonas.locator("[data-live-audio] audio")).to_have_count(1)
+        expect(hears(jonas, "nia")).to_have_count(1)
         self.bar(nia).get_by_role("button", name="Audio settings").click()
         dialog = nia.get_by_role("dialog", name="Audio settings")
         expect(dialog).to_be_visible()
@@ -528,7 +541,7 @@ class LiveAudio(LiveBase):
                 set_range(slider, percent)
                 expect(slider).to_have_attribute("aria-valuetext", f"{percent}%")
                 nia.wait_for_timeout(1500)
-            measured[percent] = jonas.evaluate(POWER, 6000)
+            measured[percent] = jonas.evaluate(POWER, {"ms": 6000, "who": uid("nia")})
             print(f"receiver of the quiet tone at {percent} %: {measured[percent]}")
         base = measured[100]["beep"]
         self.assertGreater(base, 1e-4, "the quiet tone is heard")

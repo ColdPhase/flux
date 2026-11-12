@@ -28,6 +28,7 @@ export class Playback {
 
   attach(element: HTMLMediaElement, userId: string) {
     this.voices.set(element, { userId, route: null });
+    element.dataset.livePerson = userId;
     this.apply(element);
   }
 
