@@ -8,7 +8,10 @@ Settings and of the Create window, light and dark, on the computer (1440) and on
 - the selected option's fill against its track at least 1.5:1 and lighter than the track, its label at least 4.5:1 on it, an unselected
   label at least 4.5:1 on the track and not the selected label's colour, and in dark a 1 px light edge (2:1 against the track);
 - an off switch's edge and knob at least 3:1 against the card and the track, an on switch's track at least 3:1 against the card and its knob
-  at least 4.5:1 on it.
+  at least 4.5:1 on it;
+- a switch's SHAPE, on and off, on the phone and the computer: the painted track is a pill (wider than tall, 20 to 30 px tall, fully rounded)
+  and the knob sits inside it. On the phone the touch box is 44 px tall but only the padding box is painted (`background-clip`), so a `background`
+  shorthand that resets the clip draws a solid 44 px disc and fails here.
 """
 
 from __future__ import annotations
@@ -35,6 +38,25 @@ FILL_MINIMUM = 1.5
 TEXT_MINIMUM = 4.5
 NON_TEXT_MINIMUM = 3.0
 EDGE_MINIMUM = 2.0  # in dark, where the edge is a light line on the darker track
+# The painted track of a switch: its box minus any border the fill is clipped out of (`background-clip: padding-box`). A pill 22 to 28 px
+# tall (the phone's 44 px box paints a 28 px track); the knob (a child element, or a pseudo-element when `knobSelector` is empty) sits inside.
+SHAPE = r"""(spec) => {
+  const el = document.querySelector(spec.selector);
+  if (!el) throw new Error('Missing switch: ' + spec.selector);
+  const style = getComputedStyle(el), box = el.getBoundingClientRect();
+  const clip = style.backgroundClip;
+  const inset = (side) => (clip === 'padding-box' || clip === 'content-box') ? parseFloat(style['border' + side + 'Width']) || 0 : 0;
+  const painted = {left: box.left + inset('Left'), top: box.top + inset('Top'), right: box.right - inset('Right'), bottom: box.bottom - inset('Bottom')};
+  const width = painted.right - painted.left, height = painted.bottom - painted.top;
+  const radius = Math.min(parseFloat(style.borderTopLeftRadius) || 0, width / 2, height / 2);
+  let knob = null;
+  if (spec.knobSelector) {
+    const k = el.querySelector(spec.knobSelector);
+    if (k) { const r = k.getBoundingClientRect(); knob = {left: r.left, top: r.top, right: r.right, bottom: r.bottom}; }
+  }
+  const inside = knob ? knob.left >= painted.left - .5 && knob.right <= painted.right + .5 && knob.top >= painted.top - .5 && knob.bottom <= painted.bottom + .5 : null;
+  return {clip, box: [box.width, box.height], width, height, radius, inside};
+}"""
 
 
 class SwitchesVisible(unittest.TestCase):
@@ -146,13 +168,20 @@ class SwitchesVisible(unittest.TestCase):
         edge = page.evaluate(RING, {"selector": track, "outsideSelector": outside})
         track_fill = page.evaluate(FILL, {"selector": track, "underSelector": outside})
         self.assertIsNotNone(edge.get("edge"), f"{what} {state} ({scheme}): the switch has a 1 px inset edge {edge}")
+        shape = page.evaluate(SHAPE, {"selector": track, "knobSelector": part.lstrip("> ") if not knob_pseudo else ""})
+        self.assertGreater(shape["width"], shape["height"], f"{what} {state} ({scheme}): the track is a pill, wider than tall {shape}")
+        self.assertGreaterEqual(shape["height"], 20, f"{what} {state} ({scheme}): the painted track is at least 20 px tall {shape}")
+        self.assertLessEqual(shape["height"], 30, f"{what} {state} ({scheme}): the painted track is at most 30 px tall, not a 44 px disc {shape}")
+        self.assertGreaterEqual(shape["radius"], shape["height"] / 2 - .5, f"{what} {state} ({scheme}): the track is fully rounded {shape}")
+        if shape["inside"] is not None:
+            self.assertTrue(shape["inside"], f"{what} {state} ({scheme}): the knob sits inside the painted track {shape}")
         if on:
             self.assertGreaterEqual(track_fill["ratio"], NON_TEXT_MINIMUM, f"{what} on ({scheme}): the ink track against the card {track_fill}")
             self.assertGreaterEqual(knob["ratio"], TEXT_MINIMUM, f"{what} on ({scheme}): the knob on the ink track {knob}")
         else:
             self.assertGreaterEqual(edge["ratio"], NON_TEXT_MINIMUM, f"{what} off ({scheme}): the edge against the card {edge}")
             self.assertGreaterEqual(knob["ratio"], NON_TEXT_MINIMUM, f"{what} off ({scheme}): the knob on its track {knob}")
-        type(self).measured.append(f"{what} {state} {scheme} edge {edge['ratio']:.1f}:1 knob {knob['ratio']:.1f}:1 track {track_fill['ratio']:.1f}:1")
+        type(self).measured.append(f"{what} {state} {scheme} edge {edge['ratio']:.1f}:1 knob {knob['ratio']:.1f}:1 track {track_fill['ratio']:.1f}:1 painted {shape['width']:.0f} x {shape['height']:.0f} px")
 
     # ---------------------------------------------------------------- segmented controls
 

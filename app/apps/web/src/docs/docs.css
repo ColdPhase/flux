@@ -221,7 +221,7 @@
 .doc-seg button:hover { color: var(--t1); }
 .doc-seg button[aria-pressed="true"], .doc-seg button[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 @media (pointer: coarse) { .doc-seg button { min-height: 44px; } }
-@media (forced-colors: active) { .doc-seg button[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
+@media (forced-colors: active) { .doc-seg button[aria-pressed="true"], .doc-seg button[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } }
 
 .doc-picker { position: absolute; z-index: 20; top: calc(100% + 4px); left: 0; width: min(440px, 100%); border-radius: var(--r-lg); background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); overflow: hidden; }
 .doc-edit__bar + .doc-picker { position: relative; top: 0; margin-bottom: 8px; }
