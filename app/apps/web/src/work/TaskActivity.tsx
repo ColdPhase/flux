@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
-import type { AssistantChange, ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import type { AssistantChange, ConversationMessage, LiveCallLine, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
@@ -30,6 +30,7 @@ import { STATUS_LABEL } from './format';
 import { dueLabel } from './TaskParts';
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
+import { callWords, useCallLines, useNow } from '../live/callLines';
 
 // A task's Activity (F-026 P10, #488): one timeline, newest first, of what changed and who said what. Each line has its
 // real author and time: the task's creation, every change of its state, owner, due day and title that was recorded, and the
@@ -225,6 +226,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const { discussion } = state;
   const people = useProjectShell()?.people ?? null;
   const othersOf = firstNames((people ?? []).filter((person) => person.kind === 'human' && person.id !== me.id).map((person) => person.name));
+  // The calls started from this task (F-041 point 6), with the names of who was in them.
+  const calls = useCallLines(project.id, item.id);
+  const callName = (userId: string) => userId === me.id ? me.name : people?.find((person) => person.id === userId)?.name ?? 'Someone';
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   // An agent's line in this thread is its run's change: it is taken back where it stands, not in the state line above.
   const posts = useAssistantChanges(discussion?.conversationId ?? null, `${state.lines.length}:${state.reads}`);
@@ -259,8 +263,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         </li>
       ))}</ol> : null}
       <ol className="wd-act" aria-label="Task activity">
-        {(state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
-          && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => {
+        {/* A call started from this task is one line of its discussion, in time order (F-041 point 6). */}
+        {byTime((state.loading ? [] : state.lines.filter((line) => !(line.kind === 'change' && line.entry.actor.kind === 'agent'
+          && clientChanges.some((change) => change.via !== null && Math.abs(Date.parse(change.createdAt) - Date.parse(line.at)) < 15_000)))).map((line) => ({ at: line.at, node: (() => {
           if (line.kind === 'message') {
             const message = line.message;
             const name = state.author(message);
@@ -305,7 +310,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
               </p>
             </li>
           );
-        })}
+        })() })), state.loading ? [] : calls.map((call) => ({ at: call.startedAt,
+          node: <TaskCallLine key={call.id} line={call} nameOf={callName} mine={call.startedBy === me.id} /> })))}
       </ol>
       {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
     </section>
@@ -382,5 +388,30 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       {askFailure ? <p className="wd-error" role="alert">{askFailure}</p> : null}
       <SendAnnouncer pending={composer.pending} />
     </form>
+  );
+}
+
+/** Activity lines and call lines in time order; at the same instant the activity line comes first. */
+function byTime(lines: { at: string; node: ReactNode }[], calls: { at: string; node: ReactNode }[]): ReactNode[] {
+  return [...lines.map((entry, index) => ({ ...entry, order: index })), ...calls.map((entry, index) => ({ ...entry, order: lines.length + index }))]
+    .sort((a, b) => a.at.localeCompare(b.at) || a.order - b.order).map((entry) => entry.node);
+}
+
+/**
+ * A call started from the task, as one line of its activity (F-041): "Hubert started a call · 2 people · 4 min". Its Join is the task's own
+ * button above (one way in per place), so the line has none.
+ */
+function TaskCallLine({ line, nameOf, mine }: { line: LiveCallLine; nameOf: (userId: string) => string; mine: boolean }) {
+  const now = useNow(line.endedAt === null);
+  const words = callWords(line, nameOf, now);
+  const starter = nameOf(line.startedBy);
+  return (
+    <li className="wd-act__item" data-activity="call" id={`call-${line.id}`}>
+      <Face actor={{ kind: 'human', id: line.startedBy, name: starter }} mine={mine} />
+      <p className="wd-act__line">
+        {words.named ? <><b title={starter}>{firstName(starter)}</b>{' '}</> : null}{words.text}
+        <time dateTime={line.startedAt} title={when(line.startedAt)}> · {stamp(line.startedAt)}</time>
+      </p>
+    </li>
   );
 }
