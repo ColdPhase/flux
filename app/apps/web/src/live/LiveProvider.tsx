@@ -202,7 +202,8 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     if (back.length) setScreensGone((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !back.includes(key))));
     const typing = typingNow();
     for (const [key, userId] of now) {
-      if (before.has(key) || screensGone[key] || typing) continue;
+      // Another device of the person's own is not another participant: its screen is theirs, so nothing opens by itself for it.
+      if (before.has(key) || screensGone[key] || typing || userId === meId) continue;
       if (phoneWide) setScreenOffer({ key, userId });
       else setStage((current) => current.open ? current : { open: true, focus: key, auto: true });
     }

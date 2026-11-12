@@ -101,7 +101,8 @@ supersedes the quiet start of #59 (2026-09-27).
 8. **A shared screen is seen.** When someone starts sharing, each other participant's
    stage opens on that screen once, unless they closed the stage for that share (a
    reconnect does not open it again); on a phone a sheet offers **View Nia's screen**.
-   While the person is typing (a text field, the composer included, has focus) nothing
+   A screen of the person's own other device is not a share by someone else: nothing
+   opens for it. While the person is typing (a text field, the composer included, has focus) nothing
    opens: the stage would cover the field they type in, so the strip's **View** is the
    offer. A line in the strip says "**Nia** is sharing a screen · View", and the
    sharer's face in the strip carries a screen badge while they share. A screen that
