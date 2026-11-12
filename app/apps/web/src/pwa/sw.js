@@ -72,7 +72,7 @@ function appUrl(value) {
 const GENERIC_TITLE = 'New activity in Flux';
 
 self.addEventListener('push', (event) => {
-  let data = {};
+  let data;
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   const notificationId = typeof data.notificationId === 'string' ? data.notificationId : undefined;
   // Lock-screen privacy: text is shown only when the server sent a full preview, which it does

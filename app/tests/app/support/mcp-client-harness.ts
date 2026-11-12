@@ -139,8 +139,9 @@ export async function authorizeInBrowser(browser: Chromium, email: string, spec:
     observe?.({ stage: 'consent_submitted' });
     await callback;
   } catch (error) {
+    // eslint-disable-next-line preserve-caught-error -- the safe phase report must not carry the caught error: it can hold the authorization URL
     if (observe) throw new Error('Flux browser authorization did not complete; inspect the safe phase report.');
-    throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`);
+    throw new Error(`${(error as Error).message}\nauthorization URL: ${url}`, { cause: error });
   } finally { callbackWindow = false; await context.close(); }
 }
 

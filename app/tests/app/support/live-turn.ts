@@ -243,7 +243,7 @@ export async function connect(page: Page, media: LiveJoinGrant, pageUrl?: string
     throw new Error(`Browser ICE connection failed: ${String(error)}; ${JSON.stringify({
       ...diagnosis, signaling, origin: new URL(page.url()).origin,
       hasSessionCookie: (await page.context().cookies()).some((cookie) => cookie.name.includes('session_token')),
-    })}`);
+    })}`, { cause: error });
   }
 }
 

@@ -52,7 +52,7 @@ async function authorize(browser: Browser, home: ClientHome, url: string) {
 async function connect(browser: Browser, home: ClientHome, clientId?: string) {
   const { spec, env, cwd } = home;
   let login: Running | undefined;
-  let actualClientId: string | null = null;
+  let actualClientId: string | null;
   try {
     if (spec.client === 'codex') {
       login = run('codex', ['mcp', 'add', 'flux', '--url', mcpUrl, ...(clientId ? ['--oauth-client-id', clientId] : []),

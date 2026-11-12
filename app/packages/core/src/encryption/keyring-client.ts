@@ -37,7 +37,7 @@ export function httpKeyring({ url, token, timeoutMs = 2_000 }: KeyringClientOpti
     } catch {
       throw new KeyringUnavailableError();
     }
-    let json: Record<string, unknown> | null = null;
+    let json: Record<string, unknown> | null;
     try { json = await response.json() as Record<string, unknown>; } catch { json = null; }
     return { status: response.status, json };
   }
