@@ -29,7 +29,9 @@ export interface ButtonElement {
 /**
  * Comments blanked out, keeping every newline so line numbers stay right. A `//` or a `/*` inside a quoted string is text, not a comment:
  * a quote opens a string for the rest of its line (a backtick, until the next backtick), so an apostrophe in JSX text only ever keeps
- * more of the line, never hides code. A `//` right after a colon is a URL.
+ * more of the line, never hides code. A `//` is a comment only where code can end: at the start of a line or after `; , { } ( ) [ ] =`.
+ * After anything else it is text (JSX text such as `<span>a // b</span>`, a URL), so it hides nothing; a trailing comment after an
+ * identifier is then kept, which can only report a button that is not there, never miss one.
  */
 function withoutComments(source: string): string {
   let result = '';
@@ -46,7 +48,7 @@ function withoutComments(source: string): string {
       const stop = end < 0 ? source.length : end + 2;
       result += source.slice(index, stop).replace(/[^\n]/g, ' ');
       index = stop - 1;
-    } else if (char === '/' && next === '/' && source[index - 1] !== ':') {
+    } else if (char === '/' && next === '/' && /(^|[;,{}()[\]=\n])[ \t]*$/.test(result.slice(-200))) {
       while (index < source.length && source[index] !== '\n') { result += ' '; index++; }
       index--;
     } else {
@@ -147,10 +149,13 @@ export function unapprovedButtons(source: string, approved: ReadonlySet<string>)
     .map(({ line, classes }) => ({ line, classes }));
 }
 
-/** `role="button"` (any quoting) on an element that is not a `<button>`: a button drawn by hand, which the system has no room for. */
+/**
+ * `role="button"` on an element that is not a `<button>`: a button drawn by hand, which the system has no room for. Any quoting is found,
+ * and so is an expression that can give it: `role={cond ? 'button' : undefined}`.
+ */
 export function handDrawnButtonRoles(source: string): number[] {
   const code = withoutComments(source);
-  return [...code.matchAll(/\srole\s*=\s*(?:\{\s*)?["'`]button["'`]/g)].map((match) => code.slice(0, match.index).split('\n').length);
+  return [...code.matchAll(/\srole\s*=\s*(?:["'`]button["'`]|\{[^{}]*["'`]button["'`][^{}]*\})/g)].map((match) => code.slice(0, match.index).split('\n').length);
 }
 
 /**

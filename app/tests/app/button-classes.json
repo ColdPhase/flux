@@ -2,7 +2,7 @@
   "$comment": "Classes of a raw <button> that is not an action button of the system (#1233). Every action is a Button (ui-btn) or an IconButton (ui-icon-btn); a control of one of these kinds may carry its own class. app/tests/app/button-system-core.test.ts fails on a <button> with none of them and on an entry no button uses, so this list can only shrink. A new screen does not add a class here: it uses Button. docs/design/final/README.md, Buttons.",
   "categories": {
     "menu": {
-      "description": "A row of a menu, a list sheet or a popover list. The container draws it; it is not an action button.",
+      "description": "An option of a menu, a list sheet, a popover list or a picker's grid (a calendar day, an emoji). The container draws it; it is not an action button.",
       "classes": [
         "newmenu__item",
         "me__item",
@@ -16,7 +16,9 @@
         "aset-model__item",
         "aset-where__item",
         "sk-outline-menu__item",
-        "sk-options__action"
+        "sk-options__action",
+        "ui-cal__day",
+        "spset__emoji-b"
       ]
     },
     "trigger": {
@@ -32,7 +34,8 @@
         "lv-dev",
         "create__more",
         "lv-where",
-        "origin-back"
+        "origin-back",
+        "ui-pick__btn"
       ]
     },
     "row": {
@@ -85,7 +88,6 @@
       "classes": [
         "create__chip",
         "ws-chip",
-        "assistant-suggestions__chip",
         "convo-newbelow__b"
       ]
     },
@@ -103,7 +105,6 @@
         "composer-thumb__x",
         "composer-files__x",
         "project-convo__tray-close",
-        "wd-due-edit__clear",
         "jump__close",
         "photo-viewer__round",
         "photo-viewer__close",

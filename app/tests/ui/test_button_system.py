@@ -6,7 +6,8 @@ composer, Settings (Account, Notifications, AI, Company), the direct messages, a
 every visible `ui-btn` is measured in the running app:
 - radius 10, weight 500, no shadow, and a height of the system: 32, 36 or 44 px on the computer, 44 px on a touch screen;
 - at most one primary (dark) button in the page of a screen, and in a window;
-- a quiet button in a row (a settings or member row: Change, Edit, Remove) is the small size of the system (`sm`, the 12 px label);
+- a quiet button in a row (a settings or member row: Change, Edit, Remove, Sign out, Copy, Revoke) is the small size of the system (`sm`,
+  the 12 px label), including the rows that exist only with data: a second signed-in device on Account and a pending invitation on Company;
 - the empty Wiki's two buttons are one primary and one outline of one height; sign in's primary is as wide as its form;
 - on Account a long address wraps inside its row: the text never runs under the row's Change button, at 1440 and 390 px.
 """
@@ -82,6 +83,13 @@ class ButtonSystem(unittest.TestCase):
         busy = post(f"/api/v1/workspaces/{workspace}/projects", {"name": "Busy shelf", "visibility": "restricted"})["id"]
         post(f"/api/v1/projects/{busy}/conversations", {"body": "Which probe goes in the north bed?", "clientMessageId": str(uuid.uuid4())})
         post(f"/api/v1/projects/{busy}/work", {"title": "Calibrate the soil probes"})
+        # The states a row's actions show only with data: a pending invitation (Copy, Revoke on Company) and a second signed-in device
+        # (Sign out on Account).
+        post(f"/api/v1/workspaces/{workspace}/invites", {"role": "member", "email": "kai.invited@example.test"})
+        other = cls.browser.new_context(service_workers="block", base_url=ORIGIN)
+        signed = other.request.post("/api/auth/sign-in/email", data={"email": EMAIL, "password": PASSWORD}, headers={"origin": ORIGIN})
+        assert signed.status == 200, signed.text()
+        other.close()
         cls.ids = {"workspace": workspace, "quiet": quiet, "busy": busy}
         cls.state = context.storage_state()
         context.close()
@@ -145,7 +153,19 @@ class ButtonSystem(unittest.TestCase):
                     self.check(page, name, needs_buttons=name in ("Empty wiki", "Conversation"))
                     if name == "Account":
                         self.account_rows_fit(page, phone)
+                    self.row_actions_shown(page, name)
                     shot(page, f"1233-{name.lower().replace(' ', '-')}-{'390' if phone else '1440'}-{scheme}")
+
+    def row_actions_shown(self, page: Page, screen: str) -> None:
+        """The rows that exist only with data are on screen and measured: a second device's Sign out and a pending invitation's Copy and Revoke
+        are row actions too (quiet and small), so `check` reaches them."""
+        shown = {"Account": (".sset-row .ui-btn", "Sign out", 1), "Company": (".people__row .ui-btn", "Revoke", 1)}.get(screen)
+        if shown:
+            selector, text, count = shown
+            expect(page.locator(selector, has_text=text)).to_have_count(count)
+            if screen == "Company":
+                expect(page.locator(selector, has_text="Copy")).to_have_count(count)
+            self.check(page, f"{screen} rows", needs_buttons=True)
 
     def account_rows_fit(self, page: Page, phone: bool) -> None:
         expect(page.locator(".sset-acct")).to_have_count(3)  # Name, Email and Password, once the sign-in capabilities have loaded

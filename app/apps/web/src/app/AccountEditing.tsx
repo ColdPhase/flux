@@ -259,7 +259,7 @@ function Sessions() {
                   <span className="sset-row__t">{deviceName(item.userAgent)}{item.current ? <span className="sset-row__meta"> · this device</span> : null}</span>
                   <span className="sset-row__s">Signed in {dated(item.createdAt)}</span>
                 </span>
-                {item.current ? null : <Button variant="quiet" busy={busy === item.id} onClick={() => void end(item.id)}>Sign out<span className="ui-vh"> {deviceName(item.userAgent)}, signed in {dated(item.createdAt)}</span></Button>}
+                {item.current ? null : <Button variant="quiet" size="sm" busy={busy === item.id} onClick={() => void end(item.id)}>Sign out<span className="ui-vh"> {deviceName(item.userAgent)}, signed in {dated(item.createdAt)}</span></Button>}
               </li>
             ))}
           </ul>

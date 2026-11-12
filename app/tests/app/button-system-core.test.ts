@@ -94,6 +94,12 @@ describe('the button system', () => {
     assert.deepEqual(unapprovedButtons("const glob = '**/*.ts';\n<button className=\"x\">Go</button>\nconst end = '*/';", none), [{ line: 2, classes: ['x'] }]);
     assert.deepEqual(unapprovedButtons('const a = 1; // <button className="x">gone</button>\n<button className="y">Go</button>', none), [{ line: 2, classes: ['y'] }]);
     assert.deepEqual(unapprovedButtons('<a href="https://flux.example">x</a> <button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    // A // in JSX text (no quotes) is text too; a // after code that can end a statement is still a comment.
+    assert.deepEqual(unapprovedButtons('<span>a // b</span><button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons('<p>See https://flux.example // now</p> <button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons('go(); // <button className="x">gone</button>\nconst a = {\n  // <button className="x">gone</button>\n};\n<button className="y">Go</button>', none), [{ line: 5, classes: ['y'] }]);
+    // A role an expression can give: found on a hand-drawn element.
+    assert.deepEqual(handDrawnButtonRoles("<div role={open ? 'button' : undefined}>x</div>\n<div role={open ? 'tab' : 'tabpanel'}>x</div>"), [1]);
     // CSS: a pill or a circle on a system button is found; the icon button and ordinary radii are not.
     assert.deepEqual(pillButtonRules('.sk-dock .ui-btn { min-height: 36px; border-radius: var(--r-pill); }'), ['.sk-dock .ui-btn']);
     assert.deepEqual(pillButtonRules('a { color: red; }\n.bar .ui-btn--primary, .bar .ui-btn--outline { border-radius: 999px; }'), ['.bar .ui-btn--primary, .bar .ui-btn--outline']);

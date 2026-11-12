@@ -641,9 +641,9 @@ function InviteLinks({ prefill, workspace, myRole, seen, onJoined }: { prefill: 
               <li className="people__item" key={invite.id}>
                 <div className="people__row">
                   <span className="people__who"><b>{who(invite)}</b><span>{ROLE_LABEL[invite.role]} · until {until.format(new Date(invite.expiresAt))} · by {invite.createdBy.name}</span></span>
-                  <Button variant="quiet" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
+                  <Button variant="quiet" size="sm" className="people__change" onClick={() => void copy(invite)}>Copy<span className="ui-vh"> link for {who(invite)}</span></Button>
                   {invite.role !== 'admin' || myRole === 'owner'
-                    ? <Button variant="quiet" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
+                    ? <Button variant="quiet" size="sm" className="people__change" aria-expanded={revoking === invite.id} onClick={() => setRevoking(revoking === invite.id ? null : invite.id)}>Revoke<span className="ui-vh"> link for {who(invite)}</span></Button> : null}
                 </div>
                 {/* #763 FT-13: a revoked link can't come back, so Revoke asks once, in place. */}
                 {revoking === invite.id ? (
