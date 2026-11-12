@@ -55,7 +55,7 @@ export function AgentsList({ listed = false }: { listed?: boolean } = {}) {
           <label className="agl__label" htmlFor="new-agent-name">Name</label>
           <input id="new-agent-name" className="agl__input" value={name} maxLength={80} autoComplete="off" placeholder="Planner, Reviewer…" onChange={(event) => setName(event.target.value)} autoFocus />
           <Button type="submit" variant="primary" busy={busy} disabled={!name.trim()}>Make agent</Button>
-          <Button variant="quiet" onClick={() => { setAdding(false); setName(''); setError(''); }}>Cancel</Button>
+          <Button variant="secondary" onClick={() => { setAdding(false); setName(''); setError(''); }}>Cancel</Button>
           {error ? <p className="nset__error agl__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
         </form>
       ) : null}

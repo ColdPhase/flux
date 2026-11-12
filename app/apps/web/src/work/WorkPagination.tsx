@@ -1,4 +1,5 @@
 import type { WorkPage } from '@flux/contracts';
+import { Button } from '../ui';
 
 /**
  * `compactComplete`: a complete single page shows no actions. `stepsWhenPaged`: Previous and Next show only when
@@ -14,10 +15,10 @@ export function WorkPagination({ page, busy, onCursor, onRefresh, label = 'Work 
     <span className="ws-pages__range" role="status">{caption ? `${caption} · ` : ''}{range}</span>
     {!compactComplete || !page || page.previousCursor || page.nextCursor ? <div className="ws-pages__actions">
       {!stepsWhenPaged || page?.previousCursor || page?.nextCursor ? <>
-        <button type="button" disabled={!busy && !page?.previousCursor} aria-disabled={busy || !page?.previousCursor} onClick={() => { if (!busy && page?.previousCursor) onCursor(page.previousCursor); }}>Previous</button>
-        <button type="button" disabled={!busy && !page?.nextCursor} aria-disabled={busy || !page?.nextCursor} onClick={() => { if (!busy && page?.nextCursor) onCursor(page.nextCursor); }}>Next</button>
+        <Button variant="secondary" size="sm" disabled={!busy && !page?.previousCursor} aria-disabled={busy || !page?.previousCursor} onClick={() => { if (!busy && page?.previousCursor) onCursor(page.previousCursor); }}>Previous</Button>
+        <Button variant="secondary" size="sm" disabled={!busy && !page?.nextCursor} aria-disabled={busy || !page?.nextCursor} onClick={() => { if (!busy && page?.nextCursor) onCursor(page.nextCursor); }}>Next</Button>
       </> : null}
-      <button type="button" onClick={onRefresh}>Refresh</button>
+      <Button variant="secondary" size="sm" onClick={onRefresh}>Refresh</Button>
     </div> : null}
   </nav>;
 }

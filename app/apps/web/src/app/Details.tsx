@@ -101,7 +101,7 @@ function LeaveDm({ id, kind }: { id: string; kind: 'pair' | 'group' }) {
           <p>{kind === 'pair' ? 'You won’t see these messages until you open this conversation again.' : 'You won’t see these messages again unless someone starts a new conversation with you.'}</p>
           <div className="details__actions">
             <Button variant="danger" busy={busy} onClick={() => void leave()}>Leave</Button>
-            <Button variant="quiet" onClick={() => setConfirm(false)}>Cancel</Button>
+            <Button variant="secondary" onClick={() => setConfirm(false)}>Cancel</Button>
           </div>
           {error ? <p role="alert">{error}</p> : null}
         </div>

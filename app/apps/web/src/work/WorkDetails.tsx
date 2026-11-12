@@ -497,7 +497,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
                   </PropertyMenu>
                 </div>
                 <div className="wd-blocker__form-acts">
-                  <Button variant="quiet" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
+                  <Button variant="secondary" size="sm" onClick={() => { blockerBase.current = null; setBlocker(undefined); setEditingBlocker(false); }}>Cancel</Button>
                   <Button type="submit" variant="secondary" size="sm" busy={busy} disabled={blocker.trim() === (item.blocker ?? '')}>Save</Button>
                 </div>
               </form>

@@ -13,7 +13,7 @@
 /* The download button, what it is for, and its refusal: one column with the same 8 px between a control and its hint as elsewhere in the window (#1216). */
 .newspace__download { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .newspace__quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin: 0 0 0 -8px; }
-.newspace__quiet .ui-btn { min-height: 28px; padding: 0 8px; color: var(--t2); }
+.newspace__quiet .ui-btn { color: var(--t2); }
 .newspace__hint, .newspace__warning { margin: 0; font-size: var(--fs-md); color: var(--t2); line-height: 1.55; }
 .newspace__warning { color: var(--t1); }
 .newspace__length { display: flex; align-items: center; gap: 8px; font-size: var(--fs-sm); color: var(--t3); }
@@ -75,16 +75,14 @@
 /* Two lines are always reserved, so the buttons under the line stay where they are when the line changes ("Unlocked by Ada at 09:12" / "Waiting to be unlocked"). */
 .people__enc-line { min-height: calc(2 * 1.6em); margin: 0; }
 .people__enc-actions { display: flex; flex-wrap: wrap; gap: 4px 8px; margin: 8px 0 0 -8px; }
-.people__enc-button.ui-btn { min-height: 28px; padding: 0 8px; color: var(--t2); }
+.people__enc-button.ui-btn { color: var(--t2); }
 .people__enc-button.ui-btn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
 .people__enc-button.ui-btn.is-dim { opacity: .45; cursor: default; }
 .people__enc-button.ui-btn.is-dim:hover { background: none; color: var(--t2); }
-@media (pointer: coarse) { .people__enc-button.ui-btn { min-height: 44px; } }
 .people__enc .people__hint { margin-top: 8px; }
 .people__enc .people__edit, .people__enc .people__confirm { margin-top: 12px; }
 .people__enc-quiet { display: flex; flex-wrap: wrap; gap: 0 4px; margin-left: -8px; }
-.people__enc-quiet .ui-btn { min-height: 28px; padding: 0 8px; color: var(--t2); }
-@media (pointer: coarse) { .people__enc-quiet .ui-btn { min-height: 44px; } }
+.people__enc-quiet .ui-btn { color: var(--t2); }
 .people__problem { margin: 0; font-size: var(--fs-sm) !important; font-weight: 500; color: var(--t1) !important; line-height: 1.45; }
 .people__problem:empty { display: none; }
 .people__enc .people__done { margin-top: 10px; }

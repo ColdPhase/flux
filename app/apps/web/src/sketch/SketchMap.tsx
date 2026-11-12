@@ -988,9 +988,9 @@ export function SketchMap(props: SketchMapProps) {
   // #509 AC-3: − level + | Fit, in their own group at the bottom right of the map.
   const zoomControls = (
     <div className="sk-zoom" role="group" aria-label="Zoom">
-      <button type="button" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => zoomAt(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
+      <button type="button" className="sk-zoom__step" aria-label="Zoom out" data-tip="Zoom out" disabled={zoom <= ZOOMS[0]!} onClick={() => zoomAt(zoomOut(zoom))}><Icon name="minus" size={14} /></button>
       <button type="button" className="sk-zoom__level" aria-label={`Zoom ${Math.round(zoom * 100)}%, reset to 100%`} onClick={() => zoomAt(1)}>{Math.round(zoom * 100)}%</button>
-      <button type="button" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
+      <button type="button" className="sk-zoom__step" aria-label="Zoom in" data-tip="Zoom in" disabled={zoom >= ZOOMS[ZOOMS.length - 1]!} onClick={() => zoomAt(zoomIn(zoom))}><Icon name="plus" size={14} /></button>
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-zoom__fit" aria-label="Fit the sketch to the view" onClick={() => fit()}>Fit</button>
     </div>

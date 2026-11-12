@@ -286,15 +286,15 @@ export function ProjectTasks() {
         {/* The one control row above holds Mine for both views on every device (#868); a list opened on one state from the board
             says so in one line with its way back. */}
         <div className="ws-task-controls">
-          {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <button type="button" className="ws-none__b" onClick={() => setView({ status: null })}>Show all tasks</button></p> : null}
+          {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <Button variant="link" size="sm" onClick={() => setView({ status: null })}>Show all tasks</Button></p> : null}
           <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} stepsWhenPaged />
         </div>
-        {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
+        {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<Button variant="secondary" onClick={refresh}>Refresh work</Button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
-        {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <button type="button" className="ws-none__b" onClick={refresh}>refresh from the start</button>.</p> : null}
+        {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
         {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">
           {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status]}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status] : 'this view'} right now.`}{' '}
-          <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
+          <Button variant="link" size="sm" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</Button>
         </p> : null}
         <Group id="progress" title={GROUP_LABEL.in_progress} count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
         <Group id="blocked" title={GROUP_LABEL.blocked} count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>

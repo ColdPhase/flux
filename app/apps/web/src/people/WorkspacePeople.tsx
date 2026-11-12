@@ -123,7 +123,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
         {back}
         <p className="details__eyebrow">{page ? 'Company' : 'Encrypted space'}</p>
         <h3 className="details__title">People</h3>
-        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<button type="button" onClick={load}>Try again</button></p>
+        {failed ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{failed}<Button variant="link" size="sm" onClick={load}>Try again</Button></p>
           : <div className="people__loading"><Spinner label="Loading people" /></div>}
       </div>
     );
@@ -336,7 +336,7 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
       ) : (
         <div className="sset-card"><div className="people__row people__name">
           <span className="people__who"><b>{workspace.name}</b><span>Shown on the sign-in page and in emails</span></span>
-          {manager ? <Button ref={changeRef} variant="quiet" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
+          {manager ? <Button ref={changeRef} variant="quiet" size="sm" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
         </div></div>
       )}
     </section>
@@ -418,7 +418,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
             onClick={() => onEdit(!editing)}>{ROLE_LABEL[member.role]}<Icon name="chevron-down" size={14} /></Button>
         ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
         {!page && editable ? (
-          <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
+          <Button ref={changeRef} variant="quiet" size="sm" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
             Change<span className="ui-vh"> {self ? 'your role' : member.name}</span>
           </Button>
         ) : null}

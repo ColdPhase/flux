@@ -130,7 +130,7 @@ export function LinkedThoughts({ links }: { links: ThoughtLinks }) {
       {open ? (
         <div id={panelId} className="wd-pick" role="group" aria-label={`Thoughts to link to ${item.title}`}>
           <div className="wd-actions wd-pick__cancel">
-            <Button variant="quiet" disabled={busy} onClick={close}>Cancel</Button>
+            <Button variant="secondary" disabled={busy} onClick={close}>Cancel</Button>
           </div>
           {maps === null ? <p className="wd-muted" role="status">Loading maps…</p>
             : maps === 'failed' ? <p className="wd-error" role="alert">Could not load this space’s maps.</p>

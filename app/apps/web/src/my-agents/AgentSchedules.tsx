@@ -46,7 +46,7 @@ function Row({ job, state, agent }: { job: AssistantJob; state: AgentSchedulesSt
       <span className="agp__schedule-actions">
         {job.enabled
           ? <Button variant="quiet" size="sm" busy={busy === job.id} aria-label={`Pause ${job.title}`} onClick={() => void state.pause(job)}>Pause</Button>
-          : <Button variant="secondary" size="sm" busy={busy === job.id} aria-label={`Turn on ${job.title}`} onClick={() => void state.turnOn(job)}>Turn on</Button>}
+          : <Button variant="outline" size="sm" busy={busy === job.id} aria-label={`Turn on ${job.title}`} onClick={() => void state.turnOn(job)}>Turn on</Button>}
         <Button variant="quiet" size="sm" disabled={!!busy} aria-label={`Change ${job.title}`} aria-expanded={changing} onClick={() => setChanging((value) => !value)}>Change</Button>
         <Button variant="quiet" size="sm" disabled={!!busy || job.running} aria-label={`Run ${job.title} now`} onClick={() => void state.runNow(job)}>{job.running ? 'Working…' : 'Run now'}</Button>
         <Button variant="quiet" size="sm" disabled={!!busy} aria-label={`Delete ${job.title}`} onClick={() => void state.remove(job)}>Delete</Button>
@@ -95,7 +95,7 @@ export function AgentSchedules({ agent }: { agent: MyAgent }) {
                 <span className="sset-row__t agp__item-text">{starter.title}</span>
                 <span className="sset-row__s">Ready-made · Every weekday at 9:00 · Off until you turn it on</span>
               </span>
-              <Button variant="secondary" size="sm" busy={busy === starter.id} aria-label={`Turn on ${starter.title}`} onClick={() => void state.addStarter(starter)}>Turn on</Button>
+              <Button variant="outline" size="sm" busy={busy === starter.id} aria-label={`Turn on ${starter.title}`} onClick={() => void state.addStarter(starter)}>Turn on</Button>
             </li>
           ))}
         </ul>
@@ -140,7 +140,7 @@ export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state:
       <div className="agc__ready-actions">
         {job.enabled
           ? <span className="agc__on"><Icon name="check" size={14} />Turned on</span>
-          : <Button variant="secondary" size="sm" busy={state.busy === job.id} onClick={() => void state.turnOn(job)}>Turn on</Button>}
+          : <Button variant="outline" size="sm" busy={state.busy === job.id} onClick={() => void state.turnOn(job)}>Turn on</Button>}
         <Button variant="quiet" size="sm" disabled={!!state.busy} aria-expanded={changing} onClick={() => setChanging((value) => !value)}>Change</Button>
         {job.enabled ? null : <span className="agc__ready-off">Off until you turn it on.</span>}
       </div>

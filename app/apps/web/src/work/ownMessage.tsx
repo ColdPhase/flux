@@ -58,7 +58,7 @@ function Editor({ body, hasFiles, onSave, onCancel }: { body: string; hasFiles: 
         onChange={(event) => setText(event.target.value)} onKeyDown={onKeyDown} />
       <div className="msg-edit__row">
         <Button type="submit" variant="primary" size="sm" busy={busy} disabled={!words && !hasFiles}>Save</Button>
-        <Button variant="quiet" size="sm" onClick={onCancel}>Cancel</Button>
+        <Button variant="secondary" size="sm" onClick={onCancel}>Cancel</Button>
         {touch ? null : <span className="msg-edit__hint">Enter saves · Esc cancels</span>}
       </div>
     </form>

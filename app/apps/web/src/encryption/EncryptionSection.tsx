@@ -212,7 +212,7 @@ function ConfirmGroup({ label, line, field, action, busy, problem, onSubmit, onC
         onChange={(event) => setPassword(event.target.value)} />
       <div className="details__actions">
         <Button type="submit" variant="primary" busy={busy} aria-disabled={!password || undefined}>{action}</Button>
-        <Button variant="quiet" onClick={onClose}>Cancel</Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
       <p className="people__problem" role="alert">{problem}</p>
     </form>
@@ -295,7 +295,7 @@ function AllowConfirm({ workspace, candidates, onClose, onAllowed }: {
         onChange={(event) => setPassword(event.target.value)} />
       <div className="details__actions">
         <Button type="submit" variant="primary" busy={busy} aria-disabled={!password || undefined}>Let {firstName} set one</Button>
-        <Button variant="quiet" onClick={onClose}>Cancel</Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
       <p className="people__problem" role="alert">{problem}</p>
     </form>
@@ -367,7 +367,7 @@ function PasswordEditor({ workspace, start, recoveryCode, onClose, onSaved }: { 
       </div>
       <div className="details__actions">
         <Button type="submit" variant="primary" busy={busy}>{start === 'current' ? 'Save password' : 'Set password'}</Button>
-        <Button variant="quiet" onClick={onClose}>Cancel</Button>
+        <Button variant="secondary" onClick={onClose}>Cancel</Button>
       </div>
       <p className="people__problem" role="alert">{problem}</p>
     </form>

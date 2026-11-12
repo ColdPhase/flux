@@ -198,7 +198,7 @@ export function PlanConnection({ client, onStatus }: { client: AgentRuntimeClien
           {error && errorContext?.action === 'remove' ? <p className="nset__error" aria-hidden="true"><Icon name="alert" size={14} />{error}</p> : null}
           <div className="aset__actions">
             <Button variant="danger" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current state before trying again.')}>Sign out and remove</Button>
-            <Button variant="quiet" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} onClick={() => setConfirmRemove(false)}>Cancel</Button>
+            <Button variant="secondary" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} onClick={() => setConfirmRemove(false)}>Cancel</Button>
           </div>
         </div>
       ) : null}

@@ -34,6 +34,6 @@ function MaterialForm({ form, composerId }: { form: ProjectMaterials['form']; co
     <label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={form.body} onChange={(event) => form.setBody(event.target.value)} maxLength={100000} />
     <Input label="Link (optional)" type="url" value={form.url} onChange={(event) => form.setUrl(event.target.value)} />
     {form.error ? <p role="alert">{form.error}</p> : null}
-    <div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={form.busy}>Save for this space</Button><Button variant="quiet" disabled={form.busy} onClick={() => form.setOpen(false)}>Cancel</Button></div>
+    <div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={form.busy}>Save for this space</Button><Button variant="secondary" disabled={form.busy} onClick={() => form.setOpen(false)}>Cancel</Button></div>
   </fieldset></form>;
 }

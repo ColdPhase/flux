@@ -210,7 +210,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
           </div>
         ) : null}
         {manager && rosterFailed && !roster ? (
-          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who is in this space couldn’t be loaded.<button type="button" onClick={load}>Try again</button></p>
+          <p className="people__notice" role="alert"><Icon name="alert" size={13} />Who is in this space couldn’t be loaded.<Button variant="link" size="sm" onClick={load}>Try again</Button></p>
         ) : null}
         {everyone && !manager ? (
           <ul className="sset-card" aria-label="People of this space"><li className="sset-row"><span className="sset-row__b"><span className="sset-row__t">Everyone in {companyName}</span>
@@ -235,7 +235,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
                       <Button variant="danger" size="sm" busy={busy === row.userId} onClick={() => void remove(row)}>Remove</Button>
                       <Button variant="quiet" size="sm" onClick={() => closeRemoving(row.userId)}>Keep</Button>
                     </span>
-                  ) : <Button variant="quiet" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>
+                  ) : <Button variant="quiet" size="sm" className="spset__remove" aria-label={`Remove ${row.name} from ${project.name}`} onClick={() => { setProblem(''); setRemoving(row.userId); }}>Remove</Button>
                 ) : <span className="spset__remove-gap" aria-hidden="true" />) : null}
               </li>
             ))}
@@ -314,7 +314,7 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
           </form>
         ) : <>
           <b>{project.name}</b>
-          {manager ? <Button ref={changeRef} variant="quiet" aria-label={`Change the name of ${project.name}`} onClick={() => { setValue(project.name); setEditing(true); }}>Change</Button> : null}
+          {manager ? <Button ref={changeRef} variant="quiet" size="sm" aria-label={`Change the name of ${project.name}`} onClick={() => { setValue(project.name); setEditing(true); }}>Change</Button> : null}
         </>}
       </div>
       <SpaceIconRow project={project} manager={manager} companyName={companyName} onChanged={onIconChanged} />

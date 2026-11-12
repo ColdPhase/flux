@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Sheet } from '../ui';
+import { Button, Sheet } from '../ui';
 import { FileIcon, useObjectUrl } from './Attachments';
 import { looksLikePhoto } from './fileKind';
 import './attachments.css';
@@ -24,8 +24,8 @@ export function PhotoPicker({ files, onAdd, onClose }: { files: File[]; onAdd: (
       })}
     </ul>
     <div className="photo-pick__foot">
-      <button type="button" className="photo-pick__cancel" onClick={onClose}>Cancel</button>
-      <button type="button" className="photo-pick__add" disabled={!order.length} onClick={() => onAdd(order.map((index) => files[index]!))}>Add {order.length}</button>
+      <Button variant="secondary" size="lg" onClick={onClose}>Cancel</Button>
+      <Button variant="primary" size="lg" disabled={!order.length} onClick={() => onAdd(order.map((index) => files[index]!))}>Add {order.length}</Button>
     </div>
   </Sheet>;
 }

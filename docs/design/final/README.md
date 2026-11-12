@@ -107,12 +107,48 @@ buttons above, which read as too strong:
   option alone on a row is not a bar), and the track takes the large radius (`--r-lg`). Equal slots stay for the views, the map's
   Map / List and the live stage's picker.
 - Buttons are 32 px high in rows and toolbars and 36 px in dialogs; a primary button and the
-  button beside it have the same height. Touch targets stay at least 44 px.
+  button beside it have the same height. Touch targets stay at least 44 px (the system below).
 - Counts are quiet mono numbers ("Waiting for you 5", "Inbox 5"), never pills.
 - A composer's Send is a soft fill (`--own`) with the arrow icon.
 - The phone's floating "+" is a soft fill like Send (`--own`, `--t1` icon, 56 px, no shadow), so each
   phone screen has at most one dark button (founder decision, 2026-10-31, follow-up on #763).
 `tests/test_ui_tokens.py` (`QuietButtons`) guards the flat buttons, the radius and the retired tokens.
+
+**The button system** (#1233, v0.2.1): one set of buttons on every screen. Hubert saw an empty Wiki with a card-like "New page", a
+grey-text "Import a Markdown file" at another height and weight, and a sign-in that did not match the others. Every action is a `Button`
+(`ui/Button.tsx`, class `ui-btn`) or an `IconButton`; no screen draws a button class of its own.
+
+| Role | Component | Looks | Use |
+| --- | --- | --- | --- |
+| Primary | `Button variant="primary"` | flat `--inv`, `--oninv` text | The one main action of a screen or region: Create, Sign in, New page. At most one dark button per screen or region |
+| Secondary | `Button` (`secondary`, the default) | transparent, `--t2` text, `--hov` on hover | Other actions: Cancel, Back, Open, Try again |
+| Outline | `variant="outline"` | 1 px `--choice`, `--t1` text | A choice among a few; the second action beside a primary in an empty state ("Import a Markdown file"); a row's main action ("Turn on") |
+| Quiet | `variant="quiet"` | transparent, `--t3` text | A repeated text action in a row or a toolbar: Change, Edit, Remove |
+| Danger | `variant="danger"` | 1 px `--t2` outline, `--t1` text | A destructive action |
+| Soft | `variant="soft"` | `--own` fill | A composer's Send |
+| Link | `variant="link"` | underlined `--t1` text | An action inside a sentence or a status line: "Retry", "Try again", "Show all" |
+| Icon button | `IconButton` | 32 px round, `--t2` icon, a tooltip | An action with an icon and no words; always named (`label`) |
+
+- **One shape.** Radius 10, weight 500 and no shadow for every role. **One height per density:** 32 px (`md` and `sm`, in rows,
+  toolbars and menus), 36 px in a dialog's footer, 44 px (`lg`) for a form's own button (sign in, sign up, an invitation, a reset,
+  the Create window), and 44 px for every button on a touch screen. A screen does not set a height or a font size of its own; `sm`
+  is the same height with a 12 px label for a row.
+- **A row's actions** are small buttons (`size="sm"`): the row's main action ("Turn on", "Connect") is `outline`, the others
+  ("Change", "Edit", "Remove") are `quiet`. They are never links, never bare text, and never `lg`.
+- **An empty state has one primary action and, if there is a second, an outline button beside it,** never a card next to a text link:
+  the Wiki's "New page" and "Import a Markdown file", the maps' "New map", Home's "Create a space". The naming field that "New page"
+  opens takes the button's place, with its "Create" as the primary, in the same row.
+- **Sign-in, sign-up, an invitation, a password reset and single sign-on use the same pair,** both `lg` and as wide as the form: the
+  primary action ("Sign in", "Create account", "Join Acme", "Send reset link"), and, where there is a second way, a `secondary` below it.
+  With single sign-on as the only way in, "Sign in with *provider*" is the primary. The page's other actions are links in a line under the form.
+- **A dialog's Cancel is `secondary`**, beside its one primary.
+- **Not an action button.** Some controls are not buttons of the system and draw themselves: a menu row, a whole row or card that
+  opens something, the shell's own controls (the sidebar, the phone's bar), the composer's and a message's controls, an inline text
+  link, a chip, a dismiss cross, a map tool. Each kind and its classes are listed in `app/tests/app/button-classes.json`.
+- **A guard keeps it so.** `app/tests/app/button-system-core.test.ts` (a portable core test: it runs in `./scripts/check_application.sh` and in the pull-request check, with the other
+  architecture rules) fails on a `<button>` that is neither a `ui-btn` or `ui-icon-btn`, nor of a role that is not an action (menu
+  item, tab, radio, switch), nor one of the listed classes. It fails on `role="button"` on any other element and on a listed class
+  no button uses, so the list only shrinks. A new screen uses `Button`; it does not add a class to the list.
 
 **Chips and tags** are one line high with a fixed height: 24 px for a tag (`--sub` fill, `--t2`
 text, 12 / 500) and 28 px for a person chip in a field, with a 20 px face and ×. They never wrap;

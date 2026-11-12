@@ -37,6 +37,6 @@ export function RouteProgress() {
   // After the navigation has ended the row only waits out its minimum: there is nothing left to cancel.
   return <div className="route-progress" data-route-pending={shown.path}>
     <span role="status" aria-live="polite"><Spinner />Opening {routeLabel(shown.path)}…</span>
-    <Button variant="quiet" disabled={!target} onClick={() => { setShown(null); void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state }); }}>Cancel</Button>
+    <Button variant="secondary" disabled={!target} onClick={() => { setShown(null); void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state }); }}>Cancel</Button>
   </div>;
 }

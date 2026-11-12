@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
-import { Icon, Kreska } from '../ui';
+import { Button, Icon, Kreska } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { useConnection } from './connection';
 import type { DraftFile, PendingSend } from './draft';
@@ -21,8 +21,8 @@ export function OutboxStatus({ item, inline = false, onRetry, onRemove }: { item
         <Icon name="alert" size={13} />
         <span className="outbox-status__text">Not sent{item.error ? <span className="outbox-status__why">. {item.error}</span> : null}</span>
         <span className="outbox-status__acts">
-          <button type="button" className="outbox-status__b" onClick={onRetry}>Retry</button>
-          <button type="button" className="outbox-status__b" onClick={onRemove}>Remove</button>
+          <Button variant="link" size="sm" onClick={onRetry}>Retry</Button>
+          <Button variant="link" size="sm" onClick={onRemove}>Remove</Button>
         </span>
       </div>
     );
@@ -41,8 +41,8 @@ function PendingStatus({ item, onRetry, onRemove }: { item: PendingSend; onRetry
       <span className="outbox-status__text">{label}{item.state === 'waiting' && item.error ? <span className="outbox-status__why">. {item.error}</span> : null}</span>
       {/* While the browser is online but Flux did not answer, the person may try now; offline, it goes on its own. */}
       {item.state === 'waiting' ? <span className="outbox-status__acts">
-        {connection !== 'offline' ? <button type="button" className="outbox-status__b" onClick={onRetry}>Retry</button> : null}
-        <button type="button" className="outbox-status__b" onClick={onRemove}>Remove</button>
+        {connection !== 'offline' ? <Button variant="link" size="sm" onClick={onRetry}>Retry</Button> : null}
+        <Button variant="link" size="sm" onClick={onRemove}>Remove</Button>
       </span> : null}
     </div>
   );

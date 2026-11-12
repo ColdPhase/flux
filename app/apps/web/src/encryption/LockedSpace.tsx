@@ -151,7 +151,7 @@ export function UnlockForm({ workspaceId, name, encryption, autoFocus = false, o
       <div className="locked__actions">
         <Button type="submit" variant="primary" busy={busy}>Unlock</Button>
         {hasPassword && codeExists ? <Button variant="quiet" onClick={() => { setRecovery(!recovery); setSecret(''); setProblem(''); requestAnimationFrame(() => fieldRef.current?.focus()); }}>{recovery ? 'Use my unlock password' : 'Use the recovery code'}</Button> : null}
-        {onCancel ? <Button variant="quiet" onClick={onCancel}>Cancel</Button> : null}
+        {onCancel ? <Button variant="secondary" onClick={onCancel}>Cancel</Button> : null}
       </div>
       {/* Below the buttons, so an error never moves them. */}
       <p className="locked__status" id={statusId} role="alert">{problem}</p>

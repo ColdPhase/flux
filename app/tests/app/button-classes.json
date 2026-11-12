@@ -1,0 +1,179 @@
+{
+  "$comment": "Classes of a raw <button> that is not an action button of the system (#1233). Every action is a Button (ui-btn) or an IconButton (ui-icon-btn); a control of one of these kinds may carry its own class. app/tests/app/button-system-core.test.ts fails on a <button> with none of them and on an entry no button uses, so this list can only shrink. A new screen does not add a class here: it uses Button. docs/design/final/README.md, Buttons.",
+  "categories": {
+    "menu": {
+      "description": "A row of a menu, a list sheet or a popover list. The container draws it; it is not an action button.",
+      "classes": [
+        "newmenu__item",
+        "me__item",
+        "phone-menu__item",
+        "phone-menu__details",
+        "ui-list-sheet__row",
+        "wiki-menu__row",
+        "wiki-menu__new",
+        "nym__item",
+        "wd-menu__item",
+        "aset-model__item",
+        "aset-where__item",
+        "sk-outline-menu__item",
+        "sk-options__action"
+      ]
+    },
+    "trigger": {
+      "description": "A control that opens a menu, a panel or a picker and shows its current value, like a field. Dropdowns of plain values use Select.",
+      "classes": [
+        "aset-model__btn",
+        "wiki-switch",
+        "top__audience",
+        "top__faces",
+        "me__btn",
+        "lv-disclose",
+        "tb-mine",
+        "lv-dev",
+        "create__more",
+        "lv-where",
+        "origin-back"
+      ]
+    },
+    "row": {
+      "description": "A whole row, card or tile that opens something. The row is the target, so it carries no button of its own.",
+      "classes": [
+        "sset-row",
+        "sset-card",
+        "spset__keys",
+        "ov-row",
+        "ws-item",
+        "ws-task__done",
+        "ws-task__glyph",
+        "tb-card__open",
+        "tb-col__more",
+        "agc__sched-row",
+        "nyc__open",
+        "doc-version",
+        "dm-replies",
+        "convo-replies__open",
+        "convo-fold__b",
+        "convo-notice__task",
+        "convo-object__card",
+        "wd-state",
+        "wd-due",
+        "wd-came__text",
+        "wd-title__text",
+        "wd-link",
+        "photo-pick__tile",
+        "create__result",
+        "photo-grid__open",
+        "connection-labels__row"
+      ]
+    },
+    "inline": {
+      "description": "A text action inside a sentence or a status line: underlined text, the weight of the words around it.",
+      "classes": [
+        "ui-link",
+        "wd-inline",
+        "wd-act__earlier",
+        "convo-notice__src",
+        "ask__connect",
+        "assistant-cite",
+        "assistant-answer__who",
+        "ws-attach__more",
+        "sk-outline-also__b"
+      ]
+    },
+    "chip": {
+      "description": "A chip or a pill that stands for a value or a suggestion.",
+      "classes": [
+        "create__chip",
+        "ws-chip",
+        "assistant-suggestions__chip",
+        "convo-newbelow__b"
+      ]
+    },
+    "dismiss": {
+      "description": "An icon-only cross or control on a surface that is not a toolbar: it closes, clears or removes what it sits on.",
+      "classes": [
+        "create__x",
+        "create__chip-x",
+        "pick__x",
+        "newspace__x",
+        "tb-note__x",
+        "ui-toast__close",
+        "ui-toast__action",
+        "composer-cite__x",
+        "composer-thumb__x",
+        "composer-files__x",
+        "project-convo__tray-close",
+        "wd-due-edit__clear",
+        "jump__close",
+        "photo-viewer__round",
+        "photo-viewer__close",
+        "photo-viewer__prev",
+        "photo-viewer__next",
+        "agentlive__stop",
+        "lv-cam__enlarge"
+      ]
+    },
+    "shell": {
+      "description": "A control of the application shell or of a screen's header, drawn in the final design as its own part: the sidebar, the phone's bar, panels.",
+      "classes": [
+        "side__new",
+        "side__ib",
+        "side__search",
+        "side__add",
+        "phone-fab",
+        "phone-dock__search",
+        "phead__menu",
+        "details__back",
+        "ui-panel__back"
+      ]
+    },
+    "composer": {
+      "description": "A control of the composer, of a message or of an attachment on a photo: icon controls and sheet rows.",
+      "classes": [
+        "composer__attach",
+        "composer__send",
+        "composer-files__add",
+        "voice-note__play",
+        "msg-acts__b",
+        "msg-touch__sr",
+        "photo-grid__retry",
+        "photo-viewer__act"
+      ]
+    },
+    "segmented": {
+      "description": "An option of a segmented control that is not a radio group (a pressed pair).",
+      "classes": [
+        "doc-seg__b"
+      ]
+    },
+    "canvas": {
+      "description": "A tool of the map's canvas or its outline: the canvas has its own tool language.",
+      "classes": [
+        "sk-add",
+        "sk-edit-btn",
+        "sk-fab",
+        "sk-outline-back",
+        "sk-outline-more",
+        "sk-outline-toggle",
+        "sk-plus",
+        "sk-title",
+        "sk-tool",
+        "sk-undo",
+        "sk-zoom__fit",
+        "sk-zoom__level",
+        "sk-zoom__step",
+        "sk-el",
+        "sk-dot",
+        "sk-node",
+        "sk-work",
+        "sk-outline-action"
+      ]
+    },
+    "hidden": {
+      "description": "A visually hidden button for assistive technology.",
+      "classes": [
+        "ui-vh"
+      ]
+    }
+  }
+}

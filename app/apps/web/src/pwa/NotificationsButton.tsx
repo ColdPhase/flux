@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import { Button } from '../ui';
 import { disablePushNotifications, enablePushNotifications, getPushState, type PushState } from './push.js';
 
 // Styled by the shell's tokens (apps/web/src/app/app.css: .pwa-note, .pwa-action).
 const note = 'pwa-note';
-const action = 'ui-btn ui-btn--secondary pwa-action';
 
 type View = PushState | { state: 'loading' } | { state: 'working' } | { state: 'error'; message: string };
 
@@ -35,9 +35,9 @@ export function NotificationsButton({ deviceLabel, installStepsBelow }: {
     return (
       <div>
         <p className={note}>Notifications are on for this device.</p>
-        <button type="button" className={action} onClick={() => { setView({ state: 'working' }); void disablePushNotifications().finally(refresh); }}>
+        <Button variant="secondary" className="pwa-action" onClick={() => { setView({ state: 'working' }); void disablePushNotifications().finally(refresh); }}>
           Turn off on this device
-        </button>
+        </Button>
       </div>
     );
   }
@@ -47,9 +47,9 @@ export function NotificationsButton({ deviceLabel, installStepsBelow }: {
   return (
     <div>
       <p className={note}>Get notified about mentions and replies, work assigned to you, decisions and agent results, even when Flux is closed.</p>
-      <button
-        type="button"
-        className={action}
+      <Button
+        variant="secondary"
+        className="pwa-action"
         onClick={() => {
           // Called directly in the click handler: the permission prompt needs this user gesture.
           const pending = enablePushNotifications(publicKey, deviceLabel);
@@ -58,7 +58,7 @@ export function NotificationsButton({ deviceLabel, installStepsBelow }: {
         }}
       >
         Turn on notifications
-      </button>
+      </Button>
     </div>
   );
 }

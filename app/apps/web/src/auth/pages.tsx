@@ -131,7 +131,7 @@ function SsoSignIn({ sso, next, oauthQuery }: { sso: NonNullable<IdentityCapabil
   };
   return (
     <div className="auth__sso">
-      <Button variant="secondary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
+      <Button variant="primary" size="lg" block busy={busy} disabled={!sso.reachable} onClick={() => void start()}>{`Sign in with ${sso.label}`}</Button>
       {failed || !sso.reachable ? <p className="auth__sso-error" role="alert">{failed || unreachable}</p> : null}
     </div>
   );
@@ -388,7 +388,7 @@ export function ResetPasswordPage() {
   if (!token || linkError) {
     return (
       <ErrorState level={1} title="This reset link no longer works"
-        actions={<><Link className="ui-btn ui-btn--primary ui-btn--lg" to="/forgot-password">Request a new link</Link><Link className="ui-btn ui-btn--quiet ui-btn--lg" to="/sign-in">Back to sign in</Link></>}>
+        actions={<><Link className="ui-btn ui-btn--primary ui-btn--lg" to="/forgot-password">Request a new link</Link><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/sign-in">Back to sign in</Link></>}>
         <p>Reset links work once and expire. Request a new one and use the latest email.</p>
       </ErrorState>
     );

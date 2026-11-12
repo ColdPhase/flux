@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react';
-import { Icon, useMediaQuery } from '../ui';
+import { Button, Icon, useMediaQuery } from '../ui';
 import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
 import { detailLine, looksLikePhoto } from './fileKind';
@@ -69,7 +69,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
         onRemove={() => state.removeFile(file.uploadId)} />)}</ol>
     </> : null}
     {state.draft.references.map((ref) => <div key={`${ref.materialId}:${ref.version}`} className="composer-files__ref">
-      <span>Source: {ref.title} · v{ref.version}</span><button type="button" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
+      <span>Source: {ref.title} · v{ref.version}</span><button type="button" className="composer-files__x" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
     </div>)}
     {state.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={blocked} onRemove={() => state.removeCite(cite.kind, cite.id)} />)}
     {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
@@ -94,7 +94,7 @@ function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file:
     <span className="composer-thumb__face">{photo ? <img src={url} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
       {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
     <span className="composer-files__name">{file.name}<small>{typeLine(file, detailLine(file.staged))} · {status}</small></span>
-    {file.state === 'failed' ? <button type="button" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</button> : null}
+    {file.state === 'failed' ? <Button variant="outline" size="sm" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</Button> : null}
     <button type="button" className="composer-thumb__x" disabled={blocked} onClick={onRemove} aria-label={`Remove ${file.name}`}><span className="composer-thumb__xface"><Icon name="x" size={12} /></span></button>
     {file.error ? <p className="composer-files__error" role="alert">{file.error}</p> : null}
   </li>;
