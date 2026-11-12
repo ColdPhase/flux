@@ -879,7 +879,7 @@ screen, colour or control: it is one line in the rows that exist, and one switch
 - **Same everywhere.** The same words, at the same size and in the same place, in Space settings, in Company, and nowhere else: it is not in
   the sidebar, the composer's mentions or a message. The header's faces use it only to put the people active now first, with an agent last.
 - **Calm.** It changes when the page is read again (opening the page, or the people changing), never by itself: nothing ticks,
-  moves or animates, and "Active now" does not flash. On a phone the line wraps under the name like the email does.
+  moves or animates, and "Active now" does not flash. On a phone the line stands under the address, with no dot between them.
 - **Account.** Settings › Account has one more row in its own card, between the account card and Sign out: the switch **Show when
   I was last active**, on by default, with the line "People who can see you in Flux see when you were last active, never where.
   Turn it off and nobody does." It is the standard switch row (36 × 22, `--t1` when on), like the AI switch of a space.

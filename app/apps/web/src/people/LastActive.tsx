@@ -13,12 +13,12 @@ export function PersonLine({ email, lastActiveAt }: { email?: string | null; las
   return (
     <span className="lastactive-line">
       {email}
-      {email && words ? <span aria-hidden="true"> · </span> : null}
+      {email && words ? <span className="lastactive-sep" aria-hidden="true"> · </span> : null}
       {words ? (
         <span className="lastactive" data-last-active={words.now ? 'now' : 'earlier'}>
           {words.now ? <span className="lastactive__now" aria-hidden="true" /> : null}
           {words.bare ? <span className="ui-vh">Last active </span> : null}
-          <time dateTime={lastActiveAt}>{words.text}</time>
+          {words.text}
         </span>
       ) : null}
     </span>
