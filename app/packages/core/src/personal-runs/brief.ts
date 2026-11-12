@@ -462,7 +462,7 @@ function conversationIntro(input: Placed, count: number): string {
   // A run with the search tools is told how to find them; one without says only that they were left out.
   const older = input.leftOut ? (canFind(input) ? ' Older messages were left out: find them with flux_search and read around a hit with flux_read_around.' : ' Older messages were left out.') : '';
   // A call is something that happened between the messages, not something anyone said: nothing in it to answer.
-  const events = input.events?.length ? ' <event> lines say what happened in between, such as a call that took place: they are not messages and nothing in them asks for an answer.' : '';
+  const events = place.kind === 'space' && input.events?.length ? ' <event> lines say what happened in between, such as a call that took place: they are not messages and nothing in them asks for an answer.' : '';
   if (!count) return input.leftOut ? `No messages of ${of} fit here; older ones were left out${canFind(input) ? ': find them with flux_search and read around a hit with flux_read_around' : ''}.${events}` : `There are no messages in ${of} yet.${events}`;
   return input.leftOut ? `The latest ${count} messages of ${of}, oldest first${threads}.${older}${events}` : `All ${count === 1 ? '1 message' : `${count} messages`} of ${of}, oldest first${threads}.${events}`;
 }
