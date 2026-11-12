@@ -1,12 +1,12 @@
 import type {
-  Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
+  AgentColour, Conversation, ConversationMessage, ConversationRootQuery, ConversationRootWindow, ConversationSummary, ConversationWindowQuery,
   CreateMaterialCommand, EditMessageCommand, Material, MaterialOrDoc, MaterialVersion, Page, PageQuery, SendMessageCommand, SentConversationMessage, UpdateMaterialCommand,
 } from '@flux/contracts';
 import type { Principal } from '../types.js';
 import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeMessageEdit, normalizeRootWindow } from './commands.js';
 
-/** Show everyone (#842): the agent whose answer a person posts as their own message, "Ada · via Assistant". Only the server sets it, from the answer itself. */
-export interface ViaAgent { via?: string | null }
+/** Show everyone (#842): the agent whose answer a person posts as their message, with its colour (#1232), shown as "Ada's Assistant". Only the server sets it, from the answer itself. */
+export interface ViaAgent { via?: string | null; viaColour?: AgentColour | null }
 
 /** Storage and current-access boundary. The adapter must authorize before every read and
  * authorize under the write transaction before every mutation or idempotent replay. */
@@ -38,10 +38,10 @@ export function conversationUseCases(port: ConversationPort) {
       port.listRoots(principal, projectId, normalizeRootWindow(query)),
     getConversation: (principal: Principal, conversationId: string, query?: ConversationWindowQuery) =>
       port.getConversation(principal, conversationId, normalizeConversationWindow(query)),
-    createConversation: (principal: Principal, projectId: string, command: SendMessageCommand, via?: string) =>
-      port.createConversation(principal, projectId, { ...normalizeMessage(command), via: via ?? null }),
-    sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand, via?: string) =>
-      port.sendMessage(principal, conversationId, { ...normalizeMessage(command), via: via ?? null }),
+    createConversation: (principal: Principal, projectId: string, command: SendMessageCommand, via?: string, viaColour?: AgentColour) =>
+      port.createConversation(principal, projectId, { ...normalizeMessage(command), via: via ?? null, viaColour: via ? viaColour ?? null : null }),
+    sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand, via?: string, viaColour?: AgentColour) =>
+      port.sendMessage(principal, conversationId, { ...normalizeMessage(command), via: via ?? null, viaColour: via ? viaColour ?? null : null }),
     editMessage: (principal: Principal, conversationId: string, messageId: string, command: EditMessageCommand) =>
       port.editMessage(principal, conversationId, messageId, normalizeMessageEdit(command)),
     removeMessage: (principal: Principal, conversationId: string, messageId: string) => port.removeMessage(principal, conversationId, messageId),

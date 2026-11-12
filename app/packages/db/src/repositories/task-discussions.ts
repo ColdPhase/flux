@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { and, desc, eq, lt, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { openRows, sealFor } from '../sealing.js';
-import type { MessageFile } from '@flux/contracts';
+import type { AgentColour, MessageFile } from '@flux/contracts';
 import { taskUseRows, type TaskUseFence } from './task-use.js';
 import { artifactUseRows } from './artifact-use.js';
 import { fileRows } from './files.js';
@@ -106,7 +106,7 @@ export function taskDiscussionRows(db: DbExecutor) {
     /** Called in a transaction after current access and the shared command lock. */
     async append(conversation: Pick<ConversationRow, 'id' | 'workspaceId' | 'projectId'>, author: Actor,
       input: { body: string; clientMessageId: string; fingerprint: string; source: Source | null;
-        kind?: MessageRow['contributionKind']; files?: MessageFile[]; via?: string | null; byFlux?: boolean }, preparedMessageId?: string) {
+        kind?: MessageRow['contributionKind']; files?: MessageFile[]; via?: string | null; viaColour?: AgentColour | null; byFlux?: boolean }, preparedMessageId?: string) {
       const workId = await boundTask(conversation.id);
       const [updated] = await db.update(c).set({ nextSequence: sql`${c.nextSequence} + 1` })
         .where(eq(c.id, conversation.id)).returning({ nextSequence: c.nextSequence });
@@ -116,7 +116,7 @@ export function taskDiscussionRows(db: DbExecutor) {
         authorAgentId: author.kind === 'agent' ? author.id : null, clientMessageId: input.clientMessageId,
         requestFingerprint: input.fingerprint, sequence: updated.nextSequence - 1, body: input.body,
         sourceMaterialId: input.source?.materialId ?? null, sourceMaterialVersion: input.source?.version ?? null,
-        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', via: input.via ?? null,
+        attachmentCount: input.files?.length ?? 0, contributionKind: input.kind ?? 'text', via: input.via ?? null, viaColour: input.via ? input.viaColour ?? null : null,
         byFlux: author.kind === 'agent' && input.byFlux === true })).returning();
       // F-030: the stored row may be sealed; the caller gets what it wrote.
       const row = stored && { ...stored, body: input.body, requestFingerprint: input.fingerprint };

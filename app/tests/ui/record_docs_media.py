@@ -224,7 +224,7 @@ def highlights(browser: Browser, ids: dict) -> None:
     window = context(browser, phone=True)
     page = window.new_page()
     page.goto(f"/projects/{project}")
-    expect(page.locator(".project-convo__via", has_text="via Assistant").first).to_be_visible()
+    expect(page.locator("[data-shown-answer]", has_text="Ada's Assistant").first).to_be_visible()
     conversation = grab(page)
     page.goto("/")
     expect(page.get_by_text("Continue where you left off")).to_be_visible()

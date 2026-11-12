@@ -2,7 +2,7 @@ import type { ConversationMessage, Project, ProjectPerson } from '@flux/contract
 import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
-import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, SourceCitation, SourceTag, ViaTag, pendingMessageRow } from '../app/messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, ShownAnswerName, SourceCitation, SourceTag, ViaTag, pendingMessageRow, shownAnswer, shownLabel } from '../app/messageParts';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
@@ -49,12 +49,15 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
     const queued = props as QueuedReplyProps;
     return pendingMessageRow({ place: 'thread', continued: queued.continued, keyed: false, item: queued.pending, name: queued.name, onRetry: queued.onRetry, onRemove: queued.onRemove });
   }
-  const { mine, meId, arrived, name, project, owners, people, preview, writable, onDenied } = stored;
+  const { meId, arrived, name, project, owners, people, preview, writable, onDenied } = stored;
+  // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232).
+  const shown = shownAnswer(message);
+  const mine = stored.mine && !shown;
   return (
-    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} aria-label={mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
+    <li {...touch.props} id={`message-${message.id}`} data-message-id={message.id} {...(stored.observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`} tabIndex={-1} className={`project-convo__message${mine ? ' is-mine' : ''}${arrived ? ' is-arrived' : ''}${stored.continued ? ' is-continued' : ''} ${touch.props.className}`}>
       <SourceTag messageId={message.id} />
-      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} /> : null}
-      {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong><ViaTag via={message.via} /></div> : null}
+      {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={name} mine={mine} {...(shown ? { hue: shown.colour } : {})} /> : null}
+      {!mine && !stored.continued ? <div className="project-convo__message-meta">{shown ? <ShownAnswerName shown={shown} asker={name} /> : <><strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong><ViaTag via={message.via} /></>}</div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />

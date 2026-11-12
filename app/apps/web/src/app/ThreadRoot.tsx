@@ -1,7 +1,7 @@
 import type { ConversationMessage } from '@flux/contracts';
 import { MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { AgentAuthor, AuthorFace, DeletedSourceCitation, SourceCitation, MessageTime, ViaTag } from './messageParts';
+import { AgentAuthor, AuthorFace, DeletedSourceCitation, ShownAnswerName, SourceCitation, MessageTime, ViaTag, shownAnswer, shownLabel } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
@@ -17,16 +17,20 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
   /** Reply and Create task in the photo viewer, as this reader may use them (#348). */
   photo?: PhotoActions & { place?: string };
 }) {
-  const mine = !!message && message.authorId === meId;
+  // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232).
+  const shown = message ? shownAnswer(message) : null;
+  const mine = !!message && message.authorId === meId && !shown;
   const people = useProjectShell()?.people ?? null;
   return (
     <>
-      <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} aria-label={author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
+      <article className={`thread__root${mine ? ' is-mine' : ''}`} id={message ? `thread-root-${message.id}` : undefined} data-message-id={message?.id} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={shown && author ? shownLabel(shown, author).spoken : author ? `Message from ${mine ? 'you' : author}` : 'Opening message'}>
         {message && author && !mine ? (
           <div className="thread__root-meta">
-            <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} id={message.authorId} name={author} mine={mine} />
-            <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
-            <ViaTag via={message.via} />
+            <AuthorFace kind={message.authorId === null || shown ? 'agent' : 'human'} id={message.authorId} name={author} mine={mine} {...(shown ? { hue: shown.colour } : {})} />
+            {shown ? <ShownAnswerName shown={shown} asker={author} /> : <>
+              <strong>{message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
+              <ViaTag via={message.via} />
+            </>}
           </div>
         ) : mine && message?.via ? <div className="thread__root-meta"><ViaTag via={message.via} /></div> : null}
         <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className={`message-body${message?.removedAt ? ' message-body--removed' : ''}`}><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>

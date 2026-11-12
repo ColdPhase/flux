@@ -724,6 +724,8 @@ export const projectMessages = pgTable('project_messages', {
   attachmentCount: smallint('attachment_count').notNull().default(0),
   /** 0022 (#842): the agent whose answer its author posted with Show everyone ("Ada · via Assistant"). */
   via: text('via'),
+  /** 0059 (#1232): that agent's colour, so every reader sees its Kreska ("Hubert's Assistant"); null for a local client's post. */
+  viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
   /** The assistant's Undo took this message back (migration 0129, #68): the text is the fixed marker and the row keeps its place. */
   removedAt: timestamp('removed_at', { withTimezone: true }),
   /** The author changed the words after sending them (migration 0029, #1006); the earlier words are not kept. */
@@ -1472,6 +1474,8 @@ export const dmMessages = pgTable('dm_messages', {
   removedAt: timestamp('removed_at', { withTimezone: true }),
   /** 0022 (#842): the agent whose answer the author posted with Show everyone. */
   via: text('via'),
+  /** 0059 (#1232): that agent's colour, so every reader sees its Kreska ("Hubert's Assistant"). */
+  viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
   /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
   kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

@@ -748,6 +748,22 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       'the sources: the query, the result its answer names, the pages it read');
     });
 
+    test('the stored answer has no mark the model invented and no "Sources:" block of its own: Flux\'s list is the only one (#1222)', async () => {
+      const query = 'island ferry winter timetable';
+      await script({ calls: [
+        { name: 'WebSearch', args: { query }, results: [{ title: 'Harbour & Co', url: at('/read/timetable') }], summary: 'The timetable is at the harbour.' },
+      ], answer: `The last boat leaves the island at 17:40 [8] (${at('/read/timetable')}).【3†source】 It is the last one [S2].\n\n`
+        + `Sources:\n- Harbour & Co, "timetable": ${at('/read/timetable')}` });
+      const started = await ask('When does the last boat leave the island?');
+      assert.equal(await searching.process(started.run.id), 'completed');
+      const run = (await calls()).find((entry) => entry.event === 'run') as { prompt: string };
+      assert.match(run.prompt, /do not write Markdown links, citation marks such as \[1\] or 【3†source】, or a list of sources at the end: Flux adds the list/, 'the brief says so');
+      const body = String((await row(started.run.id)).answer_body);
+      assert.equal(body, `The last boat leaves the island at 17:40 (${at('/read/timetable')}). It is the last one.\n\n`
+        + `Searched the web for:\n- ${query}\nFound on the web:\n- ${at('/read/timetable')}`, 'no marks, no Sources block, each address once');
+      assert.equal(body.split(at('/read/timetable')).length - 1, 2, 'the address in the sentence and in Flux\'s list, never a third time');
+    });
+
     test('an address carrying what a Flux tool returned to the CLI is refused, and says why', async () => {
       await script({ calls: [
         { name: 'flux_get_doc', args: { projectId: place.id, id: docId } },

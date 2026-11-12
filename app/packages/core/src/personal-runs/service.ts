@@ -17,6 +17,7 @@ import {
   type AssistantAnswer,
   type AssistantEngine,
   type AssistantModelChoice,
+  type AgentColour,
   type AssistantPlace,
   type ListOwnRunsQuery,
   type AssistantRun,
@@ -931,10 +932,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     /**
      * Show everyone, first half (#842, F-036 AG-4): what posting the answer needs, after every check. The answer is the caller's own,
      * committed, not yet posted or put away, from `/ai` in a conversation or a DM (a chat has nobody to show it to), and the caller can
-     * still write in that place. The adapter posts it as the caller's own message, "Ada · via Assistant", under the run's id so a retry
+     * still write in that place. The adapter posts it as the caller's message, labelled "Ada's Assistant" (the agent's name and colour), under the run's id so a retry
      * posts it once, and then calls {@link markShown}.
      */
-    async planShow(principal: Principal, runId: string): Promise<{ run: AssistantRun; place: AssistantPlace; body: string; via: string }> {
+    async planShow(principal: Principal, runId: string): Promise<{ run: AssistantRun; place: AssistantPlace; body: string; via: string; viaColour: AgentColour }> {
       return uow.run(async (ports) => {
         const run = await ownRun(ports, principal, runId);
         if (!isPrivateAnswer(run) || run.answerBody === null) throw new ConflictError('There is no answer to show', 'ASSISTANT_RUN_NOT_SHOWABLE');
@@ -945,7 +946,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         if (place.kind === 'space') await ports.access.requireSpaceAi(place.projectId);
         if (place.kind === 'space' ? !(await ports.access.canUseProject(principal, 'write', place.projectId)) : !(await ports.access.canUseDm(principal, place.dmId)))
           throw new NotFoundError(place.kind === 'space' ? 'Conversation' : 'Direct message', place.kind === 'space' ? 'CONVERSATION_NOT_FOUND' : 'DM_NOT_FOUND');
-        return { run: await runView(ports, run), place, body: withoutCitationMarks(run.answerBody, run.answerSources.length), via: (await ports.runs.agentBrief(run.agentId))?.name ?? 'Assistant' };
+        const agent = await ports.runs.agentBrief(run.agentId);
+        return { run: await runView(ports, run), place, body: withoutCitationMarks(run.answerBody, run.answerSources.length), via: agent?.name ?? 'Assistant', viaColour: agent?.colour ?? 'ink' };
       });
     },
 

@@ -1,5 +1,5 @@
 import { Fragment, useMemo, type ReactNode } from 'react';
-import { LINK_URL_SOURCE, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
+import { LINK_URL_SOURCE, messageLinkUrls, parseMessage, type MessageInline, type ProjectPerson } from '@flux/contracts';
 import { Icon, Kreska, initials } from '../ui';
 import { CodeBlock } from './CodeBlock';
 import { useLinkPreviews } from './linkPreviews';
@@ -105,7 +105,8 @@ function addressTitle(url: URL) {
  */
 export function LinkPreviews({ body, projectId, messageId }: { body: string; projectId: string; messageId: string | null }) {
   const fetched = useLinkPreviews(projectId, messageId, body);
-  const urls = [...new Set([...body.matchAll(tokens([]))].map((match) => match.groups?.url).filter((url): url is string => !!url))].slice(0, 3);
+  // The addresses of the message that get a card: the one rule the server shares, which leaves out what Flux's own list holds (#1222).
+  const urls = messageLinkUrls(body);
   const cards = urls.flatMap((raw) => { try { return [{ raw, url: new URL(raw) }]; } catch { return []; } });
   if (!cards.length) return null;
   return <ul className="link-previews" aria-label={cards.length === 1 ? 'Link preview' : 'Link previews'}>{cards.map(({ raw, url }) => {

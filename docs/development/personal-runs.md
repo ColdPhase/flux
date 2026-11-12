@@ -294,6 +294,11 @@ pages, founder direction 2026-11-09, #1113).
 - **Sources.** `webSourcesLine` lists "Searched the web for:" (queries) and "Found on the web:" (cited
   addresses) before "Read on the web:" and "Requested, not read:", at most 20 of each search list (the pages read are all listed), under the
   answer or in the end line (the run view's `webSources`, and the task's discussion).
+  One list (#1222, founder, 2026-11-12): when the answer is stored, `answerWithWebSources` takes out the model's own trailing "Sources:",
+  "Źródła:" or "References:" block when every line of it holds an address and every address is one Flux lists (`withoutOwnSources`), and
+  invented citation marks are taken out of the answer on every engine (`withoutInventedMarks`: `[8]`, `[S2]` that no source Flux supplied
+  answers to, and `【…】`; not in code). `messageLinkUrls` leaves out the addresses of that list, so a link card shows only an address the
+  list does not hold.
 - **Money.** Each search is charged `WEB_SEARCH_MICROS` on top of its tokens, as the provider reports it, and none is reserved
   (#1113): `nextRequestFits` and `budgetedReservationMicros` hold a request's tokens and the room for results, so a small budget stays usable.
   A request whose searches take the run above its reservation is a lost response (the reservation is counted as spent, the answer withheld), so

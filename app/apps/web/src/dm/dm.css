@@ -16,7 +16,7 @@
 .dm-msg__row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; padding: 7px 0 3px; }
 .dm-msg--cont .dm-msg__row { padding-top: 1px; }
 .dm-msg__meta { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
-.dm-msg__meta b { font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
+.dm-msg__meta :is(b, strong) { font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
 .dm-msg { --dm-lead: 1px; --dm-lh: 1.55; }
 .dm-msg__body { margin-top: var(--dm-lead); font-size: var(--fs-base); line-height: var(--dm-lh); color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .dm__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 10px; }

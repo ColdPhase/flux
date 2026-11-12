@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { AssistantChange, ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery, type AgentHue } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
-import { ContributionMark, clock, day, when } from '../app/messageParts';
+import { ContributionMark, clock, day, shownAnswer, shownLabel, when } from '../app/messageParts';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
@@ -179,8 +179,8 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
 
 export type TaskActivityState = ReturnType<typeof useTaskActivity>;
 
-function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; id?: string | null; name: string }; mine: boolean }) {
-  return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" /> : <Avatar name={actor.name} id={actor.id} size="sm" tone={mine ? 'me' : 'neutral'} />;
+function Face({ actor, mine, hue }: { actor: { kind: 'agent' | 'human'; id?: string | null; name: string }; mine: boolean; hue?: AgentHue }) {
+  return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" {...(hue ? { hue } : {})} /> : <Avatar name={actor.name} id={actor.id} size="sm" tone={mine ? 'me' : 'neutral'} />;
 }
 
 /**
@@ -265,14 +265,17 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
             const message = line.message;
             const name = state.author(message);
             const agent = message.authorId === null;
-            const mine = message.authorId === me.id;
+            // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232).
+            const shown = shownAnswer(message);
+            const mine = message.authorId === me.id && !shown;
             return (
-              <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id}>
-                <Face actor={{ kind: agent ? 'agent' : 'human', id: message.authorId, name }} mine={mine} />
+              <li key={line.key} className="wd-act__item wd-act__item--message" data-message-id={message.id} {...(shown ? { 'data-shown-answer': '', 'aria-label': shownLabel(shown, name).spoken } : {})}>
+                <Face actor={{ kind: agent || shown ? 'agent' : 'human', id: message.authorId, name }} mine={mine} {...(shown ? { hue: shown.colour } : {})} />
                 <div className="wd-act__body">
                   <p className="wd-act__who">
-                    {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b title={name}>{firstName(name)}</b>}
-                    {message.via ? <span className="project-convo__via">via {message.via}</span> : null}
+                    {shown ? <><AgentIdentity name={shownLabel(shown, name).label} icon={false} /><span className="ui-vh">, shown by {firstName(name)}</span></>
+                      : agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b title={name}>{firstName(name)}</b>}
+                    {message.via && !shown ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                     {message.editedAt ? <span className="message-edited" title={`Edited ${when(message.editedAt)}`}> · edited</span> : null}
                   </p>

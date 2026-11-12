@@ -1,9 +1,9 @@
 import type { DmMessage } from '@flux/contracts';
-import { Avatar, Icon } from '../ui';
+import { Avatar, Icon, Kreska } from '../ui';
 import { MessageContent } from '../composer/Files';
 import { OutboxStatus, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
-import { MessageDay, MessageTime } from '../app/messageParts';
+import { MessageDay, MessageTime, ShownAnswerName, shownAnswer, shownLabel } from '../app/messageParts';
 import { MessageText } from '../app/MessageText';
 import { useAddToMyMap } from '../sketch/myMap';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
@@ -27,7 +27,7 @@ function selectedIn(messageId: string, body: string): string | undefined {
  * grouping, time, day line and actions everywhere: reply in thread and create task beside it on a computer, swipe
  * left and long press on a phone, and the thread count under a root that has replies.
  */
-export function DmBubble({ dmId, message, pending, mine, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
+export function DmBubble({ dmId, message, pending, mine: authored, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
   onReply, onCreateTask, onOpenThread, onRetry, onRemove }: {
   /** The conversation, for the message's link. */
   dmId: string;
@@ -46,8 +46,11 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
   onRetry?: () => void; onRemove?: () => void;
 }) {
   const addToMyMap = useAddToMyMap();
+  // An agent's answer its asker posted reads as that agent's message, for the asker too (#1232): `authored` keeps Edit and Delete theirs.
+  const shown = message ? shownAnswer(message) : null;
+  const mine = authored && !shown;
   // Edit and Delete are the author's, on a message that is still there (#1006). They stay open to the author of a 1:1 whose other person left.
-  const own = useOwnMessage(message && mine && !message.removedAt ? {
+  const own = useOwnMessage(message && authored && !message.removedAt ? {
     body: message.body, focusId: `${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`,
     save: async (body) => announceMessageChanged(await editDmMessage(dmId, message.id, body)),
     remove: async () => announceMessageChanged(await removeDmMessage(dmId, message.id)),
@@ -61,7 +64,7 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
   };
   const touch = useTouchActions<HTMLLIElement>(actions);
   const { className: touchClass, ...touchHandlers } = touch.props;
-  const label = mine ? 'Your message' : `${name}’s message`;
+  const label = shown ? shownLabel(shown, name).spoken : mine ? 'Your message' : `${name}’s message`;
   // AI used in this conversation (#842, F-036 AG-4): one line for both people, naming the company that receives the conversation.
   if (message?.notice === 'ai_used') {
     return (
@@ -89,12 +92,13 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
   return (
     <li {...touchHandlers} id={`${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`} tabIndex={-1}
       className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived ? ' is-arrived' : ''} ${touchClass}`}
-      data-sequence={message.sequence} data-message-id={message.id} {...(observed ? { 'data-observe-id': message.id } : {})} aria-label={label}>
+      data-sequence={message.sequence} data-message-id={message.id} {...(observed ? { 'data-observe-id': message.id } : {})} {...(shown ? { 'data-shown-answer': '' } : {})} aria-label={label}>
       {day ? <MessageDay as="p" label={day} /> : null}
       <div className="dm-msg__row">
-        <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} id={message.authorId} size="lg" tone="neutral" />}</span>
+        <span className="dm-msg__face">{continued || mine ? null : shown ? <Kreska size={32} hue={shown.colour} className="author-face" /> : <Avatar name={name} id={message.authorId} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
-          {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
+          {continued || mine ? null : shown ? <p className="dm-msg__meta"><ShownAnswerName shown={shown} asker={name} /></p>
+            : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
           {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}
           <MessageContent body={own.slot ?? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div>} references={message.references} />
           {nav === 'stream' && message.replyCount > 0 ? (

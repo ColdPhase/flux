@@ -18,6 +18,7 @@ import { briefPrivateText, runtimeBrief, type BriefInput, type SuppliedSource } 
 import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
+import { withoutInventedMarks } from './answer-marks.js';
 import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
@@ -369,7 +370,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const redacted = redactSecrets(text, [grant.token]);
         const cleaner = answerCleaner(() => uow.run((ports) => ports.runs.privateTexts(run.id)));
         const searches = await uow.run((ports) => ports.runs.webSearches(run.id));
-        return { redacted, prepared: await preparedAnswer(redacted.text, cleaner, searches.cited) };
+        // Claude Code and Codex are given no source to cite (#1222): every mark in their answer is the model's own and is taken out.
+        return { redacted, prepared: await preparedAnswer(withoutInventedMarks(redacted.text), cleaner, searches.cited) };
       };
       const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await prepare(end.text) : null;
       // The words the CLI had written when its owner stopped it (#1248), cleaned the same way; a `<schedule>` or `<ask>` block, whole or

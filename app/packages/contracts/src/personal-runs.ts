@@ -31,7 +31,7 @@ export const agentAssistantRunsPath = (agentId: string) => `/api/v1/my-agents/${
  * was removed, never because another agent's was. The same shape as `GET /api/v1/personal-assistant`; anyone else's agent is 404.
  */
 export const agentAssistantStatusPath = (agentId: string) => `/api/v1/my-agents/${agentId}/status`;
-/** Show everyone (#842): the answer is posted as its asker's message, "Ada · via Assistant". */
+/** Show everyone (#842): the answer is posted as its asker's message, "Ada's Assistant" (#1232). */
 export const assistantRunShowPath = (runId: string) => `${assistantRunPath(runId)}/show`;
 /** Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. */
 export const assistantRunDismissPath = (runId: string) => `${assistantRunPath(runId)}/dismiss`;

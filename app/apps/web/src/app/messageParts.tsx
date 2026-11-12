@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
-import type { ConversationMessage } from '@flux/contracts';
+import type { AgentColour, ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
 import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
@@ -178,7 +178,28 @@ export function MessageDay({ label, as: Tag = 'li' }: { label: string; as?: 'li'
   return <Tag className="message-day project-convo__day"><span>{label}</span></Tag>;
 }
 
-/** "Ada · via Assistant" (#842, F-036 AG-4): the person posted an agent's answer with Show everyone. They stay the author. */
+/** "Ada · via Claude Code" (LC-2, #1091): a person's local client posted for them. They stay the author. An agent's answer is `ShownAnswer`'s (#1232). */
 export function ViaTag({ via }: { via?: string | undefined }) {
   return via ? <span className="project-convo__via">via {via}</span> : null;
+}
+
+/**
+ * An agent's answer its asker posted with Show everyone (#842, F-036 AG-4, #1232): `via` is the agent's name and `viaColour` its colour (a local
+ * client's post has none). It reads as that agent's message for every reader, the asker included; the asker stays its author of record.
+ */
+export function shownAnswer(message: { via?: string | undefined; viaColour?: AgentColour | undefined }): { agent: string; colour: AgentColour } | null {
+  return message.via && message.viaColour ? { agent: message.via, colour: message.viaColour } : null;
+}
+
+const firstWord = (name: string) => name.trim().split(/\s+/)[0] || name;
+/** "Hubert's Assistant" (the asker's first name and the agent's own name), and what a screen reader reads: "Hubert's Assistant, shown by Hubert". */
+export function shownLabel(shown: { agent: string }, asker: string): { label: string; spoken: string } {
+  const first = firstWord(asker);
+  return { label: `${first}'s ${shown.agent}`, spoken: `${first}'s ${shown.agent}, shown by ${first}` };
+}
+
+/** The name line of a shown answer: its label and the "Agent" tag, with "shown by" for a screen reader. */
+export function ShownAnswerName({ shown, asker }: { shown: { agent: string }; asker: string }) {
+  const { label } = shownLabel(shown, asker);
+  return <><strong><AgentIdentity name={label} icon={false} /></strong><span className="ui-vh">, shown by {firstWord(asker)}</span></>;
 }

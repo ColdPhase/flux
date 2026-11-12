@@ -13,7 +13,7 @@ undo and the domain events behave as for real use, and nothing is drawn over:
   Code ("via Claude Code", through a real OAuth bearer and MCP call); the Map has seven thoughts and the Wiki three pages;
 * two more spaces, so the sidebar reads like a company's.
 
-The `/ai` answer shared with Show everyone ("via Assistant") is made by the recorded journey (record_demo.py), live, last.
+The `/ai` answer shared with Show everyone ("Ada's Assistant") is made by the recorded journey (record_demo.py), live, last.
 
 Input (environment): FLUX_UI_ORIGIN, FLUX_UI_UPSTREAM, FLUX_DEMO_OWNER_PASSWORD, FLUX_DEMO_PARTNER_PASSWORD, FLUX_FIXTURE_TOKEN,
 FLUX_ANTHROPIC_MOCK_URL (the Compose service of scripts/record_demo.sh).

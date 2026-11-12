@@ -1,4 +1,4 @@
-import type { AgentProjectOwner, MaterialSource, MessageFile, MessageReference, MessageReferenceCard } from '@flux/contracts';
+import type { AgentColour, AgentProjectOwner, MaterialSource, MessageFile, MessageReference, MessageReferenceCard } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, WorkAccess, WorkRepository } from '../work/ports.js';
 
@@ -38,6 +38,8 @@ export interface DiscussionMessage {
   files?: MessageFile[];
   /** The agent whose answer the author posted with Show everyone (#842). */
   via?: string | null;
+  /** That agent's colour (#1232). */
+  viaColour?: AgentColour | null;
   /** When the author deleted it (#1006): the words are the marker and the request fingerprint no longer digests what was sent. */
   removedAt?: Date | null;
 }

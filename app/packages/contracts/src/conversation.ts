@@ -1,4 +1,5 @@
 import type { SearchTarget } from './search.js';
+import type { AgentColour } from './agents.js';
 
 /** Project conversations and materials are visible only through current project access. */
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
@@ -44,6 +45,11 @@ export interface ConversationMessageFields {
    * The person stays the author.
    */
   via?: string;
+  /**
+   * Present only with `via` when it names an agent, not a local client (#1232): the agent's colour, so every reader sees its Kreska in it. A
+   * message with it is read as that agent's answer, "Hubert's Assistant", shown by the person who is its author.
+   */
+  viaColour?: AgentColour;
   /** Present only for a saved blocker, a "what came of it" line or an explicit public handoff. */
   contribution?: MessageContribution;
   /**
@@ -81,18 +87,42 @@ export type MessageReferenceCard =
   }
   | { kind: MessageReferenceKind; state: 'unavailable' };
 
+/** The headings of the block Flux appends to an agent's answer (F-036 AG-8, #918, #954); the block starts at the first of them, after a blank line. */
+export const WEB_SOURCES_HEADINGS = ['Searched the web for:', 'Found on the web:', 'Read on the web:', 'Requested, not read:'] as const;
+
+/**
+ * Where the block Flux appended to a text starts, or the text's length when it has none: it comes last, after a blank line, and holds only
+ * its headings and `- ` lines. What stands there is Flux's list, never the agent's words (a query in it is the model's own, #1156).
+ */
+export function webSourcesStart(text: string): number {
+  let at = text.length;
+  for (const heading of WEB_SOURCES_HEADINGS) {
+    const start = text.lastIndexOf(`\n\n${heading}\n`);
+    if (start >= 0 && start < at && text.slice(start + 2).trimEnd().split('\n')
+      .every((line) => line.startsWith('- ') || (WEB_SOURCES_HEADINGS as readonly string[]).includes(line))) at = start;
+  }
+  return at;
+}
+
 /**
  * The web addresses of a message that get a link card (#469), in order and without repeats: the one rule the reader and the
  * server share, so a card the server returns lands on the address the reader shows. The server reads them from the stored body,
  * never from a request, so no caller can name an address for it to fetch. A `*` ends no address: `**https://a.example**` is bold (#1247).
+ * An address that Flux's own list under an agent's answer ("Found on the web", #1222) already holds gets no card: each address shows once.
  */
 export const LINK_URL_SOURCE = String.raw`https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]*]`;
 export const LINK_CARD_LIMIT = 3;
 export const LINK_URL_MAX_LENGTH = 2048;
+/** An address as it is compared: valid and without its fragment; the text itself when it is not one. */
+function comparedAddress(address: string): string {
+  try { const url = new URL(address); url.hash = ''; return url.href; } catch { return address; }
+}
 export function messageLinkUrls(body: string): string[] {
+  const at = webSourcesStart(body);
+  const listed = new Set(at < body.length ? [...body.slice(at).matchAll(new RegExp(LINK_URL_SOURCE, 'g'))].map((match) => comparedAddress(match[0])) : []);
   const found = new Set<string>();
-  for (const match of body.matchAll(new RegExp(LINK_URL_SOURCE, 'g'))) {
-    if (match[0].length <= LINK_URL_MAX_LENGTH) found.add(match[0]);
+  for (const match of body.slice(0, at).matchAll(new RegExp(LINK_URL_SOURCE, 'g'))) {
+    if (match[0].length <= LINK_URL_MAX_LENGTH && !listed.has(comparedAddress(match[0]))) found.add(match[0]);
     if (found.size === LINK_CARD_LIMIT) break;
   }
   return [...found];

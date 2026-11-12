@@ -1,4 +1,5 @@
 import { and, asc, count, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
+import type { AgentColour } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openField, openRows, sealFor, sealOf, sealsOf } from '../sealing.js';
@@ -34,10 +35,11 @@ export interface NewDmMessageRow {
   threadRootId?: string | null;
   /** The agent whose answer the author posted with Show everyone (#842). */
   via?: string | null;
+  viaColour?: AgentColour | null;
 }
 
 export function toDmMessageRecord(row: MessageRow, replyCount = 0) {
-  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, kind: row.kind,
+  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, viaColour: row.viaColour, kind: row.kind,
     editedAt: row.editedAt, removedAt: row.removedAt };
 }
 
@@ -148,7 +150,7 @@ export function dmRows(db: DbExecutor) {
       const [updated] = await db.update(d).set({ nextSequence: sql`${d.nextSequence} + 1`, lastMessageAt: sql`now()` })
         .where(eq(d.id, message.dmId)).returning({ nextSequence: d.nextSequence });
       const [row] = await db.insert(m).values(await sealFor(db, 'dm_messages', message.workspaceId,
-        { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, sequence: updated!.nextSequence - 1 })).returning();
+        { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, viaColour: message.via ? message.viaColour ?? null : null, sequence: updated!.nextSequence - 1 })).returning();
       return toDmMessageRecord({ ...row!, body: message.body, requestFingerprint: message.requestFingerprint });
     },
     /** Messages of this DM among `ids`, with the facts a receipt run is checked against. Foreign ids are absent. */

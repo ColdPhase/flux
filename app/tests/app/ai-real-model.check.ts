@@ -352,6 +352,13 @@ const scenarios: Record<string, Scenario> = {
           reads.some((read) => results.has(read.url) && read.outcome === 'read') || opened.some((url) => results.has(url)), { reads, opened }),
         check('the answer gives the law (art. 6 RODO or its bases)', 'outcome', /art\.?\s*6|zgod|umow|obowiązk|uzasadnion/i.test(own)),
         check('the answer has sources', 'outcome', /public\.test\/pl\//.test(answer)),
+        // #1222: the model's own marks and "Sources:" block are not stored; Flux's list is the one list, each address once in it.
+        check('the stored answer has no citation mark the model invented ([8], [S2], 【3†source】)', 'outcome', !/(^|[ \t(])\[(?:S?\d{1,3})\]|【/.test(own.replace(/```[\s\S]*?```|`[^`\n]*`/g, '')), own.slice(-400)),
+        check('the stored answer has no "Sources:" / "Źródła:" / "References:" block of the model\'s own', 'outcome', !/\n[ \t]*(?:#{1,6}[ \t]*)?(?:\*\*)?(?:sources?|źródła|źródło|references?)(?:\*\*)?[ \t]*:/i.test(own), own.slice(-400)),
+        check('each address is listed once under "Found on the web:"', 'outcome', (() => {
+          const found = /\n\nFound on the web:\n((?:- .*\n?)+)/.exec(answer)?.[1]?.trim().split('\n') ?? [];
+          return found.length === new Set(found).size;
+        })(), answer.slice(own.length)),
         check('the answer is in Polish', 'outcome', isPolish(answer)),
       ],
       notes: { answer, searches, reads, codexOpened: opened }, runs: [run.id],

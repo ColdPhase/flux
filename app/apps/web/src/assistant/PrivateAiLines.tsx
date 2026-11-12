@@ -12,7 +12,7 @@ import { PhotoGrid } from '../composer/Attachments';
 import './assistant.css';
 
 // The answer to `/ai` (#842, F-036 AG-4; mockup AiPrivate): a card only its asker sees, in the place they asked. Show everyone posts it as their
-// own message, "Ada · via Assistant"; Dismiss puts it away. Nothing about it reaches anyone else until then. While the agent works, or when a run
+// message, labelled "Ada's Assistant" with the agent's Kreska (#1232); Dismiss puts it away. Nothing about it reaches anyone else until then. While the agent works, or when a run
 // ends without an answer, the owner-only working line stands in the same place.
 
 /** "Jonas and Maja", "Jonas, Maja and 3 others": who does not see the answer. */
@@ -74,7 +74,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}
       <div className="assistant-private__foot">
         <span className="assistant-private__note">
-          {others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)} · via {name}”.
+          {others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)}'s {name}”.
         </span>
         <Button variant="quiet" busy={busy === 'dismiss'} disabled={!!busy} onClick={() => void act('dismiss')}>Dismiss</Button>
         <Button variant="primary" busy={busy === 'show'} disabled={!!busy} onClick={() => void act('show')}>Show everyone</Button>

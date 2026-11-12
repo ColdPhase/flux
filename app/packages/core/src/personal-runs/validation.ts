@@ -1,4 +1,5 @@
 import { joinsAddress } from './web-addresses.js';
+import { withoutInventedMarks } from './answer-marks.js';
 import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
@@ -191,7 +192,9 @@ export type { SuppliedSource } from './brief.js';
  */
 export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[]) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
-  const raw = text.trim().slice(0, 100_000);
+  // Marks the model invented (`[8]`, `[S9]` of no supplied source, `【3†source】`) are taken out first (#1222): what is left of `[n]` after the numbering
+  // below is exactly a supplied source's.
+  const raw = withoutInventedMarks(text.trim().slice(0, 100_000), new Set(byLabel.keys())).trim();
   // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
   // reader can open exactly the cited object. Labels of sources that were not supplied are
   // removed: they point at nothing the audience could open.
