@@ -174,7 +174,7 @@ class OpenWhereYouLeftOff(unittest.TestCase):
                 status=200, content_type="application/json", body=json.dumps({"items": lines, "readAt": read_at})) if route.request.method == "GET" else route.continue_())
 
         return dict(name="agent", url=f"/agents/{agent}", feed=".agc-pane .dm__feed", first=f'[data-line-id="{lines[0]["id"]}"]', ready=f'[data-line-id="{lines[-1]["id"]}"]', more=more,
-                    refresh=False, arrange=arrange, starts=True)
+                    refresh=False, arrange=arrange, starts=True, author="Assistant")
 
     # ------------------------------------------------------------------ the one behaviour
 
@@ -207,6 +207,8 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         expect(divider).to_have_count(1)
         expect(divider).to_have_text("New")
         first = page.locator(surface["first"])
+        # The first new message starts its own group: its author is named, whoever wrote the message above the divider.
+        expect(first).to_contain_text(surface.get("author", "Bob"))
         # It opens on what is new: the divider is where the feed starts, with the first new message below it. Not at the end and not at the top.
         expect(first).to_be_in_viewport()
         top = divider.evaluate("(el, feed) => el.getBoundingClientRect().top - feed.getBoundingClientRect().top", feed.element_handle())
@@ -252,6 +254,14 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             expect(self.pill(feed)).to_have_count(0)
             page.wait_for_timeout(300)
             self.assertLess(self.at_end(feed), 48, f"{label}: End took the reader to the end")
+            # Used from the keyboard, the line leaves focus on the newest message, not on the page.
+            feed.evaluate("el => { el.scrollTop = 0; }")
+            self.arrive(page, surface)
+            expect(self.pill(feed)).to_have_text("1 new")
+            self.pill(feed).focus()
+            page.keyboard.press("Enter")
+            expect(self.pill(feed)).to_have_count(0)
+            self.assertTrue(feed.evaluate("el => el.contains(document.activeElement) && document.activeElement !== el.ownerDocument.body"), f"{label}: focus stays in the feed after the line")
             # And the line says how many when there are several.
             feed.evaluate("el => { el.scrollTop = 0; }")
             self.arrive(page, surface)
@@ -312,6 +322,28 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         page, feed = self.open(agent)
         expect(feed.get_by_role("separator", name="New")).to_have_count(0)
 
+
+    def test_09_a_long_direct_message_never_opened_reads_back_a_page_or_two_at_most(self) -> None:
+        """#862's request budget: 330 messages never opened open with the divider above the oldest message that was read back (50 newest and two
+        pages of 100), with "Show earlier messages" above it, not after reading all the way to the first message."""
+        dm = self.call("ada", f"/api/v1/workspaces/{self.ids['workspace']}/dms", {"participantIds": [self.ids["bob"], self.ids["carol"]], "title": "Lamp crew long"})["id"]
+        for index in range(330):
+            self.call("bob", f"/api/v1/dms/{dm}/messages", {"body": words("Long", index), "clientMessageId": str(uuid.uuid4())})
+        page = self.page()
+        reads: list[str] = []
+        page.on("request", lambda request: reads.append(request.url) if request.method == "GET" and re.search(rf"/api/v1/dms/{dm}\?beforeSequence=", request.url) else None)
+        page.goto(f"/dm/{dm}")
+        feed = page.locator(".dm__feed")
+        expect(feed).to_be_visible()
+        divider = feed.get_by_role("separator", name="New")
+        expect(divider).to_have_count(1)
+        expect(feed.get_by_role("button", name="Show earlier messages")).to_be_visible()
+        loaded = page.locator(".dm__feed li.dm-msg").count()
+        self.assertTrue(200 <= loaded <= 260, f"the newest 50 and two pages of 100 are loaded, saw {loaded}")
+        self.assertLessEqual(len(reads), 2, f"at most two pages are read back, saw {reads}")
+        self.assertTrue(divider.evaluate("el => el.nextElementSibling?.matches('li.dm-msg') && !el.previousElementSibling?.matches('li.dm-msg')"), "the divider is above the oldest message loaded")
+        self.assertLess(feed.evaluate("el => el.scrollTop"), 2)
+        expect(divider).to_be_in_viewport()
 
     # ------------------------------------------------------------------ never opened: the first message
 

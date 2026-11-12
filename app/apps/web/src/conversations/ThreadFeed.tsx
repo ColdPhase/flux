@@ -46,9 +46,10 @@ export function ThreadFeed(props: Props) {
     else {
       const message = entry.message;
       const previous = entries[index - 1], next = entries[index + 1];
-      const continued = previous?.type === 'message' && sameMessageAuthor(previous.message, message);
+      // The reply the "New" divider stands above starts a group, as after a day line: its author is named again, and the reply before it ends its group.
+      const continued = message.id !== props.unreadFrom && previous?.type === 'message' && sameMessageAuthor(previous.message, message);
       const nextMessage = next?.type === 'message' ? next.message : !next && outbox.pending[0] ? { authorId: me.user.id, createdAt: outbox.pending[0].at } : undefined;
-      const groupLast = !sameMessageAuthor(message, nextMessage);
+      const groupLast = (next?.type === 'message' && next.message.id === props.unreadFrom) || !sameMessageAuthor(message, nextMessage);
       // A reply confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
       withDay(entry.at, dayKey, [...(message.id === props.unreadFrom ? [<UnreadDivider key="unread" />] : []), <ThreadReply key={outbox.keyOf(message.id)} continued={continued} groupLast={groupLast} message={message} mine={message.authorId === me.user.id} meId={me.user.id} arrived={arrived === message.id} name={props.messageAuthor(message)}
         project={project} owners={owners} people={props.people} preview={messageWork.previews?.get(message.id) ?? null} makeWork={props.makeWork} writable={writable} onDenied={props.hideIfDenied}

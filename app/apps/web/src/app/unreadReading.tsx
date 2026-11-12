@@ -20,6 +20,12 @@ const END_SLACK = 48;
 const TOP_GAP = 12;
 /** How long the divider keeps its place while late layout (previews, chips, fonts) settles, unless the reader acts first. */
 const HOLD_MS = 2000;
+/**
+ * Opening on the first new message that is older than the newest window reads back at most this many pages (100 messages each; #862's
+ * request budget: a conversation never opened is all new, however long). Past that, the divider goes above the oldest message loaded: all
+ * of what is loaded is new, and "Show earlier" is above it.
+ */
+export const UNREAD_READ_BACK = 2;
 
 /** A quiet divider where what is new begins: one rule with a word, like a day line (final design §5, S23). */
 export function UnreadDivider() {
@@ -43,6 +49,14 @@ export function countBelow(feed: HTMLElement | null, ids: readonly string[], ele
   if (!feed) return 0;
   const bottom = feed.getBoundingClientRect().bottom;
   return ids.filter((id) => (elementFor(id)?.getBoundingClientRect().top ?? 0) >= bottom - 1).length;
+}
+
+/** The newest message of a feed, or the feed itself when its entries cannot take focus (an agent's chat). */
+function newest(feed: HTMLElement): HTMLElement | null {
+  const last = [...feed.querySelectorAll<HTMLElement>('li[tabindex="-1"]')].filter((item) => item.getClientRects().length).at(-1);
+  if (last) return last;
+  feed.tabIndex = -1;
+  return feed;
 }
 
 const holds = new WeakMap<HTMLElement, () => void>();
@@ -104,8 +118,11 @@ export function useNewBelow(feed: HTMLElement | null) {
     const el = node.current;
     if (!el) return;
     endOpening(el);
+    // The line goes with the press: a person who used it from the keyboard keeps their place in the page, on the newest message.
+    const fromLine = !!document.activeElement?.closest('.convo-newbelow');
     el.scrollTop = el.scrollHeight;
     setCount(0);
+    if (fromLine) newest(el)?.focus({ preventScroll: true });
   }, []);
   useEndKey(feed, count > 0, toEnd);
   return { count, add, toEnd };

@@ -3,7 +3,7 @@ import { useLocation } from 'react-router';
 import type { AssistantAnswer } from '@flux/contracts';
 import type { outboxView } from '../composer/draft';
 import { pageBackTo } from '../app/seekMessage';
-import { countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { UNREAD_READ_BACK, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from '../app/receipts';
 import { useArrivals } from '../ui';
 import { observeProjectMessages, olderMessages, projectReceipts } from './api';
@@ -27,7 +27,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   // Where the person left off (#1246), as the thread was opened (what is seen is read, so a later read says something else): a reply
   // the "New" divider stands above, or "caught up" (null). A thread never opened has all its replies to read: the first reply, which opens the
   // thread at its root, whole (#436). The pane is made again for each thread.
-  const [leftOff] = useState(conversation?.unreadFrom);
+  const [leftOff, setLeftOff] = useState(conversation?.unreadFrom);
   const unreadFrom = typeof leftOff === 'string' ? leftOff : null;
   const hash = useLocation().hash;
   // The root is the stream's message; the thread arrives only at its replies.
@@ -39,10 +39,14 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
   useEffect(() => {
     if (!conversation || !seek || seekLoaded || !olderCursor) return;
     let cancelled = false;
-    void pageBackTo(seek, olderCursor, (before, limit) => olderMessages(conversation.id, before, undefined, limit)).then(({ pages, cursor }) => {
+    // The first new reply is read back to a page or two at most (#862): beyond that all that is loaded is new, and the divider goes above the oldest of it.
+    const forUnread = seek === unreadFrom && seek !== arrived && !threadRestore;
+    void pageBackTo(seek, olderCursor, (before, limit) => olderMessages(conversation.id, before, undefined, limit), forUnread ? UNREAD_READ_BACK : undefined).then(({ pages, cursor, found }) => {
       if (cancelled) return;
       thread.setMessages((current) => pages.reduce((all, page) => mergeMessages(all, page.messages), current));
       thread.setOlderCursor(cursor);
+      const oldest = pages.at(-1)?.messages.find((message) => message.sequence > 1);
+      if (forUnread && !found && oldest) setLeftOff(oldest.id);
     }).catch((cause: unknown) => { hideIfDenied(cause); });
     return () => { cancelled = true; };
     // Seek once per conversation and target; later pages come from "Load earlier replies".

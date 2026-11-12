@@ -625,6 +625,12 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   // The divider goes before the first notice of an unread decision (#763 H11-3).
   const unreadObjectKey = unread && 'objectId' in unread
     ? display.find((entry) => entry.kind === 'object' && objectTarget(entry.object).id === unread.objectId)?.key ?? null : null;
+  // Where the unread part begins: before the root or the task announcement the summary names first.
+  const startsUnread = (entry: (typeof display)[number]) => !!unread && ('objectId' in unread
+    ? entry.kind === 'object' && entry.key === unreadObjectKey
+    : 'workId' in unread
+    ? (entry.kind === 'notice' && entry.notice.workId === unread.workId) || (entry.kind === 'fold' && entry.notices.some((item) => item.notice.workId === unread.workId))
+    : !unread.conversationId && entry.kind === 'root' && entry.root.message.id === unread.messageId);
   return (<>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
@@ -642,12 +648,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const label = dayOf[index]!;
                 const key = entry.kind === 'root' ? rootKey(entry.root) : entry.key;
                 const dayLine = index === 0 || dayOf[index - 1] !== label ? <MessageDay key={`day-${key}`} label={label} /> : null;
-                // Where the unread part begins: before the root or the task announcement the summary names first.
-                const starts = !!unread && ('objectId' in unread
-                  ? entry.kind === 'object' && entry.key === unreadObjectKey
-                  : 'workId' in unread
-                  ? (entry.kind === 'notice' && entry.notice.workId === unread.workId) || (entry.kind === 'fold' && entry.notices.some((item) => item.notice.workId === unread.workId))
-                  : !unread.conversationId && entry.kind === 'root' && entry.root.message.id === unread.messageId);
+                const starts = startsUnread(entry);
                 const divider = starts ? <Fragment key={`unread-${key}`}>{dayLine}<UnreadDivider /></Fragment> : dayLine;
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
@@ -661,9 +662,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 }
                 const { root } = entry;
                 const previous = display[index - 1], next = display[index + 1];
-                const continued = previous?.kind === 'root' && sameMessageAuthor(previous.root.message, root.message);
+                // The message the "New" divider stands above starts a group, as after a day line: its author is named again, and the one before it ends its group.
+                const continued = !starts && previous?.kind === 'root' && sameMessageAuthor(previous.root.message, root.message);
                 const nextMessage = next?.kind === 'root' ? next.root.message : !next && outbox.pending[0] ? { authorId: meId, createdAt: outbox.pending[0].at } : undefined;
-                const groupLast = !sameMessageAuthor(root.message, nextMessage);
+                const groupLast = (!!next && startsUnread(next)) || !sameMessageAuthor(root.message, nextMessage);
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
                   open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}

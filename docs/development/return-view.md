@@ -158,5 +158,7 @@ observed). A conversation in which nothing was observed has never been opened, s
 message by someone else (a thread's first reply; an agent's chat with no `readAt` has its first line or answer). When the divider starts the list the
 feed opens at its very top, so who is in a DM, a thread's root and an agent's note are in view. A space you have never visited has no return point
 and is not changed: it opens at its end. The value is read when the conversation opens and kept for as long as it stays open: what is seen meanwhile does not move the divider. A first new message older
-than the newest window is read back to with the same paging a link to a message uses (a direct message and a project thread do; a DM's thread
-and a space's stream do not, and then open as they always did, without a divider).
+than the newest window is read back to with the same paging a link to a message uses, but at most `UNREAD_READ_BACK` (2) pages of 100 (#862: a conversation
+never opened is all new, however long): past that the divider stands above the oldest message read, which is also new, with "Show earlier" above it
+(a direct message and a project thread do; a DM's thread and a space's stream do not read back, and then open as they always did, without a divider). A DM
+records nothing as seen while its feed is hidden for that read-back.

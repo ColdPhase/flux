@@ -1,7 +1,7 @@
 import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
-import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
+import { NewBelow, UNREAD_READ_BACK, UnreadDivider, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
 import { MessageDay } from '../app/messageParts';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
@@ -91,7 +91,7 @@ function DmContent({ initial }: { initial: Dm }) {
   const [olderCursor, setOlderCursor] = useState(initial.messagePage.nextBeforeSequence);
   // Where the person left off (#1246), as this conversation was opened: the "New" divider stands above this message and opening scrolls to it
   // (a conversation never opened: its first message, from the very top). Later reads move it (what is seen is read), so it is kept as it was.
-  const [unreadFrom] = useState(initial.unreadFrom ?? null);
+  const [unreadFrom, setUnreadFrom] = useState(initial.unreadFrom ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
   // The shared composer record, kept in this tab: the draft and the messages being sent (#264).
   const composer = useComposerDraft(me.user.id, 'dm', `dm:${initial.id}`);
@@ -228,11 +228,15 @@ function DmContent({ initial }: { initial: Dm }) {
   useEffect(() => {
     if (!seek || messages.some((message) => message.id === seek) || !olderCursor) return;
     let cancelled = false;
-    void pageBackTo(seek, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit)).then(({ pages, cursor }) => {
+    // The first new message is read back to a page or two at most (#862): beyond that all that is loaded is new, and the divider goes above the oldest of it.
+    const forUnread = !arrived && seek === unreadFrom;
+    void pageBackTo(seek, olderCursor, (before, limit) => olderDmMessages(initial.id, before, undefined, limit), forUnread ? UNREAD_READ_BACK : undefined).then(({ pages, cursor, found }) => {
       if (cancelled) return;
       for (const page of pages) learn(page.people);
       setMessages((current) => pages.reduce((all, page) => merge(all, page.messages), current));
       setOlderCursor(cursor);
+      const oldest = pages.at(-1)?.messages[0];
+      if (forUnread && !found && oldest) setUnreadFrom(oldest.id);
     }).catch((cause: unknown) => { denied(cause); }).finally(() => { if (!cancelled) setSought(true); });
     return () => { cancelled = true; };
     // Seek once per target; later pages come from "Show earlier messages".
@@ -340,7 +344,7 @@ function DmContent({ initial }: { initial: Dm }) {
   // Stored messages, then the ones being sent, grouped by day and author as one list.
   const lines = [...shown.map((message) => ({ message, item: null, authorId: message.notice ? `~${message.id}` : message.authorId, via: message.via ?? null, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
-  const rows = groupRows(lines);
+  const rows = groupRows(lines, (line) => !!line.message && line.message.id === unreadFrom);
   // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
   const liftRef = useRef<HTMLDivElement>(null);
   useSpareHeight(feedRef, columnRef, liftRef, rows.length, feedNode);
@@ -352,7 +356,8 @@ function DmContent({ initial }: { initial: Dm }) {
   }, { animate: false });
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
-  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending, feed: feedBox,
+  // Nothing is seen while the feed is hidden for its read-back to the first new message.
+  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending && !waitingForUnread, feed: feedBox,
     ids: shown.filter((m) => m.authorId !== me.user.id && !m.notice).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
   const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });

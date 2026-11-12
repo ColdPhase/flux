@@ -106,12 +106,13 @@ async function requireProject(principal: Principal, projectId: string, db: Execu
  * here (#534), or the first reply of all when they observed none. The opening message is the thread's header, never the divider's place.
  * Only a person has a read of their own.
  */
-async function unreadFrom(db: Executor, principal: Principal, conversationId: string): Promise<{ unreadFrom?: string | null }> {
+async function unreadFrom(db: Executor, principal: Principal, projectId: string, conversationId: string): Promise<{ unreadFrom?: string | null }> {
   if (principal.kind !== 'human') return {};
   const o = schema.projectMessageObservations;
   const m = schema.projectMessages;
+  // By space and person first: `project_message_observations_viewer_idx` is on (project_id, viewer_id).
   const [seen] = await db.select({ top: sql<number | null>`max(${m.sequence})` }).from(o).innerJoin(m, eq(m.id, o.messageId))
-    .where(and(eq(m.conversationId, conversationId), eq(o.viewerId, principal.id)));
+    .where(and(eq(o.projectId, projectId), eq(o.viewerId, principal.id), eq(m.conversationId, conversationId)));
   const [next] = await db.select({ id: m.id }).from(m)
     .where(and(eq(m.conversationId, conversationId), gt(m.sequence, Math.max(seen?.top ?? 0, 1)), sql`${m.authorId} IS DISTINCT FROM ${principal.id}`, isNull(m.removedAt)))
     .orderBy(asc(m.sequence)).limit(1);
@@ -381,7 +382,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         ...(task ? { task } : {}),
         createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
-        ...(await unreadFrom(db, principal, row.id)) };
+        ...(await unreadFrom(db, principal, row.projectId, row.id)) };
     },
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {
