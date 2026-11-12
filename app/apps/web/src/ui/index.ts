@@ -1,4 +1,5 @@
 export { Avatar, initials } from './Avatar';
+export { SpaceFace, spaceLetter } from './SpaceFace';
 export { AuthorFace } from './AuthorFace';
 export { Button, IconButton, Spinner, type ButtonProps, type ButtonVariant } from './Button';
 export { EmptyState } from './EmptyState';

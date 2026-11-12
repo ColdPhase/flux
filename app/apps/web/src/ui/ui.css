@@ -414,6 +414,13 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-avatar__photo { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
 .ui-avatar:has(.ui-avatar__photo)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; box-shadow: inset 0 0 0 1px var(--line); pointer-events: none; }
 
+/* A space's icon in its tile (F-040, #1227): the tile keeps its size, radius and fill; an emoji sits in its middle at about two thirds
+   of it, and a picture fills it with the tile's radius and hairline. */
+:where(.side__pj, .proj-index__tile, .create__tile, .ov-tile, .sr__ic--project, .spset__tile) { position: relative; }
+.space-face--emoji { font-size: 1.4em; line-height: 1; font-weight: 400; }
+.space-face--pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; border-radius: inherit;
+  outline: 1px solid var(--line); outline-offset: -1px; }
+
 /* ---------- Press, hover and selection (#593 AC-5, #863) ----------
    A press is colour. Every pressable control answers with the same short fill transition (--tr-fill, the fill half of --tr):
    hover and selection fills ease in and out instead of jumping, and a pressed control takes a deeper fill than its hover (--act,

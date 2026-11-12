@@ -23,6 +23,7 @@ import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL } from '../work/format';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
+import { SpaceFace } from '../ui/SpaceFace';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
@@ -169,7 +170,7 @@ function PlacePicker({ projectId, onChange, compact = false, plain = false }: { 
   const label = current ? current.name : 'Choose a space';
   return (
     <label className={`create__place${plain ? ' create__place--plain' : ''}`}>
-      <span className="create__tile" aria-hidden="true">{(current?.name.trim()[0] ?? '?').toUpperCase()}</span>
+      <span className="create__tile" aria-hidden="true"><SpaceFace name={current?.name ?? '?'} icon={current?.icon} /></span>
       <span className="create__place-name">{label}</span>
       {compact ? <Icon name="chevron-down" size={12} /> : null}
       <Select aria-label="Space" value={projectId} onChange={(next) => onChange(next)}>

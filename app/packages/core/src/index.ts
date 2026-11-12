@@ -109,6 +109,7 @@ export * from './files/ports.js';
 export * from './files/service.js';
 export * from './pictures/ports.js';
 export * from './pictures/service.js';
+export * from './pictures/space-icons.js';
 export * from './agent-runtime/index.js';
 
 export * from './assistant/index.js';

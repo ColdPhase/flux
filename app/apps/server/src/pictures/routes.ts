@@ -1,21 +1,25 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import { ME_PHOTO_PATH, ME_PROBE_HEADER, PEOPLE_PHOTOS_PATH, PICTURE_LIMITS, type PeoplePhotos, type PhotoSet, type PictureSize } from '@flux/contracts';
-import { createPictureUseCases, InvalidInputError, type FileStorage, type PictureRenderer, type Principal } from '@flux/core';
-import { personPhotoRows, type Database } from '@flux/db';
+import { ME_PHOTO_PATH, ME_PROBE_HEADER, PEOPLE_PHOTOS_PATH, PICTURE_LIMITS, type PeoplePhotos, type PhotoSet, type PictureSize, type SpaceIcon } from '@flux/contracts';
+import { createPictureUseCases, createSpaceIconUseCases, InvalidInputError, NotFoundError, type FileStorage, type PictureRenderer, type Principal } from '@flux/core';
+import { accessPorts, personPhotoRows, spaceIconRows, type Database, type DbExecutor } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 
+/** `spaceIconPath` as a route. */
+const SPACE_ICON_ROUTE = '/api/v1/projects/:projectId/icon';
 /** The raw picture types an upload may declare; the bytes decide what it is either way (F-039). */
 const UPLOAD_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'application/octet-stream'];
 
 /**
- * Profile photos (F-039, #1226): set and remove your own, the photos of the people you can see, and one rendition. A rendition is
+ * Profile photos (F-039, #1226): set and remove your own, the photos of the people you can see, and one rendition. Space icons
+ * (F-040, #1227): an emoji or a picture for a space, by the people who can rename it. A rendition is
  * immutable under its random id, so the browser keeps it for a year and a view asks nothing again (#862); it is only ever an image.
  */
 export async function pictureRoutes(app: FastifyInstance, { db, sessions, storage, renderer }:
   { db: Database; sessions: SessionResolver; storage: FileStorage; renderer: PictureRenderer }) {
   useDomainErrors(app);
   const pictures = createPictureUseCases({ run: (action) => db.transaction((tx) => action(personPhotoRows(tx))) }, storage, renderer);
+  const spaceIcons = createSpaceIconUseCases(db, { ...accessPorts, icons: (tx) => spaceIconRows(tx as DbExecutor) }, storage, renderer);
   app.addContentTypeParser(UPLOAD_TYPES, { parseAs: 'buffer', bodyLimit: PICTURE_LIMITS.photoBytes }, (_request, body, done) => done(null, body));
   // The person is known before a byte of the upload is read: nobody without a session makes Flux hold 5 MiB.
   const principals = new WeakMap<FastifyRequest, Principal>();
@@ -40,9 +44,28 @@ export async function pictureRoutes(app: FastifyInstance, { db, sessions, storag
     return found;
   });
 
+  // A space's icon: JSON `{ emoji }`, or a picture's raw bytes (F-040).
+  app.put<{ Params: { projectId: string }; Body: unknown }>(SPACE_ICON_ROUTE, { bodyLimit: PICTURE_LIMITS.spaceIconBytes,
+    onRequest: async (request) => { principals.set(request, (await sessions.requirePrincipal(request)).principal); } },
+  async (request): Promise<SpaceIcon> => {
+    const principal = principals.get(request)!;
+    if (Buffer.isBuffer(request.body)) return spaceIcons.setPicture(principal, request.params.projectId, request.body);
+    const emoji = (request.body as { emoji?: unknown } | null)?.emoji;
+    if (emoji === undefined) throw new InvalidInputError('Send { emoji } or a picture\'s bytes', 'INVALID_SPACE_EMOJI');
+    return spaceIcons.setEmoji(principal, request.params.projectId, emoji);
+  });
+
+  app.delete<{ Params: { projectId: string } }>(SPACE_ICON_ROUTE, async (request, reply) => {
+    await spaceIcons.removeIcon((await sessions.requirePrincipal(request)).principal, request.params.projectId);
+    return reply.code(204).send();
+  });
+
   app.get<{ Params: { pictureId: string; size: string } }>('/api/v1/pictures/:pictureId/:size', async (request, reply) => {
     const principal = (await sessions.requirePrincipal(request)).principal;
-    const bytes = await pictures.readPicture(principal, request.params.pictureId, Number(request.params.size) as PictureSize);
+    const size = Number(request.params.size) as PictureSize;
+    // A person's photo or a space's picture: each is served only to whoever may see it now; anything else is the same 404.
+    const bytes = await pictures.readPicture(principal, request.params.pictureId, size) ?? await spaceIcons.readPicture(principal, request.params.pictureId, size);
+    if (!bytes) throw new NotFoundError('Picture', 'PICTURE_NOT_FOUND');
     return reply.header('Content-Type', 'image/webp').header('Content-Length', bytes.byteLength)
       .header('Cache-Control', 'private, max-age=31536000, immutable').header('X-Content-Type-Options', 'nosniff')
       .header('Content-Security-Policy', "default-src 'none'; sandbox").header('Cross-Origin-Resource-Policy', 'same-origin')

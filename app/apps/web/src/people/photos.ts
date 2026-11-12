@@ -20,8 +20,8 @@ export async function removeMyPhoto(): Promise<void> {
 }
 
 /** What the picker can say before sending: the same rule the server applies, by the first bytes of the file. */
-export async function photoProblem(file: Blob): Promise<string | null> {
-  if (file.size > PICTURE_LIMITS.photoBytes) return 'A photo is at most 5 MB.';
+export async function photoProblem(file: Blob, limit: { bytes: number; words: string } = { bytes: PICTURE_LIMITS.photoBytes, words: 'A photo is at most 5 MB.' }): Promise<string | null> {
+  if (file.size > limit.bytes) return limit.words;
   const type = imageTypeOf(new Uint8Array(await file.slice(0, 16).arrayBuffer()));
   return type && type !== 'image/gif' ? null : 'Choose a PNG, JPEG or WebP picture.';
 }

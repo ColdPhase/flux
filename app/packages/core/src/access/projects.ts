@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectVisibility, RenameProjectCommand, SpaceAiState } from '@flux/contracts';
+import type { CreateProjectCommand, Page, PageQuery, Project, ProjectPerson, ProjectVisibility, RenameProjectCommand, SpaceAiState, SpaceIcon } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts, type DomainEventSink } from './common.js';
@@ -14,12 +14,16 @@ import { oneOf, name, parsePage, PROJECT_VISIBILITIES } from './validation.js';
 
 type ProjectPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
 
-/** `ai` is the space's switch; a missing row reads as off (fail closed). */
-export function toProject(row: ProjectRecord, level: number, ai: SpaceAiState | null): Project {
+/** `ai` is the space's switch; a missing row reads as off (fail closed). `icon` is its emoji or picture (F-040), null for its letter. */
+export function toProject(row: ProjectRecord, level: number, ai: SpaceAiState | null, icon: SpaceIcon | null = null): Project {
   const access = accessName(level);
   if (!access) throw new Error('Invisible project serialized');
-  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, ai: ai ?? 'blocked',
+  return { id: row.id, workspaceId: row.workspaceId, name: row.name, visibility: row.visibility, access, ai: ai ?? 'blocked', icon,
     version: row.version, createdAt: row.createdAt.toISOString() };
+}
+
+async function iconOf(db: Executor, ports: Pick<AccessPorts, 'projects'>, projectId: string): Promise<SpaceIcon | null> {
+  return (await ports.projects(db).icons([projectId])).get(projectId) ?? null;
 }
 
 async function aiOf(db: Executor, ports: Pick<AccessPorts, 'projects'>, projectId: string): Promise<SpaceAiState> {
@@ -100,7 +104,7 @@ export async function renameProject(principal: Principal, projectId: string, com
     const { project, level } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
     const row = await ports.projects(tx).rename(projectId, project!.workspaceId, projectName);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.renamed.v1', projectId, {});
-    return toProject(row, level, await aiOf(tx, ports, projectId));
+    return toProject(row, level, await aiOf(tx, ports, projectId), await iconOf(tx, ports, projectId));
   });
 }
 
@@ -109,12 +113,12 @@ export async function listProjects(principal: Principal, workspaceId: string, qu
   const page = parsePage(query);
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, ports.access(db)), 'workspace');
   const { total, rows } = await ports.projects(db).listVisible(actor, page);
-  return { items: rows.map((row) => ({ ...toProject(row.project, row.level, row.ai), member: row.member })), total, ...page };
+  return { items: rows.map((row) => ({ ...toProject(row.project, row.level, row.ai, row.icon), member: row.member })), total, ...page };
 }
 
 export async function getProject(principal: Principal, projectId: string, db: Database, ports: ProjectPorts): Promise<Project> {
   const { project, level } = enforce(await evaluateProject(principal, 'project.read', projectId, ports.access(db)), 'project');
-  return toProject(project!, level, await aiOf(db, ports, projectId));
+  return toProject(project!, level, await aiOf(db, ports, projectId), await iconOf(db, ports, projectId));
 }
 
 /**

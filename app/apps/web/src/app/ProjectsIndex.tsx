@@ -6,6 +6,7 @@ import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
+import { SpaceFace } from '../ui/SpaceFace';
 import './settings.css';
 
 /**
@@ -39,8 +40,8 @@ export function ProjectsIndex() {
               return (
               <li key={project.id}>
                 <Link to={`/projects/${project.id}`} className="set-row" aria-label={label === project.name ? undefined : label} data-encrypted={encrypted ? '' : undefined}>
-                  {/* The same letter tile as the sidebar and Home (#763 NV-6); a sparkle would read as AI. */}
-                  <span className="set-row__ic proj-index__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
+                  {/* The same tile as the sidebar and Home (#763 NV-6; its icon, F-040); a sparkle would read as AI. */}
+                  <span className="set-row__ic proj-index__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={32} /></span>
                   <span className="set-row__b">
                     <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
                   </span>

@@ -60,6 +60,21 @@
 .spset__name b { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: break-word; }
 .spset__name form { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
 .spset__name .ui-field { flex: 1; min-width: 0; margin: 0; }
+/* The space's icon (F-040): a second row of the Name card, the same 28 px tile as a Search result, and the emoji in 44 px targets. */
+.spset__icon { border-top: 1px solid var(--line); }
+.spset__icon-b { flex: 1; min-width: 0; display: grid; }
+.spset__icon-b b { font-size: var(--fs-base); font-weight: 600; }
+.spset__tile { position: relative; display: inline-grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: 6px;
+  background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font-size: var(--fs-xs); font-weight: 600; }
+.spset__icon-form { display: grid; gap: 12px; padding: 0 18px 16px; }
+.spset__emoji { display: grid; grid-template-columns: repeat(auto-fill, 44px); max-width: calc(8 * 44px); }
+.spset__emoji-b { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--r-btn); background: transparent;
+  cursor: pointer; transition: var(--tr-fill); }
+.spset__emoji-b .spset__tile { font-size: 17px; font-weight: 400; }
+.spset__emoji-b:hover { background: var(--hov); }
+.spset__emoji-b.is-on { background: var(--hov); }
+.spset__emoji-b.is-on .spset__tile { box-shadow: inset 0 0 0 1px var(--t1); }
+.spset__emoji-b:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
 .spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
 .spset__seclead .sset-sec { margin: 0; }
 .spset__count { margin-left: 6px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }

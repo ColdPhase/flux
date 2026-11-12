@@ -10,6 +10,8 @@ import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
 import { useAgentUnread } from '../my-agents/AgentChatDots';
+import type { SpaceIcon } from '@flux/contracts';
+import { SpaceFace } from '../ui/SpaceFace';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 
@@ -30,9 +32,9 @@ export interface SidebarProps {
   onToggleCollapsed?: () => void;
 }
 
-/** A space's letter tile, as the final design draws them (F-026 §4). */
-function ProjectTile({ name, size = 20 }: { name: string; size?: number }) {
-  return <span className="side__pj" style={{ width: size, height: size }} aria-hidden="true">{(name.trim()[0] ?? '?').toUpperCase()}</span>;
+/** A space's tile, as the final design draws them (F-026 §4): its letter, or the emoji or picture its admins chose (F-040). */
+function ProjectTile({ name, icon, size = 20 }: { name: string; icon?: SpaceIcon | null; size?: number }) {
+  return <span className="side__pj" style={{ width: size, height: size }} aria-hidden="true"><SpaceFace name={name} icon={icon} size={size} /></span>;
 }
 
 /** The tile of a space that waits to be unlocked: the lock glyph where a project has its letter (F-030, #655). */
@@ -134,7 +136,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
             <NavLink key={project.id} to={`/projects/${project.id}`} end={false} className={`side__rail-project${project.id === projectId ? ' is-open' : ''}`} aria-label={`${project.name}${encrypted(project) ? ', encrypted' : ''}${muted.has(`project:${project.id}`) ? ', muted' : ''}`} title={`${project.name}${encrypted(project) ? ' · Encrypted' : ''}${muted.has(`project:${project.id}`) ? ' · Muted' : ''}`}
               onClick={(event) => { if (choosesInPlace(event)) glideRailTo(event.currentTarget); }}
               data-glide-id={project.id} data-pending={pendingProject === project.id && project.id !== projectId ? '' : undefined}>
-              <ProjectTile name={project.name} size={28} />
+              <ProjectTile name={project.name} icon={project.icon} size={28} />
             </NavLink>
           ))}
           {locked.map((space) => (
@@ -219,7 +221,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
                       title={project.name}
                       aria-label={fresh || quiet || encrypted(project) ? `${project.name}${encrypted(project) ? ', encrypted' : ''}${quiet ? ', muted' : ''}${fresh ? (quiet ? `, ${fresh} new` : ', new activity') : ''}` : undefined}
                       data-encrypted={encrypted(project) ? '' : undefined}>
-                      <ProjectTile name={project.name} />
+                      <ProjectTile name={project.name} icon={project.icon} />
                       <span className="side__label">{project.name}</span>
                       {encrypted(project) ? <Icon name="lock" size={12} className="side__lock" /> : null}
                       {quiet ? <Icon name="quiet" size={12} className="side__muted" data-muted-mark="" /> : null}

@@ -44,6 +44,8 @@ const system = [
 const refused = [
   'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',
   'github_task_rule_changes', 'github_task_rules',
+  // F-040: an encrypted space keeps its letter, so its icon is never stored.
+  'space_icons',
 ] as const;
 const content = [
   'workspaces', 'workspace_members', 'project_ai_policies', 'projects', 'project_grants', 'project_conversations',

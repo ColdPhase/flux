@@ -140,6 +140,26 @@ circle never stands for a space.
   initials. Errors are one plain line under the buttons ("Choose a PNG, JPEG or WebP picture.", "A photo is at
   most 5 MB."). On the phone it is the same row in Settings › Account.
 
+**Space icons** (founder request, Hubert, 2026-11-10, [#1227](https://github.com/ColdPhase/flux/issues/1227),
+[F-040](../../product/decisions.md)): a space keeps its rounded-square tile, and its admins may put an icon in it.
+- Every space starts with its letter and keeps it until someone chooses otherwise. The tile keeps its size, its
+  radius 6 and its place in every view that draws it: the sidebar and the rail, the phone's Spaces list, Settings ›
+  Company's spaces, the Create window's place picker, a Search result and the space's overview. Nothing beside it
+  moves when it changes.
+- **An emoji** sits centred in the same tile, on the same `--sub` fill, at about two thirds of the tile's size.
+- **A picture** fills the tile, cropped to its middle square, with the tile's radius and hairline. It is user
+  content, the one colour the design allows beside Kreska, like a profile photo.
+- **An encrypted space** keeps its letter tile and its small lock after the name; while it waits to be unlocked its
+  tile is the lock glyph, as before. Its settings change neither its name nor its icon.
+- **Space settings** holds it under Name, as a second row of the same card: **Icon**, the tile and its kind
+  ("Letter", "Emoji" or "Picture"), and Change for the people who can rename the space. Change opens in place:
+  a grid of 32 emoji in rows of 8, fewer on a narrow phone (each a 44 px target with a 28 px tile inside, pressed
+  when chosen), then the
+  text buttons **Choose a picture…** (PNG, JPEG or WebP, at most 2 MB) and **Use the letter**, and one primary
+  **Save icon** once something new is chosen. The tile beside the space's name shows the choice before it is
+  saved. Errors are one plain line, as for a photo.
+- A change reaches every open sidebar at once (the space's `project.updated` event), with no reload.
+
 **Typography:** Geist 400 / 500 / 600 and Geist Mono for numbers (#12), times, keys and file
 labels.
 - Title: 32 / 600 on the computer, 28–30 on the phone.

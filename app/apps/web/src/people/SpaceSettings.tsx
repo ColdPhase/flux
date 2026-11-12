@@ -6,6 +6,7 @@ import { whenPageLive } from '../api/pageLeaving';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { leaveProject, renameProject, setSpaceAi } from '../project/api';
+import { SpaceIconRow } from './SpaceIconRow';
 import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useToast } from '../ui';
@@ -192,7 +193,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
         </div>
 
         <h3 className="sset-sec">Name</h3>
-        <NameCard project={project} manager={manager} companyName={companyName} onRenamed={(name) => changed(`Renamed to ${name}.`)} />
+        <NameCard project={project} manager={manager} companyName={companyName} onRenamed={(name) => changed(`Renamed to ${name}.`)} onIconChanged={changed} />
 
         <div className="spset__seclead">
           <h3 className="sset-sec" id="space-people">People{!everyone ? <span className="spset__count">{rows.length}</span> : null}</h3>
@@ -277,7 +278,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
 }
 
 /** The space's name, with Change for its admins. */
-function NameCard({ project, manager, companyName, onRenamed }: { project: Project; manager: boolean; companyName: string; onRenamed: (name: string) => void }) {
+function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: { project: Project; manager: boolean; companyName: string; onRenamed: (name: string) => void; onIconChanged: (message: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(project.name);
   const [busy, setBusy] = useState(false);
@@ -315,6 +316,7 @@ function NameCard({ project, manager, companyName, onRenamed }: { project: Proje
           {manager ? <Button ref={changeRef} variant="quiet" aria-label={`Change the name of ${project.name}`} onClick={() => { setValue(project.name); setEditing(true); }}>Change</Button> : null}
         </>}
       </div>
+      <SpaceIconRow project={project} manager={manager} companyName={companyName} onChanged={onIconChanged} />
     </div>
   );
 }
