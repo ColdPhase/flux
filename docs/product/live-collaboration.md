@@ -50,6 +50,8 @@ supersedes the quiet start of #59 (2026-09-27).
    text of a message. A task, a map or a Wiki page is the call's place only when the
    call is started from it (the task's Work on this together, or Call while that task,
    map or page is open). The session's context is then `{ type: 'space', id: <space> }`.
+   From the click on Call or Join the strip is there at once, saying "Connecting…", so a
+   slow connection never looks like nothing happened (#1304); a second click starts nothing more.
 2. **Join where you are** (#1230). Any call of the space with someone in it takes the
    header's Call slot on every view of the space (Conversation, Tasks, Map, Wiki), on
    the computer, the tablet and the phone, within 2 s of starting. It says who is in it

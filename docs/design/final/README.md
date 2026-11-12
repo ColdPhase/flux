@@ -1054,6 +1054,10 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
+- **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
+  and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
+  same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
+  starts nothing more, so a slow connection never looks like nothing happened and a second click cannot start a second call (#1304).
 - **⋯ with calls.** Further calls of the space are rows "Join · Kai · at “Order sensors”" (dot first), and **Start a
   call here** starts a separate call at the place open. Starting from the conversation joins the space's call instead.
 - **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind

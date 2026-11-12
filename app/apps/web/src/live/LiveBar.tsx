@@ -85,6 +85,23 @@ export function LiveBar() {
     );
   }
 
+  // A call being started or joined: the strip is there from the click and says so (#1304); its devices and More come with the connection.
+  if ((live.phase === 'starting' || live.phase === 'joining') && live.anchor) {
+    const connectingTo = live.anchor;
+    return (
+      <section className="lv-bar" aria-label="Live session">
+        <div className="lv-row">
+          <span className="lv-row__lead" role="status" aria-live="polite"><Spinner /><span className="lv-status">Connecting…</span></span>
+          <button type="button" className="lv-where" onClick={() => navigate(anchorPath(connectingTo), { state: { liveFollow: true } })}
+            title={connectingTo.context.type === 'space' ? `Back to ${connectingTo.label}` : `Back to “${connectingTo.label}”`}>
+            <span className="lv-where__t">{callTitle(connectingTo)}</span>
+            {connectingTo.context.type === 'space' ? null : <span className="lv-where__k">{KIND_WORD[connectingTo.context.type]}</span>}
+          </button>
+        </div>
+      </section>
+    );
+  }
+
   if (live.phase === 'idle' || live.phase === 'ended' || !live.anchor) return null;
 
   const media = live.media;
