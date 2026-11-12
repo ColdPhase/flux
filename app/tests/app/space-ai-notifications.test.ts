@@ -105,7 +105,7 @@ async function generate(event: Omit<GeneratorEvent, 'seq' | 'workspaceId'>, reci
   const rows = notificationGeneratorRows(db);
   const all: NotificationFacts = {
     audience: async () => [recipient.id], projectMessage: async () => null, dmMessage: async () => null, work: async () => null,
-    decision: async () => null, liveInvitation: async () => null, waitingChange: async () => null,
+    decision: async () => null, liveInvitation: async () => null, liveSession: async () => null, waitingChange: async () => null,
     names: async (ids) => new Map(ids.map((id) => [id, id === recipient.id ? 'Ada' : 'Someone'])), ...facts,
   };
   const generated: GeneratorEvent = { ...event, seq: 1, workspaceId: ws.id };

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { principalKey, type Principal } from '@flux/core';
+import { LIVE_STARTED_EVENT, principalKey, type Principal } from '@flux/core';
 import type { Executor } from '@flux/db';
 import { eventPorts } from '../events.js';
 
@@ -15,13 +15,25 @@ export const LIVE_CHANGED_EVENT = 'project.live_changed.v1';
  * about. It is the transaction's last write: the event's insert takes the sequence lock, which is held to commit.
  */
 export async function recordLiveChanged(tx: Executor, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }) {
+  await recordForReaders(tx, LIVE_CHANGED_EVENT, change);
+}
+
+/**
+ * Records `project.live_started.v1` (F-041): a call of the space started. The notification worker tells each of the space's other people
+ * (the event's audience, read now) in their Inbox, and by push at "Everything". Record it before `recordLiveChanged`.
+ */
+export async function recordLiveStarted(tx: Executor, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }) {
+  await recordForReaders(tx, LIVE_STARTED_EVENT, change);
+}
+
+async function recordForReaders(tx: Executor, kind: string, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }) {
   const events = eventPorts(tx);
-  const event = { kind: LIVE_CHANGED_EVENT, workspaceId: change.workspaceId, objectId: change.projectId };
+  const event = { kind, workspaceId: change.workspaceId, objectId: change.projectId };
   const recipients: string[] = [];
   for (const candidate of await events.repository.candidates(change.workspaceId)) {
     if (candidate.kind === 'human' && await events.authorize(candidate, event)) recipients.push(principalKey(candidate));
   }
   if (!recipients.length) return;
-  await events.repository.insert({ id: randomUUID(), kind: LIVE_CHANGED_EVENT, objectId: change.projectId,
+  await events.repository.insert({ id: randomUUID(), kind, objectId: change.projectId,
     actorId: principalKey(change.actor), data: { sessionId: change.sessionId }, workspaceId: change.workspaceId }, recipients);
 }

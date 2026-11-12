@@ -7,6 +7,8 @@ import { recordLiveChanged } from './events.js';
 
 const NEVER_JOINED_GRACE_MS = 300_000;
 const DEPARTED_GRACE_MS = 90_000;
+/** A call nobody but its starter joined ends after this long alone (F-041 point 6, founder decision 2026-11-12). */
+export const ALONE_LIMIT_MS = 10 * 60_000;
 
 export type LiveReconcileResult = 'occupied' | 'empty' | 'ending' | 'ended' | 'unknown' | 'stale';
 
@@ -15,7 +17,7 @@ export type LiveReconcileResult = 'occupied' | 'empty' | 'ending' | 'ended' | 'u
  * hints only; this also runs on a bounded timer and during startup recovery.
  */
 export function liveLifecycle(db: Database, pool: Pool,
-  media: Pick<LiveMedia, 'occupancy' | 'deleteRoom'>,
+  media: Pick<LiveMedia, 'occupancy' | 'deleteRoom'> & Partial<Pick<LiveMedia, 'participants'>>,
   now: () => Date = () => new Date()) {
   const sessions = schema.liveSessions;
   let sweepAfter: { updatedAt: Date; id: string } | null = null;
@@ -89,7 +91,21 @@ export function liveLifecycle(db: Database, pool: Pool,
         const announce = () => options.announce ? recordLiveChanged(tx, { workspaceId: row.workspaceId, projectId: row.projectId,
           sessionId, actor: { kind: 'human', id: row.createdBy } }) : undefined;
         if (occupied > 0) {
-          await tx.update(sessions).set({ connectedOnce: true, emptySince: null, updatedAt: at })
+          // Who is in it, as the media server says (F-041): kept in first-join order for the call's line and its "nobody joined" end.
+          let present: string[] | null = null;
+          if (media.participants) {
+            try { present = (await media.participants(row.roomId)).map((person) => person.userId); }
+            catch { present = null; }
+          }
+          const joinedBy = present ? [...new Set([...row.joinedBy, ...present])].slice(0, 64) : row.joinedBy;
+          // Nobody but its starter has ever been in it, for 10 minutes: it ends (the room goes, which disconnects the starter too).
+          const alone = present !== null && present.length > 0 && joinedBy.every((userId) => userId === row.createdBy)
+            && at.getTime() - row.createdAt.getTime() >= ALONE_LIMIT_MS;
+          if (alone) {
+            await tx.update(sessions).set({ state: 'ending', joinedBy, updatedAt: at }).where(eq(sessions.id, sessionId));
+            return 'ending';
+          }
+          await tx.update(sessions).set({ connectedOnce: true, emptySince: null, joinedBy, updatedAt: at })
             .where(eq(sessions.id, sessionId));
           await announce();
           return 'occupied';

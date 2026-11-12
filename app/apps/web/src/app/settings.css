@@ -213,6 +213,7 @@
 /* A muted space or conversation: the quiet count in the dot's place, and the mark before a conversation's date (#1249). */
 .proj-index__quiet { flex: none; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .proj-index__muted { flex: none; color: var(--t3); }
+.proj-index__live { display: inline-block; margin-left: 6px; vertical-align: -1px; color: var(--t2); }
 .proj-index__dmlist { width: 100%; justify-self: stretch; }
 .proj-index__one { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; overflow-wrap: normal; }
 .proj-index__time { flex: none; width: 4.5em; text-align: right; white-space: nowrap; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }

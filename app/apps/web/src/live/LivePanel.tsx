@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Avatar, Button, Icon, IconButton } from '../ui';
 import { AudioSettingsRow } from './AudioSettings';
 import { inviteToSession } from './api';
@@ -23,7 +23,20 @@ function presence(person: MediaPerson): string {
  * Everything beyond the strip, on request: who is here and who can join, your devices and
  * their real state, quiet, measured connection details and what personal help does (not).
  */
-export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveValue; presentable: Presentable | null; onShow(): void; onClose(): void }) {
+export function LivePanel({ live, presentable, focusInvite = false, onShow, onClose }: {
+  live: LiveValue; presentable: Presentable | null; onShow(): void; onClose(): void;
+  /** Opened from Invite… (F-041): the first person who can join takes focus. */
+  focusInvite?: boolean;
+}) {
+  const canJoin = useRef<HTMLHeadingElement>(null);
+  useEffect(() => {
+    if (!focusInvite) return undefined;
+    const frame = requestAnimationFrame(() => {
+      const first = canJoin.current?.parentElement?.querySelector<HTMLElement>('.lv-person--absent button');
+      (first ?? canJoin.current)?.focus({ preventScroll: false });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [focusInvite]);
   const [invited, setInvited] = useState<Record<string, 'sending' | 'sent' | 'failed'>>({});
   const [diagOpen, setDiagOpen] = useState(false);
   const people = live.media?.people ?? [];
@@ -64,7 +77,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
         ) : <p className="lv-panel__text">Connecting to the media server…</p>}
         {absent.length ? (
           <>
-            <h3 className="lv-panel__sub">Can join</h3>
+            <h3 className="lv-panel__sub" ref={canJoin} tabIndex={-1}>Can join</h3>
             <ul className="lv-people">
               {absent.map((person) => (
                 <li key={person.id} className="lv-person lv-person--absent">

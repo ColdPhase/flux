@@ -193,7 +193,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
     author_id: 'a principal id', tsv: 'empty in a placeholder row of a sealed workspace',
     keys: 'hashed search keys, generated from title and body: empty in a placeholder row' },
   search_changes: { doc_key: 'object ids' },
-  live_sessions: { created_by: 'a user id', state: 'an enum', room_id: 'a room id' },
+  live_sessions: { created_by: 'a user id', state: 'an enum', room_id: 'a room id', joined_by: 'user ids' },
   live_presentations: { created_by: 'a user id', ref_type: 'an enum' },
   live_invitations: { inviter_id: 'a user id', recipient_id: 'a user id', response: 'an enum' },
   live_admissions: { id: 'an id', user_id: 'a user id', auth_session_id: 'a session id' },

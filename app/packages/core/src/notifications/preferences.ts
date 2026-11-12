@@ -51,8 +51,8 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
-/** A live call invitation is inbox and push only, never email: the call may be over before a mail is read (docs/development/live-sessions.md). */
-const NEVER_EMAILED = new Set<NotificationReason>(['invitation']);
+/** A live call invitation and a call started in your space are inbox and push only, never email: the call may be over before a mail is read (docs/development/live-sessions.md, F-041). */
+const NEVER_EMAILED = new Set<NotificationReason>(['invitation', 'call']);
 
 /**
  * The channels each reason has under the stored level: the inbox always; push for the reasons the level lets interrupt

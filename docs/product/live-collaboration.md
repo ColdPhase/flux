@@ -63,15 +63,18 @@ supersedes the quiet start of #59 (2026-09-27).
    pushes for any call in their spaces; "Only what needs me" pushes only for an
    invitation (point 4). Quiet hours hold push as for every notice. The notice is
    never emailed (a call may be over before the mail is read), and it stops asking
-   anything when the call ends. While a call runs, the space carries the live dot in
-   the sidebar and in the Spaces list.
+   anything when the call ends. A muted space (#1249) sends no notice of an open call
+   there; an invitation to a call still arrives. While a call runs, the space's row in
+   the sidebar and the Spaces list carries the call glyph (a shape, not a dot).
 4. **Invite.** After starting, the strip offers **Invite…** with the space's people
    who are not in the call. An invitation is an Inbox item and a push with Join / Later,
    as before, plus one soft chime on the invited person's open tab.
 5. **Sound.** Only for a direct invitation, never for an open call in a space. One
    soft chime, no ringing loop and no answer/reject takeover screen. It is on by
-   default and follows the one Sound switch in Settings › Notifications (#1243: sound
-   is otherwise off by default), the level (no chime at "Nothing") and quiet hours.
+   default and follows the switch "Sound when someone calls me" in Settings ›
+   Notifications (founder decision on #1243, 2026-11-12: two switches, "Sound for
+   messages" off by default and this one on), the level and quiet hours. #1243's
+   notice plays it.
 6. **Nobody joined.** While nobody else has joined, the starter's strip says "Nobody
    joined · Invite someone". A call nobody else joins ends after **10 minutes** alone;
    its conversation line then reads "Hubert called · nobody joined". (The existing

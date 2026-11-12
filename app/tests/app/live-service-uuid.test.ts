@@ -11,7 +11,7 @@ test('a standard UUID can start a live session; malformed context and retry ids 
   const roomId = 'live_regression_room';
   const record: LiveSessionRecord = {
     id: randomUUID(), projectId, context, roomId, state: 'available', generation: 1,
-    createdBy: principal.id, createdAt: new Date().toISOString(),
+    createdBy: principal.id, createdAt: new Date().toISOString(), joinedBy: [],
   };
   let resolved = 0;
   let created = 0;

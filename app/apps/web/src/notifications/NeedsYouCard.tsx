@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode, type RefObject } from 'react';
 import type { NeedsYouItem } from '@flux/contracts';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery, usePop, type IconName } from '../ui';
 import { ago, when } from './format';
 import { ClampedWords } from '../assistant/ClampedWords';
 import { peopleNamed } from '../assistant/peopleNamed';
+import { useJoinCall } from '../live/useJoinCall';
 
 /** How an item can be put off: tomorrow morning, next week, until its task is done, or for good. */
 export type SnoozeChoice = 'tomorrow' | 'week' | 'task' | 'decline';
@@ -20,6 +21,13 @@ export interface CardHandlers {
   applyChanges(item: NeedsYouItem): void;
   /** Answers an agent's question with one of its ready-made answers (S14); Undo holds it back for a moment. */
   answer?(item: NeedsYouItem, optionIndex: number): void;
+}
+
+/** Join a call this item announces (F-041): its place opens and you are in, with every device off. */
+function JoinCall({ call, variant }: { call: { projectId: string; sessionId: string }; variant: 'primary' | 'secondary' }) {
+  const join = useJoinCall();
+  const [busy, setBusy] = useState(false);
+  return <Button variant={variant} busy={busy} onClick={() => { setBusy(true); void join(call).finally(() => setBusy(false)); }}>Join</Button>;
 }
 
 export const KIND_WORD = { decision: 'Decision', question: 'Question', blocked: 'Blocked', mention: 'Mention' } as const;
@@ -140,9 +148,11 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
   const project = short ? null : item.project?.name ?? null;
   // One agent run's waiting changes (F-036 AG-7): "Assistant · Your agent", then "3 things wait for you · Approve all · Open".
   const run = item.assistantChanges ?? null;
-  const label = run ? `${run.agentName}, your agent: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
+  // A call's notice or an invitation to a call is a Call (F-041), with Join.
+  const word = item.call ? 'Call' : KIND_WORD[item.kind];
+  const label = run ? `${run.agentName}, your agent: ${item.title}` : `${word}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
-    : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
+    : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [word, project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
@@ -159,6 +169,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
         : answers ? <Button variant="secondary" onClick={() => onSelect?.()}>Answer</Button>
         : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button>
         : run ? <Button variant="secondary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+        : item.call ? <JoinCall call={item.call} variant="secondary" />
         : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
     </div>
   ) : null;
@@ -187,6 +198,11 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
       ) : run ? (
         <>
           <Button variant="primary" onClick={() => handlers.applyChanges(item)}>Approve all</Button>
+          <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
+        </>
+      ) : item.call ? (
+        <>
+          <JoinCall call={item.call} variant="primary" />
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open</Button>
         </>
       ) : (

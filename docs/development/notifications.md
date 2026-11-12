@@ -92,11 +92,11 @@ The settings page sends its saves one after another, numbered, and shows only th
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`, `approval`) at `needsYou`, to every
-  reason (adding `reply`) at `everything`, and to none at `nothing`. Email follows push except for `invitation`: a live call
-  invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
+  reason (adding `reply` and `call`, a call started in one of your spaces, F-041) at `everything`, and to none at `nothing`. Email follows push except for `invitation` and `call`: a live call
+  invitation or notice is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
   (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, direct messages, tasks that need you, decisions about
-  your work, invitations to work together and agents waiting for you", then "Also every reply in conversations you are part of";
+  your work, invitations to work together and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
   for you while blocked, ready for you to check or able to continue. An agent's question is a `question`, and an agent waiting for your
   OK is `approval` (#1186).

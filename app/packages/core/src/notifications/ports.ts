@@ -95,6 +95,14 @@ export interface LiveInvitationFacts {
   anchor: { type: 'space' | 'conversation' | 'work' | 'sketch' | 'doc'; label: string };
 }
 
+export interface LiveSessionFacts {
+  id: string;
+  projectId: string;
+  projectName: string;
+  startedBy: string;
+  anchor: LiveInvitationFacts['anchor'];
+}
+
 /**
  * A change an agent prepared that still waits for its owner's OK (#1186), with what the notification says about it: the agent's name,
  * the first waiting change in words ("Add “Order probes”") and the group the Inbox shows it in (the run, or the local client).
@@ -119,6 +127,8 @@ export interface NotificationFacts {
   decision(decisionId: string): Promise<ReviewFacts | null>;
   /** Null unless the invitation is still pending and its session still available. */
   liveInvitation(invitationId: string): Promise<LiveInvitationFacts | null>;
+  /** A call that is still on (F-041), with who started it and its place; null once it ended. */
+  liveSession(sessionId: string): Promise<LiveSessionFacts | null>;
   /** Null unless the change still waits for its owner's OK (#1186). */
   waitingChange(changeId: string): Promise<WaitingChangeFacts | null>;
   names(userIds: string[]): Promise<Map<string, string>>;

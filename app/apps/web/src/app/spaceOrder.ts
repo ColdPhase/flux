@@ -77,11 +77,11 @@ export function useSpaceMoves(projects: readonly ProjectSummary[]) {
 
 /**
  * A space row's name for assistive technology: its name, then what the row shows besides it (the lock, the muted mark, what is new, the
- * dot that says an Inbox item waits there). Undefined when the row shows nothing but its name. A muted space's count takes the dot's place,
+ * dot that says an Inbox item waits there), and "call on" while a call runs there (F-041). Undefined when the row shows nothing but its name. A muted space's count takes the dot's place,
  * as it does on screen (#1249, #1250).
  */
-export function spaceRowLabel(name: string, row: { encrypted: boolean; quiet: boolean; fresh: number; needsYou: boolean }): string | undefined {
+export function spaceRowLabel(name: string, row: { encrypted: boolean; quiet: boolean; fresh: number; needsYou: boolean; call?: boolean }): string | undefined {
   const needsYou = row.needsYou && !(row.fresh && row.quiet);
-  if (!row.encrypted && !row.quiet && !row.fresh && !needsYou) return undefined;
-  return `${name}${row.encrypted ? ', encrypted' : ''}${row.quiet ? ', muted' : ''}${row.fresh ? (row.quiet ? `, ${row.fresh} new` : ', new activity') : ''}${needsYou ? ', needs you' : ''}`;
+  if (!row.encrypted && !row.call && !row.quiet && !row.fresh && !needsYou) return undefined;
+  return `${name}${row.encrypted ? ', encrypted' : ''}${row.call ? ', call on' : ''}${row.quiet ? ', muted' : ''}${row.fresh ? (row.quiet ? `, ${row.fresh} new` : ', new activity') : ''}${needsYou ? ', needs you' : ''}`;
 }

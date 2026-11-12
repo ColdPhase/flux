@@ -7,9 +7,10 @@
  * about work you own, or that your agent produced. `invitation` is someone asking you to join
  * them live at a task, map, doc or conversation (#62): one quiet signal per invitation. `approval` is
  * one of your agents waiting for your OK (F-036 item 10, #1186): a change it prepared under Ask me
- * first, or one about other people's things, sent once for each run (or local client) that starts waiting.
+ * first, or one about other people's things, sent once for each run (or local client) that starts waiting. `call` is someone starting a
+ * call in one of your spaces (F-041): Inbox always, push only at "Everything", never email.
  */
-export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'approval'] as const;
+export const NOTIFICATION_REASONS = ['mention', 'question', 'reply', 'dm', 'assigned', 'review', 'invitation', 'approval', 'call'] as const;
 export type NotificationReason = typeof NOTIFICATION_REASONS[number];
 
 /**

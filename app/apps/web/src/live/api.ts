@@ -1,7 +1,7 @@
 import {
-  LIVE_CAPABILITIES_PATH, LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, projectLiveSessionsPath, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
+  LIVE_CAPABILITIES_PATH, LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, LIVE_SPACES_PATH, projectLiveSessionsPath, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
   livePresentPath, livePresentationsPath, liveSessionPath,
-  type LiveContextRef, type LiveJoinGrant, type LivePresentationPage, type LivePresentationRef, type LiveSession,
+  type LiveContextRef, type LiveJoinGrant, type LiveSpacesResponse, type LivePresentationPage, type LivePresentationRef, type LiveSession,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -57,3 +57,6 @@ export const replyToInvitation = (id: string, choice: 'later' | 'text') =>
 
 export const pendingInvitations = (signal?: AbortSignal) =>
   request<{ items: LiveInvitationRow[]; nextCursor: string | null }>(`${LIVE_INVITATIONS_PATH}?limit=50`, { signal });
+
+/** The spaces where a call is on with someone in it (F-041): the live dot in the sidebar and the Spaces list. */
+export const liveSpaces = (signal?: AbortSignal) => request<LiveSpacesResponse>(LIVE_SPACES_PATH, { signal, share: true });

@@ -126,7 +126,7 @@ export interface KeptEventRef { kind: string; objectType: string; objectId: stri
 function keptChangedBy(event: KeptEventRef): string[] | null {
   const kind = event.kind;
   if (/^project\.doc_/.test(kind)) return [`/api/v1/projects/${event.objectId}/docs`];
-  if (/^project\.(messages?_|conversation_created|material_|work_|decision_|result_|proposal_|question_|link_created|live_invited|live_changed|assistant_|agent_stopped)/.test(kind)) return [];
+  if (/^project\.(messages?_|conversation_created|material_|work_|decision_|result_|proposal_|question_|link_created|live_invited|live_changed|live_started|assistant_|agent_stopped)/.test(kind)) return [];
   if (/^(dm|sketch)\./.test(kind)) return [];
   if (/^assistant_run\./.test(kind)) return ['/api/v1/agent-chats'];
   return null;

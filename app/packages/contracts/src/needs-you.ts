@@ -109,8 +109,10 @@ export interface NeedsYouItem {
   agentQuestion?: NeedsYouAgentQuestion | null;
   /** Set for `proposal:<id>`: an agent you connected made a suggestion (#661). */
   proposal?: NeedsYouProposal | null;
-  /** Why a notification-based item reached you (`mention`, `question` or `invitation`); null for the others. */
-  reason: 'mention' | 'question' | 'invitation' | null;
+  /** Why a notification-based item reached you (`mention`, `question`, `invitation` or `call`); null for the others. */
+  reason: 'mention' | 'question' | 'invitation' | 'call' | null;
+  /** Set for a call started in your space or an invitation to one (F-041): the call to Join. Listed only while someone is in it. */
+  call?: { projectId: string; sessionId: string } | null;
   /** The task "Not now: when #N is done" waits for; null when the item has none. */
   snoozeTask: NeedsYouTaskRef | null;
   /**

@@ -1,6 +1,6 @@
-import { and, desc, eq, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import type { LiveContextRef, LiveSession } from '@flux/contracts';
+import { LIVE_SPACES_PATH, type LiveContextRef, type LiveSession, type LiveSpacesResponse } from '@flux/contracts';
 import { schema, type Database } from '@flux/db';
 import { DomainError, InvalidInputError, NotFoundError, type LiveMedia, type Principal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -88,7 +88,7 @@ export async function discoverLiveSessions(
     catch { participants = null; }
     return {
       id: row.id, projectId: row.projectId, context: anchor(row), state: 'available',
-      generation: row.generation, createdBy: row.createdBy, createdAt: row.createdAt.toISOString(),
+      generation: row.generation, createdBy: row.createdBy, createdAt: row.createdAt.toISOString(), joinedBy: row.joinedBy,
       participants,
     };
   }));
@@ -106,11 +106,41 @@ export async function discoverLiveSessions(
   return { items, nextBefore: visible.length > limit ? page.at(-1)!.id : null };
 }
 
+const MAX_LIVE_SPACES = 200;
+
+/**
+ * The spaces the reader can open now where a call is on with someone in it (F-041): its room is not empty. No session, place or person is
+ * named, only the spaces; a space the reader cannot read is never listed.
+ */
+export async function liveSpaces(db: Database, principal: Principal): Promise<LiveSpacesResponse> {
+  const sessions = schema.liveSessions;
+  // Every call on now (few: each space runs at most a handful), filtered for this reader first and limited after: a space is listed when
+  // the reader can open it and at least one of its running calls is at a place they can read, as discovery checks it.
+  const rows = await db.select().from(sessions).where(and(eq(sessions.state, 'available'), isNull(sessions.emptySince)))
+    .orderBy(desc(sessions.createdAt), desc(sessions.id));
+  const access = liveAccess(db);
+  const readable = new Map<string, boolean>();
+  const projectIds = new Set<string>();
+  const hidden = (error: unknown) => error instanceof DomainError && (error.status === 404 || error.status === 403);
+  for (const row of rows) {
+    if (projectIds.size >= MAX_LIVE_SPACES) break;
+    if (projectIds.has(row.projectId) || readable.get(row.projectId) === false) continue;
+    if (!readable.has(row.projectId)) {
+      try { await access.requireProject(principal, row.projectId); readable.set(row.projectId, true); }
+      catch (error) { if (!hidden(error)) throw error; readable.set(row.projectId, false); continue; }
+    }
+    try { await requireLiveContext(principal, anchor(row), row.projectId, db); projectIds.add(row.projectId); }
+    catch (error) { if (!hidden(error)) throw error; }
+  }
+  return { projectIds: [...projectIds].sort() };
+}
+
 interface Options { db: Database; media: Pick<LiveMedia, 'participants'>; sessions: SessionResolver }
 
 /** Register after the existing live routes with the same configured media adapter. */
 export async function liveDiscoveryRoutes(app: FastifyInstance, { db, media, sessions }: Options) {
   useDomainErrors(app);
+  app.get(LIVE_SPACES_PATH, async (request) => liveSpaces(db, (await sessions.requirePrincipal(request)).principal));
   app.get<{ Params: { projectId: string }; Querystring: { limit?: number; before?: string } }>(
     '/api/v1/projects/:projectId/live-sessions',
     { schema: { querystring: { type: 'object', additionalProperties: false,

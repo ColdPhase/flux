@@ -1062,13 +1062,15 @@ Live strip, someone shares a screen
   how long it has run and a secondary **Join** (absent while you are in it); the time at the end. Ended: "Call · 12 min ·
   Hubert, Maurycy"; never joined: "Hubert called · nobody joined". It has no hover toolbar, no reply and no reactions. It
   changes in place with no motion (motion rule 5).
-- **Live dot on a space.** While a call of a space runs, its row in the sidebar and in the phone's Spaces list carries
-  the live dot after the name (before the unread count), in the slot the encrypted lock uses, and "call on" in the row's
-  name for screen readers.
-- **The call notice** is an Inbox item: "Call · Nia · Gesture lamp", "Nia started a call", with **Join** and Open. An
-  invitation is the existing item ("Nia invited you to a call") with Join and Later. The corner notice card is #1243's.
-- **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab. Settings ›
-  Notifications has one **Sound** switch under Where ("A soft chime when someone invites you to a call").
+- **The call glyph on a space.** While a call of a space runs, its row in the sidebar and in the phone's Spaces list carries
+  the `call` icon at 12 px in the muted text colour after the name (a shape, not a second dot, so it never reads as unread), before
+  the muted mark and the unread mark; on the 64 px rail it sits at the tile's corner. Screen readers hear "call on" in the row's name.
+  It does not breathe; the header's Join keeps its live dot.
+- **The call notice** is an Inbox item, kind word "Call": "Nia started a call in Gesture lamp", "Call in Gesture lamp" (or
+  "At “Order sensors”"), with **Join** (primary) and Open; a compact row keeps Join. An invitation to a call is the same
+  item ("Nia invited you to a call"). Either leaves the Inbox when the call is over. The corner notice card is #1243's.
+- **The chime** is one short soft tone (no loop), played only for a direct invitation, on an open tab, by #1243's notice.
+  It follows Settings › Notifications › **Sound when someone calls me** (on by default; #1243 draws the two switches).
 - **A shared screen.** The sharer's face in the strip carries the `screen` icon as a badge, where the muted-microphone
   badge sits. One `lv-line` (the `screen` icon first): "**Nia** is sharing her screen" and a secondary **View**. The
   stage opens by itself once per share, with no motion (motion rule 5), and stays closed when you close it for that
@@ -1185,9 +1187,9 @@ the composer. The right-hand phone above shows the sheet.
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
     shows only the count on the Inbox.
   - **Where:** Email me too, On this device and Quiet hours ("22:00–7:00 · no email or push then;
-    the Inbox keeps everything", Change), and **Sound**, the one sound switch (#1243: sound is off
-    by default; the soft chime of a call invitation, F-041, is the exception, on until the switch
-    is turned off).
+    the Inbox keeps everything", Change), and #1243's two sound switches: **Sound for messages**
+    (off by default) and **Sound when someone calls me** (on by default; the soft chime of a call
+    invitation, F-041).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.

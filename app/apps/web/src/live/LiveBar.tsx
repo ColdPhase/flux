@@ -32,7 +32,10 @@ export function LiveBar() {
   const navigate = useNavigate();
   const phone = useMediaQuery(MEDIA.phone);
   const [moreOpen, setMoreOpen] = useState(false);
+  // Invite… opens the same panel at its "Can join" people (F-041 point 4).
+  const [inviteFocus, setInviteFocus] = useState(false);
   const moreRef = useRef<HTMLButtonElement>(null);
+  const inviteRef = useRef<HTMLButtonElement>(null);
   const [showBusy, setShowBusy] = useState(false);
   // More is a sheet on a phone. On a tablet or computer it is a popover under the strip, except while a thread or Details
   // sheet covers the work below the strip: a popover would sit under that sheet's frame, so it opens as a sheet then, and
@@ -109,7 +112,10 @@ export function LiveBar() {
     </span>
   );
 
-  const panel = <LivePanel live={live} presentable={presentable} onShow={() => { setMoreOpen(false); void showThis(); }} onClose={() => setMoreOpen(false)} />;
+  const panel = <LivePanel live={live} presentable={presentable} focusInvite={inviteFocus} onShow={() => { setMoreOpen(false); void showThis(); }} onClose={() => setMoreOpen(false)} />;
+  const openPanel = (invite: boolean) => { setInviteFocus(invite); if (!moreOpen) setMoreAs(stripOnly ? 'sheet' : 'popover'); setMoreOpen(true); };
+  // Its starter alone in a call nobody else has joined (F-041 point 6): it says so, with the way to invite someone.
+  const nobodyJoined = live.phase === 'in' && live.session?.createdBy === live.meId && !live.othersJoined && others.length === 0;
 
   return (
     <section className={`lv-bar${live.quiet ? ' is-quiet' : ''}${reconnecting ? ' is-reconnecting' : ''}`} aria-label="Live session">
@@ -141,16 +147,24 @@ export function LiveBar() {
               ) : !phone && cameras.length && !screens.length ? (
                 <Button variant="quiet" icon="video" aria-pressed={live.stage.open} onClick={() => (live.stage.open ? live.closeStage() : live.openStage(null))}>Cameras</Button>
               ) : null}
+              {!phone ? <Button ref={inviteRef} variant="quiet" icon="plus" aria-haspopup="dialog" onClick={() => openPanel(true)}>Invite…</Button> : null}
               <MicControl live={live} />
               {!phone ? <DeviceButton kind="camera" live={live} /> : null}
               {!phone && canPublishScreen() ? <DeviceButton kind="screen" live={live} /> : null}
             </>
           )}
-          <IconButton ref={moreRef} icon="more" label="Session details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => { if (!moreOpen) setMoreAs(stripOnly ? 'sheet' : 'popover'); setMoreOpen((open) => !open); }} />
+          <IconButton ref={moreRef} icon="more" label="Session details and more" aria-expanded={moreOpen} aria-haspopup="dialog" onClick={() => { if (moreOpen) setMoreOpen(false); else openPanel(false); }} />
           <Button variant="danger" icon={phone ? undefined : 'leave'} className="lv-leave" onClick={() => void live.leave()}>Leave</Button>
         </span>
       </div>
 
+      {nobodyJoined && !live.quiet ? (
+        <div className="lv-line" role="status">
+          <Icon name="together" size={14} />
+          <span className="lv-line__text">Nobody joined</span>
+          <Button variant="quiet" onClick={() => openPanel(true)}>Invite someone</Button>
+        </div>
+      ) : null}
       {sharingScreen ? (
         <div className="lv-line lv-line--sharing" role="status">
           <span className="lv-dot lv-dot--share" aria-hidden="true" />
@@ -180,7 +194,7 @@ export function LiveBar() {
       {phone || moreAs === 'sheet' ? (
         <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} label="Live session" className="lv-sheet">{panel}</Sheet>
       ) : (
-        <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={moreRef} label="Live session" className="lv-pop--panel">{panel}</Popover>
+        <Popover open={moreOpen} onClose={() => setMoreOpen(false)} anchorRef={inviteFocus && !live.quiet ? inviteRef : moreRef} label="Live session" className="lv-pop--panel">{panel}</Popover>
       )}
     </section>
   );

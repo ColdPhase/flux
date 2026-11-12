@@ -6,6 +6,7 @@ import { useKeyboardMove, useReorder } from '../ui/reorder';
 import { MoreMenu, type MoreItem } from './HeaderParts';
 import { useNeedsYouSpaces } from '../notifications/dot';
 import { spaceRowLabel, useOrderedProjects, useSpaceMoves } from './spaceOrder';
+import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
@@ -42,6 +43,8 @@ export function ProjectsIndex() {
   const phone = useMediaQuery(MEDIA.phone);
   // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
   const encryptedIn = useEncryptedWorkspaceIds();
+  // A call is on in the space (F-041): the live dot after its name, as in the sidebar.
+  const calls = useLiveSpaces();
   return (
     <div className="pane-scroll">
       <div className="pane-in set">
@@ -57,7 +60,7 @@ export function ProjectsIndex() {
               const fresh = news.get(project.id) ?? 0;
               // Unread is bold; a muted space is never bold, its unread is the quiet count (#1249, #1250).
               const unread = fresh > 0 && !quiet;
-              const label = spaceRowLabel(project.name, { encrypted, quiet, fresh, needsYou: needing.has(project.id) });
+              const label = spaceRowLabel(project.name, { encrypted, quiet, fresh, needsYou: needing.has(project.id), call: calls.has(project.id) });
               const items = at < moves.fixed ? [] : moveItems(project.id, at);
               return (
               <li key={project.id} className="proj-index__row" data-space-id={project.id} data-everyone={at < moves.fixed ? '' : undefined}>
@@ -65,7 +68,7 @@ export function ProjectsIndex() {
                   {/* The same tile as the sidebar and Home (#763 NV-6; its icon, F-040); a sparkle would read as AI. */}
                   <span className="set-row__ic proj-index__tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={32} /></span>
                   <span className="set-row__b">
-                    <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
+                    <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{calls.has(project.id) ? <Icon name="call" size={12} className="proj-index__live" data-call-mark="" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
                   </span>
                   {fresh && quiet ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : needing.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
                   <Icon name="chevron-right" size={14} className="set-row__go" />

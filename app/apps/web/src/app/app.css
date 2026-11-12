@@ -157,7 +157,7 @@ body:has(.app) { background: var(--side); }
 .side__row { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 .side__row > .top__more { position: absolute; right: 4px; top: 5px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .side__row:hover > .top__more, .side__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
-.side__row:hover :is(.side__dot, .side__lock, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__muted, .side__quiet) { opacity: 0; }
+.side__row:hover :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet) { opacity: 0; }
 .side__more { width: 24px; height: 24px; }
 .side__row:hover .side__more { background: var(--hov); }
 .side__row:has(.is-open):hover .side__more { background: var(--el); }
@@ -166,13 +166,19 @@ body:has(.app) { background: var(--side); }
   .side__more { width: 44px; height: 44px; }
   /* Every row keeps the ⋯'s room (Everyone too), so the end slot (lock, muted mark, count, dot) never sits under it and stays in line. */
   .side__row > .side__item { padding-right: 44px; }
-  .side__row:hover :is(.side__dot, .side__lock, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__muted, .side__quiet) { opacity: 1; }
+  .side__row:hover :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__live, .side__muted, .side__quiet) { opacity: 1; }
 }
 /* While a row is dragged the rows under the pointer take no hover and no click (ui/reorder.ts). */
 [data-reordering] .side__item { pointer-events: none; }
 [data-reordering] .side__row > .top__more { opacity: 0; }
 .side__head-end { display: inline-flex; align-items: center; gap: 2px; }
 .side__head-end .top__more { position: relative; }
+/* A call is on in the space (F-041): the call glyph at 12 px in the muted text colour, after the name and before the muted mark and the
+   unread mark (shape, not a second dot), and on the rail's tile. It does not breathe. */
+.side__live { margin-left: auto; flex: none; color: var(--t2); }
+.side__lock + .side__live { margin-left: 0; }
+.side__live + .side__muted, .side__live + .side__dot, .side__live + .side__quiet { margin-left: 0; }
+.side__rail-live { position: absolute; top: 0; right: 0; display: grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); color: var(--t2); pointer-events: none; }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }

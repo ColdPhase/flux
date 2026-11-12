@@ -36,6 +36,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
     work: async () => null,
     decision: async () => null,
     liveInvitation: async () => null,
+    liveSession: async () => null,
     waitingChange: async () => null,
     names: async (ids) => new Map(ids.map((id) => [id, id])),
   };
