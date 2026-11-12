@@ -349,8 +349,8 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     // The generator writes sealedNotificationTitle('call', …) for a sealed workspace; the database accepts exactly that form and refuses any
     // other title, a body or a link with words (migration 0056).
     const url = `/projects/${ids.A.project}/live/${randomUUID()}`;
-    const insert = (title: string, body: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url)
-      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'call', $4, $5, $6) RETURNING id`, [ben.id, A, ids.A.project, title, body, link]);
+    const insert = (title: string, body: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url, ai_origin)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'call', $4, $5, $6, false) RETURNING id`, [ben.id, A, ids.A.project, title, body, link]);
     const accepted = await insert(sealedNotificationTitle('call', 'Ada', 'Garden club'), '', url);
     assert.equal(accepted.rows.length, 1, 'the content-free call notice is stored');
     assert.equal(sealedNotificationTitle('call', 'Ada', 'Garden club'), 'Ada started a call in Garden club');
