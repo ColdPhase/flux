@@ -8,8 +8,8 @@ import { before, describe, test } from 'node:test';
 import WebSocket from 'ws';
 import { PgBoss } from 'pg-boss';
 import { projectObjectNoticesPath, type Project } from '@flux/contracts';
-import { connectionString, db, pool } from './support/db.js';
-import { liveSessionStore } from '../../apps/server/src/live/store.js';
+import { connectionString, pool } from './support/db.js';
+import { sealedNotificationTitle } from '@flux/core';
 import { apiUrl, Browser, publicOrigin } from './support/http.js';
 import { createSealed, lock, passphrase, unlock } from './support/encryption.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
@@ -345,20 +345,19 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     await assert.rejects(insert('secret words mentioned you in Garden club', ''), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a free who');
   });
 
-  test('a call started in A tells Ben content-free ("Ada started a call in Garden club"), linking the call by ids (F-041, #1223)', async () => {
-    const call = await liveSessionStore(db).createOrGet({ kind: 'human', id: ada.id }, ids.A.project, { type: 'space', id: ids.A.project }, randomUUID(), async () => {});
-    const url = `/projects/${ids.A.project}/live/${call.id}`;
-    let row: { title: string; body: string; url: string } | undefined;
-    for (let attempt = 0; attempt < 60 && !row; attempt += 1) {
-      row = (await pool.query(`SELECT title, body, url FROM notifications WHERE user_id = $1 AND reason = 'call' AND url = $2`, [ben.id, url])).rows[0];
-      if (!row) await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    assert.deepEqual(row, { title: 'Ada started a call in Garden club', body: '', url }, 'who and why in the workspace\'s name, an empty body, ids in the link');
-    const insert = (title: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url)
-      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'call', $4, '', $5)`, [ben.id, A, ids.A.project, title, link]);
-    await assert.rejects(insert('Ada started a call in a secret project', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
-    await assert.rejects(insert('Ada started a call in Garden club', `${url}?topic=secret`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a link with words');
-    await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [call.id]);
+  test('a call notice in A is content-free ("Ada started a call in Garden club"), linking the call by ids only (F-041, #1223)', async () => {
+    // The generator writes sealedNotificationTitle('call', …) for a sealed workspace; the database accepts exactly that form and refuses any
+    // other title, a body or a link with words (migration 0056).
+    const url = `/projects/${ids.A.project}/live/${randomUUID()}`;
+    const insert = (title: string, body: string, link: string) => pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, reason, title, body, url)
+      VALUES (gen_random_uuid(), $1, $2, 'project', $3, 'call', $4, $5, $6) RETURNING id`, [ben.id, A, ids.A.project, title, body, link]);
+    const accepted = await insert(sealedNotificationTitle('call', 'Ada', 'Garden club'), '', url);
+    assert.equal(accepted.rows.length, 1, 'the content-free call notice is stored');
+    assert.equal(sealedNotificationTitle('call', 'Ada', 'Garden club'), 'Ada started a call in Garden club');
+    await assert.rejects(insert('Ada started a call in a secret project', '', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'another place');
+    await assert.rejects(insert('Ada started a call in Garden club', 'Call in Secret room', url), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a body');
+    await assert.rejects(insert('Ada started a call in Garden club', '', `${url}?topic=secret`), { hint: 'NOTIFICATION_CONTENT_REFUSED' }, 'a link with words');
+    await pool.query('DELETE FROM notifications WHERE id = $1', [accepted.rows[0].id]);
   });
 
   test('mid-upload, the scratch file of A holds ciphertext only (B plaintext); an aborted upload leaves nothing in tmp (#707 review)', async () => {
