@@ -226,6 +226,10 @@ export class LiveMediaConnection {
       .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => {
         this.trackDiagnostics.forget(publication.trackSid);
         track.detach().forEach((element) => { this.audio.playback.detach(element); element.remove(); });
+        // LiveKit detaches a track's elements itself when it unpublishes it: what it leaves behind has no stream and no voice.
+        for (const element of this.audioHost.querySelectorAll('audio')) {
+          if (!element.srcObject) { this.audio.playback.detach(element); element.remove(); }
+        }
         update();
       })
       .on(RoomEvent.TrackMuted, update)
