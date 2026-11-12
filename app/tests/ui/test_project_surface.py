@@ -192,8 +192,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.api(outsider, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=404)
         tabs = page.get_by_role("navigation", name="Space views")
         # Studio 11.6 order and vocabulary (#136); quiet tabs without visible counts.
-        self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("link").all_inner_texts()[:4]], ["Conversation", "Tasks", "Map", "Wiki"])
-        expect(tabs.get_by_role("link", name="Tasks, 2 open")).to_be_visible()
+        self.assertEqual([text.split("\n")[0] for text in tabs.get_by_role("tab").all_inner_texts()[:4]], ["Conversation", "Tasks", "Map", "Wiki"])
+        expect(tabs.get_by_role("tab", name="Tasks, 2 open")).to_be_visible()
         expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
         # One project conversation (UI116-1): the sidebar lists no threads; the stream shows the root
         # with its thread open beside it, and the centre uses the pane (#136) with readable bubbles.
@@ -273,27 +273,27 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page = self.open_project("jonas")
         tabs = page.get_by_role("navigation", name="Space views")
         conversation_url = page.url
-        tabs.get_by_role("link", name=re.compile("^Tasks")).click()
+        tabs.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
         expect(page.get_by_role("region", name=re.compile("^Doing"))).to_contain_text("Test the camera in low light")
-        expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
+        expect(tabs.get_by_role("tab", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
         shot(page, "project-tasks-desktop-1440")
         # The project's only sketch opens directly (#189); its Sketches link shows the list.
-        tabs.get_by_role("link", name=re.compile("^Map")).click()
+        tabs.get_by_role("tab", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
-        expect(tabs.get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+        expect(tabs.get_by_role("tab", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
         page.get_by_role("link", name="Maps", exact=True).click()
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.get_by_role("list", name="Maps in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
-        tabs.get_by_role("link", name=re.compile("^Wiki")).click()
+        tabs.get_by_role("tab", name=re.compile("^Wiki")).click()
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
         # The Wiki is the page alone (F-026 Wiki): its title is the page switcher, not a link in a pages column (#869, #946).
         expect(page.get_by_role("heading", level=2).get_by_role("button", name=re.compile("What we learned about low light"))).to_be_visible()
-        tabs.get_by_role("link", name=re.compile("^Conversation")).click()
+        tabs.get_by_role("tab", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
         # The header stays with the project on every tab, and Map returns to the list chosen last.
-        tabs.get_by_role("link", name=re.compile("^Map")).click()
+        tabs.get_by_role("tab", name=re.compile("^Map")).click()
         expect(page).to_have_url(re.compile(r"/map$"))
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
@@ -308,7 +308,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(switcher).to_have_count(0)
         # At 320px the four views still fit in their row under the title (#873): the current one is marked there.
-        current = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Wiki"))
+        current = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Wiki"))
         expect(current).to_have_attribute("aria-current", "page")
         box = current.bounding_box()
         assert box
@@ -355,7 +355,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
         panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options")).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
-        expect(page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
+        expect(page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
 
     def panel_shell(self, panel) -> dict:
         """What makes a panel the one shell: its card, its head's height and where its close button sits."""
@@ -560,8 +560,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         """#184 delta review S4: the tab strip scrolls sideways and clips anything outside it."""
         page = self.open_project("ada", viewport={"width": 1100, "height": 800})
         tabs = page.get_by_role("navigation", name="Space views")
-        tabs.get_by_role("link", name="Conversation").focus()
-        page.keyboard.press("Tab")
+        tabs.get_by_role("tab", name="Conversation").focus()
+        # The row is one tab stop (#1239): the arrow keys move focus along it.
+        page.keyboard.press("ArrowRight")
         # The first frame counts as much as the settled one: read the ring at once and after transitions.
         for _ in range(2):
             ring = self.focus_ring(page)
@@ -571,7 +572,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def focus_ring(self, page: Page) -> dict | None:
         return page.evaluate("""() => {
           const tab = document.activeElement;
-          if (!tab || !tab.matches('.top__views .ui-tabs__tab:focus-visible, .views .ui-tabs__tab:focus-visible')) return null;
+          if (!tab || !tab.matches('.top__views .ui-tabs__tab:focus-visible')) return null;
           const style = getComputedStyle(tab);
           const out = parseFloat(style.outlineOffset) + parseFloat(style.outlineWidth);
           const r = tab.getBoundingClientRect(), bar = tab.closest('.ui-tabs__bar').getBoundingClientRect();
@@ -609,8 +610,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
     # ---------------------------------------------------------------- private native work drafts (#155), in the Create window (#345)
 
     def tasks(self, page: Page, project: str | None = None) -> None:
-        # The views are the same segmented control at every width (#873); on a phone it is the row under the title.
-        link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks"))
+        # The views are the same underline tabs at every width (#873, #1239); on a phone it is the row under the title.
+        link = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Tasks"))
         if project:
             expect(link).to_have_attribute("href", re.compile(rf"^/projects/{project}/tasks"))
         view_tab(page, "Tasks")
@@ -688,7 +689,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         newest = "Newer text despite full browser storage"
         field.fill(newest)
         self.close_create(page)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(newest)
@@ -698,7 +699,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)
         expect(self.details(page).get_by_role("heading", name=newest)).to_be_visible()
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value("")
@@ -728,7 +729,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(dialog(page).get_by_role("alert")).to_have_text("The native response was lost")
         expect(field).to_have_value(draft)
         self.close_create(page)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(draft)
@@ -757,7 +758,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(field).to_be_disabled()
         self.close_create(page)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         field.fill("A different private draft after returning")
@@ -770,7 +771,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         # Execute another real navigation after completion, not a fixed sleep.
         expect(field).to_have_value(newest)
         self.close_create(page)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(newest)
@@ -867,7 +868,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         submit_button(page).click()
         expect(field).to_be_disabled()
         self.close_create(page)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
         self.tasks(page)
         field = open_from_tasks(page)
         expect(field).to_have_value(title)
@@ -902,7 +903,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 expect(field).to_be_disabled()
                 if unmounted:
                     self.close_create(page)
-                    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
                 page.evaluate("""key => { window.observedDraftWrites = 0;
                   window.addEventListener('storage', event => { if(event.key === key) window.observedDraftWrites++; });
                 }""", key)

@@ -542,7 +542,7 @@ class LiveEditingJourney(LiveFixture):
         await self.type_text(ada, field, " Second part, then left.")
         await expect(ada.locator('[data-live-pending="0"]')).to_be_visible()
         # An in-app move away while the first save still waits.
-        await ada.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        await ada.get_by_role("navigation", name="Space views").get_by_role("tab", name="Conversation").click()
         release.set()
         saved = await self.saved_doc(ada, "Second part, then left.", timeout=15)
         self.assertIn("First part.", saved["body"])

@@ -213,7 +213,7 @@ class StopAndQuestions(unittest.TestCase):
         card = phone.locator("#thread .qcard")
         expect(card).to_be_visible()
         # AC-3/4: an open project conversation is a focused phone surface, not the persistent Main places capsule or a row of chips: the
-        # views are the segmented row in the header (#873).
+        # views are the underline tabs in the header (#873, #1239).
         expect(phone.get_by_role("navigation", name="Main places")).to_have_count(0)
         expect(phone.locator("header.phead").get_by_role("navigation", name="Space views")).to_be_visible()
         expect(phone.locator(".views--project")).to_have_count(0)

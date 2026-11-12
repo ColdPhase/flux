@@ -108,8 +108,8 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
   const views = page.getByRole('navigation', { name: 'Space views', exact: true });
   assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
-  assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
-  await views.getByRole('link', { name: 'Conversation', exact: true }).click();
+  assert.equal(await views.getByRole('tab', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
+  await views.getByRole('tab', { name: 'Conversation', exact: true }).click();
   await page.waitForURL(`**/projects/${place.id}`);
   // The computer's one-row header keeps Details in More (#340).
   const openDetails = async (target: typeof page) => {

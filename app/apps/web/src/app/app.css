@@ -324,13 +324,10 @@ a.me__item { text-decoration: none; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
 /* The views never shrink (a squeezed track cut "Agents" at 1024 px with "+ Task" beside it, #763 sweep), and a space's name slot is set by the width alone (above). */
 .top__views { flex: none; }
-/* The four views are equal slots, as drawn (F-026 §4): each as wide as the widest label, so no view's width depends on its name. A
-   header narrower than 70 rem (1120 px at the default text size) has no room for 400 px of views with the name's 220 px, the people, Call and
-   a "+ Task" beside them: there the slots are as wide as their labels. */
-@container main (min-width: 70rem) {
-  .top__views .ui-tabs__bar { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; }
-  .top__views .ui-tabs__tab { justify-content: center; padding-inline: 10px; }
-}
+/* The views are underline tabs as wide as their words (#1239). They are as tall as the header's row, so the 2 px underline sits on the header's
+   own hairline: the row's vertical padding and its 1 px border are taken back by negative margins, and the tabs' text stays centred on the row's. */
+.top__views { align-self: stretch; margin-block: -12px -13px; }
+.top__views .ui-tabs__bar { height: 100%; }
 /* The people's faces sit side by side and touch, as drawn, so two-letter initials stay whole (#1236). The pill is as wide as its faces and its 6 px of
    padding, and ends at the right edge of its slot, which keeps the room (project-header.css). */
 .top__faces-slot { display: inline-flex; flex: none; justify-content: flex-end; }
@@ -385,19 +382,6 @@ a.me__item { text-decoration: none; }
   }
 }
 .newmenu__item[aria-disabled="true"] { opacity: .45; cursor: default; }
-.views { flex: none; border-bottom: 1px solid var(--line); }
-.views .ui-tabs__bar { gap: 15px; padding: 0 calc(var(--space-page) - 6px); }
-/* 6px inline padding keeps labels 27px apart and gives the focus ring room inside the tab: the bar
-   scrolls sideways, so a ring outside the tab would be clipped at its top and bottom. */
-.views .ui-tabs__tab { min-height: 40px; padding: 9px 6px 13px; border-radius: 0; font-size: var(--fs-md); font-weight: 400; color: var(--t2); }
-.views .ui-tabs__tab[aria-current="page"] { color: var(--t1); font-weight: 600; }
-.views .ui-tabs__tab:hover { color: var(--t1); }
-/* The ring is drawn in place (no offset transition from the global 4px), so no frame of it is clipped. */
-.views .ui-tabs__tab, .views .ui-tabs__tab:focus-visible { outline-offset: -2px; }
-@media (max-width: 1200px) { .views .ui-tabs__bar { gap: 11px; } }
-@media (max-width: 1000px) { .views .ui-tabs__bar { gap: 8px; } }
-@media (max-width: 760px) { .views .ui-tabs__bar { gap: 4px; } }
-@media (pointer: coarse) { .views .ui-tabs__tab { min-height: 44px; min-width: 44px; padding-inline: 6px; justify-content: center; } .views .ui-tabs__bar { gap: 12px; } }
 
 /* ---------- Work area ---------- */
 .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
@@ -608,29 +592,51 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phead__titlerow h1 { min-width: 0; }
 .title-lock { flex: none; align-self: center; color: var(--t2); }
 .top__title .title-lock { margin-left: -4px; }
-/* The phone's views are the same segmented control as every width, in a row of their own under the title (#873). */
-.phead:has(> .phead__views) { flex-wrap: wrap; column-gap: 6px; row-gap: 4px; padding-bottom: 8px; }
-.phead:has(> .phead__views) .phead__right { gap: 6px; }
-.phead__views { flex: 1 0 100%; min-width: 0; }
-.phead__views .ui-tabs__bar { width: 100%; }
-.phead__views .ui-tabs__tab { flex: 1 1 0; justify-content: center; padding-inline: 2px; }
-.phead__round.ui-icon-btn, .phead__avatar {
+/* A space's header on the phone (#1239): the title row (Back, the name, Join while a call is live, More) and the views, which are the underline
+   tabs of every width, in a row of their own under it. 8 px under the safe area, 12 px between the rows; the tabs' hairline closes the header. */
+.phead--space {
+  --phead-x: max(12px, env(safe-area-inset-left), env(safe-area-inset-right));
+  flex-wrap: wrap; column-gap: 4px; row-gap: 12px; min-height: 0; padding: calc(8px + env(safe-area-inset-top)) var(--phead-x) 0;
+}
+/* The name wraps to two lines and then ends in an ellipsis; its full text is the heading's, so it is the accessible name. */
+.phead--space .phead__title h1 {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; white-space: normal; overflow-wrap: anywhere; line-height: 1.3;
+}
+.phead--space .phead__title { padding-block: 2px; }
+.phead--space .phead__right .lv-entry:not(:has(.lv-entry__btn--join)) { display: none; }
+/* Join and More never shrink, and the name takes the rest. */
+.phead--space .phead__right { flex: none; gap: 4px; }
+.phead__views { flex: 0 0 calc(100% + 2 * var(--phead-x)); min-width: 0; margin-inline: calc(-1 * var(--phead-x)); --tab-below: 4px; }
+.phead__views .ui-tabs__bar {
+  /* The hairline is the row's, under the whole width; the 4 px under it are the tabs' hit area. The first word lines up with the page's gutter. */
+  padding-inline: calc(max(var(--space-page), var(--phead-x)) - 11px);
+  background: linear-gradient(var(--line), var(--line)) 0 calc(100% - var(--tab-below)) / 100% 1px no-repeat;
+}
+/* Back and More (and Search and Call, where a direct message keeps them) are plain icons: no fill, no shadow, a 44 px hit area (#1239). The
+   press shows the target, as every icon button does; a tap's lingering hover and an open menu leave nothing drawn. */
+.phead__round.ui-icon-btn { width: 44px; height: 44px; background: none; color: var(--t1); box-shadow: none; }
+.phead__round.ui-icon-btn:hover, .phead__round.ui-icon-btn[aria-expanded="true"] { background: none; }
+.phead__round.ui-icon-btn:active:not(:disabled, [aria-disabled="true"]) { background: var(--act); }
+.phead__avatar {
   /* Flat, as every button in direction C (#763): the fill alone sets it off the page. */
   width: 44px; height: 44px; border-radius: 50%; background: var(--el); color: var(--t1); box-shadow: none;
   display: inline-grid; place-items: center;
 }
-/* Call is round and filled like Back, Search and More (F-026 phone drawings); Join stays the one dark pill. */
 .phead__right .lv-entry__btn:not(.lv-entry__btn--join) {
-  width: 44px; height: 44px; min-width: 0; padding: 0; justify-content: center; border-radius: 50%; background: var(--el); color: var(--t1);
+  width: 44px; height: 44px; min-width: 0; padding: 0; justify-content: center; border-radius: 50%; background: none; color: var(--t1);
 }
+.phead__right .lv-entry__btn:not(.lv-entry__btn--join) svg { width: 24px; height: 24px; }
 .phead__right .lv-entry__btn:not(.lv-entry__btn--join):active:not(:disabled, [aria-disabled="true"]) { background: var(--act); }
-/* Under 360 px the space's name would be left about 80 px: Call moves into More (rule 3 of Spokój, as the computer's narrow header does). */
+/* Call is the first rows of More (with Search) on the phone. Under 360 px the header has no room for Join either: it folds into More as well, with
+   the live mark on More. */
+.phead__right .top__more-menu .top__more-narrow { display: flex; }
 @media (max-width: 359px) {
   .phead__right:has(.top__more) > .lv-entry { display: none; }
-  .phead__right .top__more-menu .top__more-narrow { display: flex; }
 }
 .phead__avatar { text-decoration: none; }
 .phead__avatar .ui-avatar { box-shadow: none; }
+/* The live mark on More sits on the page, not on a filled button (More has no fill now). */
+.phead .phead__right .top__live-cue { background: var(--bg); }
 .phead--large .phead__title h1 { font-size: var(--fs-xl); letter-spacing: -.02em; line-height: 1.2; }
 .phead--large { min-height: 56px; align-items: center; }
 .phead--large .phead__sub { margin-top: 0; }
@@ -670,6 +676,7 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
    the work keeps its room; the subtitle gives way. */
 @media (max-width: 640px) and (max-height: 480px) {
   .phead, .phead--large { min-height: 52px; padding-top: calc(4px + env(safe-area-inset-top)); padding-bottom: 4px; align-items: center; }
+  .phead--space { min-height: 0; padding-bottom: 0; row-gap: 4px; }
   .phead--large .phead__title h1 { font-size: var(--fs-xl); }
   .phead__sub { display: none; }
   .phone-dock { padding-top: 4px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }

@@ -309,8 +309,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
-  Wiki** as one segmented control with equal slots, the people's faces (people active now first, then the others, an agent last; with a working agent's
-  face only while it works), **Call** and ⋯. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
+  Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
+  face only while it works), **Call** and ⋯. The tabs are as tall as the row, so their underline sits on the
+  header's hairline. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
@@ -332,9 +333,23 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   top of Home opens Settings.
 - **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
   Page, Space. These are the same five types as on the computer.
-- **Inside a space.**
-  - The views are the same segmented control as on the computer and the tablet (#873); the title is
-    not a view menu.
+- **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
+  v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
+  - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
+    rows of ⋯. Back and ⋯ are plain icons, not buttons with a fill: a 24 px chevron and three
+    dots, drawn with the app's icon stroke in `--t1`, with an invisible 44 px hit area, no filled
+    circle and no shadow. Only a press shows the 44 px target (`--act`).
+  - **A live call shows Join.** The one dark pill (#1230) sits between the name and ⋯ and never
+    shrinks, as ⋯ never shrinks. It folds into ⋯ below 360 px, as before, with the live mark on ⋯.
+  - **A long name wraps to at most two lines, then an ellipsis.** The full name is the heading's
+    text, so it is the accessible name, and its title. The line "3 people · 4 agents" stays one
+    line under it, in `--t3`.
+  - **The views are the same [underline tabs](#underline-tabs-the-views-switch) as on the computer
+    and the tablet,** in the row under the title, left-aligned; the title is not a view menu.
+  - **Spacing, in px:** 8 under the safe area above the title row, 12 between the title row and
+    the tabs, and then the tabs' hairline closes the header. Everything respects the safe areas
+    (`env(safe-area-inset-*)`), and the side padding is 12 around the title row and 18 before the
+    first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
@@ -351,6 +366,31 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     way to an action. On the computer, hover actions are unchanged.
 - **Targets and text.** Touch targets are at least 44 px. Meta text is at least 12.5 px. Body
   text is 15–16 px.
+
+### Underline tabs (the views switch)
+
+Founder direction, Hubert, 2026-11-12 (#1239), replacing the segmented views of #873. **One style on
+every device:** the phone, the tablet and the computer. The segmented control stays for choices
+inside a screen (the Inbox filter, the Create window), not for the views of a space.
+
+- **Left-aligned, each tab as wide as its word.** The words are 22 px apart: 11 px of padding on each
+  side of a word, which also makes every tab at least 44 px wide. The row is `--fs-md`.
+- **The current tab** is `--t1` at weight 500, with a 2 px `--t1` underline under the word (not the
+  padding). **The others** are `--t3` at weight 400, and `--t1` on hover. A word's width never
+  depends on its weight, so choosing a tab never moves its neighbours.
+- **One hairline,** `--line` at 1 px, under the whole row; the underline sits on it. Nothing else
+  is drawn: no pill, no track, no shadow.
+- **Height.** On the phone a tab is 40 px high with a 44 px hit area (the 4 px below the hairline
+  belong to it). On the computer and the tablet the tabs are as tall as the header's row (64 px),
+  so the underline sits on the header's own hairline.
+- **At 320 px or with large text the row scrolls sideways inside itself.** The page never scrolls
+  sideways, and the current tab is brought into view.
+- **Keyboard and semantics.** The row is a tab list named "Space views"; each view is a tab, and
+  the current one is selected (`aria-selected`) and `aria-current="page"`. Only the current tab is
+  in the tab order. Left and Right (wrapping), Home and End move focus along the tabs; Enter or
+  Space opens the tab in focus, so moving along the row never loads a view by accident.
+- **Motion.** The underline slides between tabs with `transform` only, as before
+  ([motion](../motion.md) rule 4).
 
 ### Keyboard (computer)
 
@@ -1017,7 +1057,8 @@ Compose these from the drawn components and rules, and get an independent review
 them ([design work](../README.md#brief-and-continuity)):
 
 - the phone's Spaces tab with Messages;
-- a space header on the phone and the tablet with the segmented views;
+- a space header on the phone and the tablet with the underline views (approved as the v0.2.1
+  mock-up, #1239; no render in `screens/` yet);
 - the Tasks List view, the Create task window and the phone task sheet;
 - a thread, a space's Map, the decision panel and the small moments in the v0.2 chrome;
 - Account, Appearance and Shortcuts in direction A;

@@ -263,7 +263,7 @@ class UpdatePromptReach(unittest.TestCase):
         for where, path in (("conversation", f"/projects/{project}"), ("tasks", f"/projects/{project}/tasks")):
             page.goto(path)
             expect(page.get_by_test_id(PROMPT)).to_be_visible()
-            expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_be_visible()
+            expect(page.locator("header").get_by_role("button", name="More", exact=True)).to_be_visible()
             self.reach(page, where)
         shot(page, "update-prompt-phone-390-tasks")
         page.goto(f"/projects/{project}")

@@ -4,8 +4,8 @@ Computer: one header row above the conversation and the one panel; the panel is 
 from 1920; the conversation is at most 760 px; when the views leave too little room the people and Call move
 into More. A tablet folds the sidebar to its rail, keeps the same views in the header and overlays the panel.
 Controls keep their place: the rail order, the header's right-hand set in every project view, the Tasks toolbar in
-both views. Phone: Back · title · Call · Search · More in every project view (the views in the row under it) and a direct message,
-56 px tall, with the same title width.
+both views. Phone: Back · title · More in every project view, with the views in the row under it (Search and Call are rows of More, #1239), and
+Back · title · Call · Search in a direct message, one 56 px row; the title keeps the same width in every view.
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
 """
@@ -136,7 +136,7 @@ class SpokojLayout(unittest.TestCase):
         if views:
             for name in VIEW_NAMES:
                 # A view with a count has it in its name ("Tasks, 3 open").
-                boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")))
+                boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")))
         return boxes
 
     def open_panel(self, page: Page) -> None:
@@ -185,7 +185,7 @@ class SpokojLayout(unittest.TestCase):
                 for path, name in zip(VIEWS[1:], VIEW_NAMES[1:]):
                     if path == "/docs":
                         continue
-                    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
                     page.wait_for_function(SETTLED)
                     self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} view {name}")
@@ -193,7 +193,7 @@ class SpokojLayout(unittest.TestCase):
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} panel closed again")
                 if size is COMPUTER:
                     shot(page, "505-header-1440-panel-closed")
-                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Wiki")).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Wiki")).click()
                 expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
                 page.wait_for_function(SETTLED)
                 page.locator("header.top").get_by_role("button", name="More", exact=True).click()
@@ -233,7 +233,7 @@ class SpokojLayout(unittest.TestCase):
         header = page.locator("header.top")
         boxes = {"More": self.box(header.get_by_role("button", name="More", exact=True))}
         for name in VIEW_NAMES:
-            boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")))
+            boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")))
         return boxes
 
     def test_03_the_panel_is_420_at_1440_and_480_from_1920_and_the_conversation_is_at_most_760(self) -> None:
@@ -293,7 +293,7 @@ class SpokojLayout(unittest.TestCase):
         boxes = self.header_boxes(page, views=True)
         # The name takes the room that is left: more than the least a name keeps, and the row ends inside the screen.
         self.assertGreaterEqual(self.box(header.get_by_role("heading", level=1))["width"], 100, "the name keeps a readable start")
-        views.get_by_role("link", name=re.compile("^Tasks")).click()
+        views.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.wait_for_function(SETTLED)
         self.assert_same_place(boxes, self.header_boxes(page, views=True), "820 Conversation to Tasks")
@@ -456,7 +456,7 @@ class SpokojLayout(unittest.TestCase):
                     apart = close["x"] + close["width"] <= before["x"] or before["x"] + before["width"] <= close["x"] or close["y"] + close["height"] <= before["y"] or before["y"] + before["height"] <= close["y"]
                     self.assertTrue(apart, f"{width}: the panel's Close is not where + Task was: {close} {before}")
                     # The slot is there in the other views too, empty: the views start where they did.
-                    page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
                     page.wait_for_function(SETTLED)
                     self.assert_same_place({k: v for k, v in places.items() if k in VIEW_NAMES}, {k: v for k, v in self.header_places(page).items() if k in VIEW_NAMES}, f"{width}: views in Map")
 
@@ -474,26 +474,30 @@ class SpokojLayout(unittest.TestCase):
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")).to_be_visible()
 
-    def test_12_the_views_are_equal_slots_where_there_is_room_and_the_name_has_its_own(self) -> None:
+    def test_12_the_views_are_as_wide_as_their_words_and_the_name_has_its_own_slot(self) -> None:
         page = self.page(COMPUTER)
         self.goto_view(page, "")
         header = page.locator("header.top")
-        links = header.get_by_role("navigation", name="Space views").get_by_role("link")
+        links = header.get_by_role("navigation", name="Space views").get_by_role("tab")
         widths = [self.box(links.nth(index))["width"] for index in range(4)]
-        for width in widths:
-            self.assertAlmostEqual(width, widths[0], delta=1, msg=f"four equal slots: {widths}")
+        # Underline tabs (#1239): left-aligned, each as wide as its word plus 22 px, side by side; "Conversation" is the widest.
+        self.assertGreater(widths[0], widths[2] + 20, f"each tab is as wide as its word: {widths}")
+        for index in range(4):
+            self.assertGreaterEqual(widths[index], 44, f"a tab is at least 44 px wide: {widths}")
+            word = links.nth(index).locator(".ui-tabs__label").evaluate("el => el.getBoundingClientRect().width")
+            self.assertAlmostEqual(widths[index], word + 22, delta=1.5, msg=f"22 px between words: {widths}")
         # F-026 §4: the space's name has a 220 px slot, the same for every name.
         self.assertAlmostEqual(self.box(header.locator(".top__title"))["width"], 220, delta=2)
-        # A header too narrow for 400 px of equal slots beside the name, the people and Call (the tablet's 748 px) keeps them as wide as their labels.
+        # The tablet's 748 px header has the same tabs.
         tablet = self.page(TABLET)
         self.goto_view(tablet, "")
-        compact = [self.box(link)["width"] for link in tablet.locator("header.top").get_by_role("navigation", name="Space views").get_by_role("link").all()]
-        self.assertGreater(compact[0], compact[2] + 20, f"the tablet's slots are as wide as their labels: {compact}")
+        compact = [self.box(link)["width"] for link in tablet.locator("header.top").get_by_role("navigation", name="Space views").get_by_role("tab").all()]
+        self.assertEqual([round(width) for width in compact], [round(width) for width in widths], f"the tablet's tabs are the computer's: {compact}")
 
     def header_places(self, page: Page) -> dict:
         """Where the header's items are, by accessible name, in the state the page is in: the four views, the people, Call and More."""
         header = page.locator("header.top")
-        places = {name: self.box(header.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}"))) for name in VIEW_NAMES}
+        places = {name: self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}"))) for name in VIEW_NAMES}
         places["name"] = self.box(header.locator(".top__title"))
         for key, locator in (("people", header.get_by_role("button", name=PEOPLE)), ("Call", header.get_by_role("button", name="Call", exact=True)),
                              ("More", header.get_by_role("button", name="More", exact=True))):
@@ -526,7 +530,7 @@ class SpokojLayout(unittest.TestCase):
 
     # ------------------------------------------------------------------ 507 AC-1 to AC-5
 
-    def test_11_the_phone_header_is_a_56px_row_and_the_views_with_the_same_controls_in_every_view(self) -> None:
+    def test_11_the_phone_header_is_back_the_name_and_more_with_the_views_under_it_in_every_view(self) -> None:
         for size in PHONES:
             with self.subTest(width=size["width"]):
                 page = self.page(size, dark=size is PHONES[1], touch=True)
@@ -536,25 +540,35 @@ class SpokojLayout(unittest.TestCase):
                 for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), *wiki_states, self.dm_path):
                     page.goto(path)
                     header = page.locator("header.phead")
-                    expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
+                    project = path != self.dm_path
+                    expect(header.get_by_role("button", name="More" if project else "Search", exact=True)).to_be_visible()
                     page.wait_for_function(SETTLED)
                     head = self.box(header)
-                    project = path != self.dm_path
-                    # One 56 px row of controls; in a space the views are the segmented row under it (#873).
-                    self.assertAlmostEqual(head["height"], 112 if project else 56, delta=2, msg=path)
-                    # Back · title · Call · Search (· More in a space), and nothing else.
-                    controls = {
-                        "Back": self.box(header.get_by_role("button", name="Back", exact=True)),
-                        "title": self.box(header.get_by_role("heading", level=1) if project else header.get_by_role("heading", level=1).get_by_role("button")),
-                        "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
-                    }
                     if project:
-                        controls["More"] = self.box(header.get_by_role("button", name="More", exact=True))
+                        # A space (#1239): the title row (Back, the name, More), 8 px above and 12 under it, and the views' row of 44 px, where the
+                        # hairline closes the header. A name of two lines makes the row taller.
+                        self.assertGreaterEqual(head["height"], 106, path)
+                        self.assertLessEqual(head["height"], 132, path)
+                        controls = {
+                            "Back": self.box(header.get_by_role("button", name="Back", exact=True)),
+                            "title": self.box(header.get_by_role("heading", level=1)),
+                            "More": self.box(header.get_by_role("button", name="More", exact=True)),
+                        }
                         expect(header.get_by_role("navigation", name="Space views")).to_be_visible()
-                    # Call keeps its place in the Wiki too (#507 gap 3 of the #500 audit): a Wiki page's own ⋯ is in the
-                    # row above its title, below the header, not in it (#869).
-                    controls["Call"] = self.box(header.get_by_role("button", name="Call", exact=True))
-                    self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
+                        # Search and Call are rows of More; only Back and More are buttons in the header (Join appears while a call is live).
+                        expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
+                        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+                        self.assertEqual(header.locator("button:visible").count(), 2, f"{path}: {header.locator('button:visible').all_inner_texts()}")
+                    else:
+                        # A direct message keeps one 56 px row: Back · title · Call · Search, and nothing else.
+                        self.assertAlmostEqual(head["height"], 56, delta=2, msg=path)
+                        controls = {
+                            "Back": self.box(header.get_by_role("button", name="Back", exact=True)),
+                            "title": self.box(header.get_by_role("heading", level=1).get_by_role("button")),
+                            "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
+                            "Call": self.box(header.get_by_role("button", name="Call", exact=True)),
+                        }
+                        self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
                     if path.endswith("/docs") or path.endswith(self.doc_id):
                         expect(header.get_by_role("button", name="Page actions", exact=True)).to_have_count(0)
                         menu = page.locator(".wiki-head").get_by_role("button", name="Page actions", exact=True)
@@ -571,27 +585,24 @@ class SpokojLayout(unittest.TestCase):
                         self.assertGreaterEqual(box["y"], head["y"] - 0.5, f"{name} stays inside the header at {path}")
                         self.assertLessEqual(box["y"] + box["height"], head["y"] + head["height"] + 0.5, f"{name} stays inside the header at {path}")
                     self.assertLess(controls["Back"]["x"], controls["title"]["x"])
-                    self.assertLess(controls["title"]["x"] + controls["title"]["width"], controls["Call"]["x"])
-                    self.assertLess(controls["Call"]["x"], controls["Search"]["x"])
                     if project:
-                        self.assertLess(controls["Search"]["x"], controls["More"]["x"])
+                        self.assertLessEqual(controls["title"]["x"] + controls["title"]["width"], controls["More"]["x"] + 0.5)
+                    else:
+                        self.assertLess(controls["title"]["x"] + controls["title"]["width"], controls["Call"]["x"])
+                        self.assertLess(controls["Call"]["x"], controls["Search"]["x"])
                     # The capsule and its round Search stay on Home, Projects and Inbox only.
                     expect(page.locator(".phone-dock__bar, .phone-dock__search")).to_have_count(0)
                     self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), size["width"], path)
                     title = self.box(header.locator(".phead__title"))
-                    if reference is None:
+                    if project and reference is None:
                         reference = {**controls, "title width": title}
                         shot(page, f"507-phone-{size['width']}-conversation")
-                    else:
+                    elif project:
                         moving = {key: value for key, value in controls.items() if key != "title"}
-                        if path == self.dm_path:
-                            for key in ("Call", "Search"):
-                                moving.pop(key, None)  # a direct message has no More, so its Call and Search sit further right
                         self.assert_same_place({key: value for key, value in reference.items() if key in moving}, moving, f"{size['width']} {path}")
-                        if path != self.dm_path:
-                            # The project's title is cut at the same width in every view.
-                            self.assertAlmostEqual(title["width"], reference["title width"]["width"], delta=1, msg=f"{size['width']} title width at {path}")
-                            self.assertAlmostEqual(controls["title"]["x"], reference["title"]["x"], delta=4, msg=f"{size['width']} title at {path}")
+                        # The project's title is cut at the same width in every view.
+                        self.assertAlmostEqual(title["width"], reference["title width"]["width"], delta=1, msg=f"{size['width']} title width at {path}")
+                        self.assertAlmostEqual(controls["title"]["x"], reference["title"]["x"], delta=4, msg=f"{size['width']} title at {path}")
                 shot(page, f"507-phone-{size['width']}-dm")
                 # Every top-level header is 56 px with its controls at the same height; the capsule is here.
                 avatar = None
@@ -606,8 +617,8 @@ class SpokojLayout(unittest.TestCase):
                     else:
                         self.assertAlmostEqual(here["y"], avatar["y"], delta=1, msg=path)
                     if reference:
-                        self.assertAlmostEqual(here["y"], reference["Search"]["y"], delta=1, msg=f"{path}: the same height as the project header's controls")
-
+                        # A space's header starts its title row 8 px down, a main place's 6 px (the space header's own rhythm, #1239).
+                        self.assertAlmostEqual(here["y"], reference["Back"]["y"], delta=2.5, msg=f"{path}: the controls start at the top of the header")
 
 if __name__ == "__main__":
     unittest.main()

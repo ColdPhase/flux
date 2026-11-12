@@ -409,12 +409,12 @@ class AdaptiveBase(unittest.TestCase):
         return page.viewport_size["width"] <= 640
 
     def tabs(self, page: Page) -> Locator:
-        """The project's views: one segmented control at every width, in the header's row or, on a phone, the row under the title (#873)."""
+        """The project's views: the underline tabs at every width, in the header's row or, on a phone, the row under the title (#873)."""
         return page.get_by_role("navigation", name="Space views")
 
     def tab(self, page: Page, name: str) -> None:
-        self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")).click()
-        expect(self.tabs(page).get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+        self.tabs(page).get_by_role("tab", name=re.compile(f"^{name}")).click()
+        expect(self.tabs(page).get_by_role("tab", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
 
     def details_button(self, page: Page) -> Locator:
         """The header's way to Details: More, on the computer's one row (#340), on the tablet and on the phone's row (#873)."""
@@ -474,11 +474,11 @@ class AdaptiveMatrix(AdaptiveBase):
         # Conversation: the same places, labels and order at every width (ADAPT-3).
         composer = page.get_by_label("Write a message", exact=True)
         expect(composer).to_be_visible()
-        expect(self.tabs(page).get_by_role("link")).to_have_count(len(TABS))
-        names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("link").all_inner_texts()]
+        expect(self.tabs(page).get_by_role("tab")).to_have_count(len(TABS))
+        names = [re.sub(r"[,\n].*$", "", label, flags=re.S).strip() for label in self.tabs(page).get_by_role("tab").all_inner_texts()]
         self.assertEqual(names, TABS, f"project views keep their names and order at {size}")
         for name in TABS:
-            self.primary(page, self.tabs(page).get_by_role("link", name=re.compile(f"^{name}")), f"the {name} tab")
+            self.primary(page, self.tabs(page).get_by_role("tab", name=re.compile(f"^{name}")), f"the {name} tab")
         if width <= 680 and width > 640:
             self.primary(page, page.get_by_role("button", name="Open navigation"), "Open navigation")
         self.primary(page, self.details_button(page), "Details")

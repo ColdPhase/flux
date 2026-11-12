@@ -158,12 +158,12 @@ def journey(page: Page, rec: Recorder) -> None:
 
     # 5. The Tasks board has it, with the others.
     tabs = page.get_by_role("navigation", name="Space views")
-    rec.click(tabs.get_by_role("link", name=re.compile("^Tasks")))
+    rec.click(tabs.get_by_role("tab", name=re.compile("^Tasks")))
     expect(page.get_by_role("button", name=TASK_TITLE, exact=True).first).to_be_visible()
     rec.hold(2800)
 
     # 6. The Map: the thoughts the conversation led to.
-    rec.click(tabs.get_by_role("link", name=re.compile("^Map")))
+    rec.click(tabs.get_by_role("tab", name=re.compile("^Map")))
     listed = page.get_by_role("link", name=re.compile("^Where the sensors go"))
     rec.hold(700)
     if listed.count():
@@ -174,7 +174,7 @@ def journey(page: Page, rec: Recorder) -> None:
     rec.hold(3000)
 
     # 7. The Wiki, where the space writes down what it knows.
-    rec.click(tabs.get_by_role("link", name=re.compile("^Wiki")))
+    rec.click(tabs.get_by_role("tab", name=re.compile("^Wiki")))
     expect(page.get_by_role("heading", level=1).first).to_be_visible()
     rec.hold(2400)
 

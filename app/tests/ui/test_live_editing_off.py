@@ -120,7 +120,7 @@ class LiveEditingOffJourney(unittest.TestCase):
         text.focus()
         page.keyboard.press("Control+End")
         page.keyboard.insert_text(" Left at once.")
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Conversation").click()
         deadline = time.monotonic() + 10
         while True:
             doc = self.api(page, "GET", f"/api/v1/docs/{self.doc_url.rsplit('/', 1)[-1]}", status=200)
@@ -237,7 +237,7 @@ class LiveEditingOffJourney(unittest.TestCase):
                                        headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{doc["version"]}"', "idempotency-key": str(uuid.uuid4())})
         self.assertEqual(response.status, 200, response.text())
         page.keyboard.insert_text(" Second part.")
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Conversation").click()
         deadline = time.monotonic() + 10
         while True:
             current = self.api(other, "GET", f"/api/v1/docs/{doc['id']}", status=200)

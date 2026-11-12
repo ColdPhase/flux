@@ -463,9 +463,10 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.tasks(phone=True, dark=dark)
-                # Spokój (#507): no capsule in a project's views; Search is the header's round control.
+                # Spokój (#507): no capsule in a project's views; Search is the first row of the header's More (#1239).
                 expect(page.locator(".phone-dock__search")).to_have_count(0)
-                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
+                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(0)
+                expect(page.locator("header").get_by_role("button", name="More", exact=True)).to_have_count(1)
                 # The computer's one control row (#868): Board | List, Mine and Search, and no "+ Task" (the floating Create).
                 expect(page.locator(".tb-bar")).to_be_visible()
                 expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()

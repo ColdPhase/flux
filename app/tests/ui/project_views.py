@@ -1,4 +1,4 @@
-"""Moving between a project's views with the segmented control every width has (#873)."""
+"""Moving between a project's views with the underline tabs every width has (#873, #1239)."""
 
 from __future__ import annotations
 
@@ -13,5 +13,5 @@ def project_views(page: Page) -> Locator:
 
 
 def project_view(page: Page, name: str, *, touch: bool = False) -> None:
-    link = project_views(page).get_by_role("link", name=re.compile(f"^{re.escape(name)}"))
-    link.tap() if touch else link.click()
+    tab = project_views(page).get_by_role("tab", name=re.compile(f"^{re.escape(name)}"))
+    tab.tap() if touch else tab.click()

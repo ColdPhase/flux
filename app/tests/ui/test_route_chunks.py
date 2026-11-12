@@ -234,7 +234,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 # Navigate through the public router, preserving the same document and visit copy.
                 page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki", exact=True).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
                 page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
                 page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
                 expect(text).to_contain_text(latest[:60])
@@ -334,7 +334,7 @@ class RouteChunksJourney(unittest.TestCase):
                 # Through the router, not a document load: a load would clear this tab's visit copies anyway.
                 with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/api/v1/docs/{doc['id']}/live/save"), timeout=30000) as saved:
                     page.locator(".app__side").get_by_role("link", name=re.compile("^Chunk boundaries(?:, new activity)?$")).click()
-                    page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki", exact=True).click()
+                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Wiki", exact=True).click()
                     page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
                     page.get_by_role("dialog", name=re.compile("^Pages in")).get_by_role("link", name=doc["title"], exact=True).click()
                     expect(page.locator('[data-live-status="live"]')).to_be_visible()

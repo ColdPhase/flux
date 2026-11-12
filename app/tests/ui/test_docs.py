@@ -118,7 +118,7 @@ class DocsJourney(unittest.TestCase):
         return self.api(page, "GET", f"/api/v1/docs/{self.doc_id}/versions", status=200)["items"]
 
     def tab(self, page: Page, name: str):
-        return page.get_by_role("navigation", name="Space views").get_by_role("link", name=name)
+        return page.get_by_role("navigation", name="Space views").get_by_role("tab", name=name)
 
     def saved_doc(self, page: Page, snippet: str, timeout: float = 60.0, doc_id: str | None = None) -> dict:
         """The page once a saved version holds `snippet`: versions save by themselves when the typing rests (#869)."""

@@ -161,9 +161,9 @@ def phone_menu(page: Page, tap: bool = False):
 
 
 def view_tab(page: Page, name: str, tap: bool = False) -> None:
-    """A project view by its name: the segmented control, the same at every width (#873); on a phone it is the row under the title."""
+    """A project view by its name: the underline tabs, the same at every width (#873, #1239); on a phone it is the row under the title."""
     close_modal_thread(page, tap)
-    link = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}"))
+    link = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}"))
     link.tap() if tap else link.click()
 
 
@@ -591,8 +591,10 @@ class AppShellJourney(unittest.TestCase):
                 before = header.bounding_box()
                 if device == "phone":
                     expect(header.get_by_role("button", name="Back", exact=True)).to_be_visible()
-                    expect(header.get_by_role("button", name="Call", exact=True)).to_be_visible()
-                    expect(header.get_by_role("button", name="Search", exact=True)).to_be_visible()
+                    # The title row is Back, the name and More; Search and Call are rows of More (#1239).
+                    expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
+                    expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+                    expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
                     expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
                     # The phone's More holds Settings and Space details, the one place they open from (#873).
                     expect(header.get_by_role("button", name="More", exact=True)).to_have_count(1)

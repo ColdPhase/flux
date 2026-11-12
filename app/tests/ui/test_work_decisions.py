@@ -216,7 +216,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         stored = self.work(page)
         self.assertEqual(stored["work"][0]["status"], "done", "the experiment is finished")
 
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Tasks").click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
         # Finished work is grouped in the List (#136). Decisions wait in the Inbox and have no view here; what came of a task
         # shows in its details (#342).
@@ -264,7 +264,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.assertEqual(rules["Use a camera for gesture control"]["status"], "superseded")
         self.assertEqual(rules["Use a camera for gesture control"]["rationale"], "It recognises the richest set of gestures")
 
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks").click()
+        page.get_by_role("navigation", name="Space views").get_by_role("tab", name="Tasks").click()
         expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
         expect(page.get_by_text("parked by a pivot")).to_have_count(0)
         # The earlier decision and its reason stay in the decision's own details (S1: no archive).
