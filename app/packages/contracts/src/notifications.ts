@@ -104,6 +104,17 @@ export interface NotificationPreferences {
   };
   quietHours: QuietHours;
   muted: MutedPlace[];
+  /**
+   * Two sound switches (founder decision, Hubert, 2026-11-12, #1243): `messages`, a soft sound for direct messages, mentions and
+   * questions to you (off by default); `calls`, the single soft chime of a direct call invitation (on by default). An open tab plays
+   * them with the notice, so both follow the level and quiet hours.
+   */
+  sound: NotificationSound;
+}
+
+export interface NotificationSound {
+  messages: boolean;
+  calls: boolean;
 }
 
 /** `PATCH /api/v1/notification-preferences`: every field is optional and merged. */
@@ -113,6 +124,7 @@ export interface UpdateNotificationPreferencesCommand {
   /** The sign-in address's own switch. An extra address's is `PATCH /notification-addresses/:id`. */
   accountEnabled?: boolean;
   quietHours?: Partial<QuietHours>;
+  sound?: Partial<NotificationSound>;
 }
 
 /** `GET /api/v1/notification-preferences/mutes`: the places the person muted, by id, for the sidebar's mark (no names; Settings has them). */

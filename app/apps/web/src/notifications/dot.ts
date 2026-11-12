@@ -8,11 +8,11 @@ import { getNeedsYou } from './needsYou';
  * that counts them (#865). Notifications are written by the worker shortly after the event, so a stream event refreshes it after a
  * short pause; it also refreshes on focus, when the inbox changes and every two minutes.
  */
-export function useInboxDot(identity: string, pathname: string): number {
-  const [unread, setUnread] = useState<{ identity: string; count: number } | null>(null);
+export function useInboxDot(identity: string, pathname: string): { count: number; notifying: number } {
+  const [unread, setUnread] = useState<{ identity: string; count: number; notifying: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const read = useCallback((fresh: boolean) => {
-    void getNeedsYou(undefined, fresh).then((queue) => setUnread({ identity, count: queue.count }), () => undefined);
+    void getNeedsYou(undefined, fresh).then((queue) => setUnread({ identity, count: queue.count, notifying: queue.notifying ?? 0 }), () => undefined);
   }, [identity]);
   // A refresh (focus, an event, a change of the Inbox, the two-minute poll) reads; a new page shares one read with its own queue (#862).
   const refresh = useCallback(() => read(true), [read]);
@@ -38,5 +38,5 @@ export function useInboxDot(identity: string, pathname: string): number {
   }, [refresh]);
   // Someone seeing a message changes nothing that waits for this person (#862).
   useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) soon(); }, refresh);
-  return unread?.identity === identity ? unread.count : 0;
+  return unread?.identity === identity ? { count: unread.count, notifying: unread.notifying } : { count: 0, notifying: 0 };
 }

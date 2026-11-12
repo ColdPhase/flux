@@ -87,6 +87,8 @@ defaults if missing), the given fields are merged and written in one transaction
 edits of different fields never overwrite each other; for the same field the later request wins.
 The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
+- **Sound** (#1243, migration `0064_notification_sounds.sql`): `sound: { messages, calls }`, stored as `sound_messages`
+  (default false) and `sound_calls` (default true). The server only stores them; an open tab plays them with a notice.
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
   The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
   to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`, `approval`) at `needsYou`, to every

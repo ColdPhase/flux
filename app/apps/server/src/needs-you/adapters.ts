@@ -1,6 +1,7 @@
-import { accessPorts, needsYouRows, returnRows, memberFilter, accessReader, type Database } from '@flux/db';
+import { accessPorts, needsYouRows, notificationPreferenceRows, returnRows, memberFilter, accessReader, type Database } from '@flux/db';
 import {
   createNeedsYou,
+  preferenceRepository,
   evaluateProject,
   listWorkspaces,
   type NeedsYouAccess,
@@ -47,5 +48,6 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
   inbox: notificationRepository(db),
+  level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,
   work: workRepository(db),
 });

@@ -1,4 +1,4 @@
-import type { AssistantChange } from '@flux/contracts';
+import type { AssistantChange, NotificationLevel } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { DecisionRecord, WorkRepository } from '../work/ports.js';
 import type { NotificationRecord } from '../push/ports.js';
@@ -74,5 +74,7 @@ export interface NeedsYouPorts {
   aiAllowed?(projectId: string): Promise<boolean>;
   repository: NeedsYouRepository;
   inbox: NeedsYouInbox;
+  /** The person's notification level, for `notifying` (#1243); without it every unread reason that needs you counts. */
+  level?(userId: string): Promise<NotificationLevel>;
   work: Pick<WorkRepository, 'listAssignedVisible' | 'listBlockedFor' | 'links' | 'titles' | 'names' | 'findWork' | 'findDecision' | 'taskPlans'>;
 }

@@ -1582,6 +1582,9 @@ export const notificationPreferences = pgTable('notification_preferences', {
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
   timeZone: text('time_zone').notNull().default('UTC'),
+  /** Migration 0064 (#1243): "Sound for messages", off by default, and "Sound when someone calls me", on by default. */
+  soundMessages: boolean('sound_messages').notNull().default(false),
+  soundCalls: boolean('sound_calls').notNull().default(true),
   /** Migration 0109 (F-027 A8): the assistant writes the summary's text; the plain one is the fallback. */
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

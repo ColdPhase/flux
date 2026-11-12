@@ -137,6 +137,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
       muted,
+      sound: { messages: stored.soundMessages, calls: stored.soundCalls },
     };
   }
 

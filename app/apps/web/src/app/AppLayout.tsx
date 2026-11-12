@@ -15,6 +15,7 @@ import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './Pe
 import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
 import { Notices } from '../notifications/Notices';
+import { useTabSignals } from '../notifications/tabSignals';
 import { useAnsweredInbox } from '../notifications/answered';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
@@ -314,7 +315,10 @@ function AppLayoutContent() {
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());
 
-  const inboxUnread = useInboxDot(me.user.id, location.pathname);
+  const inboxSignals = useInboxDot(me.user.id, location.pathname);
+  const inboxUnread = inboxSignals.count;
+  // What would notify you and is unread: the tab's "(N)", its favicon dot and the installed app's badge (#1243).
+  useTabSignals(inboxSignals.notifying);
   // A reply that answered a question or mention waiting in the Inbox takes it out, with Undo (#1170).
   useAnsweredInbox(me.user.id);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.

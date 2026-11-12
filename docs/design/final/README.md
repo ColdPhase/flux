@@ -762,6 +762,10 @@ the composer. The right-hand phone above shows the sheet.
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.
+  - **Sound** (founder decision, 2026-11-12, #1243): two switches in one card after Where.
+    "Sound for messages", "A soft sound for direct messages and mentions while Flux is open", off
+    by default; "Sound when someone calls me", "One soft chime when someone invites you to a
+    call", on by default. At Nothing each says "Not used while you hear about Nothing".
   - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
