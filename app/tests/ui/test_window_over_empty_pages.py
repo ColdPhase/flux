@@ -183,7 +183,11 @@ class WindowOverEmptyPages(unittest.TestCase):
             for behind in PAGES:
                 with self.subTest(scheme=scheme, phone=phone, behind=behind):
                     self.open_page(page, behind)
-                    page.get_by_role("button", name="Search", exact=True).first.click()
+                    if phone:  # inside a space the phone's Search is the first row of More (#1239)
+                        page.locator("header").get_by_role("button", name="More", exact=True).click()
+                        page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^Search")).click()
+                    else:
+                        page.get_by_role("button", name="Search", exact=True).first.click()
                     search = page.get_by_role("dialog", name="Search", exact=True)
                     self.whole(page, search, f"Search over the empty {behind}")
                     self.assertEqual(foreign_at_centre(page, search.get_by_role("combobox", name="Search", exact=True)), "", "the search field is reached")
