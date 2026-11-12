@@ -133,7 +133,8 @@ tabs under #1239; until then they read the same three tokens.) A selected state 
 - The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
   `--el` on `--act` (1.51:1); in dark `--pick` on `--sub` (1.51:1). In dark the pill is lighter than the track (it was darker, 1.1:1).
   `scripts/check_contrast.py` holds the fill at 1.5:1 or more in both themes, and `tests/ui/test_switches_visible.py` measures it in the
-  running app. 1.5:1 is not reachable with the existing colours, whose nearest pairs are these two; in dark the edge adds 2.3:1 against the track.
+  running app. The existing colours gave 1.45:1 and 1.44:1, so `--act` (light) and `--pick` (dark) moved one notch to reach 1.5:1; in dark
+  the edge adds 2.3:1 against the track.
 - The selected label is `--t1`, an unselected label `--seg-off` (`--t2` in light, `--t3` in dark, 6:1 on the track); a hovered one is `--t1`.
 - High-contrast mode (`forced-colors`) keeps the selection: the pill is `Highlight` with `HighlightText`.
 - Sizing is not part of this rule (the options' widths follow their labels, #1219).
