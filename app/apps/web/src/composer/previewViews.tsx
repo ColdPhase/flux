@@ -6,6 +6,8 @@ import { TABLE_COLUMNS, cellText, type JsonErrorModel, type JsonModel, type Tabl
 // are in the DOM; everything is drawn as text by React, never as HTML.
 
 const OVERSCAN = 24;
+/** A table row can hold 200 cells, so a table draws fewer rows beyond the view than a text does lines. */
+const TABLE_OVERSCAN = 6;
 
 /** The scroller's size and scroll position, and the width and height of one monospace character inside it. */
 function useScroller() {
@@ -137,8 +139,8 @@ export function TableView({ model, label }: { model: TableModel; label: string }
   const { scroller, probe, box } = useScroller();
   const rows = model.rowStart.length - 1;
   const height = Math.round(box.line + 12);
-  const first = Math.max(1, Math.floor(box.top / height) + 1 - OVERSCAN);
-  const last = Math.min(rows, Math.ceil((box.top + box.height) / height) + 1 + OVERSCAN);
+  const first = Math.max(1, Math.floor(box.top / height) + 1 - TABLE_OVERSCAN);
+  const last = Math.min(rows, Math.ceil((box.top + box.height) / height) + 1 + TABLE_OVERSCAN);
   const shown = Math.min(model.columns, TABLE_COLUMNS);
   const template = Array.from(model.widths.subarray(0, shown), (width) => `${width + 3}ch`).join(' ');
   const row = (r: number, header = false) => {

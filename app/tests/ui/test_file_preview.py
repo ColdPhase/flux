@@ -625,7 +625,7 @@ class FilePreview(unittest.TestCase):
                 expect(dialog.get_by_role("status")).to_contain_text(f"Showing the first 200 of {columns:,} columns. Download to see them all.")
                 table.evaluate("(el) => { el.scrollLeft = el.scrollWidth; el.scrollTop = el.scrollHeight; }")
                 page.wait_for_timeout(500)
-                self.assertLess(table.locator("[role=cell], [role=columnheader]").count(), 200 * 120)
+                self.assertLess(table.locator("[role=row]").count(), 60, "only the rows in view and a few beyond are drawn")
                 long = page.evaluate("window.__long")
                 print(f"{name}: ready in {time.time() - started:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
