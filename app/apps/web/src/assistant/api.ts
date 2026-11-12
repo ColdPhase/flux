@@ -1,11 +1,11 @@
 import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH, agentAssistantStatusPath,
   assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
-  conversationAssistantAnswersPath, conversationAssistantRunsPath,
+  conversationAssistantRunsPath,
   agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
   assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, dmThreadAssistantRunsPath, projectAssistantChangesPath, projectAssistantRunsPath,
   type AssistantChange, type AssistantChangeDecision, type AssistantChangeScope, type AssistantChangesDecided, type AssistantRunUndone,
-  type AssistantAnswer, type AssistantPlace, type AssistantRun, type InvokeAssistantRunCommand,
+  type AssistantPlace, type AssistantRun, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type ShowAnswerResult,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -41,9 +41,6 @@ export const dismissAnswer = (runId: string) => request<AssistantRun>(assistantR
 export const listRunChanges = (runId: string, signal?: AbortSignal) => request<{ items: AssistantChange[] }>(assistantRunChangesPath(runId), { signal });
 export const stopRun = (runId: string) => request<AssistantRun>(assistantRunStopPath(runId), { method: 'POST' });
 export const retryRun = (runId: string, clientRunId: string) => request<AssistantRun>(assistantRunRetryPath(runId), { method: 'POST', body: { clientRunId } });
-
-export const listAnswers = (conversationId: string, offset = 0, signal?: AbortSignal) =>
-  request<Page<AssistantAnswer>>(`${conversationAssistantAnswersPath(conversationId)}?limit=100&offset=${offset}`, { signal });
 
 // An agent's changes (F-036 AG-3): the change line and Undo on its message, and what waits. Only their owner, in their own
 // signed-in session, approves, edits or skips a waiting change.

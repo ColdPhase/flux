@@ -184,8 +184,6 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.deepEqual(said.items.map((item) => [item.body, item.runId, item.schedule?.title]), [['Fact: two sensor tasks are due on Friday.', started!.id, 'Daily check']]);
     await tick(new Date(fire.getTime() + 3 * MINUTE));
     assert.equal((await chatLines(agentId)).length, 1);
-    const answers = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as { items: { runId: string }[] };
-    assert.equal(answers.items.some((item) => item.runId === started!.id), false);
     // Nothing posts a schedule's result into a conversation (#1104): its answer is its owner's alone, and no event tells a space about it.
     const ran = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${started!.id}`), 200) as { answer: { audience: { kind: string } } | null };
     assert.equal(ran.answer?.audience.kind, 'owner', 'a schedule\'s answer is private, like a chat\'s');

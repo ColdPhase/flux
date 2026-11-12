@@ -157,14 +157,8 @@ class AssistantScreen(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/agent-connections/[0-9a-f-]{36}$"), may_do)
         return world
 
-    def answer(self, owner: str, owner_name: str, label: str) -> dict:
-        return {"runId": str(uuid.uuid4()), "conversationId": self.ids["conversation"], "projectId": self.ids["project"], "audience": {"kind": "project", "projectId": self.ids["project"]},
-                "assistant": {"ownerUserId": owner, "label": label}, "askedBy": {"id": owner, "name": owner_name},
-                "request": {"kind": "ask", "prompt": "What do the notes say about the sensor?"}, "body": "The notes favour the ToF sensor.", "truncated": False,
-                "provenance": {"provider": "anthropic", "model": "claude-code"}, "sources": [], "committedAt": NOW}
-
-    def stub_thread(self, page: Page, answers: list[dict]) -> None:
-        page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": len(answers), "limit": 100, "offset": 0}))
+    def stub_thread(self, page: Page) -> None:
+        """The person's own runs here: none. Nothing is posted in the conversation by an assistant, so there is nothing else to stub."""
         page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
 
     def thread_url(self) -> str:
@@ -199,7 +193,7 @@ class AssistantScreen(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_thread(page, [])
+                self.stub_thread(page)
                 page.goto(self.thread_url())
                 box = page.get_by_placeholder(re.compile("Reply in thread"))
                 box.fill("@")
@@ -209,12 +203,12 @@ class AssistantScreen(unittest.TestCase):
                 shot(page, f"at-list-{self.tag(phone)}")
                 options.first.click()
                 expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
-                self.stub_thread(page, [])
+                self.stub_thread(page)
 
     def test_10_command_k_asks_my_assistant_in_the_open_thread(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         page.goto(self.thread_url())
         expect(page.get_by_placeholder(re.compile("Reply in thread"))).to_be_visible()
         assistant_known(page)
@@ -224,18 +218,6 @@ class AssistantScreen(unittest.TestCase):
         option.click()
         expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}$"))
-
-    def test_12_everyone_sees_the_company_and_who_pays_in_the_header(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        self.stub_thread(page, [self.answer(str(uuid.uuid4()), "Jonas Weiss", "Jonas's assistant")])
-        page.goto(self.thread_url())
-        expect(page.locator(".assistant-answer__asked")).to_contain_text("for Jonas · Claude")
-        page.get_by_role("button", name="Jonas's assistant", exact=True).click()
-        panel = page.get_by_role("group", name="Jonas's assistant, details")
-        expect(panel.get_by_test_id("assistant-others")).to_have_text("Uses Claude through Jonas's account. What it reads here goes to Anthropic.")
-        expect(panel.get_by_role("button", name="More")).to_have_count(0)
-        shot(page, "panel-others-1440-light")
 
 
 if __name__ == "__main__":

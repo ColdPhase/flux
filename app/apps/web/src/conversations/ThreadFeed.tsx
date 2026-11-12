@@ -1,8 +1,10 @@
 import type { ReactNode } from 'react';
 import type { ConversationMessage, ProjectPerson } from '@flux/contracts';
 import type { ComposerState, outboxView } from '../composer/draft';
+import type { SourceLookups } from '../assistant/ConversationParts';
 import { PrivateAiLines } from '../assistant/PrivateAiLines';
-import { WaitingChanges } from '../assistant/WaitingChanges';
+import type { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { WaitingChanges, type useAssistantChanges } from '../assistant/WaitingChanges';
 import { MessageDay, day, sameMessageAuthor } from '../app/messageParts';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
 import { followsProposal } from '../app/objectNotices';
@@ -13,15 +15,23 @@ import type { useCreateWorkFromMessage } from '../work/inline';
 import type { PaneProps } from '../app/OneConversation';
 import type { FeedEntry } from './feed';
 import type { PaneCore } from './paneCore';
-import { answerElements, type AnswerContext } from './ThreadAnswers';
 import { ThreadReply } from './ThreadReply';
 import { NewBelow, UnreadDivider } from '../app/unreadReading';
 import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
 
+/** The signed-in person's own assistant in this thread: its working line and its private answers, which only they see (#842). */
+export interface PrivateAiContext {
+  assistant: ReturnType<typeof useConversationAssistant>; changes: ReturnType<typeof useAssistantChanges>;
+  /** The first names of the other people who read this place: they do not see the asker's private answer (#842). */
+  others: string[];
+  /** Where a private answer's citations point. */
+  lookups: SourceLookups;
+}
+
 interface Props {
   core: PaneCore; thread: ThreadReplies; reading: ThreadReading; entries: FeedEntry[]; outbox: ReturnType<typeof outboxView>;
-  publicComposer: ComposerState; answers: AnswerContext; owners: AgentOwners; people: ProjectPerson[] | null;
+  publicComposer: ComposerState; privateAi: PrivateAiContext; owners: AgentOwners; people: ProjectPerson[] | null;
   makeWork: ReturnType<typeof useCreateWorkFromMessage>; arrived: string | null; seen: Map<string, { name: string }[]>;
   messageAuthor: (message: ConversationMessage) => string; openDetails: ShellActions['openDetails']; hideIfDenied: (cause: unknown) => void;
   waitingHere: { clientRunId: string }[]; rootHeader: PaneProps['rootHeader']; rootMessageId: string | null;
@@ -29,12 +39,12 @@ interface Props {
   unreadFrom: string | null; newBelow: { count: number; toEnd: () => void };
 }
 
-/** The open thread (UI116-1): its root whole at the top, then replies, answers and what came of them, in time order. */
+/** The open thread (UI116-1): its root whole at the top, then replies and what came of them, in time order, and the person's own private answers at the end. */
 export function ThreadFeed(props: Props) {
-  const { core: { me, project, writable, composerId }, thread, reading, entries, outbox, answers, owners, arrived, seen } = props;
-  const { assistant, changes } = answers;
+  const { core: { me, project, writable, composerId }, thread, reading, entries, outbox, privateAi, owners, arrived, seen } = props;
+  const { assistant, changes } = privateAi;
   const { attachFeed, liftRef, columnRef, revealed, messageWork, discussedRow } = reading;
-  // Every entry, then every queued reply, with a day line where the day changes (a folded answer still counts as its day).
+  // Every entry, then every queued reply, with a day line where the day changes.
   const rows: { at: string; key: string; items: ReactNode[] }[] = [];
   const withDay = (at: string, key: string, items: ReactNode[]) => { rows.push({ at, key, items }); };
   entries.forEach((entry, index) => {
@@ -42,7 +52,6 @@ export function ThreadFeed(props: Props) {
     if (entry.type === 'object') withDay(entry.at, dayKey, [<ObjectNoticeItem key={entry.key} notice={entry.notice} meId={me.user.id} owners={owners} authorOf={() => null} inThread
       follows={(() => { const previous = entries[index - 1]; return previous?.type === 'object' && day(previous.at) === day(entry.at) && followsProposal(entry.notice, previous.notice); })()}
       hasMessage={() => false} onOpen={(target) => props.openDetails(target)} />]);
-    else if (entry.type === 'answer') withDay(entry.at, dayKey, answerElements(entry, answers));
     else {
       const message = entry.message;
       const previous = entries[index - 1], next = entries[index + 1];
@@ -78,7 +87,7 @@ export function ThreadFeed(props: Props) {
         {[...changes.byRun].filter(([runId]) => !assistant.privateAnswers.some((answered) => answered.id === runId)).map(([runId, runChanges]) => (
           <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={me.user.id} standalone /></li>
         ))}
-        <PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={answers.others} composerId={composerId} lookups={answers.lookups}
+        <PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={privateAi.others} composerId={composerId} lookups={privateAi.lookups}
           changed={(changes.byRun.get(assistant.run?.id ?? '') ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} />
         {props.waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
         </ol>

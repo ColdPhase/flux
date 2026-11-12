@@ -1,4 +1,4 @@
-import type { Page, PageQuery } from './access.js';
+import type { PageQuery } from './access.js';
 import type { AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
 import type { MessageFile } from './files.js';
@@ -35,7 +35,6 @@ export const agentAssistantStatusPath = (agentId: string) => `/api/v1/my-agents/
 export const assistantRunShowPath = (runId: string) => `${assistantRunPath(runId)}/show`;
 /** Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. */
 export const assistantRunDismissPath = (runId: string) => `${assistantRunPath(runId)}/dismiss`;
-export const conversationAssistantAnswersPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-answers`;
 
 /**
  * Where a run belongs (#842, F-036 AG-4). `space`: a space's conversation, a thread or a task's thread (`conversationId`), or the
@@ -83,8 +82,8 @@ export interface AgentChatSummary { agentId: string; unread: number; lastAt: str
 /**
  * Stream event of a run's progress (O-008 §4 "Progress"): `objectType` `assistant_run`, the run
  * id as `objectId`. Its audience is the run's owner alone; the client refetches
- * `GET /api/v1/assistant-runs/:id`. Nobody else learns that a run exists until its answer is
- * committed (`project.assistant_answer_committed.v1`, the project's audience).
+ * `GET /api/v1/assistant-runs/:id`. Nobody else learns that a run exists; what a run on a task
+ * says reaches the people as a message of the task's discussion (#1120).
  */
 export const ASSISTANT_RUN_CHANGED_EVENT = 'assistant_run.changed.v1';
 /** Statuses of a run that is still working; the owner's working line shows Stop for these. */
@@ -379,14 +378,14 @@ export type AssistantSourceRef =
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
 
-/** A committed answer as the conversation's audience sees it. No cost, budget or connection. */
+/** A committed answer as the run's owner reads it. No cost, budget or connection. */
 export interface AssistantAnswer {
   runId: string;
   conversationId: string | null;
   projectId: string | null;
-  /** A task run's answer is the project's; the answer to `/ai`, to a chat and of a schedule is its owner's alone until Show everyone (#842, #1104). */
+  /** A task run's answer is said to the project as a message of the task's discussion; the answer to `/ai`, to a chat and of a schedule is its owner's alone until Show everyone (#842, #1104). */
   audience: { kind: 'project'; projectId: string } | { kind: 'owner' };
-  /** The agent's name for the asker's own answer ("Assistant"); "Jo's assistant" for one posted in a conversation. */
+  /** The agent's name for the asker's own answer ("Assistant"); "Jo's assistant" for a run on a task. */
   assistant: { ownerUserId: string; label: string };
   askedBy: { id: string; name: string };
   request: { kind: AssistantRunKind; prompt: string };
@@ -398,8 +397,6 @@ export interface AssistantAnswer {
   sources: AssistantSourceRef[];
   committedAt: string;
 }
-
-export type AssistantAnswerPage = Page<AssistantAnswer>;
 
 /**
  * `GET /api/v1/assistant-runs?…` lists only the caller's runs; at most one of these narrows them to one place (#842):

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { createPersonalRunProcessor, postToAgentChat, type Principal } from '@flux/core';
-import { ME_TIME_ZONE_PATH, type AssistantAnswer, type AssistantRun, type Conversation, type ConversationRootWindow, type Dm, type DmMessage, type DmThread, type Page, type Project, type ShowAnswerResult, type Workspace } from '@flux/contracts';
+import { ME_TIME_ZONE_PATH, type AssistantRun, type Conversation, type ConversationRootWindow, type Dm, type DmMessage, type DmThread, type Page, type Project, type ShowAnswerResult, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -103,8 +103,6 @@ describe('/ai everywhere, answered privately (#842)', () => {
       assert.equal((await other.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`)).status, 404, 'only the asker shows it');
       assert.equal((await other.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/dismiss`)).status, 404);
     }
-    const posted = get<Page<AssistantAnswer>>(kai, `/api/v1/conversations/${thread.id}/assistant-answers`);
-    assert.equal((await posted).items.length, 0, 'the answer is no conversation history');
     assert.equal((await kai.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-activity`)).status, 404, 'there is no line that says someone is asking');
     await new Promise((resolve) => setTimeout(resolve, 300));
     assert.equal(live.events.some((event) => event.kind.startsWith('project.assistant_')), false, 'the space heard nothing');

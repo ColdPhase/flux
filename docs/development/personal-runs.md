@@ -473,7 +473,7 @@ client refetches `GET /api/v1/assistant-runs/:id`.
 F-027 AST-6 ("Visible to everyone", 2026-10-17, #404) told the others that an assistant was working
 (`project.assistant_working.v1`, and `GET /api/v1/conversations/:id/assistant-activity`). Since #842 that is
 gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still sent for a
-task's run and a schedule's firing, which post their results in the conversation.
+task's run, which posts its result as a message in the task's discussion.
 
 ## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
@@ -569,8 +569,9 @@ in it; a chat's tools are gated by each space on every call. `flux_place` in the
 (a chat) start a run through the one `start`. `GET /api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`,
 `dmId` (the DM's main line; with `dmThreadRootId`, that thread) or `chatAgentId`.
 
-**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`) means: no entry in
-`conversation-assistant-answers`, no `project.assistant_answer_committed.v1`, no working event, no proposal. The asker sees it as a card
+**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`, `scheduled`) means: no working event, no
+proposal, nothing for the space. (There is no list of "posted answers" and no answer-committed event for any run, #1120: what an agent says to the
+people of a task is a message of the task's discussion, posted by the agent-task drain as the agent, with the access of any message.) The asker sees it as a card
 (`PrivateAnswer`) with **Dismiss** (`POST /assistant-runs/:id/dismiss`, final) and **Show everyone** (`POST /assistant-runs/:id/show`): the
 core plans it (`planShow`: their own, committed, not dismissed, still allowed to write there, and AI still on in the space), the adapter posts
 it as their own message with `via` set to the agent's name, under the run's id, and `markShown` records it (a reply in the thread for a run in a
@@ -668,12 +669,11 @@ tokens:
   conversation…" with **Stop**; afterwards "Stopped. Nothing was posted." or the failure, with
   Retry where it makes sense. It follows the owner's progress events, and polls while the
   stream reconnects.
-- **Answer.** (Since #842 this is the asker's private card, see above; the text below describes a schedule's posted answer.) An ordinary message from "<Owner>'s assistant" with a ✦ avatar and an
-  *Assistant* tag, "asked by …", the request, the body and `[n]` citations that open exactly
+- **Answer.** Since #842 it is the asker's private card, see above: the body and `[n]` citations that open exactly
   their source (a message in the conversation, a work item in Details, a map thought).
   Committed answers renumber the model's `[S<n>]` labels to `[1]…` in the order of `sources`.
-  Provenance names the provider and model; no cost. The owner gets Retry (and Continue when
-  truncated); others with write access get *Ask my assistant about this*.
+  No cost is shown. A run on a task has no card of its own for the people: its result is the agent's message in the
+  task's discussion, like any other agent-posted message (#1120).
 - **Settings** at `/settings/assistant` (Settings → AI, and Details → *Connect your AI*): the
   model picker grouped by connection (Connect AI's default first), the assistant per workspace
   (create one there) and *Turn on*; then state, Pause/Resume, the connection's line (the plan's
@@ -760,7 +760,6 @@ pageshow, focus or explicit interaction after a cancelled navigation restores
 the current owner's lifetime and rechecks canonical state. It sends no automatic
 Stop or other write. Genuine subsequent own-run progress and cancelled-navigation
 recovery require actual browser checks; errors and existing race guards remain.
-| `GET /api/v1/conversations/:id/assistant-answers` | project readers | Committed answers with label, request, body, provenance (provider and model) and cited sources. No cost, cap, connection or hidden source. |
 
 The invoke checks run in this order. A body that names another `ownerId`,
 `agentId` or `connectionId` gets `403 PERSONAL_RUN_NOT_OWNER`. A conversation the
@@ -805,7 +804,7 @@ provider count where the wire format has one) fits 16 000 tokens (32 000 for a r
 with tools), or ends the run as `input_too_large`.
 
 At commit, citations `[S<n>]` count only for supplied sources. A `max_tokens` answer is committed as
-`truncated`. The commit records `project.assistant_answer_committed.v1` for the project's audience.
+`truncated`. The commit tells the owner alone (`assistant_run.changed.v1`); nothing is recorded for the project's audience.
 A `<proposal>` block in a model's text is plain text: nothing asks for it or reads it any more (#1054).
 
 ## Tests

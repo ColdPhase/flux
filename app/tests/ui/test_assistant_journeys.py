@@ -39,7 +39,7 @@ class AssistantJourneys(unittest.TestCase):
     setUpClass = classmethod(base.AssistantScreen.setUpClass.__func__)
     tearDownClass = classmethod(base.AssistantScreen.tearDownClass.__func__)
     pw = None
-    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "answer", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
+    for _name in ("context", "page", "api", "json", "status", "stub_assistant", "stub_thread", "thread_url", "no_horizontal_scroll", "tag"):
         locals()[_name] = getattr(base.AssistantScreen, _name)
     del _name
 
@@ -92,7 +92,7 @@ class AssistantJourneys(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         run = self.run_json()
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
         page.goto(self.thread_url())
@@ -128,7 +128,7 @@ class AssistantJourneys(unittest.TestCase):
     def test_06_a_request_sent_offline_waits_and_goes_out_once_when_back(self) -> None:
         page = self.page(phone=True)
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
         menu = self.open_suggestions(page, phone=True)
@@ -145,7 +145,7 @@ class AssistantJourneys(unittest.TestCase):
     def test_06b_a_held_request_the_server_refuses_comes_back_with_the_reason(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         asked = self.stub_runs(page, lambda body: (409, {"code": "PERSONAL_RUN_UNAVAILABLE", "message": "Your assistant is unavailable"}))
         page.goto(self.thread_url())
         menu = self.open_suggestions(page, phone=False)
@@ -162,7 +162,7 @@ class AssistantJourneys(unittest.TestCase):
     def test_06c_requests_held_offline_keep_their_order_and_each_goes_out_once(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
         menu = self.open_suggestions(page, phone=False)
@@ -181,7 +181,7 @@ class AssistantJourneys(unittest.TestCase):
 
     def failed_ask(self, page, run: dict, *, status: int = 202, error: dict | None = None):
         self.stub_assistant(page)
-        self.stub_thread(page, [])
+        self.stub_thread(page)
         self.stub_runs(page, lambda body: (status, error if error else dict(run, clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
         pick_suggestion(page, "Catch me up on this thread")

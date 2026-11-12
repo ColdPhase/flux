@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router';
-import type { AssistantAnswer } from '@flux/contracts';
 import type { outboxView } from '../composer/draft';
 import { pageBackTo } from '../app/seekMessage';
 import { UNREAD_READ_BACK, countBelow, openAtUnread, useNewBelow } from '../app/unreadReading';
@@ -13,7 +12,7 @@ import type { ThreadReading } from './useThreadReading';
 import type { ThreadReplies } from './useThreadReplies';
 
 interface Options {
-  thread: ThreadReplies; reading: ThreadReading; answers: AssistantAnswer[]; outbox: ReturnType<typeof outboxView>;
+  thread: ThreadReplies; reading: ThreadReading; outbox: ReturnType<typeof outboxView>;
   rootMessageId: string | null; hideIfDenied: (cause: unknown) => void;
 }
 
@@ -21,7 +20,7 @@ interface Options {
  * Where the open thread is and who saw it: the reply a link or a return arrives at (paging back until it is loaded,
  * #114, #592), replies rising in as they arrive (#155), and the viewing receipts of the replies (#534).
  */
-export function useThreadPlace({ me, project, conversation }: PaneCore, { thread, reading, answers, outbox, rootMessageId, hideIfDenied }: Options) {
+export function useThreadPlace({ me, project, conversation }: PaneCore, { thread, reading, outbox, rootMessageId, hideIfDenied }: Options) {
   const { messages, olderCursor } = thread;
   const { threadRestore, scrollRef, feedNode, columnRef, revealed } = reading;
   // Where the person left off (#1246), as the thread was opened (what is seen is read, so a later read says something else): a reply
@@ -74,14 +73,14 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     if (stopUnread.current) return;
     feed.scrollTop = revealed && leftOff === null ? feed.scrollHeight : 0;
   }, [conversation?.id, arrived, arrivedLoaded, feedNode, revealed, threadRestore, scrollRef, columnRef, unreadLoaded, leftOff]);
-  // Genuine replies and answers arriving in an open thread rise in gently when the reader sees them (#155,
+  // Genuine replies arriving in an open thread rise in gently when the reader sees them (#155,
   // UI116-5); the history the thread opens with and earlier pages never move. The thread's position owner
   // (useMessageWork) decides whether the reader follows the end.
   // A confirmed reply keeps its queued message's place and id here, so it is not a second arrival (#264).
   const messageDomKey = (id: string) => { const key = outbox.keyOf(id); return key === id ? `message-${id}` : key; };
-  const replyEntries = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), answers, !!olderCursor) : [];
+  const replyEntries = conversation ? feedEntries(messages.filter((message) => message.sequence > 1), !!olderCursor) : [];
   const threadIds = conversation ? [...replyEntries
-    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : entry.type === 'answer' ? `answer-${entry.answer.runId}` : entry.key), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
+    .map((entry) => entry.type === 'message' ? messageDomKey(entry.message.id) : entry.key), ...outbox.pending.map((item) => `pending-${item.id}`)] : [];
   // What arrives below a reader who is above the end is counted in "↓ N new" (#1246); a reader at the end follows it.
   const newBelow = useNewBelow(feedNode);
   useArrivals(scrollRef, threadIds, (id) => document.getElementById(id), (arrivedIds, following) => {

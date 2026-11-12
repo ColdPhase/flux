@@ -26,7 +26,6 @@ import {
   type EditAgentMemoryCommand,
   type InvokeAssistantRunCommand,
   type Page,
-  type PageQuery,
   type PersonalAssistantStatus,
   type PersonalAssistantUnavailableReason,
   type PersonalRunEnablement,
@@ -158,8 +157,9 @@ function enablementView(record: EnablementRecord): PersonalRunEnablement {
 }
 
 /**
- * The answer as the one who may see it does (#842): the answer to `/ai` and to a chat is its asker's alone, from their agent by name; a
- * schedule's is the project's, "Jo's assistant". No cost, budget, connection or hidden source in either.
+ * The answer as its owner reads it on the run (#842): the answer to `/ai`, to a chat and of a schedule is its asker's alone, from their agent
+ * by name; that of a run on a task is the project's, "Jo's assistant", and what a task's agent says reaches the people as a message of the
+ * task's discussion (#1120). No cost, budget, connection or hidden source in either.
  */
 export async function answerView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantAnswer | null> {
   if (record.answerBody === null || !record.committedAt) return null;
@@ -976,24 +976,6 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const run = await ownRun(ports, principal, runId, true);
         if (run.shownAt) return runView(ports, run);
         return runView(ports, await ports.runs.updateRun(run.id, { shownAt: new Date(), dismissedAt: null }));
-      });
-    },
-
-    /** Committed answers of a conversation for anyone who can read its project now. */
-    async listAnswers(principal: Principal, conversationId: string, query?: PageQuery): Promise<Page<AssistantAnswer>> {
-      const window = page(query);
-      return uow.run(async (ports) => {
-        const place = isId(conversationId) ? await ports.runs.locateConversation(conversationId.toLowerCase()) : null;
-        if (!place) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-        try {
-          await ports.access.requireProject(principal, 'read', place.projectId);
-        } catch (error) {
-          if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-          throw error;
-        }
-        const { items, total } = await ports.runs.listAnswers(conversationId.toLowerCase(), window);
-        const answers = await Promise.all(items.map((item) => answerView(ports, item)));
-        return { items: answers.filter((answer): answer is AssistantAnswer => answer !== null), total, ...window };
       });
     },
   };

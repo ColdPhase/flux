@@ -261,8 +261,6 @@ export interface PersonalRunRepository {
   lockLane(ownerUserId: string): Promise<void>;
   /** Only the owner's own runs, newest first; `place` narrows them to one place (#842). */
   listOwnRuns(ownerUserId: string, page: PageWindow, place?: RunPlaceFilter): Promise<Paged<RunRecord>>;
-  /** Committed answers of a conversation that were posted there, oldest first. The answer to `/ai`, to a chat and of a schedule is its owner's alone. */
-  listAnswers(conversationId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Display names of people keyed by id. */
   names(userIds: string[]): Promise<Map<string, string>>;
   /** The company's people whose first name, in lower case, is one of these (#1163); whether they read a space is asked separately. */
@@ -343,7 +341,6 @@ export interface PersonalRunQueue {
 export type PersonalRunEventKind =
   /** Owner-only progress of one run; the object is the run (`assistant_run`). */
   | 'assistant_run.changed.v1'
-  | 'project.assistant_answer_committed.v1'
   /** An assistant started or stopped working in a conversation: the project's audience, identifiers only (F-027 AST-6). */
   | 'project.assistant_working.v1'
   /** The line "used AI here" joined a direct message: its participants read it again (#842). */

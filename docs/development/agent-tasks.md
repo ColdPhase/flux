@@ -94,8 +94,9 @@ owner, or "with" the person who took it. An agent waited for is named as the thr
   that both owners are among the task's people (`taskPeople`: the creator, the owner, anyone who wrote in the thread; a
   message written by an agent adds nobody) and starts a run of kind `task_answer` for the other agent on its owner's account.
   That run only reads (`readOnly` in the run token), is told the question is data, and is refused unless every person of the
-  task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message and
-  the asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
+  task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message, by the
+  same path as its report (an ordinary message of the discussion, with its access, its live update and its Delete); there is no separate
+  list or card of posted answers (#1120). The asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
   go on (no such agent in the task, a refusal, no answer, the bound) is said in one line and the task goes back to its owner.
 - **The owner can always delete a line their agent put in the thread (#923, #938, #961, TA-3).** The report, the question and the
   answer of a run are also that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), and so is any

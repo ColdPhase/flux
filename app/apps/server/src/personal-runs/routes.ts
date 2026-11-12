@@ -21,7 +21,6 @@ import {
   dmThreadAssistantRunsPath,
   projectAssistantRunsPath,
   ASSISTANT_MODEL_PATH,
-  conversationAssistantAnswersPath,
   conversationAssistantRunsPath,
   PERSONAL_ASSISTANT_PATH,
   agentAssistantStatusPath,
@@ -33,7 +32,6 @@ import {
   type AssistantPlace,
   type InvokeAssistantRunCommand,
   type ListOwnRunsQuery,
-  type PageQuery,
   type ShowAnswerResult,
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
@@ -62,7 +60,6 @@ interface Options {
   storage?: FileStorage;
 }
 
-const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 /** One of the caller's connections (#854): a plan, or an API key's id. */
 const connection = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const model = { type: 'string', minLength: 1, maxLength: 200 } as const;
@@ -206,8 +203,6 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   invokeRoute(dmAssistantRunsPath(':dmId'), `POST ${dmAssistantRunsPath(':dmId')}`, ({ dmId }) => ({ kind: 'dm', dmId: dmId!, threadRootId: null }));
   invokeRoute(dmThreadAssistantRunsPath(':dmId', ':rootId'), `POST ${dmThreadAssistantRunsPath(':dmId', ':rootId')}`, ({ dmId, rootId }) => ({ kind: 'dm', dmId: dmId!, threadRootId: rootId! }));
   invokeRoute(agentAssistantRunsPath(':agentId'), `POST ${agentAssistantRunsPath(':agentId')}`, ({ agentId }) => ({ kind: 'chat', agentId: agentId! }));
-  app.get<{ Params: { conversationId: string }; Querystring: PageQuery }>(conversationAssistantAnswersPath(':conversationId'), { schema: { querystring: page } },
-    async (request) => runs.listAnswers(await principal(request), request.params.conversationId, request.query));
   app.get<{ Querystring: ListOwnRunsQuery }>(ASSISTANT_RUNS_PATH, { schema: { querystring: runsQuery } },
     async (request, reply) => { reply.header('cache-control', 'no-store'); return runs.listOwn(await principal(request), request.query); });
   app.get<{ Params: { runId: string } }>(assistantRunPath(':runId'), async (request) => runs.get(await principal(request), request.params.runId));

@@ -9,7 +9,7 @@ import type {
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunLiveText, RunRecord,
 } from './ports.js';
 import { liveText, type LiveText } from './live-text.js';
-import { isAsked, isPrivateAnswer, WebSearchRefusedError } from './ports.js';
+import { isAsked, WebSearchRefusedError } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
@@ -402,14 +402,11 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const truncated = result.stopReason === 'max_tokens';
       const { redacted, parsed, prepared } = answer!;
       const body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, prepared), prepared.cited);
-      const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {
         ...charge, answerBody: body || '(No answer text.)',
         answerTruncated: truncated, answerSources: parsed.sources, answerRedacted: redacted.changed, committedAt,
       }));
-      // The answer to `/ai`, to a chat and of a schedule is its owner's alone: the space hears nothing until Show everyone (#842, #1104).
-      if (!isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
       await taskFence?.mark();
       return updated.status;
     });

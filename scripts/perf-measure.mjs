@@ -164,8 +164,7 @@ function viewPlan(ids) {
         get('root work associations', `/api/v1/projects/${p}/work-associations?${query({ relation: 'source', limit: 50, messageIds: associations })}`),
         get('notice reference rows', `/api/v1/projects/${p}/work-reference-rows?${query({ objects: references })}`)]] },
     { view: 'Conversation thread', groups: [
-      [get('thread', `/api/v1/conversations/${ids.conversationId}`)],
-      [get('assistant answers', `/api/v1/conversations/${ids.conversationId}/assistant-answers?limit=100&offset=0`)]] },
+      [get('thread', `/api/v1/conversations/${ids.conversationId}`)]] },
     { view: 'Tasks', groups: [...shell, ...projectShell.slice(0, 2),
       ['open', 'in_progress', 'blocked', 'finished'].map((group) =>
         get(`work view ${group}`, `/api/v1/projects/${p}/work-view?${query({ purpose: 'tasks', group, mine: false, limit: 50 })}`)),
