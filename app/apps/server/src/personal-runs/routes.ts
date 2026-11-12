@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
+import { modelListRefresh } from '../ai-keys/model-refresh.js';
 import {
   AGENT_CHATS_PATH,
   agentChatMessagesPath,
@@ -100,6 +101,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
+  const modelLists = modelListRefresh(db, boss);
   const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
   // The owner's schedules (F-027 A8) run on the same composition: the same connection, switch and runtime.
@@ -114,7 +116,10 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   // What a person may choose for an agent's model (F-027 AST-11, #854): every connection's list, never another person's.
   app.get(ASSISTANT_MODEL_PATH, async (request, reply) => {
     reply.header('cache-control', 'no-store');
-    return runs.model(await principal(request));
+    const who = await principal(request);
+    // The picker opening reads the owner's keys' models again when the last reading is over 6 hours old (#1218); it never waits.
+    if (who.kind === 'human' && who.id) await modelLists.requestStale(who.id).catch((error: unknown) => request.log.warn({ err: error }, 'model list refresh not queued'));
+    return runs.model(who);
   });
   // An agent's own model is changed on its page: `PATCH /api/v1/my-agents/:id`.
 

@@ -169,7 +169,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(page.get_by_role("button", name="Show available models")).to_have_count(0)
         expect(page.get_by_text("Type the model id exactly as the provider names it.")).to_be_visible()
         page.get_by_label("Model", exact=True).fill("claude-sonnet-5")
-        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux price table, checked 2026-10-02")
+        expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux price table, checked 2026-11-12")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
         page.get_by_label("Name", exact=True).fill("Work Anthropic")
         self.fill_key(page, KEYS["anthropic"], "12.50")

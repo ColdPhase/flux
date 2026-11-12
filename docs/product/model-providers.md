@@ -35,8 +35,39 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   connection, for example "Claude plan: Opus · Sonnet · Haiku" and "ChatGPT plan: GPT-6.1 Sol ·
   Astra · Luna". Connect AI sets the default for new agents: the connection made first, at its
   default model (implemented on the assistant, #854; wave 2 #857 moves it onto every agent).
-- An API-key connection offers its provider's models that have a price in Flux's dated table, or
-  a price the owner entered (zero for a self-hosted endpoint), because the daily budget needs one.
+- **An API key's models come from the provider, read with that key** (founder direction, Hubert,
+  2026-11-10 and 2026-11-12, [#1218](https://github.com/ColdPhase/flux/issues/1218)). There is no
+  model list written into Flux anywhere in the picker: Flux's price table only prices a listed
+  model and never decides which models show, so a newly released model appears without a Flux
+  release. Until the provider's list is read (a key added before v0.2.1 waits for its first
+  reading), the key offers only its own model.
+  - **Adding a key** asks Provider → API key → Model. When the key is typed, the Flux server
+    lists that key's models (Anthropic `GET /v1/models`, OpenAI `GET /v1/models`, Gemini
+    `models.list`). That one call is also the key test: a key the provider refuses says "This key
+    was refused by Anthropic" and is not saved. A list that can't be read (a timeout, a 5xx) leaves
+    a free field for the model id with a plain note, and the key can still be saved.
+  - **The Model control** is a dropdown of the chat models the key can use, grouped by family
+    (Opus, Sonnet, Haiku, Fable…) with the newest family and model first, each with its price or
+    "price unknown, enter it". The provider's own display name is shown where it gives one. Nothing
+    is preselected. "Other model id…" opens a field for an id the list doesn't have.
+  - **OpenRouter and an OpenAI-compatible endpoint** keep their `/models` list read without a key
+    (an endpoint's server usually answers it without one), and the free field as a fallback.
+  - **Fresh and bounded.** A key's list is read again when its picker opens and the last reading is
+    more than 6 hours old, and with Try again. A saved key's list is read by the worker, the only
+    process that opens a stored key (CA-4); a key being added is listed by the API with the key the
+    person just typed, before it is sealed. Every listing goes through the same endpoint guard as a
+    run (CA-4). A list that can't be read says so, keeps the saved model and offers Try again; no
+    raw error is shown.
+- **Price (PROV-3).** The daily budget prices every request before it is sent, so a model needs a
+  price. A listed model with a row in Flux's dated table uses it. A listed model without one stays
+  selectable once the owner enters its price for that key (zero for a self-hosted endpoint): "Flux
+  doesn't know this model's price yet. Enter it to use it with a daily budget." A price a provider
+  lists (OpenRouter) is only offered as the starting value. The table follows the providers'
+  pricing pages, dated, with the primary source; a promotional price that ends on a known date is
+  left out, and a model priced by prompt length uses the tier Flux's largest request can reach.
+- **A model the provider retires** (in an earlier list of the key, missing from a later one) shows
+  as "no longer offered by Anthropic". The agents on it pause until their owner picks another model
+  (like C-3); Flux never switches the model by itself.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
 - An API-key model that cannot call tools can answer but cannot change anything, and the picker
@@ -78,7 +109,8 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 
 Kept from PROV-4:
 
-- API keys are sealed at rest (AEAD) and only the worker decrypts them. A key never appears in API
+- API keys are sealed at rest (AEAD) and only the worker decrypts them. The API sends a key only
+  while it is being added, to list its models (CA-2), before sealing it. A key never appears in API
   responses, stream frames, jobs, logs, exports or error bodies; a seeded-key absence test runs
   for every adapter.
 - **Base URL guard.** Public HTTPS by default; redirects are not followed; response time and size

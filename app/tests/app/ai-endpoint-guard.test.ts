@@ -171,7 +171,7 @@ describe('connection rules (F-020 PROV-1/PROV-3)', () => {
   test('PROV-3: a connection price comes only from Flux\'s dated table or the owner; a reported cost only reconciles', () => {
     const resolve = (provider: 'anthropic' | 'openrouter' | 'openai', model: string, ownerPrice?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number }) =>
       resolveConnectionPrice({ provider, model, ownerPrice });
-    assert.deepEqual(resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-10-02' });
+    assert.deepEqual(resolve('anthropic', 'claude-sonnet-5'), { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-11-12' });
     assert.deepEqual(resolve('openai', 'gpt-model', { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }), { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null });
     assert.deepEqual(resolve('openrouter', 'vendor/listed', { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 })?.source, 'owner',
       'a model the provider lists with a price still takes the owner\'s price');

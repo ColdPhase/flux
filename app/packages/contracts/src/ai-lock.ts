@@ -49,6 +49,8 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/background-compute-connections': exempt(ACCOUNT),
   'GET /api/v1/background-compute-connections': exempt(ACCOUNT),
   'PATCH /api/v1/background-compute-connections/:connectionId': exempt(ACCOUNT),
+  'PUT /api/v1/background-compute-connections/:connectionId/model-price': exempt(ACCOUNT),
+  'POST /api/v1/background-compute-connections/:connectionId/model-list': exempt(ACCOUNT),
   'POST /api/v1/ai-model-lists': exempt(ACCOUNT),
   'DELETE /api/v1/background-compute-connections/:connectionId': exempt(REDUCES),
   // People's agents take tasks (#856, AG-5): the setting is a person's; the state shows what an agent did; Retry starts AI work again.
@@ -180,6 +182,7 @@ export const AI_WORK_QUEUES = {
   ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'SPACE_AI_SWEEP_JOB'],
   /** Jobs that start no AI work, each with the reason (the test fails on a job that is in neither list). */
   notAi: {
+    API_KEY_MODEL_LIST_JOB: 'api-key.model-list.v1 reads which models a person\'s API key can use from its provider (#1218); it sends no content and starts no AI work',
     IDEMPOTENCY_CLEANUP_JOB: 'idempotency.cleanup.v1 deletes expired idempotency keys; it reads no workspace content',
     NOTIFICATION_EMAIL_JOB: 'notification.email.v1 sends a person\'s e-mail; it skips an AI-origin notification of a space whose AI is off (ai_origin)',
     PUSH_SEND_JOB: 'push.send sends a person\'s push; it skips an AI-origin notification of a space whose AI is off (ai_origin)',

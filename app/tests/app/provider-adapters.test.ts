@@ -275,12 +275,12 @@ describe('wire details beyond the shared contract', () => {
   test('model lists are read without a key; OpenRouter\'s listing states prices; others need a key', async () => {
     const compatible = await listProviderModels('openai_compatible', `${MOCK}/openai/v1`, { policy });
     assert.equal(compatible.status, 'listed');
-    assert.deepEqual(compatible.models, [{ id: 'llama3.1:8b', price: null }, { id: 'qwen2.5:7b-instruct', price: null }], 'invalid ids are dropped');
+    assert.deepEqual(compatible.models, [{ id: 'llama3.1:8b', family: 'Models', price: null }, { id: 'qwen2.5:7b-instruct', family: 'Models', price: null }], 'invalid ids are dropped');
     const routed = await listProviderModels('openrouter', null, { policy, baseUrls: { openrouter: `${MOCK}/openrouter/v1` } });
     assert.deepEqual(routed.models, [
-      { id: 'openrouter/auto', price: null },
-      { id: 'vendor/free-model:free', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } },
-      { id: 'vendor/priced-model', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } },
+      { id: 'openrouter/auto', family: 'openrouter', price: null },
+      { id: 'vendor/free-model:free', family: 'vendor', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } },
+      { id: 'vendor/priced-model', family: 'vendor', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } },
     ], 'a variable price is unknown, and provider-hosted search variants are not offered');
     for (const listed of (await sent()).filter((item) => item.method === 'GET')) assert.equal(listed.key, null, 'no key is sent to list models');
     for (const provider of ['anthropic', 'openai', 'gemini'] as const) assert.equal((await listProviderModels(provider, null, { policy })).status, 'needs_key');

@@ -11,6 +11,7 @@ import { registerNotificationEmailWorker, startNotificationGenerator } from './n
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 import { workerRuntimeAvailability } from './personal-runs/runtime-standing.js';
 import { registerSpaceAiSweep } from './space-ai/index.js';
+import { registerApiKeyModelLists } from './ai-keys/model-lists.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { drainBacklogs } from './drain-backlogs.js';
 import { guardSealedJobs } from './sealed-jobs.js';
@@ -52,6 +53,8 @@ await registerAssistantTick(boss, db, assistantRuns);
 await registerIdempotencyCleanup(boss, db);
 await registerSearchChangesCleanup(boss, db);
 await registerSpaceAiSweep(boss, db);
+// An API key's models, read with the key by the only process that opens one (#1218).
+await registerApiKeyModelLists(boss, db);
 // Encrypted workspaces (F-030): the keyring heartbeat and the resume job sent with every unlock.
 const encryption = await startWorkspaceEncryption(boss, db, process.env, email.available);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.

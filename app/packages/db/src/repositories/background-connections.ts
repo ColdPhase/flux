@@ -1,5 +1,5 @@
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
-import type { AiPrice, BackgroundComputeConnection } from '@flux/contracts';
+import type { AiModelList, AiPrice, BackgroundComputeConnection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
@@ -28,6 +28,7 @@ async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow): Prom
     dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
     today: { spentMicros: spend?.chargedMicros ?? 0, resetsAt: (spend?.resetsAt ?? new Date()).toISOString() },
     createdAt: row.createdAt.toISOString(),
+    modelPrices: row.modelPrices ?? {},
   };
 }
 
@@ -36,6 +37,20 @@ export interface NewApiKeyConnection {
   id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
   price: AiPrice | null; name: string;
   provider: BackgroundComputeConnection['provider']; model: string; baseUrl: string | null; dailyBudgetCents: number; timeZone: string;
+  /** The list read with the key while it was added (#1218); absent when none was read. */
+  modelList?: AiModelList | null;
+}
+
+/** The columns a listing writes (#1218): a list the provider gave replaces the stored one; any other outcome keeps it. */
+function listingColumns(list: AiModelList, at: Date, before: { listedModels: schema.StoredListedModel[] | null; retiredModels: string[] } | null) {
+  if (list.status !== 'listed') return { modelsCheckedAt: at, modelsListStatus: list.status === 'needs_key' ? 'unavailable' as const : list.status };
+  const ids = new Set(list.models.map((model) => model.id));
+  // A model of an earlier list that this one lacks is no longer offered; one that is back is offered again (CA-2).
+  const retired = [...new Set([...(before?.retiredModels ?? []), ...(before?.listedModels ?? []).map((model) => model.id)])].filter((id) => !ids.has(id)).sort();
+  return {
+    listedModels: list.models.map((model) => ({ id: model.id, name: model.name ?? null, family: model.family ?? 'Other', createdAt: model.createdAt ?? null })),
+    modelsListedAt: at, modelsCheckedAt: at, modelsListStatus: 'listed' as const, retiredModels: retired,
+  };
 }
 
 /** Owner id is always taken from the authenticated principal by the core use case. */
@@ -51,6 +66,7 @@ export function backgroundConnectionRepository(db: Database) {
           priceSource: input.price?.source ?? null, priceCheckedOn: input.price?.checkedOn ?? null,
           encryptedKey: input.encryptedKey, keyLastFour: input.keyLastFour, keyFingerprint: input.keyFingerprint,
           dailyBudgetCents: input.dailyBudgetCents, timeZone: input.timeZone,
+          ...(input.modelList ? listingColumns(input.modelList, new Date(), null) : {}),
         }).returning();
         return metadata(tx, row!);
       });
@@ -84,6 +100,37 @@ export function backgroundConnectionRepository(db: Database) {
           ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}) }).where(eq(c.id, connectionId)).returning();
         return metadata(tx, row!);
       });
+    },
+    /**
+     * Stores what a listing of the key found (#1218), written by the worker, the only process that opens a stored key. A revoked key
+     * keeps nothing. Returns whether the key still exists.
+     */
+    async saveModelList(connectionId: string, list: AiModelList, at: Date = new Date()): Promise<boolean> {
+      return db.transaction(async (tx) => {
+        const [row] = await tx.select({ listedModels: c.listedModels, retiredModels: c.retiredModels }).from(c)
+          .where(and(eq(c.id, connectionId), isNull(c.revokedAt))).for('update');
+        if (!row) return false;
+        await tx.update(c).set(listingColumns(list, at, row)).where(eq(c.id, connectionId));
+        return true;
+      });
+    },
+    /** When the key's models were last asked for, or null when never, or when the key is not the owner's. */
+    async modelsCheckedAt(ownerUserId: string, connectionId: string): Promise<{ checkedAt: Date | null } | null> {
+      const [row] = await db.select({ checkedAt: c.modelsCheckedAt }).from(c)
+        .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`));
+      return row ? { checkedAt: row.checkedAt } : null;
+    },
+    /**
+     * The owner's price for one of the key's models that Flux's table does not price (PROV-3, #1218), or null to remove it. Returns
+     * false when the key is not the owner's.
+     */
+    async setModelPrice(ownerUserId: string, connectionId: string, model: string, price: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | null): Promise<boolean> {
+      const value = price ? sql`jsonb_set(${c.modelPrices}, ARRAY[${model}::text], ${JSON.stringify({ inputMicrosPerMTok: price.inputMicrosPerMTok, outputMicrosPerMTok: price.outputMicrosPerMTok })}::jsonb)`
+        : sql`${c.modelPrices} - ${model}::text`;
+      const [row] = await db.update(c).set({ modelPrices: value })
+        .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
+        .returning({ id: c.id });
+      return Boolean(row);
     },
     async revoke(ownerUserId: string, connectionId: string): Promise<boolean> {
       return db.transaction(async (tx) => {

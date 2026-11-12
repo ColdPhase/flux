@@ -1,6 +1,7 @@
 import http from 'node:http';
 import zlib from 'node:zlib';
 import { handleCliVendor } from './cli-vendor-mock.js';
+import { handleKeyLists } from './key-list-mock.js';
 
 /**
  * TEST ONLY (#179, F-020 PROV-6): a local stand-in for the two AI wire formats, run as the Compose
@@ -15,6 +16,7 @@ import { handleCliVendor } from './cli-vendor-mock.js';
  *   POST /__script { wire, mode, text, usage, cost, status, delayMs, search }   the next answers of one wire format
  *   GET  /__requests                                                 what the adapters sent
  *   POST /__reset, GET /__health
+ *   GET /lists/{anthropic,openai,gemini}/…, /__key-lists           the key listings of #1218 (key-list-mock.ts)
  *   /cli/…, /__cli/…                                                the REAL Claude Code and Codex of the runtime (#1125, cli-vendor-mock.ts)
  *
  * Modes: `success`, `truncated`, `refusal`, `status` (HTTP `status`, with an error body that echoes
@@ -169,6 +171,7 @@ const server = http.createServer((request, response) => {
     try { body = raw ? JSON.parse(raw) : null; } catch { body = raw; }
     if (url.pathname === '/__health') return json(response, 200, { ok: true });
     if (handleCliVendor(request, response, url, raw, body)) return;
+    if (handleKeyLists(request, response, url, body)) return;
     if (url.pathname === '/__requests') return json(response, 200, { requests });
     if (url.pathname === '/__reset') {
       requests.length = 0; scripts.anthropic = { ...DEFAULT }; scripts.openai = { ...DEFAULT };

@@ -32,6 +32,8 @@ export POSTGRES_DB=flux
 export POSTGRES_PASSWORD="flux-test-$$-$(date +%s)"
 export FLUX_FIXTURE_TOKEN="fixture-test-$$-$(date +%s)"
 export FLUX_TEST_FAILURE_INJECTION=true
+# TEST ONLY (#1218): Anthropic, OpenAI and Gemini key listings go to the provider mock, never to a provider.
+export FLUX_TEST_PROVIDER_LISTS=http://providermock:8095
 export FLUX_PORT="${FLUX_TEST_PORT:-18089}"
 export FLUX_MAILPIT_PORT="${FLUX_TEST_MAILPIT_PORT:-18025}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"

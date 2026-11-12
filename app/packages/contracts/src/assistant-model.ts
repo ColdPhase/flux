@@ -1,4 +1,5 @@
-import { aiModelCallsTools, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
+import { AI_PROVIDERS, aiModelCallsTools, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
+import { aiModelFamily, groupModelsByFamily } from './ai-model-families.js';
 import type { AiConnectionRef } from './personal-runs.js';
 
 // The model of each agent (F-027 AST-11, #596; Connect AI #854): picked from any of the person's connections, with the
@@ -22,6 +23,26 @@ export interface AssistantModelOption {
   callsTools: boolean;
   /** False: the model can't see pictures, so its agent sees attached files only by name (#1217, C-59). Absent: it sees them. */
   seesPictures?: boolean;
+  /** An API key's model: the family the picker groups it under ("Opus", "Sol"), newest family first (#1218). */
+  family?: string;
+  /**
+   * False: Flux doesn't know this API model's price yet, so it can be chosen only after its owner enters one (PROV-3, #1218).
+   * Absent on a plan's models, which have no price.
+   */
+  priced?: boolean;
+  /** True: the provider no longer offers it; agents on it are paused until another model is chosen (#1218). */
+  retired?: boolean;
+}
+
+/**
+ * How fresh an API key's list is (#1218). `listed`: read from the provider (`checkedOn`). `unavailable`: the last reading failed, so
+ * the list may be old or Flux's own; Try again reads it again. `key_refused`: the provider refused the key at the last reading.
+ * `not_listed`: never read (a key added before v0.2.1, or a provider listed without a key).
+ */
+export interface AssistantModelListing {
+  state: 'listed' | 'unavailable' | 'key_refused' | 'not_listed';
+  /** When the provider's list now shown was read (YYYY-MM-DD); null when none was. */
+  checkedOn: string | null;
 }
 
 /** `claude_plan` and `chatgpt_plan`: the owner's subscription through its CLI; `api_key`: the owner's own key. */
@@ -36,6 +57,8 @@ export interface AssistantModelGroup {
   /** "Claude", "ChatGPT" or the API provider's name, for "Your Claude plan didn't accept Opus". */
   company: string;
   options: AssistantModelOption[];
+  /** An API key whose provider lists its models with the key (#1218); absent on a plan. */
+  listing?: AssistantModelListing;
 }
 
 /** A model of one connection. */
@@ -57,12 +80,14 @@ export interface AssistantModelChoice {
 const NAMES: Record<string, string> = {
   sonnet: 'Sonnet', opus: 'Opus', haiku: 'Haiku',
   'gpt-6.1-sol': 'GPT-6.1 Sol', 'gpt-6-astra': 'GPT-6 Astra', 'gpt-6-luna': 'GPT-6 Luna', 'gpt-6-sol': 'GPT-6 Sol',
-  'claude-sonnet-5': 'Sonnet 5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-4-5': 'Haiku 4.5',
-  'claude-haiku-4-5-20251001': 'Haiku 4.5', 'claude-fable-5-1': 'Fable 5.1',
-  'gemini-3.5-flash': 'Gemini 3.5 Flash', 'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite', 'gemini-3.1-pro-preview': 'Gemini 3.1 Pro',
+  'gpt-6.1-terra': 'GPT-6.1 Terra',
+  'claude-opus-5-5': 'Opus 5.5', 'claude-opus-5': 'Opus 5', 'claude-opus-4-8': 'Opus 4.8',
+  'claude-sonnet-5': 'Sonnet 5', 'claude-sonnet-5-5': 'Sonnet 5.5', 'claude-haiku-5-5': 'Haiku 5.5', 'claude-haiku-4-5': 'Haiku 4.5',
+  'claude-haiku-4-5-20251001': 'Haiku 4.5', 'claude-fable-5-2': 'Fable 5.2', 'claude-fable-5-1': 'Fable 5.1',
+  'gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite', 'gemini-3.1-pro-preview': 'Gemini 3.1 Pro', 'gemini-3.1-flash-lite': 'Gemini 3.1 Flash Lite',
 };
 /** The short name of a model, or its id for one Flux does not know (an owner's own endpoint or model). */
-export const assistantModelName = (model: string) => NAMES[model] ?? model;
+export const assistantModelName = (model: string) => (Object.prototype.hasOwnProperty.call(NAMES, model) ? NAMES[model]! : model);
 
 /**
  * The models of a subscription, from the vendor's own pages, read 2026-10-17 (AST-11): Claude Code's
@@ -88,17 +113,16 @@ export const ASSISTANT_PLAN_MODELS: Record<'claude_code' | 'codex', { account: A
 };
 
 /**
- * Models offered for a provider's API key besides the connection's own: only ones with a price in Flux's table. The first
- * is the key's default model when its owner names none (#854: the key form asks only for the key and its daily budget).
+ * The model a new key of a named provider starts on when the command that adds it names none (#854). It is never a list of
+ * models: which models a key offers comes only from its provider's own list, read with the key (founder direction, Hubert,
+ * 2026-11-12, #1218).
  */
-const API_MODELS: Partial<Record<AiProviderKind, readonly string[]>> = {
-  anthropic: ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-fable-5-1'],
-  openai: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'],
-  gemini: ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-pro-preview'],
+const API_DEFAULT_MODEL: Partial<Record<AiProviderKind, string>> = {
+  anthropic: 'claude-sonnet-5-5', openai: 'gpt-6.1-sol', gemini: 'gemini-3.5-flash-lite',
 };
 
 /** The default model of a new key of a named provider, or null where the owner must name one (OpenRouter, an own endpoint). */
-export const apiKeyDefaultModel = (provider: AiProviderKind): string | null => API_MODELS[provider]?.[0] ?? null;
+export const apiKeyDefaultModel = (provider: AiProviderKind): string | null => API_DEFAULT_MODEL[provider] ?? null;
 
 const dollars = (micros: number) => {
   const value = micros / 1_000_000;
@@ -107,23 +131,57 @@ const dollars = (micros: number) => {
 const priceNote = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
   `Input ${dollars(price.inputMicrosPerMTok)}, output ${dollars(price.outputMicrosPerMTok)} per 1M tokens`;
 
-/** The list for the owner's API key connection (F-020 PROV-1): its own model first, then the provider's priced models. */
-export function assistantApiModels(connection: { provider: AiProviderKind; model: string; toolCalling?: boolean | undefined }): AssistantModelOption[] {
-  const own: AssistantModelOption = {
-    id: connection.model, name: assistantModelName(connection.model), note: "Your connection's model",
-    callsTools: connection.toolCalling !== false && aiModelCallsTools(connection.provider, connection.model),
-    ...(aiModelSeesPictures(connection.provider, connection.model) ? {} : { seesPictures: false }),
-  };
-  const others = (API_MODELS[connection.provider] ?? []).filter((id) => id !== connection.model).flatMap((id) => {
-    const row = tablePrice(connection.provider, id);
-    return row ? [{ id, name: assistantModelName(id), note: priceNote(row), callsTools: aiModelCallsTools(connection.provider, id),
-      ...(aiModelSeesPictures(connection.provider, id) ? {} : { seesPictures: false }) }] : [];
-  });
-  return [own, ...others];
+/** An owner's price per 1M tokens for one model of their key (PROV-3, #1218). */
+export type ApiKeyModelPrices = Readonly<Record<string, { inputMicrosPerMTok: number; outputMicrosPerMTok: number }>>;
+
+/** What an API key knows of its models (#1218): the provider's last list, the owner's prices and the models no longer offered. */
+export interface ApiKeyModels {
+  /** Null while the provider has not listed them yet. */
+  listed: readonly { id: string; name: string | null; family: string; createdAt: string | null }[] | null;
+  prices: ApiKeyModelPrices;
+  retired: readonly string[];
 }
 
-/** The table price of an API model the owner may choose besides the connection's own, or null when there is none. */
-export function assistantApiPrice(provider: AiProviderKind, model: string): AiPrice | null {
-  const row = tablePrice(provider, model);
-  return row ? { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'table', checkedOn: row.checkedOn } : null;
+/** "Flux doesn't know this model's price yet" (#1218): the note of a listed model without one. */
+export const PRICE_UNKNOWN_NOTE = 'Price unknown, enter it';
+
+/**
+ * The list for the owner's API key connection (F-020 PROV-1, CA-2). It comes only from the provider's own list, read with the key
+ * (founder direction, Hubert, 2026-11-12, #1218): its chat models by family, newest first, each with its price or "Price unknown,
+ * enter it", and the key's own model where the list doesn't have it ("Other model id…", or one no longer offered). Flux's price
+ * table only prices a listed model; it never adds one. Until the provider's list is read, the key offers only its own model.
+ */
+export function assistantApiModels(connection: { provider: AiProviderKind; model: string; toolCalling?: boolean | undefined; price?: AiPrice | null;
+  models?: ApiKeyModels | null | undefined }): AssistantModelOption[] {
+  const { provider } = connection;
+  const prices = connection.models?.prices ?? {};
+  const retired = new Set(connection.models?.retired ?? []);
+  const option = (id: string, name: string | null, family: string): AssistantModelOption => {
+    const own = id === connection.model;
+    const price = own && connection.price !== undefined ? connection.price : assistantApiPrice(provider, id, prices);
+    return {
+      id, name: Object.prototype.hasOwnProperty.call(NAMES, id) ? NAMES[id]! : name ?? id, note: price ? priceNote(price) : PRICE_UNKNOWN_NOTE,
+      callsTools: (!own || connection.toolCalling !== false) && aiModelCallsTools(provider, id),
+      family, priced: !!price, ...(retired.has(id) ? { retired: true } : {}),
+    };
+  };
+  const options = groupModelsByFamily(connection.models?.listed ?? []).flatMap((group) => group.models.map((model) => option(model.id, model.name, group.family)));
+  // The key's own model stays shown when the list lacks it: an id the owner typed, one the provider no longer offers, or a key
+  // whose list has not been read yet.
+  return options.some((entry) => entry.id === connection.model) ? options
+    : [option(connection.model, null, aiModelFamily(provider, connection.model)), ...options];
 }
+
+/**
+ * The price of an API model the owner may choose besides the connection's own: Flux's table, else the price its owner entered for
+ * it on this key (#1218); null when there is neither.
+ */
+export function assistantApiPrice(provider: AiProviderKind, model: string, prices: ApiKeyModelPrices = {}): AiPrice | null {
+  const row = tablePrice(provider, model);
+  if (row) return { inputMicrosPerMTok: row.inputMicrosPerMTok, outputMicrosPerMTok: row.outputMicrosPerMTok, source: 'table', checkedOn: row.checkedOn };
+  const owner = Object.prototype.hasOwnProperty.call(prices, model) ? prices[model] : undefined;
+  return owner ? { inputMicrosPerMTok: owner.inputMicrosPerMTok, outputMicrosPerMTok: owner.outputMicrosPerMTok, source: 'owner', checkedOn: null } : null;
+}
+
+/** "no longer offered by Anthropic" (#1218). */
+export const noLongerOffered = (provider: AiProviderKind) => `no longer offered by ${AI_PROVIDERS[provider].label}`;

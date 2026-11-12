@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, assertNotV01Database, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest, V01DatabaseError } from '@flux/db';
 import { PgBoss } from 'pg-boss';
-import { SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
+import { API_KEY_MODEL_LIST_JOB, SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
 import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
@@ -74,6 +74,10 @@ try {
   // F-030 S2b: prunes the search change log of encrypted workspaces.
   await boss.createQueue(SEARCH_CHANGES_CLEANUP_JOB, wake);
   await boss.updateQueue(SEARCH_CHANGES_CLEANUP_JOB, wake);
+  // #1218: a stored key's models, read by the worker. One waiting job per key (`short` with the key's id as singletonKey); Try again
+  // waits for it, so it is not retried.
+  await boss.createQueue(API_KEY_MODEL_LIST_JOB, { policy: 'short', retryLimit: 0, ...wake });
+  await boss.updateQueue(API_KEY_MODEL_LIST_JOB, { retryLimit: 0, ...wake });
   await boss.stop();
   console.log(`Flux schema ${FLUX_SCHEMA_VERSION} and pg-boss ready`);
 } catch (error) {

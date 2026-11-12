@@ -161,6 +161,8 @@ services:
       FLUX_WEB_READS: ${FLUX_WEB_READS:-on}
       # TEST ONLY (#469): public-looking names that connect to a mock; refused unless FLUX_TEST_FAILURE_INJECTION=true.
       FLUX_TEST_LINK_PREVIEW_HOSTS: ${FLUX_TEST_LINK_PREVIEW_HOSTS:-}
+      # TEST ONLY (#1218): the mock that answers Anthropic, OpenAI and Gemini key listings; refused unless FLUX_TEST_FAILURE_INJECTION=true.
+      FLUX_TEST_PROVIDER_LISTS: ${FLUX_TEST_PROVIDER_LISTS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
       # GitHub App read-only integration (#74). Empty reports unavailable; configure all together.
       FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
@@ -233,6 +235,8 @@ services:
       FLUX_FIXTURE_TOKEN: ${FLUX_FIXTURE_TOKEN:-}
       FLUX_TEST_PERSONAL_RUNS: ${FLUX_TEST_PERSONAL_RUNS:-}
       FLUX_TEST_ANTHROPIC_URL: ${FLUX_TEST_ANTHROPIC_URL:-}
+      # TEST ONLY (#1218): the same key-listing mock as the API.
+      FLUX_TEST_PROVIDER_LISTS: ${FLUX_TEST_PROVIDER_LISTS:-}
       # The same operator allowlist as the API: the worker checks it again at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}

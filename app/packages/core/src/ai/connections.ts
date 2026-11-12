@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, aiModelSearchesWeb, type AiPrice, type AiProviderKind, type BackgroundComputeConnection,
-  type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
+  type AiModelList, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, tablePrice } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import { refuseAllEndpoints, type AiEndpointPolicyPort } from '../ai/index.js';
@@ -14,7 +14,7 @@ export interface BackgroundConnectionPort {
   /** Adds a connection (PROV-1: it never replaces another). */
   add(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
     price: AiPrice | null; name: string; provider: BackgroundComputeConnection['provider']; model: string;
-    baseUrl: string | null; dailyBudgetCents: number; timeZone: string }): Promise<BackgroundComputeConnection>;
+    baseUrl: string | null; dailyBudgetCents: number; timeZone: string; modelList?: AiModelList | null }): Promise<BackgroundComputeConnection>;
   /** The owner's active connections, newest first. */
   list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
   /**
@@ -24,10 +24,17 @@ export interface BackgroundConnectionPort {
   update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number },
     guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
+  /** The owner's price for one model of their key, or null to remove it (#1218); false when the key is not theirs. */
+  setModelPrice?(ownerUserId: string, connectionId: string, model: string, price: { inputMicrosPerMTok: number; outputMicrosPerMTok: number } | null): Promise<boolean>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
   endpoints: AiEndpointPolicyPort;
+  /**
+   * The models a key being added can use, read from its provider with that key (CA-2, #1218); the same call is the key's test. Only
+   * for providers listed with a key (Anthropic, OpenAI, Gemini): `needs_key` for the others. Absent: nothing is listed.
+   */
+  keyModels?(provider: AiProviderKind, apiKey: string): Promise<AiModelList>;
 }
 
 function owner(principal: Principal): string {
@@ -110,12 +117,18 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       // PROV-3: Flux's dated table or the owner's price; a provider's listing is never a price source.
       const price = resolveConnectionPrice({ provider: input.provider, model, ownerPrice: input.price });
       assertBudgetFitsRequest(price, input.dailyBudgetCents, input.provider, model);
+      // The key's test is the listing of its models (#1218): a key its provider refuses is not saved. A list that couldn't be read
+      // leaves the key to be saved with the model typed.
+      const modelList = providers.keyModels ? await providers.keyModels(input.provider, input.apiKey) : null;
+      if (modelList?.status === 'key_refused')
+        throw new InvalidInputError(`This key was refused by ${AI_PROVIDERS[input.provider].label}`, 'AI_KEY_REFUSED');
       const id = randomUUID();
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);
       const name = input.name ?? `${AI_PROVIDERS[input.provider].label} key`.slice(0, 80);
       return port.add({ id, ownerUserId, encryptedKey, keyLastFour: input.apiKey.slice(-4), keyFingerprint, price, name,
-        provider: input.provider, model, baseUrl, dailyBudgetCents: input.dailyBudgetCents, timeZone });
+        provider: input.provider, model, baseUrl, dailyBudgetCents: input.dailyBudgetCents, timeZone,
+        modelList: modelList?.status === 'listed' || modelList?.status === 'unavailable' ? modelList : null });
     },
     list(principal: Principal): Promise<BackgroundComputeConnection[]> { return port.list(owner(principal)); },
     async update(principal: Principal, connectionId: string, change: UpdateBackgroundComputeConnectionCommand): Promise<BackgroundComputeConnection> {
@@ -137,7 +150,7 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
           // read again inside the change, under the lock a model change also takes first (#915).
           guard = (models) => {
             for (const model of models) {
-              const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
+              const price = model !== key.model ? assistantApiPrice(key.provider, model, key.modelPrices) : null;
               if (price) assertBudgetFitsRequest(price, cents, key.provider, model, model);
             }
           };
@@ -149,6 +162,26 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         : null;
       if (!updated) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
       return updated;
+    },
+    /**
+     * The owner's price for one of their key's models that Flux's table does not price (PROV-3, #1218), so an agent can use it with
+     * the daily budget. A model the table prices keeps the table's price. One request at the price must fit the key's budget.
+     */
+    async setModelPrice(principal: Principal, connectionId: string, input: { model?: unknown; inputMicrosPerMTok?: unknown; outputMicrosPerMTok?: unknown }): Promise<BackgroundComputeConnection> {
+      const ownerUserId = owner(principal);
+      const key = typeof connectionId === 'string' && UUID.test(connectionId) ? (await port.list(ownerUserId)).find((item) => item.id === connectionId) : undefined;
+      if (!key || !port.setModelPrice) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
+      if (!validModelId(key.provider, input?.model))
+        throw new InvalidInputError('The model id must be 1–200 letters, digits or . _ : / @ + - and no provider-hosted tool variant', 'AI_MODEL_INVALID');
+      const price = { inputMicrosPerMTok: input.inputMicrosPerMTok, outputMicrosPerMTok: input.outputMicrosPerMTok };
+      if (!validPrice(price)) throw new InvalidInputError('Prices are whole micro-dollars per 1M tokens, from 0 to 1,000,000,000', 'AI_PRICE_INVALID');
+      if (tablePrice(key.provider, input.model) || input.model === key.model)
+        throw new InvalidInputError('Flux’s price table or this key already prices this model', 'AI_PRICE_ALREADY_KNOWN');
+      const priced: AiPrice = { inputMicrosPerMTok: price.inputMicrosPerMTok as number, outputMicrosPerMTok: price.outputMicrosPerMTok as number, source: 'owner', checkedOn: null };
+      assertBudgetFitsRequest(priced, key.dailyBudgetCents, key.provider, input.model);
+      if (!await port.setModelPrice(ownerUserId, connectionId, input.model, { inputMicrosPerMTok: priced.inputMicrosPerMTok, outputMicrosPerMTok: priced.outputMicrosPerMTok }))
+        throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
+      return (await port.list(ownerUserId)).find((item) => item.id === connectionId)!;
     },
     async revoke(principal: Principal, connectionId: string): Promise<void> {
       const ownerUserId = owner(principal);
