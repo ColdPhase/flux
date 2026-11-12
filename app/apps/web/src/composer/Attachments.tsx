@@ -3,14 +3,15 @@ import { createPortal } from 'react-dom';
 import { filePath, imageTypeOf, type MessageFile, type MessageReferenceCard } from '@flux/contracts';
 import { readFileBytes } from '../api/files';
 import { Icon, trapTab, type IconName } from '../ui';
-import { detailLine, extensionOf, fileKind, fileLabel, fileWord, looksLikePhoto, playTime, type FileKind } from './fileKind';
+import { detailLine, extensionOf, fileKind, fileLabel, fileSize, fileWord, looksLikePhoto, playTime, previewFormat, type FileKind } from './fileKind';
+import { FileViewer } from './FileViewer';
 import { MessageReferences } from './References';
 import './attachments.css';
 
 // Files, references and photos inside the message (#348, F-026 §6). Every byte is read through the
 // ordinary download route, which checks the reader's current access on each request.
 
-export const fileSize = (size: number) => size < 1024 ? `${size} B` : size < 1024 * 1024 ? `${(size / 1024).toFixed(1)} KiB` : `${(size / (1024 * 1024)).toFixed(1)} MiB`;
+export { fileSize };
 
 /** The page icon with its folded corner: the pictogram below the fold and the mono label under it (PDF on an inverted band). */
 export function FileIcon({ name, size = 28 }: { name: string; size?: number }) {
@@ -44,8 +45,23 @@ const PICTOGRAM: Record<FileKind, React.ReactNode> = {
 
 export const typeLine = (file: { name: string; size: number }, detail?: string) => [fileWord(fileKind(file.name)), detail, fileSize(file.size)].filter(Boolean).join(' · ');
 
-/** One stored file: icon, name, "type · size" and Download. The whole row downloads under its name. */
+/**
+ * One stored file: icon, name, "type · size" and Download. A file Flux can preview (C-60) opens the viewer from its name and keeps
+ * Download as its own button; any other file's whole row downloads under its name.
+ */
 export function FileRow({ file }: { file: MessageFile }) {
+  const format = previewFormat(file.name);
+  const [open, setOpen] = useState(false);
+  if (format) return (
+    <div className="file-row file-row--preview" data-file-kind={fileKind(file.name)}>
+      <button type="button" className="file-row__open" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={`Preview ${file.name}`}>
+        <FileIcon name={file.name} />
+        <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file))}</small></span>
+      </button>
+      <a className="file-row__act" href={filePath(file.id)} download={file.name} data-tip="Download" aria-label={`Download ${file.name}`}><Icon name="download" size={16} /></a>
+      {open ? <FileViewer file={file} format={format} onClose={() => setOpen(false)} /> : null}
+    </div>
+  );
   return (
     <a className="file-row" href={filePath(file.id)} download={file.name} data-file-kind={fileKind(file.name)}>
       <FileIcon name={file.name} />

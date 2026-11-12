@@ -12,6 +12,13 @@ import { plainMessageText } from './message-format.js';
 export const projectFilesPath = (projectId: string) => `/api/v1/projects/${projectId}/files`;
 export const filePath = (fileId: string) => `/api/v1/files/${fileId}`;
 
+/**
+ * A preview of an HTML or PDF file in a frame of a Flux page (C-60, #1252): never a tab, never on Flux's origin. The response
+ * sandboxes itself (an opaque origin) and fetches nothing; `scripts` turns an HTML page's own inline scripts on for that frame.
+ * Other previews (text, Markdown, JSON, CSV/TSV) read `filePath(id)` and are drawn by the web app as text.
+ */
+export const filePreviewPath = (fileId: string, scripts = false) => `/api/v1/files/${fileId}/preview${scripts ? '?scripts=1' : ''}`;
+
 export const FILE_LIMITS = {
   /** One file: 1 byte to 5 MiB. Empty files are refused. */
   fileBytes: 5 * 1024 * 1024,

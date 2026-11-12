@@ -35,7 +35,7 @@ describe('the policy a page gets', () => {
       "connect-src 'self' wss://flux.example.com",
       "worker-src 'self' blob:",
       "manifest-src 'self'",
-      "frame-src 'none'",
+      "frame-src 'self'",
       "object-src 'none'",
       "base-uri 'self'",
       "form-action 'self'",
