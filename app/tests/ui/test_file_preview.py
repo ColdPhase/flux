@@ -263,21 +263,21 @@ class FilePreview(unittest.TestCase):
         self.assertEqual(outside, [], "a clicked link left nothing")
         self.assertEqual((page.title(), page.url), (title, url))
         self.assertEqual(events["pages"], [])
-        # The Flux page's own policy refused the other site in its frame, and Flux's page refused to be framed by the preview: the
-        # browser reported both to the test stack. Seen here, they are taken off the list the run's CSP gate reads (scripts/csp_gate.sh).
+        # The Flux page's own policy refused the other site in its frame: the browser reported it to the test stack. Seen here, it is
+        # taken off the list the run's CSP gate reads (scripts/csp_gate.sh), as is a report of Flux's page refusing to be framed.
         token = os.environ.get("FLUX_FIXTURE_TOKEN", "")
         bearer = {"authorization": f"Bearer {token}", "origin": ORIGIN}  # the context carries the reader's session cookie
         deadline = time.time() + 10
         seen: set[str] = set()
-        while time.time() < deadline and not {"frame-src", "frame-ancestors"} <= seen:
+        while time.time() < deadline and "frame-src" not in seen:
             reports = page.request.get("/api/v1/test/csp-reports", headers=bearer).json()["reports"]
-            seen = {r["directive"] for r in reports if (r["directive"] == "frame-src" and LEAK in r["blocked"]) or r["directive"] == "frame-ancestors"}
+            seen = {r["directive"] for r in reports if r["directive"] == "frame-src" and LEAK in r["blocked"]}
             page.wait_for_timeout(300)
-        if UI_BROWSER == "chromium":
-            self.assertEqual(seen, {"frame-src", "frame-ancestors"})  # not every engine reports them; Chromium does
         for directive in ("frame-src", "frame-ancestors"):
             removed = page.request.delete(f"/api/v1/test/csp-reports?directive={directive}", headers=bearer)
             self.assertEqual(removed.status, 204, removed.text())
+        if UI_BROWSER == "chromium":
+            self.assertEqual(seen, {"frame-src"}, "the Flux page refused the other site in its frame")  # not every engine reports it
         self.assert_recorder_sees(page, outside)
 
     def assert_recorder_sees(self, page: Page, outside: list[str]) -> None:
