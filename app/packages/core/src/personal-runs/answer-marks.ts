@@ -99,7 +99,7 @@ const MARKER = /^(?:[-*•+–]|\d{1,3}[.)]|\[\d{1,3}\])[ \t]+/;
 /** What may stand between listed addresses on a line of addresses only. */
 const SEPARATORS = /^[\s,;|•·()<>[\].]*$/;
 const CLOSING = /^[\s)\]>.,;]*$/;
-const TITLE_MAX = 200;
+const TITLE_MAX = 80;
 
 /** The text after a line that is a heading of the model's own list ("Sources:", "**Źródła**", "## References"), or null when the line is none. */
 function headingRest(line: string): string | null {
