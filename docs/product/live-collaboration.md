@@ -59,6 +59,70 @@ production layout must reserve space or adapt the controls without hiding the
 composer, result actions or focused content. Preserve visible state when opening
 the device menu. Verify keyboard/focus and touch separately from screenshots.
 
+### Call audio: devices and volumes (#1244)
+
+Founder request (Hubert, 2026-11-10). In a call a person chooses their devices and sets how loud they are and how loud others are.
+Everything here is local to this browser: nobody else is told, nobody else's sound changes, and nothing is stored on the server. The
+screens are drawn in the [design](../design/final/README.md#call-audio).
+
+- **Where.** One popover (a sheet on the phone), **Audio settings**: from the small arrow beside the microphone button on a
+  computer, and from the "You" section of ⋯ on every device. It exists only while a call is running and not worked quietly.
+- **Microphone.**
+  - The device is chosen from `enumerateDevices()` (`audioinput`). While the microphone is on, the local track's `restartTrack()` with the chosen `deviceId`
+    gives the same publication the new capture (no gap, no new publication); while it is off the choice is kept for the next start. A
+    start asks for the chosen device with `deviceId: { exact }`; if that device is gone it starts the default one and says so.
+  - **Volume 0 to 200 % (100 % by default)** is a Web Audio `GainNode` in a LiveKit audio track processor before the track is sent
+    (`LocalAudioTrack.setProcessor`, with the application's own `AudioContext`). At 100 % no processor is installed, so the capture goes
+    out untouched; a context the browser keeps suspended (WebKit without a recent gesture) leaves the capture untouched and the
+    popover says the volume could not be applied.
+  - **Noise suppression, echo cancellation and automatic gain** are the `getUserMedia` constraints of the same names, on by default
+    (they were already requested). A change restarts the running capture (`LocalAudioTrack.restartTrack`) and is kept for the next
+    start. A switch is shown only where `getSupportedConstraints()` lists the constraint.
+  - **Level meter.** It shows the capture's level times the chosen volume, so the person sees what others receive, and the word
+    "Speaking" or "Quiet" is its text alternative. While the microphone is on it reads the published capture. While it is off the meter
+    needs a capture that is **never sent**: it opens only while the popover is open and only when the browser already allows the
+    microphone (Permissions API `granted`, so no prompt appears from merely opening settings); otherwise the meter row offers **Test
+    microphone**. It stops when the popover closes, on Quiet, on leave and when the microphone is turned on (the published capture takes
+    over). Devices still start off and open only from a person's own action (§2).
+- **Speakers or headphones.** Where `HTMLMediaElement.setSinkId` exists, the device is chosen from `enumerateDevices()`
+  (`audiooutput`) with `Room.switchActiveDevice('audiooutput', id)`, which calls `setSinkId` on every playing voice and on voices that
+  arrive later; **Test sound** plays one short soft tone through that device at the chosen volume. **Everything you hear** is one master
+  volume from 0 to 100 % (it only lowers; the device's own volume sets the top, and one quiet person is raised with their own volume).
+  Where the browser cannot choose an output nothing is drawn for it. Where it cannot set the media volume (iOS, where `volume` stays
+  1) the master and per-person sliders are not drawn and the popover says "Use your phone's volume buttons."; **Mute for me** still
+  works (`muted`). Firefox lists output devices only after a permission: the Select is replaced by **Choose speakers or headphones**,
+  which calls `MediaDevices.selectAudioOutput()`.
+- **Per person.** Each remote person has **Volume 0 to 200 %** and **Mute for me**, on their face in the strip and in ⋯ › Here now.
+  A voice plays at master × person; above 100 % in total the element's output goes through a `GainNode` (`createMediaStreamSource`),
+  and is capped at 100 % where that cannot reach the chosen output (a non-default output in a browser without
+  `AudioContext.setSinkId`). Several devices of one person share one volume. "Quiet" still stops every voice.
+- **Remembered.** `localStorage` key `flux.live.audio` (read and written inside `try/catch`; a blocked or full store means the settings
+  last only for this call): devices (id and label), the three switches, the volumes, and each person's volume and mute (at most 200
+  people, the oldest dropped). A call that starts later or after a rejoin uses them. When a remembered device is no longer listed, the
+  call uses the default, says so in one toast ("“Headphones” was disconnected. Sound plays through the default output.") and forgets
+  the id; a device that comes back is not chosen again by itself.
+- **Not in this change.** No recording or monitoring of your own voice, no per-participant output device, no noise filter beyond the
+  browser's, no setting shared with other people or devices, and no change to who may use a device (§2).
+
+Browser support, from MDN browser-compat-data 8.1.9 (released and read 2026-11-12, `@mdn/browser-compat-data`; first version that
+supports it):
+
+| Feature | Chrome / Edge | Firefox | Safari | Safari on iOS | Used for |
+| --- | --- | --- | --- | --- | --- |
+| `HTMLMediaElement.setSinkId` | 49 / 17 | 116 | 18.4 | 18.4 listed, `volume` below | Speakers or headphones |
+| `MediaDevices.selectAudioOutput` | no | 116 | no | no | Output permission on Firefox |
+| `AudioContext.setSinkId` | 110 | no | no | no | A boosted voice on a chosen output |
+| `HTMLMediaElement.volume` | 3 | 3.5 | 3.1 | 3, partial: always 1, setting has no effect | Master and per-person volume |
+| `createMediaStreamSource`, `createGain` | 15 / 24 | 25 / 25 | 6 / 7 | 6 / 7 | Boost above 100 %, microphone volume |
+| `MediaDevices.enumerateDevices` | 47 | 116 (inputs and outputs; the promise waits for focus) | 11 | 11 | Device lists |
+| `getSupportedConstraints().echoCancellation` | 53 | 46 | 13.1 | 13.4 | Echo switch |
+| `getSupportedConstraints().noiseSuppression`, `.autoGainControl` | 67 | 55 | no | no | Noise and gain switches |
+
+Chrome on Android and Firefox on Android do not support `setSinkId` either (the platform limits it). The code does not read the
+table: it asks the browser (`'setSinkId' in HTMLMediaElement.prototype`, a write-and-read of `volume`, `getSupportedConstraints()`),
+and treats iOS and iPadOS by their user agent, because BCD lists `setSinkId` for Safari on iOS 18.4 while the media volume stays
+fixed there. WebKit's behaviour on the Playwright build is for the independent reviewer's WebKit run; physical devices stay optional.
+
 ## 3. Two ways to show something
 
 **Show this fragment** sends an authorized object reference and selection: map

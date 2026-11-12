@@ -310,6 +310,14 @@ describes what people see, the placement decisions and the screenshots.
 - `scripts/check_live_ui.sh` runs `app/tests/ui/test_live_sessions.py` against the application
   and the pinned SFU, using Chromium's fake devices. The ordinary `check_ui.sh` runs the
   same file without a media server and checks the unavailable state.
+- Call audio (#1244, [live collaboration](../product/live-collaboration.md#call-audio-devices-and-volumes-1244)) lives in
+  `app/apps/web/src/live/`: `call-audio.ts` (devices, volumes, meter, test sound; one `CallAudio` per connection, created
+  by `LiveMediaConnection`), `playback.ts` (a voice's volume and mute, and a gain stage above 100 %), `mic-gain.ts` (the
+  microphone's `GainNode` as a LiveKit audio processor, and the level tap), `audio-prefs.ts` (the pure rules and the
+  `flux.live.audio` storage, tested in `app/tests/app/live-audio-prefs.test.ts`) and the two interface parts
+  `AudioSettings.tsx` and `ParticipantVolume.tsx`. `app/tests/ui/test_live_audio.py` is live-only
+  (`scripts/ci_test.sh <ref> live chromium test_live_audio`): its `AUDIO_INSTRUMENT` lists fake microphones and outputs,
+  records every audio capture and `setSinkId` call, and measures the received power of a voice on the receiver.
 
 ## Reproducing this checkpoint
 

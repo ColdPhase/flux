@@ -10,6 +10,7 @@ import {
   discoverSessions, getSession, joinSession, leaveSession, listPresentations, liveCapability, pendingInvitations,
   presentInSession, replyToInvitation, startSession, type LiveCapability,
 } from './api';
+import type { CallAudio } from './call-audio';
 import type { DeviceKind, LiveMediaConnection, MediaSnapshot, ScreenMode } from './media';
 
 /**
@@ -43,6 +44,8 @@ export interface LiveValue {
   /** A calm sentence about the last ending or failure. */
   notice: string | null;
   media: MediaSnapshot | null;
+  /** Sound settings of the call (devices, volumes, the meter), once a connection exists (#1244). */
+  audio: CallAudio | null;
   quiet: boolean;
   following: string | null;
   shown: ShownFragment | null;
@@ -462,6 +465,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, nameOf, fullName, people, meId,
     start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation,
     dismissNotice: () => setNotice(null),
+    audio: connection?.audio ?? null,
     diagnostics: connection ? connection.diagnostics.bind(connection) : null,
     stage,
     openStage: (focus: string | null = null) => setStage({ open: true, focus }),

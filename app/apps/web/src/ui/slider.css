@@ -1,0 +1,34 @@
+/* The volume slider (#1244, ui/Slider.tsx; drawn in docs/design/final/README.md, "Call audio"). Tokens only, so light and
+   dark follow the theme. The fill is one hard colour stop (the part up to the value in --inv, the rest --hov), never a
+   gradient of colours. Nothing animates. */
+.ui-slider {
+  --slider-label: 9.5rem;
+  display: grid; grid-template-columns: var(--slider-label) minmax(0, 1fr) 4ch; align-items: center; column-gap: var(--s-3);
+  min-height: var(--ctl);
+}
+.ui-slider__l { min-width: 0; font-size: var(--fs-md); font-weight: 500; line-height: 1.3; color: var(--t1); }
+.ui-slider__v { text-align: right; font-family: var(--mono); font-size: var(--fs-sm); color: var(--t2); font-variant-numeric: tabular-nums; }
+.ui-slider__r {
+  --track: 4px; --thumb: 16px;
+  -webkit-appearance: none; appearance: none; width: 100%; height: 24px; margin: 0; padding: 0; background: transparent; cursor: pointer;
+}
+.ui-slider__r::-webkit-slider-runnable-track {
+  height: var(--track); border-radius: var(--r-pill); background: linear-gradient(to right, var(--inv) var(--fill), var(--hov) var(--fill));
+}
+.ui-slider__r::-moz-range-track { height: var(--track); border-radius: var(--r-pill); background: var(--hov); }
+.ui-slider__r::-moz-range-progress { height: var(--track); border-radius: var(--r-pill); background: var(--inv); }
+.ui-slider__r::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none; box-sizing: border-box; width: var(--thumb); height: var(--thumb);
+  margin-top: calc((var(--track) - var(--thumb)) / 2); border: 2px solid var(--el); border-radius: 50%; background: var(--inv);
+}
+.ui-slider__r::-moz-range-thumb { box-sizing: border-box; width: var(--thumb); height: var(--thumb); border: 2px solid var(--el); border-radius: 50%; background: var(--inv); }
+.ui-slider__r:focus { outline: none; }
+.ui-slider__r:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--t1); outline-offset: 2px; }
+.ui-slider__r:focus-visible::-moz-range-thumb { outline: 2px solid var(--t1); outline-offset: 2px; }
+.ui-slider__r:disabled { cursor: default; opacity: .45; }
+/* Touch: a 24 px thumb in a 44 px target. */
+@media (pointer: coarse) {
+  .ui-slider { min-height: 44px; }
+  .ui-slider__r { --thumb: 24px; height: 44px; }
+}
+@media (max-width: 380px) { .ui-slider { --slider-label: 7.5rem; } }

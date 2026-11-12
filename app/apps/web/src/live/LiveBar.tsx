@@ -5,7 +5,9 @@ import { anchorPath, KIND_WORD } from './anchors';
 import { useLive, useLiveHere, type LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
 import type { MediaPerson, ScreenMode } from './media';
+import { MicControl } from './AudioSettings';
 import { DeviceButton } from './DeviceButton';
+import { FaceSound } from './ParticipantVolume';
 import { LivePanel } from './LivePanel';
 import { Popover } from './Popover';
 import { LiveDot, namesLine } from './LiveEntry';
@@ -97,7 +99,7 @@ export function LiveBar() {
 
   const faces = (
     <span className="lv-faces lv-faces--room" aria-label={`In the session: ${namesLine(people.map((p) => p.userId), live.nameOf, live.meId)}`}>
-      {people.slice(0, phone ? 3 : 5).map((person) => <Face key={person.userId} person={person} name={live.fullName(person.userId)} />)}
+      {people.slice(0, phone ? 3 : 5).map((person) => <FaceSound key={person.userId} live={live} person={person}><Face person={person} name={live.fullName(person.userId)} /></FaceSound>)}
       {people.length > (phone ? 3 : 5) ? <span className="lv-face lv-face--more">+{people.length - (phone ? 3 : 5)}</span> : null}
     </span>
   );
@@ -134,7 +136,7 @@ export function LiveBar() {
               ) : !phone && cameras.length && !screens.length ? (
                 <Button variant="quiet" icon="video" aria-pressed={live.stage.open} onClick={() => (live.stage.open ? live.closeStage() : live.openStage(null))}>Cameras</Button>
               ) : null}
-              <DeviceButton kind="mic" live={live} />
+              <MicControl live={live} />
               {!phone ? <DeviceButton kind="camera" live={live} /> : null}
               {!phone && canPublishScreen() ? <DeviceButton kind="screen" live={live} /> : null}
             </>

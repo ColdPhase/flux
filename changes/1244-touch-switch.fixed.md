@@ -1,0 +1,1 @@
+- A switch that is on keeps its pill shape on touch screens (it showed as a round disc in Settings and in a space's settings) ([#1244](https://github.com/ColdPhase/flux/issues/1244)).
