@@ -410,7 +410,58 @@ scene, 2026-11-09):
   by each read's own route) brought the three moves to 7, 6 and 7. It was parked before release (2026-11-09) because it is
   a new generic server surface, and because it needs a sizeable conversion of the UI tests that hold or stub single reads.
 - **For v0.3.** [#1109](https://github.com/ColdPhase/flux/issues/1109) has the gap and both options: that fold endpoint
-  (branch `claude-hubert/862-folded-reads`), or one view-shaped read per screen.
+  (branch `claude-hubert/862-folded-reads`), or one view-shaped read per screen. Done in v0.2.1 with the second (below).
+
+### One read per screen ([#1109](https://github.com/ColdPhase/flux/issues/1109), v0.2.1, 2026-11-12)
+
+**Decision (founder, 2026-11-12, on #1109).** Option 2: one typed, view-shaped read per screen; no generic fold endpoint.
+
+**Changed.**
+- **`GET /api/v1/projects/:id/space-shell`** (`SpaceShell` in `packages/contracts/src/views.ts`): the space with its people,
+  first page of sketches (20, no empty ones), first page of pages (100) and work summary. Entering a space reads it, never from
+  a kept answer, so a lost space still says so (#592): a refusal of the space (404, 423) is the whole read's answer.
+- **`GET /api/v1/projects/:id/conversation-view`** (`ConversationView`): the newest roots, the task and decision notices, the
+  sources, the agents' questions (`null` while the space's AI is off) and the work associations of the newest roots' messages.
+- **Access per part.** Each part is its own route's use case called with the caller's principal (`apps/server/src/views/`), so
+  each keeps its own access check; neither read queries a table itself. Context parts the person may not read are `null`.
+- **The client takes the parts where they are asked for.** A view read hands each part to the address of the part's own read
+  (`parts` in `api/client.ts`): the next read of that address takes it once instead of a request, while it is younger than
+  `KEEP_MS`. Any write, any event of the live stream, focus, coming back online, a refusal that says access changed and sign-out
+  forget the parts with the kept answers, and a view read across such a change hands nothing over. So the hooks that read the
+  agents' questions, the stream's work associations, the work summary, the people and the pages are unchanged and still read on
+  their own after an event (#1101). The Conversation's loader takes the space from the frame being read beside it, or from the
+  kept answer (#1036).
+- **Removed.** The conversation loader's own first reads of the roots, notices and sources, and the shell loader's reads of the
+  space, people, sketches and pages; `getProject`'s `fresh` flag (only the entry used it). The per-part routes stay for paging
+  and for the refresh of one part after an event.
+- **Tests that stubbed a single read** (`test_agent_stop_questions` 07, `test_shared_composer`'s bounded first window) stub
+  the same part in the conversation view too.
+
+**Observed.** `test_navigation_requests`, Chromium, warm app, same scene, 2026-11-12:
+
+| Move | `main` `607b84409` | This change |
+| --- | ---: | ---: |
+| Home → Inbox | 2 | 2 |
+| Inbox → Home | 3 | 3 |
+| Home → a space (Conversation) | 14 | 7 |
+| Conversation → Tasks | 7 | 7 |
+| Tasks → Map | 5 | 5 |
+| Map → Wiki | 5 | 5 |
+| Wiki → Conversation | 11 | 6 |
+| Conversation → another space | 16 | 8 |
+| Another space → My tasks | 4 | 4 |
+
+No move repeats an address. What the three moves ask for now:
+- **Home → a space (7):** `space-shell`, `conversation-view`, the receipts of the messages seen (`POST`), `assistant-runs`,
+  `personal-assistant`, `needs-you` and `return`.
+- **Wiki → Conversation (6):** the same without `space-shell`.
+- **Conversation → another space (8):** `space-shell`, `conversation-view`, `PUT return-points` (leaving the conversation),
+  `assistant-runs`, `personal-assistant`, `needs-you` and `return`.
+
+**Inferred.** Every move is now at or under the target of 8, and the budget in `test_navigation_requests` is set to these
+counts (plus one for a poll in the quiet window where the count leaves room under 8). What is left on these moves is the person's
+own lists (the Inbox count, their agents' runs and assistant) and where they left off, which the founder's decision keeps as
+separate requests.
 
 ## First screen
 

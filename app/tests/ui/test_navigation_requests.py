@@ -3,8 +3,8 @@
 A signed-in tab with a warm app (every chunk loaded) clicks through Home, the Inbox, a space and its views. The API requests
 made between the click and the moment the page has been quiet for a while are counted, and the ones sent twice with the same
 address are listed. The counts are printed (the evidence). Each navigation is held to the budget the recorded numbers leave
-(`BUDGET`), so a regression cannot slip in; the ones above the target of 8 are named in the output and in
-docs/development/performance-2026-11.md until their fix lands (the client's data layer, not this test).
+(`BUDGET`), so a regression cannot slip in; every one is within the target of 8 since one read per screen (#1109), and the
+numbers are recorded in docs/development/performance-2026-11.md.
 
 Chromium, 1440x900. Runs against the Compose application like the other tests/ui journeys (scripts/check_ui.sh).
 """
@@ -25,20 +25,21 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder, view_tab
 PASSWORD = "a light way to move around"
 STAMP = int(time.time() * 1000)
 EMAIL = f"nav.requests+{STAMP}@example.test"
-# #862: at most 8 requests per navigation and none repeated. What each navigation costs with kept reads and live invalidation (measured 2026-11-09 on this scene, plus
-# one for a poll that lands in the quiet window) and how many addresses it sends twice; the ones above TARGET wait for the rest of the data layer.
+# #862: at most 8 requests per navigation and none repeated. What each navigation costs with kept reads, live invalidation (measured 2026-11-09 on this scene, plus
+# one for a poll that lands in the quiet window) and one read per screen (#1109, measured 2026-11-12: a space's frame and its Conversation are one read each), and
+# how many addresses it sends twice. No navigation is above TARGET.
 TARGET = 8
 # #862: an open tab nobody touches.
 IDLE_PER_MINUTE = 4
 BUDGET = {
     "Home → Inbox": (3, 0),
     "Inbox → Home": (4, 0),
-    "Home → a space (Conversation)": (15, 0),
+    "Home → a space (Conversation)": (8, 0),
     "Conversation → Tasks": (8, 0),
     "Tasks → Map": (5, 0),
     "Map → Wiki": (5, 0),
-    "Wiki → Conversation": (12, 0),
-    "Conversation → another space": (17, 0),
+    "Wiki → Conversation": (7, 0),
+    "Conversation → another space": (8, 0),
     "another space → My tasks": (5, 0),
 }
 
@@ -150,7 +151,7 @@ class NavigationRequests(unittest.TestCase):
         return page
 
     def test_02_navigations_stay_within_their_recorded_budget(self) -> None:
-        # The budget is what each navigation costs today, not yet the target: the ones above TARGET are printed in the output and wait for the data layer.
+        # The budget is what each navigation costs today; none is above TARGET (#1109).
         page = self.warm_page()
         places = page.get_by_role("navigation", name="Places")
         project = self.ids["project"]

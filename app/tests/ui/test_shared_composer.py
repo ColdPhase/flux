@@ -582,7 +582,17 @@ class SharedComposerJourney(unittest.TestCase):
                 response = route.fetch(url=urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query, doseq=True), parts.fragment)))
                 first.append(response.json())
                 route.fulfill(response=response)
+        def bounded_view(route):
+            # The conversation's first read carries its newest roots (#1109): they are the same bounded first page.
+            parts = urlsplit(route.request.url)
+            window = route.fetch(url=urlunsplit((parts.scheme, parts.netloc, parts.path.replace("/conversation-view", "/conversation-roots"), "limit=1", "")))
+            response = route.fetch()
+            body = response.json()
+            body["roots"] = window.json()
+            first.append(body["roots"])
+            route.fulfill(response=response, json=body)
         page.route("**/api/v1/projects/*/conversation-roots*", bounded)
+        page.route("**/api/v1/projects/*/conversation-view", bounded_view)
         page.goto(f"/projects/{project['id']}/conversations/{discussion['conversationId']}")
         pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
@@ -598,6 +608,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.assertEqual(replay[-1], lost[0])
         self.assertEqual(len(self.discussion(page, task)["messages"]), 1)
         page.unroute("**/api/v1/projects/*/conversation-roots*", bounded)
+        page.unroute("**/api/v1/projects/*/conversation-view", bounded_view)
         for route in older:
             route.continue_()
 

@@ -1,10 +1,24 @@
 import {
-  conversationMessagePath, conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type SentConversationMessage, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath,
+  conversationMessagePath, conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type SentConversationMessage, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath, projectAgentQuestionsPath, projectConversationViewPath, type ConversationView,
 } from '@flux/contracts';
 import { request } from '../api/client';
+import { workAssociationReadUrl } from '../work/read-api';
 
 /** The project conversation (#36, UI116): its roots, threads, replies, notices and viewing receipts. */
 export const listConversations = (projectId: string, signal?: AbortSignal, offset = 0) => request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=100&offset=${offset}`, { signal });
+/**
+ * What the space's Conversation shows when it opens, in one read (#1109): its newest roots, notices and sources. The agents' questions
+ * and the first work associations of the roots answer the stream's own first reads of them (`parts`), which are then not requests.
+ */
+export const getConversationView = (projectId: string, signal?: AbortSignal) => request<ConversationView>(projectConversationViewPath(projectId), {
+  signal,
+  parts: (view: ConversationView) => ({
+    [projectAgentQuestionsPath(projectId)]: view.agentQuestions,
+    ...(view.workAssociations?.sources.length ? {
+      [workAssociationReadUrl(projectId, { messageIds: view.workAssociations.sources.map((source) => source.messageId).join(','), relation: 'source' })]: view.workAssociations,
+    } : {}),
+  }),
+});
 /** The project's one stream (UI116-1): the newest roots, or those before a conversation id. */
 export const listConversationRoots = (projectId: string, options: { before?: string | null; limit?: number } = {}, signal?: AbortSignal) => {
   const query = new URLSearchParams();
