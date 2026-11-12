@@ -46,6 +46,11 @@ export class LocalWiki {
   conflict: Doc | null = null;
   /** Unsaved text from earlier (this tab, or a tab that closed) came back. */
   restored = false;
+  /**
+   * The person wrote in this text during the visit (or their unsaved text came back), saved or not: a page deleted while it is
+   * open offers it to copy (#941, #1202), also once a version already holds it.
+   */
+  typed = false;
   private lastSaveAt = 0;
   private timer: number | null = null;
   private attempt: string = crypto.randomUUID();
@@ -67,7 +72,7 @@ export class LocalWiki {
     if (kept && kept === left) keep(this.key, left, this.lifetime);
     this.document.transact(() => this.text.insert(0, kept?.body ?? doc.body), LOADED);
     if (kept && kept.body !== doc.body) {
-      this.restored = true;
+      this.restored = true; this.typed = true;
       // A save whose answer was lost is tried again with its own key: one version, never two.
       if (kept.attempt) this.attempt = kept.attempt;
       this.dirty = true;
@@ -84,7 +89,7 @@ export class LocalWiki {
 
   private changedText = (_update: Uint8Array, origin: unknown) => {
     if (origin === LOADED || this.stopped) return;
-    this.dirty = true;
+    this.dirty = true; this.typed = true;
     this.attempt = crypto.randomUUID();
     keep(this.key, this.copy(), this.lifetime);
     this.schedule();

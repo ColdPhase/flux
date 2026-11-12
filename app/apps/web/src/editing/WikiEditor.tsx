@@ -626,7 +626,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   </>;
 
   if (gone) {
-    const typed = shared ? shared.inputRevision > 0 || shared.privatePending.length > 0 : !!local?.dirty;
+    const typed = shared ? shared.inputRevision > 0 || shared.privatePending.length > 0 : !!local?.typed;
     return <PageGone projectId={project.id} projectName={project.name} title={title} mine={typed ? text?.toString() || null : null} />;
   }
   return (
