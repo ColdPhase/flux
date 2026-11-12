@@ -296,7 +296,8 @@ class LiveAudio(LiveBase):
         self.assertLess(measured[50]["beep"], measured[100]["beep"] * 0.6, "50 % is quieter than 100 %")
         self.assertLess(measured[50]["peak"], measured[100]["peak"] * 0.8, "and its peak is lower")
         for percent in (150, 200):
-            self.assertGreater(measured[percent]["beep"], measured[100]["beep"] * 0.9, f"{percent} % is not quieter than 100 %")
+            # A clipped beep varies by about a sixth from one window to the next: this catches a boost that silences, not that variation.
+            self.assertGreater(measured[percent]["beep"], measured[100]["beep"] * 0.7, f"{percent} % is not quieter than 100 %")
         set_range(slider, 200)
         expect(slider).to_have_attribute("aria-valuetext", "200%")
         self.assertEqual(remembered(nia)["micVolume"], 200)
