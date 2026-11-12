@@ -124,13 +124,15 @@ kill "$ticker" 2>/dev/null || true
 conclusion=$(gh run view "$run_id" -R "$repo" --json conclusion --jq .conclusion)
 echo
 printf 'ci_test: run %s finished: %s\n' "$run_id" "$conclusion"
-gh run view "$run_id" -R "$repo" --json jobs --jq '.jobs[] | "  \(.name): \((.conclusion | select(. != "")) // .status), \(
+gh run view "$run_id" -R "$repo" --json jobs --jq '.jobs[] | select(.conclusion != "skipped") | "  \(.name): \((.conclusion | select(. != "")) // .status), \(
   if (.startedAt | startswith("0001")) or (.completedAt | startswith("0001")) then "-" else (((.completedAt | fromdateiso8601) - (.startedAt | fromdateiso8601)) | tostring) end) s"' || true
 gh run view "$run_id" -R "$repo" --json createdAt,updatedAt --jq '"  wall time: \((.updatedAt | fromdateiso8601) - (.createdAt | fromdateiso8601)) s (queue, build and tests)"' || true
 
 out=${FLUX_CI_OUT:-$HOME/flux-evidence/ci/$run_id}
 mkdir -p "$out"
+downloaded=0
 if gh run download "$run_id" -R "$repo" --pattern 'result-*' --dir "$out" >/dev/null 2>&1; then
+  downloaded=1
   for result in "$out"/result-shard-*; do
     [ -f "$result/result.txt" ] || continue
     printf '\n--- %s ---\n' "$(basename "$result")"
@@ -138,10 +140,13 @@ if gh run download "$run_id" -R "$repo" --pattern 'result-*' --dir "$out" >/dev/
   done
   printf '\nci_test: result, command and the log tail (run.log.gz) of each shard: %s\n' "$out"
 else
-  printf '\nci_test: no result artifact (the plan or the build failed before any test ran). The failing log:\n'
-  gh run view "$run_id" -R "$repo" --log-failed 2>/dev/null | tail -n 40 || true
+  # The plan or the build failed before any test ran: the error annotations say why (the whole failed step is far longer).
+  printf '\nci_test: no result artifact (the plan or the build failed before any test ran). Why:\n'
+  failed=$(gh run view "$run_id" -R "$repo" --log-failed 2>/dev/null | sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' || true)
+  errors=$(printf '%s\n' "$failed" | grep -F '##[error]' | cut -f3- | sed -e 's/^[^ ]* //' || true)
+  if [ -n "$errors" ]; then printf '%s\n' "$errors"; else printf '%s\n' "$failed" | tail -n 30; fi
 fi
-if [ "$suite" != api ]; then
+if [ "$downloaded" = 1 ] && [ "$suite" != api ]; then
   printf 'ci_test: screenshots: gh run download %s -R %s --pattern "screenshots-*" --dir %s\n' "$run_id" "$repo" "$out"
 fi
 printf 'ci_test: whole log: gh run view %s -R %s --log\n' "$run_id" "$repo"
