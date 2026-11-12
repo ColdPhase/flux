@@ -56,7 +56,7 @@ supersedes the quiet start of #59 (2026-09-27).
    and, for a call at another task, map or page than the one open, where: "Join · Nia ·
    at “Loan rules”". More keeps any further calls and **Start a call here** for a
    separate call. Under 360 px, where Call is in More, More carries the live dot and
-   its first row is Join.
+   Join takes Call's row (after Search, which stays More's first row, #1239).
 3. **Others are told.** Starting a call sends each of the space's other people an
    in-app notice with **Join**: an Inbox item "Nia started a call in Gesture lamp",
    live on open tabs and on the phone. Push follows the person's level: "Everything"

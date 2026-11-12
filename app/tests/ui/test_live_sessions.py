@@ -342,13 +342,15 @@ class LiveJourney(LiveBase):
         phead = small.locator("header.phead")
         expect(phead.locator(".top__live-cue")).to_be_visible()
         expect(phead.get_by_role("button", name="Join", exact=True)).to_be_hidden()
-        # The live mark is part of More's name, so a screen reader hears it, and the first row is Join from the first frame.
+        # The live mark is part of More's name, so a screen reader hears it, and Join takes Call's row (after Search) from the first frame.
         more_small = phead.get_by_role("button", name=re.compile("^More live session here"))
         expect(more_small).to_be_visible()
         more_small.click()
         menu = small.get_by_role("menu", name="More")
         expect(menu).to_be_visible()
-        self.assertTrue(menu.locator("[role^=menuitem]:visible").first.inner_text().startswith("Join"), "the first row is Join, not Call, from the first frame")
+        rows = [text.split("\n")[0] for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
+        self.assertEqual(rows[0], "Search", "Search stays More's first row (#1239)")
+        self.assertTrue(rows[1].startswith("Join"), f"the row after Search is Join, not Call, from the first frame: {rows}")
         shot(small, "live-phone-320-more-join")
         small.keyboard.press("Escape")
         self.bar(nia).get_by_role("button", name="Leave", exact=True).click()
@@ -437,13 +439,14 @@ class LiveJourney(LiveBase):
         page.locator("header.top").get_by_role("button", name="Join", exact=True).click()
         expect(self.bar(page)).to_be_visible()
         expect(self.bar(page).locator(".lv-where")).to_contain_text("Loan rules")
-        # A phone has Call in its row from 360 px and under it in More; under 360 px the Join row is More's first.
+        # A phone has Call in its row from 360 px and under it in More; under 360 px the Join row is Call's, after Search.
         small = self.page("ada", viewport={"width": 320, "height": 568})
         small.goto(f"/projects/{pid}")
         expect(small.locator("header.phead .top__live-cue")).to_be_visible()
         small.locator("header.phead").get_by_role("button", name=re.compile("^More")).click()
-        first = small.get_by_role("menu", name="More").locator("[role^=menuitem]:visible").first
-        expect(first).to_contain_text(re.compile("^Join · "))
+        rows = small.get_by_role("menu", name="More").locator("[role^=menuitem]:visible")
+        expect(rows.first).to_contain_text("Search")
+        expect(rows.nth(1)).to_contain_text(re.compile("^Join · "))
         small.keyboard.press("Escape")
         for leaver in (page, nia):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
@@ -454,7 +457,7 @@ class LiveJourney(LiveBase):
     def test_00c_a_call_from_the_conversation_is_the_spaces_and_join_shows_on_every_view(self) -> None:
         """#1230 acceptance and #1223 point 1: Nia starts a call in the conversation, then someone posts a message. The call is "Call in
         <space>", not the message's text, and Ada's open tabs show Join within 2 s on the same conversation, on Tasks, Map and Wiki and on the
-        tablet; under 360 px More shows the dot and its first row is Join. Joining from Tasks joins the same call."""
+        tablet; under 360 px More shows the dot and Join takes Call's row after Search. Joining from Tasks joins the same call."""
         self.seed()
         ada = self.page("ada")
         project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Seed swap", "visibility": "restricted"}, status=201)
@@ -496,8 +499,9 @@ class LiveJourney(LiveBase):
         shot(tablet, "live-tablet-820-join-on-conversation")
         expect(small.locator("header.phead .top__live-cue")).to_be_visible()
         small.locator("header.phead").get_by_role("button", name=re.compile("^More")).click()
-        first = small.get_by_role("menu", name="More").locator("[role^=menuitem]:visible").first
-        expect(first).to_contain_text("Join · Nia")
+        rows = small.get_by_role("menu", name="More").locator("[role^=menuitem]:visible")
+        expect(rows.first).to_contain_text("Search")
+        expect(rows.nth(1)).to_contain_text("Join · Nia")
         shot(small, "live-phone-320-more-join-space-call")
         small.keyboard.press("Escape")
         # Joining from Tasks is the same call, named by the space.

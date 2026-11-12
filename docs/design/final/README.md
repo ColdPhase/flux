@@ -1047,7 +1047,7 @@ Live strip, someone shares a screen
   name, the people and ⋯ do not move (#873). Who is in it and where it is are in its tooltip and description: "Join ·
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
-  is "Join · Nia". On the phone Join is the dark pill beside Search; under 360 px it is ⋯'s first row, with the dot on ⋯.
+  is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
 - **⋯ with calls.** Further calls of the space are rows "Join · Kai · at “Order sensors”" (dot first), and **Start a
   call here** starts a separate call at the place open. Starting from the conversation joins the space's call instead.
 - **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind
