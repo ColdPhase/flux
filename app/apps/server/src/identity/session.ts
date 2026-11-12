@@ -106,7 +106,9 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
       expiresAt: new Date(session.expiresAt),
       user: { id: user.id, email: user.email, name: user.name },
     };
-    if (key) {
+    // Kept only when the cookie's token part is the session Better Auth returned, so a parser difference over duplicate cookies (first
+    // versus last of one name) can never key one session under another cookie value.
+    if (key && key.slice(0, key.lastIndexOf('.')) === session.token) {
       if (accepted.size >= ACCEPTED_MAX) accepted.delete(accepted.keys().next().value!);
       accepted.set(key, { context, token: session.token, acceptedAt: Date.now() });
     }
