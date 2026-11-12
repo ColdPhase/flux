@@ -31,14 +31,13 @@ import { createSignInThrottle } from './sign-in-throttle.js';
 import { createDevices } from './devices.js';
 import { authLogEntry } from './auth-log.js';
 
-/** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
-
 /** How long after its last renewal a used session is renewed again (Better Auth's `updateAge`); the session resolver's fast path hands a
  * session that is due back to Better Auth, which renews it (#1178). */
 export function sessionUpdateAgeSeconds(idleSeconds: number): number {
   return Math.min(86_400, Math.max(60, Math.floor(idleSeconds / 4)));
 }
 
+/** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
 /** Set by the bridge to the Fastify request id, so a security event of an auth route carries the id of its access-log lines. */
 export const REQUEST_ID_HEADER = 'x-flux-request-id';
