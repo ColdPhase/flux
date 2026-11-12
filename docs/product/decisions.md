@@ -546,7 +546,7 @@ Encrypted spaces are never indexed for AI or embedded (unchanged, [AG-10](assist
 - **Licences.** `pg_search` is AGPL-3.0-or-later, which Flux (AGPL-3.0-only) may ship; its source is the release tag the
   Dockerfile names. PostgreSQL and `pgvector` are under the PostgreSQL Licence, OpenBLAS (a `pg_search` dependency) BSD-3-Clause.
 
-**Costs.** The database image grows by about 330 MB (the `pg_search` library is 282 MB). The index is about 4 MiB per 10k short
+**Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.
 
 **Revisit when** a local model that fits the 4 GB target beats BM25 on the bench, or `pg_search` changes its licence or stops

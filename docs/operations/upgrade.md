@@ -96,7 +96,7 @@ database on it before migrating.
   `shared_preload_libraries`.
 - **Backups** keep working the same way: a dump holds the index's definition, and a restore rebuilds it. A backup from before
   the upgrade restores with the old release's files, as always ([when it fails](#when-it-fails)).
-- **Memory and disk.** The memory limits are unchanged. The image is about 330 MB larger; the index adds about 4 MB per
+- **Memory and disk.** The memory limits are unchanged. The image is about 500 MB larger (800 MB); the index adds about 4 MB per
   10,000 messages.
 
 ## From v0.1: install v0.2 fresh

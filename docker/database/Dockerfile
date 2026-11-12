@@ -34,11 +34,18 @@ RUN --mount=type=bind,from=pg-search,source=/pg-search.deb,target=/tmp/pg-search
   set -eux; \
   apt-get update; \
   apt-get install -y --no-install-recommends "postgresql-18-pgvector=${PGVECTOR_VERSION}" /tmp/pg-search.deb; \
+  # Debian's security updates of the base (the image scan allows no fixable HIGH/CRITICAL finding); PostgreSQL itself stays at
+  # the base's version, which a newer build in the PostgreSQL repository would otherwise replace.
+  apt-mark hold $(dpkg-query -W -f '${db:Status-Abbrev}${Package}\n' 'postgresql*' 'libpq*' | sed -n 's/^ii *//p'); \
+  apt-get upgrade -y --no-install-recommends; \
   rm -rf /var/lib/apt/lists/*; \
   test "$(dpkg-query -W -f='${Version}' postgresql-18)" = "$PG_VERSION"; \
   localedef --replace -i C -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8; \
   groupmod -g 70 postgres; usermod -u 70 -g 70 postgres; \
-  chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql
+  chown -R postgres:postgres /var/lib/postgresql /var/run/postgresql; \
+  rm /usr/local/bin/gosu
+# gosu postgres <command>, as docker-entrypoint.sh calls it, through util-linux's setpriv (see the file).
+COPY --chmod=0755 gosu /usr/local/bin/gosu
 LABEL org.opencontainers.image.title="Flux database" \
   org.opencontainers.image.description="PostgreSQL 18 with pg_search ${PG_SEARCH_VERSION} and pgvector for Flux" \
   org.opencontainers.image.source="https://github.com/ColdPhase/flux" \
