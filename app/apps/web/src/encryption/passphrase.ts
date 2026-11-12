@@ -58,7 +58,7 @@ export function lengthOf(check: PasswordCheck): PasswordLength {
 }
 
 /** A uniform integer below `max` from random 32-bit words, rejecting the biased tail instead of using a remainder alone. */
-export function randomBelow(max: number, fill: (words: Uint32Array) => void = (words) => { crypto.getRandomValues(words); }): number {
+export function randomBelow(max: number, fill: (words: Uint32Array<ArrayBuffer>) => void = (words) => { crypto.getRandomValues(words); }): number {
   if (!Number.isInteger(max) || max < 1 || max > 2 ** 32) throw new RangeError('max must be an integer from 1 to 2^32');
   const limit = Math.floor(2 ** 32 / max) * max;
   const word = new Uint32Array(1);
