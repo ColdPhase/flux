@@ -158,11 +158,17 @@
 .lv-device__b span { font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; }
 .lv-switch { display: flex; align-items: flex-start; gap: 10px; padding: 8px 6px; margin: 0 -6px; border-radius: var(--r); text-align: left; transition: var(--tr); }
 .lv-switch:hover { background: var(--hov); }
-.lv-switch__track { flex: none; position: relative; width: 32px; height: 20px; margin-top: 1px; border-radius: 10px; background: var(--line2); transition: background-color var(--dur-1) var(--ease-out); }
-.lv-switch__knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: var(--sh-card); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
-.lv-switch[aria-checked="true"] .lv-switch__track { background: var(--t1); }
-.lv-switch[aria-checked="true"] .lv-switch__knob { transform: translateX(12px); }
-.lv-switch[aria-checked="true"] .lv-switch__knob { background: var(--oninv); }
+/* The same switch as in Settings (#1238), a little smaller: off a quiet track with a --t3 edge and knob, on the ink track with an --oninv knob. */
+.lv-switch__track { flex: none; position: relative; width: 32px; height: 20px; margin-top: 1px; border-radius: 10px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--t3); transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+.lv-switch__knob { position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: var(--t3); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
+.lv-switch[aria-checked="true"] .lv-switch__track { background: var(--inv); box-shadow: inset 0 0 0 1px var(--inv); }
+.lv-switch[aria-checked="true"] .lv-switch__knob { transform: translateX(12px); background: var(--oninv); }
+@media (forced-colors: active) {
+  .lv-switch__track { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 1px ButtonText; }
+  .lv-switch__knob { background: ButtonText; }
+  .lv-switch[aria-checked="true"] .lv-switch__track { background: Highlight; box-shadow: inset 0 0 0 1px Highlight; }
+  .lv-switch[aria-checked="true"] .lv-switch__knob { background: HighlightText; }
+}
 .lv-switch__b { display: flex; flex-direction: column; }
 .lv-switch__b b { font-size: var(--fs-md); font-weight: 500; color: var(--t1); }
 .lv-switch__b span { font-size: var(--fs-xs); color: var(--t3); line-height: 1.45; }

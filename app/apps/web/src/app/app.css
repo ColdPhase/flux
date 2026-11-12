@@ -281,14 +281,20 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 .me__item:hover { background: var(--hov); color: var(--t1); }
 /* Links and buttons look the same in the menu (#763 SG-7). */
 a.me__item { text-decoration: none; }
-.seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: var(--sh-seg); }
+/* A segmented control (#1238; README tokens): a track, and the selected option a raised pill with a 1 px edge, clearly lighter than the track in
+   both themes. Every segmented control in the app (this one, the header's views, Board / List, access, Rendered / Markdown) reads the same three tokens. */
+.seg { display: flex; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg); }
 .seg__b {
   flex: 1; min-width: 0; display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 30px; padding: 0 13px;
-  border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; color: var(--t2); white-space: nowrap; transition: var(--tr);
+  border-radius: var(--r-pill); font-size: var(--fs-md); font-weight: 500; color: var(--seg-off); white-space: nowrap; transition: var(--tr);
 }
 .seg__b:hover { color: var(--t1); }
-.seg__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-raise); }
+.seg__b[aria-checked="true"] { background: var(--seg-on); color: var(--t1); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2); }
 .seg__b:focus-visible { outline-offset: 0; }
+/* High-contrast mode keeps the selection: the system's own selected colours. */
+@media (forced-colors: active) {
+  .seg__b[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
 
 
 

@@ -156,16 +156,20 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
   position: absolute; left: 0; bottom: var(--tab-below, 0px); width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
-/* Segmented views (F-026 §4): a soft pill track; the current view is a raised white pill that slides. */
-.ui-tabs--seg .ui-tabs__bar { width: max-content; max-width: 100%; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: var(--sh-seg); }
-.ui-tabs--seg .ui-tabs__tab { z-index: 1; min-height: calc(var(--ctl) - 6px); padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
+/* Segmented views (F-026 §4): a soft pill track; the current view is a raised pill that slides (tokens --seg, --seg-on, --seg-off; #1238). */
+.ui-tabs--seg .ui-tabs__bar { width: max-content; max-width: 100%; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--seg); box-shadow: var(--sh-seg); }
+.ui-tabs--seg .ui-tabs__tab { z-index: 1; min-height: calc(var(--ctl) - 6px); padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--seg-off); }
 .ui-tabs--seg .ui-tabs__tab::after { display: none; }
 .ui-tabs--seg .ui-tabs__tab[aria-current="page"], .ui-tabs--seg .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 600; }
 .ui-tabs--seg .ui-tabs__label::after { font-weight: 600; }
 .ui-tabs--seg .ui-tabs__tab, .ui-tabs--seg .ui-tabs__tab:focus-visible { outline-offset: -2px; }
 .ui-tabs--seg .ui-tabs__indicator {
-  top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-raise);
+  top: 3px; bottom: 3px; height: auto; width: 0; border-radius: var(--r-pill); background: var(--seg-on); box-shadow: var(--sh-raise), inset 0 0 0 1px var(--line2);
   transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+}
+@media (forced-colors: active) {
+  .ui-tabs--seg .ui-tabs__indicator { forced-color-adjust: none; background: Highlight; }
+  .ui-tabs--seg .ui-tabs__tab[aria-current="page"], .ui-tabs--seg .ui-tabs__tab[aria-selected="true"] { forced-color-adjust: none; color: HighlightText; }
 }
 @media (pointer: coarse) { .ui-tabs--seg .ui-tabs__tab { min-height: 44px; } }
 

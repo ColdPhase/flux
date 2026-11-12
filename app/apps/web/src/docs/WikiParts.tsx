@@ -5,7 +5,7 @@ import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { Icon, Spinner, prefersReducedMotion, usePop, useToast } from '../ui';
+import { Button, Icon, prefersReducedMotion, usePop, useToast } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { DeletePageDialog, type DeletablePage } from './DeletePage';
@@ -210,8 +210,11 @@ function PageSwitcher({ docId, title, titleId }: { docId: string; title: string;
   );
 }
 
-/** "+ New page": names the page in place, then opens it to write. */
-export function NewPage({ name, done }: { name?: string; done?: () => void }) {
+/**
+ * "New page": names the page in place, then opens it to write. A row of the switcher's menu by default; `primary` is the empty
+ * Wiki's one primary Button (#1233, #1234), an ordinary button with no menu class, so nothing of it can stack over a window.
+ */
+export function NewPage({ name, done, primary }: { name?: string; done?: () => void; primary?: boolean }) {
   const { project } = useWiki();
   const [naming, setNaming] = useState(false);
   const [title, setTitle] = useState('');
@@ -239,6 +242,7 @@ export function NewPage({ name, done }: { name?: string; done?: () => void }) {
     } finally { setBusy(false); }
   }
   if (!naming) {
+    if (primary) return <Button variant="primary" icon="plus" onClick={() => { setTitle(name ?? ''); setNaming(true); }}>New page</Button>;
     return (
       <button type="button" className="wiki-menu__row wiki-menu__new" onClick={() => { setTitle(name ?? ''); setNaming(true); }}>
         <Icon name="plus" size={15} />New page
@@ -251,9 +255,7 @@ export function NewPage({ name, done }: { name?: string; done?: () => void }) {
       <input id={fieldId} className="wiki-newpage__field" value={title} placeholder="Name of the new page" maxLength={200} autoFocus autoComplete="off"
         onChange={(event) => setTitle(event.target.value)}
         onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setNaming(false); } }} />
-      <button type="submit" className="ui-btn ui-btn--soft wiki-newpage__go" disabled={!title.trim() || busy} aria-busy={busy || undefined}>
-        {busy ? <Spinner /> : null}Create
-      </button>
+      <Button type="submit" variant={primary ? 'primary' : 'soft'} disabled={!title.trim()} busy={busy}>Create</Button>
       {error ? <p className="wiki-menu__error" role="alert">{error}</p> : null}
     </form>
   );
@@ -460,11 +462,8 @@ export function NoPages() {
       <h2 className="wiki-empty__t">No pages yet</h2>
       <p className="doc-muted">Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</p>
       <div className="wiki-empty__acts">
-        <div className="wiki-menu wiki-empty__new"><NewPage /></div>
-        <button type="button" className="ui-btn ui-btn--quiet" onClick={startImport} aria-busy={importing || undefined}
-          aria-describedby={importError ? importErrorId : undefined}>
-          {importing ? <Spinner /> : null}Import a Markdown file
-        </button>
+        <NewPage primary />
+        <Button variant="outline" onClick={startImport} busy={importing} aria-describedby={importError ? importErrorId : undefined}>Import a Markdown file</Button>
       </div>
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
     </div>

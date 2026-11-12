@@ -110,7 +110,7 @@ The values after #863:
 | `--ease-in` | `cubic-bezier(.4, 0, 1, 1)` | Leaving |
 | `--ease-loop` / `--ease-linear` | `ease-in-out` / `linear` | A loop; a rotation |
 | `--press` | .98 | Small controls only |
-| `--act` / `--inv-act` | `#d6d6da` / `#47474d` (light), `#383838` / `#c2c2c2` (dark) | The fill of a pressed control, one notch deeper than `--hov` / `--inv-hov`; while a control is pressed its `--hov` is `--act` |
+| `--act` / `--inv-act` | `#d2d2d6` / `#47474d` (light), `#383838` / `#c2c2c2` (dark) | The fill of a pressed control, one notch deeper than `--hov` / `--inv-hov`; while a control is pressed its `--hov` is `--act` |
 | `--shift-panel` / `--shift-pop` / `--shift-toolbar` / `--shift-row` | 16 / 4 / 6 / 12 px | How far a panel, a menu, the message toolbar and a row travel |
 
 - `--tr-fill` uses `--ease-out` instead of `ease`, and `--tr` moves `transform` in `--dur-1` on `--ease-out`.

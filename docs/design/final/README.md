@@ -60,7 +60,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--side` | `#EBEBED` | `#0B0B0B` | Outer background (behind the panel and sidebar) |
 | `--bg` | `#F4F4F5` | `#111111` | Screen or panel background |
 | `--el` | `#FFFFFF` | `#1C1C1C` | Cards, bubbles, inputs, sheets, menus |
-| `--sub` | `#EBEBEC` | `#242424` | Fills: segmented track, chips, attachment rows |
+| `--sub` | `#EBEBEC` | `#242424` | Fills: chips, attachment rows, an off switch's track |
 | `--hov` | `#E3E3E5` | `#2C2C2C` | Hover and pressed fills |
 | `--line` | `rgba(0,0,0,.07)` | `rgba(255,255,255,.08)` | Hairlines, card outlines |
 | `--line2` | `rgba(0,0,0,.14)` | `rgba(255,255,255,.16)` | Strong outlines |
@@ -69,6 +69,7 @@ drawn. Founders own changes to it; agents implement it and do not re-decide it.
 | `--t3` | `#636363` | `#A1A1A1` | Meta text (at least 4.5:1 on `--bg`, `--el`, `--side`, `--sub` and `--hov`; APCA Lc at least 45) |
 | `--inv` / `--oninv` | `#18181B` / `#FFFFFF` | `#F0F0F0` / `#111111` | Inverted chips, the one primary button per screen (2026-10-31) |
 | `--own` | `#E7E7EA` | `#313134` | Own message bubbles ([Spokój](../spokoj/README.md#token), 2026-10-15) |
+| `--seg` / `--seg-on` / `--seg-off` | `--act` / `--el` / `--t2` | `--sub` / `--pick` / `--t3` | A segmented control: its track, the selected option's pill and an unselected label (#1238). Roles over existing colours, no new colour |
 
 Founder direction (Maurycy, 2026-10-10): dark-theme secondary text raised for readability; APCA t2 ≥ 60, t3 ≥ 45
 ([#432](https://github.com/ColdPhase/flux/issues/432)). Dark `--t2` was `#ACACAC` and `--t3` was `#8C8C8C`.
@@ -117,7 +118,26 @@ buttons above, which read as too strong:
 text, 12 / 500) and 28 px for a person chip in a field, with a 20 px face and ×. They never wrap;
 a long name ends in an ellipsis.
 
-**Switches** are 36 × 22, `--t1` when on. One style of switch and of choice across Settings.
+**Switches** are 36 × 22 (the live panel's 32 × 20). One style of switch across the app: Settings, the
+live panel and the connection's permissions (#1238).
+- On: the `--inv` track with an `--oninv` knob. Unmistakable in both themes.
+- Off: the `--sub` track with a 1 px `--t3` edge and a `--t3` knob. The edge and the knob are at least 3:1 against the card and the screen
+  (`--t3` is 6.0:1 in light and 6.6:1 in dark on `--el`), and the knob is at least 3:1 on its track. A grey knob on a grey track is not enough:
+  the old off switch (`--hov` track, white knob) was 1.3:1 in light.
+- High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
+
+**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, What it may do, Model, Text size,
+the live stage and screen mode, access and Rendered / Markdown. (The space views, Conversation | Tasks | Map | Wiki, become underline
+tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
+(WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
+- The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
+  `--el` on `--act` (1.51:1); in dark `--pick` on `--sub` (1.51:1). In dark the pill is lighter than the track (it was darker, 1.1:1).
+  `scripts/check_contrast.py` holds the fill at 1.5:1 or more in both themes, and `tests/ui/test_switches_visible.py` measures it in the
+  running app. The existing colours gave 1.45:1 and 1.44:1, so `--act` (light) and `--pick` (dark) moved one notch to reach 1.5:1; in dark
+  the edge adds 2.3:1 against the track.
+- The selected label is `--t1`, an unselected label `--seg-off` (`--t2` in light, `--t3` in dark, 6:1 on the track); a hovered one is `--t1`.
+- High-contrast mode (`forced-colors`) keeps the selection: the pill is `Highlight` with `HighlightText`.
+- Sizing is not part of this rule (the options' widths follow their labels, #1219).
 
 **Concentric corners** (founder, 2026-10-08): a frame that tightly holds a tile or an avatar takes
 the inner radius plus the gap. A space tile (radius 6) inside a place picker with a 4 px inset sits
