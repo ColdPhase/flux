@@ -1,10 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { TABLE_COLUMNS, cellText, decode, jsonModel, markdownChunk, markdownModel, parsePreview, tableModel, textModel, type JsonModel, type TableModel, type TextModel } from '../../apps/web/src/composer/previewParse.js';
+import { TABLE_COLUMNS, cellText, decode, jsonModel, markdownChunk, markdownModel, parsePreview, tableModel, textModel, type JsonModel, type MarkdownModel, type TableModel, type TextModel } from '../../apps/web/src/composer/previewParse.js';
 
 // The file preview's parsers (C-60, #1252), which run in a Web Worker in the browser.
 
 const lines = (model: { text: string; starts: Uint32Array; ends: Uint32Array }) => Array.from(model.starts, (start, i) => model.text.slice(start, model.ends[i]));
+/** A Markdown model's chunks joined back: a cut at a line break drops the newline, a cut inside a line drops nothing. */
+const rejoin = (model: MarkdownModel) => Array.from(model.starts, (start, i) => (i && start !== model.ends[i - 1] ? '\n' : '') + model.text.slice(start, model.ends[i])).join('');
 const rows = (model: TableModel) => Array.from({ length: model.rowStart.length - 1 }, (_, r) =>
   Array.from({ length: model.rowStart[r + 1]! - model.rowStart[r]! }, (__, c) => cellText(model, model.rowStart[r]! + c)));
 
@@ -81,7 +83,7 @@ test('Markdown is cut into chunks only at a blank line outside a code fence', ()
   const text = `${paragraph}\n${fence}\n${paragraph}\n${paragraph}`;
   const model = markdownModel(text, 'utf-8');
   const chunks = lines(model);
-  assert.equal(chunks.join('\n'), text, 'nothing is lost or repeated');
+  assert.equal(rejoin(model), text, 'nothing is lost or repeated');
   for (let i = 0; i < chunks.length; i++) assert.equal((markdownChunk(model, i).match(/```/g) ?? []).length % 2, 0, 'every chunk opens and closes its fences');
   assert.ok(chunks.length >= 3);
   assert.deepEqual(lines(markdownModel('', 'utf-8')), ['']);
@@ -92,7 +94,7 @@ test('Markdown with no blank line is still cut, a list into lists and a huge cod
   const listModel = markdownModel(list, 'utf-8');
   assert.ok(listModel.starts.length > 30, `${listModel.starts.length} chunks`);
   for (let i = 0; i < listModel.starts.length; i++) assert.ok(listModel.ends[i]! - listModel.starts[i]! <= 16_100);
-  assert.equal(lines(listModel).join('\n'), list);
+  assert.equal(rejoin(listModel), list);
   const code = `before\n\n\`\`\`js\n${'let x = 1;\n'.repeat(20_000)}\`\`\`\nafter`;
   const codeModel = markdownModel(code, 'utf-8');
   const drawn = Array.from(codeModel.starts, (_, i) => markdownChunk(codeModel, i));

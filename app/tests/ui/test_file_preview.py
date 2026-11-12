@@ -163,6 +163,7 @@ BIG_CSV = (b"time,bed,rssi,snr,battery,note\n" + b"".join(f"2026-11-07T14:{(n //
 BIG_CSV = BIG_CSV[:BIG_CSV.rindex(b"\n", 0, LIMIT - 4096) + 1]
 BIG_CSV_ROWS = BIG_CSV.count(b"\n") - 1
 BIG_JSON = ("[" + ",".join(f'{{"id":{n},"bed":"bed {n % 40}","readings":{{"rssi":-{90 + n % 30},"snr":{n % 11 - 4}.5}},"tags":["lora","sf9"]}}' for n in range(60_000)) + "]").encode()
+ONE_LINE_MD = b"*a* `b` " * (4 * 1024 * 1024 // 8 - 64)  # 4 MiB of inline marks on one line, no line break
 COMMAS = b"," * (4 * 1024 * 1024)  # one row of 4,194,305 empty cells: any member can send it
 WIDE = ("\n".join(",".join(f"s{c}" if r == 0 else str((r * c) % 997) for c in range(2000)) for r in range(300)) + "\n").encode()
 assert len(BIG_JSON) < LIMIT and len(LOG) < LIMIT and len(BIG_CSV) < LIMIT and len(COMMAS) < LIMIT and len(WIDE) < LIMIT
@@ -236,7 +237,8 @@ class FilePreview(unittest.TestCase):
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
                                 ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", pdf_bytes()),
                                 ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
-                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE)):
+                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE),
+                                ("one-line", "one-line.md", ONE_LINE_MD)):
             root(key, f"File {name}", name, data)
         for context in contexts.values():
             context.close()
@@ -622,6 +624,20 @@ class FilePreview(unittest.TestCase):
                 print(f"{name}: ready in {ready:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
                 self.shot(page, f"file-preview-{key}-1440-light")
+        # Markdown of 4 MiB on one line is cut into small chunks: only those in view are drawn.
+        with self.subTest(file="one-line.md"):
+            page, _, _ = self.open("one-line")
+            page.evaluate("() => { window.__long = []; new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); }")
+            started = time.time()
+            _, dialog = self.viewer(page, "one-line", "one-line.md")
+            doc = self.contents(dialog, "one-line.md")
+            expect(doc.locator("em").first).to_have_text("a", timeout=20000)
+            doc.evaluate("(el) => { el.scrollTop = el.scrollHeight / 2; }")
+            page.wait_for_timeout(800)
+            self.assertLess(doc.locator("em").count(), 20_000, "only the chunks near the view are drawn")
+            long = page.evaluate("window.__long")
+            print(f"one-line.md: ready in {time.time() - started:.2f} s, long tasks {long}")
+            self.assertTrue(all(duration <= 200 for duration in long), f"one-line.md: long tasks {long}")
         # A table as wide as a file allows draws its first 200 columns and says so: no column holds the page either.
         for key, name, columns in (("commas", "commas.csv", len(COMMAS) + 1), ("wide", "matrix.csv", 2000)):
             with self.subTest(file=name):
