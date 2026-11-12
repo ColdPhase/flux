@@ -556,7 +556,7 @@ const scenarios: Record<string, Scenario> = {
     const conversation = (expectStatus(await me.browser.request('POST', `/api/v1/projects/${spaceId}/conversations`,
       { body: { body: `Zdjęcia z działki (${engine}).`, clientMessageId: randomUUID() } }), 201) as { id: string }).id;
     const upload = await fetch(new URL(`/api/v1/projects/${spaceId}/files?uploadId=${randomUUID()}&name=dzialka.png`, me.browser.base),
-      { method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: me.browser.cookieHeader(), origin: me.browser.defaultOrigin }, body: png(96, 64) });
+      { method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: me.browser.cookieHeader(), origin: me.browser.defaultOrigin }, body: new Uint8Array(png(96, 64)) });
     const staged = await upload.json() as { id: string };
     expectStatus(await me.browser.request('POST', `/api/v1/conversations/${conversation}/messages`,
       { body: { body: 'Tak wygląda nasza grządka po tygodniu.', clientMessageId: randomUUID(), attachmentIds: [staged.id] } }), 201);

@@ -20,7 +20,7 @@ const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', t
 
 async function upload(who: Person, projectId: string, name: string, body: Buffer): Promise<string> {
   const response = await fetch(new URL(`/api/v1/projects/${projectId}/files?uploadId=${randomUUID()}&name=${encodeURIComponent(name)}`, who.browser.base),
-    { method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin }, body });
+    { method: 'POST', headers: { 'content-type': 'application/octet-stream', cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin }, body: new Uint8Array(body) });
   assert.equal(response.status, 201, await response.clone().text());
   return ((await response.json()) as { id: string }).id;
 }
