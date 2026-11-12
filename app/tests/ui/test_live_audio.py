@@ -82,7 +82,10 @@ AUDIO_INSTRUMENT = """
 # The mean power of what the first remote voice carries to this page, measured on the received stream itself, before the element's
 # volume: every sample of the window counts (a ScriptProcessor sees all of them), so the short beeps of the fake microphone cannot be missed.
 POWER = """async ({ ms, who }) => {
-  const element = document.querySelector(`[data-live-audio] audio[data-live-person="${who}"]`);
+  // The voice that is flowing: a participant of an earlier call may still be on its way out of the room, with a muted track.
+  const element = [...document.querySelectorAll(`[data-live-audio] audio[data-live-person="${who}"]`)]
+    .find((candidate) => candidate.srcObject && candidate.srcObject.getAudioTracks().some((track) => track.readyState === 'live' && !track.muted));
+  if (!element) return { power: 0, beep: 0, peak: 0, active: 0, buffers: 0, none: true };
   const context = new AudioContext();
   await context.resume();
   const source = context.createMediaStreamSource(element.srcObject);
