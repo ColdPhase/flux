@@ -455,8 +455,9 @@ No move repeats an address. What the three moves ask for now:
 - **Home → a space (7):** `space-shell`, `conversation-view`, the receipts of the messages seen (`POST`), `assistant-runs`,
   `personal-assistant`, `needs-you` and `return`.
 - **Wiki → Conversation (6):** the same without `space-shell`.
-- **Conversation → another space (8):** `space-shell`, `conversation-view`, `PUT return-points` (leaving the conversation),
-  `assistant-runs`, `personal-assistant`, `needs-you` and `return`.
+- **Conversation → another space (8):** `space-shell`, `conversation-view`, `assistant-runs`, `personal-assistant`, `needs-you`,
+  and leaving the conversation: `return` for the space left with `PUT return-points` saving it, then `return` for the space
+  entered (two addresses of `return`, none repeated).
 
 **Inferred.** Every move is now at or under the target of 8, and the budget in `test_navigation_requests` is set to these
 counts (plus one for a poll in the quiet window where the count leaves room under 8). What is left on these moves is the person's

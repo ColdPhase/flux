@@ -4,7 +4,7 @@ import {
   type ConversationView, type Page, type SpaceShell,
 } from '@flux/contracts';
 import { agentQuestionUseCases, conversationUseCases, DomainError, getProject, listSpacePeople, type FileStorage } from '@flux/core';
-import { accessPorts, type Database } from '@flux/db';
+import { accessPorts, personTimeZones, type Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { aiAllowedInProject } from '../access/ai-gate.js';
@@ -68,7 +68,8 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
     const project = await getProject(principal, request.params.projectId, db, accessPorts);
     const reads = nativeWorkReadUseCases(db, sessions, session, request.headers);
     const [people, sketchPage, docPage, workSummary] = await Promise.all([
-      context(request, 'people', () => listSpacePeople(principal, project.id, db, accessPorts)),
+      // As `GET .../people` answers it: each person's last active, in the reader's time zone (#1225, #1236).
+      context(request, 'people', async () => listSpacePeople(principal, project.id, db, accessPorts, { lastActive: { timeZone: await personTimeZones(db).get(principal.id) } })),
       context(request, 'sketches', async () => scopedCreators(db, project.workspaceId,
         await sketches.list(principal, project.workspaceId, { limit: SPACE_SHELL_LIMITS.sketches, offset: 0, projectId: project.id, hideEmpty: true }))),
       context(request, 'docs', async () => {

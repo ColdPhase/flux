@@ -299,8 +299,8 @@ class ViewSwitch(unittest.TestCase):
         project_view(page, "Conversation")
         page.wait_for_url(re.compile(PATH["Conversation"]))
         page.wait_for_function("() => document.querySelector('#content .project-convo')", timeout=8000)
-        # The Tasks view's loader reads the project before it commits.
-        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(\?.*)?$")
+        # The Tasks view's loader reads the project before it commits (or with the space's frame, `space-shell`, #1109).
+        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/space-shell)?(\?.*)?$")
         # The shell has just read the project, and a view of the space takes that answer without asking for 30 s (#862, #1036), so the loader would
         # have nothing to wait for. Everything kept is forgotten when the person comes back to the window (`forgetKeptReads`, on `focus`): the
         # switch then reads the project again, and that read is the one held.
