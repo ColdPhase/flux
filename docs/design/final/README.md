@@ -131,8 +131,8 @@ the live stage and screen mode, access and Rendered / Markdown. (The space views
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
 - The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
-  `--el` on `--act` (1.45:1); in dark `--pick` on `--sub` (1.44:1). In dark the pill is lighter than the track (it was darker, 1.1:1).
-  `scripts/check_contrast.py` holds the fill at 1.4:1 or more in both themes, and `tests/ui/test_switches_visible.py` measures it in the
+  `--el` on `--act` (1.51:1); in dark `--pick` on `--sub` (1.51:1). In dark the pill is lighter than the track (it was darker, 1.1:1).
+  `scripts/check_contrast.py` holds the fill at 1.5:1 or more in both themes, and `tests/ui/test_switches_visible.py` measures it in the
   running app. 1.5:1 is not reachable with the existing colours, whose nearest pairs are these two; in dark the edge adds 2.3:1 against the track.
 - The selected label is `--t1`, an unselected label `--seg-off` (`--t2` in light, `--t3` in dark, 6:1 on the track); a hovered one is `--t1`.
 - High-contrast mode (`forced-colors`) keeps the selection: the pill is `Highlight` with `HighlightText`.

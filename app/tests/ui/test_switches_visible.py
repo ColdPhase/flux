@@ -5,7 +5,7 @@ Runs with the other tests/ui journeys through scripts/check_ui.sh against the ru
 (chromium by default, webkit too). The numbers are measured in the running app, composited over every ancestor with tests/ui/contrast.py,
 never judged by eye, for the Map / List switch, Board / List, What it may do and Text size, and for the switches of
 Settings and of the Create window, light and dark, on the computer (1440) and on the phone (390):
-- the selected option's fill against its track at least 1.4:1 and lighter than the track, its label at least 4.5:1 on it, an unselected
+- the selected option's fill against its track at least 1.5:1 and lighter than the track, its label at least 4.5:1 on it, an unselected
   label at least 4.5:1 on the track and not the selected label's colour, and in dark a 1 px light edge (2:1 against the track);
 - an off switch's edge and knob at least 3:1 against the card and the track, an on switch's track at least 3:1 against the card and its knob
   at least 4.5:1 on it.
@@ -30,8 +30,8 @@ UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 PASSWORD = "a selected option is clear"
 EMAIL = f"mia.switches+{int(time.time() * 1000)}@example.test"
 HEADERS = {"origin": ORIGIN, "content-type": "application/json"}
-# The fill of the selected pill against its track. The tokens give 1.45:1 in light and 1.44:1 in dark; 1.1:1 was the bug.
-FILL_MINIMUM = 1.4
+# The fill of the selected pill against its track. The tokens give 1.51:1 in light and dark; 1.1:1 was the bug.
+FILL_MINIMUM = 1.5
 TEXT_MINIMUM = 4.5
 NON_TEXT_MINIMUM = 3.0
 EDGE_MINIMUM = 2.0  # in dark, where the edge is a light line on the darker track

@@ -25,7 +25,7 @@
   --sub: #ebebec;
   --hov: #e3e3e5;
   /* A pressed control's fill: one notch deeper than --hov, so a press with a mouse (hover and press at once) shows as well as a touch (#863 rule 1, 7) */
-  --act: #d6d6da;
+  --act: #d2d2d6;
   /* The fill of a chosen message row: clearly apart from the page, from other people's bubbles and from --own */
   --pick: #dcdce0;
   /* A segmented control (#1238): the selected option is a raised pill clearly apart from its track in both themes (the fill at least
@@ -134,7 +134,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
+    --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
     --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
     --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
     --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
@@ -153,7 +153,7 @@
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #3d3d42;
+  --side: #0b0b0b; --bg: #111111; --el: #1c1c1c; --own: #313134; --sub: #242424; --hov: #2c2c2c; --act: #383838; --pick: #404045;
   --seg: var(--sub); --seg-on: var(--pick); --seg-off: var(--t3);
   --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
   --t1: #f0f0f0; --t2: #bdbdbd; --t3: #a1a1a1; --inv: #f0f0f0; --oninv: #111111;
