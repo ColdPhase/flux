@@ -181,6 +181,7 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
   };
 }
 export * from './repositories/returns.js';
+export * from './repositories/sidebar.js';
 export * from './repositories/background-connections.js';
 export * from './repositories/personal-connections.js';
 export * from './repositories/api-key-spend.js';

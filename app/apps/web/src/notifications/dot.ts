@@ -1,7 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED } from './api';
 import { getNeedsYou } from './needsYou';
+
+/** The spaces that hold something that needs the person, from the same read as the count (#1250): the sidebar's dot. */
+let holding: { identity: string; spaces: ReadonlySet<string> } = { identity: '', spaces: new Set() };
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+const NONE: ReadonlySet<string> = new Set();
+export function useNeedsYouSpaces(identity: string): ReadonlySet<string> {
+  const now = useSyncExternalStore(subscribe, () => holding, () => holding);
+  return now.identity === identity ? now.spaces : NONE;
+}
 
 /**
  * How many things wait for you, for the sidebar's count and the phone's Inbox tab (F-026 §4, #342): the Inbox is the one place
@@ -12,7 +22,11 @@ export function useInboxDot(identity: string, pathname: string): { count: number
   const [unread, setUnread] = useState<{ identity: string; count: number; notifying: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const read = useCallback((fresh: boolean) => {
-    void getNeedsYou(undefined, fresh).then((queue) => setUnread({ identity, count: queue.count, notifying: queue.notifying ?? 0 }), () => undefined);
+    void getNeedsYou(undefined, fresh).then((queue) => {
+      setUnread({ identity, count: queue.count, notifying: queue.notifying ?? 0 });
+      holding = { identity, spaces: new Set(queue.items.flatMap((item) => (item.project ? [item.project.id] : []))) };
+      for (const listener of [...listeners]) listener();
+    }, () => undefined);
   }, [identity]);
   // A refresh (focus, an event, a change of the Inbox, the two-minute poll) reads; a new page shares one read with its own queue (#862).
   const refresh = useCallback(() => read(true), [read]);

@@ -1,5 +1,5 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { ME_PROBE_HEADER, WORKSPACES_PATH, plainMessageText, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type SpaceIcon, type WorkspaceRole } from '@flux/contracts';
+import { ME_PROBE_HEADER, SPACE_ORDER_PATH, WORKSPACES_PATH, orderSpaces, plainMessageText, type SpaceOrder, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type SpaceIcon, type WorkspaceRole } from '@flux/contracts';
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { pacedShellRead } from './shellPace';
@@ -58,8 +58,10 @@ export interface ShellData {
   workspaces: WorkspaceSummary[];
   /** Encrypted workspaces that wait to be unlocked (F-030, #655): drawn as one row each, never asked for content. */
   lockedWorkspaces: WorkspaceSummary[];
-  /** The spaces the person belongs to: everything that lists spaces lists these (F-037). */
+  /** The spaces the person belongs to: everything that lists spaces lists these (F-037), in the person's own order (#1250): Everyone first. */
   projects: ProjectSummary[];
+  /** The spaces the person moved, first to last, as the server keeps them; Everyone is not in it. */
+  spaceOrder: string[];
   /** Every space they can open. A company owner or admin reaches more than they belong to: Settings › Company lists those. */
   reachableSpaces: ProjectSummary[];
   directMessages: DirectMessageSummary[];
@@ -68,6 +70,12 @@ export interface ShellData {
   /** User id → photo id of the people this person can see (F-039): every avatar of one of them draws the photo. */
   photos: Record<string, string>;
 }
+
+/** Everyone (F-037): the company's space that holds the whole company. It is always first in the Spaces list and never moves (#1250). */
+export const everyoneIn = (workspaces: readonly WorkspaceSummary[]) => {
+  const company = workspaces.find((space) => space.company)?.id;
+  return (project: ProjectSummary) => !!company && project.visibility === 'workspace' && project.workspaceId === company;
+};
 
 /** The latest shell read, so a route loader can ask whether a space has AI off before it asks the server (#614). */
 let latestShell: Promise<ShellData> | null = null;
@@ -112,19 +120,21 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   }
   keepTimeZone(me);
   const all = read ?? await apiRead<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal: request.signal });
-  const [{ workspaces, lockedWorkspaces, projects: reachableSpaces }, dms, agents] = await Promise.all([
+  const [{ workspaces, lockedWorkspaces, projects: reachableSpaces }, dms, agents, spaceOrder] = await Promise.all([
     listAccessibleProjects(request.signal, all),
     // A workspace that locked since this read answers its conversations with a refusal that is ignored (F-030, #655).
     listAllDms(request.signal, all.filter((workspace) => workspace.encryption?.state !== 'locked')),
     listMyAgents(request.signal).catch((): MyAgent[] => []),
+    // The person's own order of their spaces (#1250); without it the spaces are as they were made.
+    apiRead<SpaceOrder>(SPACE_ORDER_PATH, { signal: request.signal }).then((kept) => kept.order, (): string[] => []),
   ]);
-  const projects = reachableSpaces.filter((project) => project.member !== false);
+  const projects = orderSpaces(reachableSpaces.filter((project) => project.member !== false), spaceOrder, everyoneIn(workspaces));
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), peopleIds: othersIn(dm, me.user.id).map((person) => person.id), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody && dm.lastMessageVia ? `via ${dm.lastMessageVia}: ${plainMessageText(dm.lastMessageBody)}` : dm.lastMessageBody && plainMessageText(dm.lastMessageBody), lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents, photos };
+  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, spaceOrder, reachableSpaces, directMessages, agents, photos };
 }
 
 export function useShellData(): ShellData {

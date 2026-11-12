@@ -104,6 +104,10 @@ body:has(.app) { background: var(--side); }
 .side__glide { position: absolute; top: 0; left: 0; right: 0; height: 34px; border-radius: 8px; background: var(--el); box-shadow: var(--sh-raise);
   opacity: 0; pointer-events: none; transition: transform var(--dur-in) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
 .side__list.has-glide .side__project.is-open { background: transparent; box-shadow: none; }
+/* While a space is dragged (ui/reorder.ts) the open row draws its own pill and goes with its row, and the highlight waits: it is put in
+   place, without motion, when the drop ends (ui/motion.ts), so nothing moves a second time after the drop. */
+[data-reordering] > .side__glide { visibility: hidden; }
+[data-reordering].has-glide .side__row:not(.is-lifted) > .side__project.is-open { background: var(--el); box-shadow: var(--sh-raise); transition: none; }
 .side__item {
   position: relative; display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; padding: 6px 10px;
   border-radius: 8px; color: var(--t2); text-decoration: none; font-size: var(--fs-base); font-weight: 500; text-align: left;
@@ -143,6 +147,32 @@ body:has(.app) { background: var(--side); }
 .side__muted { margin-left: auto; flex: none; color: var(--t3); }
 .side__lock + .side__muted { margin-left: 0; }
 .side__quiet { flex: none; min-width: 12px; text-align: right; font-size: var(--fs-xs); font-weight: 400; color: var(--t3); font-variant-numeric: tabular-nums; }
+/* A space with unread messages (#1250): its name in the primary colour and semibold; a read space keeps the quiet colour. The dot is for
+   what needs the person, not for news. A muted space stays quiet (#1249). */
+.side__project.is-unread { color: var(--t1); font-weight: 600; }
+/* A space's row holds the link and, after it, its ⋯ (Move up, Move down, #1250): shown while the pointer is over the row or the ⋯ has focus,
+   on the end slot it covers (the lock and the dot), and never on Everyone. A touch screen shows it always, as a 44 px target after the
+   name: a long press moves too, but a gesture is never the only way (#343). */
+/* A long press must lift the row, not select its name or open the link's own menu (iOS, Android). */
+.side__row { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.side__row > .top__more { position: absolute; right: 4px; top: 5px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.side__row:hover > .top__more, .side__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
+.side__row:hover :is(.side__dot, .side__lock, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__muted, .side__quiet) { opacity: 0; }
+.side__more { width: 24px; height: 24px; }
+.side__row:hover .side__more { background: var(--hov); }
+.side__row:has(.is-open):hover .side__more { background: var(--el); }
+@media (pointer: coarse) {
+  .side__row > .top__more { right: 0; top: 0; opacity: 1; }
+  .side__more { width: 44px; height: 44px; }
+  /* Every row keeps the ⋯'s room (Everyone too), so the end slot (lock, muted mark, count, dot) never sits under it and stays in line. */
+  .side__row > .side__item { padding-right: 44px; }
+  .side__row:hover :is(.side__dot, .side__lock, .side__muted, .side__quiet), .side__row:has(.side__more:focus-visible) :is(.side__dot, .side__lock, .side__muted, .side__quiet) { opacity: 1; }
+}
+/* While a row is dragged the rows under the pointer take no hover and no click (ui/reorder.ts). */
+[data-reordering] .side__item { pointer-events: none; }
+[data-reordering] .side__row > .top__more { opacity: 0; }
+.side__head-end { display: inline-flex; align-items: center; gap: 2px; }
+.side__head-end .top__more { position: relative; }
 /* An agent's row keeps the pin where it is: the unread dot sits in its own slot at the end of the row, so neither moves the other. */
 .side__agent { position: relative; }
 .side__agent .side__pin { margin-right: 16px; }

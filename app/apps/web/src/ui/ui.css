@@ -335,7 +335,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-toast--scrollable { border-radius: var(--r-lg); align-items: flex-start; }
 .ui-toast__action {
   display: inline-flex; align-items: center; flex: none; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: var(--r-pill); color: inherit; font-weight: 600;
-  box-shadow: -1px 0 0 color-mix(in srgb, var(--oninv) 30%, transparent); transition: var(--tr);
+  transition: var(--tr);
 }
 .ui-toast__action:hover { background: color-mix(in srgb, var(--oninv) 14%, transparent); }
 .ui-toast__action:focus-visible { outline-color: var(--oninv); }
@@ -508,3 +508,13 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-panel__head > .origin-back { margin: 0 4px 0 -8px; max-width: 46%; }
 .phead > .origin-back { max-width: 44%; min-height: 44px; padding: 0 14px 0 8px; background: var(--el); color: var(--t1); box-shadow: var(--sh-card); }
 @media (pointer: coarse) { .origin-back { min-height: 44px; } }
+
+/* Reordering a list by hand (ui/reorder.ts, #1250; docs/design/motion.md "Reordering spaces"). Only transform and opacity move, from the
+   tokens: the other rows slide over --dur-1 on --ease-out, the dragged row lifts (--el, --sh-pop) and follows the pointer, and the slot
+   it will land in is a quiet mark at slight opacity. Nothing scales. */
+[data-reordering] { position: relative; user-select: none; -webkit-user-select: none; }
+[data-reordering] > li { -webkit-touch-callout: none; }
+.is-sliding { transition: transform var(--dur-1) var(--ease-out); }
+.is-lifted { position: relative; z-index: 3; border-radius: var(--r-sm); background: var(--el); box-shadow: var(--sh-pop), 0 0 0 1px var(--line2); }
+.is-lifted > a { background: transparent; box-shadow: none; }
+.reorder-slot { position: absolute; top: 0; left: 0; right: 0; z-index: 0; border-radius: var(--r-sm); background: var(--sub); opacity: .6; pointer-events: none; transition: transform var(--dur-1) var(--ease-out); }

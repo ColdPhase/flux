@@ -36,6 +36,12 @@ conversation points are deleted with their place.
 - **Saving.** The server accepts only a mark that is one of the caller's own audience rows. Saving
   is forward-only: an older mark never moves the point back. `POST /api/v1/return-points/restore`
   ("Keep these for next time") stays in the API for compatibility; the web app no longer calls it.
+- **Mark all as read (#1250).** `POST /api/v1/me/read-all` moves the point of every space in the caller's sidebar to the newest
+  position of their own audience (forward only, so a space already there is left) and marks the chats of their agents read; it
+  answers `undo`, with the position (`mark`), the spaces it moved and each chat's read time before and after (as text, to the
+  microsecond). `POST /api/v1/me/read-all/undo` takes that back for a space only while its point still stands at `mark` and for a
+  chat only while it still shows the time that was set, so what the person opened or read since stays read. It never touches
+  the Inbox. The unread dot of a space is not this state: it is the Inbox's items of that space.
 - **Places interact.** "I have the context" in a project removes that project's items from Home,
   because Home uses the maximum of the points below. Acknowledging Home moves the start of every
   project never opened, since such a project starts from Home's point.

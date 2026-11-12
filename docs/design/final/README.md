@@ -355,8 +355,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **New** (`C`) and Search (`⌘K`);
   - Home, Inbox (with its count), My tasks, My map;
   - **Spaces**: one flat list with no group headers. Everyone, the space that holds the whole
-    company, comes first. An encrypted space has a small lock after its name. A space you
-    muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
+    company, comes first and never moves; you order the rest yourself
+    ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read)). A space with unread messages
+    shows its name in `--t1`, semibold. An encrypted space has a small lock after its name. A space
+    you muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
     You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message;
@@ -850,9 +852,10 @@ menu's rows, the sidebar's end slot, the panel head's quiet actions and the exis
 - **The muted mark** is the `quiet` icon at 12 px in the muted text colour (`--t3`), after the name in the same end slot as the
   encrypted lock, on the sidebar's row of a muted space or direct message and on the Spaces page's row. It is a mark, not a button.
   The 64 px rail has no slot for it: it puts ", muted" in the tile's name and tooltip.
-- **Unread in a muted place is a quiet count, never bold.** Where an unread place shows the 6 px dot, a muted one shows the number of
-  new things in `--t3` at the small size, regular weight, tabular figures, in the dot's place (the muted mark stays before it).
-  Names never change weight. A muted place adds nothing to the Inbox count except what needs the person and still arrives.
+- **Unread in a muted place is a quiet count, never bold.** Where an unread place has its name in bold
+  ([Ordering spaces](#ordering-spaces-unread-and-mark-all-as-read), #1250), a muted one shows the number of new things in `--t3` at the
+  small size, regular weight, tabular figures, in the dot's place (the muted mark stays before it). The dot is for what needs the
+  person; a muted space that holds such an item and has nothing unread shows it as the others do. Names never change weight. A muted place adds nothing to the Inbox count except what needs the person and still arrives.
 - **Follow and Following** are one quiet button in a thread's panel head, between its reply count and the close control (the head's
   "quiet actions" slot): **Follow** with the plus icon, **Following** with the check (the label says the state), the `Button`'s quiet variant at the small
   size, no colour of its own. It is the same on the computer's panel, the tablet's overlay and
@@ -1257,6 +1260,45 @@ screen, colour or control: it is one line in the rows that exist, and one switch
   Turn it off and nobody does." It is the standard switch row (36 × 22, `--t1` when on), like the AI switch of a space.
 - **What it says about a person.** Only that they were active in Flux, rounded: minutes under an hour, hours under a day, then the day.
   It never says where, and Flux keeps no history of it.
+
+### Ordering spaces, unread and Mark all as read
+
+Founder pick on [#1250](https://github.com/ColdPhase/flux/issues/1250) (Hubert, 2026-11-10, v0.2.1), with the motion direction the
+same day. Nothing new is drawn as a screen: the list stays the one flat list, built from the sidebar's rows, the ⋯ menu's rows,
+the toast with Undo, the tokens and the existing icons. No new setting, mode or window.
+
+- **The order is yours.** It is per person and the same on every device and in every open tab. **Everyone is always first** and
+  never moves. A new space, and a space you are added to, goes to the end. Nothing else changes the order: not activity, not
+  unread, not the name. Until you move a space the list is as it was (the order the spaces were made in).
+- **There are no favourites.** No pinned section, no star and no second list: ordering is enough to keep your main spaces on top,
+  and it keeps the sidebar one list (founder choice on #1250, 2026-11-10).
+- **Move with a pointer.** With a mouse, press a row and drag: the drag starts after 4 px, so a plain click still opens the space
+  and a drag never does. On touch, **long press** a row for about 450 ms, then drag; a swipe before that scrolls the list and never
+  starts a drag. The long press gives a light haptic where the browser offers one (`navigator.vibrate(10)`, Android only). On a
+  tablet this is the sidebar's drawer; on the phone it is the rows of the Spaces tab. The rail (64 px) shows the same order and
+  has no drag.
+- **Move with the keyboard, a screen reader or a tap.** A space's row has a ⋯ button after its name (the 24 px quiet icon button),
+  shown while the pointer is over the row or the row has focus. **On a touch screen it is always shown, as a 44 px target** (the
+  tablet's drawer and the phone's Spaces tab; the row keeps room for it, so the lock, the muted mark, the count and the dot never
+  sit under it): moving never depends on the long press, because a gesture is never the only way to an action
+  ([Gestures](#phone), #343). Its menu has **Move up** and **Move down** (the one that cannot apply, at the first or last place, is
+  left out). The row moves one step with the same slide, focus stays on its ⋯, and a polite live region says "Release check, moved
+  to position 3 of 8". Everyone has no ⋯.
+- **Motion** is in [Motion in Flux](../motion.md#reordering-spaces): `transform` and `opacity` only, the other rows slide over
+  `--dur-1` on `--ease-out`, no scale, instant with reduced motion, and other tabs change without animation.
+- **Unread.** A space with unread messages for you shows its name in `--t1` and semibold (600); a read space keeps `--t2` and 500.
+  The 6 px dot is kept for what needs you, not for news: it shows on a space that holds an Inbox item (a question to you, a decision
+  you can accept, a task of yours that is blocked), whether or not the space is unread, so Mark all as read leaves it. A muted
+  space ([#1249](https://github.com/ColdPhase/flux/issues/1249)) stays quiet and is never bold. An unread space's name for
+  assistive technology ends ", new activity", as before, and a space that holds an Inbox item ends ", needs you" (the dot has the
+  same words for assistive technology). Opening a space reads it, as today. The Spaces tab on the phone draws
+  the same: bold when unread, `--t2` when read, the dot for what needs you.
+- **Mark all as read** is one row, in the Spaces heading's ⋯ on the computer and the tablet's drawer, in the Inbox's ⋯ (More) on
+  the computer and in the phone's More on the Inbox and on the Spaces tab. It clears the unread of every space and of the
+  conversations with your agents (people's direct messages carry no unread state yet; they are cleared here when they do). It does
+  not clear the Inbox's items that need an action: a question, a decision, a blocked task and a mention still wait. The toast says
+  "Marked all as read" with **Undo**, which brings back what was unread, except for what you opened since. Another open tab reads a
+  space's news again when its open space changes and keeps what it read for 60 seconds: not live, and no timer.
 
 ### Sign in and splash
 

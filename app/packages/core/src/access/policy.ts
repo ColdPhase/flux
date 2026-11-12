@@ -60,6 +60,7 @@ export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as c
 export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
 export const DM_ACTIONS = ['dm.read', 'dm.write'] as const;
 export const ASSISTANT_RUN_ACTIONS = ['assistant_run.read'] as const;
+export const PERSON_ACTIONS = ['person.read'] as const;
 
 /** Actions grouped by the kind of object they are checked against. */
 export interface ActionsByResource {
@@ -69,6 +70,7 @@ export interface ActionsByResource {
   sketch: (typeof SKETCH_ACTIONS)[number];
   dm: (typeof DM_ACTIONS)[number];
   assistant_run: (typeof ASSISTANT_RUN_ACTIONS)[number];
+  person: (typeof PERSON_ACTIONS)[number];
 }
 export type ResourceType = keyof ActionsByResource;
 export type Action = ActionsByResource[ResourceType];
@@ -146,6 +148,7 @@ export interface AgentEvaluation<A extends AgentFacts = AgentFacts> extends Deci
 export interface SketchEvaluation<S extends SketchFacts = SketchFacts> extends Decision { actor: Actor | null; sketch: S | null }
 export interface DmEvaluation<M extends DmFacts = DmFacts> extends Decision { actor: Actor | null; dm: M | null }
 export interface AssistantRunEvaluation extends Decision { actor: Actor | null; run: AssistantRunFacts | null }
+export interface PersonEvaluation extends Decision { actor: null; person: { id: string } | null }
 
 const DENIED: Decision = { allowed: false, visible: false };
 
@@ -276,6 +279,16 @@ export async function evaluateAssistantRun(principal: Principal, _action: Action
 }
 
 /**
+ * A person (#1250): only the person themself may know it, and only a signed-in human is one. It is the object of the events that tell a
+ * person's own tabs something about them (`person.space_order_changed.v1`), so those reach no one else. Whether the person still belongs
+ * to the event's workspace is checked by `authorizeEvent`, which knows the workspace.
+ */
+export function evaluatePerson(principal: Principal, _action: ActionsByResource['person'], personId: string): PersonEvaluation {
+  const own = principal.kind === 'human' && principal.id === personId;
+  return own ? { allowed: true, visible: true, actor: null, person: { id: personId } } : { ...DENIED, actor: null, person: null };
+}
+
+/**
  * Decides whether `principal` may perform `action` on `resource`, reading current
  * membership, grants and object visibility. Use {@link assertAuthorized} to throw the
  * matching 404/403 error instead.
@@ -303,10 +316,11 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
     case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, reader, options);
     case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, reader, options);
     case 'assistant_run': return evaluateAssistantRun(principal, action as ActionsByResource['assistant_run'], resource.id, reader, options);
+    case 'person': return evaluatePerson(principal, action as ActionsByResource['person'], resource.id);
   }
 }
 
-const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read', assistant_run: 'assistant_run.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read', assistant_run: 'assistant_run.read', person: 'person.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
 
 /**
  * The workspace of an object the principal can currently see, or null. Entry points use
@@ -320,6 +334,7 @@ export async function visibleWorkspaceOf(principal: Principal, resource: Resourc
   if ('sketch' in evaluation) return evaluation.sketch?.workspaceId ?? null;
   if ('dm' in evaluation) return evaluation.dm?.workspaceId ?? null;
   if ('run' in evaluation) return evaluation.run?.workspaceId ?? null;
+  if ('person' in evaluation) return null;
   return evaluation.actor.workspaceId;
 }
 
@@ -338,7 +353,7 @@ export function eventResource(event: EventRef): ResourceRef | null {
   if (!event.workspaceId) return null;
   const type = event.kind.split('.', 1)[0];
   if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
-  if (type === 'project' || type === 'agent' || type === 'sketch' || type === 'dm' || type === 'assistant_run') return { type, id: event.objectId };
+  if (type === 'project' || type === 'agent' || type === 'sketch' || type === 'dm' || type === 'assistant_run' || type === 'person') return { type, id: event.objectId };
   return null;
 }
 
@@ -359,6 +374,8 @@ export async function authorizeEvent(principal: Principal, event: EventRef, read
   if (!resource) return false;
   const decision = await evaluate(principal, READ_ACTION[resource.type], resource, reader);
   if (!decision.allowed || !decision.visible) return false;
+  // A person's own event (#1250) is for them while they still belong to the event's workspace.
+  if (resource.type === 'person') return (await reader.loadActor(principal, event.workspaceId!)).active;
   // The object must still belong to the event's workspace (defense in depth).
   if ('actor' in decision && decision.actor && decision.actor.workspaceId !== event.workspaceId) return false;
   return true;
@@ -381,7 +398,7 @@ export async function authorizeDelivery(principal: Principal, event: EventRef, r
   return event.kind === 'project.access_ended.v1' && (await reader.loadActor(principal, event.workspaceId)).active;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run', person: 'Person' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {

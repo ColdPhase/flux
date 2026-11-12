@@ -227,6 +227,9 @@ export function choosesInPlace(event: { button: number; metaKey: boolean; ctrlKe
 /** Moves `mark` over the first item of `box` matching `order` (newline-separated selectors). */
 function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order: string, placed: { value: boolean }, animate: boolean, chosen?: HTMLElement) {
   if (!box || !mark) return;
+  // While a row is dragged (ui/reorder.ts) the rows are away from their places: the open row draws its own pill and the highlight is
+  // put in place when the drop ends.
+  if (box.hasAttribute('data-reordering')) return;
   let current: HTMLElement | null = chosen && box.contains(chosen) ? chosen : null;
   if (!current) for (const selector of order.split('\n')) { current = box.querySelector<HTMLElement>(selector); if (current) break; }
   if (!current || !box.offsetParent) {
@@ -237,12 +240,16 @@ function placeHighlight(box: HTMLElement | null, mark: HTMLElement | null, order
   }
   const from = box.getBoundingClientRect();
   const to = current.getBoundingClientRect();
-  const fresh = !animate || !placed.value;
+  // The highlight travels when the choice changes. Standing on the item it already stands on, it goes with the item's row, at once: rows
+  // that change places (a space moved, one added above) do not slide the highlight after them.
+  const y = `translateY(${Math.round(to.top - from.top)}px)`;
+  const target = current.dataset.glideId ?? '';
+  const fresh = !animate || !placed.value || (mark.dataset.target === target && mark.style.transform !== y);
   if (fresh) mark.style.transition = 'none';
   mark.style.opacity = '1';
-  mark.style.transform = `translateY(${Math.round(to.top - from.top)}px)`;
+  mark.style.transform = y;
   mark.style.height = `${Math.round(to.height)}px`;
-  mark.dataset.target = current.dataset.glideId ?? '';
+  mark.dataset.target = target;
   box.classList.add('has-glide');
   if (fresh) { void mark.offsetWidth; mark.style.transition = ''; }
   placed.value = true;

@@ -185,6 +185,27 @@
 @media (max-width: 640px) { .set { padding-top: 14px; } }
 .proj-index__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 4px 2px 14px; }
 .proj-index__lead { flex: 1 1 16em; margin: 0; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
+/* The Spaces list in the person's order (#1250): a long press then a drag moves a row, and a row's ⋯ (Move up, Move down) is for the keyboard.
+   The card lets its rows and their menu out of its box, so a lifted row keeps its shadow; the first and last rows keep its rounded corners. */
+.set-card.proj-index__spaces { overflow: visible; }
+.proj-index__spaces > li:first-child .set-row { border-radius: var(--r-lg) var(--r-lg) 0 0; }
+.proj-index__spaces > li:last-child .set-row { border-radius: 0 0 var(--r-lg) var(--r-lg); }
+.proj-index__spaces > li:only-child .set-row { border-radius: var(--r-lg); }
+.proj-index__spaces .set-row__t { color: var(--t2); }
+.proj-index__spaces .set-row.is-unread .set-row__t { color: var(--t1); font-weight: 600; }
+.proj-index__row { position: relative; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.proj-index__row > .top__more { position: absolute; right: 40px; top: 50%; margin-top: -16px; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
+.proj-index__row:hover > .top__more, .proj-index__row > .top__more:is(:focus-within, :has([aria-expanded="true"])) { opacity: 1; }
+.proj-index__more { width: 32px; height: 32px; }
+/* A touch screen shows the ⋯ always, as a 44 px target at the row's end (a gesture is never the only way, #343); every row, Everyone too,
+   keeps room for it, so the dot and the count stay in line and the chevron sits before it. */
+@media (pointer: coarse) {
+  .proj-index__row > .top__more { right: 0; margin-top: -22px; opacity: 1; }
+  .proj-index__more { width: 44px; height: 44px; }
+  .proj-index__spaces > li > .set-row { padding-right: 44px; }
+}
+[data-reordering].proj-index__spaces .set-row { pointer-events: none; }
+[data-reordering] .proj-index__row > .top__more { opacity: 0; }
 .proj-index__dot { width: 8px; height: 8px; flex: none; border-radius: 50%; background: var(--inv); }
 .proj-index__tile { font-size: var(--fs-sm); font-weight: 600; box-shadow: inset 0 0 0 1px var(--line); }
 /* An encrypted space's small lock after its name (F-026 §4). */

@@ -94,6 +94,30 @@ separate founder decisions.
   changes its text in place with no motion, so a burst of messages moves the card once. Reduced motion shows and
   removes it at once.
 
+### Reordering spaces
+
+Founder direction by Hubert on 2026-11-10, on [#1250](https://github.com/ColdPhase/flux/issues/1250): the person's own reordering of
+the Spaces list is animated, within these rules (only `opacity` and `transform`, every duration and easing from the tokens, no
+spring, no scale of a sidebar item, instant with reduced motion). It is the person's own input, so it is the action's one motion.
+
+- **Pick up.** On the start of a drag (a mouse) or after the long press (touch) the dragged row lifts: the `--el` fill and the
+  `--sh-pop` shadow. The slot it will land in is a quiet `--sub` mark at slight opacity (it is where the gap is). There is no scale.
+- **While dragging.** The row follows the pointer on `transform: translateY` only, clamped to the Spaces list (Everyone stays fixed
+  at the top and is never passed). The other rows **slide out of the way** with `transform` over `--dur-1` on `--ease-out` as the
+  dragged row crosses each one's midpoint, so the gap always shows where it will land.
+- **Drop.** The row settles into the gap over `--dur-1` on `--ease-out`; the others are already in place, so nothing jumps. A
+  cancelled drag (Esc, or released outside the list) glides back to its original slot the same way.
+- **The selected space.** While a row is dragged the open space's highlight is part of its row, so it goes with that row as it
+  is dragged or slides out of the way, and it lands with it: the sidebar's traveling highlight takes its place without motion when the
+  drop ends, so there is no second motion after the drop. The highlight travels only when the selection changes, never because
+  its row moved.
+- **Edge scroll.** Near the list's top or bottom edge a long list scrolls itself while the pointer is held there.
+- **Keyboard and screen readers.** ⋯ › Move up / Move down moves the row one step with the same slide over `--dur-1` and keeps focus
+  on it; a polite live region says "Release check, moved to position 3 of 8".
+- **Other tabs.** They receive the new order without animation: rows move only in answer to the person's own input (rule 5).
+- **Phone and touch.** A long press starts the drag, with a light haptic where available. Scrolling the list never starts one.
+- **Reduced motion** (either setting) puts every row at its place at once: the drag follows the pointer and the drop is instant.
+
 ## Tokens (`app/apps/web/src/ui/tokens.css`)
 
 The values after #863:
@@ -135,6 +159,7 @@ The values after #863:
 | State changes | `ui/StatusGlyph.tsx`, `ui/Morph.tsx`, `ui/motion.ts` |
 | Rows that come, go and move | `ui/rowMotion.ts` (one motion per input, `claimInput` in `ui/motion.ts`) |
 | The press | `ui/press.ts` |
+| Reordering the Spaces list (drag, long press, ⋯ › Move up and Move down) | `ui/reorder.ts` (`useReorder`), used by `app/SpaceOrder.tsx` |
 | The tokens and reduced motion | `ui/tokens.css`, `ui/ui.css`, `ui/moments.css` |
 
 ## What #863 changed
@@ -182,6 +207,9 @@ What #863 does not close, and where it goes:
   `document.getAnimations()` on every frame, and repeat with system reduced motion, the in-app setting, 4× CPU and a
   90 ms click. Each action shows its first change within 100 ms, runs one animation on the tokens, replays nothing on
   a refetch or the server's echo, and shifts no layout after its content arrives.
+- **Reordering.** `app/tests/ui/test_space_order.py` samples every frame of a drag, a drop, a cancel and a keyboard move in both
+  engines, with a mouse and with touch: only `transform` and `opacity` change, the other rows slide over `--dur-1`, Everyone never
+  moves, and with reduced motion every move is instant.
 - **Existing tests.** `app/tests/ui/test_view_switch.py` and `test_light_motion.py` assert these rules (no held
   picture, a fade-in of at most 120 ms, the press, the tokens). `test_sidebar_motion.py` keeps asserting the sidebar's
   width animation, which stays.

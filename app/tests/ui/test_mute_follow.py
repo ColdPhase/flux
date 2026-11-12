@@ -198,10 +198,11 @@ class MuteAndFollowJourney(unittest.TestCase):
         self.kai_posts(self.project_id, self.other_project_id)
         page.goto("/")
         garden, tools = self.sidebar_space(page, "Garden sensors"), self.sidebar_space(page, "Tool library")
-        # Both have something new for Ada, and show the dot.
-        expect(garden.locator(".side__dot")).to_be_visible()
-        expect(tools.locator(".side__dot")).to_be_visible()
-        # The stream carries the change to this open page: the dot of a muted space turns into its quiet count, with no reload (a reload
+        # Both have something new for Ada: their names are bold (#1250); the dot is for what needs her, and nothing does.
+        expect(garden).to_have_class(re.compile(r"\bis-unread\b"))
+        expect(tools).to_have_class(re.compile(r"\bis-unread\b"))
+        self.assertEqual(int(garden.locator(".side__label").evaluate("el => getComputedStyle(el).fontWeight")), 600)
+        # The stream carries the change to this open page: the muted space is no longer bold and shows its quiet count, with no reload (a reload
         # would also move Home's return point, which is where a space with none of its own starts "since you left").
         self.set_mute(page, "project", self.project_id, True)
         quiet = garden.locator(".side__quiet")
@@ -210,10 +211,12 @@ class MuteAndFollowJourney(unittest.TestCase):
         expect(garden.locator(".side__dot")).to_have_count(0)
         expect(garden.locator("[data-muted-mark]")).to_be_visible()
         expect(garden).to_have_attribute("aria-label", re.compile(r"Garden sensors, muted, \d+ new"))
-        # Quiet: regular weight, in the muted text colour; the name never turns bold.
+        expect(garden).not_to_have_class(re.compile(r"\bis-unread\b"))
+        # Quiet: regular weight, in the muted text colour; the name never turns bold, and stays as the name of a read space.
         self.assertLessEqual(int(quiet.evaluate("el => getComputedStyle(el).fontWeight")), 400)
-        self.assertEqual(int(garden.locator(".side__label").evaluate("el => getComputedStyle(el).fontWeight")), int(tools.locator(".side__label").evaluate("el => getComputedStyle(el).fontWeight")))
-        expect(tools.locator(".side__dot")).to_be_visible()
+        self.assertEqual(int(garden.locator(".side__label").evaluate("el => getComputedStyle(el).fontWeight")), 500)
+        expect(tools).to_have_class(re.compile(r"\bis-unread\b"))
+        self.assertEqual(int(tools.locator(".side__label").evaluate("el => getComputedStyle(el).fontWeight")), 600)
         expect(tools.locator(".side__quiet")).to_have_count(0)
         # The mark does not push the name out of its row.
         box = garden.bounding_box()
@@ -354,7 +357,9 @@ class MuteAndFollowJourney(unittest.TestCase):
         quiet = spaces.locator(".proj-index__quiet")
         expect(quiet).to_have_count(1)
         expect(quiet).to_have_text(re.compile(r"^[1-9]\d*$"))
-        expect(spaces.locator(".proj-index__dot")).to_have_count(1)
+        # What is new elsewhere is bold, not a dot (#1250).
+        expect(spaces.locator("a.is-unread")).to_have_count(1)
+        expect(spaces.locator(".proj-index__dot")).to_have_count(0)
         page.goto(f"/projects/{self.project_id}")
         button.click()
         menu.get_by_role("menuitem", name=re.compile(r"^Unmute space")).click()

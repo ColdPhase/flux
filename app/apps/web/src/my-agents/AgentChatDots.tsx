@@ -7,6 +7,9 @@ import { listAgentChats } from './api';
 // The unread dot of an agent's private chat (#919, F-036 AG-7): its answers and its reports (one line when a run on a task ends)
 // arrive in its chat and nowhere else: never in the Inbox. The sidebar and the Messages list show the dot; opening the chat reads it.
 
+/** Fired when the chats were read or put back from outside a chat ("Mark all as read", #1250): the dots read again at once. */
+export const AGENT_CHATS_CHANGED = 'flux:agent-chats-changed';
+
 const UnreadAgents = createContext<ReadonlySet<string>>(new Set());
 
 /** The agents whose chat has something the person has not read, as the shell last saw it. The chat that is open is read as it arrives, so it has no dot. */
@@ -35,10 +38,11 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
     // A hidden tab asks nothing; it looks again when it is shown.
     const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
+    window.addEventListener(AGENT_CHATS_CHANGED, refresh);
     document.addEventListener('visibilitychange', visible);
     // Also while the live stream is open (#862): a chat read on another device sends this tab no event. Half a request a minute.
     const interval = setInterval(visible, 120_000);
-    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); clearInterval(interval); if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
+    return () => { window.removeEventListener('focus', refresh); window.removeEventListener(AGENT_CHATS_CHANGED, refresh); document.removeEventListener('visibilitychange', visible); clearInterval(interval); if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   }, [refresh]);
   useStreamEvents(identity, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT && document.visibilityState === 'visible') soon(); }, refresh);
   const agents = useMemo(() => {

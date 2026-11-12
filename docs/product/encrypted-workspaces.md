@@ -750,7 +750,7 @@ its own [error-path rule](#error-paths).
 | `project_goals` | `title` | — | — |
 | `project_conversations` | — | — | `space` (enum) |
 | `project_messages` (includes task discussion replies) | `body` | `request_fingerprint` | `contribution_kind` (enum) |
-| `message_references` (#469), `project_message_observations`, `dm_message_observations`, `return_points` | — | — | ids and positions only |
+| `message_references` (#469), `project_message_observations`, `dm_message_observations`, `return_points`, `space_order` (#1250) | — | — | ids and positions only |
 | `dms` | `title` | — | `kind`, `pair_key` (user ids) |
 | `dm_messages` | `body` | `request_fingerprint` | — |
 | `project_materials` | — | `request_fingerprint` | `kind` |

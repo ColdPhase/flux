@@ -342,8 +342,8 @@ export const STREAM_CLOSE_UNAUTHENTICATED = 4401;
 /** 1013: the client read too slowly; reconnect with the last cursor. 1001: server shutdown. */
 export const STREAM_CLOSE_SLOW_CONSUMER = 1013;
 
-/** `assistant_run`: a person's own assistant run (#68); its events reach only that person. */
-export type StreamObjectType = 'workspace' | 'project' | 'agent' | 'sketch' | 'dm' | 'assistant_run';
+/** `assistant_run`: a person's own assistant run (#68); its events reach only that person. `person`: the person themself (#1250); their events reach only them. */
+export type StreamObjectType = 'workspace' | 'project' | 'agent' | 'sketch' | 'dm' | 'assistant_run' | 'person';
 
 /**
  * One authorized change. It carries identifiers and kind only; the client refetches the
