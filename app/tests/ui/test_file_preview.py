@@ -127,6 +127,13 @@ h1 { font-size: 24px; } .ok { color: #2a7a3a; }</style></head><body>
 </body></html>""".encode()
 
 
+def sandbox_refusal(message: str) -> bool:
+    """A refusal the sandbox of the preview itself reports, which is the behaviour under test, not a fault of Flux's page."""
+    text = message.lower()
+    return "service worker is disabled because the context is sandboxed" in text or (
+        "sandboxed" in text and "flag is not set" in text and "/preview" in text or "not allowed in a sandboxed frame" in text)
+
+
 class FilePreview(unittest.TestCase):
     pw = None
     browser: Browser
@@ -197,9 +204,10 @@ class FilePreview(unittest.TestCase):
         page = context.new_page()
         context.on("page", lambda opened: events["pages"].append(opened.url))
         errors: list[str] = []
-        # Playwright's own service-worker block reads navigator.serviceWorker in every frame, which a sandboxed frame refuses
-        # (Chromium: "Service worker", WebKit: "Service Worker").
-        page.on("pageerror", lambda error: None if "service worker is disabled because the context is sandboxed" in str(error).lower() else errors.append(str(error)))
+        # The browser's own refusals inside the sandboxed preview are not the page's errors: Playwright's service-worker block reads
+        # navigator.serviceWorker in every frame (Chromium: "Service worker", WebKit: "Service Worker"), and WebKit also reports the
+        # top navigation and the alert the hostile pages try ("... is sandboxed ... flag is not set"). Anything else is kept.
+        page.on("pageerror", lambda error: None if sandbox_refusal(str(error)) else errors.append(str(error)))
         page.on("download", lambda download: events["downloads"].append(download.suggested_filename))
         page.on("dialog", lambda dialog: (events["dialogs"].append(dialog.message), dialog.dismiss()))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
