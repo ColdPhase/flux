@@ -38,19 +38,24 @@ on:
         required: false
         type: string
         default: "1"
+      modules_key:
+        description: Short digest of the module list that scripts/ci_test.sh computes, so the concurrency group stays short (GitHub caps it at 400 characters) and a repeat of the same ref and modules still cancels the running one
+        required: false
+        type: string
+        default: ""
       request_id:
         description: Optional marker that scripts/ci_test.sh puts in the run name to find its own run
         required: false
         type: string
         default: ""
 
-run-name: ${{ inputs.suite }} ${{ inputs.browser }} ${{ inputs.modules }} @ ${{ inputs.ref }} ${{ inputs.request_id }}
+run-name: ${{ inputs.suite }} ${{ inputs.browser }} @ ${{ inputs.ref }} ${{ inputs.request_id }}
 
 permissions:
   contents: read
 
 concurrency:
-  group: test-modules-${{ inputs.ref }}-${{ inputs.suite }}-${{ inputs.modules }}-${{ inputs.browser }}
+  group: test-modules-${{ inputs.ref }}-${{ inputs.suite }}-${{ inputs.browser }}-${{ inputs.modules_key || inputs.request_id || github.run_id }}
   cancel-in-progress: true
 
 jobs:
