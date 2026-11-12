@@ -25,6 +25,7 @@
       "description": "A control that opens a menu, a panel or a picker and shows its current value, like a field. Dropdowns of plain values use Select.",
       "classes": [
         "wiki-switch",
+        "seen",
         "top__audience",
         "top__faces",
         "me__btn",
