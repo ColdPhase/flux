@@ -573,6 +573,14 @@ class LiveJourney(LiveBase):
           };
         })();""" % json.dumps(PUSH_KEY))
         jonas.goto("/")
+        # Kai takes everything that happens (the level "Everything" pushes an open call too), with Flux open on Home: the corner notice card (#1268)
+        # and the tab's "(N)" (#1283) tell him of the call; the call has no sound of its own (the chime is the invitation's).
+        kai = self.page("kai")
+        self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "everything"}, status=200)
+        self.addCleanup(lambda: self.api(kai, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou"}))
+        kai.goto("/")
+        expect(kai.locator(".app__pane")).to_be_visible()
+        kai.wait_for_timeout(1500)
 
         # Lee starts it: each person runs at most a few calls at once, and the journeys before this one started theirs.
         nia = self.page("lee")
@@ -581,6 +589,12 @@ class LiveJourney(LiveBase):
         bar = self.bar(nia)
         expect(bar.locator(".lv-where")).to_have_text("Call in Repair cafe")
         expect(bar.get_by_role("status").filter(has_text="Nobody joined")).to_be_visible()
+        notice = kai.locator(".ui-notices .ui-notice")
+        expect(notice).to_contain_text("Lee Park started a call in Repair cafe", timeout=5000)
+        expect(notice.get_by_role("button", name="Join")).to_be_visible()
+        expect(notice.get_by_role("button", name="Open")).to_have_count(0)
+        expect(kai).to_have_title(re.compile(r"^\(1\) "), timeout=5000)
+        shot(kai, "live-desktop-1440-call-notice-card")
         started = time.monotonic()
         expect(space).to_have_accessible_name(re.compile("call on"), timeout=2500)
         expect(space.locator("svg.side__live[data-call-mark]")).to_be_visible()
@@ -626,6 +640,9 @@ class LiveJourney(LiveBase):
         expect(ada.locator("aside").get_by_role("link", name=re.compile("^Repair cafe")).locator("svg.side__live[data-call-mark]")).to_have_count(0, timeout=40000)
         ada.goto("/inbox")
         expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
+        # Kai's card goes with the call and the tab stops counting it.
+        expect(kai.locator(".ui-notices .ui-notice")).to_have_count(0, timeout=20000)
+        expect(kai).not_to_have_title(re.compile(r"^\(\d+\) "), timeout=20000)
 
     def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
         """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;
