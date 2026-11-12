@@ -79,7 +79,9 @@ class FileOnlyMessage(unittest.TestCase):
         page.goto(f"/projects/{project['id']}/conversations/{started['id']}")
         message = page.locator(f"#message-{message_id}")
         files = message.get_by_role("list", name="1 attached file")
-        link = files.get_by_role("link", name="readings.csv")
+        # A CSV previews from its name (C-58, #1252); its own Download stays beside it.
+        expect(files.get_by_role("button", name="Preview readings.csv")).to_be_visible()
+        link = files.get_by_role("link", name="Download readings.csv")
         expect(link).to_have_attribute("href", f"/api/v1/files/{file['id']}")
         expect(link).to_have_attribute("download", "readings.csv")
         expect(files).to_contain_text(f"{len(BYTES)} B")
@@ -316,14 +318,14 @@ class FilesReferencesPhotos(unittest.TestCase):
         files = self.message(page, "files")
         files.scroll_into_view_if_needed()
         rows = files.get_by_role("list", name="3 attached files")
-        pdf = rows.get_by_role("link", name="probe-v2-drawing.pdf")
-        expect(pdf).to_have_attribute("download", "probe-v2-drawing.pdf")
-        expect(pdf).to_contain_text("PDF · 302.8 KiB")
-        expect(pdf).to_contain_text("Download")
+        # A PDF and a CSV preview from their name (C-58, #1252); the round button beside them downloads.
+        pdf = rows.locator(".file-row").filter(has_text="probe-v2-drawing.pdf")
+        expect(pdf.get_by_role("link", name="Download probe-v2-drawing.pdf")).to_have_attribute("download", "probe-v2-drawing.pdf")
+        expect(pdf.get_by_role("button", name="Preview probe-v2-drawing.pdf")).to_contain_text("PDF · 302.8 KiB")
         expect(pdf.locator("svg.file-icon[data-kind=pdf] .file-icon__band")).to_have_count(1)
         expect(pdf.locator(".file-icon__label")).to_have_text("PDF")
-        csv = rows.get_by_role("link", name="lora-range-far-beds.csv")
-        expect(csv).to_contain_text("Table · ")
+        csv = rows.locator(".file-row").filter(has_text="lora-range-far-beds.csv")
+        expect(csv.get_by_role("button", name="Preview lora-range-far-beds.csv")).to_contain_text("Table · ")
         expect(csv.locator(".file-icon__label")).to_have_text("CSV")
         expect(csv.locator(".file-icon__band")).to_have_count(0)  # negative control: only PDF has the band
         voice = rows.locator(".voice-note")
@@ -826,8 +828,8 @@ class FilesReferencesPhotos(unittest.TestCase):
         """#348 AC-1: a file row reads "type · size" when stored, in the draft and while it uploads."""
         page = self.page()
         stored = self.message(page, "files").get_by_role("list", name="3 attached files")
-        expect(stored.locator("a.file-row").filter(has_text="probe-v2-drawing.pdf").locator("small")).to_have_text(re.compile(r"^PDF · \d"))
-        expect(stored.locator("a.file-row").filter(has_text="lora-range-far-beds.csv").locator("small")).to_have_text(re.compile(r"^Table · \d"))
+        expect(stored.locator(".file-row").filter(has_text="probe-v2-drawing.pdf").locator("small")).to_have_text(re.compile(r"^PDF · \d"))
+        expect(stored.locator(".file-row").filter(has_text="lora-range-far-beds.csv").locator("small")).to_have_text(re.compile(r"^Table · \d"))
         held: list = []
         page.route(re.compile(r"/api/v1/projects/[^/]+/files\?"), lambda route: held.append(route) if route.request.method == "POST" else route.continue_())
         with page.expect_file_chooser() as chooser:

@@ -665,7 +665,7 @@ class ScenarioJourney:
         run = self.root_of("jonas", lamp, RUN_ROOT)
         self.assertEqual([item["name"] for item in run["message"]["files"]], ["lux-readings.csv"])
         file_id = run["message"]["files"][0]["id"]
-        link = jonas.locator(f"#message-{run['message']['id']}").get_by_role("list", name="1 attached file").get_by_role("link", name="lux-readings.csv")
+        link = jonas.locator(f"#message-{run['message']['id']}").get_by_role("list", name="1 attached file").get_by_role("link", name="Download lux-readings.csv")
         expect(link).to_have_attribute("href", f"/api/v1/files/{file_id}")
         self.assertEqual(jonas.request.get(f"/api/v1/files/{file_id}").body(), CSV)
         self.shot(jonas, "2-attachment")
