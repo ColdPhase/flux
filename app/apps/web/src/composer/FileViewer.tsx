@@ -5,7 +5,7 @@ import { send } from '../api/client';
 import { Button, Icon, Spinner, trapTab } from '../ui';
 import { fileKind, fileSize, fileWord, type PreviewFormat } from './fileKind';
 
-// A file preview in the photo viewer's frame (C-58, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
+// A file preview in the photo viewer's frame (C-60, #1252, F-026 §6): always dark, Close, the name with "type · size", Download.
 // Someone else's HTML never runs on Flux's origin: it is framed from the preview route, which sandboxes it to an opaque origin
 // and lets it fetch nothing; the frame's own `sandbox` attribute says the same.
 

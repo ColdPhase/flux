@@ -45,7 +45,7 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }
       .header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
       .header('Content-Security-Policy', 'sandbox').send(Buffer.from(file.bytes));
   });
-  // A preview of someone else's HTML page or PDF (C-58, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin
+  // A preview of someone else's HTML page or PDF (C-60, #1252): only inside a frame of a Flux page, sandboxed to an opaque origin
   // by its own policy, with nothing fetched. The frame's `sandbox` attribute repeats the HTML sandbox; access is the download's.
   app.get<{ Params: { fileId: string }; Querystring: { scripts?: '1' } }>('/api/v1/files/:fileId/preview', {
     schema: { querystring: { type: 'object', additionalProperties: false, properties: { scripts: { type: 'string', enum: ['1'] } } } },
@@ -58,12 +58,13 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }
     const kind = previewKind(file.name);
     if (!kind) throw new NotFoundError('Preview', 'FILE_NO_PREVIEW');
     const scripts = kind === 'html' && request.query.scripts === '1';
-    return reply.header('Content-Type', kind === 'html' ? 'text/html; charset=utf-8' : 'application/pdf').header('Content-Length', file.size)
+    const body = kind === 'html' ? inertHead(file.bytes) : Buffer.from(file.bytes);
+    return reply.header('Content-Type', kind === 'html' ? 'text/html; charset=utf-8' : 'application/pdf').header('Content-Length', body.byteLength)
       .header('Content-Disposition', `inline; filename="preview"; filename*=UTF-8''${encodedName(file.name)}`)
       .header('Content-Security-Policy', previewPolicy(kind, scripts))
       .header('X-Frame-Options', 'SAMEORIGIN').header('X-Content-Type-Options', 'nosniff').header('Cache-Control', 'private, no-store')
       .header('Referrer-Policy', 'no-referrer').header('X-DNS-Prefetch-Control', 'off').header('Permissions-Policy', PREVIEW_PERMISSIONS)
-      .header('Cross-Origin-Resource-Policy', 'same-origin').send(Buffer.from(file.bytes));
+      .header('Cross-Origin-Resource-Policy', 'same-origin').send(body);
   });
   let running = false;
   const sweep = async () => {
@@ -78,10 +79,20 @@ export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }
 }
 
 const encodedName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
+/**
+ * Every `<link>` and `<meta>` of a previewed page becomes an inert, unknown element (`<x-link>`, `<x-meta>`) before it is sent (C-60).
+ * WebKit opens a connection for `<link rel="preconnect">` without asking the Content-Security-Policy, and DNS prefetch, prefetch and
+ * preload are hints a browser may act on before any policy; a `<meta http-equiv>` could turn DNS prefetch back on. A still page loses
+ * nothing it could use: the policy already refuses every stylesheet, icon and font a link names, and the response's own header sets the
+ * charset. The bytes are read as Latin-1 so that every other byte is sent exactly as stored; a tag name ends at a space, `/` or `>`.
+ */
+export function inertHead(bytes: Uint8Array): Buffer {
+  return Buffer.from(Buffer.from(bytes).toString('latin1').replace(/<(link|meta)(?=[\t\n\f\r />])/gi, '<x-$1'), 'latin1');
+}
 const previewKind = (name: string): 'html' | 'pdf' | null => /\.html?$/i.test(name) ? 'html' : /\.pdf$/i.test(name) ? 'pdf' : null;
 
 /**
- * The preview's own Content-Security-Policy (C-58). `sandbox` without `allow-same-origin` gives the page an opaque origin (no Flux
+ * The preview's own Content-Security-Policy (C-60). `sandbox` without `allow-same-origin` gives the page an opaque origin (no Flux
  * cookie, storage, API or parent), and without `allow-forms`, `allow-popups`, `allow-top-navigation`, `allow-downloads` and
  * `allow-modals` none of those. `default-src 'none'` with only `data:` images and inline styles: nothing is fetched, so no third
  * party learns the file was read. Run scripts adds `allow-scripts` and inline scripts only; there is still no `connect-src`.

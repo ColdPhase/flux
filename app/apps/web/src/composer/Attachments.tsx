@@ -46,7 +46,7 @@ const PICTOGRAM: Record<FileKind, React.ReactNode> = {
 export const typeLine = (file: { name: string; size: number }, detail?: string) => [fileWord(fileKind(file.name)), detail, fileSize(file.size)].filter(Boolean).join(' · ');
 
 /**
- * One stored file: icon, name, "type · size" and Download. A file Flux can preview (C-58) opens the viewer from its name and keeps
+ * One stored file: icon, name, "type · size" and Download. A file Flux can preview (C-60) opens the viewer from its name and keeps
  * Download as its own button; any other file's whole row downloads under its name.
  */
 export function FileRow({ file }: { file: MessageFile }) {

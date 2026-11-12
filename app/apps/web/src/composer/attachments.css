@@ -22,7 +22,7 @@ a.file-row:focus-visible, .file-row__open:focus-visible, a.file-row__act:focus-v
 .file-row__text small { color: var(--t3); font-size: var(--fs-xs); }
 .file-row__act { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; color: var(--t2); }
 a.file-row:hover .file-row__act { color: var(--t1); }
-/* A file Flux can preview (C-58, #1252): its name opens the viewer, its round button downloads. */
+/* A file Flux can preview (C-60, #1252): its name opens the viewer, its round button downloads. */
 .file-row--preview { padding: 0 12px 0 0; }
 .file-row--preview:has(.file-row__open:hover) { background: var(--hov); }
 .file-row__open { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; min-height: inherit; padding: 8px 0 8px 12px; border: 0; border-radius: var(--r); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -111,7 +111,7 @@ span.photo-grid__open { cursor: default; }
 .photo-viewer__actions > *:disabled { opacity: .4; cursor: default; }
 .photo-viewer button:focus-visible, .photo-viewer a:focus-visible { outline: 2px solid #f4f4f5; outline-offset: 2px; }
 
-/* A file preview in the photo viewer's frame (C-58, #1252): one page sheet on the stage, edge to edge on the phone. */
+/* A file preview in the photo viewer's frame (C-60, #1252): one page sheet on the stage, edge to edge on the phone. */
 .file-viewer__sheet { display: flex; flex-direction: column; width: min(100% - 32px, 1200px); height: 100%; overflow: hidden; border-radius: var(--r); background: var(--el); color: var(--t1); }
 .file-viewer__frame { flex: 1; width: 100%; min-height: 0; border: 0; color-scheme: light; background: Canvas; }
 .file-viewer__state { display: flex; align-items: center; gap: 10px; margin: auto; padding: 24px; color: var(--t2); font-size: var(--fs-base); text-align: center; overflow-wrap: anywhere; }

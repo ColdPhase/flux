@@ -4,11 +4,15 @@ import { test } from 'node:test';
 import { filePreviewPath, type Conversation, type StagedFile } from '@flux/contracts';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 
-// File previews (C-58, #1252): someone else's HTML or PDF is served only to a frame of a Flux page, sandboxed to an opaque origin by its
+// File previews (C-60, #1252): someone else's HTML or PDF is served only to a frame of a Flux page, sandboxed to an opaque origin by its
 // own policy, under the download's access check. The browser half (nothing runs, nothing leaves) is tests/ui/test_file_preview.py.
 
 const FRAME = { 'sec-fetch-dest': 'iframe', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate' };
-const HTML = Buffer.from('<!doctype html><title>Range</title><h1>Gateway range</h1><script>parent.postMessage("hi", "*")</script>');
+const HTML = Buffer.concat([Buffer.from('<!doctype html><META http-equiv="x-dns-prefetch-control" content="on"><link rel=preconnect href="https://leak.example">'
+  + '<LINK\nrel="dns-prefetch" href="//leak.example"/><title>Range</title><h1>Gateway range</h1><script>parent.postMessage("hi", "*")</script><p>'),
+Buffer.from('Zażółć', 'utf8'), Buffer.from(' <linked> <metadata> '), Buffer.from([0xff, 0xfe]), Buffer.from('</p>')]);
+/** What the preview sends: every `<link>` and `<meta>` inert, every other byte as stored (C-60). */
+const SENT = Buffer.from(HTML.toString('latin1').replace('<META', '<x-META').replace('<link', '<x-link').replace('<LINK', '<x-LINK'), 'latin1');
 const PDF = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n');
 
 async function upload(who: Person, projectId: string, bytes: Uint8Array, name: string) {
@@ -52,7 +56,11 @@ test('an HTML preview is a sandboxed, network-less page for a frame of a Flux pa
   assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin');
   assert.match(response.headers.get('content-disposition')!, /^inline; filename="preview"; filename\*=UTF-8''range%20report\.html$/);
   assert.match(response.headers.get('permissions-policy')!, /^camera=\(\), microphone=\(\), display-capture=\(\)/);
-  assert.deepEqual(Buffer.from(await response.arrayBuffer()), HTML);
+  const sent = Buffer.from(await response.arrayBuffer());
+  assert.deepEqual(sent, SENT, 'links and metas are inert; <linked>, <metadata> and every other byte are untouched');
+  assert.equal(Number(response.headers.get('content-length')), SENT.byteLength);
+  assert.doesNotMatch(sent.toString('latin1'), /<(link|meta)[\s/>]/i);
+  assert.ok(sent.includes(Buffer.from('Zażółć', 'utf8')) && sent.includes(Buffer.from([0xff, 0xfe])), 'UTF-8 and stray bytes pass unchanged');
 
   const scripts = await preview(f.reader, f.html.id, FRAME, true);
   assert.equal(scripts.status, 200);

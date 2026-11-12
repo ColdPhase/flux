@@ -1,4 +1,4 @@
-"""Browser tests for file previews (C-58, #1252): someone else's HTML in a sandboxed, network-less frame, and the viewer.
+"""Browser tests for file previews (C-60, #1252): someone else's HTML in a sandboxed, network-less frame, and the viewer.
 
 Runs through scripts/check_ui.sh test_file_preview. The negative security tests open a hostile HTML file the way a reader would (the
 row's name, then the viewer) and assert that nothing in it runs, nothing leaves the browser, the Flux session is unreachable and the
@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import os
 import re
+import socket
+import threading
 import time
 import unittest
 import uuid
@@ -26,6 +28,36 @@ PASSWORD = "previews stay in their box"
 STAMP = int(time.time() * 1000)
 PEOPLE = {"ada": ("Ada Kowalska", f"ada.preview+{STAMP}@example.test"), "jonas": ("Jonas Berg", f"jonas.preview+{STAMP}@example.test")}
 LEAK = "leak.invalid"
+
+
+class Listener:
+    """A real TCP listener on loopback that counts connections: a preconnect never shows as a request, only as a connection."""
+
+    def __init__(self) -> None:
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server.bind(("127.0.0.1", 0))
+        self.server.listen(16)
+        self.port = self.server.getsockname()[1]
+        self.connections = 0
+        threading.Thread(target=self.serve, daemon=True).start()
+
+    def serve(self) -> None:
+        while True:
+            client, _ = self.server.accept()
+            self.connections += 1
+            try:
+                client.settimeout(1)
+                client.recv(4096)
+                client.sendall(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n")
+            except OSError:
+                pass
+            finally:
+                client.close()
+
+
+TRAP = Listener()
+TRAP_URL = f"http://127.0.0.1:{TRAP.port}"
 DOT = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAF0lEQVR4nGNkYPjPQApgIkn1qIZRDcNKAwBXRgEfVhUMcgAAAABJRU5ErkJggg=="
 
 # Every way a page could run code or reach out without being asked: none of it may work while scripts are off.
@@ -34,6 +66,10 @@ HOSTILE = f"""<!doctype html><html><head><meta charset="utf-8">
 <base href="https://{LEAK}/base/">
 <link rel="stylesheet" href="https://{LEAK}/style.css"><link rel="preload" as="image" href="https://{LEAK}/preload.png">
 <link rel="prefetch" href="https://{LEAK}/prefetch"><link rel="icon" href="https://{LEAK}/favicon.ico">
+<meta http-equiv="x-dns-prefetch-control" content="on"><META HTTP-EQUIV="refresh" CONTENT="0;url={TRAP_URL}/meta">
+<link rel="preconnect" href="{TRAP_URL}"><LINK REL="dns-prefetch" HREF="{TRAP_URL}"><link rel="preload" as="fetch" href="{TRAP_URL}/preload">
+<link rel="modulepreload" href="{TRAP_URL}/module.js"><link rel="prerender" href="{TRAP_URL}/prerender"><link
+ rel="stylesheet" href="{TRAP_URL}/style.css">
 <style>@import url(https://{LEAK}/import.css); body {{ font: 16px/1.5 Georgia, serif; margin: 32px; background-image: url(https://{LEAK}/bg.png); }}
 @font-face {{ font-family: Leak; src: url(https://{LEAK}/font.woff2); }} h1 {{ font-family: Leak, Georgia, serif; color: rgb(30, 80, 160); }}</style>
 <script>document.title = 'owned'; document.getElementById && (window.__ran = 1); parent.postMessage('script', '*'); top.document.title = 'owned';
@@ -161,8 +197,9 @@ class FilePreview(unittest.TestCase):
         page = context.new_page()
         context.on("page", lambda opened: events["pages"].append(opened.url))
         errors: list[str] = []
-        # Playwright's own service-worker block reads navigator.serviceWorker in every frame, which a sandboxed frame refuses.
-        page.on("pageerror", lambda error: None if "Service worker is disabled because the context is sandboxed" in str(error) else errors.append(str(error)))
+        # Playwright's own service-worker block reads navigator.serviceWorker in every frame, which a sandboxed frame refuses
+        # (Chromium: "Service worker", WebKit: "Service Worker").
+        page.on("pageerror", lambda error: None if "service worker is disabled because the context is sandboxed" in str(error).lower() else errors.append(str(error)))
         page.on("download", lambda download: events["downloads"].append(download.suggested_filename))
         page.on("dialog", lambda dialog: (events["dialogs"].append(dialog.message), dialog.dismiss()))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
@@ -243,6 +280,9 @@ class FilePreview(unittest.TestCase):
         self.assertEqual(frame.url, f"{ORIGIN}/api/v1/files/{self.ids['file:hostile']}/preview", "no refresh, form or link moved the frame")
         expect(inside.locator("#title")).to_have_text("Gateway range report")
         self.assertEqual(outside, [], "nothing left the browser")
+        # Not even a connection: a preconnect or DNS prefetch is a hint the browser may act on without asking the policy (WebKit did),
+        # so the preview sends every <link> and <meta> inert (C-60).
+        self.assertEqual(TRAP.connections, 0, "no connection was opened to a host the page names")
         self.assertEqual(events["pages"], [], "no window opened")
         self.assertEqual(events["downloads"], [], "no download started from inside the preview")
         self.assertEqual(events["dialogs"], [])
@@ -279,6 +319,17 @@ class FilePreview(unittest.TestCase):
         if UI_BROWSER == "chromium":
             self.assertEqual(seen, {"frame-src"}, "the Flux page refused the other site in its frame")  # not every engine reports it
         self.assert_recorder_sees(page, outside)
+
+    def test_02b_the_connection_counter_sees_a_connection(self) -> None:
+        """Control for test_02: the listener counts a connection this browser does open."""
+        context = self.browser.new_context(service_workers="block")
+        self.addCleanup(context.close)
+        before = TRAP.connections
+        try:
+            context.new_page().goto(f"{TRAP_URL}/control", timeout=5000)
+        except Exception:
+            pass
+        self.assertGreater(TRAP.connections, before)
 
     def assert_recorder_sees(self, page: Page, outside: list[str]) -> None:
         """Control: a request that does leave this browser context is recorded, so an empty record means nothing left."""

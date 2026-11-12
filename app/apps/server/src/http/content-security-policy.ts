@@ -17,7 +17,7 @@ import { join, relative, sep } from 'node:path';
  *   other site is ever contacted from the browser.
  * - images `data:` (Kreska's SVG and inline icons) and `blob:` (a photo before it is sent, a thought's image); media `blob:` (a voice
  *   message); workers `blob:` (the call library) and Flux's service worker.
- * - no plugins; frames only of Flux's own origin, which only a file preview allows (C-58, #1252: a sandboxed, opaque-origin
+ * - no plugins; frames only of Flux's own origin, which only a file preview allows (C-60, #1252: a sandboxed, opaque-origin
  *   page); `<base>` and forms only to Flux itself, and no framing of Flux (`frame-ancestors`, #287).
  *
  * A TEST DEPLOYMENT sends two headers (`loadDocumentPolicies`): the enforced policy adds `'unsafe-eval'`, because Playwright's
