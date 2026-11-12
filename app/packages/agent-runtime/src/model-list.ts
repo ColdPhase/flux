@@ -22,6 +22,12 @@ export interface ModelListOptions {
 
 const MAX_MODELS = 1_000;
 
+function withoutTrailingSlashes(value: string): string {
+  let end = value.length;
+  while (end > 0 && value[end - 1] === '/') end -= 1;
+  return value.slice(0, end);
+}
+
 /** The API version the Anthropic SDK 1.x sends (#1240; provider-adapters.test.ts asserts it on the adapter): the listing sends the same. */
 const ANTHROPIC_API_VERSION = '2026-10-21';
 
@@ -95,7 +101,7 @@ export async function listKeyModels(provider: AiProviderKind, apiKey: string, op
   const checkedOn = (options.now?.() ?? new Date()).toISOString().slice(0, 10);
   const result = (status: AiModelList['status'], models: AiListedModel[] = []): AiModelList => ({ provider, status, models, checkedOn });
   if (!listsWithKey(provider)) return result('needs_key');
-  const root = (baseUrls[provider] ?? AI_PROVIDERS[provider].baseUrl!).replace(/\/+$/, '');
+  const root = withoutTrailingSlashes(baseUrls[provider] ?? AI_PROVIDERS[provider].baseUrl!);
   const send = guardedFetch(policy, { timeoutMs, maxResponseBytes }, resolve);
   const deadline = AbortSignal.timeout(timeoutMs);
   const models = new Map<string, AiListedModel>();
