@@ -68,7 +68,7 @@ export function SpaceIconRow({ project, manager, companyName, onChanged }: {
           {choice && 'url' in choice ? <img className="space-face space-face--pic" alt="" src={choice.url} /> : <SpaceFace name={project.name} icon={shown} size={28} />}
         </span>
         <span className="spset__icon-b"><b>Icon</b><span className="sset-row__s">{choice ? 'Not saved yet' : KIND(project.icon)}</span></span>
-        {manager ? <Button ref={changeRef} variant="quiet" aria-expanded={open} aria-controls={open ? formId : undefined} aria-label={open ? 'Cancel the icon change' : `Change the icon of ${project.name}`}
+        {manager ? <Button ref={changeRef} variant="quiet" size="sm" aria-expanded={open} aria-controls={open ? formId : undefined} aria-label={open ? 'Cancel the icon change' : `Change the icon of ${project.name}`}
           onClick={() => (open ? close() : setOpen(true))}>{open ? 'Cancel' : 'Change'}</Button> : null}
       </div>
       {open ? (

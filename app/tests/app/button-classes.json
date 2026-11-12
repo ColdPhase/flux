@@ -18,7 +18,8 @@
         "sk-outline-menu__item",
         "sk-options__action",
         "ui-cal__day",
-        "spset__emoji-b"
+        "spset__emoji-b",
+        "lv-audio-row"
       ]
     },
     "trigger": {
@@ -35,7 +36,8 @@
         "create__more",
         "lv-where",
         "origin-back",
-        "ui-pick__btn"
+        "ui-pick__btn",
+        "lv-facesound__btn"
       ]
     },
     "row": {
