@@ -195,7 +195,8 @@ test('an iPhone in Safari is shown the Add to Home Screen steps first; Android g
     await iphone.close();
 
     // A server that cannot push: no steps, since the installed app could not be notified either (#763 SG-3).
-    const unpushable = await browser.newContext({ ...devices['iPhone 13'], locale: 'en-GB', serviceWorkers: 'allow' });
+    // The service worker is blocked here so the routed answer reaches the page (WebKit sends a worker's requests past routes).
+    const unpushable = await browser.newContext({ ...devices['iPhone 13'], locale: 'en-GB', serviceWorkers: 'block' });
     await unpushable.addInitScript(browserStub(testSubscription('push'), 'granted', { noPush: true }));
     await unpushable.route('**/api/v1/push/public-key', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ status: 'unavailable' }) }));
     const { page: plain } = await home(unpushable, ada);
