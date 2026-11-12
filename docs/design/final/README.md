@@ -1061,7 +1061,8 @@ Live strip, someone shares a screen
   #1 …"): the starter's face, "**Hubert** started a call", then while it runs the faces of who is in it, "N people",
   how long it has run and a secondary **Join** (absent while you are in it); the time at the end. Ended: "Call · 12 min ·
   Hubert, Maurycy"; never joined: "Hubert called · nobody joined". It has no hover toolbar, no reply and no reactions. A task's
-  discussion shows the same line without Join: the task's own Join is just above it. It
+  discussion shows the same line without Join (the task's own Join is just above it), among the Activity's lines by when the
+  call started, newest first like them. It
   changes in place with no motion (motion rule 5).
 - **The call glyph on a space.** While a call of a space runs, its row in the sidebar and in the phone's Spaces list carries
   the `call` icon at 12 px in the muted text colour after the name (a shape, not a second dot, so it never reads as unread), before
