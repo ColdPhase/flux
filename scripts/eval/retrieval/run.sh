@@ -3,13 +3,14 @@
 # Meilisearch on the same two CPUs, then the harness. Run it under the shared Docker slot limiter when other suites run.
 #
 #   scripts/eval/retrieval/run.sh                  seed, load, index, recall, write, access, tokens, deletion (default model)
-#   BENCH_EMBED_MODEL=BAAI/bge-m3 BENCH_EMBED_MEMORY=4g scripts/eval/retrieval/run.sh load index recall
+#   BENCH_EMBED_MODEL=BAAI/bge-m3 BENCH_EMBED_MEMORY=6g BENCH_EMBED_BATCH_TOKENS=2048 scripts/eval/retrieval/run.sh load index recall
 #   scripts/eval/retrieval/run.sh answer --mock    answer accuracy plumbing (answer.py); a real model: BENCH_LLM_URL/KEY/MODEL,
 #     or BENCH_LLM_CONTAINER=strata BENCH_LLM_MODEL=<name> run.sh answer --build-summaries   (the container must already run)
 #   scripts/eval/retrieval/run.sh down             stop and remove the bench containers (the model cache volume stays)
 #
 # Settings: BENCH_CPUS (the shared cpuset, default 20,21), COMPOSE_PROJECT_NAME (flux-v021-rag), BENCH_DB_PORT/BENCH_EMBED_PORT/
-# BENCH_MEILI_PORT (25910-25912, loopback only), BENCH_EMBED_MODEL (intfloat/multilingual-e5-small), BENCH_EMBED_MEMORY (2g).
+# BENCH_MEILI_PORT (25910-25912, loopback only), BENCH_EMBED_MODEL (intfloat/multilingual-e5-small), BENCH_EMBED_MEMORY (2g),
+# BENCH_EMBED_BATCH_TOKENS (8192; bge-m3 needs 2048 to start in 6 GiB).
 # Output: out/seed.json, out/results-<model>.json, out/stats-<model>.tsv (docker stats every 2 s: peak memory and CPU per service).
 set -eu
 cd "$(dirname "$0")"

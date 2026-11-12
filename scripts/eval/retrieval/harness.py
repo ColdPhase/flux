@@ -621,7 +621,8 @@ def step_deletion(data, results):
         # The indexing job for Meilisearch, run right after the commit as an outbox would; measure the window it leaves.
         if check["change"] == "edit":
             vector = embed([edited], "passage")[0]
-            task = meili("POST", "/indexes/messages/documents", json=[{"id": mid, "body": edited, "_vectors": {"local": vector}}])
+            space, conv, at = s.db.execute("SELECT space_id, conversation_id, created_at FROM messages WHERE id = %s", (mid,)).fetchone()
+            task = meili("POST", "/indexes/messages/documents", json=[meili_doc((mid, space, conv, at, edited), vector)])
         else:
             task = meili("POST", "/indexes/messages/documents/delete-batch", json=[mid])
         seen = row["meili"]["found_at_once"]

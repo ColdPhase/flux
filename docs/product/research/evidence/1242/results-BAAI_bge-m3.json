@@ -12592,5 +12592,437 @@
    "p95": 1257
   },
   "per_message_body_mean": 23.1
+ },
+ "access": {
+  "a1": {
+   "what": "A person loses a restricted space's grant; the next search by that person no longer finds its messages.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    }
+   }
+  },
+  "a2": {
+   "what": "A space's AI is turned off; an agent's search no longer finds its messages.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    }
+   }
+  },
+  "a3": {
+   "what": "A company guest never finds messages of a workspace-visible space they were not added to.",
+   "results": {
+    "today": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_or": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_lang": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "trgm": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "bm25": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "vec": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_lang": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_bm25": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "meili": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    },
+    "meili_hybrid": {
+     "found_before": false,
+     "found_after": false,
+     "ok": true
+    }
+   }
+  },
+  "a4": {
+   "what": "A person removed from the company finds nothing.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_after": false,
+     "ok": true
+    }
+   }
+  }
+ },
+ "deletion": {
+  "d1": {
+   "what": "A message removed by its author (removed_at) is not found by text or meaning, at once.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": false,
+     "found_after_job": false,
+     "leak_window_ms": 357.8,
+     "ok_at_once": false
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": false,
+     "found_after_job": false,
+     "leak_window_ms": 357.8,
+     "ok_at_once": false
+    },
+    "summaries": {
+     "fresh_covering_before": 1,
+     "fresh_covering_at_once": 0,
+     "ok": true
+    }
+   }
+  },
+  "d2": {
+   "what": "A message deleted outright (DELETE) is not found, at once.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": false,
+     "found_after_job": false,
+     "leak_window_ms": 350.9,
+     "ok_at_once": false
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": false,
+     "found_after_job": false,
+     "leak_window_ms": 350.9,
+     "ok_at_once": false
+    },
+    "summaries": {
+     "fresh_covering_before": 1,
+     "fresh_covering_at_once": 0,
+     "ok": true
+    }
+   }
+  },
+  "d3": {
+   "what": "An edited message is not found by the words the edit removed, at once, and is found by its new words once indexed.",
+   "results": {
+    "today": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_or": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "fts_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "trgm": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "vec": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_lang": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "hybrid_bm25": {
+     "found_before": true,
+     "found_at_once": false,
+     "ok_at_once": true
+    },
+    "meili": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": true,
+     "found_after_job": false,
+     "leak_window_ms": 384.3,
+     "ok_at_once": false
+    },
+    "meili_hybrid": {
+     "found_before": true,
+     "found_at_once": true,
+     "found_at_once_with_recheck": true,
+     "found_after_job": false,
+     "leak_window_ms": 384.3,
+     "ok_at_once": false
+    },
+    "_edit": {
+     "queued_for_embedding": 1,
+     "new_words_found_after_job": {
+      "fts_lang": true,
+      "bm25": true,
+      "vec": true,
+      "hybrid_bm25": true,
+      "meili": false
+     }
+    },
+    "summaries": {
+     "fresh_covering_before": 1,
+     "fresh_covering_at_once": 0,
+     "ok": true
+    }
+   }
+  }
  }
 }

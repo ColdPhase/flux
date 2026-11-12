@@ -18,16 +18,19 @@ labelled a **vendor claim**, a **published result** or an **inference**.
   the question as asked, **0.78 when the agent searches in both languages**, p95 under 3 ms, 3.8 MiB of index per 10k
   messages, a quarter of a millisecond per write, and access loss and deletion take effect in the same transaction.
   Plain PostgreSQL without an extension (any word, accents folded) reaches 0.40 (question) / 0.67 (bilingual).
-- **Embeddings are not worth their cost here yet.** A small local multilingual model (multilingual-e5-small, MIT) scored
-  below keyword search (0.40) and pushed hybrid search below BM25 alone, while its server takes about 920 MiB of RAM, which
-  the 4 GB target (#862) does not have. A large one (bge-m3, 568M parameters) does lift recall (vector alone 0.63, hybrid with BM25 0.75 for the question as asked), but its server could not start in 4 GiB, idles at 3.2 GiB and embeds 10 messages a second on 2 CPUs; and with the agent searching in both languages BM25 alone (0.78) is within one question of that hybrid (0.80). The person's own connection cannot be the embedder: Claude plans,
-  ChatGPT plans and Anthropic keys have no embeddings API, and embedding a whole space would send all of it to one person's
+- **Embeddings are not worth their cost here yet.** A small local multilingual model (multilingual-e5-small, MIT)
+  scored below keyword search (0.40) and pushed hybrid search below BM25 alone, while its server takes about 920 MiB
+  of RAM, which the 4 GB target (#862) does not have. A large one (bge-m3, 568M parameters) does lift recall (vector
+  alone 0.63, hybrid with BM25 0.75 for the question as asked), but its server could not start in 4 GiB, idles at 3.2
+  GiB and embeds 10 messages a second on 2 CPUs; and with the agent searching in both languages BM25 alone (0.78) is
+  within one question of that hybrid (0.80). The person's own connection cannot be the embedder: Claude plans, ChatGPT
+  plans and Anthropic keys have no embeddings API, and embedding a whole space would send all of it to one person's
   provider.
 - **The agent's queries matter more than the engine.** The largest single gain is the agent searching in both of the
   space's languages (BM25 0.60 → 0.78; questions across languages 0.12 → 0.69). That is a tool description and a brief
   line, not infrastructure.
 - **A separate engine (Meilisearch) measured worse and costs more**: recall 0.42 / 0.62 (question / keywords), p95 ≈ 12 ms,
-  one more container and volume to back up, and a removed message stayed findable for 140–175 ms after the commit unless
+  one more container and volume to back up, and a removed message stayed findable for 140–385 ms after the commit unless
   every hit is rechecked in PostgreSQL.
 - **Summaries** can be kept correct cheaply (a trigger marks a summary stale in the writer's transaction; verified), but
   their answer quality needs a model run that was not made here: strata is off (it uses about 50 GB of RAM) and no API key
@@ -74,12 +77,13 @@ Read from `main` at `8cef27ca1`:
 ## The bench: seed, test set and harness
 
 Everything is in `scripts/eval/retrieval/` and runs in Docker (`run.sh`); it is meant to become the evaluation harness of
-the implementation ([plan, part 4](#implementation-plan)).
+the implementation ([plan, part 5](#implementation-plan)).
 
 - **Seed** (`seed.py`, deterministic, seed 1242): one company ("Zielony Dach", a maker of roof weather stations), 8 people
   (one company guest), one agent, 6 spaces (two restricted, one with a guest), 7 conversations and **10,000 messages, 71%
   Polish and 29% English**, from March to November 2026. One conversation holds 5,000 messages. Ordinary chatter comes from
-  templates with inflected Polish forms, openers and closers (8,613 distinct texts; short replies such as "ok" repeat); 55 planted messages (known answers, one superseded decision, one message to delete and one to edit) and 4 near-miss
+  templates with inflected Polish forms, openers and closers (8,613 distinct texts; short replies such as "ok" repeat).
+  55 planted messages (known answers, one superseded decision, one message to delete and one to edit) and 4 near-miss
   distractors are placed among them (`facts.json`).
 - **Test set** (`facts.json`): 60 questions, each with its gold message(s), an `answer_check` pattern for answer accuracy,
   the conversation it is asked in, and three query forms: the **question** as a person asks it; **keywords** an agent would
@@ -94,17 +98,18 @@ the implementation ([plan, part 4](#implementation-plan)).
   time, the cost of a write (400 single-row inserts, one transaction each, per option), memory (`docker stats` every 2 s),
   and runs the access-loss and deletion checks against every option.
 - **Limits enforced.** PostgreSQL, the embedding server and Meilisearch share one 2-CPU cpuset (`BENCH_CPUS=20,21`, as a
-  2 vCPU host); PostgreSQL has Flux's own memory limit (768 MiB), the others 1–2 GiB. The harness is the client and runs
+  2 vCPU host); PostgreSQL has Flux's own memory limit (768 MiB); the embedding server 2 GiB (e5-small) or 6 GiB
+  (bge-m3), Meilisearch 1 GiB. The harness is the client and runs
   outside the cpuset. Other agents' suites ran on the host at the same time, so absolute latencies are pessimistic.
 - **Answer accuracy** (`answer.py`): each question answered by a model from one context strategy (today's window; search
   page plus read-around; stored summaries plus window; window plus search), scored by `answer_check`, with input tokens
   counted. Checked here only with a stand-in model (`--mock`), which proves the plumbing, not accuracy.
 
 Command lines: `scripts/eval/retrieval/run.sh` (everything, multilingual-e5-small);
-`BENCH_EMBED_MODEL=BAAI/bge-m3 BENCH_EMBED_MEMORY=4g scripts/eval/retrieval/run.sh load index recall tokens`;
+`BENCH_EMBED_MODEL=BAAI/bge-m3 BENCH_EMBED_MEMORY=6g BENCH_EMBED_BATCH_TOKENS=2048 scripts/eval/retrieval/run.sh load index recall tokens access deletion`;
 `python3 scripts/eval/retrieval/report.py scripts/eval/retrieval/out/results-*.json` prints the tables below. Raw results:
-[e5-small run](evidence/1242/results-intfloat_multilingual-e5-small.json), [bge-m3 run](evidence/1242/results-BAAI_bge-m3.json)
-and [peak memory and CPU per service](evidence/1242/peaks.json).
+[e5-small run](evidence/1242/results-intfloat_multilingual-e5-small.json), [bge-m3 run](evidence/1242/results-BAAI_bge-m3.json),
+[peak memory and CPU per service](evidence/1242/peaks.json) and [stand-in answer token counts](evidence/1242/answers-mock-tokens.json).
 
 ## Results
 
@@ -173,7 +178,7 @@ By kind of question (question form): hybrid_bm25 reaches 0.50 across languages a
 0.12 and 0.42. In the bilingual form the difference shrinks to 0.75 / 0.67 against 0.69 / 0.58.
 
 - **Cost:** text-embeddings-inference with bge-m3 was killed for memory at a 4 GiB limit while warming up (with the default
-  8,192 batch tokens); with 2,048 batch tokens and 6 GiB it started and idled at 3.15 GiB, about 2 GiB while embedding.
+  8,192 batch tokens); with 2,048 batch tokens and 6 GiB it started, idled at 3.15 GiB and peaked at 3.9 GiB during the run.
   It embedded **9.9 messages a second** (10,000 in 17 minutes), 101 ms p50 / 180 ms p95 for one message and 76 / 101 ms
   for a query, on the two CPUs. Vectors and HNSW: 121.9 MiB per 10k messages (≈ 1.2 GiB per 100k, inferred).
 - The fused statement as written scanned the vectors exactly instead of through HNSW (vector search alone: 2.8 ms p95), so
@@ -203,7 +208,8 @@ while loading the model and settled at about 920 MiB.
 
 ### Access loss and deletion, verified per option
 
-Each check changes PostgreSQL, then searches again at once in the same harness (results in `evidence/1242/`):
+Each check changes PostgreSQL, then searches again at once in the same harness. They ran twice, with the e5-small and the
+bge-m3 vectors; the second run also covered today's index (searching the fact's own space, as `flux_search_project` does):
 
 | Check | fts / trgm / bm25 / vec / hybrids | Meilisearch |
 |---|---|---|
@@ -211,12 +217,15 @@ Each check changes PostgreSQL, then searches again at once in the same harness (
 | a2: a space's AI is turned off, an agent searches | not found at once | not found at once (same) |
 | a3: a guest searches a workspace-wide space they were not added to | never found | never found |
 | a4: a person leaves the company | nothing found at once | nothing found at once |
-| d1: the author removes a message (`removed_at`) | not found at once | **still found 174 ms** after the commit, until the delete job ran; not found with a PostgreSQL recheck of each hit |
-| d2: a message is deleted outright | not found at once (vec: the vector row goes with the message, `ON DELETE CASCADE`; e5 did not find this message even before) | **still found 142 ms**; not found with the recheck |
-| d3: a message is edited | not found by the removed words at once; the vector is dropped in the writer's transaction and the new one comes with the job | **found by the removed words 170 ms**, also with the recheck (the hit exists and is readable; only its words are stale) |
+| d1: the author removes a message (`removed_at`) | not found at once | **still found 174 ms** (358 ms in the second run) after the commit, until the delete job ran; not found with a PostgreSQL recheck of each hit |
+| d2: a message is deleted outright | not found at once (vec: the vector row goes with the message, `ON DELETE CASCADE`; e5-small did not find this message even before, bge-m3 did) | **still found 142 ms** (351 ms); not found with the recheck |
+| d3: a message is edited | not found by the removed words at once; the vector is dropped in the writer's transaction, the message is queued for embedding, and once the new vector is in it is found by its new words | **found by the removed words 170 ms** (384 ms), also with the recheck (the hit exists and is readable; only its words are stale) |
 | Summaries (option D) | a summary covering the message is marked stale in the writer's transaction for d1, d2 and d3 | — |
 
-Today's index removes a message's row in the same transaction too; the bench reproduces its trigger.
+Today's index (reproduced with its trigger) passed every check too: it is filtered and maintained the same way, only its
+queries are poor. In both runs Meilisearch did not find the edited message by its new words after the job; that was a
+defect of the harness (its update replaced the document without its space, so the access filter excluded it), fixed after the runs, and
+it says nothing about the engine except that an outbox must always send the whole document.
 
 ## Options compared
 
@@ -255,7 +264,8 @@ For a self-hosted **2 vCPU / 4 GB** server (#862), whose base stack's memory lim
   pgvector 0.8's iterative scans so a filtered query still returns k rows. Fusion by reciprocal rank (k = 60, the constant
   of Cormack et al. 2009) of the top 50 of each list.
 - **Measured:** with multilingual-e5-small the vector list was weaker than keywords and dragged the fusion below BM25 alone.
-  With bge-m3 the fusion was the best option measured for questions asked as-is (0.75 against BM25's 0.60), and level with BM25 for bilingual queries (0.80 against 0.78); see the bge-m3 table.
+  With bge-m3 the fusion was the best option measured for questions asked as-is (0.75 against BM25's 0.60), and level
+  with BM25 for bilingual queries (0.80 against 0.78); see the bge-m3 table.
 - **Operations.** `pgvector` has no Alpine package either but builds from source in an Alpine image (C, PostgreSQL
   licence). The vectors take about 10 times the space of the keyword index. The real cost is the model (next section).
 
@@ -265,7 +275,7 @@ For a self-hosted **2 vCPU / 4 GB** server (#862), whose base stack's memory lim
   search with vectors the application provides, in one binary. **Licence:** the core is MIT; parts are the Enterprise
   Edition under BUSL-1.1 (`SPDX-License-Identifier: MIT AND BUSL-1.1`), so Flux would have to ship the Community build.
 - **Measured:** keywords 0.62 (best of all for an agent's keywords, by typo tolerance and prefix matching), questions 0.42,
-  hybrid worse; p95 ≈ 12 ms; about 130 MiB of RAM and 50.8 MiB of disk for 10k messages; a document becomes searchable
+  hybrid worse (0.33 with e5-small, 0.50 with bge-m3); p95 ≈ 12 ms; about 130 MiB of RAM and 50.8 MiB of disk for 10k messages; a document becomes searchable
   ≈ 235 ms after it is sent.
 - **Access** works only because the readable spaces are computed in PostgreSQL and passed as a filter with every query;
   storing permissions in the engine would make access loss wait for a re-index. **Deletion** leaves a window (above) unless
@@ -301,7 +311,7 @@ For a self-hosted **2 vCPU / 4 GB** server (#862), whose base stack's memory lim
 | Who | Cost | Allowed? | Quality here |
 |---|---|---|---|
 | **The person's own connection** | OpenAI `text-embedding-3-small` $0.02 per 1M tokens (OpenAI pricing page, read 2026-11-12): 10k messages ≈ 0.25M tokens ≈ $0.005. Trivial money. | **Mostly impossible and against AG-11.** Anthropic offers no embedding model ("Anthropic does not offer its own embedding model", Claude docs, read 2026-11-12; it points to Voyage AI). Claude plans and ChatGPT plans run through the CLIs and expose no embeddings API to Flux. Only OpenAI, Gemini, OpenRouter and OpenAI-compatible keys could. And an index is shared: embedding a space sends every message in it to one person's provider, not only what that person's agent read, which is more than AG-11's "What leaves Flux". Vectors from different people's providers cannot be mixed in one index. | not measured |
-| **A small local model in a container** | multilingual-e5-small (MIT, 118M parameters, 384 dimensions, Polish in its languages): 144 messages/s batched on 2 CPUs, a query in 10–17 ms, **about 920 MiB of RAM** for the server (text-embeddings-inference 1.9.4, Apache-2.0), killed at a 1 GiB limit while loading. bge-m3 (MIT, 568M, 1,024 dimensions): 9.9 messages/s, a query in 76–101 ms, **3.15 GiB idle**, killed at 4 GiB while warming up. | Yes: nothing leaves the server. Encrypted spaces and spaces with AI off are never embedded. | e5-small 0.40 (question), below every keyword option but `fts_or`. bge-m3 0.63 alone and 0.75 in a hybrid with BM25 (question form); 0.80 bilingual against BM25's 0.78. |
+| **A small local model in a container** | multilingual-e5-small (MIT, 118M parameters, 384 dimensions, Polish in its languages): 144 messages/s batched on 2 CPUs, a query in 10–17 ms, **about 920 MiB of RAM** for the server (text-embeddings-inference 1.9.4, Apache-2.0), killed at a 1 GiB limit while loading. bge-m3 (MIT, 568M, 1,024 dimensions): 9.9 messages/s, a query in 76–101 ms, **3.15 GiB idle, 3.9 GiB peak**, killed at 4 GiB while warming up. | Yes: nothing leaves the server. Encrypted spaces and spaces with AI off are never embedded. | e5-small 0.40 (question), below every keyword option but `fts_or`. bge-m3 0.63 alone and 0.75 in a hybrid with BM25 (question form); 0.80 bilingual against BM25's 0.78. |
 | **None** (keywords, the agent's own query rewriting and reading around) | Nothing to run. | Yes. | bm25 0.60, 0.78 bilingual. |
 
 - **Polish quality** is the constraint. PIRB (Dadas et al., 2024) is the Polish retrieval benchmark to choose a model by;
@@ -412,7 +422,7 @@ and an API-key run through function calls see the same results):
 - **Edits and deletes.** In PostgreSQL the index follows the row in the same transaction (verified d1–d3). A vector is
   dropped by a trigger in the writer's transaction and re-embedded later, so between the two the message is found by
   keywords only, never by its old meaning. An external engine needs an outbox job per write and leaves a window (verified:
-  140–175 ms here, longer under load or while the engine is down); rechecking each hit in PostgreSQL closes it for
+  140–385 ms here, longer under load or while the engine is down); rechecking each hit in PostgreSQL closes it for
   deletion and access, not for edits.
 - **Summaries.** Stored summaries list the messages they cover; a trigger marks them stale when any of those is edited,
   removed or deleted, in the same transaction (verified). A stale summary is not shown and is rewritten on next use.
@@ -515,7 +525,11 @@ Dependencies: 1 → 2 → 3; 5 can start at once (it measures today first); 4 af
   design without embeddings). Expect several hours: about 100 summary calls of ~4k tokens and 240 answers.
 - **An API engine:** only with a real key, which this host has none of; `BENCH_LLM_URL`, `BENCH_LLM_KEY` and
   `BENCH_LLM_MODEL` take any OpenAI-compatible endpoint. With the stand-in (`./run.sh answer --mock`) the plumbing and token
-  counts are checked (result pending in this draft; it will be filled before review).
+  counts were checked on 2026-11-12: all 60 questions answered per strategy, with input tokens per run (system prompt
+  included) of **1,625 for `window40`, 1,140 for `search_around` and 2,684 for `window_search`** (the stand-in's "accuracy"
+  is meaningless and not reported). The summaries path ran too (`--build-summaries`: 100 summary calls,
+  one per 100 messages of the 7 conversations, then 60 answers); its token count is not meaningful with the stand-in's
+  one-line summaries (a real model's 50 summaries of the 5,000-message conversation are about 10k tokens by themselves).
 - These runs are static (the context is built before the model sees it). The agentic run with the real tools is part 5 of
   the plan.
 
