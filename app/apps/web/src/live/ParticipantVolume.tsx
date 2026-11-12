@@ -14,13 +14,13 @@ import './audio-settings.css';
  * One person's sound for me (#1244): their volume and Mute for me. Both are local to this browser; nobody is told and nobody
  * else's sound changes. Where the browser cannot set the media volume (iOS) only Mute for me is offered.
  */
-function PersonSoundBody({ audio, userId, name }: { audio: CallAudio; userId: string; name: string }) {
+function PersonSoundBody({ audio, userId, name }: { audio: CallAudio; userId: string; name: string | null }) {
   const snap = useAudioSnapshot(audio);
   if (!snap) return null;
   const sound = personSound(snap.prefs, userId);
   return (
     <div className="lv-person-sound">
-      <p className="lv-person-sound__name">{name}</p>
+      {name ? <p className="lv-person-sound__name">{name}</p> : null}
       {snap.support.outputVolume ? (
         <Slider label="Volume" labelWidth="4.5rem" max={snap.boost ? 200 : 100} value={Math.min(sound.volume, snap.boost ? 200 : 100)}
           onChange={(value) => audio.setPerson(userId, { volume: value })} />
@@ -69,7 +69,7 @@ export function PersonSound({ live, person }: { live: LiveValue; person: MediaPe
     <>
       <Button variant="quiet" icon={muted ? 'quiet' : 'hearing'} aria-expanded={open} aria-label={`Sound from ${name}${muted ? ', muted for you' : ''}`}
         onClick={() => setOpen((value) => !value)}>{muted ? 'Muted' : 'Volume'}</Button>
-      {open ? <div className="lv-person__sound"><PersonSoundBody audio={audio} userId={person.userId} name={name} /></div> : null}
+      {open ? <div className="lv-person__sound"><PersonSoundBody audio={audio} userId={person.userId} name={null} /></div> : null}
     </>
   );
 }

@@ -9,8 +9,9 @@ one, and records every audio capture and every ``setSinkId`` call, because a hea
 
 What is measured and what is not:
 
-* The microphone volume is measured where it matters: the receiver's own stream (a ScriptProcessor on the remote track) carries
-  about four times the power at 200 % as at 100 %, and none at 0 %.
+* The microphone volume is measured where it matters, on the receiver's own stream (a ScriptProcessor on the remote track): none at
+  0 %, a quarter of the power at 50 %. Chromium's own fake microphone beeps at full scale, so above 100 % it can only clip; a second
+  browser plays a quiet tone from a file instead (``--use-file-for-fake-audio-capture``), and there 200 % carries four times the power.
 * The per-person volume is the playing element's own ``volume`` and ``muted`` (up to 100 %) or a gain stage (above), and no request
   leaves the browser when it changes.
 * Output choice is the call made to ``setSinkId`` with the chosen id; nothing is heard in a headless browser.
@@ -20,8 +21,13 @@ What is measured and what is not:
 from __future__ import annotations
 
 import json
+import math
 import re
+import struct
+import tempfile
 import unittest
+import wave
+from pathlib import Path
 
 from playwright.sync_api import Browser, Locator, Page, expect
 
@@ -125,16 +131,39 @@ def voices(page: Page) -> list[dict]:
 class LiveAudio(LiveBase):
     browser: Browser
 
+    tone: Browser
+    wav: Path
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        super().setUpClass()
+        # A quiet 440 Hz tone (amplitude 0.2) for one second and silence for half a second, repeated: 200 % of it is not clipped.
+        cls.wav = Path(tempfile.gettempdir()) / "flux-quiet-tone.wav"
+        with wave.open(str(cls.wav), "wb") as out:
+            out.setnchannels(1)
+            out.setsampwidth(2)
+            out.setframerate(48000)
+            tone = [int(0.2 * 32767 * math.sin(2 * math.pi * 440 * n / 48000)) for n in range(48000)]
+            out.writeframes(struct.pack(f"<{len(tone)}h", *tone) + b"\x00\x00" * 24000)
+        cls.tone = cls.pw.chromium.launch(args=[
+            "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", f"--use-file-for-fake-audio-capture={cls.wav}",
+        ])
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        cls.tone.close()
+        super().tearDownClass()
+
     def context(self, who, **kwargs):  # type: ignore[override]
         context = super().context(who, **kwargs)
         context.add_init_script(AUDIO_INSTRUMENT)
         return context
 
-    def ios_page(self, who: str) -> Page:
-        """The phone as an iPhone: the page recognises iOS by its user agent (no media volume, no output choice)."""
-        options = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "viewport": PHONE,
-                   "device_scale_factor": 3, "is_mobile": True, "has_touch": True, "user_agent": IPHONE_UA, "storage_state": self.states[who]}
-        context = self.browser.new_context(**options)
+    def page_on(self, browser: Browser, who: str, **options) -> Page:
+        """A page of this person in another browser (the tone browser) or another kind of device (an iPhone's user agent)."""
+        base = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "viewport": DESKTOP,
+                "device_scale_factor": 1, "storage_state": self.states[who]}
+        context = browser.new_context(**{**base, **options})
         context.grant_permissions(["microphone", "camera"], origin=ORIGIN)
         context.add_init_script(INSTRUMENT)
         context.add_init_script(AUDIO_INSTRUMENT)
@@ -144,6 +173,10 @@ class LiveAudio(LiveBase):
         page.on("pageerror", lambda error: errors.append(str(error)))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         return page
+
+    def ios_page(self, who: str) -> Page:
+        """The phone as an iPhone: the page recognises iOS by its user agent (no media volume, no output choice)."""
+        return self.page_on(self.browser, who, viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True, user_agent=IPHONE_UA)
 
     def start_call(self, nia: Page, jonas: Page) -> None:
         self.open_conversation(nia)
@@ -242,11 +275,12 @@ class LiveAudio(LiveBase):
         base, silent, half = (measured[key]["power"] for key in (100, 0, 50))
         self.assertGreater(base, 1e-6, "the fake microphone is heard before any change")
         self.assertLess(silent, base * 0.02, "0 % is silence for the receiver")
-        # While a beep sounds (the buffers that are not silent), 50 % carries a fraction of the power of 100 %, and 200 % more: the
-        # fake microphone's beep is close to full scale, so above 100 % it clips and cannot carry the full four times.
+        # While a beep sounds (the buffers that are not silent), 50 % carries a fraction of the power of 100 %. The fake microphone's beep is
+        # at full scale (peak about 1), so above 100 % it can only clip: it is not quieter. The quiet tone of the next test measures the boost.
         self.assertLess(measured[50]["beep"], measured[100]["beep"] * 0.6, "50 % is quieter than 100 %")
-        self.assertGreater(measured[200]["beep"], measured[100]["beep"] * 1.1, "200 % is louder than 100 %")
-        self.assertGreater(measured[150]["beep"], measured[100]["beep"] * 1.05, "150 % is louder than 100 %")
+        self.assertLess(measured[50]["peak"], measured[100]["peak"] * 0.8, "and its peak is lower")
+        for percent in (150, 200):
+            self.assertGreater(measured[percent]["beep"], measured[100]["beep"] * 0.9, f"{percent} % is not quieter than 100 %")
         set_range(slider, 200)
         expect(slider).to_have_attribute("aria-valuetext", "200%")
         self.assertEqual(remembered(nia)["micVolume"], 200)
@@ -436,8 +470,10 @@ class LiveAudio(LiveBase):
         expect(inline.get_by_role("slider")).to_have_count(0)
         shot(jonas, "live-audio-phone-390-person-ios")
         inline.get_by_role("switch", name="Mute for me").click()
-        self.assertTrue(voices(jonas)[0]["muted"])
+        expect(inline.get_by_role("switch", name="Mute for me")).to_have_attribute("aria-checked", "true")
+        self.assertTrue(voices(jonas)[0]["muted"], f"muted for me is the element's own: {voices(jonas)} {remembered(jonas)}")
         inline.get_by_role("switch", name="Mute for me").click()
+        expect(inline.get_by_role("switch", name="Mute for me")).to_have_attribute("aria-checked", "false")
         sheet.get_by_role("button", name="Audio settings").click()
         audio = jonas.get_by_role("dialog", name="Audio settings")
         expect(audio).to_be_visible()
@@ -460,6 +496,53 @@ class LiveAudio(LiveBase):
         for page in (self.bar(jonas), self.bar(nia)):
             page.get_by_role("button", name="Leave", exact=True).click()
             expect(page).to_have_count(0)
+
+
+    def test_03_above_100_percent_the_microphone_is_louder_for_the_other_person(self) -> None:
+        """A quiet fake microphone (a tone from a file) is not clipped at 200 %: the receiver gets about four times the power."""
+        self.seed()
+        nia = self.page_on(self.tone, "nia")
+        jonas = self.page("jonas")
+        self.open_conversation(nia)
+        nia.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Call|Join)$")).click()
+        expect(self.bar(nia)).to_be_visible()
+        self.open_conversation(jonas)
+        jonas.locator("header.top, header.phead").get_by_role("button", name=re.compile("^(Call|Join)$")).click()
+        expect(self.bar(jonas)).to_be_visible()
+        self.bar(nia).get_by_role("button", name=re.compile("^Microphone off")).click()
+        expect(self.bar(nia).get_by_role("button", name=re.compile("^Microphone on"))).to_have_attribute("aria-pressed", "true")
+        expect(jonas.locator("[data-live-audio] audio")).to_have_count(1)
+        self.bar(nia).get_by_role("button", name="Audio settings").click()
+        dialog = nia.get_by_role("dialog", name="Audio settings")
+        expect(dialog).to_be_visible()
+        # The browser's own processing would treat a steady tone as noise: switched off, the tone is what is sent.
+        captures = nia.evaluate("window.__audio.gum.length")
+        for name in ("Reduce background noise", "Cancel echo", "Even out my volume"):
+            dialog.get_by_role("switch", name=name).click()
+        until(nia, f"window.__audio.gum.length >= {captures + 3}")
+        slider = dialog.get_by_role("slider", name="Microphone volume")
+        measured: dict[int, dict] = {}
+        nia.wait_for_timeout(1500)
+        for index, percent in enumerate((100, 200, 50, 0)):
+            if index:
+                set_range(slider, percent)
+                expect(slider).to_have_attribute("aria-valuetext", f"{percent}%")
+                nia.wait_for_timeout(1500)
+            measured[percent] = jonas.evaluate(POWER, 6000)
+            print(f"receiver of the quiet tone at {percent} %: {measured[percent]}")
+        base = measured[100]["beep"]
+        self.assertGreater(base, 1e-4, "the quiet tone is heard")
+        self.assertLess(measured[100]["peak"], 0.5, "and it is far from full scale at 100 %")
+        self.assertGreater(measured[200]["beep"], base * 3, "200 % carries about four times the power")
+        self.assertLess(measured[200]["beep"], base * 5)
+        self.assertGreater(measured[200]["peak"], measured[100]["peak"] * 1.6, "and about twice the amplitude")
+        self.assertGreater(measured[50]["beep"], base * 0.15, "50 % carries about a quarter")
+        self.assertLess(measured[50]["beep"], base * 0.4)
+        self.assertEqual(measured[0]["peak"], 0, "0 % is silence")
+        nia.keyboard.press("Escape")
+        for strip in (self.bar(nia), self.bar(jonas)):
+            strip.get_by_role("button", name="Leave", exact=True).click()
+            expect(strip).to_have_count(0)
 
 
 if __name__ == "__main__":
