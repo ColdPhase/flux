@@ -100,7 +100,7 @@ class ApiKeyModels(unittest.TestCase):
         # The order is Provider, API key, Model; the Model waits for the key.
         order = page.evaluate("""() => [...document.querySelectorAll('.background-settings__fields > label')].map((label) => label.childNodes[0].textContent.trim())""")
         self.assertEqual(order[:3], ["Provider", "API key", "Model"])
-        model = page.get_by_label("Model", exact=True)
+        model = page.get_by_role("combobox", name="Model")
         expect(model).to_be_disabled()
         expect(model).to_contain_text("Enter the API key first")
         expect(page.locator("datalist")).to_have_count(0)
@@ -145,14 +145,14 @@ class ApiKeyModels(unittest.TestCase):
         alert = page.get_by_role("alert").filter(has_text="This key was refused by Anthropic. Check it and try again.")
         expect(alert).to_be_visible()
         expect(page.get_by_label("API key", exact=True)).to_have_attribute("aria-invalid", "true")
-        expect(page.get_by_label("Model", exact=True)).to_be_disabled()
+        expect(page.get_by_role("combobox", name="Model")).to_be_disabled()
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_disabled()
         shot(page, named("api-key-models-1440-refused"))
         # Another key clears the refusal and is read again.
         self.type_key(page, f"sk-ant-api03-{MARK * 3}KM04")
         expect(alert).to_have_count(0)
         expect(page.get_by_role("button", name="Connect", exact=True)).to_be_enabled()
-        expect(page.get_by_label("Model", exact=True)).to_be_enabled()
+        expect(page.get_by_role("combobox", name="Model")).to_be_enabled()
 
     def test_04_a_list_that_cannot_be_read_leaves_the_plain_field_with_a_note(self) -> None:
         page = self.page()
@@ -172,7 +172,7 @@ class ApiKeyModels(unittest.TestCase):
             page = self.page(phone=True, dark=dark)
             self.form(page)
             self.type_key(page, GOOD)
-            model = page.get_by_label("Model", exact=True)
+            model = page.get_by_role("combobox", name="Model")
             expect(model).to_be_enabled()
             box = model.bounding_box()
             self.assertIsNotNone(box)
@@ -185,7 +185,7 @@ class ApiKeyModels(unittest.TestCase):
         desk = self.page(dark=True)
         self.form(desk)
         self.type_key(desk, GOOD)
-        expect(desk.get_by_label("Model", exact=True)).to_be_enabled()
+        expect(desk.get_by_role("combobox", name="Model")).to_be_enabled()
         shot(desk, named("api-key-models-1440-dark"))
 
     def test_06_the_agent_page_lists_the_key_models_asks_a_price_and_offers_try_again(self) -> None:
