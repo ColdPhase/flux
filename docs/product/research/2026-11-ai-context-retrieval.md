@@ -2,7 +2,7 @@
 
 **Status:** research for [#1242](https://github.com/ColdPhase/flux/issues/1242) (milestone v0.2.1), 2026-11-12. Hubert answered
 [the questions at the end](#questions-for-hubert) on #1242 the same day; the decision is
-F-041 in `decisions.md`, implemented from [#1296](https://github.com/ColdPhase/flux/issues/1296). The
+[F-042](../decisions.md#f-042--agents-find-what-they-need-with-bm25-search-in-postgresql), implemented from [#1296](https://github.com/ColdPhase/flux/issues/1296). The
 [answer-accuracy run on Claude](#answer-accuracy-on-claude-sonnet-55-2026-11-12) and the recall of the index exactly as migration
 0065 builds it were added after the decision. Every figure below was measured on this host in Docker unless it is
 labelled a **vendor claim**, a **published result** or an **inference**.
@@ -137,7 +137,7 @@ read and applies the question's date range when it has one.
 | meili (Meilisearch keyword, `frequency` matching) | 0.42 | 0.62 | 0.65 | 0.41 | 5.2 / 11.8 |
 | meili_hybrid (semantic ratio 0.5, same vectors) | 0.33 | 0.30 | 0.25 | 0.31 | 7.3 / 15.0 |
 
-The English stemmer next to the Polish one (F-041's index, [raw results](evidence/1242/results-migration-0065-index.json)) cost one
+The English stemmer next to the Polish one (F-042's index, [raw results](evidence/1242/results-migration-0065-index.json)) cost one
 question as asked, one keyword search and three bilingual ones against the Polish stemmer alone: its matches add score to
 messages that only share an English stem. The difference is within a few questions of this one-author set; the answer-accuracy
 run below uses this index.
@@ -537,11 +537,12 @@ By category (window40 → window20 + bilingual search): exact 0 → 1.0, Polish 
 
 - **The design beats today's window on answer accuracy** (0.75–0.77 against 0.10) **and on recall@10** (0.58–0.73 against
   0.08), #1242's first acceptance criterion, measured on an API engine. Asking the search in both languages is worth 15 points
-  (0.60 → 0.75), which is why F-041's tool description asks for it.
+  (0.60 → 0.75), which is why F-042's tool description asks for it.
 - **Tokens.** A window of 20 plus the search page costs more input than today's 40 (2,697 against 2,436 per answer); the search
   page with read-around alone costs 36% less (1,549) and answers as well. So for #1291 the window can shrink further than 20
   without losing accuracy here: the recent questions (4) were answered from the read-around too. The final size is #1291's, from
-  the agentic run of #1295, where the agent also pays for its tool calls.
+  the agentic run of #1295, where the agent also pays for its tool calls. **Founder answer (2026-11-12):** the window is 20 and
+  the index keeps Polish and English stemming (F-042).
 - **Cost:** 300 calls, 651,897 input and 22,040 output tokens, **1.53 USD** at 2 / 10 USD per million tokens (`answer.py` adds it
   up from the API's usage and stops before a call that could pass `BENCH_COST_CAP_USD`, 3.50 per run here). The v0.2.1 budget for
   this evaluation is 8 USD.
