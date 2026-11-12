@@ -529,6 +529,9 @@ class PhoneFinal(unittest.TestCase):
                         page.evaluate("document.fonts.ready.then(() => true)")
                         part = self.header_geometry(page)
                         self.assertEqual(part["others"], ["Back", "More"], "the title row holds Back, the name and More only")
+                        # The line under the name is `--t3`, as the other, quiet words of the header (the tabs that are not current).
+                        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('header.phead .phead__sub')).color"),
+                                         page.evaluate("getComputedStyle(document.querySelector('header.phead [role=tab]:not([aria-current])')).color"))
                         for control in ("back", "more"):
                             self.assertGreaterEqual(part[control]["width"], 44, control)
                             self.assertGreaterEqual(part[control]["height"], 44, control)
@@ -573,6 +576,11 @@ class PhoneFinal(unittest.TestCase):
         expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
         expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
         page.get_by_role("button", name="More", exact=True).click()
+        # A Call that cannot start (this test server has no media server) says why in its row, as its popover did (#1239).
+        call = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))
+        expect(call).to_have_attribute("aria-disabled", "true")
+        expect(call.locator(".ui-vh")).to_be_visible()
+        expect(call.locator(".ui-vh")).to_have_text(re.compile(r"\S{8,}"))
         page.get_by_role("menuitem", name="Search", exact=True).click()
         expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
         page.keyboard.press("Escape")
