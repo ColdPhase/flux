@@ -99,6 +99,11 @@ buttons above, which read as too strong:
 - Destructive actions keep a clear style: a 1 px `--t2` outline with `--t1` text, never the inverted fill.
 - No gradient and no drop shadow on any button; `--grad-btn`, `--sh-btn` and `--sh-pri` are retired.
 - Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
+- A segmented choice with options of different lengths (What it may do, Model) sizes each option to
+  its label with 14 px each side and never gives the longest an equal share (`seg--fit`); where the
+  group has no room for one row (a phone) its options wrap onto the next row, each row filling the
+  width, and the track takes the large radius (`--r-lg`). Equal slots stay for the views, the map's
+  Map / List and the live stage's picker.
 - Buttons are 32 px high in rows and toolbars and 36 px in dialogs; a primary button and the
   button beside it have the same height. Touch targets stay at least 44 px.
 - Counts are quiet mono numbers ("Waiting for you 5", "Inbox 5"), never pills.
@@ -267,7 +272,11 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
   Wiki** as one segmented control with equal slots, the people's faces (with a working agent's
-  face only while it works), **Call** and ⋯. The ⋯ menu holds the space's settings. There is no
+  face only while it works), **Call** and ⋯. The faces are an avatar stack: each overlaps the one
+  before by 6 px with a 2 px ring in the header's colour, at most three people and one agent, then
+  one "+N" face of the same size (a circle for "+5"). The people's button is as wide as its faces
+  and ends at the right edge of its slot, so no grey area shows where there is no face; the slot
+  keeps its width whatever the number of people. The ⋯ menu holds the space's settings. There is no
   Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
@@ -402,6 +411,11 @@ These functional rules from UI116-4 remain required:
   with exact task IDs, current states and people. Closing the related-task view returns to
   the same map camera and selection. Preserve many-to-many relations and accessible named
   links; simplifying their display does not delete tasks, relations or data.
+- In the map's **List** the selected thought is a quiet filled row (`--el`, the ordinary row radius
+  `--r-sm`, no outline) that starts after the tree connector, so the branch line and the vertical
+  guide run unbroken. Every row's title keeps the same left edge (the toggle or leaf slot is
+  reserved equally), and a one-line row's title and its Edit / + Child / ⋯ share a centre line.
+  The focus ring (a 2 px outline) stays distinct from the selection.
 - On the task board, a drop outside a valid target does nothing. A failed transition restores
   the true current state. The column header and an empty column are usable drop targets.
   Drag feedback clears on leave, drop or cancel. Keep touch and keyboard/menu alternatives
@@ -699,7 +713,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
   stays disabled until the code is downloaded. A note explains that after each server restart an
   admin of the space unlocks it.
-- **Space settings** (⋯ › Settings) use direction A:
+- **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
+  under the header at every computer width (the tablet and phone keep their own padding):
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row.

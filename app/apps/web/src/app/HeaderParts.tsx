@@ -4,7 +4,10 @@ import { Avatar, IconButton, Kreska, usePop } from '../ui';
 
 /**
  * The people and agents of a project as faces, one button to the space's people (F-026 §4 header).
- * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view.
+ * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view. The faces overlap a little, as an avatar stack
+ * does, and the fourth person on is one "+N" circle. The button hugs them and ends at the slot's right edge; the slot (`top__faces-slot`)
+ * keeps the width the header's other controls rely on whatever the number of faces (#873), so no pill is wider than its faces (#1236).
+ * The order is the space's own: people first, then the agent.
  */
 export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerson[]; audience: string; onOpen: () => void }) {
   const humans = people.filter((person) => person.kind === 'human');
@@ -12,13 +15,15 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
   const shown = [...humans.slice(0, 3), ...agents.slice(0, 1)];
   const more = people.length - shown.length;
   return (
-    <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
-      <span className="ui-vh">{audience}, who can see this space</span>
-      {shown.map((person) => person.kind === 'agent'
-        ? <Kreska key={person.id} size={20} className="top__face" />
-        : <span key={person.id} className="top__face"><Avatar name={person.name} size="sm" /></span>)}
-      {more > 0 ? <span className="top__more-faces" aria-hidden="true">+{more}</span> : null}
-    </button>
+    <span className="top__faces-slot">
+      <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
+        <span className="ui-vh">{audience}, who can see this space</span>
+        {shown.map((person) => person.kind === 'agent'
+          ? <Kreska key={person.id} size={20} className="top__face" />
+          : <span key={person.id} className="top__face"><Avatar name={person.name} size="sm" /></span>)}
+        {more > 0 ? <span className="top__more-faces" aria-hidden="true">+{more}</span> : null}
+      </button>
+    </span>
   );
 }
 

@@ -18,6 +18,7 @@ from playwright.sync_api import Browser, expect, sync_playwright
 
 from app_select import choose
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from themed_shots import shot_both
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 PASSWORD = "agents that belong to one person"
@@ -67,9 +68,9 @@ class MyAgentsJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, who: str = "ada", *, phone: bool = False):
+    def page(self, who: str = "ada", *, phone: bool = False, viewport: dict | None = None):
         options = {"service_workers": "block", "base_url": ORIGIN, "storage_state": self.states[who], "locale": "en-GB", "reduced_motion": "reduce"}
-        options.update(viewport=PHONE, is_mobile=True, has_touch=True, device_scale_factor=3) if phone else options.update(viewport=DESKTOP)
+        options.update(viewport=viewport or PHONE, is_mobile=True, has_touch=True, device_scale_factor=3) if phone else options.update(viewport=DESKTOP)
         context = self.browser.new_context(**options)
         self.addCleanup(context.close)
         page = context.new_page()
@@ -189,6 +190,41 @@ class MyAgentsJourney(unittest.TestCase):
         for control in page.get_by_role("radio").all():
             self.assertGreaterEqual(control.bounding_box()["height"], 32)
         shot(page, "my-agent-page-phone-390")
+
+    def test_05b_segmented_choices_size_each_option_to_its_label_and_keep_its_room(self) -> None:
+        """#1219: What it may do and Model give each option its label and 14 px each side, not an equal share of the group, so the longest
+        label never fills its pill edge to edge. Where the group has no room for one row (a phone) the options wrap instead of overflowing."""
+        for label, phone, viewport in (("1440", False, None), ("390", True, PHONE), ("320", True, {"width": 320, "height": 640})):
+            page = self.page(phone=phone, viewport=viewport)
+            page.goto(f"/settings/agents/{self.ids['planner']}")
+            expect(page.get_by_role("radiogroup", name=re.compile("^What it may do"))).to_be_visible()
+            # The model choices arrive after the page does.
+            expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio").first).to_be_visible()
+            groups = page.evaluate("""() => [...document.querySelectorAll('.agp__card [role=radiogroup]')].map((group) => {
+              const frame = group.getBoundingClientRect();
+              return { name: group.getAttribute('aria-labelledby'), options: [...group.querySelectorAll('[role=radio]')].map((button) => {
+                const range = document.createRange(); range.selectNodeContents(button);
+                const text = range.getBoundingClientRect(), box = button.getBoundingClientRect();
+                return { label: button.textContent, left: text.left - box.left, right: box.right - text.right, lines: range.getClientRects().length,
+                  inside: box.left >= frame.left - 0.5 && box.right <= frame.right + 0.5, checked: button.getAttribute('aria-checked') };
+              }) };
+            })""")
+            may = [group for group in groups if group["name"] == "agent-may-do"]
+            models = [group for group in groups if str(group["name"]).startswith("model-")]
+            self.assertEqual(len(may), 1, groups)
+            self.assertEqual([option["label"] for option in may[0]["options"]], ["Only read", "Do it and tell me", "Ask me first"])
+            self.assertGreaterEqual(len(models), 1, "the Model choice is on the page")
+            for group in may + models:
+                self.assertEqual(sum(option["checked"] == "true" for option in group["options"]), 1, group)
+                for option in group["options"]:
+                    where = f"{label}: {group['name']} / {option['label']}"
+                    self.assertGreaterEqual(option["left"], 12, f"{where} keeps 12 px left of its label: {option}")
+                    self.assertGreaterEqual(option["right"], 12, f"{where} keeps 12 px right of its label: {option}")
+                    self.assertEqual(option["lines"], 1, f"{where} stays on one line")
+                    self.assertTrue(option["inside"], f"{where} stays inside its group")
+            self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, f"{label}: no sideways scroll")
+            page.locator("#agent-model").evaluate("el => el.scrollIntoView({ block: 'center' })")
+            shot_both(page, f"1219-agent-choices-{label}-{UI_BROWSER}")
 
     def test_06_another_person_never_sees_an_agent_of_ada(self) -> None:
         ben = self.page("ben")

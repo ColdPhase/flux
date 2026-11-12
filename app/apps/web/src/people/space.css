@@ -51,6 +51,10 @@
 .newspace__error { margin: 0; display: flex; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 
 /* Space settings: the page keeps the space's header and tabs; its cards are the Settings cards. */
+/* The column is centred in the space's pane on the computer, as drawn (final design, Space settings). Account Settings keeps its own flush-left
+   page beside its section list; a space's settings has no list, so a flush-left column left half the pane empty (#1214). Tablet and phone
+   keep their own padding. */
+@media (min-width: 1001px) { .pane-in.sset-in.spset { margin-inline: auto; } }
 .spset .sset-head h2 { margin: 0; }
 .spset__name { display: flex; align-items: center; gap: 12px; }
 .spset__name b { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: break-word; }

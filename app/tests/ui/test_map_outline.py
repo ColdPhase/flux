@@ -16,6 +16,7 @@ from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
+from themed_shots import shot_both
 
 STAMP = int(time.time() * 1000)
 PASSWORD = "keep the graph connected"
@@ -527,6 +528,73 @@ class MapOutlineJourney(unittest.TestCase):
         shot(touch, "map-outline-phone-also-under-back")
         back.tap()
         expect(self.row(touch, 3)).to_have_count(0)
+
+    ROW_GEOMETRY = """(id) => {
+      const row = document.querySelector(`.sk-li-t[data-id="${id}"]`), box = row.getBoundingClientRect(), style = getComputedStyle(row);
+      const title = row.querySelector('.sk-outline-title').getBoundingClientRect(), lead = row.querySelector('.sk-outline-toggle, .sk-outline-leaf').getBoundingClientRect();
+      const centre = (rect) => rect.top + rect.height / 2;
+      const connector = getComputedStyle(row.parentElement, '::before');
+      return { rowTop: box.top, left: title.left, titleCentre: centre(title), titleHeight: title.height, leadCentre: centre(lead), rowHeight: box.height, rowLeft: box.left,
+        actions: [...row.querySelectorAll('.sk-outline-actions button')].map((button) => centre(button.getBoundingClientRect())),
+        shadow: style.boxShadow, radius: style.borderTopLeftRadius, background: style.backgroundColor, outline: style.outlineStyle + ' ' + style.outlineWidth,
+        focusVisible: row.matches(':focus-visible'), connectorRight: row.parentElement.getBoundingClientRect().left + parseFloat(connector.left) + parseFloat(connector.width),
+        connectorTop: parseFloat(connector.top), connectorShown: connector.content !== 'none' };
+    }"""
+
+    def test_07b_selected_hovered_and_focused_rows_keep_their_title_edge_one_centre_line_and_unbroken_tree_lines(self):
+        """#1237: a selected thought is a quiet filled row of the ordinary radius, with no outline; its title stays on the left edge of its siblings, a
+        one-line row's title and actions share a centre line, and the connector ends before the row, so the tree lines run through it."""
+        for label, options in (("1440", {}), ("390", {"viewport": PHONE, "is_mobile": True, "has_touch": True})):
+            touch = bool(options)
+            page = self.page(**options)
+            self.open(page)
+            rows = lambda: [page.evaluate(self.ROW_GEOMETRY, self.thoughts[index]) for index in range(8)]
+            rest = rows()
+            depth = self.levels(page)
+            tree = [depth[self.thoughts[index]] for index in range(8)]
+            for level in sorted(set(tree)):
+                lefts = [rest[index]["left"] for index, deep in enumerate(tree) if deep == level]
+                self.assertLessEqual(max(lefts) - min(lefts), 1, f"{label}: the thoughts of level {level} share their title's left edge: {lefts}")
+            # Selected: row 6 (a leaf of level 2) and row 7 (a leaf of level 0); hovered and focused rows keep their edges too.
+            for index in (6, 7):
+                title = self.row(page, index).locator(".sk-outline-title")
+                title.tap() if touch else title.click()
+                expect(self.row(page, index)).to_have_attribute("aria-selected", "true")
+                expect(self.row(page, index).locator(".sk-outline-actions")).to_be_visible()
+                # The fill arrives with the row's transition: measure once it is the opaque surface colour.
+                expect(self.row(page, index)).to_have_css("background-color", re.compile(r"^rgb\("))
+                now = rows()
+                for other, (was, is_) in enumerate(zip(rest, now)):
+                    self.assertAlmostEqual(was["left"], is_["left"], delta=1, msg=f"{label}: selecting row {index} moves the title of row {other}")
+                chosen = now[index]
+                self.assertEqual(chosen["shadow"], "none", f"{label}: the selected row has no outline")
+                self.assertEqual(chosen["radius"], "10px", f"{label}: the selected row has the ordinary row radius")
+                self.assertNotEqual(chosen["background"], "rgba(0, 0, 0, 0)", f"{label}: the selected row is filled")
+                if tree[index]:
+                    self.assertTrue(chosen["connectorShown"])
+                    self.assertLessEqual(chosen["connectorRight"], chosen["rowLeft"] + 0.5, f"{label}: the connector ends before the selected row")
+                if chosen["titleHeight"] < 40:
+                    for centre in chosen["actions"] + [chosen["leadCentre"]]:
+                        self.assertAlmostEqual(chosen["titleCentre"], centre, delta=2, msg=f"{label}: row {index}: a one-line row's title and its actions share a centre line: {chosen}")
+                    if not touch and tree[index]:
+                        self.assertAlmostEqual(chosen["connectorTop"], chosen["leadCentre"] - chosen["rowTop"], delta=2, msg=f"{label}: the connector meets the centre line of the row's first line: {chosen}")
+                elif not touch:
+                    self.fail(f"{label}: row {index} wraps on the computer, so its one-line centring is not checked: {chosen}")
+            if not touch:
+                # Hovered and focused rows (the selection is row 7): a hover on row 5, then the keyboard on row 2.
+                self.row(page, 5).hover()
+                for other, (was, is_) in enumerate(zip(rest, rows())):
+                    self.assertAlmostEqual(was["left"], is_["left"], delta=1, msg=f"{label}: hovering moves the title of row {other}")
+                page.mouse.move(5, 5)
+                page.keyboard.press("Shift")
+                self.row(page, 2).focus()
+                focused = rows()
+                for other, (was, is_) in enumerate(zip(rest, focused)):
+                    self.assertAlmostEqual(was["left"], is_["left"], delta=1, msg=f"{label}: focusing moves the title of row {other}")
+                if focused[2]["focusVisible"]:
+                    self.assertEqual(focused[2]["outline"], "solid 2px", "the focus ring is the 2 px outline, distinct from the filled selection")
+            self.row(page, 6).scroll_into_view_if_needed()
+            shot_both(page, f"1237-map-list-selected-{label}-{os.environ.get('FLUX_UI_BROWSER', 'chromium')}")
 
     def test_08_unavailable_and_corrupt_storage_keep_the_tree_and_this_visit_useful(self):
         blocked = self.page(fresh=True)

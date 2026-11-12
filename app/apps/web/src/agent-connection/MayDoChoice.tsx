@@ -31,7 +31,7 @@ export function MayDoChoice({ connectionId, initial, label, labelledBy }: { conn
   };
   return (
     <>
-      <div ref={group} className="seg may-do" role="radiogroup" aria-label={label} aria-labelledby={labelledBy} onKeyDown={move}>
+      <div ref={group} className="seg seg--fit may-do" role="radiogroup" aria-label={label} aria-labelledby={labelledBy} onKeyDown={move}>
         {AGENT_MAY_DO.map((choice) => (
           <button key={choice} type="button" role="radio" className="seg__b" data-may-do={choice} aria-checked={value === choice} disabled={saving}
             tabIndex={value === choice ? 0 : -1} onClick={() => { if (value !== choice) void save(choice); }}>{AGENT_MAY_DO_LABELS[choice]}</button>

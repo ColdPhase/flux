@@ -157,6 +157,11 @@
 
 /* "What it may do" (F-036 AG-3), on the assistant's screen and on each local client. */
 .may-do { margin: 8px 0; align-self: flex-start; width: fit-content; max-width: 100%; }
+/* A segmented choice whose labels differ in length (What it may do, Model): each option is as wide as its label plus 14 px each side, never an equal share
+   of the group, so the longest label keeps its room (#1219). Where the group has no room for one row the options wrap onto the next, each row filling the
+   width; the track takes the large radius so its rows stay inside it. Equal slots stay where the design draws them (the map's mode, the live stage). */
+.seg--fit { flex-wrap: wrap; max-width: 100%; border-radius: var(--r-lg); }
+.seg--fit .seg__b { flex: 1 1 auto; min-width: auto; padding: 0 14px; }
 .may-do__hint { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .connection__may-do { width: 100%; padding: 2px 16px 8px; }
 .connection__may-do-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }

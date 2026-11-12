@@ -38,18 +38,17 @@ header.top:has(.wiki-header-actions) .top__right > .lv-entry { display: none; }
 }
 
 /* Fixed slots (#873): the people and Call keep their place whatever is shown. The people end at the same edge whatever their number, their
-   slot is as wide as three people and an agent (a working agent's face comes and goes, so it must not move the views), and Call and Join
-   share one slot, so a call that can be joined moves nothing. Where the row is short of room the slot is as wide as "Call" and Join
-   drops the faces of the people already in the call (they are on the strip once you join) and the "+N" of more people goes; with room
-   (70 rem and up) the slots are as wide as Join with its live dot and two faces and as three people, an agent and "+N". A call elsewhere
+   slot is as wide as three people, an agent and "+N" (a working agent's face comes and goes, so it must not move the views), and Call and Join
+   share one slot, so a call that can be joined moves nothing. The slot is `top__faces-slot`; the button inside it hugs its overlapping faces, so
+   no grey area shows where there are none (#1236). Where the row is short of room the slot is as wide as "Call" and Join
+   drops the faces of the people already in the call (they are on the strip once you join); with room (70 rem and up) the slots are as wide as
+   Join with its live dot and two faces and as the faces with room to spare. A call elsewhere
    in the space adds nothing to the row: its dot is on More and its Join rows are in it. */
-.top--project .top__right > .top__faces { min-width: 6.25rem; justify-content: flex-end; }
-.top--project .top__more-faces { display: none; }
+.top--project .top__right > .top__faces-slot { min-width: 6.25rem; }
 .top--project .top__right > .lv-entry { min-width: 4.5rem; justify-content: center; }
 .top--project .top__right > .lv-entry .lv-faces { display: none; }
 @container main (min-width: 70rem) {
-  .top--project .top__right > .top__faces { min-width: 7.5rem; }
-  .top--project .top__more-faces { display: inline; }
+  .top--project .top__right > .top__faces-slot { min-width: 7.5rem; }
   .top--project .top__right > .lv-entry { min-width: 6.75rem; }
   .top--project .top__right > .lv-entry .lv-faces { display: inline-flex; }
 }
