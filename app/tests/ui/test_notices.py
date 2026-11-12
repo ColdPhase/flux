@@ -278,6 +278,8 @@ class NoticeJourney(unittest.TestCase):
             self.dm("Nia, can you water bed 2 on your way?", self.nia_dm_id)
             card = self.card(page)
             expect(card).to_be_visible(timeout=5000)
+            # Focus in the card holds it past its 6 s while it is measured (a slow runner measures for longer than that).
+            card.get_by_role("button", name="Close").focus()
             card.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
             box = card.bounding_box()
             assert box
