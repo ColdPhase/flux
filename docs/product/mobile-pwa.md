@@ -234,8 +234,9 @@ anyone to turn push on. The rules below are the contract; the card is drawn in t
   browser). Block shows how to allow notifications again in the browser or system
   settings. On iPhone and iPad in Safari, the card first explains Add to Home Screen with
   its steps; the Home Screen app then makes the offer. Android adds Install Flux where the
-  browser offers installation. The same offer in the call strip when someone invites you
-  comes with the call strip's own change (#1223).
+  browser offers installation. The same offer, with the same conditions, sits in the call
+  strip's invitation when someone invites you to a call (#1223), and needs no earlier
+  message.
 
 **What triggers what.** One table for the in-app notice, push and the count on the
 tab and the badge. The level is the lowest level that interrupts: "Everything" includes

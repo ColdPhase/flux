@@ -15,6 +15,7 @@ networks and TURN are verified in #63.
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import re
@@ -39,6 +40,8 @@ PEOPLE = {
     "kai": {"name": "Kai Moreau", "email": f"kai.live+{STAMP}@example.test"},
     "lee": {"name": "Lee Park", "email": f"lee.live+{STAMP}@example.test"},
 }
+# A public key as the server gives it (65 bytes, base64url): the page only compares it with a subscription it would make.
+PUSH_KEY = base64.urlsafe_b64encode(bytes([4]) + bytes(64)).decode().rstrip("=")
 TABLET = {"width": 820, "height": 1180}
 SMALL_DESKTOP = {"width": 1280, "height": 800}
 TASK = "Test the night camera on the lamp board"
@@ -558,6 +561,10 @@ class LiveJourney(LiveBase):
         expect(space).to_be_visible()
         expect(space.locator("svg.side__live[data-call-mark]")).to_have_count(0)
         jonas = self.page("jonas")
+        # This run's server has no push keys: Jonas's browser is told it has them and has not been asked, as on a server that can push.
+        jonas.context.add_init_script("Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'default' });")
+        jonas.route("**/api/v1/push/public-key", lambda route: route.fulfill(status=200, content_type="application/json",
+                                                                              body=json.dumps({"status": "available", "publicKey": PUSH_KEY})))
         jonas.goto("/")
 
         # Lee starts it: each person runs at most a few calls at once, and the journeys before this one started theirs.
@@ -594,6 +601,16 @@ class LiveJourney(LiveBase):
         # Each invitation is an Inbox item with Join for its person.
         jonas.goto("/inbox")
         expect(jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Join").first).to_be_visible()
+        # Opening the invitation: its strip offers to turn notifications on, once, with Home's card and no earlier message (#1243, F-041).
+        jonas.locator(".nyc", has_text="invited you to a call").get_by_role("button", name="Open").first.click()
+        strip = jonas.get_by_role("region", name="Invitation to work together")
+        offer = strip.locator("section.push-offer")
+        expect(offer).to_contain_text("Get notified when someone writes to you or calls")
+        expect(offer.get_by_role("button", name="Turn on")).to_be_visible()
+        shot(jonas, "live-desktop-1440-invitation-push-offer")
+        offer.get_by_role("button", name="Not now").click()
+        expect(offer).to_have_count(0)
+        expect(strip.get_by_role("button", name="Join")).to_be_visible()
         for leaver in (ada, nia):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
