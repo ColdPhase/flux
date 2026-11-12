@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { ME_PHOTO_PATH, ME_PROBE_HEADER, PEOPLE_PHOTOS_PATH, PICTURE_LIMITS, type PeoplePhotos, type PhotoSet, type PictureSize, type SpaceIcon } from '@flux/contracts';
-import { createPictureUseCases, createSpaceIconUseCases, InvalidInputError, NotFoundError, type FileStorage, type PictureRenderer, type Principal } from '@flux/core';
+import { createPictureUseCases, createSpaceIconUseCases, InvalidInputError, NotFoundError, ServiceUnavailableError, type FileStorage, type PictureRenderer, type Principal } from '@flux/core';
 import { accessPorts, personPhotoRows, spaceIconRows, type Database, type DbExecutor } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -21,11 +21,13 @@ export async function pictureRoutes(app: FastifyInstance, { db, sessions, storag
   const pictures = createPictureUseCases({ run: (action) => db.transaction((tx) => action(personPhotoRows(tx))) }, storage, renderer);
   const spaceIcons = createSpaceIconUseCases(db, { ...accessPorts, icons: (tx) => spaceIconRows(tx as DbExecutor) }, storage, renderer);
   app.addContentTypeParser(UPLOAD_TYPES, { parseAs: 'buffer', bodyLimit: PICTURE_LIMITS.photoBytes }, (_request, body, done) => done(null, body));
+  // A busy renderer refuses the upload before its body is read, so a burst does not make Flux hold 5 MiB per waiting request.
+  const refuseWhenBusy = () => { if (renderer.full()) throw new ServiceUnavailableError('Flux is busy with other pictures. Try again in a moment.', 'PICTURES_BUSY'); };
   // The person is known before a byte of the upload is read: nobody without a session makes Flux hold 5 MiB.
   const principals = new WeakMap<FastifyRequest, Principal>();
 
   app.put<{ Body: unknown }>(ME_PHOTO_PATH, { bodyLimit: PICTURE_LIMITS.photoBytes,
-    onRequest: async (request) => { principals.set(request, (await sessions.requirePrincipal(request)).principal); } },
+    onRequest: async (request) => { principals.set(request, (await sessions.requirePrincipal(request)).principal); refuseWhenBusy(); } },
   async (request): Promise<PhotoSet> => {
     if (!Buffer.isBuffer(request.body)) throw new InvalidInputError('Send the picture\'s bytes as image/png, image/jpeg or image/webp', 'UNSUPPORTED_PICTURE');
     return pictures.setPhoto(principals.get(request)!, request.body);
@@ -46,7 +48,7 @@ export async function pictureRoutes(app: FastifyInstance, { db, sessions, storag
 
   // A space's icon: JSON `{ emoji }`, or a picture's raw bytes (F-040).
   app.put<{ Params: { projectId: string }; Body: unknown }>(SPACE_ICON_ROUTE, { bodyLimit: PICTURE_LIMITS.spaceIconBytes,
-    onRequest: async (request) => { principals.set(request, (await sessions.requirePrincipal(request)).principal); } },
+    onRequest: async (request) => { principals.set(request, (await sessions.requirePrincipal(request)).principal); refuseWhenBusy(); } },
   async (request): Promise<SpaceIcon> => {
     const principal = principals.get(request)!;
     if (Buffer.isBuffer(request.body)) return spaceIcons.setPicture(principal, request.params.projectId, request.body);

@@ -9,6 +9,8 @@ export type Renditions = Record<PictureSize, Uint8Array>;
  */
 export interface PictureRenderer {
   render(bytes: Uint8Array): Promise<Renditions>;
+  /** True while a new picture would be refused as busy: the upload is then refused before its body is read. */
+  full(): boolean;
 }
 
 export interface PersonPhotoRow {

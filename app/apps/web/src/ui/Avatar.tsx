@@ -13,6 +13,18 @@ export function initials(name: string): string {
 const PIXELS = { sm: 20, md: 26, lg: 32 } as const;
 
 /**
+ * A person's photo over whatever circle holds it (F-039), or nothing when they have none or it cannot load: the circle's initials
+ * show then. The holder is positioned; `px` is its width, for the rendition.
+ */
+export function PersonPhoto({ id, px }: { id: string | null | undefined; px: number }) {
+  const photoId = usePhotoOf(id);
+  const [failed, setFailed] = useState<string | null>(null);
+  if (!photoId || failed === photoId) return null;
+  return <img className="ui-avatar__photo" alt="" decoding="async" draggable={false} srcSet={photoSources(photoId)} sizes={`${px}px`}
+    onError={() => setFailed(photoId)} />;
+}
+
+/**
  * A person's face: their photo when they have one (F-039, #1226), otherwise their initials. `id` is the person's user id; agents
  * never pass one, since an agent is Kreska and never has a photo. The initials stay under the photo, so they show while it loads and
  * whenever it cannot load. `photo` draws a chosen picture before it is saved (the preview in Settings).
@@ -20,17 +32,10 @@ const PIXELS = { sm: 20, md: 26, lg: 32 } as const;
 export function Avatar({ name, id, photo, size = 'md', tone = 'neutral' }: {
   name: string; id?: string | null; photo?: string; size?: 'sm' | 'md' | 'lg'; tone?: 'neutral' | 'me';
 }) {
-  const photoId = usePhotoOf(id);
-  const [failed, setFailed] = useState<string | null>(null);
-  const source = photo ?? (photoId && failed !== photoId ? photoId : null);
   return (
     <span className={`ui-avatar ui-avatar--${size} ui-avatar--${tone}`} aria-hidden="true">
       {initials(name)}
-      {source ? (
-        <img className="ui-avatar__photo" alt="" decoding="async" draggable={false}
-          {...(photo ? { src: photo } : { srcSet: photoSources(source), sizes: `${PIXELS[size]}px` })}
-          onError={() => { if (!photo) setFailed(source); }} />
-      ) : null}
+      {photo ? <img className="ui-avatar__photo" alt="" decoding="async" draggable={false} src={photo} /> : <PersonPhoto id={id} px={PIXELS[size]} />}
     </span>
   );
 }

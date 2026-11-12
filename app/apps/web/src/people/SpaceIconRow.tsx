@@ -78,11 +78,12 @@ export function SpaceIconRow({ project, manager, companyName, onChanged }: {
             onChange={(event) => { void pick(event.target.files?.[0]); event.target.value = ''; }} />
           <div className="spset__emoji" role="group" aria-label="Emoji">
             {SPACE_EMOJI.map((emoji) => {
-              const on = !!choice && 'emoji' in choice && choice.emoji === emoji;
+              // The saved emoji is pressed until something else is chosen.
+              const on = choice ? 'emoji' in choice && choice.emoji === emoji : project.icon?.emoji === emoji;
               return (
                 <button key={emoji} type="button" className={`spset__emoji-b${on ? ' is-on' : ''}`} aria-pressed={on} aria-label={emoji}
                   onClick={() => { setProblem(''); setChoice({ emoji }); }}>
-                  <span className="spset__tile" aria-hidden="true">{emoji}</span>
+                  <span className="spset__tile" aria-hidden="true"><span className="space-face space-face--emoji">{emoji}</span></span>
                 </button>
               );
             })}

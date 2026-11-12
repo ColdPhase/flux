@@ -70,7 +70,6 @@
 .spset__emoji { display: grid; grid-template-columns: repeat(auto-fill, 44px); max-width: calc(8 * 44px); }
 .spset__emoji-b { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: var(--r-btn); background: transparent;
   cursor: pointer; transition: var(--tr-fill); }
-.spset__emoji-b .spset__tile { font-size: var(--fs-lg); font-weight: 400; }
 .spset__emoji-b:hover { background: var(--hov); }
 .spset__emoji-b.is-on { background: var(--hov); }
 .spset__emoji-b.is-on .spset__tile { box-shadow: inset 0 0 0 1px var(--t1); }

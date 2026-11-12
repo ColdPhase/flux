@@ -146,6 +146,10 @@ class SpaceIcon(unittest.TestCase):
         after = self.geometry(tile)
         self.assertEqual({k: after[k] for k in ("w", "h", "x", "mid", "radius")}, {k: before[k] for k in ("w", "h", "x", "mid", "radius")})
         self.assertLessEqual(abs(after["mid"] - after["labelMid"]), 1, "the tile and the name stay on one line")
+        # The emoji is two thirds of its tile, in the 20 px sidebar tile as in the 28 px settings tile.
+        for holder in (tile, row.locator(".spset__name .spset__tile")):
+            ratio = holder.evaluate("el => parseFloat(getComputedStyle(el.querySelector('.space-face--emoji')).fontSize) / el.getBoundingClientRect().height")
+            self.assertAlmostEqual(ratio, 0.66, delta=0.04)
         self.settle(ben)
         shot(ben, "desktop-1440-emoji-light")
 
@@ -204,6 +208,7 @@ class SpaceIcon(unittest.TestCase):
         row = self.icon_row(phone)
         row.get_by_role("button", name=f"Change the icon of {SPACE}").tap()
         grid = row.get_by_role("group", name="Emoji")
+        expect(grid.get_by_role("button", name="🌻")).to_have_attribute("aria-pressed", "true")
         # The picker fits its card on the phone: every emoji is inside it, in as many columns as fit (rows of 8 where there is room).
         fit = grid.evaluate("""el => { const card = el.closest('.sset-card').getBoundingClientRect();
           const boxes = [...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
