@@ -87,6 +87,13 @@ in [AI providers](ai-providers.md#provider-kinds-and-wire-formats).
 - one client per request, with the owner's key from `resolveKey(keyRef)`, an explicit
   `baseURL` (so `ANTHROPIC_BASE_URL` in the environment never redirects a key) and
   `maxRetries: 0`;
+- SDK 1.x (`@anthropic-ai/sdk` 1.6, #1240) sends API version `2026-10-21` (checked 2026-11-12 in the vendor's
+  [API versions](https://platform.claude.com/docs/en/api/versioning)). That version removes `temperature`,
+  `top_p` and `top_k` (a 400 on every model) and rejects a `document` block in an assistant message and a cited
+  `text` block in a user message; the adapter sends none of them (the contract suite asserts the header and the absent
+  parameters). SDK 1.x also sends an API key as `Authorization: Bearer <key>` instead of `X-Api-Key` (the same page, "API
+  keys are sent as `Authorization: Bearer`"): the key is still the owner's, passed as the client's explicit `apiKey`, so the
+  environment and the SDK's profile lookup are never consulted;
 - `messages.create({ model, max_tokens, system, messages: [user input], output_config: { effort: 'low' } })`
   with no tools, and the `AbortSignal` of the owner's Stop;
 - `messages.countTokens` with the same model, system and input for the preflight;

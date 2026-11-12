@@ -441,8 +441,8 @@ importers:
   packages/agent-runtime:
     dependencies:
       '@anthropic-ai/sdk':
-        specifier: 0.129.0
-        version: 0.129.0(zod@4.6.7)
+        specifier: 1.6.0
+        version: 1.6.0(zod@4.6.7)
       '@flux/contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -480,8 +480,8 @@ importers:
 
 packages:
 
-  '@anthropic-ai/sdk@0.129.0':
-    resolution: {integrity: sha512-MH7LB20kNpGLUpPTe2OG5XvL/KhX8HUO9XyBaFjgFk6TLS4Xjt0VPIuMKywe7POKKPslX+QxSlVok9e+8kG5Nw==}
+  '@anthropic-ai/sdk@1.6.0':
+    resolution: {integrity: sha512-XqiO/46n8S6So8jQ/6/uNCkHntyW6QHHs1gZ+hlwTx1fWDr929g4VmwIXfdMVk7SuBWNdQvAlwyi1G3t6SEIuQ==}
     hasBin: true
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
@@ -3041,8 +3041,9 @@ packages:
 
 snapshots:
 
-  '@anthropic-ai/sdk@0.129.0(zod@4.6.7)':
+  '@anthropic-ai/sdk@1.6.0(zod@4.6.7)':
     dependencies:
+      '@opentelemetry/api': 1.10.0
       json-schema-to-ts: 3.1.1
       standardwebhooks: 1.1.1
     optionalDependencies:

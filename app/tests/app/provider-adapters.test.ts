@@ -90,6 +90,13 @@ for (const wire of WIRES) {
       assert.equal(body.model, wire.model);
       assert.equal(body[wire.maxTokensField], 1_500);
       for (const field of ['tools', 'tool_choice', 'stream', 'plugins', 'web_search_options']) assert.equal(body[field], undefined, `no ${field}`);
+      if (wire.wire === 'anthropic') {
+        // The SDK sends API version 2026-10-21 (SDK 1.x, #1240), which removed the sampling parameters (a 400 on every model): none is sent.
+        assert.equal(one!.headers['anthropic-version'], '2026-10-21');
+        // ...and it sends an API key as `Authorization: Bearer`, not in `x-api-key`, so the bearer is the one credential on the request.
+        assert.equal(one!.headers['x-api-key'], undefined);
+        for (const field of ['temperature', 'top_p', 'top_k']) assert.equal(body[field], undefined, `no ${field}`);
+      }
       // The same prompt assembly on both wire formats: one system prompt and one user input.
       const messages = body.messages as Array<{ role: string; content: string }>;
       const [system, user] = wire.wire === 'anthropic' ? [body.system, messages[0]?.content] : [messages[0]?.content, messages[1]?.content];

@@ -183,8 +183,8 @@ const server = http.createServer((request, response) => {
       return json(response, 200, { ok: true });
     }
     const wire: Wire | 'other' = url.pathname.startsWith('/anthropic/') ? 'anthropic' : url.pathname.startsWith('/openai/') ? 'openai' : 'other';
-    const key = wire === 'anthropic' ? (request.headers['x-api-key'] as string | undefined) ?? null
-      : (request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+    // Both wires carry the key as a bearer: the Anthropic SDK 1.x sends an API key in `Authorization`, as the OpenAI-compatible adapters do.
+    const key = (request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
     const recorded: RecordedProviderRequest = { wire, method: request.method ?? '', path: url.pathname, key, headers: request.headers, body, aborted: false, at: Date.now() };
     response.on('close', () => { if (!response.writableFinished) recorded.aborted = true; });
     requests.push(recorded);

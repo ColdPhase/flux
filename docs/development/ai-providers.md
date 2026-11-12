@@ -53,7 +53,7 @@ bound, no tools (a `server` run with the Flux tool loop adds the Flux tools and,
 is on, the provider's own web search where it has one, each request one turn: see
 [personal runs](personal-runs.md#tool-loop-f-027-ast-8-406-first-part) and [web search](personal-runs.md#web-search-954)), no streaming, no retries. The differences are the wire format only:
 
-- Anthropic: `x-api-key`, `max_tokens`, `output_config.effort: "low"`, and for comparisons
+- Anthropic: `Authorization: Bearer` (the key; SDK 1.x sends an API key there, not in `x-api-key`, #1240), `max_tokens`, `output_config.effort: "low"`, and for comparisons
   `output_config.format` with the answer schema; the official SDK with `maxRetries: 0` and the
   guarded transport as its `fetch`. Its token-count endpoint may raise the Flux estimate.
 - OpenAI Responses (#954): `Authorization: Bearer`, `POST <base>/responses`, the brief as `instructions`,
