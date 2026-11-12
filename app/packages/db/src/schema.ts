@@ -56,7 +56,7 @@ export const authUsers = pgTable('auth_users', {
 });
 
 /**
- * A person's profile photo (F-039, #1226, migration 0057): `id` is its version in the immutable URL; the three WebP renditions are
+ * A person's profile photo (F-039, #1226, migration 0062): `id` is its version in the immutable URL; the three WebP renditions are
  * file objects. A deleted row queues its objects in `file_garbage` (trigger), so a new photo, a removal and a deleted account all free them.
  */
 export const personPhotos = pgTable('person_photos', {
