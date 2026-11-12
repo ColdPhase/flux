@@ -641,7 +641,9 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
     if "more" in state:
         problems = check_more(state["more"], read_more(client, client.origin, state))
         unicode_search = state["more"].get("unicode_search")
-        if unicode_search:
+        # Only on Flux's database image (schema 65 on, F-042): a release on the Alpine image, such as v0.2.0 reading its own backup
+        # back, does not count those letters as letters at all.
+        if unicode_search and int(client.expect("GET", "/api/v1/health").get("schemaVersion", 0)) >= 65:
             found = client.expect("GET", "/api/v1/search?" + urllib.parse.urlencode({"q": unicode_search["q"]}))
             texts = [" ".join(part["text"] for part in (item.get("title") or []) + (item.get("snippet") or [])) for item in found["items"]]
             if not any(unicode_search["find"] in text for text in texts):
