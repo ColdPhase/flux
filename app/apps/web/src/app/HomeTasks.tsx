@@ -38,7 +38,7 @@ export function HomeTasks() {
   };
   useEffect(() => () => { if (soon.current !== null) window.clearTimeout(soon.current); }, []);
 
-  useStreamEvents(me.user.id, (event) => { if ((event.objectType === 'project' || event.objectType === 'workspace') && !event.kind.endsWith('observed.v1')) again(); }, again);
+  useStreamEvents(me.user.id, (event) => { if ((event.objectType === 'project' || event.objectType === 'workspace') && !event.kind.endsWith('observed.v1') && !event.kind.endsWith('.notice.v1')) again(); }, again);
   useEffect(() => {
     const onVisible = () => { if (document.visibilityState === 'visible') setRefresh((n) => n + 1); };
     document.addEventListener('visibilitychange', onVisible);

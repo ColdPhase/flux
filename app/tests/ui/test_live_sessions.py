@@ -446,8 +446,20 @@ class LiveJourney(LiveBase):
         details = nia.get_by_role("dialog", name="Live session")
         expect(details.get_by_role("heading", name=TASK)).to_be_visible()
         row = details.locator(".lv-person--absent", has_text="Jonas Berg")
+        # Jonas has Flux open elsewhere (Home): the invitation reaches him at once as a call notice with Join (#1243).
+        jonas = self.page("jonas")
+        jonas.goto("/")
+        expect(jonas.locator(".app__pane")).to_be_visible()
+        jonas.wait_for_timeout(1500)
         row.get_by_role("button", name="Invite").click()
         expect(row).to_contain_text("Invited")
+        notice = jonas.locator(".ui-notices .ui-notice")
+        expect(notice).to_contain_text("Nia Okafor invited you", timeout=5000)
+        expect(notice.get_by_role("button", name="Join")).to_be_visible()
+        expect(notice.get_by_role("button", name="Open")).to_have_count(0)
+        jonas.wait_for_timeout(6500)
+        expect(notice).to_be_visible()  # a call's notice stays until the call ends or it is closed
+        shot(jonas, "live-desktop-1440-call-notice")
         shot(nia, "live-desktop-1440-panel")
         nia.keyboard.press("Escape")
         expect(details).to_be_hidden()
@@ -458,7 +470,6 @@ class LiveJourney(LiveBase):
         type(self).ids["session1"] = session_id
         self.api(nia, "POST", f"/api/v1/live-sessions/{session_id}/invitations", {"recipientId": PEOPLE["jonas"]["id"]}, status=201)
 
-        jonas = self.page("jonas")
         jonas.goto("/inbox")
         item = jonas.locator(".nyc", has_text="Nia Okafor invited you to work together")
         expect(item).to_have_count(1)

@@ -14,6 +14,7 @@ import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
+import { Notices } from '../notifications/Notices';
 import { useAnsweredInbox } from '../notifications/answered';
 import { placeOf } from './place';
 import { placeOfPath, rememberPlace } from '../search/recent';
@@ -876,6 +877,8 @@ function AppLayoutContent() {
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
       {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
       <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; }} />
+      {/* Someone wrote, mentioned, assigned or called while you are elsewhere: one card, apart from the Undo toasts (#1243). */}
+      <Notices identity={me.user.id} placeName={(id) => projects.find((project) => project.id === id)?.name ?? null} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </LiveProvider>

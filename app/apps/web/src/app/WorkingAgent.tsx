@@ -155,7 +155,7 @@ function useOwnWorkingAgents(identity: string) {
     return () => { controller?.abort(); window.clearInterval(timer); window.removeEventListener('focus', onFocus); reload.current = () => { /* unmounted */ }; };
   }, [identity, allOff]);
   // Someone seeing a message changes no agent's work (#862).
-  useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1')) reload.current(); }, () => reload.current());
+  useStreamEvents(identity, (event) => { if (!event.kind.endsWith('observed.v1') && !event.kind.endsWith('.notice.v1')) reload.current(); }, () => reload.current());
   return { items: state.identity === identity ? state.items : [], reload: useCallback(() => reload.current(), []) };
 }
 

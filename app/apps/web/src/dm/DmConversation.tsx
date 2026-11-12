@@ -127,6 +127,13 @@ function DmContent({ initial }: { initial: Dm }) {
   const [receiptTick, setReceiptTick] = useState(0);
   const opener = useRef<string | null>(null);
   const [replyFocus, setReplyFocus] = useState(false);
+  // A notice's Reply (#1243) arrives asking to write: the composer takes focus, once per arrival.
+  useEffect(() => {
+    if (!(location.state as { focusComposer?: boolean } | null)?.focusComposer) return undefined;
+    const frame = requestAnimationFrame(() => document.getElementById('dm-composer')?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.key]);
   // #537: the task copy being previewed. Nothing is written until it is confirmed there.
   const [copy, setCopy] = useState<{ message: DmMessage; excerpt: string | undefined } | null>(null);
 
@@ -179,7 +186,8 @@ function DmContent({ initial }: { initial: Dm }) {
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
   useFollowEnd(() => feedRef.current, privateItems.replaceAll(',', '') ? privateItems : '');
   useStreamEvents(me.user.id, (event) => {
-    if (event.objectType !== 'dm' || event.objectId !== initial.id) return;
+    // A notice (#1243) is for the notice card; the message it is about came as its own event.
+    if (event.objectType !== 'dm' || event.objectId !== initial.id || event.kind === 'dm.notice.v1') return;
     // Someone saw a message: only the "Seen by" lines ask again, not the whole conversation.
     if (event.kind === 'dm.observed.v1') { setReceiptTick((tick) => tick + 1); return; }
     void refresh(); setRefreshTick((tick) => tick + 1);
