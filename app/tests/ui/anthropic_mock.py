@@ -68,6 +68,11 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_args) -> None:  # quiet
         return
 
+    def presented_key(self) -> str:
+        """The credential of the request: the SDK 1.x sends an API key as `Authorization: Bearer` (#1240); `x-api-key` is the older header."""
+        bearer = self.headers.get("authorization", "")
+        return bearer[len("Bearer "):] if bearer.startswith("Bearer ") else self.headers.get("x-api-key", "")
+
     def reply(self, status: int, body: dict) -> None:
         data = json.dumps(body).encode()
         try:
@@ -99,9 +104,9 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, {"ok": True})
         with lock:
             current = dict(script)
-            requests.append({"path": self.path, "key_ok": self.headers.get("x-api-key") == FIXTURE_KEY,
+            requests.append({"path": self.path, "key_ok": self.presented_key() == FIXTURE_KEY,
                              "retry_count": self.headers.get("x-stainless-retry-count"), "body": body, "at": time.time()})
-        if self.headers.get("x-api-key") != FIXTURE_KEY:
+        if self.presented_key() != FIXTURE_KEY:
             return self.reply(401, {"type": "error", "error": {"type": "authentication_error", "message": "invalid x-api-key"}})
         text_in = "\n".join(str(message.get("content", "")) for message in body.get("messages", []))
         if self.path == "/v1/messages/count_tokens":

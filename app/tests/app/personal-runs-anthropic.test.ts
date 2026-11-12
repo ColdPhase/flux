@@ -72,8 +72,9 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(seen.length, 1);
     const [sent] = seen;
     assert.deepEqual([sent!.method, sent!.path], ['POST', '/v1/messages']);
-    assert.equal(sent!.headers['x-api-key'], KEY);
-    assert.equal(sent!.headers.authorization, undefined, 'no other credential is sent');
+    // SDK 1.x sends an API key as a bearer (#1240); it is the one credential on the request.
+    assert.equal(sent!.headers.authorization, `Bearer ${KEY}`);
+    assert.equal(sent!.headers['x-api-key'], undefined, 'no other credential is sent');
     assert.deepEqual(sent!.body, {
       model: 'claude-sonnet-5', max_tokens: 4000, system: BRIEF.system,
       messages: [{ role: 'user', content: request.input }], output_config: { effort: 'low' },
@@ -100,7 +101,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(await compute().countInputTokens!(request), 4_321);
     assert.equal(seen.length, 1);
     assert.equal(seen[0]!.path, '/v1/messages/count_tokens');
-    assert.equal(seen[0]!.headers['x-api-key'], KEY);
+    assert.equal(seen[0]!.headers.authorization, `Bearer ${KEY}`);
     assert.deepEqual(seen[0]!.body, { model: 'claude-sonnet-5', system: BRIEF.system, messages: [{ role: 'user', content: request.input }] });
     handler = (_seen, response) => json(response, 500, apiError('api_error'));
     await assert.rejects(compute().countInputTokens!(request));
@@ -172,7 +173,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     process.env.ANTHROPIC_API_KEY = 'environment-key';
     try {
       assert.equal((await compute().dispatch(request, new AbortController().signal)).kind, 'completed');
-      assert.equal(seen[0]!.headers['x-api-key'], KEY);
+      assert.equal(seen[0]!.headers.authorization, `Bearer ${KEY}`);
     } finally {
       if (saved.url === undefined) delete process.env.ANTHROPIC_BASE_URL; else process.env.ANTHROPIC_BASE_URL = saved.url;
       if (saved.key === undefined) delete process.env.ANTHROPIC_API_KEY; else process.env.ANTHROPIC_API_KEY = saved.key;

@@ -90,7 +90,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         assert.equal(seen.length, 1, 'one request is one turn');
         const [sent] = seen;
         assert.equal(sent!.path, pathOf(wire.wire));
-        assert.equal(sent!.headers[wire.wire === 'anthropic' ? 'x-api-key' : 'authorization'], wire.wire === 'anthropic' ? KEY : `Bearer ${KEY}`);
+        assert.equal(sent!.headers.authorization, `Bearer ${KEY}`);
         assert.deepEqual(sent!.body.tools, toolsOnWire(wire.wire));
         assert.equal(sent!.body.tool_choice, undefined, 'the model chooses (auto); a forced choice is refused by some current models');
         for (const hosted of ['web_search_options', 'plugins', 'stream']) assert.equal(sent!.body[hosted], undefined, `no ${hosted}`);
