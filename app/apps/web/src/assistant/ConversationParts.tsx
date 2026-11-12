@@ -12,6 +12,7 @@ import { useKeepFocus } from './useKeepFocus';
 import { agentAuthorLabel } from '../docs/format';
 import './assistant.css';
 import { RefLink } from '../place/origin';
+import { MessageText } from '../app/MessageText';
 
 // The personal assistant in a project conversation (#57 design, #68 AC-8), in the calm
 // hierarchy: an answer is an ordinary message whose author is "<Owner>'s assistant", marked as
@@ -153,20 +154,13 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
   return <RefLink className="assistant-cite" to={`/projects/${lookups.projectId}/map/${source.sketchId}#thought-${source.id}`} aria-label={label} title={label}>{index}</RefLink>;
 }
 
-/** The body with `[n]` citations as links that open exactly the cited object. */
+/** The body as formatted text (the one message renderer, #1247) with `[n]` citations as links that open exactly the cited object. */
 export function AnswerBody({ answer, lookups }: { answer: Pick<AssistantAnswer, 'body' | 'sources'>; lookups: SourceLookups }) {
-  const parts: ReactNode[] = [];
-  let last = 0;
-  for (const match of answer.body.matchAll(/\[(\d{1,3})\]/g)) {
-    const index = Number(match[1]);
+  const cite = (index: number) => {
     const source = answer.sources[index - 1];
-    if (!source) continue;
-    parts.push(answer.body.slice(last, match.index));
-    parts.push(<SourceLink key={`${match.index}-${index}`} source={source} index={index} lookups={lookups} />);
-    last = match.index! + match[0].length;
-  }
-  parts.push(answer.body.slice(last));
-  return <p className="assistant-answer__body">{parts}</p>;
+    return source ? <SourceLink source={source} index={index} lookups={lookups} /> : null;
+  };
+  return <div className="assistant-answer__body"><MessageText body={answer.body} cite={cite} /></div>;
 }
 
 export function sourceSummary(count: number, from = 'this project') {

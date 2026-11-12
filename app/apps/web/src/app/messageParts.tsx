@@ -6,6 +6,7 @@ import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
 import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
+import { MessageText } from './MessageText';
 
 // Pieces of a project message shared by the stream of roots and the thread beside it (UI116-1).
 
@@ -143,7 +144,7 @@ export function pendingMessageRow({ item, place, continued = false, keyed = true
       className={`project-convo__message is-mine is-pending is-pending-${place}${continued ? ' is-continued' : ''}${item.state === 'failed' ? ' is-failed-send' : ''}`}>
 
       {inMeta ? status : null}
-      <PendingFiles body={item.body ? <div className="message-body">{item.body}</div> : null} files={item.files} send={{ state: item.state, onRetry }} />
+      <PendingFiles body={item.body ? <div className="message-body"><MessageText body={item.body} /></div> : null} files={item.files} send={{ state: item.state, onRetry }} />
       <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>

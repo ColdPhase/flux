@@ -11,7 +11,7 @@ import { toolError, toolResult } from './tool-results.js';
 
 const execution = actionInput();
 const message = z.strictObject({
-  body: z.string().min(1).max(100_000).describe('Plain message text, visible to everyone with current access to this project.'),
+  body: z.string().min(1).max(100_000).describe('Message text, visible to everyone with current access to this project. Flux shows **bold**, *italic*, `inline code`, fenced code blocks, lists with "- " or "1. " and quotes with "> "; headings, tables, images, HTML and [links](url) stay as typed.'),
   cite: z.strictObject({ materialId: id, version }).optional()
     .describe('One material or doc version of this project the message refers to; it keeps citing exactly that version.'),
 });

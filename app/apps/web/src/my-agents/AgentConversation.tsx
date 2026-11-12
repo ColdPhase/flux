@@ -5,6 +5,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
 import { AnswerBody } from '../assistant/ConversationParts';
+import { MessageText } from '../app/MessageText';
 import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
 import { MessageBubble } from '../composer/Attachments';
@@ -142,7 +143,7 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
           <p className="dm-msg__meta"><b>{agent.name}</b><time className="agc__time" dateTime={line.createdAt}> · {clock(line.createdAt)}</time></p>
           {line.words || line.task ? (
             <MessageBubble><div className="dm-msg__body agc__answer">
-              {line.words ? <p>{line.words}</p> : null}
+              {line.words ? <div className="assistant-answer__body"><MessageText body={line.words} /></div> : null}
               {line.task ? (
                 <Link className="agc__chip" to={`/projects/${line.task.projectId}/tasks?open=work:${line.task.id}`}>
                   <Icon name="tasks" size={13} />#{line.task.number} {line.task.title} · {line.task.projectName}

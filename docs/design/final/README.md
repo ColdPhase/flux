@@ -444,6 +444,36 @@ These functional rules from UI116-4 remain required:
 These boards date from 2026-10-07. Their files, references and photos are current; their task
 words and the conversation header follow sections 2 and 4.
 
+### Formatted text in a message
+
+Founder pick, Hubert, 2026-11-10 ([#1247](https://github.com/ColdPhase/flux/issues/1247)). One
+renderer (`app/MessageText.tsx`) draws the words of a message in a space, a thread, a task's
+discussion, a direct message, an agent's chat and an assistant's answer; a later surface that shows the same text (a Markdown file preview, #1252) reuses it. It
+draws a small subset, from the stored Markdown text, with existing tokens only; nothing else in
+a message is formatted and there is no formatting toolbar.
+
+| Typed | Drawn |
+| --- | --- |
+| `**bold**` | Weight 600, same size and colour. |
+| `*italic*` | Italic of the same face, same size and colour. |
+| `` `code` `` | The Wiki's inline code: Geist Mono at .86 em on `--sub`, a 1 px inset `--line`, radius 4, padding 1 / 5. It is only text, so marks and references inside it stay as typed. |
+| ```` ``` ```` fence | A code block on `--sub` with a 1 px inset `--line`, radius `--r-sm`. A quiet bar on top holds the language when one was written (mono, `--fs-xs`, `--t3`) and **Copy** (quiet small button, the `copy` icon; it reads "Copied" with the `check` icon for two seconds). The code is Geist Mono 13 / 1.55, never wraps, and scrolls sideways inside the block on its own focusable region (keyboard: Tab, then the arrow keys). |
+| `- item` / `1. item` | One list, bullets or numbers in `--t3`, indented 1.4 em, 2 px between items. An indented item is an item of the same list; there are no nested lists. |
+| `> quote` | As already drawn: a `--sub` block with a 2 px `--line2` rule, and an attribution line "Name:" first. |
+
+- A mention, `#4`, a Wiki page or a web address inside bold or italic stays a chip or a link. In
+  code, nothing is a chip.
+- **Not drawn, shown as typed:** headings (`#`), tables, images, HTML, Markdown links and
+  `_`, `~`. Text that only looks like a mark (`2 * 3 * 4`, a lone `*`) stays text. There is no
+  escape character: marks that must show as typed go in `code`.
+- In your own message, whose bubble is the `--own` grey, code and a code block sit on `--el` so
+  they still read as a block; elsewhere they sit on `--sub`.
+- A one-line preview (the DM list, a notification, Copy text) shows the words without the marks.
+- Keys: `Ctrl/⌘ B` and `Ctrl/⌘ I` wrap the selected words in the composer (and in editing a
+  message) and take the marks off again; nothing selected puts the pair of marks down with the
+  caret between them. The hint under the composer is unchanged.
+- The agent's brief allows exactly this subset ([assistant](../../product/assistant.md), AG-4).
+
 ## 7. Screens
 
 The v0.2 screens, as Hubert approved them on 2026-11-03. Every render is light; dark comes from the

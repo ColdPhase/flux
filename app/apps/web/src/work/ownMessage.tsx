@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { ApiError } from '../api/client';
+import { formatKey } from '../composer/formatKeys';
 import { Button, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
 import './own-message.css';
 
@@ -47,6 +48,7 @@ function Editor({ body, hasFiles, onSave, onCancel }: { body: string; hasFiles: 
     try { await onSave(words); } finally { setBusy(false); }
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (formatKey(event)) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); }
     else if (sendsOnEnter(event, touch)) { event.preventDefault(); void save(); }
   };

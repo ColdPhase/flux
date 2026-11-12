@@ -298,7 +298,7 @@ export function useTouchActions<E extends HTMLElement = HTMLLIElement>(options: 
     <>
       <span className={`msg-swipe${offset >= REPLY_AT ? ' is-ready' : ''}`} aria-hidden="true" hidden={!offset}><Icon name="reply" size={20} /></span>
       <button type="button" className="msg-touch__sr" aria-haspopup="menu" aria-expanded={menu === 'button'} onClick={(event) => { opener.current = event.currentTarget; setMenu('button'); }}><Icon name="more" size={16} /><span className="msg-touch__label">Message actions</span></button>
-      {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' ? options.body : messagePreview(options.message.body, options.message.files?.length)}
+      {last ? <MessageSheet open={shown} focusFirst={last === 'button'} items={items} preview={options.kind === 'dm' ? messagePreview(options.body) : messagePreview(options.message.body, options.message.files?.length)}
         onClose={(restore) => { setMenu(null); if (restore) opener.current?.focus({ preventScroll: true }); }} /> : null}
     </>
   );

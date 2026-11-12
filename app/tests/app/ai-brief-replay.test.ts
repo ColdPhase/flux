@@ -36,7 +36,7 @@ async function mock(path: string, body?: unknown) {
 }
 
 const SECRET = `sk-ant-api03-${'q'.repeat(40)}`;
-/** A model's answer that breaks the rules a little: Markdown, a mark of a source it was not given, a proposal, a secret. */
+/** A model's answer that breaks the rules a little: a mark of a source it was not given, a proposal, a secret. Its bold is in the message subset (#1247). */
 const SCRIPTED = `**Decided:** the far beds use LoRa [S1], because Wi-Fi drops when the hedge is wet [S2]. Nobody said so [S99].\n`
   + `<proposal>${JSON.stringify({ fact: 'f', interpretation: 'i', title: 'Not from /ai', finding: 'positive', evidence: '', finishes: null })}</proposal>\nKey: ${SECRET}`;
 

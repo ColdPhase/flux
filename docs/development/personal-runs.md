@@ -306,7 +306,7 @@ pages, founder direction 2026-11-09, #1113).
   writes them in stream order through one promise chain (`record`): `startWebSearch` writes a `personal_run_web_searches` row,
   `settleWebSearch` fills its results and queries. Neither CLI hands Flux citations: at the commit, the addresses the answer names
   (`addressesIn`) are written as the run's cited row, and `searches` lists those its search returned under "Found on the web:". Claude
-  Code's tool result asks the model to cite its sources as Markdown links, which an answer shown as plain text would show raw, so the brief's
+  Code's tool result asks the model to cite its sources as Markdown links, which the message renderer does not draw (only a bare address becomes a link) and would show raw, so the brief's
   `RUNTIME_WEB_SEARCH_LINE` says not to (#1116). A Claude Code search whose tool use has no string id cannot be matched to a result: the slot
   sends its `found` at once, with no addresses. A `user` event that carries several tool results (a CLI running tools in parallel) is not
   read as a search's: each of its searches is `found` with no addresses (checking a real plan's parallel results is for release
@@ -610,7 +610,7 @@ each case is pinned in `app/tests/app/snapshots/ai-brief/`, so a change to what 
 
 - **System**: who the agent is and whose (names the owner gave: the agent's and their own), where it was asked (the kind of place only),
   the time now in the owner's time zone (`personTimeZone`: their browser's zone, which the web app saves on them, `auth_users.time_zone`, C-57; the zone a schedule they ask for runs in); who reads the answer and so what it may
-  use of Flux (AG-4, C-37); how to answer (in the asker's language, short plain text as the card shows it, written so the asker can post it
+  use of Flux (AG-4, C-37); how to answer (in the asker's language, short, in the message subset of Markdown that the one renderer draws (`FORMAT`, #1247; `assistant.md` AG-4), written so the asker can post it
   as their own message with Show everyone, with no "You asked…" or lead-in and only the text when asked to draft one, `[S<n>]` marks where
   sources are numbered, `#12` and `[[Wiki page]]` that stay links after Show everyone, names without `@`, general knowledge never passed off
   as what the conversation says, an honest "not in the conversation", files it cannot open); the tools and the ids they need, the
