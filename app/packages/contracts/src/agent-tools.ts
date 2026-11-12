@@ -68,6 +68,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   effect('flux_transfer_unit', 'cowork.unit.transfer'),
   effect('flux_decline_unit', 'cowork.unit.decline'),
   effect('flux_create_proposal', null),
+  // #1217, AG-8: a public picture the server downloads and attaches to the run's answer to `/ai` in a space.
+  effect('flux_attach_image', 'answer.picture.attach'),
   alias('resource', 'flux_cowork_playbook'),
   alias('prompt', 'start_work'),
   alias('prompt', 'resume_work'),

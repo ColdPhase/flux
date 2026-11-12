@@ -46,6 +46,7 @@ import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { aiKeyRoutes } from './ai-keys/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
+import { configureAgentPictures } from './agent-connection/picture-actions.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
 import { returnRoutes } from './returns/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
@@ -315,6 +316,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
+  // An agent's picture (#1217): the same reader, and the files volume a person's upload goes to.
+  configureAgentPictures({ reader: webReader, storage: fileStorage });
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader);
@@ -327,7 +330,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   // Personal assistant runs (#68): the server queues; the worker dispatches.
   await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
-    runtime: personalRuntimeAvailability(config.agentRuntime, db) });
+    runtime: personalRuntimeAvailability(config.agentRuntime, db), storage: fileStorage });
   // People's agents take tasks (#856): the setting, the state line and the drain of what the work and the worker wrote.
   await app.register(aiRoutes(agentTaskRoutes), { db, sessions: identity, boss, connectionString,
     composition: { connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled, runtime: personalRuntimeAvailability(config.agentRuntime, db) } });

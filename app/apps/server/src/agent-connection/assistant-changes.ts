@@ -91,7 +91,7 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'work.create': 'work', 'work.update': 'work', 'decision.propose': 'decision', 'doc.create': 'doc',
   'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
-  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
+  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work', 'answer.picture.attach': 'picture',
 };
 
 interface Target {
@@ -278,6 +278,16 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'conversation.create': case 'conversation.reply':
       return { ...base, objectId: null, title: text((payload as { body?: unknown }).body).slice(0, 80) };
+    case 'answer.picture.attach': {
+      // A picture for the run's own answer (#1217, C-59): the asker's alone until their Show everyone, so it is theirs; Undo removes it.
+      // Its words name the address it comes from, host, path and query, so an OK under Ask me first is an informed one (the review of #1288).
+      const caption = text(payload.caption).trim();
+      let from = '';
+      try { const url = new URL(String(payload.url)); from = `${url.host}${url.pathname}${url.search}`; } catch { /* the fetch says it is no address */ }
+      const clipped = from.length > 140 ? `${from.slice(0, 139)}…` : from;
+      const title = (caption && clipped ? `${caption} from ${clipped}` : caption || (clipped ? `from ${clipped}` : '')).slice(0, 200);
+      return { ...base, objectId: null, title, undo: removal(title) };
+    }
     case 'work.creation.revert': {
       // Taking back its own unused task is a deletion (AG-3: deleting always waits). Nothing else about the task is read here.
       const work = objectId ? await rows.work(objectId) : null;
@@ -390,7 +400,7 @@ const afterVersion = (postconditions: AgentPostcondition[]) => {
   return null;
 };
 const producedId = (value: Record<string, unknown>) => {
-  for (const key of ['workId', 'docId', 'mapId', 'thoughtId', 'linkId', 'decisionId', 'messageId'])
+  for (const key of ['workId', 'docId', 'mapId', 'thoughtId', 'linkId', 'decisionId', 'messageId', 'fileId'])
     if (typeof value[key] === 'string') return value[key] as string;
   return null;
 };

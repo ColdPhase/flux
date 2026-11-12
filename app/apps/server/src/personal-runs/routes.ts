@@ -37,8 +37,9 @@ import {
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { conversationUseCases, ForbiddenError, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
-import { isCompanyGuest, type Database } from '@flux/db';
+import { conversationUseCases, ForbiddenError, InvalidInputError, type FileStorage, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
+import { assistantChangeRows, isCompanyGuest, type Database, type DbExecutor } from '@flux/db';
+import { answerPictureIds } from '../agent-connection/picture-actions.js';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, useDomainErrors, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
@@ -56,6 +57,8 @@ interface Options {
   providerEnabled?: boolean;
   /** The owner's own Claude Code and Codex in the agent runtime (F-022 AIM-3, #280). */
   runtime?: PersonalRuntimeAvailability;
+  /** The files volume: Show everyone posts the pictures an agent attached to the answer (#1217). */
+  storage?: FileStorage;
 }
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
@@ -97,7 +100,7 @@ const ownState: ReplayCheck = async (principal, _body, db) => {
  * calls one core use case. Nothing here reads an owner, agent or connection from the request:
  * the session is the owner. The server only queues runs; the worker dispatches them.
  */
-export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, runtime }: Options) {
+export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, runtime, storage }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
@@ -211,7 +214,12 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   // Dismiss: the asker puts an answer, or the line of a run that ended, away.
   app.post<{ Params: { runId: string } }>(assistantRunDismissPath(':runId'), async (request, reply) => command(request, reply, {
     operation: `POST ${assistantRunDismissPath(':runId')}`, scope: 'account',
-    run: (actor, conn) => personalRunUseCases(conn, composition).dismiss(actor, request.params.runId), replay: ownState,
+    run: async (actor, conn) => {
+      const run = await personalRunUseCases(conn, composition).dismiss(actor, request.params.runId);
+      // A picture still waiting for its OK can no longer join the answer (#1217): it is closed, and the run's kept private text goes.
+      if (run.dismissedAt) await assistantChangeRows(conn as unknown as DbExecutor).closeWaitingPictures(run.id, 'The answer was put away before this picture was approved');
+      return run;
+    }, replay: ownState,
   }));
   // Show everyone (F-036 AG-4): the answer becomes its asker's own message in the place they asked in, "Ada · via Assistant". It is posted
   // under the run's id, so a retry posts it once. Nothing reads another person's run: the run is the caller's own or it is not found.
@@ -220,13 +228,17 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     run: async (actor, conn): Promise<ShowAnswerResult> => {
       const uses = personalRunUseCases(conn, composition);
       const { run, place, body, via } = await uses.planShow(actor, request.params.runId);
-      const message = { body, clientMessageId: run.id };
+      // The pictures its agent attached go with it (#1217, C-59), as the asker's own attachments: in a space only (a DM carries no files).
+      const pictures = place.kind === 'space' ? await answerPictureIds(conn as unknown as DbExecutor, run.id, run.answer!.askedBy.id) : [];
+      const message = { body, clientMessageId: run.id, ...(pictures.length ? { attachmentIds: pictures } : {}) };
       let messageId: string;
       if (place.kind === 'dm') messageId = (place.threadRootId !== null ? await dmUseCases(conn).replyVia(actor, place.dmId, place.threadRootId, message, via)
         : await dmUseCases(conn).sendVia(actor, place.dmId, message, via)).id;
-      else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn)).sendMessage(actor, place.conversationId, message, via)).id;
-      else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn)).createConversation(actor, place.projectId, message, via)).messages[0]!.id;
+      else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn, { storage })).sendMessage(actor, place.conversationId, message, via)).id;
+      else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn, { storage })).createConversation(actor, place.projectId, message, via)).messages[0]!.id;
       else throw new InvalidInputError('A private chat has nobody to show it to');
+      // A picture still waiting for its OK can no longer join the posted answer (#1217): it is closed, and the run's kept private text goes.
+      await assistantChangeRows(conn as unknown as DbExecutor).closeWaitingPictures(run.id, 'The answer was shown to everyone before this picture was approved');
       return { run: await uses.markShown(actor, run.id), messageId };
     },
     replay: ownState,

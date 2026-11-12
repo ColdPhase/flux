@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantChangesPath, projectAssistantChangesPath, WORK_LIMITS, type AssistantChange, type AssistantChangeDecision, type AssistantObjectType, type AssistantRunUndone,
+  conversationAssistantChangesPath, projectAssistantChangesPath, WORK_LIMITS, type AssistantChange, type MessageFile, type AssistantChangeDecision, type AssistantObjectType, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantChangeRows, changeGroup, isCompanyGuest, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
@@ -19,6 +19,7 @@ import { registerAgentDocActions } from '../agent-connection/doc-actions.js';
 import { registerAgentConversationActions } from '../agent-connection/conversation-actions.js';
 import { registerAgentCoworkActions } from '../agent-connection/cowork-actions.js';
 import { ASSISTANT_UNIT_CREATE_INPUT } from '../agent-connection/tool-registry.js';
+import { registerAgentPictureActions } from '../agent-connection/picture-actions.js';
 
 // The owner's side of an agent's changes (F-036 AG-3, AG-7, #855): the change line and Undo on the agent's message, and the
 // waiting changes with Approve, Edit, Skip, Delete and Keep. Only the owner sees or decides a waiting change, in their own
@@ -40,7 +41,7 @@ type SavedTool = (args: Record<string, unknown>, call: { claims: FluxMcpClaims }
 function savedTools(db: Database): Map<string, SavedTool> {
   const callbacks = new Map<string, SavedTool>();
   const registry = { forAccess: () => ({ registerTool: (name: string, _config: unknown, callback: SavedTool) => { callbacks.set(name, callback); } }) };
-  for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions])
+  for (const register of [registerAgentWorkActions, registerAgentMapActions, registerAgentDocActions, registerAgentConversationActions, registerAgentPictureActions])
     register(registry as unknown as AgentToolRegistry, db);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
   // (Its recovery-cursor secret serves tools a saved change never calls; the registration only needs a well-formed one.)
@@ -97,14 +98,22 @@ function toldWords(row: AssistantChangeRow): string | null {
       : row.tool === 'flux_propose_decision' ? [quoted(args.decision?.title)] : [];
   return parts.filter((part): part is string => typeof part === 'string' && part.trim() !== '').join(' · ') || null;
 }
+/** The picture a standing change attached to its run's answer (#1217), as a message's file: what the asker's card shows. */
+function pictureOf(row: AssistantChangeRow): { file?: MessageFile } {
+  if (row.operation !== 'answer.picture.attach' || (row.state !== 'applied' && row.state !== 'applied_after_wait')) return {};
+  const value = (row.receipt as { value?: { fileId?: unknown; name?: unknown; size?: unknown } } | null)?.value;
+  return typeof value?.fileId === 'string' && typeof value.name === 'string' && typeof value.size === 'number'
+    ? { file: { id: value.fileId, name: value.name, size: value.size } } : {};
+}
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
 const isThreadLine = (row: AssistantChangeRow) => { const plan = undoOf(row)?.plan; return plan?.kind === 'removal' && plan.thread === true; };
 /** A line an agent put in a task's thread, once its owner deleted it (TA-3, #938): "Removed by Jonas", not an Undo that restores nothing. */
 const threadLineRemoved = (row: AssistantChangeRow, names: Map<string, string>): string | null =>
   row.state === 'undone' && isThreadLine(row) ? `Removed by ${row.decidedBy ? names.get(row.decidedBy) ?? 'its owner' : 'its owner'}` : null;
 /** What was done is the message of the conversation, for everyone who can read it; a waiting change or a refusal is the owner's alone. */
-const isDone = (row: AssistantChangeRow) => row.state === 'applied' || row.state === 'applied_after_wait' || row.state === 'undone'
-  || row.state === 'refused' && !!row.refusal?.startsWith('Skipped');
+// A picture on a private answer (#1217) is its asker's alone until Show everyone, which posts it as their own attachment: nobody else sees its line.
+const isDone = (row: AssistantChangeRow) => row.operation !== 'answer.picture.attach' && (row.state === 'applied' || row.state === 'applied_after_wait'
+  || row.state === 'undone' || row.state === 'refused' && !!row.refusal?.startsWith('Skipped'));
 const runStateOf = (run: { status: string; stopRequestedAt: Date | null } | undefined): AssistantChange['runState'] => {
   if (!run) return 'done';
   if (['queued', 'reading', 'dispatching'].includes(run.status) && !run.stopRequestedAt) return 'working';
@@ -187,6 +196,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: tells.length ? null : undoOf(row)?.before ?? null, after: tells.length ? toldWords(row) : undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
+        ...pictureOf(row),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
         version: row.version, createdAt: row.createdAt.toISOString() };
     });

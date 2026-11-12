@@ -146,6 +146,16 @@ export function assistantChangeRows(db: DbExecutor) {
       if (patch.state && patch.state !== 'waiting') await settleWaitingNotices(db, [updated!.ownerUserId]);
       return updated!;
     },
+    /**
+     * #1217: the pictures of a run's answer that still wait for an OK, closed when the answer is shown or put away (they could only be added to
+     * it until then). Each is refused with `refusal`, which also lets the run's kept private text go (migration 0058).
+     */
+    async closeWaitingPictures(runId: string, refusal: string): Promise<number> {
+      const waiting = await db.select({ id: c.id }).from(c).where(and(eq(c.runId, runId), eq(c.operation, 'answer.picture.attach'), eq(c.state, 'waiting')))
+        .orderBy(asc(c.id)).for('update');
+      for (const row of waiting) await this.update(row.id, { state: 'refused', waitReason: null, refusal });
+      return waiting.length;
+    },
     /** Every change of one group (see `changeGroup`). */
     async forRun(groupId: string): Promise<AssistantChangeInView[]> {
       return viewRows(or(eq(c.runId, groupId), and(eq(c.connectionId, groupId), eq(c.state, 'waiting')), and(eq(c.id, groupId), sql`${c.runId} IS NULL`)));

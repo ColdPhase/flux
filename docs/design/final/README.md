@@ -837,7 +837,12 @@ the composer. The right-hand phone above shows the sheet.
   - Only the owner approves, in their own session.
 - **`/ai`** in a conversation is answered privately by Assistant in a card marked "Only you can see
   this". The card shows what you asked, then Dismiss and Show everyone, which posts the answer as
-  "Ada · via Assistant". In a space with AI off, `/ai` shows one line, "AI is off in this space",
+  "Ada · via Assistant". A picture the agent attached (#1217) sits in the card under the answer
+  exactly as a photo sits in a message (frameless, the same grid and viewer), with its change line
+  under it, "Attached the picture Raised garden bed · Undo"; Show everyone posts it with the answer
+  as an ordinary photo of the message. Under Ask me first it waits in the card like any change,
+  with Approve / Skip, and the picture appears once approved. No new control.
+  In a space with AI off, `/ai` shows one line, "AI is off in this space",
   and "Your agents" disappear from the task Owner picker, which lists people only. In a DM both people see one line, "Ada used AI here (Claude)".
 - **The assistant's suggestions are in the `/` menu, under `/ai`** (founder decision, Hubert,
   2026-11-12, #1224). There is no row of chips above or below the composer: the field, its

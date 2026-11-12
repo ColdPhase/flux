@@ -20,13 +20,15 @@ export const USER_AGENT = 'FluxLinkPreview/1 (+https://github.com/ColdPhase/flux
 export const FETCH_LIMITS = { connectMs: 2_000, totalMs: 3_000, maxBytes: 256 * 1024, maxRedirects: 3 } as const;
 
 type AddressClass = 'public' | 'private' | 'metadata';
-export type FetchFailure = 'blocked' | 'unreachable' | 'timeout' | 'status' | 'type' | 'redirects' | 'invalid';
+export type FetchFailure = 'blocked' | 'unreachable' | 'timeout' | 'status' | 'type' | 'redirects' | 'invalid' | 'too_large';
 /**
  * `type` is the content type of the body that was read (absent from a fake in a test). `requested` is every address the server sent a
  * request to, in order, the redirect hops included, whether or not anything readable came back (#953): a failed fetch has sent the address
  * to the site all the same. Absent from a fake in a test.
  */
-export type FetchResult = { ok: true; url: string; html: string; type?: string; requested?: string[] } | { ok: false; reason: FetchFailure; requested?: string[] };
+export type FetchResult = { ok: true; url: string; html: string; type?: string; requested?: string[];
+  /** A `binary` kind's whole body (#1217); `html` is then empty. */
+  bytes?: Buffer } | { ok: false; reason: FetchFailure; requested?: string[] };
 
 /**
  * What a caller reads with the same guard. A link card reads the head of a web page (`text/html`); an agent that reads a page (#918)
@@ -37,6 +39,11 @@ export interface FetchKind {
   accept: string;
   /** The content types that are read; anything else is refused as `type`. */
   types: RegExp;
+  /**
+   * A picture an agent attaches (#1217): the body is kept as bytes, never decoded as text, and it is read whole or not at all. A body
+   * longer than `maxBytes` (by its Content-Length, or as it arrives) is refused as `too_large`, never cut.
+   */
+  binary?: boolean;
 }
 export const HTML_KIND: FetchKind = { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1', types: /^(text\/html|application\/xhtml\+xml)\b/ };
 
@@ -107,7 +114,7 @@ function decode(bytes: Buffer, contentType: string): string {
   try { return new TextDecoder(label, { fatal: false }).decode(bytes); } catch { return bytes.toString('utf8'); }
 }
 
-type Hop = { kind: 'page'; html: string; type: string } | { kind: 'redirect'; location: string };
+type Hop = { kind: 'page'; html: string; type: string; bytes?: Buffer } | { kind: 'redirect'; location: string };
 
 /** One request, no redirect followed. Resolves with the page body or the redirect target; rejects with a `Refused`. */
 function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo: { host: string; port: number } | null, kind: FetchKind): Promise<Hop> {
@@ -142,6 +149,17 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
       if (!kind.types.test(type)) { incoming.destroy(); return done(new Refused('type')); }
       const chunks: Buffer[] = [];
       let size = 0;
+      if (kind.binary) {
+        if (Number(incoming.headers['content-length'] ?? 0) > rules.limits.maxBytes) { incoming.destroy(); return done(new Refused('too_large')); }
+        incoming.on('data', (chunk: Buffer) => {
+          size += chunk.length;
+          if (size > rules.limits.maxBytes) { incoming.destroy(); return done(new Refused('too_large')); }
+          chunks.push(chunk);
+        });
+        incoming.on('end', () => done(null, { kind: 'page', html: '', type, bytes: Buffer.concat(chunks) }));
+        incoming.on('error', () => done(settled ? null : new Refused('unreachable')));
+        return;
+      }
       incoming.on('data', (chunk: Buffer) => {
         const room = rules.limits.maxBytes - size;
         chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk);
@@ -189,7 +207,7 @@ export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_
       }
       requested.push(url.href);
       const result = await requestOnce(url, rules, deadline, connectTo?.(hostOf(url)) ?? null, kind);
-      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html, type: result.type, requested };
+      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html, type: result.type, requested, ...(result.bytes ? { bytes: result.bytes } : {}) };
       try { url = new URL(result.location, url); } catch { return { ok: false, reason: 'invalid', requested }; }
     }
     return { ok: false, reason: 'redirects', requested };

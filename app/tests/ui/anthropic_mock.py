@@ -10,7 +10,9 @@ with its `text` instead of `text`, so one script can answer several runs differe
 source labels found in the request input; `{second}` is the second message), `delay` (seconds before answering), `status` (an HTTP
 error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`, `search` (#954: `{"query": "...", "results": [url, ...],
 "cite": url}` answers with Anthropic's own web search in its documented shape: a `server_tool_use` block, a `web_search_tool_result` block and
-the text split around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1).
+the text split around a sentence that cites `cite`, with `usage.server_tool_use.web_search_requests` 1), `tool` (#1217: `{"name": "...",
+"input": {...}}` answers a request that carries no `tool_result` yet with one call of that offered Flux tool, `stop_reason` `tool_use`; the
+next request, which carries its result, gets `text`).
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 FIXTURE_KEY = "flux-test-fixture-not-a-provider-key"
 DEFAULT = {"text": "Fact: the camera fails below 5 lux {first}. Interpretation: the ToF sensor is the better next test {message}.",
-           "delay": 0.0, "status": None, "stop_reason": "end_turn", "input_tokens": None, "output_tokens": 120, "search": None}
+           "delay": 0.0, "status": None, "stop_reason": "end_turn", "input_tokens": None, "output_tokens": 120, "search": None, "tool": None}
 
 
 def searched(search: dict, text: str) -> list[dict]:
@@ -119,6 +121,14 @@ class Handler(BaseHTTPRequestHandler):
                 wanted = str(rule.get("text", ""))
                 break
         text = wanted.format(**labels(text_in))
+        tool = current.get("tool")
+        answered = '"tool_result"' in haystack
+        if tool and not answered and any(offered.get("name") == tool["name"] for offered in body.get("tools") or []):
+            return self.reply(200, {
+                "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
+                "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": tool["name"], "input": tool.get("input") or {}}],
+                "stop_reason": "tool_use", "stop_sequence": None, "usage": {"input_tokens": max(1, len(text_in) // 4), "output_tokens": 30},
+            })
         search = current.get("search") if any(tool.get("name") == "web_search" for tool in body.get("tools") or []) else None
         usage = {"input_tokens": current["input_tokens"] or max(1, len(text_in) // 4), "output_tokens": current["output_tokens"]}
         if search:

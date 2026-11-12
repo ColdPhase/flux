@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal, type Database } from '@flux/db';
+import { accessReader, assistantChangeRows, assistantRemovalRows, fileRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal, type Database } from '@flux/db';
 import type { UpdateWorkCommand } from '@flux/contracts';
 import { DomainError, requireSpaceAi, restorableFields, SpaceAiOffError, type Principal, type UndoRecord } from '@flux/core';
 import { cancelOwnerAssistantUnitInTransaction } from '../co-work/assistant-units.js';
@@ -179,6 +179,17 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           await session.record(by, row.workspaceId, 'project.assistant_change_undone.v1', row.projectId,
             { changeId: row.id, objectType: row.objectType, objectId: id });
           removal = taken;
+          break;
+        }
+        case 'answer.picture.attach': {
+          // A picture on an answer (#1217, C-59): the asker's staged file, removed while the answer is still theirs alone. Shown, it is an
+          // attachment of the asker's own message, which they edit or delete; nobody else ever saw the private answer to take it back.
+          if (by.id !== row.ownerUserId) throw new Since(NOT_UNDOABLE);
+          const files = fileRows(tx as DbExecutor);
+          const [file] = await files.lockFiles([id!]);
+          if (!file) throw new Since('Already gone');
+          if (file.messageId !== null) throw new Since('Already posted with Show everyone. Delete or edit that message instead');
+          if (!await files.removeUnpublished(id!)) throw new Since('Already gone');
           break;
         }
         default: throw new Since(NOT_UNDOABLE);

@@ -112,11 +112,19 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
 
 ## RT-5 — Tools: only Flux tools, the CLI's own web search and reading the web
 
-- A server agent has no shell, files, code execution, images, apps, sub-agents or other MCP
+- A server agent has no shell, files, code execution, apps, sub-agents or other MCP
   servers. Its tools are the run's exact Flux MCP tools, which include `flux_read_web`, the Flux
   server's read-only page reading (RT-4), which opens any public address but one that carries private
   Flux text the run read (C-30), and the CLI's own web search, which runs at its vendor. No CLI tool
   opens a page from the runtime.
+- **Pictures go only through two Flux tools** ([#1217](https://github.com/ColdPhase/flux/issues/1217), founder
+  decision 2026-11-12; [AG-8](assistant.md#ag-8--what-server-agents-may-do), [C-59](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  `flux_attach_image` has the Flux server, never the runtime, download a public picture under the
+  rules of `flux_read_web` and attach it to the run's answer. `flux_view_image` gives the model a
+  picture attached to a message the run may read, as image input: an MCP image result, which
+  Claude Code and Codex hand to their model, and an image block in the request of the owner's API
+  key. A CLI's own image tools stay off (Codex's `view_image` and `image_generation`), the egress does
+  not change, and no agent generates pictures.
 - **Claude Code** runs with every built-in tool removed but `WebSearch` while the web is on
   (`--tools WebSearch`; `--tools ''` with `FLUX_WEB_READS=off`, C-29; never `WebFetch`), Flux as
   the only MCP server (`--strict-mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`), the exact Flux

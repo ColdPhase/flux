@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { ATTACH_PICTURE_TOOL, assistantRunTools, PICTURE_RUN_KINDS, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
 import { personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -51,7 +51,9 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // A private chat reads and answers and changes nothing (#842); a run in a direct message has one tool: reading a web page, since no
       // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads.
       const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.projectId === null;
-      const tools = run.dmId !== null ? ['flux_read_web'] : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo);
+      // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
+      const tools = run.dmId !== null ? ['flux_read_web'] : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo)
+        .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)));
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });
