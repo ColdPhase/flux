@@ -193,13 +193,15 @@ export function DeferredLiveStage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   if (!requested) return null;
-  const wrap = (content: ReactNode) => open ? <StagePlaceholder onClose={live.closeStage}>{content}</StagePlaceholder> : null;
+  // A stage that opened by itself because someone started sharing (F-041) takes no focus, also while its code loads.
+  const wrap = (content: ReactNode) => open ? <StagePlaceholder onClose={live.closeStage} focus={!live.stage.auto}>{content}</StagePlaceholder> : null;
   return <SurfaceBoundary label="Live view" wrap={wrap}><Suspense fallback={wrap(<Opening label="Live view" />)}><StageContent /></Suspense></SurfaceBoundary>;
 }
 
-function StagePlaceholder({ children, onClose }: { children: ReactNode; onClose: () => void }) {
+function StagePlaceholder({ children, onClose, focus }: { children: ReactNode; onClose: () => void; focus: boolean }) {
   const close = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => { close.current?.focus({ preventScroll: true }); }, []);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useLayoutEffect(() => { if (focus) close.current?.focus({ preventScroll: true }); }, []);
   return <div className="deferred-surface--stage" role="region" aria-label="Shared screens and cameras"
     onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); onClose(); } }}>
     {children}<Button ref={close} onClick={onClose}>Close live view</Button>

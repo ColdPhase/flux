@@ -38,10 +38,14 @@ export function LiveStage() {
   const drag = useRef<{ x: number; y: number; left: number; top: number } | null>(null);
   const groupId = useId();
 
+  // Opened by you: a short entrance and focus on Back to work. Opened by itself because someone started sharing (F-041): it is there at once
+  // and takes no focus, so typing goes on where it was (motion rule 5).
+  const auto = !!live.stage.auto;
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open || auto) return;
     void play(rootRef.current, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'none' }], duration('--dur-in'), '--ease-out', { fill: 'backwards' });
     rootRef.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus({ preventScroll: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
   // A different screen starts fitted again.
   const [zoomFor, setZoomFor] = useState(focusId);
@@ -89,7 +93,9 @@ export function LiveStage() {
   ) : null;
 
   return (
-    <div ref={rootRef} className={`lv-stage${focused || big ? '' : ' lv-stage--cams'}`} role="region" aria-label="Shared screens and cameras" onKeyDown={onKeyDown}>
+    <div ref={rootRef} className={`lv-stage${focused || big ? '' : ' lv-stage--cams'}`} role="region" aria-label="Shared screens and cameras" onKeyDown={onKeyDown}
+      // Once the person works in a stage that opened by itself, it is theirs: if it reopens (a screen sent again), it takes focus as usual.
+      onPointerDownCapture={auto ? () => live.openStage(live.stage.focus) : undefined} onFocusCapture={auto ? () => live.openStage(live.stage.focus) : undefined}>
       <div className="lv-stage__bar">
         {screens.length > 1 ? (
           <div className="seg lv-stage__pick" role="radiogroup" aria-labelledby={groupId}>

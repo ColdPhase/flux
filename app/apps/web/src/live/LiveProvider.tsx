@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useNavigationType } from 'react-router';
 import type { LivePresentation, LiveSession, ProjectPerson } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { streamLive, useStreamEvents } from '../api/stream';
-import { useToast } from '../ui';
+import { MEDIA, useMediaQuery, useToast } from '../ui';
 import { listProjectPeople } from '../project/data';
 import { anchorLabel, anchorPath, sameContext, resolveFragment, type LiveAnchor, type Presentable, type ResolvedFragment } from './anchors';
 import {
@@ -73,9 +73,15 @@ export interface LiveValue {
   dismissNotice(): void;
   diagnostics: LiveMediaConnection['diagnostics'] | null;
   /** The screen and camera view over the work area, opened on request only. */
-  stage: { open: boolean; focus: string | null };
+  /** `auto`: opened by itself because someone started sharing (F-041 point 7): no motion and no focus taken. */
+  stage: { open: boolean; focus: string | null; auto?: boolean };
   openStage(focus?: string | null): void;
   closeStage(): void;
+  /** On a phone a new shared screen is offered in a sheet instead of opening the stage (F-041): the screen, until viewed or put off. */
+  screenOffer: { key: string; userId: string } | null;
+  dismissScreenOffer(): void;
+  /** Who stopped sharing a moment ago ("Nia stopped sharing"), for a few seconds. */
+  screenStopped: string | null;
 }
 
 interface HereEntry { anchor: LiveAnchor | null; presentable: Presentable | null }
@@ -142,7 +148,10 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   const [invitation, setInvitation] = useState<PendingInvitation | null>(null);
   const [people, setPeople] = useState<ProjectPerson[]>([]);
   const [connection, setConnection] = useState<LiveMediaConnection | null>(null);
-  const [stage, setStage] = useState<{ open: boolean; focus: string | null }>({ open: false, focus: null });
+  const [stage, setStage] = useState<{ open: boolean; focus: string | null; auto?: boolean }>({ open: false, focus: null });
+  const phoneWide = useMediaQuery(MEDIA.phone);
+  const [screenOffer, setScreenOffer] = useState<{ key: string; userId: string } | null>(null);
+  const [screenStopped, setScreenStopped] = useState<string | null>(null);
   const othersJoinedRef = useRef(false);
   const connectionRef = useRef<LiveMediaConnection | null>(null);
   const rejoining = useRef(false);
@@ -162,6 +171,49 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
   // Also after a reload: the server keeps who has been in the call.
   const othersJoined = !!session && (joinedIn === session.id || session.joinedBy.some((userId) => userId !== session.createdBy));
   useEffect(() => { if (session) othersJoinedRef.current = othersJoined; });
+
+  // A shared screen is seen (F-041 point 7): a screen someone starts sharing opens each other person's stage on it once (a sheet offers it
+  // on a phone); closing the stage keeps it closed for that share. A screen that stops closes its stage and says so for a few seconds.
+  const screenList = phase === 'in' ? media?.screens ?? [] : [];
+  const screenKeys = screenList.map((screen) => `${screen.key}\u0000${screen.userId}`).join('\u0001');
+  const [screensSeen, setScreensSeen] = useState('');
+  const [screensGone, setScreensGone] = useState<Record<string, string>>({});
+  if (screenKeys !== screensSeen) {
+    // Compared with the screens of the previous render (React's "information from previous renders"), not in an effect.
+    const parse = (keys: string) => new Map(keys ? keys.split('\u0001').map((entry) => entry.split('\u0000') as [string, string]) : []);
+    const before = parse(screensSeen);
+    const now = parse(screenKeys);
+    setScreensSeen(screenKeys);
+    // A screen sent again (its mode switched) leaves and comes back within moments: the same share, not a new one or an end.
+    const back = [...now.keys()].filter((key) => screensGone[key]);
+    if (back.length) setScreensGone((current) => Object.fromEntries(Object.entries(current).filter(([key]) => !back.includes(key))));
+    for (const [key, userId] of now) {
+      if (before.has(key) || screensGone[key]) continue;
+      if (phoneWide) setScreenOffer({ key, userId });
+      else setStage((current) => current.open ? current : { open: true, focus: key, auto: true });
+    }
+    const gone = [...before].filter(([key]) => !now.has(key));
+    if (gone.length && phase === 'in') setScreensGone((current) => ({ ...current, ...Object.fromEntries(gone) }));
+  }
+  // A screen still gone after a moment has stopped: its stage closes and the strip says so.
+  useEffect(() => {
+    const entries = Object.entries(screensGone);
+    if (!entries.length) return undefined;
+    const timer = window.setTimeout(() => {
+      for (const [key, userId] of entries) {
+        setScreenOffer((current) => current?.key === key ? null : current);
+        setStage((current) => current.open && current.focus === key ? { ...current, open: false } : current);
+        setScreenStopped(userId);
+      }
+      setScreensGone({});
+    }, 2_500);
+    return () => window.clearTimeout(timer);
+  }, [screensGone]);
+  useEffect(() => {
+    if (!screenStopped) return undefined;
+    const timer = window.setTimeout(() => setScreenStopped(null), 5_000);
+    return () => window.clearTimeout(timer);
+  }, [screenStopped]);
 
 
   // Whether this server has a media server at all. Unavailable is a normal, explained state.
@@ -482,10 +534,12 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     audio: connection?.audio ?? null,
     diagnostics: connection ? connection.diagnostics.bind(connection) : null,
     stage,
-    openStage: (focus: string | null = null) => setStage({ open: true, focus }),
+    openStage: (focus: string | null = null) => { setScreenOffer(null); setStage({ open: true, focus }); },
     closeStage: () => setStage((current) => ({ ...current, open: false })),
+    screenOffer, screenStopped,
+    dismissScreenOffer: () => setScreenOffer(null),
   }), [capability, phase, session, anchor, notice, media, quiet, following, shown, invitation, othersJoined, nameOf, fullName, people, meId,
-    start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage]);
+    start, join, leave, setDevice, setScreenMode, setQuiet, startAudio, present, view, follow, answerInvitation, connection, stage, screenOffer, screenStopped]);
 
   // The registry of what the current views are about.
   const [entries, setEntries] = useState<{ id: number; entry: HereEntry }[]>([]);

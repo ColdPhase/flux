@@ -611,6 +611,60 @@ class LiveJourney(LiveBase):
         expect(ada.locator("li.convo-call")).to_contain_text(re.compile(r"Call · \d+ min · Lee, Ada"))
         shot(ada, "live-desktop-1440-call-line-ended")
 
+    def test_00e_a_shared_screen_opens_the_others_stage_once_and_says_when_it_stops(self) -> None:
+        """#1223 point 7 (F-041): when Nia shares, Jonas's stage opens on it within 2 s with the line "Kai is sharing a screen", and her face
+        carries a screen badge; closed, it stays closed for that share; when she stops, it closes and says "Kai stopped sharing". A new
+        share opens it again."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Bike kitchen", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        for key in ("kai", "jonas"):
+            self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE[key]["id"]}, "role": "contributor"}, status=201)
+        nia = self.page("kai")
+        nia.goto(f"/projects/{pid}")
+        self.call(nia)
+        expect(self.bar(nia)).to_be_visible()
+        jonas = self.page("jonas")
+        jonas.goto(f"/projects/{pid}")
+        jonas.locator("header.top").get_by_role("button", name="Join", exact=True).click()
+        expect(self.bar(jonas).locator(".lv-face")).to_have_count(2)
+        composer = jonas.get_by_label("Write a message", exact=True)
+        composer.click()
+        composer.type("Brake pads are in")
+        stage = jonas.get_by_role("region", name="Shared screens and cameras")
+        expect(stage).to_have_count(0)
+
+        self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
+        started = time.monotonic()
+        expect(stage).to_be_visible(timeout=2500)
+        self.assertLess(time.monotonic() - started, 3, "the stage opens within about 2 s")
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen")).to_be_visible()
+        expect(self.bar(jonas).locator(".lv-face[data-sharing] .lv-face__screen")).to_have_count(1)
+        expect(composer).to_be_focused()
+        composer.type(" the drawer")
+        expect(composer).to_have_value("Brake pads are in the drawer")
+        shot(jonas, "live-desktop-1440-stage-opened-by-share")
+        # Closed for this share, it stays closed.
+        stage.get_by_role("button", name="Back to work").click()
+        expect(stage).to_be_hidden()
+        jonas.wait_for_timeout(2500)
+        expect(stage).to_be_hidden()
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen").get_by_role("button", name="View")).to_be_visible()
+        # View brings it back; when she stops, it closes and says so.
+        self.bar(jonas).get_by_role("status").filter(has_text="Kai is sharing a screen").get_by_role("button", name="View").click()
+        expect(stage).to_be_visible()
+        self.bar(nia).get_by_role("button", name="Stop sharing your screen").click()
+        expect(stage).to_be_hidden()
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Kai stopped sharing")).to_be_visible()
+        shot(jonas, "live-desktop-1440-stopped-sharing")
+        # A new share opens it again, once.
+        self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
+        expect(stage).to_be_visible()
+        for leaver in (jonas, nia):
+            self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
+            expect(self.bar(leaver)).to_have_count(0)
+
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
         self.seed()
         nia = self.page("nia")
@@ -735,9 +789,12 @@ class LiveJourney(LiveBase):
         expect(self.bar(nia).get_by_role("button", name="Stop sharing your screen")).to_have_attribute("aria-pressed", "true")
         expect(self.bar(nia)).to_contain_text("You are sharing your screen")
         self.assertEqual(nia.evaluate("window.__live.gdm"), 1)
-        screen = self.bar(jonas).get_by_role("button", name=re.compile("Nia.s screen"))
-        screen.click()
+        # F-041: Jonas's stage opens by itself on her screen, and the strip says who shares.
         stage = jonas.get_by_role("region", name="Shared screens and cameras")
+        expect(stage).to_be_visible()
+        expect(self.bar(jonas).get_by_role("status").filter(has_text="Nia is sharing a screen")).to_be_visible()
+        expect(self.bar(jonas).get_by_role("button", name=re.compile("Nia.s screen"))).to_have_attribute("aria-pressed", "true")
+
         video = stage.locator("video.lv-stage__video")
         expect(video).to_be_visible()
         jonas.wait_for_function("() => { const v = document.querySelector('video.lv-stage__video'); return v && v.videoWidth > 0; }", timeout=20000)
@@ -863,7 +920,8 @@ class LiveJourney(LiveBase):
         self.bar(kai).get_by_role("button", name="Share a window, tab or screen").click()
         two = self.bar(ada).get_by_role("button", name="2 screens")
         expect(two).to_be_visible()
-        two.click()
+        # The first shared screen opened Ada's stage by itself (F-041); the second joins its choice.
+        expect(two).to_have_attribute("aria-pressed", "true")
         stage = ada.get_by_role("region", name="Shared screens and cameras")
         picks = stage.get_by_role("radiogroup")
         expect(picks.get_by_role("radio")).to_have_count(2)
@@ -1011,7 +1069,11 @@ class LiveJourney(LiveBase):
         expect(self.bar(phone).get_by_role("button", name="Session details and more")).to_be_focused()
         # Nia shares her screen; the phone views it and zooms without publishing anything.
         self.bar(nia).get_by_role("button", name="Share a window, tab or screen").click()
-        bar.get_by_role("button", name="View").click()
+        # On a phone a new shared screen is offered in a sheet (F-041), not opened over the work.
+        offer = phone.get_by_role("dialog", name="Shared screen")
+        expect(offer).to_contain_text("Nia is sharing a screen")
+        shot(phone, "live-phone-390-screen-offer")
+        offer.get_by_role("button", name=re.compile("^View Nia.s screen$")).click()
         stage = phone.get_by_role("region", name="Shared screens and cameras")
         phone.wait_for_function("() => { const v = document.querySelector('video.lv-stage__video'); return v && v.videoWidth > 0; }", timeout=20000)
         shot(phone, "live-phone-390-stage")

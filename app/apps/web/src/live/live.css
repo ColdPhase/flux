@@ -283,3 +283,6 @@
 /* A call's line in the conversation (F-041): the faces of who is in it sit in the line, Join after them. */
 .convo-call__faces { align-self: center; }
 .convo-call__join { margin-left: 4px; }
+/* A shared screen offered on a phone (F-041): the sentence, then View and Not now, full width as the sheet's other actions. */
+.lv-offer { display: grid; gap: 8px; padding: 4px 16px 16px; }
+.lv-offer__text { margin: 0 0 4px; font-size: var(--fs-base); color: var(--t1); }

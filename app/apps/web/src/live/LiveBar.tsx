@@ -13,10 +13,12 @@ import { Popover } from './Popover';
 import { LiveDot, namesLine } from './LiveEntry';
 
 function Face({ person, name }: { person: MediaPerson; name: string }) {
+  // Sharing a screen shows on the face where the muted microphone does (F-041): it is the more important of the two.
   return (
-    <span className={`lv-face${person.speaking ? ' is-speaking' : ''}${person.quality === 'poor' || person.quality === 'lost' ? ' is-weak' : ''}`}>
+    <span className={`lv-face${person.speaking ? ' is-speaking' : ''}${person.quality === 'poor' || person.quality === 'lost' ? ' is-weak' : ''}`} data-sharing={person.screen ? '' : undefined}>
       <Avatar name={name} id={person.userId} size="sm" tone={person.local ? 'me' : 'neutral'} />
-      {!person.mic ? <span className="lv-face__muted" aria-hidden="true"><Icon name="mic-off" size={9} /></span> : null}
+      {person.screen ? <span className="lv-face__muted lv-face__screen" aria-hidden="true"><Icon name="screen" size={9} /></span>
+        : !person.mic ? <span className="lv-face__muted" aria-hidden="true"><Icon name="mic-off" size={9} /></span> : null}
     </span>
   );
 }
@@ -173,11 +175,24 @@ export function LiveBar() {
           <Button variant="quiet" onClick={() => void live.setDevice('screen', false)}>Stop sharing</Button>
         </div>
       ) : null}
-      {phone && (screens.length || cameras.length) ? (
+      {screens.length ? (
+        // Someone shares a screen (F-041): one line says who, with View while the stage is closed.
+        <div className="lv-line lv-line--screen" role="status">
+          <Icon name="screen" size={14} />
+          <span className="lv-line__text"><b>{namesLine([...new Set(screens.map((p) => p.userId))], live.nameOf, live.meId)}</b> {new Set(screens.map((p) => p.userId)).size === 1 ? 'is' : 'are'} sharing a screen</span>
+          {live.stage.open ? null : <Button variant="secondary" onClick={() => live.openStage(screens[0]?.key ?? null)}>View</Button>}
+        </div>
+      ) : phone && cameras.length ? (
         <div className="lv-line">
-          <Icon name={screens.length ? 'screen' : 'video'} size={14} />
-          <span className="lv-line__text">{screens.length ? `${namesLine([...new Set(screens.map((p) => p.userId))], live.nameOf, live.meId)} ${screens.length === 1 ? 'is' : 'are'} sharing a screen` : 'Cameras are on'}</span>
-          <Button variant="quiet" onClick={() => live.openStage(screens[0]?.key ?? null)}>View</Button>
+          <Icon name="video" size={14} />
+          <span className="lv-line__text">Cameras are on</span>
+          <Button variant="quiet" onClick={() => live.openStage(null)}>View</Button>
+        </div>
+      ) : null}
+      {live.screenStopped && !screens.some((screen) => screen.userId === live.screenStopped) ? (
+        <div className="lv-line" role="status">
+          <Icon name="screen" size={14} />
+          <span className="lv-line__text">{live.nameOf(live.screenStopped).split(' ')[0]} stopped sharing</span>
         </div>
       ) : null}
       {shown && (shown.fresh || live.following) ? (
@@ -191,6 +206,18 @@ export function LiveBar() {
         </div>
       ) : null}
 
+      {phone ? (
+        // On a phone a new shared screen is offered, not opened (F-041): View or Not now.
+        <Sheet open={!!live.screenOffer} onClose={live.dismissScreenOffer} label="Shared screen" className="lv-sheet">
+          {live.screenOffer ? (
+            <div className="lv-offer">
+              <p className="lv-offer__text"><b>{live.nameOf(live.screenOffer.userId).split(' ')[0]}</b> is sharing a screen</p>
+              <Button variant="primary" onClick={() => live.openStage(live.screenOffer!.key)}>{`View ${live.nameOf(live.screenOffer.userId).split(' ')[0]}’s screen`}</Button>
+              <Button variant="quiet" onClick={live.dismissScreenOffer}>Not now</Button>
+            </div>
+          ) : null}
+        </Sheet>
+      ) : null}
       {phone || moreAs === 'sheet' ? (
         <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} label="Live session" className="lv-sheet">{panel}</Sheet>
       ) : (
