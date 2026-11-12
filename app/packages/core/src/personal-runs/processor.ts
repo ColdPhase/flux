@@ -352,10 +352,11 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null, written = ''): Promise<PersonalRunOutcome> {
     const answer = result?.kind === 'completed' && !early ? await answerToCommit(runId, result.text, sources) : null;
-    // What a stop keeps (#1248), worked out before the transaction like the answer; whether the run was stopped is decided inside it. A stop
-    // that lands as the answer completes keeps the answer the asker saw, without a schedule or a question.
-    const kept = answer && result?.kind === 'completed' ? (/<(?:schedule|ask)\b/.test(result.text) ? await keptToCommit(runId, result.text, sources) : answer)
-      : written.trim() ? await keptToCommit(runId, written, sources) : null;
+    // What a stop keeps (#1248), worked out before the transaction like the answer; whether the run was stopped is decided inside it. Only
+    // words the asker watched are kept (`written`): a stop that lands as the answer completes keeps the answer they saw, without a schedule
+    // or a question.
+    const kept = !written.trim() ? null : answer && result?.kind === 'completed'
+      ? (/<(?:schedule|ask)\b/.test(result.text) ? await keptToCommit(runId, result.text, sources) : answer) : await keptToCommit(runId, written, sources);
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
