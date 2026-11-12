@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { accessPorts, agentConnectionRepository, createSessionRepository, personTimeZones, type Database } from '@flux/db';
+import { accessPorts, agentConnectionRepository, createSessionRepository, personLastActive, personTimeZones, type Database } from '@flux/db';
 import { companyDisplayName } from '@flux/core';
 import { sql } from 'drizzle-orm';
 import type { ApiError, IdentityCapabilities } from '@flux/contracts';
@@ -20,6 +20,7 @@ import { cachedReachability, discoveryReachable, waitForDiscovery } from './disc
 import { registerAgentOauthContext } from './oauth-context.js';
 import { createDevices } from './devices.js';
 import { registerIdentityRoutes } from './routes.js';
+import { createActivityGate } from './last-active.js';
 import { createSessionResolver, type SessionResolver } from './session.js';
 import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
@@ -155,7 +156,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     { db, maxAgeMs: config.sessionMaxAgeSeconds * 1000 },
     // #1178: a cookie Better Auth accepted is read again as one statement on its session row; Better Auth still renews and refuses.
     { db, cookieName: sessionCookieName(config.publicOrigin.startsWith('https:')), expiresInSeconds: config.sessionIdleSeconds,
-      updateAgeSeconds: sessionUpdateAgeSeconds(config.sessionIdleSeconds) });
+      updateAgeSeconds: sessionUpdateAgeSeconds(config.sessionIdleSeconds) },
+    // C-58 (#1225): a session that is used says so, at most once a minute for a person.
+    createActivityGate((userId) => personLastActive(db).touch(userId), { onError: (error) => app.log.warn({ error }, 'Last active was not written') }));
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.ssoOnly ? 'available' : 'unavailable';
 
   const exempt = new Set(options.originExemptPaths ?? []);
@@ -177,7 +180,7 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     config.oidc && reachable ? { providerId: config.oidc.providerId, label: config.oidc.label, reachable: providerInstalled && await reachable() } : null;
   // Operators register this exact redirect URI with their identity provider (#113).
   if (config.oidc) app.log.info({ issuer: config.oidc.issuer, redirectUri: `${config.publicOrigin}/api/auth/callback/${config.oidc.providerId}` }, 'Single sign-on is on');
-  registerIdentityRoutes(app, { sessions, devices: createDevices(db, config.secret, config.publicOrigin.startsWith('https:')), store: createSessionRepository(db), clients: agentConnectionRepository(db), timeZones: personTimeZones(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso,
+  registerIdentityRoutes(app, { sessions, devices: createDevices(db, config.secret, config.publicOrigin.startsWith('https:')), store: createSessionRepository(db), clients: agentConnectionRepository(db), timeZones: personTimeZones(db), lastActive: personLastActive(db), passwordReset, signup: config.signup, ssoOnly: config.ssoOnly, linkable: config.oidc !== null && config.ssoMode === 'prepare', sso,
     company: () => companyDisplayName(db, accessPorts) });
   registerLinkRoutes(app, { db, sessions, links, ssoMode: config.ssoMode, publicOrigin: config.publicOrigin,
     provider: config.oidc ? { providerId: config.oidc.providerId, issuer: config.oidc.issuer, label: config.oidc.label } : null });

@@ -20,7 +20,7 @@ import {
   SpaceAiSweepIncomplete,
   type SpaceAiSweepQueue,
 } from '@flux/core';
-import { accessPorts, accessReader, afterDeadlock } from '@flux/db';
+import { accessPorts, accessReader, afterDeadlock, personTimeZones } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
 import { nameSchema, pageQuery } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -96,8 +96,11 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
   });
   app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/grants`, async (request) =>
     listProjectGrants(await principal(request), request.params.projectId, db, accessPorts));
-  app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/people`, async (request) =>
-    listSpacePeople(await principal(request), request.params.projectId, db, accessPorts));
+  // Each person's last-active time comes rounded, the days counted in the reader's own zone (C-58); who may read the list decides who sees it.
+  app.get<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/people`, async (request) => {
+    const reader = await principal(request);
+    return listSpacePeople(reader, request.params.projectId, db, accessPorts, { lastActive: { timeZone: await personTimeZones(db).get(reader.id) } });
+  });
   app.post<{ Params: { projectId: string }; Body: GrantProjectCommand }>(`${PROJECTS_PATH}/:projectId/grants`, {
     schema: {
       body: {

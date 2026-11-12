@@ -34,6 +34,17 @@ export interface FixtureOauthClientRegistered {
  */
 export const FIXTURE_AGENT_CONNECTION_PATH = '/api/v1/integration/agent-connections';
 
+/**
+ * Test deployments only (the same switches, with the fixture bearer): sets when a person was last active (#1225, C-58) to `minutesAgo` minutes
+ * before now, or erases it with `null`, so a browser test can show "Active 2 h ago" without waiting. Not a product route.
+ */
+export const FIXTURE_LAST_ACTIVE_PATH = '/api/v1/integration/last-active';
+
+export interface FixtureLastActiveCommand {
+  userId: string;
+  minutesAgo: number | null;
+}
+
 export interface FixtureAgentConnectionCommand {
   agentId: string;
   name?: string;
@@ -49,6 +60,11 @@ export const ME_PATH = '/api/v1/me';
  * `MeResponse.user.timeZone` holds. Their schedules run in it and their agents' clock reads in it.
  */
 export const ME_TIME_ZONE_PATH = '/api/v1/me/time-zone';
+/**
+ * PUT `SetLastActive`, 204 (#1225, C-58): "Show when I was last active" in Settings › Account. On by default; off, Flux erases the time it holds
+ * for the person, stops writing it and the people lists show no line for them. `MeResponse.user.showLastActive` holds it.
+ */
+export const ME_LAST_ACTIVE_PATH = '/api/v1/me/last-active';
 /** Better Auth's own endpoints the web client calls, below AUTH_BASE_PATH. */
 export const AUTH_SIGN_UP_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-up/email`;
 export const AUTH_SIGN_IN_EMAIL_PATH = `${AUTH_BASE_PATH}/sign-in/email`;
@@ -93,9 +109,17 @@ export interface IdentityCapabilities {
 
 export interface MeResponse {
   principal: { id: string; kind: 'human' };
-  /** `timeZone`: the person's own IANA zone, their browser's as last saved (`ME_TIME_ZONE_PATH`); UTC until a browser has said. */
-  user: { id: string; email: string; name: string; timeZone: string };
+  /**
+   * `timeZone`: the person's own IANA zone, their browser's as last saved (`ME_TIME_ZONE_PATH`); UTC until a browser has said.
+   * `showLastActive`: whether others may see when the person was last active (`ME_LAST_ACTIVE_PATH`, C-58); true until they turn it off.
+   */
+  user: { id: string; email: string; name: string; timeZone: string; showLastActive: boolean };
   session: { id: string; expiresAt: string };
+}
+
+export interface SetLastActive {
+  /** Whether others who can see the person may see when they were last active. */
+  show: boolean;
 }
 
 export interface SetTimeZone {

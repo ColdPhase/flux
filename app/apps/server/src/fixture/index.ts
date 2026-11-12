@@ -1,7 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PgBoss } from 'pg-boss';
-import { FIXTURE_AGENT_CONNECTION_PATH, FIXTURE_OAUTH_CLIENT_PATH, SAMPLE_COMMAND_PATH, type AgentConnection, type FixtureAgentConnectionCommand, type FixtureOauthClientCommand,
+import { FIXTURE_AGENT_CONNECTION_PATH, FIXTURE_LAST_ACTIVE_PATH, FIXTURE_OAUTH_CLIENT_PATH, SAMPLE_COMMAND_PATH, type AgentConnection, type FixtureAgentConnectionCommand, type FixtureLastActiveCommand, type FixtureOauthClientCommand,
   type FixtureOauthClientRegistered, type SampleCommand } from '@flux/contracts';
 import { and, eq, isNull } from 'drizzle-orm';
 import { agentConnectionRepository, fixtureOauthClientRepository, schema, type Database } from '@flux/db';
@@ -56,6 +56,20 @@ export function registerFixtureRoutes(app: FastifyInstance, { config, db, boss, 
       await clients.register({ clientId, name: request.body.name, redirectUris: request.body.redirectUris,
         scopes: MCP_SCOPES, resource: `${publicOrigin}/mcp` });
       return reply.code(201).send({ clientId } satisfies FixtureOauthClientRegistered);
+    });
+  }
+  if (fixtureFlags(config).registerOauthClients) {
+    // `FIXTURE_LAST_ACTIVE_PATH`: the time a person was last active, set from outside their session so it is not touched by what sets it.
+    app.put<{ Body: FixtureLastActiveCommand }>(FIXTURE_LAST_ACTIVE_PATH, {
+      onRequest: async (request: FastifyRequest, reply: FastifyReply) => {
+        if (!bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
+      },
+      schema: { body: { type: 'object', required: ['userId', 'minutesAgo'], additionalProperties: false, properties: {
+        userId: { type: 'string', minLength: 1, maxLength: 200 }, minutesAgo: { type: ['number', 'null'], minimum: 0, maximum: 5_256_000 } } } },
+    }, async (request, reply) => {
+      const { userId, minutesAgo } = request.body;
+      await db.update(schema.authUsers).set({ lastActiveAt: minutesAgo === null ? null : new Date(Date.now() - minutesAgo * 60_000) }).where(eq(schema.authUsers.id, userId));
+      return reply.code(204).send();
     });
   }
   app.post<{ Body: SampleCommand }>(SAMPLE_COMMAND_PATH, {

@@ -5,6 +5,7 @@ import { eventPorts, recordAccessEnded, requireRoleAuthority } from './common.js
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
 import { dropUnlockPassword, endPlacesInEncryptedSpaces, lockKeysForManagerChange, type MemberPorts } from './encrypted-places.js';
 import { requireSpacePerson } from './space-person.js';
+import { roundedLastActive, type LastActiveOptions } from './last-active.js';
 import { enforce, evaluateWorkspace, isManager } from './policy.js';
 import { oneOf, ROLES } from './validation.js';
 
@@ -14,16 +15,25 @@ import { oneOf, ROLES } from './validation.js';
 // before it (F-029) and, for an owner or admin of a sealed workspace losing the role, the key row before that (F-030).
 
 
-export async function listMembers(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts): Promise<WorkspaceMember[]> {
+/**
+ * The company's people. A reader who is not a guest sees each person's rounded last-active time when the caller says whose days to count in
+ * (`lastActive`, C-58); a guest cannot read this list at all, so no guest sees the time of a person they share no space with.
+ */
+export async function listMembers(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts, options: { lastActive?: LastActiveOptions } = {}): Promise<WorkspaceMember[]> {
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, ports.access(db)), 'workspace');
   const rows = await ports.workspaces(db).members(workspaceId);
   // F-030: an owner or admin of an encrypted workspace also learns which owners and admins have an unlock password, to offer
   // "Let Ben set an unlock password" only to those who lack one. A plain workspace has no holders, so the field stays out.
   const holders = isManager(actor.role) ? new Set(await ports.encryption(db).passwordHolders(workspaceId)) : new Set<string>();
-  return rows.map(({ member, email, name: memberName }) => ({
-    userId: member.userId, email, name: memberName, role: member.role, createdAt: member.createdAt.toISOString(),
-    ...(holders.size && isManager(member.role) ? { unlockPassword: holders.has(member.userId) } : {}),
-  }));
+  const now = new Date();
+  return rows.map(({ member, email, name: memberName, lastActiveAt, showLastActive }) => {
+    const lastActive = options.lastActive ? roundedLastActive({ lastActiveAt, showLastActive }, options.lastActive, now) : undefined;
+    return {
+      userId: member.userId, email, name: memberName, role: member.role, createdAt: member.createdAt.toISOString(),
+      ...(holders.size && isManager(member.role) ? { unlockPassword: holders.has(member.userId) } : {}),
+      ...(lastActive ? { lastActiveAt: lastActive } : {}),
+    };
+  });
 }
 
 /** Who left the company or was removed and has not joined again (Settings › Company). */

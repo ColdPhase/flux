@@ -8,6 +8,7 @@ import type { FluxAuth } from './auth.js';
 import type { Confirmation } from './confirmation.js';
 import type { IdpStanding } from './standing.js';
 import { sessionCookieValue } from './session-cookie.js';
+import type { ActivityGate } from './last-active.js';
 
 export interface HumanPrincipal extends Principal {
   kind: 'human';
@@ -59,7 +60,7 @@ const SESSION_ROW = `SELECT s.expires_at AS "expiresAt", s.created_at AS "create
   WHERE s.id = $1 AND s.token = $2 AND s.user_id = $3`;
 
 export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation,
-  ssoOnly: SsoOnlySessions | null = null, limits: SessionLimits | null = null, fast: SessionFastPath | null = null): SessionResolver {
+  ssoOnly: SsoOnlySessions | null = null, limits: SessionLimits | null = null, fast: SessionFastPath | null = null, activity: ActivityGate | null = null): SessionResolver {
   /**
    * Session cookies Better Auth accepted in this process, by their whole signed value (#1178: a session read was a fifth of the API's CPU).
    * Only an exact value Better Auth verified is ever found here, so a forged or altered cookie always goes to Better Auth. A value found
@@ -116,7 +117,7 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
   }
 
   /** The session the request's cookie names, and its token: what the API's request limit needs to know which credential was checked (#1022). */
-  async function resolve(headers: IncomingHttpHeaders): Promise<{ context: SessionContext; token: string } | null> {
+  async function read(headers: IncomingHttpHeaders): Promise<{ context: SessionContext; token: string } | null> {
     const cookie = headers.cookie;
     if (!cookie) return null;
     const key = fast ? sessionCookieValue(cookie, fast.cookieName) : null;
@@ -135,6 +136,16 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     if (!await stillValid(context.sessionId, context.principal.id, new Date(row.createdAt).getTime(), false)) { forget(key); return null; }
     const fresh: SessionContext = { ...context, expiresAt: new Date(expiresAt), user: { id: context.principal.id, email: row.email, name: row.name } };
     return { context: fresh, token: known.token };
+  }
+
+  /**
+   * A session that is used is the person being active (C-58): a request, and the live stream's connect and keep-alive, which read the session
+   * too. The gate lets one write through a minute per person and never waits.
+   */
+  async function resolve(headers: IncomingHttpHeaders): Promise<{ context: SessionContext; token: string } | null> {
+    const found = await read(headers);
+    if (found) activity?.touch(found.context.principal.id);
+    return found;
   }
   return {
     async resolveSession(headers) { return (await resolve(headers))?.context ?? null; },

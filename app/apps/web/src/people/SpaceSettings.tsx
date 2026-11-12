@@ -13,6 +13,7 @@ import { Avatar, Button, Icon, Input, Option, Select, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
 import { attemptKeys, firstName, grantPerson, isManagerRole, listGrants, listMembers, problemText, revokeGrant } from './api';
 import { DeleteSpaceDialog } from './DeleteSpace';
+import { PersonLine } from './LastActive';
 import { PeoplePicker } from './PeoplePicker';
 import '../app/settings.css';
 import './space.css';
@@ -23,7 +24,7 @@ const roleWord = (role: ProjectGrantRole | 'manager') => (role === 'manager' ? '
 /** The last admin of a space cannot leave, step down or be removed: the words the server's refusal gets (C-16). */
 const lastAdmin = (error: unknown) => (error instanceof ApiError && error.code === 'LAST_SPACE_ADMIN' ? 'Add another admin first: a space always keeps one.' : null);
 
-interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; grantId: string | null }
+interface Row { userId: string; name: string; email: string | null; role: 'manager' | 'contributor'; company: boolean; guest: boolean; grantId: string | null; lastActiveAt?: string }
 
 /**
  * A space's settings (F-037, #874; ⋯ › Settings): its name, its people with their roles, the AI switch, Leave space and, for its admins,
@@ -103,7 +104,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
     if (manager && roster) {
       const fromMember = (member: WorkspaceMember, grant: ProjectGrant | null): Row => ({
         userId: member.userId, name: member.name, email: member.email, role: grant?.role === 'manager' || isManagerRole(member.role) ? 'manager' : 'contributor',
-        company: isManagerRole(member.role), guest: member.role === 'guest', grantId: grant?.id ?? null,
+        company: isManagerRole(member.role), guest: member.role === 'guest', grantId: grant?.id ?? null, lastActiveAt: member.lastActiveAt,
       });
       const list = everyone
         ? roster.members.filter((member) => member.role !== 'guest' || grantOf(member.userId)).map((member) => fromMember(member, grantOf(member.userId)))
@@ -114,7 +115,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
       return list.sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
     }
     return (people ?? []).filter((person) => person.kind === 'human')
-      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: false, grantId: null }))
+      .map((person): Row => ({ userId: person.id, name: person.name, email: null, role: person.access === 'manager' ? 'manager' : 'contributor', company: false, guest: false, grantId: null, lastActiveAt: person.lastActiveAt }))
       .sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
   })();
 
@@ -219,7 +220,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
             {rows.map((row) => (
               <li className="sset-row" key={row.userId} data-person={row.userId}>
                 <Avatar name={row.name} id={row.userId} size="md" tone={row.userId === meId ? 'me' : 'neutral'} />
-                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> · you</span> : null}</b>{row.email ? <span>{row.email}</span> : null}</span>
+                <span className="spset__who"><b>{row.userId === meId ? meName : row.name}{row.userId === meId ? <span className="spset__you"> · you</span> : null}</b><PersonLine email={row.email} lastActiveAt={row.userId === meId ? undefined : row.lastActiveAt} /></span>
                 {manager && row.userId !== meId && !row.company ? (
                   <span className="spset__rolecell">
                     <Select aria-label={`Role of ${row.name}`} value={row.role} onChange={(next) => void setRole(row, next as 'manager' | 'contributor')}>

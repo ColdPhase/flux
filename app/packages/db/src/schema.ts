@@ -50,6 +50,10 @@ export const authUsers = pgTable('auth_users', {
   deviceGeneration: integer('device_generation').notNull().default(0),
   /** The IANA zone of the browser the person uses Flux in, saved by the web app when it differs (migration 0052, #1168, C-57); UTC until one has said. */
   timeZone: text('time_zone').notNull().default('UTC'),
+  /** When the person's signed-in session was last active, at most one write a minute, null until then or while `showLastActive` is off (migration 0060, #1225, C-58). */
+  lastActiveAt: timestamp('last_active_at', { withTimezone: true }),
+  /** "Show when I was last active" (Settings › Account): on by default; off, nothing writes `lastActiveAt` and the one held was erased. */
+  showLastActive: boolean('show_last_active').notNull().default(true),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

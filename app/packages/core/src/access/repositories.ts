@@ -26,7 +26,7 @@ export interface WorkspaceRepository {
   forMember(userId: string): Promise<{ workspace: WorkspaceRecord; role: WorkspaceRole }[]>;
   workspaceOfAgent(agentId: string): Promise<string | null>;
   get(workspaceId: string): Promise<WorkspaceRecord | null>;
-  members(workspaceId: string): Promise<{ member: MemberRecord; email: string; name: string }[]>;
+  members(workspaceId: string): Promise<{ member: MemberRecord; email: string; name: string; lastActiveAt: Date | null; showLastActive: boolean }[]>;
   /** The workspace row `FOR NO KEY UPDATE` (nothing for an id that is not a UUID). */
   lock(workspaceId: string): Promise<void>;
   ownerCount(workspaceId: string): Promise<number>;
@@ -121,7 +121,7 @@ export interface ProjectRepository {
   /** The project's grants, leaving out the agents the principal may not see. */
   listGrants(principal: Principal, projectId: string): Promise<GrantRecord[]>;
   /** The workspace's people. */
-  members(workspaceId: string): Promise<{ id: string; name: string }[]>;
+  members(workspaceId: string): Promise<{ id: string; name: string; lastActiveAt: Date | null; showLastActive: boolean }[]>;
   /** The workspace's unrevoked agents this principal may see in the project. */
   audienceAgents(principal: Principal, projectId: string, workspaceId: string): Promise<{ id: string; name: string; ownerUserId: string }[]>;
   member(workspaceId: string, userId: string): Promise<MemberRecord | null>;

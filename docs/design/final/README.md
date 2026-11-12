@@ -309,7 +309,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
 - **Space header.** One row in which every item has a fixed slot, so nothing moves when a count
   or a face is absent: the space's name (a 220 px slot), the views **Conversation · Tasks · Map ·
-  Wiki** as one segmented control with equal slots, the people's faces (with a working agent's
+  Wiki** as one segmented control with equal slots, the people's faces (people active now first, then the others, an agent last; with a working agent's
   face only while it works), **Call** and ⋯. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
@@ -724,7 +724,7 @@ the composer. The right-hand phone above shows the sheet.
     ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
   - The company name, shown on the sign-in page and in emails.
-  - The people, with their role (Owner, Admin, Member) and a line about guests: they see only the
+  - The people, with their role (Owner, Admin, Member), when each was last active ([Last active](#last-active)) and a line about guests: they see only the
     spaces they are added to and never have AI.
   - With SSO, "Everyone who signs in with Riverside SSO joins automatically", and there is no
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
@@ -853,7 +853,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   under the header at every computer width (the tablet and phone keep their own padding):
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
-  - People with Add people, an Admin / Member choice and Remove on each row.
+  - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - The AI switch.
   - Leave space, and Delete space… for admins.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
@@ -862,6 +862,29 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
   of the company works normally.
+
+### Last active
+
+Space settings › People and Settings › Company › People say when each person was last active (#1225, [C-58](../../product/decisions.md)). No new
+screen, colour or control: it is one line in the rows that exist, and one switch in Account.
+
+- **The line.** Under the person's name, in the second line of the row (after the email where the row has one, separated by a
+  middle dot), in `--t3` at the meta size (12 px, `--fs-xs`). It never has a colour. A row that is the reader's own ("you") has no line.
+  - **Under 5 minutes:** a small mark, then "Active now". The mark is the sidebar's unread dot (6 px, `--inv`), before the words,
+    with a 6 px gap. It is the only mark; every other line is words alone.
+  - **Under an hour:** "Active 12 min ago". **Under a day:** "Active 2 h ago".
+  - **From a day on:** "Yesterday" for the reader's yesterday, and then the date, "3 Nov" (with the year when it is not this one, "3 Nov 2025").
+    A screen reader hears "Last active" before the words that do not say it.
+  - **Never active, an agent, or someone who turned it off:** no line, not "unknown" and not a dash.
+- **Same everywhere.** The same words, at the same size and in the same place, in Space settings, in Company, and nowhere else: it is not in
+  the sidebar, the composer's mentions or a message. The header's faces use it only to put the people active now first, with an agent last.
+- **Calm.** It changes when the page is read again (opening the page, or the people changing), never by itself: nothing ticks,
+  moves or animates, and "Active now" does not flash. On a phone the line wraps under the name like the email does.
+- **Account.** Settings › Account has one more row in its own card, between the account card and Sign out: the switch **Show when
+  I was last active**, on by default, with the line "People who can see you in Flux see when you were last active, never where.
+  Turn it off and nobody does." It is the standard switch row (36 × 22, `--t1` when on), like the AI switch of a space.
+- **What it says about a person.** Only that they were active in Flux, rounded: minutes under an hour, hours under a day, then the day.
+  It never says where, and Flux keeps no history of it.
 
 ### Sign in and splash
 

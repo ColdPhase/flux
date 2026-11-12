@@ -1,0 +1,2 @@
+/* When a person was last active (#1225, C-58): words in the row's own meta style, and for "Active now" the sidebar's unread dot before them. */
+.lastactive__now { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--inv); vertical-align: middle; }

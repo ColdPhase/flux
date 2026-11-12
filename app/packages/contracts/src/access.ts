@@ -138,6 +138,8 @@ export interface WorkspaceMember {
   name: string;
   role: WorkspaceRole;
   createdAt: string;
+  /** The person's last-active time as the reader may know it (`LastActiveAt`, C-58); absent when they turned it off or are not active yet. */
+  lastActiveAt?: LastActiveAt;
   /**
    * Only on an owner's or admin's row of an encrypted workspace, and only for a reader who is an owner or admin there:
    * whether that person has an unlock password (F-030). Absent everywhere else.
@@ -178,7 +180,16 @@ export interface ProjectPerson {
   access: ProjectAccess;
   /** Agent owner label: a human only when already in this project's current audience. No workspace roster. */
   agentOwner?: { kind: 'human'; id: string; name: string };
+  /** A person's last-active time, rounded by the server (`LastActiveAt`, #1225, C-58). Absent for an agent, for someone who turned it off and for someone not active yet. */
+  lastActiveAt?: LastActiveAt;
 }
+
+/**
+ * When a person was last active in Flux, already rounded and never saying where (#1225, C-58): an ISO instant floored to the minute (under an hour
+ * old) or to the hour (under a day old), or the reader's own calendar day as `YYYY-MM-DD` (a day old or more). The people reads carry it for
+ * whoever may read the person in that list; nothing finer than this leaves the server.
+ */
+export type LastActiveAt = string;
 
 /** A person's explicit access to a project. Agents have no grants: an agent has exactly its owner's rights (F-036, #855). */
 export interface ProjectGrant {
