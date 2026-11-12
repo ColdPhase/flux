@@ -189,6 +189,8 @@ class CreateWindow(unittest.TestCase):
                     # It ends when the person goes to another place: then `C` opens on the space of the place they are in.
                     page.get_by_role("complementary", name="Sidebar").get_by_role("link", name=re.compile("Community garden sensors")).click()
                     expect(page).not_to_have_url(re.compile(r"/tasks"))
+                    expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+                    page.wait_for_timeout(300)  # the shortcut is bound again for the new place once it is shown
                     page.keyboard.press("c")
                     expect(dialog(page)).to_be_visible()
                     expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])

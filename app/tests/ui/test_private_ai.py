@@ -313,6 +313,8 @@ class PrivateAiJourney(unittest.TestCase):
         box.fill("/")
         # The keyboard works in the menu as in the others: the arrows move over `/ai` and its suggestions, one key at a time, and Enter chooses.
         menu = task.get_by_role("listbox", name="Actions")
+        # The suggestions join `/ai` once the assistant's status has been read: the keys are pressed on the whole list, as a person sees it.
+        expect(menu.locator(".cmenu__o--ask")).to_have_count(2)
         expect(menu.get_by_role("option", selected=True)).to_contain_text("/ai")
         box.press("ArrowDown")
         expect(menu.get_by_role("option", selected=True)).to_have_attribute("aria-label", "Ask your assistant: Summarise this task")
@@ -330,6 +332,7 @@ class PrivateAiJourney(unittest.TestCase):
         box.fill("check the probes")
         box.press("Home")
         box.press("/")
+        expect(menu.locator(".cmenu__o--ask")).to_have_count(2)
         expect(menu.get_by_role("option", selected=True)).to_contain_text("/ai")
         box.press("Enter")
         expect(box).to_have_value("/ai check the probes")
