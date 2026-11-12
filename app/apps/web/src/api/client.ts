@@ -51,6 +51,7 @@ export interface ApiRequestInit {
   /**
    * With `keep`: a refresh the person or the stream asked for (focus, a poll, an event, a change of the Inbox), or the entry into a space,
    * does not take a kept answer; it reads, other callers of the address join it, and it keeps what it gets for the next view that opens.
+   * It never takes a part a view read handed over (`parts`) either.
    */
   fresh?: boolean;
   /**
