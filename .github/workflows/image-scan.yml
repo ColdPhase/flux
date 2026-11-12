@@ -58,14 +58,15 @@ jobs:
           import json, re, sys
           release = json.load(open(sys.argv[1], encoding='utf-8'))
           assert release['version'] == sys.argv[2], (release['version'], sys.argv[2])
-          images = [release['image'], release['runtime_image']]
+          # The database image is in releases from v0.2.1 on (F-041); before, the official PostgreSQL image ran.
+          images = [release['image'], release['runtime_image']] + ([release['database_image']] if 'database_image' in release else [])
           for image in images:
-              assert re.fullmatch(r'ghcr\.io/coldphase/flux(-agent-runtime)?@sha256:[0-9a-f]{64}', image), image
+              assert re.fullmatch(r'ghcr\.io/coldphase/flux(-agent-runtime|-database)?@sha256:[0-9a-f]{64}', image), image
           print(f"tag={sys.argv[2]}")
           print(f"images={' '.join(images)}")
           print(f"platforms={','.join(release['platforms'])}")
           PY
-      - name: Scan both images on every platform
+      - name: Scan the release's images on every platform
         id: scan
         env:
           TRIVY_USERNAME: ${{ github.actor }}

@@ -328,7 +328,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Wiki | Create and edit pages, with Undo. Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it (no link to it, no message that cited it, no call on it, no one typing in it). Deleting a page always waits for the owner's OK |
 | Map | Add thoughts and link them to tasks |
 | Decisions | Propose; never accept |
-| Search | Everything the owner can see, in spaces with AI on |
+| Search | Everything the owner can see, in spaces with AI on, ranked by BM25 ([AG-12](#ag-12--finding-older-messages-f-041)); a DM only in a run in that DM |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
 | Web | Search with its own web search tool (the provider's, or the owner's Claude Code's or Codex's), and open any public web page (`flux_read_web`) as much as a question needs, never putting anything from Flux into an address (the server refuses one that carries private text the run read), always citing the sources; never post or fill in anything. On by default; the operator can turn both off ([C-29](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), [C-30](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) |
 | Pictures | Attach a public picture from the web to its answer to `/ai` in a space (with the waits and Undo of AG-3) or in its private chat, downloaded by the Flux server under the web rules; look at a picture attached to a message it may read, when its model sees pictures. Never generate one ([#1217](https://github.com/ColdPhase/flux/issues/1217), below) |
@@ -470,6 +470,25 @@ database backstop) is the starting point at space level for #855 and #874; see i
 - **Failures in plain words**: "Claude limit reached, resumes at 14:00", "Sign in to Claude
   again", "Claude refused this request", "Stopped". Nothing falls back to another connection or
   payer, and human work continues.
+
+## AG-12 — Finding older messages (F-041)
+
+An agent does not read a whole conversation. It gets the latest messages of its place in its brief and finds the rest by
+searching ([F-041](decisions.md#f-041--agents-find-what-they-need-with-bm25-search-in-postgresql), #1242).
+
+- **`flux_search`** searches every space the agent may read now (its owner's rights, spaces with AI on), with any of the
+  words, ranked by BM25 inside Flux's database, with Polish and English stemming and accents folded. It covers space
+  messages, the Wiki and tasks, and DM messages only within a run in that DM. Each hit names its place, its author as people
+  see them and its time, with a snippet. Its description asks the agent to search in each language the space uses.
+- **`flux_read_around`** returns the messages around a hit, with the same access check.
+- **The brief** keeps a smaller window of the latest messages (the evaluation sets the size) and says how many older ones
+  exist and that the two tools find them. Server agents and local clients get the same tools and the same brief text.
+- **Summaries** are on demand only: a tool summarises a conversation or a thread since a date, paid by the asking agent's
+  owner. Nothing is stored.
+- **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
+  turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
+- **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the
+  vectors. Nothing is embedded through a person's own connection.
 
 ## What went away in v0.2
 

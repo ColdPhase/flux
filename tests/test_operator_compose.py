@@ -16,6 +16,8 @@ COMPOSE = ROOT / "docker" / "compose.yaml"
 ENV_EXAMPLE = ROOT / "docker" / ".env.example"
 SOURCE_ENV_EXAMPLE = ROOT / "app" / ".env.example"
 MARKER = "ghcr.io/coldphase/flux@sha256:RELEASE_DIGEST"
+# Flux's database image (F-041): built by the same release, so its digest is a marker too, on the db service only.
+DATABASE_MARKER = "ghcr.io/coldphase/flux-database@sha256:DATABASE_DIGEST"
 FLUX_SERVICES = ("migrate", "api", "worker", "keyring")
 PINNED = re.compile(r"[a-z0-9][a-z0-9._/-]*(:[A-Za-z0-9._-]+)?@sha256:[0-9a-f]{64}\Z")
 # ${VAR}, ${VAR:-default}, ${VAR:?message}; `$${VAR}` is a literal for the container shell.
@@ -82,11 +84,15 @@ class OperatorComposeTest(unittest.TestCase):
         self.assertEqual(images.count(MARKER), len(FLUX_SERVICES))
         self.assertEqual(self.body.count("RELEASE_DIGEST"), len(FLUX_SERVICES))
 
+    def test_the_database_runs_the_release_database_image(self) -> None:
+        self.assertEqual(image_of(self.services["db"]), DATABASE_MARKER)
+        self.assertEqual(self.body.count("DATABASE_DIGEST"), 1)
+
     def test_every_other_image_is_pinned_by_digest(self) -> None:
         for name, block in self.services.items():
             image = image_of(block)
             self.assertIsNotNone(image, f"{name} has no image")
-            if name not in FLUX_SERVICES:
+            if name not in FLUX_SERVICES and name != "db":
                 self.assertNotIn("coldphase/flux", image, name)
                 self.assertRegex(image, PINNED, f"{name} image must be pinned by digest")
 

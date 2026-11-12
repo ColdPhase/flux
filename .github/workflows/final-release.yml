@@ -114,7 +114,7 @@ jobs:
     name: Build OCI images for ${{ needs.candidate.outputs.platforms }}
     needs: candidate
     runs-on: ubuntu-latest
-    # Two images from one builder: the agent-runtime build reuses the application build's cached stages.
+    # Three images from one builder: the agent-runtime build reuses the application build's cached stages; the database image has its own context.
     timeout-minutes: 150
     permissions:
       contents: read
@@ -124,6 +124,7 @@ jobs:
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       runtime_digest: ${{ steps.build_runtime.outputs.digest }}
+      database_digest: ${{ steps.build_database.outputs.digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -263,12 +264,63 @@ jobs:
           format: spdx-json
           upload-artifact: false
           upload-release-assets: false
+      - name: Build and push the untagged database manifest
+        id: build_database
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          # Flux's database image (F-041): the official PostgreSQL 18 on Debian with pg_search and pgvector, every input pinned.
+          context: ./docker/database
+          file: ./docker/database/Dockerfile
+          platforms: ${{ needs.candidate.outputs.platforms }}
+          outputs: type=image,name=ghcr.io/coldphase/flux-database,push=true,push-by-digest=true,name-canonical=true
+          provenance: mode=max
+          sbom: generator=docker/buildkit-syft-scanner@sha256:ae4f3b554449e7e25548e7d8ccc029d17357348e30c6e3df01b92bc93654d6a9
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.candidate.outputs.source_sha }}
+            org.opencontainers.image.version=${{ needs.candidate.outputs.version }}
+      - name: Attest the pushed database manifest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-name: ghcr.io/coldphase/flux-database
+          subject-digest: ${{ steps.build_database.outputs.digest }}
+          push-to-registry: true
+      - name: Confirm the database platform manifests and pg_search on every platform
+        env:
+          DATABASE_DIGEST: ${{ steps.build_database.outputs.digest }}
+          RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
+        run: |
+          set -euo pipefail
+          docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST" > "$RUNNER_TEMP/database-index.json"
+          python3 - "$RUNNER_TEMP/database-index.json" "$RELEASE_PLATFORMS" <<'PY'
+          import json, sys
+          index = json.load(open(sys.argv[1], encoding='utf-8'))
+          platforms = {
+              (item.get('platform', {}).get('os'), item.get('platform', {}).get('architecture'))
+              for item in index.get('manifests', [])
+          }
+          wanted = {tuple(p.split('/')) for p in sys.argv[2].split(',')}
+          assert wanted <= platforms, (wanted, platforms)
+          PY
+          for platform in ${RELEASE_PLATFORMS//,/ }; do
+            docker run --rm --network none --platform "$platform" --entrypoint sh "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST" -c \
+              'test -f "$(pg_config --pkglibdir)/pg_search.so" && test -f "$(pg_config --sharedir)/extension/vector.control" && postgres --version'
+          done
+      - name: Generate database image SPDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ghcr.io/coldphase/flux-database@${{ steps.build_database.outputs.digest }}
+          output-file: sbom-database.spdx.json
+          format: spdx-json
+          upload-artifact: false
+          upload-release-assets: false
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-sbom
           path: |
             sbom.spdx.json
             sbom-agent-runtime.spdx.json
+            sbom-database.spdx.json
           if-no-files-found: error
 
   scan:
@@ -284,17 +336,19 @@ jobs:
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
-      - name: Scan both images on every platform (HIGH/CRITICAL findings with a fix fail unless allowlisted)
+      - name: Scan the three images on every platform (HIGH/CRITICAL findings with a fix fail unless allowlisted)
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ github.token }}
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          DATABASE_DIGEST: ${{ needs.image.outputs.database_digest }}
           RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           python3 scripts/security_scan.py image --platforms "$RELEASE_PLATFORMS" --report-dir security-reports \
             --cache "$RUNNER_TEMP/trivy" --summary-file security-reports/summary.md \
-            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
+            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" \
+            "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -325,12 +379,14 @@ jobs:
           CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          DATABASE_DIGEST: ${{ needs.image.outputs.database_digest }}
           RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
         run: |
           python3 scripts/release/prepare_assets.py \
             --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" \
             --digest "$IMAGE_DIGEST" --sbom release-input/sbom.spdx.json \
             --runtime-digest "$RUNTIME_DIGEST" --runtime-sbom release-input/sbom-agent-runtime.spdx.json \
+            --database-digest "$DATABASE_DIGEST" --database-sbom release-input/sbom-database.spdx.json \
             --platforms "$RELEASE_PLATFORMS" --destination release-assets
           cd release-assets
           sha256sum -c SHA256SUMS
@@ -427,7 +483,7 @@ jobs:
           if-no-files-found: ignore
 
   sign:
-    name: Sign both images (keyless, GitHub OIDC)
+    name: Sign the images (keyless, GitHub OIDC)
     # After the scan, the packaged install and the upgrades pass: a signature says "built by this workflow from the accepted candidate, and it passed
     # its gates", not only "built". The certificate names this file on main, which publish-release.yml and operators check (#840).
     needs: [candidate, image, package, scan, upgrade]
@@ -450,16 +506,19 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Sign the two digests and check the signatures verify the way operators check them
+      - name: Sign the three digests and check the signatures verify the way operators check them
         env:
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          DATABASE_DIGEST: ${{ needs.image.outputs.database_digest }}
         run: |
           set -euo pipefail
           # By digest, never by tag: the signature belongs to the manifest the draft and the reviewers name.
-          cosign sign --yes "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
+          cosign sign --yes "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" \
+            "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST"
           bash scripts/release/verify_signatures.sh \
-            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
+            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" \
+            "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST"
 
   draft:
     name: Create draft for independent artifact review
@@ -484,6 +543,7 @@ jobs:
           CANDIDATE_SHA: ${{ needs.candidate.outputs.source_sha }}
           IMAGE_DIGEST: ${{ needs.image.outputs.digest }}
           RUNTIME_DIGEST: ${{ needs.image.outputs.runtime_digest }}
+          DATABASE_DIGEST: ${{ needs.image.outputs.database_digest }}
           ACCEPTANCE_ISSUE: ${{ inputs.acceptance_issue }}
           RELEASE_PLATFORMS: ${{ needs.candidate.outputs.platforms }}
           UPGRADE_TESTED: ${{ needs.upgrade.outputs.tested }}
@@ -496,6 +556,7 @@ jobs:
             --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST" \
             --platforms "$RELEASE_PLATFORMS"
           jq -e --arg r "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST" '.runtime_image == $r' release.json
+          jq -e --arg d "ghcr.io/coldphase/flux-database@$DATABASE_DIGEST" '.database_image == $d' release.json
           # Drafts have no tag yet, so a retry could add a second draft for the same version.
           existing=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
             --jq '.[] | select(.tag_name == env.RELEASE_VERSION) | .id')
@@ -511,10 +572,11 @@ jobs:
           Source: $CANDIDATE_SHA
           OCI candidate image: ghcr.io/coldphase/flux@$IMAGE_DIGEST
           Agent-runtime candidate image: ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST
-          Platforms (both images): ${RELEASE_PLATFORMS//,/, }
+          Database candidate image: ghcr.io/coldphase/flux-database@$DATABASE_DIGEST
+          Platforms (every image): ${RELEASE_PLATFORMS//,/, }
           Build: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
           Image scan: job "Scan the images for known vulnerabilities" of that run (Trivy; no HIGH/CRITICAL finding with a fix, except the reviewed exceptions of .github/security-allowlist.json)
-          Signatures: both digests are signed keylessly by this workflow (cosign, Sigstore, GitHub OIDC) after the scan and the packaged install pass; INSTALL.md shows how to verify them with cosign verify and the provenance with gh attestation verify before you pull
+          Signatures: every digest is signed keylessly by this workflow (cosign, Sigstore, GitHub OIDC) after the scan and the packaged install pass; INSTALL.md shows how to verify them with cosign verify and the provenance with gh attestation verify before you pull
           Integrated acceptance: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/issues/$ACCEPTANCE_ISSUE
           $upgrade_line
 

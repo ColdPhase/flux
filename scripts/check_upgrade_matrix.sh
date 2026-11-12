@@ -71,7 +71,7 @@ cleanup() {
     docker network ls -q --filter "label=com.docker.compose.project=$project" | xargs -r docker network rm >/dev/null 2>&1 || true
   done
   docker rm -f "$registry" >/dev/null 2>&1 || true
-  docker image rm -f "127.0.0.1:$registry_port/flux:matrix" >/dev/null 2>&1 || true
+  docker image rm -f "127.0.0.1:$registry_port/flux:matrix" "127.0.0.1:$registry_port/flux-database:matrix" >/dev/null 2>&1 || true
   rm -rf "$work"
   exit "$status"
 }
@@ -147,18 +147,32 @@ if [ -z "$candidate_assets" ]; then
   digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
     "http://127.0.0.1:$registry_port/v2/flux/manifests/matrix" | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
   [ -n "$digest" ] || fail "the registry did not report the candidate's digest"
-  # The SBOMs and the agent-runtime image are not under test: the newest release's stand in, so that the asset set renders.
+  # The candidate's database image (F-041), built from this tree like the release builds it: an upgrade from a release before v0.2.1
+  # also switches the database from the official Alpine image to it.
+  ( cd "$work/candidate-src" && docker buildx build --platform "$platform" -f docker/database/Dockerfile \
+      --label "org.opencontainers.image.revision=$sha" --label "org.opencontainers.image.version=$candidate_version" \
+      -t "127.0.0.1:$registry_port/flux-database:matrix" --load --progress plain docker/database ) > "$work/build-database.log" 2>&1 \
+    || { tail -n 40 "$work/build-database.log"; fail "the candidate's database image did not build"; }
+  docker push "127.0.0.1:$registry_port/flux-database:matrix" > "$work/push-database.log" 2>&1 || { cat "$work/push-database.log"; fail "push of the database image failed"; }
+  database_digest=$(curl -fsSI -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json' \
+    "http://127.0.0.1:$registry_port/v2/flux-database/manifests/matrix" | tr -d '\r' | sed -n 's/^[Dd]ocker-[Cc]ontent-[Dd]igest: *//p')
+  [ -n "$database_digest" ] || fail "the registry did not report the database image's digest"
+  # The SBOMs and the agent-runtime image are not under test: the newest release's stand in, so that the asset set renders
+  # (a release before v0.2.1 has no database SBOM: its application SBOM stands in).
   newest=$(printf '%s\n' "$releases" | tail -n 1)
   runtime_digest=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_image"].split("@")[1])' "$work/releases/$newest/release.json")
+  database_sbom="$work/releases/$newest/sbom-database.spdx.json"
+  [ -f "$database_sbom" ] || database_sbom="$work/releases/$newest/sbom.spdx.json"
   ( cd "$work/candidate-src" && python3 scripts/release/prepare_assets.py --version "$candidate_version" --source-sha "$sha" --digest "$digest" \
       --sbom "$work/releases/$newest/sbom.spdx.json" --runtime-digest "$runtime_digest" \
-      --runtime-sbom "$work/releases/$newest/sbom-agent-runtime.spdx.json" --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 || { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
+      --runtime-sbom "$work/releases/$newest/sbom-agent-runtime.spdx.json" --database-digest "$database_digest" --database-sbom "$database_sbom" \
+      --destination "$work/candidate-assets" ) > "$work/prepare.log" 2>&1 || { cat "$work/prepare.log"; fail "the candidate's release assets did not render"; }
   for file in compose.yaml release.json; do
     sed "s#ghcr.io/coldphase/#127.0.0.1:$registry_port/#g" "$work/candidate-assets/$file" > "$work/candidate-assets/$file.edit"
     mv "$work/candidate-assets/$file.edit" "$work/candidate-assets/$file"
   done
   candidate_assets="$work/candidate-assets"
-  echo "candidate image $digest"
+  echo "candidate image $digest, database image $database_digest"
 fi
 
 record() { echo "$1" >> "$results"; }

@@ -128,6 +128,18 @@ sql() { # project, environment file, assets directory, statement
   dc "$1" "$2" "$3" exec -T db sh -c 'psql -X -tA -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' sh "$4" </dev/null
 }
 ledger() { sql "$1" "$2" "$3" "SELECT string_agg(version::text, ',' ORDER BY version) FROM flux_schema_version"; }
+# The database runs the candidate's database image (F-041: Debian with pg_search, also when the previous release ran the official
+# Alpine image), and every B-tree index of the data it kept is intact under that image's collation (amcheck, in a transaction that
+# is rolled back, so nothing is left behind).
+database_check() { # project, environment file, assets directory
+  sql "$1" "$2" "$3" "SELECT version()" | grep -q 'Debian' || fail "the database does not run the candidate's database image"
+  [ "$(sql "$1" "$2" "$3" "SHOW shared_preload_libraries" | tr ',' '\n' | grep -cx 'pg_search')" = 1 ] || fail "pg_search is not preloaded"
+  checked=$(sql "$1" "$2" "$3" "BEGIN; CREATE EXTENSION IF NOT EXISTS amcheck; SELECT count(bt_index_check(c.oid, true)) FROM pg_index i
+    JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE a.amname = 'btree' AND i.indisvalid AND c.relpersistence = 'p' AND n.nspname NOT IN ('pg_catalog', 'pg_toast'); ROLLBACK;" | grep -E '^[0-9]+$') \
+    || fail "a B-tree index does not pass amcheck on the candidate's database image"
+  echo "database: $(sql "$1" "$2" "$3" "SELECT version()" | cut -d, -f1); $checked B-tree indexes pass amcheck (heap included)"
+}
 expected_ledger() { # the candidate's migration files, as the migrator numbers them
   ls "$root/app/packages/db/migrations" | sed -n 's/^\([0-9][0-9][0-9][0-9]\)_.*\.sql$/\1/p' | sort -n | sed 's/^0*//' | paste -sd, -
 }
@@ -311,6 +323,7 @@ printf '%s\n' "$ledger_after" | tr ',' '\n' > "$up_dir/ledger.after"
 table_snapshot "$source_project" "$up_env" "$assets" "$up_dir/columns" > "$up_dir/tables.after"
 cmp "$up_dir/tables.before" "$up_dir/tables.after" || { diff "$up_dir/tables.before" "$up_dir/tables.after" >&2 || true; fail "content rows changed across the upgrade"; }
 [ "$(volume_stamps "$source_project")" = "$(cat "$up_dir/volumes.before")" ] || fail "a volume was recreated by the upgrade"
+database_check "$source_project" "$up_env" "$assets"
 dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --write

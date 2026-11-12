@@ -8,7 +8,7 @@ digest=${2:?image digest required}
 image=${3:-ghcr.io/coldphase/flux}
 [[ "$version" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-rc\.[1-9][0-9]*)?$ ]]
 [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-case "$image" in ghcr.io/coldphase/flux|ghcr.io/coldphase/flux-agent-runtime) ;; *) echo 'Unknown release image.' >&2; exit 1 ;; esac
+case "$image" in ghcr.io/coldphase/flux|ghcr.io/coldphase/flux-agent-runtime|ghcr.io/coldphase/flux-database) ;; *) echo 'Unknown release image.' >&2; exit 1 ;; esac
 tag="$image:$version"
 
 # Only the registry's "not found" means the tag is free. Another inspect failure (network, rate

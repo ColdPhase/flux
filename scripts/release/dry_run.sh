@@ -125,33 +125,37 @@ registry_digest() { # repository tag
 build_push() { # target repository tag [directory holding docker/Dockerfile and app/; default the candidate] [revision] [version]
   start=$(date +%s)
   dir=${4:-$work/src}; rev=${5:-$sha}; ver=${6:-$version}
+  # The target `database` is the database image (F-041): its own Dockerfile and context, no target stage.
+  if [ "$1" = database ]; then file=docker/database/Dockerfile context=docker/database target=(); else file=docker/Dockerfile context=app target=(--target "$1"); fi
   labels=(--label org.opencontainers.image.source=https://github.com/ColdPhase/flux
     --label "org.opencontainers.image.revision=$rev" --label "org.opencontainers.image.version=$ver")
   if [ -n "$platforms" ]; then
     # The workflow's build-push-action settings, with a tag instead of push-by-digest so the registry can name the index.
-    ( cd "$dir" && docker buildx build --builder "$builder" --platform "$platforms" --target "$1" -f docker/Dockerfile \
+    ( cd "$dir" && docker buildx build --builder "$builder" --platform "$platforms" ${target[@]+"${target[@]}"} -f "$file" \
         "${labels[@]}" --provenance mode=max --sbom "generator=$sbom_scanner" --progress plain \
-        --output "type=image,name=127.0.0.1:$registry_port/$2:$3,push=true" app ) > "$work/build-$2-$3.log" 2>&1 ||
+        --output "type=image,name=127.0.0.1:$registry_port/$2:$3,push=true" "$context" ) > "$work/build-$2-$3.log" 2>&1 ||
       { tail -n 60 "$work/build-$2-$3.log"; fail "build of $2:$3 failed"; }
     docker pull -q "127.0.0.1:$registry_port/$2:$3" > "$work/push-$2-$3.log" 2>&1 || { cat "$work/push-$2-$3.log"; fail "pull of $2:$3 failed"; }
     echo "$2:$3: built for $platforms and pushed in $(( $(date +%s) - start )) s"
     return
   fi
-  ( cd "$dir" && docker buildx build --platform "$platform" --target "$1" -f docker/Dockerfile \
-      "${labels[@]}" --progress plain -t "127.0.0.1:$registry_port/$2:$3" --load app ) > "$work/build-$2-$3.log" 2>&1 ||
+  ( cd "$dir" && docker buildx build --platform "$platform" ${target[@]+"${target[@]}"} -f "$file" \
+      "${labels[@]}" --progress plain -t "127.0.0.1:$registry_port/$2:$3" --load "$context" ) > "$work/build-$2-$3.log" 2>&1 ||
     { tail -n 60 "$work/build-$2-$3.log"; fail "build of $2:$3 failed"; }
   docker push "127.0.0.1:$registry_port/$2:$3" > "$work/push-$2-$3.log" 2>&1 || { cat "$work/push-$2-$3.log"; fail "push of $2:$3 failed"; }
   echo "$2:$3: built and pushed in $(( $(date +%s) - start )) s ($platform)"
 }
-step "Build and push both images (targets runtime and agent-runtime-release; the second reuses the first's stages)"
+step "Build and push the three images (targets runtime and agent-runtime-release, which reuses the first's stages, and the database image)"
 build_push runtime flux dry
 build_push agent-runtime-release flux-agent-runtime dry
+build_push database flux-database dry
 app_digest=$(registry_digest flux dry)
 runtime_digest=$(registry_digest flux-agent-runtime dry)
-[ -n "$app_digest" ] && [ -n "$runtime_digest" ] || fail "the registry did not report both manifest digests"
-echo "application   $app_digest"; echo "agent-runtime $runtime_digest"
+database_digest=$(registry_digest flux-database dry)
+[ -n "$app_digest" ] && [ -n "$runtime_digest" ] && [ -n "$database_digest" ] || fail "the registry did not report every manifest digest"
+echo "application   $app_digest"; echo "agent-runtime $runtime_digest"; echo "database      $database_digest"
 [ "$app_digest" != "$runtime_digest" ] || fail "both images have one digest"
-for image in flux flux-agent-runtime; do
+for image in flux flux-agent-runtime flux-database; do
   [ "$(docker image inspect "127.0.0.1:$registry_port/$image:dry" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$sha" ] || fail "$image revision label"
   docker image inspect "127.0.0.1:$registry_port/$image:dry" --format "$image: {{.Os}}/{{.Architecture}}, {{.Size}} bytes, user {{.Config.User}}, cmd {{.Config.Cmd}}"
 done
@@ -171,8 +175,8 @@ if [ -n "$previous_rev" ]; then
 fi
 
 if [ -n "$platforms" ]; then
-  step "Index platforms and attestations (the workflow's 'Confirm both platform manifests', plus BuildKit's attestations)"
-  for image in flux flux-agent-runtime; do
+  step "Index platforms and attestations (the workflow's 'Confirm the platform manifests', plus BuildKit's attestations)"
+  for image in flux flux-agent-runtime flux-database; do
     docker buildx imagetools inspect --raw "127.0.0.1:$registry_port/$image:dry" > "$work/index-$image.json"
     python3 - "$work/index-$image.json" "$image" "$platforms" <<'PY'
 import json, sys
@@ -222,9 +226,10 @@ for check_platform in $(printf '%s' "${platforms:-$platform}" | tr ',' ' '); do
 done
 # The workflow's `scan` job (#835): the same script and pins, on the digests of the throwaway registry (plain HTTP on the host network).
 if [ -z "${FLUX_DRYRUN_SKIP_SCAN:-}" ]; then
-  step "Image scan: Trivy on both digests; a HIGH/CRITICAL finding with a fix fails unless .github/security-allowlist.json names it"
+  step "Image scan: Trivy on the three digests; a HIGH/CRITICAL finding with a fix fails unless .github/security-allowlist.json names it"
   python3 scripts/security_scan.py image --network host --insecure --platforms "$platforms" --report-dir "$work/scan" \
-    "127.0.0.1:$registry_port/flux@$app_digest" "127.0.0.1:$registry_port/flux-agent-runtime@$runtime_digest" || fail "the image scan failed"
+    "127.0.0.1:$registry_port/flux@$app_digest" "127.0.0.1:$registry_port/flux-agent-runtime@$runtime_digest" \
+    "127.0.0.1:$registry_port/flux-database@$database_digest" || fail "the image scan failed"
 fi
 case ",${platforms}," in
   *,linux/arm64,*)
@@ -235,7 +240,7 @@ esac
 
 step "SBOMs: $syft_image on docker-archives (the workflow uses anchore/sbom-action on the pushed digests)"
 docker pull -q "$syft_image" >/dev/null
-for image in flux flux-agent-runtime; do
+for image in flux flux-agent-runtime flux-database; do
   docker save "127.0.0.1:$registry_port/$image:dry" -o "$work/$image.tar"
   docker run --rm --network none -e SYFT_CHECK_FOR_APP_UPDATE=false -v "$work:/w:z" "$syft_image" \
     "docker-archive:/w/$image.tar" -o "spdx-json=/w/sbom-$image.spdx.json" -q
@@ -247,7 +252,8 @@ step "Prepare and verify the release assets (digests are real manifest digests o
 built_platforms=${platforms:-$platform}
 python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
   --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$runtime_digest" \
-  --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --platforms "$built_platforms" --destination "$work/release-assets"
+  --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --database-digest "$database_digest" \
+  --database-sbom "$work/sbom-flux-database.spdx.json" --platforms "$built_platforms" --destination "$work/release-assets"
 ( cd "$work/release-assets" && ls -l && sha256 -c SHA256SUMS && python3 "$work/src/scripts/release/check_asset_set.py" . &&
   python3 "$work/src/scripts/release/verify_assets.py" . --version "$version" --source-sha "$sha" --digest "$app_digest" \
     --platforms "$built_platforms" )
@@ -263,7 +269,8 @@ edit "$work/swapped/compose.runtime.yaml" -e "s#flux-agent-runtime@$runtime_dige
 ( cd "$work/swapped" && for f in *; do [ "$f" = SHA256SUMS ] || sha256 "$f"; done > "$work/swapped.sums" ) && mv "$work/swapped.sums" "$work/swapped/SHA256SUMS"
 refuses 'runtime image swapped for the application image' python3 scripts/release/verify_assets.py "$work/swapped"
 refuses 'same digest for both images' python3 scripts/release/prepare_assets.py --version "$version" --source-sha "$sha" --digest "$app_digest" \
-  --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$app_digest" --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --destination "$work/same"
+  --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$app_digest" --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" \
+  --database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json" --destination "$work/same"
 
 step "Runtime overlay against the source stack (docker compose config)"
 (
@@ -290,9 +297,13 @@ previous_env=()
 if [ -n "$previous_rev" ]; then
   # The previous release is rendered by ITS OWN script from ITS OWN templates, as its workflow would have. The SBOMs and the
   # runtime image are this commit's (the SBOM files only have to exist, the upgrade leg never pulls the runtime image).
+  # A previous release from before F-041 ran the official PostgreSQL image and takes no database digest.
+  previous_database=()
+  grep -q -- '--database-digest' "$work/prev-src/scripts/release/prepare_assets.py" &&
+    previous_database=(--database-digest "$database_digest" --database-sbom "$work/sbom-flux-database.spdx.json")
   ( cd "$work/prev-src" && python3 scripts/release/prepare_assets.py --version "$previous_version" --source-sha "$previous_sha" \
       --digest "$previous_digest" --sbom "$work/sbom-flux.spdx.json" --runtime-digest "$runtime_digest" \
-      --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" --destination "$work/previous-assets" &&
+      --runtime-sbom "$work/sbom-flux-agent-runtime.spdx.json" ${previous_database[@]+"${previous_database[@]}"} --destination "$work/previous-assets" &&
     cd "$work/previous-assets" && sha256 -c SHA256SUMS >/dev/null &&
     python3 "$work/prev-src/scripts/release/verify_assets.py" . --version "$previous_version" --source-sha "$previous_sha" --digest "$previous_digest" )
   localize "$work/previous-assets" "$work/previous-local-assets"
