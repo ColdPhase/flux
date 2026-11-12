@@ -12,7 +12,7 @@ Options (the `variant` names in the results):
   fts_or        simple + unaccent, OR of the words, ts_rank (no IDF), every readable space
   fts_lang      Polish Hunspell + English stems + stop words, plus simple+unaccent, OR of the words, ts_rank
   trgm          pg_trgm word similarity per query word (typos)
-  bm25          ParadeDB pg_search BM25, Polish stemmer, ASCII folding, OR of the words
+  bm25          ParadeDB pg_search BM25, Polish and English stemmers (as Flux's migration 0065), ASCII folding, OR of the words
   vec           pgvector HNSW over local embeddings (BENCH_EMBED_MODEL, via text-embeddings-inference)
   hybrid_lang   reciprocal rank fusion (k=60) of fts_lang and vec, top 50 each
   hybrid_bm25   reciprocal rank fusion of bm25 and vec
@@ -137,8 +137,10 @@ INDEX_SQL = {
     """,
     "trgm": "CREATE INDEX messages_trgm_idx ON messages USING gin (f_unaccent(body) gin_trgm_ops);",
     "bm25": """
-      CREATE INDEX messages_bm25_idx ON messages USING bm25 (id, (body::pdb.simple('ascii_folding=true', 'stemmer=polish')), space_id, created_at)
-        WITH (key_field = 'id');
+      -- As Flux's migration 0065 (F-041): the text twice, with a Polish and an English stemmer, accents folded.
+      CREATE INDEX messages_bm25_idx ON messages USING bm25 (id,
+        (body::pdb.simple('ascii_folding=true', 'stemmer=polish', 'alias=body_pl')),
+        (body::pdb.simple('ascii_folding=true', 'stemmer=english', 'alias=body_en')), space_id, created_at);
     """,
     "vec": """
       CREATE TABLE message_embeddings (message_id uuid PRIMARY KEY REFERENCES messages ON DELETE CASCADE, model text NOT NULL,
@@ -325,7 +327,7 @@ def sql_for(variant):
         GROUP BY m.id, m.created_at ORDER BY sum(word_similarity(w.w, f_unaccent(m.body))) DESC, m.created_at DESC LIMIT %(k)s"""
     if variant == "bm25":
         return f"""WITH {READABLE}
-        SELECT m.id FROM messages m WHERE m.body ||| %(q)s AND {FILTERS}
+        SELECT m.id FROM messages m WHERE (m.body::pdb.alias('body_pl') ||| %(q)s OR m.body::pdb.alias('body_en') ||| %(q)s) AND {FILTERS}
         ORDER BY pdb.score(m.id) DESC, m.created_at DESC LIMIT %(k)s"""
     if variant == "vec":
         return f"""WITH {READABLE}
@@ -480,7 +482,7 @@ def step_write(data, results, n=400):
             if variant in ("trgm", "all_pg"):
                 db.execute("CREATE INDEX w_trgm_idx ON w_messages USING gin (f_unaccent(body) gin_trgm_ops)")
             if variant in ("bm25", "all_pg"):
-                db.execute("CREATE INDEX w_bm25_idx ON w_messages USING bm25 (id, (body::pdb.simple('ascii_folding=true', 'stemmer=polish')), space_id, created_at) WITH (key_field = 'id')")
+                db.execute("CREATE INDEX w_bm25_idx ON w_messages USING bm25 (id, (body::pdb.simple('ascii_folding=true', 'stemmer=polish', 'alias=body_pl')), (body::pdb.simple('ascii_folding=true', 'stemmer=english', 'alias=body_en')), space_id, created_at)")
             if variant in ("vec_row", "all_pg"):
                 db.execute(f"CREATE TABLE w_emb (message_id uuid PRIMARY KEY REFERENCES w_messages ON DELETE CASCADE, embedding vector({dim}) NOT NULL)")
                 db.execute("INSERT INTO w_emb SELECT message_id, embedding FROM message_embeddings")

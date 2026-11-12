@@ -1,5 +1,6 @@
-# The retrieval bench's client (#1242): Python with the PostgreSQL driver, an HTTP client and a tokenizer for token counts.
+# The retrieval bench's client (#1242): Python with the PostgreSQL driver, an HTTP client, a tokenizer for token counts and the
+# Anthropic SDK for answer accuracy on Claude.
 FROM python:3.12-slim@sha256:f77ac9e44ae96ef2c90b8053ea08c31f8be030f824196b0ae4db6d462c84e51f
-RUN pip install --no-cache-dir "psycopg[binary]==3.2.12" "httpx==0.28.1" "tiktoken==0.12.0" \
+RUN pip install --no-cache-dir "psycopg[binary]==3.2.12" "httpx==0.28.1" "tiktoken==0.12.0" "anthropic==2.7.0" \
  && python -c "import tiktoken; tiktoken.get_encoding('o200k_base')"
 WORKDIR /bench

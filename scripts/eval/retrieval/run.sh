@@ -42,7 +42,10 @@ if [ "${1:-}" = answer ]; then
     export BENCH_LLM_URL="${BENCH_LLM_URL:-http://flux-model:${BENCH_LLM_PORT:-8080}/v1}"
     export BENCH_LLM_KEY="${BENCH_LLM_KEY:-$(docker exec "$BENCH_LLM_CONTAINER" cat "${BENCH_LLM_KEY_FILE:-/data/state/api-key}")}"
   fi
-  $compose run --rm -T -e BENCH_LLM_URL -e BENCH_LLM_KEY -e BENCH_LLM_MODEL -e BENCH_ANSWER_SEARCH harness python -u answer.py "$@"
+  # BENCH_LLM=anthropic: the key goes in by name only (-e ANTHROPIC_API_KEY), so it is never on a command line; read it from a file
+  # into the environment of this script, e.g. ANTHROPIC_API_KEY="$(cat ~/.config/flux-eval/anthropic.key)" in the calling shell.
+  $compose run --rm -T -e BENCH_LLM -e ANTHROPIC_API_KEY -e BENCH_LLM_URL -e BENCH_LLM_KEY -e BENCH_LLM_MODEL -e BENCH_ANSWER_SEARCH \
+    -e BENCH_ANSWER_QUERY -e BENCH_COST_CAP_USD -e BENCH_PRICE_IN -e BENCH_PRICE_OUT harness python -u answer.py "$@"
   exit 0
 fi
 steps="${*:-load index recall write access tokens deletion}"
