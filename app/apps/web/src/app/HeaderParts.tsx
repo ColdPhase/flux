@@ -4,21 +4,31 @@ import { Avatar, IconButton, Kreska, usePop } from '../ui';
 
 /**
  * The people and agents of a project as faces, one button to the space's people (F-026 §4 header).
- * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view.
+ * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view. The faces touch, side by side as drawn, and
+ * what does not fit is one "+N" face. The button hugs them and ends at the slot's right edge; the slot (`top__faces-slot`) keeps the width the
+ * header's other controls rely on whatever the number of faces (#873), so no pill is wider than its faces (#1236). A header pane of 70 rem
+ * and up has room for three people, the agent and "+N"; a narrower one for two people, the agent and "+N" (a two-digit one too), so both
+ * counts are drawn and the pane's width chooses (project-header.css). The order is the space's own: people first, then the agent.
  */
 export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerson[]; audience: string; onOpen: () => void }) {
   const humans = people.filter((person) => person.kind === 'human');
   const agents = people.filter((person) => person.kind === 'agent');
   const shown = [...humans.slice(0, 3), ...agents.slice(0, 1)];
-  const more = people.length - shown.length;
+  const narrow = Math.min(humans.length, 2) + Math.min(agents.length, 1);
+  /** What is left beyond `faces` drawn: "+5", and "99+" from a hundred so it stays as wide as "+99". */
+  const rest = (faces: number) => people.length - faces;
+  const count = (faces: number) => (rest(faces) > 99 ? '99+' : `+${rest(faces)}`);
   return (
-    <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
-      <span className="ui-vh">{audience}, who can see this space</span>
-      {shown.map((person) => person.kind === 'agent'
-        ? <Kreska key={person.id} size={20} className="top__face" />
-        : <span key={person.id} className="top__face"><Avatar name={person.name} size="sm" /></span>)}
-      {more > 0 ? <span className="top__more-faces" aria-hidden="true">+{more}</span> : null}
-    </button>
+    <span className="top__faces-slot">
+      <button type="button" className="top__audience top__faces" onClick={onOpen} aria-haspopup="dialog" title={audience}>
+        <span className="ui-vh">{audience}, who can see this space</span>
+        {shown.map((person, at) => person.kind === 'agent'
+          ? <Kreska key={person.id} size={20} className="top__face" />
+          : <span key={person.id} className={`top__face${at === 2 ? ' top__face--wide' : ''}`}><Avatar name={person.name} size="sm" /></span>)}
+        {rest(narrow) > 0 ? <span className="top__more-faces top__more-faces--narrow" aria-hidden="true">{count(narrow)}</span> : null}
+        {rest(shown.length) > 0 ? <span className="top__more-faces top__more-faces--wide" aria-hidden="true">{count(shown.length)}</span> : null}
+      </button>
+    </span>
   );
 }
 

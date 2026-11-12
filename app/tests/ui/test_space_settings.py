@@ -20,6 +20,7 @@ from app_select import choose, open_select
 from create_window import create_other, new_space_window, open_create
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder, view_tab
 from test_personal_assistant import mock
+from themed_shots import shot_both
 
 PASSWORD = "settings for a space"
 STAMP = int(time.time() * 1000)
@@ -282,6 +283,58 @@ class SpaceSettings(unittest.TestCase):
                 expect(conversation).to_have_attribute("href", thread)
                 view_tab(page, "Conversation", tap)
                 expect(page).to_have_url(re.compile(re.escape(thread) + "$"))
+
+    COLUMN = """() => {
+      const pane = document.querySelector('[data-space-settings]').closest('.pane-scroll'), frame = pane.getBoundingClientRect();
+      const column = document.querySelector('[data-space-settings] .sset-card').getBoundingClientRect();
+      return { left: column.left - frame.left, right: frame.left + pane.clientWidth - column.right, width: column.width,
+        margin: getComputedStyle(document.querySelector('[data-space-settings]')).marginLeft };
+    }"""
+
+    def test_02c_the_settings_column_is_centred_in_the_pane_on_the_computer_and_as_before_on_tablet_and_phone(self) -> None:
+        """#1214: drawn centred under the header (final design, Space settings); account Settings keeps its flush-left page beside its list."""
+        self.ensure_world()
+        ada = self.page("ada")
+        made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Centred room", "visibility": "restricted", "people": [self.ids["kai"]]}, status=201)
+        for width, height in ((1280, 800), (1440, 900), (1920, 1080), (2560, 1440)):
+            with self.subTest(width=width):
+                page = self.page("ada", {"width": width, "height": height})
+                page.goto(f"/projects/{made['id']}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                gaps = page.evaluate(self.COLUMN)
+                self.assertAlmostEqual(gaps["left"], gaps["right"], delta=1, msg=f"{width}: the column's left and right gaps in the pane are equal: {gaps}")
+                self.assertAlmostEqual(gaps["width"], 640, delta=1, msg=f"{width}: the column is 640 px: {gaps}")
+                if width == 1440:
+                    self.assertGreater(gaps["left"], 100, f"the column is not at the pane's left edge: {gaps}")
+                    shot_both(page, f"1214-space-settings-1440-{UI_BROWSER}")
+        # Account Settings keeps its own page beside its section list.
+        page = self.page("ada")
+        page.goto("/settings/appearance")
+        expect(page.locator(".sset__nav")).to_be_visible()
+        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.pane-in.sset-in')).marginLeft"), "0px", "account Settings stays flush left")
+        # Tablet and phone keep their own padding: no centring margin.
+        for label, viewport in (("820", {"width": 820, "height": 1180}), ("390", PHONE)):
+            page = self.page("ada", viewport)
+            page.goto(f"/projects/{made['id']}/settings")
+            expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+            self.assertEqual(page.evaluate(self.COLUMN)["margin"], "0px", f"{label}: no centring margin")
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), viewport["width"], f"{label}: no sideways scroll")
+            shot_both(page, f"1214-space-settings-{label}-{UI_BROWSER}")
+
+    def test_02d_everyones_people_load_for_its_admin_without_a_failure_notice(self) -> None:
+        """#1214 (to check separately): a space for the whole company lists its people from the server's read, not from the fallback that
+        a failed read leaves, and says nothing about a failure."""
+        self.ensure_world()
+        ada = self.page("ada")
+        made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Open house", "visibility": "workspace"}, status=201)
+        ada.goto(f"/projects/{made['id']}/settings")
+        expect(ada.get_by_role("heading", name="Space settings")).to_be_visible()
+        card = ada.get_by_role("list", name="People in Open house")
+        expect(card.get_by_role("listitem")).to_have_count(3)
+        # Role controls come from the roster read (the fallback has none), so the read worked.
+        expect(card.get_by_label("Role of Kai Tanaka")).to_be_visible()
+        expect(ada.get_by_text("Who is in this space couldn’t be loaded")).to_have_count(0)
+        shot_both(ada, f"1214-everyone-settings-1440-{UI_BROWSER}")
 
     def test_03_a_member_reads_the_settings_and_can_leave(self) -> None:
         self.ensure_world()

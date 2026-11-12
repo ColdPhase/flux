@@ -19,6 +19,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from create_window import create_other, new_space_window, open_create
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
+from themed_shots import shot_both
 
 PASSWORD = "one step to a project"
 EMAIL = f"ada.newproject+{int(time.time() * 1000)}@example.test"
@@ -229,6 +230,16 @@ class NewProject(unittest.TestCase):
 
     UNLOCK = "seven loud geese in a hat"
 
+    def assert_download_block_is_spaced(self, card, label: str) -> None:
+        """#1216: the Download recovery code button, its line of words and (when shown) its refusal are one column with a clear gap between them."""
+        gaps = card.locator("[data-recovery-download]").evaluate("""(block) => {
+          const rows = [block.querySelector('button'), block.querySelector('.newspace__hint'), block.querySelector('.newspace__error')].filter(Boolean).map((el) => el.getBoundingClientRect());
+          return rows.slice(1).map((box, at) => box.top - rows[at].bottom);
+        }""")
+        self.assertGreaterEqual(len(gaps), 1, label)
+        for gap in gaps:
+            self.assertGreaterEqual(gap, 6, f"{label}: the button, its line and its refusal are at least 6 px apart: {gaps}")
+
     def encrypted_card(self, page: Page, phone: bool = False):
         card = self.open_window(page, phone=phone).get_by_role("form", name="New space")
         encrypted = card.get_by_role("switch", name="Encrypted")
@@ -253,6 +264,9 @@ class NewProject(unittest.TestCase):
         admins = card.locator("[data-admins-see-name]")
         expect(admins).to_have_text("Company admins will see this space’s name, never what’s in it.")
         shot(page, f"874-newspace-encrypted-1440-{UI_BROWSER}")
+        self.assert_download_block_is_spaced(card, "1440")
+        card.locator("[data-recovery-download]").scroll_into_view_if_needed()
+        shot_both(page, f"1216-newspace-encrypted-1440-{UI_BROWSER}")
         # Off again before Create: the AI switch is back, and nothing is asked.
         encrypted.click()
         expect(card.get_by_role("switch", name="AI")).to_be_visible()
@@ -269,6 +283,9 @@ class NewProject(unittest.TestCase):
         self.assertLessEqual(box["x"] + box["width"], frame["x"] + frame["width"] + 1)
         self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), phone.evaluate("window.innerWidth"))
         shot(phone, f"980-newspace-encrypted-390-{UI_BROWSER}")
+        self.assert_download_block_is_spaced(phone_card, "390")
+        phone_card.locator("[data-recovery-download]").scroll_into_view_if_needed()
+        shot_both(phone, f"1216-newspace-encrypted-390-{UI_BROWSER}")
 
     def test_09_creating_an_encrypted_space_asks_the_download_first_and_leaves_no_plain_space_behind(self) -> None:
         self.ensure_account()
@@ -285,6 +302,7 @@ class NewProject(unittest.TestCase):
         card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
         card.get_by_role("button", name="Create space").click()
         expect(card).to_contain_text("Download the recovery code first")
+        self.assert_download_block_is_spaced(card, "with the refusal")
         with page.expect_download() as download:
             card.get_by_role("button", name="Download recovery code").click()
         text = open(download.value.path(), encoding="utf-8").read()

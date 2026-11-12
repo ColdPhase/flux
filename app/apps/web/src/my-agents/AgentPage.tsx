@@ -109,7 +109,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
             {choice.groups.map((item) => (
               <div key={item.connection} className="agp__model-group">
                 <span className="agp__group-name" id={`model-${item.connection}`}>{item.label}</span>
-                <div className="seg" role="radiogroup" aria-labelledby={`model-${item.connection}`}>
+                <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${item.connection}`}>
                   {item.options.map((option) => {
                     const on = agent.model.connection === item.connection && agent.model.model === option.id;
                     return (
