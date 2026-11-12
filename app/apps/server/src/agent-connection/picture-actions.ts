@@ -197,7 +197,7 @@ export async function answerPictureIds(db: DbExecutor, runId: string, ownerUserI
 
 /** C-30 on the address alone (its length as sent, and the run's private text), before a change is saved: refused in plain words. */
 async function checkedAddress(db: Database, runId: string, url: string) {
-  let sent: string | null = null;
+  let sent: string;
   try { sent = new URL(url).href; } catch { return; /* no web address: the fetch says so */ }
   if (sent.split('#')[0]!.length > ADDRESS_MAX) refuse(PICTURE_WORDS.too_long);
   try {
@@ -234,7 +234,7 @@ async function attachInChat(db: Database, services: PictureServices, input: { cl
   const ok = fetched as Extract<PictureResult, { ok: true }>;
   const name = pictureName(input.caption, ok.finalUrl, ok.type);
   const received = await services.storage.receive(Readable.from([Buffer.from(ok.bytes)]), { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 });
-  let saved: { name: string; size: number } | null = null;
+  let saved: { name: string; size: number } | null;
   try {
     saved = await db.transaction(async (tx) => {
       // One call of this id at a time (a retry racing the first): the first saves it, the other finds it saved and touches nothing.
