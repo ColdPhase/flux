@@ -185,9 +185,10 @@ class ReceiptFaces(unittest.TestCase):
         self.assertEqual(faces.locator(".seen__more").count(), 0)
         # The time: Geist (the interface font), no monospace, no wide spacing.
         style = line.locator("time").evaluate("""el => { const s = getComputedStyle(el); const root = getComputedStyle(document.documentElement);
-          return {family: s.fontFamily, body: getComputedStyle(document.body).fontFamily, mono: root.getPropertyValue('--mono').trim(), spacing: s.letterSpacing, size: s.fontSize}; }""")
+          return {family: s.fontFamily, body: getComputedStyle(document.body).fontFamily, mono: root.getPropertyValue('--mono').trim(), spacing: s.letterSpacing, size: s.fontSize, numeric: s.fontVariantNumeric}; }""")
         self.assertEqual(style["family"], style["body"], "the time uses the interface font")
         self.assertNotIn("Mono", style["family"])
+        self.assertNotIn("tabular-nums", style["numeric"], "the figures are the interface font's own, not the global tabular ones")
         self.assertIn(style["spacing"], ("normal", "0px"))
         self.assertRegex(line.locator("time").inner_text(), r"\d{1,2}:\d{2}")
         # One face size, one row.
@@ -212,6 +213,7 @@ class ReceiptFaces(unittest.TestCase):
         self.assertEqual([row.locator(".seen-list__name").inner_text() for row in rows.all()], ["Lee Moreno", "Kai Tanaka"])
         for row in rows.all():
             self.assertRegex(row.locator(".seen-list__at").inner_text(), r"\d{1,2}:\d{2}")
+            self.assertNotIn("tabular-nums", row.locator(".seen-list__at").evaluate("el => getComputedStyle(el).fontVariantNumeric"), "a time in the list uses the interface font's own figures")
         self.assertEqual(list_.locator(".seen-list__more").count(), 0, "two people are the whole list: nothing more to load")
         shot(page, "receipt-list-desktop-light")
         # Clicking keeps it open when the pointer leaves; Escape closes it and focus is back on the faces.

@@ -15,7 +15,7 @@
 .seen-list__rows { margin: 0; padding: 0; list-style: none; }
 .seen-list__row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px; }
 .seen-list__name { flex: 1; min-width: 0; overflow: hidden; color: var(--t1); font-size: var(--fs-md); text-overflow: ellipsis; white-space: nowrap; }
-.seen-list__at { flex: none; color: var(--t3); font-family: inherit; font-size: var(--fs-xs); white-space: nowrap; }
+.seen-list__at { flex: none; color: var(--t3); font-family: inherit; font-size: var(--fs-xs); font-variant-numeric: normal; white-space: nowrap; }
 .seen-list__more { display: flex; align-items: center; gap: 6px; min-height: 32px; margin: 0; padding: 0 8px; color: var(--t3); font-size: var(--fs-xs); }
 @media (pointer: coarse) {
   .seen-list__row, .seen-list__more { min-height: 44px; }

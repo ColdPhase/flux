@@ -197,8 +197,8 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__message.is-mine > .convo-source-tag { align-self: flex-end; }
 /* The line under the last message of a group (#1231): the time in the interface font, then the faces of who read it (receipt-faces.css). One row, the same height with or without faces. */
 .message-time { display: flex; align-items: center; gap: 8px; min-height: calc(var(--fs-xs) * 1.5); margin-top: 5px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.5; }
-/* Every other `time` is drawn in the mono face (ui.css); the one under a message is plain interface text (#1231, #1215). */
-.message-time time { font-family: inherit; }
+/* Every other `time` is drawn in the mono face with tabular figures (ui.css); the one under a message is plain interface text (#1231, #1215). */
+.message-time time { font-family: inherit; font-variant-numeric: normal; }
 @media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
 
 .thread__root { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
