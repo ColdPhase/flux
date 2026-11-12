@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
-import { meetAssistantDismissed } from '../assistant/MeetAssistant';
+import { assistantSuggestions, meetAssistantDismissed } from '../assistant/MeetAssistant';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { composerOptions, composerTrigger, type ComposerOption } from '../app/ComposerMenu';
 import type { useTyping } from '../typing/useTyping';
@@ -15,7 +15,7 @@ interface Options {
 }
 
 /** "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any, and a pick edits the draft. */
-export function useComposerMenu({ me, people, writable, aiOff, composerId }: PaneCore, { drafts, assistant, ask, typing, openSources }: Options) {
+export function useComposerMenu({ me, people, writable, aiOff, composerId, conversation }: PaneCore, { drafts, assistant, ask, typing, openSources }: Options) {
   const navigate = useNavigate();
   const { asking, setAsking, publicComposer, helperComposer, composer, draft } = drafts;
   const [caret, setCaret] = useState(0);
@@ -26,7 +26,9 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId }: Pan
   // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.
   const assistantEntry = aiOff ? null : assistant.status ? (assistant.status.state === 'ready' ? { mode: 'ask' as const, last: false }
     : assistant.status.state === 'not_enabled' ? { mode: 'setup' as const, last: meetAssistantDismissed(me.user.id) } : null) : null;
-  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, assistant: assistantEntry, aiOff }) : [];
+  // Under `/ai`, the suggestions of this place (#1224): a thread's or the space conversation's, while the assistant is ready.
+  const suggestions = assistantSuggestions(conversation ? 'thread' : 'space', me.user.id, assistantEntry?.mode === 'ask');
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, assistant: assistantEntry, aiOff, suggestions }) : [];
   const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   function changeDraft(input: string, position = input.length) {
@@ -52,6 +54,8 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId }: Pan
     if (!trigger) return;
     const before = draft.slice(0, trigger.start);
     const after = draft.slice(caret);
+    // A suggestion asks at once, as `/ai` does: the "/" that opened the menu is not words to keep.
+    if (option.ask) { changeDraft(before + after, before.length); ask.askSuggestion(option.ask); return; }
     if (option.assistant) {
       changeDraft(before + after, before.length);
       if (option.assistant === 'setup') navigate('/settings/agents');
@@ -73,7 +77,7 @@ export function useComposerMenu({ me, people, writable, aiOff, composerId }: Pan
     if (!menuOpen || event.nativeEvent.isComposing) return false;
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
-      setMenuIndex((activeIndex + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
+      setMenuIndex((current) => (Math.min(current, options.length - 1) + (event.key === 'ArrowDown' ? 1 : options.length - 1)) % options.length);
       return true;
     }
     if ((event.key === 'Enter' && !event.shiftKey) || event.key === 'Tab') { event.preventDefault(); pick(options[activeIndex]!); return true; }

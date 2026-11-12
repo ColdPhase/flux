@@ -61,13 +61,6 @@
 
 .create__foot { display: flex; align-items: center; gap: 14px; padding: 12px 16px 14px 20px; border-top: 1px solid var(--line); flex: none; }
 .create__foot .create__note { flex: 1; min-width: 0; }
-.create__another { display: inline-flex; align-items: center; gap: 8px; position: relative; font-size: var(--fs-md); color: var(--t2); cursor: pointer; white-space: nowrap; }
-.create__another input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; margin: 0; cursor: pointer; }
-.create__sw { position: relative; width: 36px; height: 22px; border-radius: var(--r-pill); background: var(--line2); flex: none; transition: background-color var(--dur-1) var(--ease-out); }
-.create__sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px; border-radius: 50%; background: var(--bg); transition: transform var(--dur-1) var(--ease-out), background-color var(--dur-1) var(--ease-out); }
-.create__another input:checked + .create__sw { background: var(--inv); }
-.create__another input:checked + .create__sw::after { transform: translateX(14px); background: var(--oninv); }
-.create__another input:focus-visible + .create__sw { outline: 2px solid var(--t1); outline-offset: 2px; }
 
 
 /* The phone's sheet rises from the bottom with one height for every tab, as the window keeps (rule 7). */
@@ -89,7 +82,6 @@
 .ui-overlay--bottom .create .create__links { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .ui-overlay--bottom .create .create__chip--link { box-shadow: inset 0 0 0 1px var(--line2); padding: 0 6px 0 10px; min-height: 36px; }
 .ui-overlay--bottom .create .create__foot { flex-wrap: wrap; border-top: 0; padding: 8px 20px 14px; }
-.ui-overlay--bottom .create .create__another { order: -1; width: 100%; justify-content: space-between; min-height: 44px; font-size: var(--fs-base); color: var(--t1); }
 .ui-overlay--bottom .create .create__foot .create__note { order: 1; flex-basis: 100%; text-align: center; }
 .ui-overlay--bottom .create .create__go { order: 2; width: 100%; min-height: 52px; }
 .ui-overlay--bottom .create :is(.create__title, .create__name) { font-size: var(--fs-2xl); }
@@ -97,7 +89,6 @@
 .create__place--plain { background: none; box-shadow: none; padding: 0; min-height: 28px; gap: 4px; font-size: var(--fs-base); color: var(--t2); }
 .create__place--plain:hover { background: none; }
 .create__place--plain .create__tile { display: none; }
-.ui-overlay--bottom .create .create__sw { order: 2; }
 
 /* Touch: every control is a 44 x 44 target. These sit after the plain and phone rules and are as specific as
    the most specific of them, so none of those restores a smaller size. */

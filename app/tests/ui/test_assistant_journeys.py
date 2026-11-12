@@ -15,6 +15,7 @@ import uuid
 from playwright.sync_api import Route, expect
 
 import test_assistant_screen as base
+from test_assistant_screen import menu_clipped_by, pick_suggestion, suggestions_reachable
 from test_app_shell import shot
 
 FORBIDDEN = base.FORBIDDEN
@@ -104,18 +105,25 @@ class AssistantJourneys(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(page.locator(".assistant-working__error")).to_have_text("Offline")
 
-    def assert_compact_chips(self, page, chips, phone: bool) -> None:
-        """#1224: the suggestions are compact and on one row; on touch each is still a 44 px target; the page never scrolls sideways."""
-        boxes = [button.bounding_box() for button in chips.get_by_role("button").all()]
-        self.assertEqual(len(boxes), 3)
-        self.assertEqual(len({round(box["y"]) for box in boxes}), 1, "one row")
-        self.assertTrue(all(box["height"] <= (34 if phone else 30) for box in boxes), boxes)
-        self.assertEqual(chips.get_by_role("button", name="Tidy this space's tasks").count(), 1)
-        if phone:
-            hit = chips.get_by_role("button").first.evaluate("""(el) => { const r = el.getBoundingClientRect(), b = getComputedStyle(el, '::before');
-              return r.height - parseFloat(b.top) - parseFloat(b.bottom); }""")
-            self.assertGreaterEqual(hit, 44, "the touch target reaches 44 px")
+    def open_suggestions(self, page, phone: bool):
+        """#1224: `/` lists the thread's two suggestions under `/ai`, and nothing sits above or below the composer. The rows are compact: at most
+        30 px with a mouse and at least 44 px on touch; the page never scrolls sideways."""
+        expect(page.locator("#thread-composer")).to_be_visible()
+        expect(page.locator(".assistant-suggestions")).to_have_count(0)
+        page.locator("#thread-composer").fill("/")
+        menu = page.get_by_role("listbox", name="Actions")
+        rows = menu.locator(".cmenu__o--ask")
+        expect(rows).to_have_count(2)
+        expect(rows).to_contain_text(["Catch me up on this thread", "Turn this thread into tasks"])
+        order = menu.locator(".cmenu__o").evaluate_all("(rows) => rows.map((row) => row.querySelector('code, .cmenu__name').textContent)")
+        self.assertEqual(order[-3:], ["/ai", "Catch me up on this thread", "Turn this thread into tasks"], "under /ai, understand first and then act")
+        boxes = [row.bounding_box() for row in rows.all()]
+        self.assertTrue(all(box["height"] >= 44 for box in boxes) if phone else all(box["height"] <= 30 for box in boxes), boxes)
+        suggestions_reachable(self, menu, rows)
+        self.assertIsNone(menu_clipped_by(page, menu), "the menu sits inside the pane or sheet")
+        self.assertEqual(menu.get_by_role("option", name=re.compile("Tidy this space")).count(), 0, "a space-wide action is not offered in a thread")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0)
+        return menu
 
     def test_06_a_request_sent_offline_waits_and_goes_out_once_when_back(self) -> None:
         page = self.page(phone=True)
@@ -123,17 +131,16 @@ class AssistantJourneys(unittest.TestCase):
         self.stub_thread(page, [])
         asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
-        chips = page.get_by_role("group", name="Suggestions for your assistant")
-        expect(chips).to_be_visible()
-        self.assert_compact_chips(page, chips, phone=True)
+        menu = self.open_suggestions(page, phone=True)
+        shot(page, "suggestions-thread-390-light")
         page.context.set_offline(True)
-        chips.get_by_role("button", name="Catch me up").click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(page.get_by_text("Sends when you're back")).to_be_visible()
         shot(page, "offline-390-light")
         self.assertEqual(asked, [])
         page.context.set_offline(False)
         expect(page.get_by_text("Sends when you're back")).to_have_count(0)
-        self.assertEqual([body["prompt"] for body in asked], ["Catch me up"], "sent once")
+        self.assertEqual([body["prompt"] for body in asked], ["Catch me up on this thread"], "sent once")
 
     def test_06b_a_held_request_the_server_refuses_comes_back_with_the_reason(self) -> None:
         page = self.page()
@@ -141,17 +148,16 @@ class AssistantJourneys(unittest.TestCase):
         self.stub_thread(page, [])
         asked = self.stub_runs(page, lambda body: (409, {"code": "PERSONAL_RUN_UNAVAILABLE", "message": "Your assistant is unavailable"}))
         page.goto(self.thread_url())
-        chips = page.get_by_role("group", name="Suggestions for your assistant")
-        expect(chips).to_be_visible()
+        menu = self.open_suggestions(page, phone=False)
         page.context.set_offline(True)
-        chips.get_by_role("button", name="Catch me up").click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
         expect(page.get_by_text("Sends when you're back")).to_be_visible()
         page.context.set_offline(False)
         # Refused on reconnect: not lost. The words are back in the ask field and the reason shows, as for a refused ask.
         expect(page.get_by_text("Sends when you're back")).to_have_count(0)
         expect(page.locator("#project-ask")).to_contain_text("Your assistant is unavailable right now. Nothing was sent.")
-        expect(page.get_by_role("textbox", name="Ask your assistant")).to_have_value("Catch me up")
-        self.assertEqual([body["prompt"] for body in asked], ["Catch me up"], "refused once, not retried")
+        expect(page.get_by_role("textbox", name="Ask your assistant")).to_have_value("Catch me up on this thread")
+        self.assertEqual([body["prompt"] for body in asked], ["Catch me up on this thread"], "refused once, not retried")
 
     def test_06c_requests_held_offline_keep_their_order_and_each_goes_out_once(self) -> None:
         page = self.page()
@@ -159,17 +165,16 @@ class AssistantJourneys(unittest.TestCase):
         self.stub_thread(page, [])
         asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
-        chips = page.get_by_role("group", name="Suggestions for your assistant")
-        expect(chips).to_be_visible()
-        self.assert_compact_chips(page, chips, phone=False)
+        menu = self.open_suggestions(page, phone=False)
+        shot(page, "suggestions-thread-1440-light")
         page.context.set_offline(True)
-        chips.get_by_role("button", name="Catch me up").click()
-        chips.get_by_role("button", name="Turn this thread into tasks").click()
+        menu.get_by_role("option", name="Ask your assistant: Catch me up on this thread", exact=True).click()
+        pick_suggestion(page, "Turn this thread into tasks")
         expect(page.get_by_text("Sends when you're back")).to_have_count(2)
         self.assertEqual(asked, [])
         page.context.set_offline(False)
         expect(page.get_by_text("Sends when you're back")).to_have_count(0)
-        self.assertEqual([body["prompt"] for body in asked], ["Catch me up", "Turn this thread into tasks"], "in order, once each")
+        self.assertEqual([body["prompt"] for body in asked], ["Catch me up on this thread", "Turn this thread into tasks"], "in order, once each")
         self.assertEqual(len({body["clientRunId"] for body in asked}), 2, "each under its own id")
 
     # ---------------------------------------------------------------- AST-10.9: Journey 6 states
@@ -179,7 +184,7 @@ class AssistantJourneys(unittest.TestCase):
         self.stub_thread(page, [])
         self.stub_runs(page, lambda body: (status, error if error else dict(run, clientRunId=body["clientRunId"], prompt=body["prompt"])))
         page.goto(self.thread_url())
-        page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Catch me up").click()
+        pick_suggestion(page, "Catch me up on this thread")
 
     def test_07_plan_limit_with_and_without_a_reset_time(self) -> None:
         page = self.page()

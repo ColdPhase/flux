@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, Kreska, usePop } from '../ui';
 import './composer-menu.css';
@@ -10,7 +10,7 @@ export type SlashId = 'task' | 'decide' | 'map' | 'handoff' | 'file' | 'source' 
 
 export interface ComposerOption {
   id: string;
-  kind: 'action' | 'person' | 'agent';
+  kind: 'action' | 'person' | 'agent' | 'suggestion';
   /** "/task", or the person's name. */
   label: string;
   /** A person's user id: their avatar's photo (F-039). */
@@ -21,6 +21,8 @@ export interface ComposerOption {
   slash?: SlashId;
   /** "My assistant": asks it (set up and ready), or opens its set-up (F-027 AST-10 Journey 2). */
   assistant?: 'ask' | 'setup';
+  /** A suggestion under `/ai` (#1224): the words it asks the assistant, in this place, as soon as it is chosen. */
+  ask?: string;
 }
 /** Whether an action or mention is AI (F-029): those are not offered while the space's AI is off. */
 const AI_ACTIONS: ReadonlySet<SlashId> = new Set(['handoff', 'ai']);
@@ -48,12 +50,18 @@ const ACTIONS: { id: SlashId; hint: string }[] = [
   { id: 'ai', hint: 'Ask your assistant' },
 ];
 
-/** The options for a trigger: actions by command name, or the people and agents of the project by name. */
-export function composerOptions(trigger: ComposerTrigger, { people, meId, assistant, aiOff = false }: { people: ProjectPerson[] | null; meId: string; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null; aiOff?: boolean }): ComposerOption[] {
+/**
+ * The options for a trigger: actions by command name, or the people and agents of the project by name. `suggestions` are the assistant's,
+ * for this place: they follow the `/ai` row (#1224). `only` narrows the actions to some commands (a task's composer has `/ai` alone).
+ */
+export function composerOptions(trigger: ComposerTrigger, { people, meId, assistant, aiOff = false, suggestions = [], only }: { people: ProjectPerson[] | null; meId: string; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null; aiOff?: boolean; suggestions?: readonly string[]; only?: readonly SlashId[] }): ComposerOption[] {
   const query = trigger.query.toLowerCase();
   if (trigger.char === '/') {
-    return ACTIONS.filter((action) => !(aiOff && AI_ACTIONS.has(action.id)) && action.id.startsWith(query))
-      .map((action) => ({ id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id }));
+    return ACTIONS.filter((action) => !(aiOff && AI_ACTIONS.has(action.id)) && (!only || only.includes(action.id)) && action.id.startsWith(query))
+      .flatMap((action) => [
+        { id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id },
+        ...(action.id === 'ai' ? suggestions.map((text, index) => ({ id: `ask-${index}`, kind: 'suggestion' as const, label: text, hint: '', insert: '', ask: text })) : []),
+      ]);
   }
   const mine: ComposerOption[] = !aiOff && assistant && ('my assistant'.includes(query) || 'assistant'.startsWith(query))
     ? [{ id: 'mention-my-assistant', kind: 'agent', label: 'My assistant', hint: assistant!.mode === 'ask' ? 'Agent · for you' : 'Set up', insert: '', assistant: assistant!.mode }] : [];
@@ -84,18 +92,59 @@ export function ComposerMenu({ open, ...props }: ComposerMenuProps & { open: boo
 }
 
 function ComposerMenuList({ id, options, active, onPick, onHover, trigger, aiOff = false, popProps }: ComposerMenuProps & { popProps: ReturnType<typeof usePop>['props'] }) {
+  const list = useRef<HTMLDivElement>(null);
+  // The menu is never taller than the room above its box inside whatever clips it (a phone's thread sheet is short): `--cmenu-room` is that room,
+  // and the CSS takes the smaller of it and the menu's own height; what does not fit scrolls inside the menu.
+  useLayoutEffect(() => {
+    const menu = list.current;
+    const box = menu?.parentElement;
+    if (!menu || !box) return undefined;
+    const measure = () => {
+      let top = window.visualViewport?.offsetTop ?? 0;
+      for (let element = box.parentElement; element; element = element.parentElement) {
+        if (getComputedStyle(element).overflowY !== 'visible') top = Math.max(top, element.getBoundingClientRect().top);
+      }
+      menu.style.setProperty('--cmenu-room', `${Math.max(0, Math.floor(box.getBoundingClientRect().top - top - 16))}px`);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    window.visualViewport?.addEventListener('resize', measure);
+    return () => { window.removeEventListener('resize', measure); window.visualViewport?.removeEventListener('resize', measure); };
+  }, [options.length]);
+  // The arrow keys reach the rows at the end of a long list: the row they act on stays in view. Only this menu scrolls, and no row
+  // reads the pointer the scroll left under it as a hover.
+  const activeId = options[active] ? `${id}-${options[active]!.id}` : null;
+  useEffect(() => {
+    const menu = list.current;
+    const row = activeId ? document.getElementById(activeId) : null;
+    if (!menu || !row || menu.scrollHeight <= menu.clientHeight) return;
+    if (row.offsetTop < menu.scrollTop) menu.scrollTop = row.offsetTop;
+    else if (row.offsetTop + row.offsetHeight > menu.scrollTop + menu.clientHeight) menu.scrollTop = row.offsetTop + row.offsetHeight - menu.clientHeight;
+  }, [activeId]);
+  // Only a pointer that really moved chooses a row: the browser repeats the last mouse move after a scroll or a layout change.
+  const pointer = useRef<{ x: number; y: number } | null>(null);
+  const hover = (index: number) => (event: { clientX: number; clientY: number; movementX: number; movementY: number }) => {
+    const last = pointer.current;
+    pointer.current = { x: event.clientX, y: event.clientY };
+    if (event.movementX === 0 && event.movementY === 0) return;
+    if (last && last.x === event.clientX && last.y === event.clientY) return;
+    if (index !== active) onHover(index);
+  };
   return (
-    <div {...popProps} className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
+    <div {...popProps} ref={list} className="cmenu" id={id} role="listbox" aria-label={trigger === '@' ? 'Mention' : 'Actions'}
       // The field keeps focus: choosing never moves it, so the press must not blur the field.
       onMouseDown={(event) => event.preventDefault()}>
       <div className="cmenu__h" aria-hidden="true">{trigger === '@' ? 'Mention' : 'Actions'}</div>
       {options.map((option, index) => (
-        <div key={option.id} id={`${id}-${option.id}`} role="option" aria-selected={index === active} className={`cmenu__o${index === active ? ' is-active' : ''}`}
-          data-ai-surface={option.kind === 'agent' || option.slash && AI_ACTIONS.has(option.slash) ? 'composer-ai-option' : undefined}
-          onMouseMove={() => { if (index !== active) onHover(index); }} onClick={() => onPick(option)}>
+        <div key={option.id} id={`${id}-${option.id}`} role="option" aria-selected={index === active}
+          className={`cmenu__o${option.kind === 'suggestion' ? ' cmenu__o--ask' : ''}${index === active ? ' is-active' : ''}`}
+          data-ai-surface={option.kind === 'agent' || option.kind === 'suggestion' || option.slash && AI_ACTIONS.has(option.slash) ? 'composer-ai-option' : undefined}
+          aria-label={option.kind === 'suggestion' ? `Ask your assistant: ${option.label}` : undefined}
+          onMouseMove={hover(index)} onClick={() => onPick(option)}>
           {option.kind === 'action' ? <code className="cmenu__cmd">{option.label}</code>
-            : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} id={option.personId} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
-          <span className="cmenu__hint">{option.hint}</span>
+            : option.kind === 'suggestion' ? <span className="cmenu__name">{option.label}</span>
+              : <Fragment>{option.kind === 'agent' ? <Kreska size={24} /> : <Avatar name={option.label} id={option.personId} size="md" />}<span className="cmenu__name">{option.label}</span></Fragment>}
+          {option.kind === 'suggestion' ? null : <span className="cmenu__hint">{option.hint}</span>}
           {index === active ? <kbd className="cmenu__kbd" aria-hidden="true">↵</kbd> : null}
         </div>
       ))}

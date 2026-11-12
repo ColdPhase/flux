@@ -22,14 +22,17 @@ export interface ToastOptions {
   timeout?: number | null;
   /** One quiet action beside the message, e.g. Undo or Hand back. Taking it closes the toast. */
   action?: ToastAction;
+  /** A second quiet action after the first, e.g. "Add another" after Undo (#1235). Taking it closes the toast too. */
+  also?: ToastAction;
   /** A small moment: the wink after a task is closed. Shown only while Small moments is on; the message says it all. */
   mascot?: KreskaExpression;
 }
 
-interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 'mascot'>> {
+interface ToastEntry extends Required<Omit<ToastOptions, 'timeout' | 'action' | 'also' | 'mascot'>> {
   mascot: KreskaExpression | null;
   id: number;
   action: ToastOptions['action'] | null;
+  also: ToastOptions['also'] | null;
   timeout: number | null;
   leaving: boolean;
   sessionEpoch: number;
@@ -67,14 +70,15 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
   const ran = useRef(false);
   const moments = useSmallMoments();
   const dismiss = useCallback(() => setLeaving(true), []);
-  const act = useCallback((event?: { detail: number }) => {
-    if (!toast.action || ran.current || leaving || toast.leaving) return;
+  const act = useCallback((event?: { detail: number }, second = false) => {
+    const action = second ? toast.also : toast.action;
+    if (!action || ran.current || leaving || toast.leaving) return;
     // A pointer tap that lands just as the toasts moved (above a sheet that opened) was aimed at what was there (CW-5).
     if (event && event.detail > 0 && performance.now() - movedAt < ACTION_ARMED_MS) return;
     ran.current = true;
-    toast.action.onClick();
+    action.onClick();
     dismiss();
-  }, [toast.action, leaving, toast.leaving, dismiss, movedAt]);
+  }, [toast.action, toast.also, leaving, toast.leaving, dismiss, movedAt]);
   useEffect(() => {
     if (!toast.action?.key || leaving || toast.leaving) return undefined;
     registerAction(toast.id, () => act());
@@ -109,7 +113,7 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
   }, [leaving, toast.leaving, toast.id, onDone]);
 
   return (
-    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
+    <div ref={ref} className={`ui-toast ui-toast--${toast.tone}${toast.also ? ' ui-toast--also' : ''}${scrollable ? ' ui-toast--scrollable' : ''}`} onMouseEnter={disarm} onMouseLeave={arm} onFocus={disarm} onBlur={arm}>
       {toast.mascot && moments ? <Kreska expression={toast.mascot} size={24} /> : toast.tone === 'success' ? <Icon name="check" /> : toast.tone === 'danger' ? <Icon name="alert" /> : null}
       <span ref={message} className="ui-toast__msg" tabIndex={scrollable ? 0 : undefined}
         role={scrollable ? 'region' : undefined} aria-label={scrollable ? 'Notification message' : undefined}>{toast.message}</span>
@@ -121,6 +125,7 @@ function ToastItem({ toast, onDone, registerAction, movedAt }: { toast: ToastEnt
           </button>
         </>
       ) : null}
+      {toast.also && !leaving && !toast.leaving ? <button type="button" className="ui-toast__action" onClick={(event) => act(event, true)}>{toast.also.label}</button> : null}
       <button type="button" className="ui-toast__close" onClick={dismiss} aria-label="Dismiss notification"><Icon name="x" size={14} /></button>
     </div>
   );
@@ -233,8 +238,12 @@ export function ToastProvider({ children, scopeKey }: { children: ReactNode; sco
       ...options.action,
       onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.action!.onClick(); },
     } : null;
+    const also = options.also ? {
+      ...options.also,
+      onClick: () => { if (isCurrent() && committedSession.current.epoch === actionEpoch) options.also!.onClick(); },
+    } : null;
     const entry: ToastEntry = {
-      id: nextId.current++, message: options.message, tone, action, mascot: options.mascot ?? null,
+      id: nextId.current++, message: options.message, tone, action, also, mascot: options.mascot ?? null,
       // An action that is not Undo (Open, Open task…) leaves on its own too (CW-5); Undo keeps its own window, errors stay.
       timeout: options.timeout !== undefined ? options.timeout : (tone === 'danger' || options.action?.key === 'Z' ? null : action ? ACTION_TIMEOUT_MS : 5000),
       leaving: false, sessionEpoch: actionEpoch,

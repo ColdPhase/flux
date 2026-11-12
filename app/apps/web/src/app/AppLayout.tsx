@@ -174,6 +174,13 @@ function AppLayoutContent() {
   // The phone's "+" sheet (#341) and the one Create window (#345) are separate: the sheet's Task opens the window.
   const [createOpen, setCreateOpen] = useState(false);
   const [create, setCreate] = useState<CreateRequest | null>(null);
+  // After a task is created, `C` and New open on the space it went to until the person goes to another place (#1235): adding several is one key each.
+  const keptSpace = useRef<{ projectId: string; path: string } | null>(null);
+  const pathNow = useRef(location.pathname);
+  useLayoutEffect(() => {
+    pathNow.current = location.pathname;
+    if (keptSpace.current && keptSpace.current.path !== location.pathname) keptSpace.current = null;
+  });
   const paneRef = useRef<HTMLElement>(null);
   const sideRef = useRef<HTMLElement>(null);
   const drawerTitleId = useId();
@@ -351,7 +358,12 @@ function AppLayoutContent() {
     labelPanel(label: string | null) { panelLabel.current = label; },
     showPanel, hidePanel, reopenPanel, closePanel: () => closeRef.current(), guardPanel(guard: (() => boolean) | null) { panelGuard.current = guard; }, panelSlot, panelKey: detailsOpen && isOwned(detailsView) ? owned?.key ?? null : null,
     /** On the phone a request that does not yet say what to create opens the "+" sheet first (#341). */
-    openCreate(request: CreateRequest = {}) { setNavOpen(false); setJumpOpen(false); if (phone && !request.kind) setCreateOpen(true); else setCreate(request); },
+    openCreate(request: CreateRequest = {}) {
+      setNavOpen(false); setJumpOpen(false);
+      if (phone && !request.kind) { setCreateOpen(true); return; }
+      const kept = keptSpace.current;
+      setCreate(!request.kind && kept && kept.path === pathNow.current ? { ...request, projectId: kept.projectId } : request);
+    },
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
@@ -863,7 +875,7 @@ function AppLayoutContent() {
 
       {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
       {/* + Create is the one action of every view: its window opens on the click, so its code stays in the first screen (#1178). */}
-      <CreateHost request={create} onClose={() => setCreate(null)} />
+      <CreateHost request={create} onClose={() => setCreate(null)} onTask={(projectId) => { keptSpace.current = { projectId, path: pathNow.current }; }} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>
     </LiveProvider>
