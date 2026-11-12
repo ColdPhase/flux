@@ -157,18 +157,21 @@ class FilePreview(unittest.TestCase):
             route.abort()
         context.route(lambda url: not url.startswith(ORIGIN) and not url.startswith("data:") and not url.startswith("blob:"), leave)
         events: dict = {"pages": [], "downloads": [], "dialogs": []}
-        context.on("page", lambda page: events["pages"].append(page.url))
         page = context.new_page()
+        context.on("page", lambda opened: events["pages"].append(opened.url))
         errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
+        # Playwright's own service-worker block reads navigator.serviceWorker in every frame, which a sandboxed frame refuses.
+        page.on("pageerror", lambda error: None if "Service worker is disabled because the context is sandboxed" in str(error) else errors.append(str(error)))
         page.on("download", lambda download: events["downloads"].append(download.suggested_filename))
         page.on("dialog", lambda dialog: (events["dialogs"].append(dialog.message), dialog.dismiss()))
         self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
         if quiet_stream:
             # The reader's tab has not heard of the change yet: the live stream is held open and says nothing.
             page.route_web_socket(re.compile(r".*/api/v1/stream.*"), lambda socket: None)
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids[f'conversation:{key}']}")
-        expect(page.locator(f"#message-{self.ids[key]}")).to_be_visible()
+        page.goto(f"/projects/{self.ids['project']}")
+        message = page.locator(f"#message-{self.ids[key]}")
+        message.scroll_into_view_if_needed()
+        expect(message).to_be_visible()
         # The Flux page records every message that reaches it, so the test can tell the preview said nothing to it.
         page.evaluate("() => { window.__messages = []; addEventListener('message', (event) => window.__messages.push(String(event.data && JSON.stringify(event.data)))); }")
         return page, outside, events
