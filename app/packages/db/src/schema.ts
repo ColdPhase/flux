@@ -1750,7 +1750,7 @@ export const agentChatMessages = pgTable('agent_chat_messages', {
 }, (table) => [unique().on(table.agentId, table.key)]);
 
 /**
- * 0064 (#1217, C-59): a picture an agent attached to its answer in its private chat: the run's own, its owner's alone, its bytes in the files
+ * 0066 (#1217, C-59): a picture an agent attached to its answer in its private chat: the run's own, its owner's alone, its bytes in the files
  * volume under `id`. Deleted with its run; the bytes then go to `file_garbage` (a trigger).
  */
 export const personalRunPictures = pgTable('personal_run_pictures', {
