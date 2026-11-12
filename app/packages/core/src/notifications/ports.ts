@@ -38,6 +38,11 @@ export interface ProjectMessageFacts {
   sequence: number;
   /** People who wrote in the conversation before this message. */
   earlierAuthors: string[];
+  /**
+   * What people chose for this thread (#1249): `true` follows it, `false` unfollows it, whatever the defaults say (the starter and earlier
+   * writers follow). Absent for a person who made no choice. Absent altogether when the store has none.
+   */
+  threadFollows?: { userId: string; following: boolean }[];
   /** Set when the message carries an agent's question card (#347 S14): the one person asked and the question text. */
   asked?: { userId: string; question: string } | null;
   /**
@@ -143,6 +148,11 @@ export interface PreferenceRepository {
   get(userId: string): Promise<StoredPreferences>;
   save(userId: string, preferences: StoredPreferences): Promise<void>;
   isMuted(userId: string, source: { type: string; id: string }): Promise<boolean>;
+  /**
+   * Whether the person's mute keeps a notice of this reason from them (#1249): the place is muted and the reason is not one that names
+   * them (a mention or a question). The one place that decides, for the notice, the push and the email alike.
+   */
+  quiet(userId: string, source: { type: string; id: string }, reason: NotificationReason | null | undefined): Promise<boolean>;
   mutes(userId: string): Promise<{ type: 'project' | 'dm'; id: string }[]>;
   setMuted(userId: string, source: { type: 'project' | 'dm'; id: string }, muted: boolean): Promise<void>;
   /** Atomic read-change-write of the person's preferences (see `PreferenceStore.modify`). */
@@ -185,6 +195,11 @@ export interface GeneratorPorts {
   insertEmails(row: { notificationId: string; userId: string; account: boolean }): Promise<string[]>;
   enqueuePush(job: PushSendJob): Promise<string | null>;
   enqueueEmail(job: EmailJob): Promise<string | null>;
+  /**
+   * A person mentioned or asked in a thread follows it, unless they already chose either way (#1249). Absent for callers without
+   * follow storage.
+   */
+  followThread?(userId: string, conversationId: string): Promise<void>;
   /** Counts a failed generation of the event (outside its savepoint) and returns the attempts so far. */
   recordFailure(eventId: string, error: string): Promise<number>;
   /** Marks the event as given up on, for operators to inspect. */

@@ -1,10 +1,11 @@
 import { randomUUID } from 'node:crypto';
-import { assistantChangeWords, assistantWorkChangeArgs, messagePreview } from '@flux/contracts';
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
+import { assistantChangeWords, assistantWorkChangeArgs, DM_NOTIFICATIONS_CHANGED_EVENT, messagePreview, PROJECT_NOTIFICATIONS_CHANGED_EVENT } from '@flux/contracts';
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lte, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
 import { notificationHiddenWhileAiOff } from './space-ai.js';
+import { eventRepository } from './events.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -36,6 +37,7 @@ const n = schema.notifications;
 const e = schema.events;
 const p = schema.notificationPreferences;
 const m = schema.notificationMutes;
+const f = schema.notificationFollows;
 const a = schema.notificationAddresses;
 const t = schema.notificationAddressTokens;
 const ob = schema.notificationEmails;
@@ -94,6 +96,10 @@ export function notificationGeneratorRows(db: DbExecutor) {
       const rows = await db.select({ id: ob.id }).from(ob).innerJoin(n, eq(n.id, ob.notificationId))
         .where(and(eq(ob.userId, userId), eq(n.sourceType, source.type as SourceType), eq(n.sourceId, source.id), gte(ob.createdAt, since))).limit(1);
       return rows.length > 0;
+    },
+    /** A person mentioned or asked in a thread follows it, unless they chose either way before (#1249). */
+    async followThread(userId: string, conversationId: string) {
+      await db.insert(f).values({ userId, conversationId, following: true }).onConflictDoNothing();
     },
     async recordFailure(eventId: string, error: string) {
       const f = schema.notificationGenerationFailures;
@@ -184,6 +190,10 @@ export function notificationFactRows(db: DbExecutor) {
         .where(eq(pm.conversationId, message.conversationId)).orderBy(asc(pm.sequence)).limit(1));
       const earlier = await db.selectDistinct({ authorId: pm.authorId }).from(pm)
         .where(and(eq(pm.conversationId, message.conversationId), sql`${pm.sequence} < ${message.sequence}`, isNotNull(pm.authorId)));
+      // What people chose for this thread (#1249): Follow and Unfollow, which win over "its starter and earlier writers follow it". A choice
+      // applies to the messages sent after it, so reading an event again later (a rewound cursor) decides as it did.
+      const chosen = await db.select({ userId: f.userId, following: f.following }).from(f)
+        .where(and(eq(f.conversationId, message.conversationId), lte(f.updatedAt, message.createdAt)));
       const [agent] = message.authorAgentId ? await db.select({ name: schema.agents.name, ownerUserId: schema.agents.ownerUserId }).from(schema.agents)
         .where(and(eq(schema.agents.workspaceId, message.workspaceId), eq(schema.agents.id, message.authorAgentId))) : [];
       // A local client writes as its person and may tell people (LC-2); every other agent's line tells only its owner (#1089, AG-4). An
@@ -199,7 +209,7 @@ export function notificationFactRows(db: DbExecutor) {
         id: message.id, workspaceId: message.workspaceId, projectId: message.projectId, projectName: await projectName(message.projectId),
         conversationId: message.conversationId, opening: messagePreview(opening?.body ?? message.body, opening?.attachmentCount ?? message.attachmentCount), conversationCreatedBy: row.createdBy !== null ? { kind: 'human' as const, id: row.createdBy } : { kind: 'agent' as const, id: row.createdByAgentId! },
         author: message.authorId !== null ? { kind: 'human' as const, id: message.authorId } : { kind: 'agent' as const, id: message.authorAgentId! },
-        authorName: agent?.name ?? null, via: message.via ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!),
+        authorName: agent?.name ?? null, via: message.via ?? null, body: message.body, attachmentCount: message.attachmentCount, sequence: message.sequence, earlierAuthors: earlier.map((item) => item.authorId!), threadFollows: chosen,
         ...(message.authorAgentId && (server || !client) ? { onlyNotifies: agent?.ownerUserId ?? '' } : {}),
       };
     },
@@ -327,6 +337,50 @@ export function notificationPreferenceRows(db: DbExecutor) {
     async setMuted(userId: string, source: { type: 'project' | 'dm'; id: string }, muted: boolean) {
       if (muted) await db.insert(m).values({ userId, sourceType: source.type, sourceId: source.id }).onConflictDoNothing();
       else await db.delete(m).where(and(eq(m.userId, userId), eq(m.sourceType, source.type), eq(m.sourceId, source.id)));
+    },
+  };
+}
+
+/**
+ * Tells the person's own tabs that a mute or a follow changed (#1249): one event of the place (`project.notifications_changed.v1`, or
+ * `dm.notifications_changed.v1`) for that person alone, by name, with no content. Write it in the transaction of the change, last. A place
+ * that no longer exists records nothing.
+ */
+export async function recordNotificationsChanged(db: DbExecutor, userId: string, place: { type: 'project' | 'dm'; id: string }) {
+  const [row] = place.type === 'project'
+    ? await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, place.id))
+    : await db.select({ workspaceId: schema.dms.workspaceId }).from(schema.dms).where(eq(schema.dms.id, place.id));
+  if (!row) return;
+  const actor = `human:${userId}`;
+  await eventRepository(db).insert({ id: randomUUID(), kind: place.type === 'project' ? PROJECT_NOTIFICATIONS_CHANGED_EVENT : DM_NOTIFICATIONS_CHANGED_EVENT,
+    objectId: place.id, actorId: actor, data: {}, workspaceId: row.workspaceId }, [actor]);
+}
+
+/**
+ * A person's follow of a thread (#1249): their own choice, else the default (they started the thread or wrote in it). No access decision:
+ * the settings use case asks the policy about the thread's space first.
+ */
+export function notificationFollowRows(db: DbExecutor) {
+  return {
+    /** The space of a thread, or null for a conversation that does not exist. */
+    async locate(conversationId: string) {
+      const [row] = await db.select({ projectId: schema.projectConversations.projectId, workspaceId: schema.projectConversations.workspaceId })
+        .from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
+      return row ?? null;
+    },
+    async following(userId: string, conversationId: string) {
+      const [chosen] = await db.select({ following: f.following }).from(f).where(and(eq(f.userId, userId), eq(f.conversationId, conversationId)));
+      if (chosen) return chosen.following;
+      const pm = schema.projectMessages;
+      const [started] = await db.select({ id: schema.projectConversations.id }).from(schema.projectConversations)
+        .where(and(eq(schema.projectConversations.id, conversationId), eq(schema.projectConversations.createdBy, userId)));
+      if (started) return true;
+      const [wrote] = await db.select({ id: pm.id }).from(pm).where(and(eq(pm.conversationId, conversationId), eq(pm.authorId, userId))).limit(1);
+      return !!wrote;
+    },
+    async set(userId: string, conversationId: string, following: boolean) {
+      await db.insert(f).values({ userId, conversationId, following })
+        .onConflictDoUpdate({ target: [f.userId, f.conversationId], set: { following, updatedAt: sql`now()` } });
     },
   };
 }

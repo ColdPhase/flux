@@ -102,7 +102,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     if (!readsSource(await ports.authorizer.canRead(row.userId, notification.source), notification.source)) return skip('recipient can no longer read the source');
     const preferences = await ports.preferences.get(row.userId);
     if (notification.reason && !channelOn(preferences, notification.reason, 'email')) return skip('email turned off for this reason');
-    if (await ports.preferences.isMuted(row.userId, notification.source)) return skip('place muted');
+    if (await ports.preferences.quiet(row.userId, notification.source, notification.reason)) return skip('place muted');
     let address: string | null;
     if (row.addressKind === 'account') {
       if (!preferences.accountEnabled) return skip('address switched off');

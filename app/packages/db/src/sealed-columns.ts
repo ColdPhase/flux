@@ -53,7 +53,7 @@ const content = [
   'project_decisions', 'project_object_links', 'sketches', 'sketch_thoughts',
   'sketch_links', 'project_files', 'doc_live_heads', 'doc_live_archives', 'doc_live_updates', 'doc_live_snapshots', 'doc_live_presence',
   'doc_live_replicas', 'map_live_presence', 'map_live_gestures', 'map_live_heads', 'map_live_journal', 'map_live_object_versions', 'map_live_undone',
-  'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'needs_you_states',
+  'live_editing_intents', 'notifications', 'notification_generation_failures', 'notification_emails', 'notification_mutes', 'notification_follows', 'needs_you_states',
   'events', 'event_audience', 'idempotency_keys', 'search_documents', 'search_changes', 'live_sessions', 'live_presentations', 'live_invitations',
   'live_admissions', 'workspace_invites', 'workspace_removed_people',
 ] as const;
@@ -179,6 +179,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   notification_emails: { user_id: 'a user id', address_kind: 'an enum', address: 'an account e-mail address', status: 'an enum',
     skip_reason: 'a code only for a sealed workspace (error paths, S2a-2)', unsubscribe_hash: 'a token hash', last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },
   notification_mutes: { user_id: 'a user id', source_type: 'an enum' },
+  notification_follows: { user_id: 'a user id' },
   needs_you_states: { user_id: 'a user id', item_key: 'object ids', state: 'an enum' },
   events: { kind: 'an event kind', actor_id: 'a principal id', data: 'ids, versions and enums only (backstopped for a sealed workspace)' },
   event_audience: { recipient: 'a principal key' },

@@ -32,6 +32,16 @@ export type ChannelChoice = Record<NotificationChannel, boolean>;
 
 export const NOTIFICATION_PREFERENCES_PATH = '/api/v1/notification-preferences';
 export const NOTIFICATION_MUTES_PATH = `${NOTIFICATION_PREFERENCES_PATH}/mutes`;
+/** `PUT` sets whether the person follows a thread (a conversation of a space); `GET …/follows/:conversationId` reads it (#1249). */
+export const NOTIFICATION_FOLLOWS_PATH = `${NOTIFICATION_PREFERENCES_PATH}/follows`;
+export const notificationFollowPath = (conversationId: string) => `${NOTIFICATION_FOLLOWS_PATH}/${conversationId}`;
+/**
+ * Recorded when a person mutes or unmutes a place, or follows or unfollows a thread (#1249): to that person alone, by name, with the place's
+ * id (a space's, or a direct message's) and no content. Their other open tabs read the muted places and the open thread's follow
+ * state again.
+ */
+export const PROJECT_NOTIFICATIONS_CHANGED_EVENT = 'project.notifications_changed.v1';
+export const DM_NOTIFICATIONS_CHANGED_EVENT = 'dm.notifications_changed.v1';
 export const NOTIFICATION_ADDRESSES_PATH = '/api/v1/notification-addresses';
 export const NOTIFICATION_ADDRESS_VERIFY_PATH = `${NOTIFICATION_ADDRESSES_PATH}/verify`;
 export const notificationAddressPath = (id: string) => `${NOTIFICATION_ADDRESSES_PATH}/${id}`;
@@ -103,6 +113,23 @@ export interface UpdateNotificationPreferencesCommand {
   /** The sign-in address's own switch. An extra address's is `PATCH /notification-addresses/:id`. */
   accountEnabled?: boolean;
   quietHours?: Partial<QuietHours>;
+}
+
+/** `GET /api/v1/notification-preferences/mutes`: the places the person muted, by id, for the sidebar's mark (no names; Settings has them). */
+export interface MutedPlacesResponse {
+  muted: { type: MutablePlaceType; id: string }[];
+}
+
+/** Whether the person follows a thread: its replies notify them (#1249). */
+export interface ThreadFollow {
+  conversationId: string;
+  following: boolean;
+}
+
+/** `PUT /api/v1/notification-preferences/follows`: follow or unfollow a thread you can read. */
+export interface SetFollowCommand {
+  conversationId: string;
+  following: boolean;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */

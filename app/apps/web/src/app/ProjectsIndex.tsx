@@ -3,6 +3,7 @@ import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
 import { lockedLine, useEncryptedWorkspaceIds } from '../encryption/state';
+import { usePlaceMutes } from '../notifications/mutes';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import './settings.css';
@@ -16,6 +17,8 @@ export function ProjectsIndex() {
   const { projects, directMessages, agents, lockedWorkspaces } = useShellData();
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
+  // A muted space has the small muted mark after its name and a quiet count where the others have the dot (#1249).
+  const { muted } = usePlaceMutes();
   const phone = useMediaQuery(MEDIA.phone);
   // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
   const encryptedIn = useEncryptedWorkspaceIds();
@@ -30,16 +33,18 @@ export function ProjectsIndex() {
           <ul className="set-card" aria-label="Spaces">
             {projects.map((project) => {
               const encrypted = !!project.workspaceId && encryptedIn.has(project.workspaceId);
-              const label = `${project.name}${encrypted ? ', encrypted' : ''}${news.has(project.id) ? ', new activity' : ''}`;
+              const quiet = muted.has(`project:${project.id}`);
+              const fresh = news.get(project.id) ?? 0;
+              const label = `${project.name}${encrypted ? ', encrypted' : ''}${quiet ? ', muted' : ''}${fresh ? (quiet ? `, ${fresh} new` : ', new activity') : ''}`;
               return (
               <li key={project.id}>
                 <Link to={`/projects/${project.id}`} className="set-row" aria-label={label === project.name ? undefined : label} data-encrypted={encrypted ? '' : undefined}>
                   {/* The same letter tile as the sidebar and Home (#763 NV-6); a sparkle would read as AI. */}
                   <span className="set-row__ic proj-index__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
                   <span className="set-row__b">
-                    <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}</span>
+                    <span className="set-row__t">{project.name}{encrypted ? <Icon name="lock" size={12} className="proj-index__lock" /> : null}{quiet ? <Icon name="quiet" size={12} className="proj-index__lock" data-muted-mark="" /> : null}</span>
                   </span>
-                  {news.has(project.id) ? <span className="proj-index__dot" aria-hidden="true" /> : null}
+                  {fresh ? (quiet ? <span className="proj-index__quiet" aria-hidden="true">{fresh}</span> : <span className="proj-index__dot" aria-hidden="true" />) : null}
                   <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>
               </li>
@@ -85,12 +90,13 @@ export function ProjectsIndex() {
                 ))}
                 {directMessages.map((dm) => (
                   <li key={dm.id}>
-                    <Link to={`/dm/${dm.id}`} className="set-row">
+                    <Link to={`/dm/${dm.id}`} className="set-row" aria-label={muted.has(`dm:${dm.id}`) ? `${dm.title}, muted` : undefined}>
                       <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
                       <span className="set-row__b">
                         <span className="set-row__t proj-index__one">{dm.title}</span>
                         <span className="set-row__s proj-index__one">{dm.preview ?? 'No messages yet'}</span>
                       </span>
+                      {muted.has(`dm:${dm.id}`) ? <Icon name="quiet" size={12} className="proj-index__muted" data-muted-mark="" /> : null}
                       {dm.lastAt ? <time className="proj-index__time" dateTime={dm.lastAt}>{new Date(dm.lastAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</time> : null}
                     </Link>
                   </li>

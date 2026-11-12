@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 import { MAX_EXTRA_ADDRESSES } from '@flux/contracts';
 import type {
   MutedPlace,
+  MutedPlacesResponse,
   NotificationAddress,
   NotificationPreferences,
+  SetFollowCommand,
   SetMuteCommand,
+  ThreadFollow,
   SetNotificationAddressCommand,
   UnsubscribeResponse,
   UpdateNotificationPreferencesCommand,
@@ -63,8 +66,18 @@ export class AddressLimitError extends DomainError {
   }
 }
 
+/** A person's follows of threads (#1249): their own choice, else the default (they started the thread or wrote in it). */
+export interface FollowRepository {
+  /** The space of a thread, or null when there is no such thread. */
+  locate(conversationId: string): Promise<{ projectId: string; workspaceId: string } | null>;
+  following(userId: string, conversationId: string): Promise<boolean>;
+  /** Records the choice and tells the person's own tabs, in one transaction (the place is the thread's space). */
+  set(userId: string, conversationId: string, following: boolean): Promise<void>;
+}
+
 export interface SettingsPorts {
   preferences: PreferenceRepository;
+  follows: FollowRepository;
   addresses: AddressRepository;
   unsubscribes: UnsubscribeRepository;
   authorizer: SourceReadAuthorizer;
@@ -153,6 +166,15 @@ export function createNotificationSettings(ports: SettingsPorts) {
     }
   }
 
+  async function readableThread(account: Account, conversationId: string) {
+    if (typeof conversationId !== 'string' || !UUID.test(conversationId)) throw new NotFoundError('Thread', 'THREAD_NOT_FOUND');
+    const id = conversationId.toLowerCase();
+    const thread = await ports.follows.locate(id);
+    const decision = thread ? await ports.authorizer.canRead(account.userId, { type: 'project', id: thread.projectId }) : null;
+    if (!thread || !decision?.visible || !decision.allowed) throw new NotFoundError('Thread', 'THREAD_NOT_FOUND');
+    return id;
+  }
+
   return {
     view,
 
@@ -160,6 +182,11 @@ export function createNotificationSettings(ports: SettingsPorts) {
       // Applied under the row lock: two quick edits of different fields both stay.
       await ports.preferences.modify(account.userId, (current) => applyPreferenceChange(current, command));
       return view(account);
+    },
+
+    /** The ids of the places the person muted: what the sidebar marks (#1249). One read, no names and no access checks. */
+    async mutedPlaces(account: Account): Promise<MutedPlacesResponse> {
+      return { muted: await ports.preferences.mutes(account.userId) };
     },
 
     /** Mutes only a place the person can read now; unmuting always works. */
@@ -174,6 +201,25 @@ export function createNotificationSettings(ports: SettingsPorts) {
       }
       await ports.preferences.setMuted(account.userId, place, command.muted);
       return view(account);
+    },
+
+    /**
+     * Whether the person follows a thread they can read: its replies notify them (#1249). A thread of a space they cannot read is not
+     * found, as for a mute.
+     */
+    async follow(account: Account, conversationId: string): Promise<ThreadFollow> {
+      const id = await readableThread(account, conversationId);
+      return { conversationId: id, following: await ports.follows.following(account.userId, id) };
+    },
+
+    /** Follow or unfollow a thread the person can read. The choice stays until they change it. */
+    async setFollow(account: Account, command: SetFollowCommand): Promise<ThreadFollow> {
+      if (!command || typeof command.conversationId !== 'string' || !UUID.test(command.conversationId) || typeof command.following !== 'boolean') {
+        throw new InvalidInputError('Give { conversationId, following }', 'INVALID_FOLLOW');
+      }
+      const id = await readableThread(account, command.conversationId);
+      await ports.follows.set(account.userId, id, command.following);
+      return { conversationId: id, following: command.following };
     },
 
     /** Adds an extra address, switched on, and sends a single-use link that expires in 24 hours; nothing goes to it before it is opened. */

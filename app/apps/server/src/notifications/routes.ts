@@ -2,10 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import {
   NOTIFICATION_ADDRESSES_PATH,
   NOTIFICATION_ADDRESS_VERIFY_PATH,
+  NOTIFICATION_FOLLOWS_PATH,
   NOTIFICATION_MUTES_PATH,
   NOTIFICATION_PREFERENCES_PATH,
   NOTIFICATION_UNSUBSCRIBE_PATH,
   type AddNotificationAddressCommand,
+  type SetFollowCommand,
   type SetMuteCommand,
   type SetNotificationAddressCommand,
   type UpdateNotificationPreferencesCommand,
@@ -71,6 +73,8 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
     },
   }, async (request) => settings.update(await account(request), request.body));
 
+  app.get(NOTIFICATION_MUTES_PATH, async (request) => settings.mutedPlaces(await account(request)));
+
   app.put<{ Body: SetMuteCommand }>(NOTIFICATION_MUTES_PATH, {
     schema: {
       body: {
@@ -79,6 +83,18 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
       },
     },
   }, async (request) => settings.setMute(await account(request), request.body));
+
+  // A thread of a space the person follows or unfollows from its header (#1249): the one place its replies are decided.
+  app.get<{ Params: { conversationId: string } }>(`${NOTIFICATION_FOLLOWS_PATH}/:conversationId`, async (request) => settings.follow(await account(request), request.params.conversationId));
+
+  app.put<{ Body: SetFollowCommand }>(NOTIFICATION_FOLLOWS_PATH, {
+    schema: {
+      body: {
+        type: 'object', required: ['conversationId', 'following'], additionalProperties: false,
+        properties: { conversationId: { type: 'string', maxLength: 64 }, following: { type: 'boolean' } },
+      },
+    },
+  }, async (request) => settings.setFollow(await account(request), request.body));
 
   app.post<{ Body: AddNotificationAddressCommand }>(NOTIFICATION_ADDRESSES_PATH, {
     schema: { body: { type: 'object', required: ['email'], additionalProperties: false, properties: { email: { type: 'string', maxLength: 320 } } } },

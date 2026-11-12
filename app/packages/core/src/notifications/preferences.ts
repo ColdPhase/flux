@@ -62,6 +62,13 @@ export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>)
   return result;
 }
 
+/**
+ * Muting a place keeps its ordinary notices quiet; the two reasons that name the person still arrive (#1249): a mention of them and a
+ * question to them. Everything else from the place stays quiet while it is muted. This is the one rule: the generator, the push job and
+ * the email job all ask `PreferenceRepository.quiet`, which asks it.
+ */
+export const REACHES_MUTED_PLACE = new Set<NotificationReason>(['mention', 'question']);
+
 export function channelOn(stored: Pick<StoredPreferences, 'level' | 'emailMe'>, reason: NotificationReason, channel: NotificationChannel) {
   return channelsOf(stored)[reason][channel];
 }
@@ -156,6 +163,7 @@ export function preferenceRepository(store: PreferenceStore): PreferenceReposito
     get: async (userId) => (await store.find(userId)) ?? { ...DEFAULT_PREFERENCES },
     save: (userId, preferences) => store.save(userId, preferences),
     isMuted: (userId, source) => store.isMuted(userId, source),
+    quiet: async (userId, source, reason) => !(reason && REACHES_MUTED_PLACE.has(reason)) && await store.isMuted(userId, source),
     mutes: (userId) => store.mutes(userId),
     setMuted: (userId, source, muted) => store.setMuted(userId, source, muted),
     async modify(userId, change) {

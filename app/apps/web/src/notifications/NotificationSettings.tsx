@@ -2,6 +2,7 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEven
 import { Link, useSearchParams } from 'react-router';
 import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, type NotificationPreferences, type UpdateNotificationPreferencesCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
+import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
@@ -10,6 +11,7 @@ import { captureNotificationSession, isCurrentNotificationSession } from './sess
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import { LEVELS } from './levels';
+import { notificationsChanged } from './mutes';
 import './notifications.css';
 
 type MutedPlace = NotificationPreferences['muted'][number];
@@ -75,6 +77,8 @@ function AccountNotificationSettings() {
     });
   }, []);
   useEffect(load, [load]);
+  // A place muted or unmuted from its ⋯ menu, here or in another tab (#1249), is read again: this list is the overview of the same mutes.
+  useStreamEvents(ownerId, (event) => { if (notificationsChanged(event)) load(); }, load);
   // Push cannot reach anyone when the server has no VAPID keys or the browser has no push. The server's reason comes
   // first: a channel this server lacks is not offered at all, whatever the browser (#763 SG-3).
   const [pushServerOff, setPushServerOff] = useState(false);
@@ -225,7 +229,7 @@ function AccountNotificationSettings() {
         </div>
         {mutedOpen ? (
           <div className="nset__panel nset__places" id={ids.muted}>
-            <p className="nset__lead">Nothing from a muted place notifies you, on any channel. You can still open it.</p>
+            <p className="nset__lead">A muted place sends no notices, push or email for ordinary messages. Mentions of you and questions to you still arrive. You can still open it.</p>
             {prefs.muted.length ? (
               <ul className="nset__muted">
                 {prefs.muted.map((place) => (

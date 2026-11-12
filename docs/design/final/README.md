@@ -261,8 +261,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **New** (`C`) and Search (`⌘K`);
   - Home, Inbox (with its count), My tasks, My map;
   - **Spaces**: one flat list with no group headers. Everyone, the space that holds the whole
-    company, comes first. An encrypted space has a small lock after its name. You see only the
-    spaces you were added to;
+    company, comes first. An encrypted space has a small lock after its name. A space you
+    muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
+    You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message;
   - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
@@ -276,8 +277,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings. There is no
-  Agents view, no Focus, no goal and no "needs you" count.
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings and
+  **Mute space** / **Unmute space**. There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -540,6 +541,33 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - The composer has the paperclip, the hint and Send. A conversation with its usual audience shows
   no "who can see this" text.
 
+### Muting a place and following a thread
+
+Founder pick on [#1249](https://github.com/ColdPhase/flux/issues/1249) (v0.2.1). Two plain actions where the thing is; no new
+screen, setting or mode, and Settings › Notifications stays the overview. Everything is built from the parts that exist: the ⋯
+menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
+
+- **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
+  computer's ⋯; on the phone the direct message's title menu, one row above "Message info"). A space reads **Mute space** /
+  **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
+  confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
+  person need not guess: "No notices or push. Mentions and questions to you still arrive." while it is on, and "Muted. Mentions
+  and questions to you still arrive." under **Unmute**. A muted place sends no notice, push, email or sound for an ordinary
+  message; a mention of the person and a question to them still arrive.
+- **The muted mark** is the `quiet` icon at 12 px in the muted text colour (`--t3`), after the name in the same end slot as the
+  encrypted lock, on the sidebar's row of a muted space or direct message and on the Spaces page's row. It is a mark, not a button.
+  The 64 px rail has no slot for it: it puts ", muted" in the tile's name and tooltip.
+- **Unread in a muted place is a quiet count, never bold.** Where an unread place shows the 6 px dot, a muted one shows the number of
+  new things in `--t3` at the small size, regular weight, tabular figures, in the dot's place (the muted mark stays before it).
+  Names never change weight. A muted place adds nothing to the Inbox count except the mentions and questions that still arrive.
+- **Follow and Following** are one quiet button in a thread's panel head, between its reply count and the close control (the head's
+  "quiet actions" slot): **Follow** with the plus icon, **Following** with the check (the label says the state), the `Button`'s quiet variant at the small
+  size, no colour of its own. It is the same on the computer's panel, the tablet's overlay and
+  the phone's sheet. A thread is followed without choosing when the person started it, wrote in it or was mentioned in it; **Following**
+  then stops its replies from notifying (**Follow** shows again). A mention of the person still arrives in a thread they unfollowed.
+- **Everything stays in step.** The ⋯ row, the sidebar mark, the Settings list and the thread's button read and write the same
+  preferences that the Inbox, push and email use, and a change in one tab shows in the person's other open tabs without a reload.
+
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,
@@ -644,7 +672,8 @@ the composer. The right-hand phone above shows the sheet.
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
     "Confirmed", or "Waiting for you to confirm it from that inbox" with Send again. "Add another
     address" sends a confirmation link before any notification goes there.
-  - **Muted places** sit behind Change.
+  - **Muted places** sit behind Change. They are the same mutes as the ⋯ menus' Mute
+    ([Muting and following](#muting-a-place-and-following-a-thread)).
 - **Company:** only admins can change it.
   - The company name, shown on the sign-in page and in emails.
   - The people, with their role (Owner, Admin, Member) and a line about guests: they see only the
