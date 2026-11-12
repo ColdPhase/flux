@@ -436,7 +436,7 @@ class PlatformRows(LiveBase):
         # The desktop host shares a screen; this row receives and decodes it.
         host_bar.get_by_role("button", name="Share a window, tab or screen").click()
         expect(host_bar.get_by_role("button", name=re.compile("Stop sharing")).first).to_be_visible(timeout=30000)
-        bar.get_by_role("button", name=re.compile(r"^(View|.*’s screen)$")).first.click()
+        self.see_shared_screen(page)
         page.wait_for_function("() => { const v = document.querySelector('video.lv-stage__video'); return !!v && v.videoWidth > 0; }",
                                timeout=60000)
         self.observed[row.name]["receivedScreenWidth"] = page.evaluate("document.querySelector('video.lv-stage__video').videoWidth")

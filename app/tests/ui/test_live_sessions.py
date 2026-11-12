@@ -249,6 +249,23 @@ class LiveBase(unittest.TestCase):
     def bar(self, page: Page):
         return page.get_by_role("region", name="Live session")
 
+    def see_shared_screen(self, page: Page) -> None:
+        """A screen someone shares reaches the stage as the product has it (F-041 point 8): on a computer and a tablet the stage opens by
+        itself, also on joining a call where a screen is already shared; on a phone a sheet offers it and its View opens the stage."""
+        stage = page.get_by_role("region", name="Shared screens and cameras")
+        offer = page.get_by_role("dialog", name="Shared screen")
+        expect(stage.or_(offer).first).to_be_visible(timeout=30000)
+        if offer.is_visible():
+            offer.get_by_role("button", name=re.compile(r"^View .*’s screen$")).click()
+        expect(stage).to_be_visible()
+
+    def put_off_shared_screen(self, page: Page) -> None:
+        """On a phone, answers the sheet that offers a shared screen with Not now: the strip's View is then the way to it."""
+        offer = page.get_by_role("dialog", name="Shared screen")
+        expect(offer).to_be_visible(timeout=30000)
+        offer.get_by_role("button", name="Not now").tap()
+        expect(offer).to_have_count(0)
+
 
 @unittest.skipIf(LIVE, "the media server is configured in this run")
 class LiveUnavailable(LiveBase):
