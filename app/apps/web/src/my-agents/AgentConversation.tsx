@@ -203,7 +203,10 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   }
   // Opening is on the "New" divider, or on the newest turn. After that the newest turn comes into view as it arrives or changes only for a
   // reader who is at the end; one who is reading above is never moved, and what arrives is counted in "↓ N new".
-  const following = useRef(true);
+  // Whether the reader is at the end is read from where they are now against where the feed ended after the last render: not from a flag that
+  // scroll events keep, which is a frame behind a scroll (a turn that arrives in that frame would pull a reader who has just scrolled up back down).
+  const lastHeight = useRef(0);
+  const forced = useRef(false);
   const placed = useRef(false);
   const stopUnread = useRef<(() => void) | null>(null);
   useLayoutEffect(() => {
@@ -212,14 +215,20 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (!placed.current) {
       placed.current = true;
       stopUnread.current = newFrom ? openAtUnread(el, column.current) : null;
-      if (stopUnread.current) { following.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48; return; }
+      if (!stopUnread.current) el.scrollTop = el.scrollHeight;
+      lastHeight.current = el.scrollHeight;
+      return;
     }
-    if (following.current) el.scrollTop = el.scrollHeight;
+    const atEnd = el.scrollTop + el.clientHeight >= lastHeight.current - 48;
+    if (forced.current || atEnd) el.scrollTop = el.scrollHeight;
+    forced.current = false;
+    lastHeight.current = el.scrollHeight;
   }, [count, working, chat.opening, newFrom]);
   useEffect(() => () => stopUnread.current?.(), []);
   useEffect(() => {
     if (!feedNode) return;
-    const track = () => { following.current = feedNode.scrollHeight - feedNode.scrollTop - feedNode.clientHeight < 48; };
+    // The height the feed has when the reader scrolls: layout that changes it between renders (a long answer settling) is not the reader's to be moved by.
+    const track = () => { lastHeight.current = feedNode.scrollHeight; };
     feedNode.addEventListener('scroll', track, { passive: true });
     return () => feedNode.removeEventListener('scroll', track);
   }, [feedNode]);
@@ -237,7 +246,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (state.kind !== 'ready') { setError(state.note); return; }
     setSending(true); setError('');
     // What the person sends is theirs to see at once, wherever they were reading.
-    following.current = true;
+    forced.current = true;
     try { await chat.send(prompt); setDraft(''); }
     catch (cause) { setError(askError(cause)); }
     finally { setSending(false); requestAnimationFrame(() => field.current?.focus({ preventScroll: true })); }

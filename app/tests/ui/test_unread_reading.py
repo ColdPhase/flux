@@ -191,6 +191,10 @@ class OpenWhereYouLeftOff(unittest.TestCase):
     def at_end(self, feed: Locator) -> float:
         return feed.evaluate("el => el.scrollHeight - el.scrollTop - el.clientHeight")
 
+    def scroll_up(self, feed: Locator) -> None:
+        """Back to the top, and past the frames in which the scroll is still being noticed (its event, what listens to it)."""
+        feed.evaluate("el => { el.scrollTop = 0; return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))); }")
+
     def pill(self, feed: Locator) -> Locator:
         # The feed's frame: `.convo-stream` holds the feed and the "N new" line.
         return feed.locator("xpath=..").locator(".convo-newbelow__b")
@@ -247,7 +251,7 @@ class OpenWhereYouLeftOff(unittest.TestCase):
         self.assertEqual(divider.count(), 1, f"{label}: the divider stays where it was")
         # End does the same on a keyboard.
         if not phone:
-            feed.evaluate("el => { el.scrollTop = 0; }")
+            self.scroll_up(feed)
             self.arrive(page, surface)
             expect(self.pill(feed)).to_have_text("1 new")
             page.keyboard.press("End")
@@ -255,7 +259,7 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             page.wait_for_timeout(300)
             self.assertLess(self.at_end(feed), 48, f"{label}: End took the reader to the end")
             # Used from the keyboard, the line leaves focus on the newest message, not on the page.
-            feed.evaluate("el => { el.scrollTop = 0; }")
+            self.scroll_up(feed)
             self.arrive(page, surface)
             expect(self.pill(feed)).to_have_text("1 new")
             self.pill(feed).focus()
@@ -263,7 +267,7 @@ class OpenWhereYouLeftOff(unittest.TestCase):
             expect(self.pill(feed)).to_have_count(0)
             self.assertTrue(feed.evaluate("el => el.contains(document.activeElement) && document.activeElement !== el.ownerDocument.body"), f"{label}: focus stays in the feed after the line")
             # And the line says how many when there are several.
-            feed.evaluate("el => { el.scrollTop = 0; }")
+            self.scroll_up(feed)
             self.arrive(page, surface)
             self.arrive(page, surface)
             expect(self.pill(feed)).to_have_text(re.compile(r"^[23] new$"))
