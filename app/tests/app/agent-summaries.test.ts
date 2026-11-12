@@ -175,7 +175,10 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
       for (const words of ['barrel', 'Jonas', 'lid seal', 'Lamp sensor']) assert.ok(!JSON.stringify(refused).includes(words), `${words} is not told`);
     }
     await ensureSpaceAiAllowed(scene.place.id);
-    assert.equal((await summarize(live, { after: '2026-11-02' })).messages, 3, 'and again once it is on');
+    // A run that was in flight when AI went off is over for good (AG-10, a new epoch); the next one reads again.
+    await scene.complete(live.runId);
+    const again = await run();
+    assert.equal((await summarize(again, { after: '2026-11-02' })).messages, 3, 'and again once it is on');
     // A client of the owner's has no run to refuse it first: the tool itself answers as for a place that is not there.
     const code = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string }).id;
     const client = await agentConnection(pool, scene.owner.browser, code, [scene.place.id]);
@@ -190,13 +193,13 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     } finally { await ensureSpaceAiAllowed(scene.place.id); }
     await removeFromSpace(scene.lead, scene.place.id, scene.owner);
     try {
-      for (const message of [(await live.call('flux_summarize', { after: '2026-11-02' })).message, await client.tool('flux_summarize', { in: talk.id, after: '2026-11-02' })]) {
+      for (const message of [(await again.call('flux_summarize', { after: '2026-11-02' })).message, await client.tool('flux_summarize', { in: talk.id, after: '2026-11-02' })]) {
         assert.ok(codeOf(message), `refused: ${JSON.stringify(message)}`);
         assert.ok(!JSON.stringify(message).includes('barrel'), 'nothing of the thread is told');
       }
     } finally { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); }
-    assert.equal((await summarize(live, { after: '2026-11-02' })).messages, 3, 'the grant is back');
-    await scene.complete(live.runId);
+    assert.equal(value(await client.tool('flux_summarize', { in: talk.id, after: '2026-11-02' })).messages, 3, 'the grant is back');
+    await scene.complete(again.runId);
   });
 
   test('a direct message is read only inside a run in it, by its own people; nothing else is reachable from there, and nothing reaches it from elsewhere', async () => {
