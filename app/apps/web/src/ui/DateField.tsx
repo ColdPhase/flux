@@ -207,7 +207,7 @@ export function DateField({ value, onChange, clearable, min = '1970-01-01', max 
   const weekStart = (day: string) => addDays(day, -((((dateOf(day).getDay() + 6) % 7) + 1 - first + 7) % 7));
   const onGridKey = (event: KeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented || event.nativeEvent.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
-    let next: string | null = null;
+    let next: string;
     // From the day that has focus (a click may have focused a day of the next month, which does not move the month).
     const from = (event.target as HTMLElement).closest<HTMLElement>('[data-day]')?.dataset.day ?? cursor;
     switch (event.key) {
