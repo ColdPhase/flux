@@ -600,7 +600,7 @@ class AppShellJourney(unittest.TestCase):
                     expect(header.get_by_role("button", name="More", exact=True)).to_have_count(1)
                     geometry = page.evaluate("""() => ({header: document.querySelector('header.phead').getBoundingClientRect().height,
                       width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
-                    self.assertAlmostEqual(geometry["header"], 112, delta=2, msg=f"phone keeps its compact header, a 56 px row and the views: {geometry}")
+                    self.assertAlmostEqual(geometry["header"], 108, delta=2, msg=f"phone keeps its compact header, 8 px, a 44 px title row, 12 px and the views' 44 px row: {geometry}")
                     self.assertEqual(geometry["scrollWidth"], geometry["width"], f"phone header has no horizontal overflow: {geometry}")
                     mode = "phone-390x844-dpr3"
                     scheme = "dark" if dark else "light"
