@@ -310,7 +310,7 @@ run on the real host.
 `FLUX_LIVE_UI_PATTERN=test_live_platforms.py ./scripts/check_live_ui.sh` and
 the `FLUX_LIVE_UI_*` ports (UI, mailpit, ICE TCP, ICE UDP and TURN UDP; all five must be set, distinct). Each row joins a session that a
 desktop Chromium participant starts. Engines come from the pinned Playwright
-image `mcr.microsoft.com/playwright/python:v1.62.0-noble`, which ships Chromium,
+image `mcr.microsoft.com/playwright/python:v1.65.0-noble`, which ships Chromium,
 Firefox and WebKit.
 
 Capability sources, checked 2026-10-10:

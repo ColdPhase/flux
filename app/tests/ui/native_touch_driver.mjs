@@ -1,4 +1,4 @@
-// TEST ONLY, pinned Python Playwright 1.62.0 driver. No server or general protocol forwarding.
+// TEST ONLY, pinned Python Playwright 1.65.0 driver. No server or general protocol forwarding.
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
@@ -14,8 +14,8 @@ if (path.resolve(process.argv[1] || '') !== path.join(packageDir, 'cli.js') || p
 const pkg = JSON.parse(fs.readFileSync(path.join(packageDir, 'package.json')));
 const browsers = JSON.parse(fs.readFileSync(path.join(packageDir, 'browsers.json')));
 const webkit = browsers.browsers.find(browser => browser.name === 'webkit');
-if (pkg.version !== '1.62.0' || webkit?.revision !== '2336' || webkit?.browserVersion !== '26.5')
-  fail('requires Playwright 1.62.0 and Linux WebKit 26.5/rev2336');
+if (pkg.version !== '1.65.0' || webkit?.revision !== '2388' || webkit?.browserVersion !== '27.2')
+  fail('requires Playwright 1.65.0 and Linux WebKit 27.2/rev2388');
 await import(pathToFileURL(path.join(packageDir, 'lib/bootstrap.js')).href);
 const bundle = await import(pathToFileURL(path.join(packageDir, 'lib/coreBundle.js')).href);
 const DispatcherConnection = bundle.default?.server?.DispatcherConnection;
@@ -34,7 +34,8 @@ DispatcherConnection.prototype.dispatch = async function (message) {
   let page;
   let entered = false;
   try {
-    if (!Number.isSafeInteger(id) || id <= 0 || typeof guid !== 'string') fail('invalid request id or page GUID');
+    // The 1.65 client names a call with a string (`abcd@12`), where 1.62 counted integers.
+    if (typeof id !== 'string' || !id || typeof guid !== 'string') fail('invalid request id or page GUID');
     if (!objectWithKeys(params, ['type', 'point'])
       || !['touchStart', 'touchMove', 'touchEnd', 'touchCancel'].includes(params.type)
       || !objectWithKeys(params.point, ['x', 'y', 'id'])) fail('only a typed single-point native touch is accepted');

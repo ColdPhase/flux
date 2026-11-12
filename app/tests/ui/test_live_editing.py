@@ -918,13 +918,16 @@ class LiveEditingJourney(LiveFixture):
                 if self.native_ime:
                     self.assertTrue(all(event['trusted'] for event in composition), witness)
                     self.assertEqual(sum(event['type'] == 'compositionstart' for event in composition), 2, witness)
-                    # GTK ends the hexadecimal preedit with empty data before each real commit.
-                    # Both nonempty composition ends and committed inputs must identify each
-                    # expected character exactly once; native cleanup ends are not extra text.
-                    self.assertEqual([event['data'] for event in composition
-                                      if event['type'] == 'compositionend' and event['data']], ['日', '本'], witness)
+                    # GTK ends the hexadecimal preedit with empty data before each real commit. What carries the commit
+                    # differs by WebKit build (observed on Playwright 1.62 / WebKit 26.5: a compositionend with the character and an
+                    # `insertFromComposition` input; on 1.65 / WebKit 27.2: an empty compositionend, then a trusted `insertText`
+                    # input with the character). Either way each expected character is committed exactly once, as a trusted input,
+                    # and a compositionend that names text names only those characters; native cleanup ends are not extra text.
+                    named_ends = [event['data'] for event in composition if event['type'] == 'compositionend' and event['data']]
+                    self.assertIn(named_ends, ([], ['日', '本']), witness)
                     self.assertEqual([event['data'] for event in witness if event['type'] == 'input'
-                                      and event['inputType'] == 'insertFromComposition'], ['日', '本'], witness)
+                                      and event['inputType'] in ('insertFromComposition', 'insertText') and event['data'] in ('日', '本')],
+                                     ['日', '本'], witness)
                     self.assertTrue(all(event['trusted'] for event in witness if event['type'] == 'input'), witness)
                     print('ACTUAL_NATIVE_IME=webkit-gtk-simple-x11; trusted preedit/commit cycles=2', flush=True)
                 else:

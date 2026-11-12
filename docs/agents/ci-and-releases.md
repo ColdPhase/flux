@@ -203,7 +203,7 @@ superseded runs, read-only tokens, and the scanner in a container pinned by dige
 
 | Scanner | What it checks | When | Failure |
 | --- | --- | --- | --- |
-| [Dependabot](../../.github/dependabot.yml) | Version updates for the pnpm workspace (`app/`), the docs site (`site/`) and the test tooling with a lockfile (`app/tooling/`), GitHub Actions, Dockerfiles and Compose files | Weekly (Monday), batched (one PR per group and directory; a major update arrives alone), at most 3 to 5 open PRs per ecosystem; Playwright (the `playwright` package and the `mcr.microsoft.com/playwright` images) is ignored, since its pins must move together by hand, and so is the `node` image, which is pinned by digest alone and moved by hand (below); `@types/node` stays on the runtime's major (24.x), and Dependabot ignores versions from 25 up until the runtime moves (#1240) | A PR, reviewed and merged like any other |
+| [Dependabot](../../.github/dependabot.yml) | Version updates for the pnpm workspace (`app/`), the docs site (`site/`) and the test tooling with a lockfile (`app/tooling/`), GitHub Actions, Dockerfiles and Compose files | Weekly (Monday), batched (one PR per group and directory; a major update arrives alone), at most 3 to 5 open PRs per ecosystem; Playwright (the `playwright` package and the `playwright` and `playwright/python` images, which is how Dependabot names the `mcr.microsoft.com` ones) is ignored, since its pins must move together by hand, and so is the `node` image, which is pinned by digest alone and moved by hand (below); `@types/node` stays on the runtime's major (24.x), and Dependabot ignores versions from 25 up until the runtime moves (#1240) | A PR, reviewed and merged like any other |
 | [Dependency audit](../../.github/workflows/dependency-audit.yml) | `pnpm audit --prod` on `app/pnpm-lock.yaml` through `scripts/security_scan.py audit` | Pull requests that touch a manifest, the lockfile, the audit or its allowlist; weekly on `main`; dispatch | A HIGH or CRITICAL advisory in a production dependency that the allowlist does not name |
 | [CodeQL](../../.github/workflows/codeql.yml) | `javascript-typescript`, `security-extended`, over `app/apps`, `app/packages` and `app/tooling` ([config](../../.github/codeql/codeql-config.yml)) | Same-repository pull requests that touch that source; weekly on `main`; dispatch | New alerts under Security > Code scanning; the run is red only when CodeQL itself fails |
 | Image scan | Trivy on both release images, every platform: [`final-release.yml`](../../.github/workflows/final-release.yml) job `scan` before the draft, and [`image-scan.yml`](../../.github/workflows/image-scan.yml) weekly on the latest published release | Each release candidate; weekly | The release run fails on a HIGH or CRITICAL finding that has a fixed version and is not allowlisted; the weekly run opens or updates an issue labelled `security-scan` |
@@ -217,6 +217,18 @@ Alpine packages, Node and the application's own production dependencies. That ba
 Dependabot cannot follow (in #1086 it offered the Debian `node:26` image). It is bumped by hand, to the digest of the
 current `node:24-alpine` index in every `FROM node@sha256:` line, with the tag named in the comment above them (#1179). A move to another Node major also moves the `@types/node` pin and the
 version ignore for it in `dependabot.yml` (`tests/test_security_scan.py` checks that they agree).
+
+**Moving Playwright** (by hand, all pins to one version, #1240). The npm package, the browser image and the Python client must
+agree, so Dependabot ignores them and one pull request moves every pin: `playwright` in `app/package.json` (and the lockfile);
+the `e2e` image in `docker/Dockerfile` (`mcr.microsoft.com/playwright:vX-noble@sha256:...`); the base image of
+`docker/ui-tests.Dockerfile` (`playwright/python`, by digest) and the `playwright==X` hashes of `app/tests/ui/requirements.txt`
+(both Linux wheels from PyPI, plus the dependencies the new client lists, nothing else); the tag-only images of
+`docker/public-sim/client.Dockerfile` and `scripts/promo/Dockerfile` and the pip pin beside the latter; and the native-touch
+driver extension (`app/tests/ui/native_touch.py`, `native_touch_driver.mjs`), which names the client version and the WebKit
+revision from the wheel's `driver/package/browsers.json` and calls the client's private channel, and the native-IME
+helper (`native_ime.py`), which names the client version. `grep -rn "version(.playwright.)" app/tests/ui` finds the pins in code. Read the digests from the
+registry (`docker buildx imagetools inspect <tag> --format '{{.Manifest.Digest}}'`), not from a bot's pull request: a tag is
+republished. Then run the whole UI suite once in Chromium and once in WebKit (`FLUX_UI_BROWSER`), since the browsers change.
 
 The scans fail closed. A report that is empty, not JSON, not the scanner's report (`{}`, an error document) or lists no
 scanned target (`Results` empty for an image, no dependencies counted for the audit) is an error, never "clean", and a

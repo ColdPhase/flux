@@ -522,7 +522,8 @@ class WorkflowRulesTest(unittest.TestCase):
         text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         # The pip pins (app/tests/ui) are not configured; the npm package and the images that must match them are ignored.
         self.assertRegex(text, r'(?s)package-ecosystem: npm\n.*?ignore:\n\s+- dependency-name: "playwright"')
-        self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n\s+- dependency-name: "mcr\.microsoft\.com/playwright\*"')
+        # Dependabot's own names for the two MCR images (pull request #1194): the registry is not part of them.
+        self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n(?:\s+#.*\n)*\s+- dependency-name: "playwright"\n\s+- dependency-name: "playwright/python"\n')
 
     def test_dependabot_keeps_the_node_types_on_the_runtime_major(self) -> None:
         text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")

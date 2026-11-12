@@ -3,8 +3,8 @@
 Adapted from docs/design/proposals/o-003-ui-direction/tools/audit.py (variant C). Run from the
 repository root:
   docker run --rm -v "$PWD/docs/design/personal-ai:/work" -w /work \
-    mcr.microsoft.com/playwright/python:v1.62.0-noble python3 tools/audit.py
-On Apple silicon use the v1.62.0-noble-arm64 image with `pip install -q playwright==1.62.0` first.
+    mcr.microsoft.com/playwright/python:v1.65.0-noble python3 tools/audit.py
+On Apple silicon use the v1.65.0-noble-arm64 image with `pip install -q playwright==1.65.0` first.
 
 Writes screenshots/ and audit.json. Measurements are automated evidence about a static prototype;
 they do not certify production behavior, billing, permissions or persistence.

@@ -37,7 +37,7 @@ class NativeImeDisplay:
         self.log = tempfile.TemporaryFile()
         self.window = None
         try:
-            if version('playwright') != '1.62.0' or not shutil.which('Xvfb'):
+            if version('playwright') != '1.65.0' or not shutil.which('Xvfb'):
                 raise RuntimeError('FLUX_NATIVE_IME_UNSUPPORTED: pinned Playwright/Xvfb is unavailable')
             self.x = C.CDLL('libX11.so.6')
             self.xt = C.CDLL('libXtst.so.6')
