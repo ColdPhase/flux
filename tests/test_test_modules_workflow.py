@@ -363,7 +363,10 @@ case "$1 $2" in
   "run view")
     case "$*" in
       *conclusion*) echo "$STUB_CONCLUSION" ;;
-      *--log-failed*) echo "the failing log line" ;;
+      *--log-failed*)
+        echo "the failing log line"
+        [ -z "$STUB_ERROR_ANNOTATION" ] || printf 'Plan\tPlan the shards\t2026-11-12T16:34:35.2221471Z ##[error]Not found at abc: app/tests/ui/test_nope.py\n'
+        ;;
     esac
     ;;
   "run download")
@@ -450,6 +453,13 @@ class CiTestScript(unittest.TestCase):
         result = self.run_script("feature/x", "ui", "chromium", "test_a", STUB_NO_ARTIFACT="1", STUB_CONCLUSION="failure")
         self.assertEqual(result.returncode, 1)
         self.assertIn("the failing log line", result.stdout)
+        self.assertNotIn("screenshots", result.stdout)
+
+    def test_a_failed_plan_prints_its_error_annotation_only(self):
+        result = self.run_script("feature/x", "ui", "chromium", "test_nope", STUB_NO_ARTIFACT="1", STUB_CONCLUSION="failure", STUB_ERROR_ANNOTATION="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("##[error]Not found at abc: app/tests/ui/test_nope.py", result.stdout)
+        self.assertNotIn("the failing log line", result.stdout)
 
 
 if __name__ == "__main__":

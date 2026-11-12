@@ -61,6 +61,19 @@ background when it may take longer than your tool's timeout, and cite the run UR
   `ui` and `live`, `screenshots-shard-N` (up to 60 files under 500 KB), for 5 days, plus a step summary.
   `tests/test_test_modules_workflow.py` guards the workflow's shape (dispatch only, read-only token, no secrets, pinned actions,
   env-only inputs, cancel on repeat) and runs its plan, run and evidence steps and `ci_test.sh` against stubs.
+- **Observed (2026-11-12, `main` at `7c3588c84`, standard 4 vCPU runners).** Every run is a cold image build plus the stack boot,
+  about 3.5 to 4 minutes before the first test, then the module's own time, so one run of one module takes 3.5 to 6 minutes wall
+  time: [UI Chromium `test_space_settings`](https://github.com/ColdPhase/flux/actions/runs/43258894167) 14 tests in 23 s, job 4 min 11 s;
+  [UI WebKit `test_settings_reading`](https://github.com/ColdPhase/flux/actions/runs/43258894078) 7 tests in 14 s, job 3 min 18 s;
+  [API `tests/app/search.test.ts`](https://github.com/ColdPhase/flux/actions/runs/43258894505) 17 tests, job 4 min 35 s;
+  [live `test_live_reachability`](https://github.com/ColdPhase/flux/actions/runs/43258894101) 16 tests in 124 s, job 5 min 52 s (failed:
+  `test_08_pending_navigation_does_not_move_the_strip` did not find `.route-progress`, a real failure of the test and not of the workflow, see
+  [the repeat](https://github.com/ColdPhase/flux/actions/runs/43260142336)); [3 UI modules in 3 shards](https://github.com/ColdPhase/flux/actions/runs/43260141469)
+  4 min 32 s wall time. The overhead is paid per shard, so list all modules in one run and add shards only when the tests themselves
+  are longer than the build (roughly more than 5 minutes of tests in total); a short module gains nothing from a shard. A local run of
+  the same kind on the loaded host took about 4 minutes after a slot was taken (the 47-test run of 1214: 4 min 13 s), and a slot
+  can take much longer to get; the saving is the host's CPU and the queue, not the runtime. A run of an unknown module or file is refused
+  by the plan job in about 10 seconds, before any image is built.
 - **Not covered.** It does not replace the required checks, the impact-based selection in [evaluation](evaluation.md), or the
   checks that need the host (the whole `check_application.sh` run, installs, devices). A run covers its SHA and modules only.
 
