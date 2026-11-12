@@ -280,16 +280,23 @@ class NoticeJourney(unittest.TestCase):
             expect(card).to_be_visible(timeout=5000)
             # Focus in the card holds it past its 6 s while it is measured (a slow runner measures for longer than that).
             card.get_by_role("button", name="Close").focus()
-            card.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
-            box = card.bounding_box()
-            assert box
+            # Everything is read in one step once the entrance has ended; if the card is gone by then, say what the page shows.
+            found = page.evaluate("""async () => {
+                const card = document.querySelector('.ui-notices .ui-notice');
+                if (!card) return { gone: true, modal: !!document.querySelector('[aria-modal="true"]'), text: document.body.innerText.slice(0, 400) };
+                await Promise.all(card.getAnimations().map((animation) => animation.finished));
+                const rect = (el) => { const r = el.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; };
+                const buttons = Object.fromEntries([...card.querySelectorAll('button')].map((button) => [button.getAttribute('aria-label') || button.textContent.trim(), rect(button)]));
+                return { gone: false, card: rect(card), buttons, text: card.innerText };
+            }""")
+            self.assertFalse(found["gone"], f"the card is still there: {found}")
+            box = found["card"]
             self.assertLess(box["y"], 80, "at the top, under the safe area")
             self.assertAlmostEqual(box["x"], 16, delta=1)
             self.assertAlmostEqual(box["width"], PHONE["width"] - 32, delta=1)
             for name in ("Reply", "Open", "Close"):
-                button = card.get_by_role("button", name=name).bounding_box()
-                assert button
-                self.assertGreaterEqual(button["height"], 44, f"{name} is a 44 px target")
+                self.assertIn(name, found["buttons"], f"{name} in {found}")
+                self.assertGreaterEqual(found["buttons"][name]["height"], 44, f"{name} is a 44 px target")
             shot(page, f"notices-phone-390-{'dark' if dark else 'light'}-dm")
             card.get_by_role("button", name="Close").tap()
             expect(card).to_have_count(0)
