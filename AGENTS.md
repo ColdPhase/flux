@@ -128,7 +128,9 @@ Keep procedures in one place and use the guides below when relevant.
   required checks. Publish only artifacts built from the accepted candidate.
   Follow `docs/agents/ci-and-releases.md` for rollout and permission boundaries.
 - Keep PR Actions lightweight and cancel superseded runs. Run substantial tests
-  locally in Docker. Build/publish a release only for the completed application,
+  locally in Docker; founder direction (Hubert, 2026-11-12): targeted UI, live and
+  API modules may instead run on GitHub Actions on demand via `scripts/ci_test.sh`,
+  never on every push. Build/publish a release only for the completed application,
   through an explicitly triggered final workflow; never on every main push.
 
 ## Commands available today

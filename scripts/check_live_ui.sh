@@ -3,7 +3,8 @@
 # the pinned self-hosted LiveKit SFU of the live test profile. Browsers use Chromium's fake
 # camera, microphone and screen, so this is local evidence of the interface and the media path,
 # not of physical devices, networks or TURN (those belong to #63). Heavy: run it locally, not
-# in PR Actions. Screenshots go to FLUX_UI_SCREENSHOT_DIR when it is set (an absolute path).
+# in PR Actions; on a loaded host it can run on demand on GitHub Actions: scripts/ci_test.sh <ref> live chromium <module>.
+# Screenshots go to FLUX_UI_SCREENSHOT_DIR when it is set (an absolute path). FLUX_LIVE_UI_PATTERN names the module file.
 set -eu
 
 cd "$(dirname "$0")/.."

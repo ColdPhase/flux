@@ -5,7 +5,9 @@
 Keep PR checks lightweight: lint, type checks and relevant fast tests, with
 concurrency cancellation. Avoid duplicate main-push/PR runs, broad matrices,
 scheduled builds and automatic packaging on feature merges. Run substantial
-application/browser/integration/install tests locally in Docker and record evidence.
+application/browser/integration/install tests locally in Docker and record evidence;
+when the host is loaded, targeted modules may instead run on demand on GitHub Actions
+(below, `scripts/ci_test.sh`), never on every push.
 Release packaging is an explicitly triggered final workflow for the completed
 application candidate, launched by an agent after independent verification.
 No human review or environment-approval gate is required by this workflow.
@@ -19,6 +21,48 @@ images. It has a 60-minute timeout, a read-only token, no secrets and a 7-day ar
 the log tail and at most 60 small screenshots. It is not a PR check, is never required,
 and no push, PR or schedule starts it. It runs the candidate's own scripts, so dispatch
 only heads you have read; do not rerun an unchanged head and target set.
+
+## Targeted test modules on demand (`scripts/ci_test.sh`)
+
+Founder direction (Hubert, 2026-11-12): to unload the host when many agents run Docker UI suites at once, targeted UI, live and
+API test modules may run on GitHub Actions **on demand**, never on every push. The repository is public, so the standard runners
+cost nothing; the rule is still the budget above: PR Actions stay lightweight, nothing here is a PR check, and no push, PR or schedule
+starts it.
+
+```sh
+scripts/ci_test.sh [--shards N] <ref> <ui|live|api> <chromium|webkit> <module>...
+scripts/ci_test.sh origin/main ui chromium test_space_settings
+scripts/ci_test.sh --shards 3 claude-hubert/123-x ui webkit test_a test_b test_c test_d
+scripts/ci_test.sh feature-branch live chromium test_live_sessions
+scripts/ci_test.sh feature-branch api chromium tests/app/search.test.ts
+```
+
+The script resolves `ref` (a pushed branch, tag, `HEAD` or SHA; `origin/` is dropped) to a full SHA, dispatches
+[`test-modules.yml`](../../.github/workflows/test-modules.yml) from `main` on it, finds its own run by a request id in the run name,
+waits with `gh run watch`, then prints each shard's job times and result lines (`Ran N tests ... OK`, `FAILED (...)`, `FAIL: ...`,
+`ℹ pass N`), saves the result artifacts under `~/flux-evidence/ci/<run id>/` and prints the command that downloads the screenshots.
+Its exit code is the run's: 0 passed, 1 failed, cancelled or timed out, 2 wrong arguments, 3 not dispatched or not found. Run it in the
+background when it may take longer than your tool's timeout, and cite the run URL and the tested SHA as the evidence.
+
+- **Same scripts as locally.** `ui` runs `scripts/check_ui.sh <modules>` (a module or `Module.Class.test_name`; `FLUX_UI_BROWSER` is the
+  `browser` input), `api` runs `scripts/check_application.sh <files>` (the named `tests/app/*.test.ts` files only, as locally: browser,
+  restart and unavailable-configuration checks are skipped), and `live` runs `scripts/check_live_ui.sh` once per module with
+  `FLUX_LIVE_UI_PATTERN=<module>.py` (that script selects its module by file pattern; it runs Chromium only). The runner has no
+  operator `.env`, and `FLUX_VAPID_*` are blank.
+- **Shards.** With several modules, `--shards N` (1 to 8, never more than there are modules) splits them round-robin over N matrix
+  jobs, each building the images and running its modules on its own runner. A plan job fixes the commit, refuses a module the commit
+  does not have before any image is built, and writes the matrix. `fail-fast` is off, so every shard reports.
+- **Safety.** `workflow_dispatch` only; `permissions: contents: read`, no secrets, `persist-credentials: false`, actions pinned by SHA;
+  inputs reach the shell only through `env` after validation (1 to 40 modules, no shell characters). The workflow definition is read
+  from `main` (`FLUX_CI_WORKFLOW_REF` overrides it for testing a change to the workflow itself), but the tested ref's own scripts run
+  on the runner, so dispatch refs you have read. A repeat of the same ref, suite, modules and browser cancels the earlier run;
+  do not rerun an unchanged commit and module set. Timeout 60 minutes per shard (5 for the plan).
+- **Evidence.** Each shard uploads `result-shard-N` (result lines, command, `summary.md`, the last 4 MB of the log gzipped) and, for
+  `ui` and `live`, `screenshots-shard-N` (up to 60 files under 500 KB), for 5 days, plus a step summary.
+  `tests/test_test_modules_workflow.py` guards the workflow's shape (dispatch only, read-only token, no secrets, pinned actions,
+  env-only inputs, cancel on repeat) and runs its plan, run and evidence steps and `ci_test.sh` against stubs.
+- **Not covered.** It does not replace the required checks, the impact-based selection in [evaluation](evaluation.md), or the
+  checks that need the host (the whole `check_application.sh` run, installs, devices). A run covers its SHA and modules only.
 
 
 

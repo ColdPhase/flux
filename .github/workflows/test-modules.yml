@@ -1,0 +1,295 @@
+name: Test modules
+
+# On demand only (founder direction, Hubert, 2026-11-12; docs/agents/ci-and-releases.md): targeted UI, live-session and API test
+# modules of an exact ref run on a GitHub runner instead of the contributor's host, split across shards. Started with
+# `scripts/ci_test.sh <ref> <suite> <browser> <modules...>`, which dispatches this workflow, waits and prints the result lines.
+# Never a PR check, never required, never started by a push, a PR or a schedule. The runner executes the tested ref's own scripts
+# (scripts/check_ui.sh, check_live_ui.sh, check_application.sh) exactly as they run locally, with a read-only token and no secrets.
+# Dispatch refs you have read: the candidate's scripts run on the runner.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch, tag or full commit SHA to test (scripts/ci_test.sh resolves it to a SHA before dispatching)
+        required: true
+        type: string
+      suite:
+        description: ui runs scripts/check_ui.sh, live runs scripts/check_live_ui.sh (Chromium), api runs scripts/check_application.sh
+        required: true
+        type: choice
+        options:
+          - ui
+          - live
+          - api
+      modules:
+        description: Space-separated, as the local script takes them. ui and live, test modules such as test_docs (ui also Module.Class.test_name); api, files such as tests/app/search.test.ts
+        required: true
+        type: string
+      browser:
+        description: Browser engine for ui (live runs Chromium only; api ignores it)
+        required: false
+        type: choice
+        default: chromium
+        options:
+          - chromium
+          - webkit
+      shards:
+        description: Jobs the modules are split across, 1 to 8 (never more than there are modules)
+        required: false
+        type: string
+        default: "1"
+      request_id:
+        description: Optional marker that scripts/ci_test.sh puts in the run name to find its own run
+        required: false
+        type: string
+        default: ""
+
+run-name: ${{ inputs.suite }} ${{ inputs.browser }} ${{ inputs.modules }} @ ${{ inputs.ref }} ${{ inputs.request_id }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-modules-${{ inputs.ref }}-${{ inputs.suite }}-${{ inputs.modules }}-${{ inputs.browser }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      sha: ${{ steps.plan.outputs.sha }}
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      # Inputs reach the shell only through env, and only values that pass these checks go on.
+      - name: Validate inputs
+        id: validate
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_SUITE: ${{ inputs.suite }}
+          INPUT_MODULES: ${{ inputs.modules }}
+          INPUT_BROWSER: ${{ inputs.browser }}
+          INPUT_SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          fail() { printf '::error::%s\n' "$1"; exit 1; }
+          [[ "$INPUT_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$ ]] && [[ "$INPUT_REF" != *..* ]] || fail 'ref must be a branch, tag or commit SHA (letters, digits, . _ / -).'
+          case "$INPUT_SUITE" in ui|live|api) ;; *) fail 'suite must be ui, live or api.' ;; esac
+          case "$INPUT_BROWSER" in chromium|webkit) ;; *) fail 'browser must be chromium or webkit.' ;; esac
+          if [ "$INPUT_SUITE" = live ] && [ "$INPUT_BROWSER" != chromium ]; then
+            fail 'The live suite runs Chromium only (scripts/check_live_ui.sh has no engine choice).'
+          fi
+          [[ "$INPUT_SHARDS" =~ ^[0-9]{1,2}$ ]] || fail 'shards must be a number from 1 to 8.'
+          shards=$((10#$INPUT_SHARDS))
+          { [ "$shards" -ge 1 ] && [ "$shards" -le 8 ]; } || fail 'shards must be a number from 1 to 8.'
+          [[ "$INPUT_MODULES" =~ ^[A-Za-z0-9_./\ -]+$ ]] || fail 'modules may contain only letters, digits, _ . / - and spaces.'
+          read -r -a named <<< "$INPUT_MODULES"
+          if [ "${#named[@]}" -lt 1 ] || [ "${#named[@]}" -gt 40 ]; then
+            fail 'Name 1 to 40 modules; a whole suite is not run here.'
+          fi
+          ui_target='^[A-Za-z0-9_]+(\.[A-Za-z0-9_]+){0,2}$'
+          live_target='^[A-Za-z0-9_]+$'
+          api_target='^tests/app/[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*\.ts$'
+          for target in "${named[@]}"; do
+            case "$INPUT_SUITE" in
+              ui) [[ "$target" =~ $ui_target ]] || fail "not a UI test module or Module.Class.test name: $target" ;;
+              live) [[ "$target" =~ $live_target ]] || fail "not a live test module (a file name under app/tests/ui/ without .py): $target" ;;
+              api) [[ "$target" =~ $api_target ]] || fail "not an API test file under app/tests/app/: $target" ;;
+            esac
+          done
+          printf 'ref=%s\n' "$INPUT_REF" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the tested ref
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.validate.outputs.ref }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      # Fixes the commit (a branch may move while the shards start), refuses a module the commit does not have before any
+      # image is built, and splits the modules round-robin. Reads the checkout; runs none of its code.
+      - name: Plan the shards
+        id: plan
+        shell: bash
+        env:
+          INPUT_SUITE: ${{ inputs.suite }}
+          INPUT_MODULES: ${{ inputs.modules }}
+          INPUT_SHARDS: ${{ inputs.shards }}
+        run: |
+          set -euo pipefail
+          fail() { printf '::error::%s\n' "$1"; exit 1; }
+          sha=$(git rev-parse HEAD)
+          read -r -a requested <<< "$INPUT_MODULES"
+          named=()
+          for target in "${requested[@]}"; do
+            seen=0
+            for kept in "${named[@]+"${named[@]}"}"; do [ "$kept" = "$target" ] && seen=1; done
+            [ "$seen" -eq 1 ] || named+=("$target")
+          done
+          for target in "${named[@]}"; do
+            case "$INPUT_SUITE" in
+              api) file="app/$target" ;;
+              *) file="app/tests/ui/${target%%.*}.py" ;;
+            esac
+            [ -f "$file" ] || fail "Not found at $sha: $file"
+          done
+          count=${#named[@]}
+          shards=$((10#$INPUT_SHARDS))
+          [ "$shards" -le "$count" ] || shards=$count
+          include=''
+          for ((shard = 1; shard <= shards; shard++)); do
+            group=''
+            for ((i = shard - 1; i < count; i += shards)); do group="$group ${named[i]}"; done
+            include="$include${include:+,}{\"shard\":$shard,\"shards\":$shards,\"modules\":\"${group# }\"}"
+          done
+          printf 'sha=%s\n' "$sha" >> "$GITHUB_OUTPUT"
+          printf 'matrix={"include":[%s]}\n' "$include" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Test modules plan"
+            echo
+            echo "- Commit: \`$sha\`"
+            echo "- Suite: \`$INPUT_SUITE\`; $count module(s) in $shards shard(s)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  test:
+    name: ${{ inputs.suite }} shard ${{ matrix.shard }} of ${{ matrix.shards }}
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Check out the planned commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Run the checks
+        id: run
+        shell: bash
+        env:
+          SUITE: ${{ inputs.suite }}
+          BROWSER: ${{ inputs.browser }}
+          MODULES: ${{ matrix.modules }}
+          TESTED_SHA: ${{ needs.plan.outputs.sha }}
+          # No operator .env on a runner; the keys are blank, as in the locally documented runs.
+          FLUX_VAPID_PUBLIC_KEY: ""
+          FLUX_VAPID_PRIVATE_KEY: ""
+          FLUX_VAPID_SUBJECT: ""
+        run: |
+          set -euo pipefail
+          [ "$(git rev-parse HEAD)" = "$TESTED_SHA" ] || { echo '::error::The checkout is not the planned commit.'; exit 1; }
+          out="$RUNNER_TEMP/test-modules"
+          mkdir -p "$out/screenshots"
+          # The test containers run as another user and write the screenshots here.
+          chmod 0777 "$out/screenshots"
+          export FLUX_UI_SCREENSHOT_DIR="$out/screenshots"
+          read -r -a named <<< "$MODULES"
+          started=$SECONDS
+          finish() { printf '%s\n' "$((SECONDS - started))" > "$out/seconds.txt"; }
+          trap finish EXIT
+          case "$SUITE" in
+            ui)
+              export FLUX_UI_BROWSER="$BROWSER"
+              printf 'FLUX_UI_BROWSER=%s ./scripts/check_ui.sh %s\n' "$BROWSER" "${named[*]}" > "$out/command.txt"
+              ./scripts/check_ui.sh "${named[@]}" 2>&1 | tee "$out/run.log"
+              ;;
+            live)
+              # check_live_ui.sh selects its module by file pattern, one per run.
+              printf 'for each module: FLUX_LIVE_UI_PATTERN=<module>.py ./scripts/check_live_ui.sh   (%s)\n' "${named[*]}" > "$out/command.txt"
+              rc=0
+              for module in "${named[@]}"; do
+                printf '=== live module %s ===\n' "$module" | tee -a "$out/run.log"
+                FLUX_LIVE_UI_PATTERN="$module.py" ./scripts/check_live_ui.sh 2>&1 | tee -a "$out/run.log" || rc=1
+              done
+              exit "$rc"
+              ;;
+            api)
+              printf './scripts/check_application.sh %s\n' "${named[*]}" > "$out/command.txt"
+              ./scripts/check_application.sh "${named[@]}" 2>&1 | tee "$out/run.log"
+              ;;
+            *)
+              echo "::error::unknown suite $SUITE"; exit 1
+              ;;
+          esac
+
+      # Evidence stays small: the log's tail, the final result lines and a bounded set of screenshots.
+      - name: Collect the evidence
+        if: always()
+        shell: bash
+        env:
+          RUN_OUTCOME: ${{ steps.run.outcome }}
+          TESTED_SHA: ${{ needs.plan.outputs.sha }}
+          SUITE: ${{ inputs.suite }}
+          BROWSER: ${{ inputs.browser }}
+          MODULES: ${{ matrix.modules }}
+          SHARD: ${{ matrix.shard }}
+          SHARDS: ${{ matrix.shards }}
+        run: |
+          # Best effort: a gap in the evidence must not turn a finished run into a different result.
+          set -u +e
+          out="$RUNNER_TEMP/test-modules"
+          keep="$RUNNER_TEMP/test-modules-result"
+          shots="$RUNNER_TEMP/test-modules-screenshots"
+          mkdir -p "$keep" "$shots"
+          fence=$(printf '\140\140\140')
+          shots_total=0
+          if [ -d "$out/screenshots" ]; then
+            shots_total=$(find "$out/screenshots" -type f | wc -l)
+            (cd "$out/screenshots" && find . -type f -size -500k | sort | head -n 60 | while IFS= read -r file; do
+              mkdir -p "$shots/$(dirname "$file")" && cp "$file" "$shots/$file"
+            done)
+          fi
+          shots_kept=$(find "$shots" -type f 2>/dev/null | wc -l)
+          [ ! -f "$out/run.log" ] || tail -c 4000000 "$out/run.log" | gzip -9 > "$keep/run.log.gz"
+          [ ! -f "$out/command.txt" ] || cp "$out/command.txt" "$keep/command.txt"
+          seconds=$(cat "$out/seconds.txt" 2>/dev/null || echo unknown)
+          case "$SUITE" in ui) engine=$BROWSER ;; live) engine=chromium ;; *) engine=n/a ;; esac
+          : > "$keep/result.txt"
+          if [ -f "$out/run.log" ]; then
+            clean=$(sed -e 's/\x1b\[[0-9;]*[A-Za-z]//g' -e 's/\r//g' -e 's/`//g' "$out/run.log")
+            printf '%s\n' "$clean" | grep -E '^(Ran [0-9]+ tests? in [0-9.]+s|OK( \(.*\))?|FAILED \(.*\)|(FAIL|ERROR): .*|.* \.\.\. (FAIL|ERROR)|(ℹ|#) (tests|suites|pass|fail|cancelled|skipped|todo) [0-9]+|✖ .*|Named API test files only.*|=== live module .* ===)$' > "$keep/result.txt"
+            if [ ! -s "$keep/result.txt" ]; then
+              echo 'No test result lines were found; the last log lines:' > "$keep/result.txt"
+              printf '%s\n' "$clean" | tail -n 25 >> "$keep/result.txt"
+            fi
+          fi
+          {
+            echo "## Test modules: shard $SHARD of $SHARDS, ${RUN_OUTCOME:-skipped}"
+            echo
+            echo "- Tested commit: \`$TESTED_SHA\`"
+            echo "- Suite: \`$SUITE\`; browser: \`$engine\`"
+            echo "- Modules: \`$MODULES\`"
+            echo "- Command: \`$(head -n 1 "$out/command.txt" 2>/dev/null || echo 'did not start')\`"
+            echo "- Checks ran for $seconds s on the runner"
+            echo "- Screenshots in the artifact: $shots_kept of $shots_total (up to 60 files under 500 KB)"
+            echo "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID (attempt $GITHUB_RUN_ATTEMPT)"
+            echo "- The artifacts keep the last 4 MB of the log (gzipped), the result lines and the screenshots; they expire after 5 days."
+            echo
+            echo 'Final result lines:'
+            printf '\n%s\n%s\n%s\n' "$fence" "$(cat "$keep/result.txt")" "$fence"
+          } > "$keep/summary.md"
+          cat "$keep/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the result and log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: result-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-modules-result/
+          if-no-files-found: warn
+          retention-days: 5
+
+      - name: Upload the screenshots
+        if: always() && inputs.suite != 'api'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: screenshots-shard-${{ matrix.shard }}-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/test-modules-screenshots/
+          if-no-files-found: ignore
+          retention-days: 5
