@@ -66,8 +66,11 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   pricing pages, dated, with the primary source; a promotional price that ends on a known date is
   left out, and a model priced by prompt length uses the tier Flux's largest request can reach.
 - **A model the provider retires** (in an earlier list of the key, missing from a later one) shows
-  as "no longer offered by Anthropic". The agents on it pause until their owner picks another model
-  (like C-3); Flux never switches the model by itself.
+  as "no longer offered by Anthropic", wherever its agents show it. The agents on it pause until
+  their owner picks another model (like C-3); Flux never switches the model by itself.
+- **One name per model.** A listed model carries the name its provider gives it ("Claude Opus 5.5") on
+  the Connect form and on the agent page alike; Flux's short names serve only a model the list does
+  not name (the key's own, a retired one).
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
 - An API-key model that cannot call tools can answer but cannot change anything, and the picker

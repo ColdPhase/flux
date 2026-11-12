@@ -2,7 +2,7 @@
 -- (`listed_models`: id, display name, family, release date), when that was read and when the last attempt was and how it ended (the
 -- 6-hour freshness and Try again), the prices its owner entered for models Flux's table does not price, and the models that were in an
 -- earlier list and are no longer offered (their agents pause until another model is chosen; nothing switches by itself). A key added
--- before v0.2.1 has none of these: its picker shows Flux's priced models as before until its first listing.
+-- before v0.2.1 has none of these: its picker shows only the key's own model until its first listing (Flux keeps no list of its own).
 ALTER TABLE public.background_compute_connections
   ADD COLUMN listed_models jsonb,
   ADD COLUMN models_listed_at timestamp with time zone,

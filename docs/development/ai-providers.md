@@ -29,7 +29,7 @@ consent, caps and fail-closed rules are those of
 
 | Kind | Wire format | Base URL | Key format | Models |
 | --- | --- | --- | --- | --- |
-| `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | listed with the key: `GET /v1/models?limit=1000` (`x-api-key`), with `display_name`, `line`, `created_at`; retired ones left out |
+| `anthropic` | Anthropic Messages | `https://api.anthropic.com` | `sk-ant-…` | listed with the key: `GET /v1/models?limit=1000` (`Authorization: Bearer` and `anthropic-version: 2026-10-21`, as the adapter), with `display_name`, `line`, `created_at`; retired ones left out |
 | `openai` | Responses API (#954) | `https://api.openai.com/v1` | `sk-…`, not `sk-admin-…` | listed with the key: `GET /models` (`Authorization: Bearer`), chat models only, no dated snapshot beside its alias |
 | `openrouter` | Chat Completions | `https://openrouter.ai/api/v1` | `sk-or-…` | listed without a key (listed prices only prefill the owner's price) |
 | `gemini` | Chat Completions | `https://generativelanguage.googleapis.com/v1beta/openai` | `AIza…` | listed with the key: `GET /v1beta/models?pageSize=1000` (`x-goog-api-key`), models that `generateContent`, no audio, image or embedding ones |

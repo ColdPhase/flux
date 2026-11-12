@@ -7,7 +7,7 @@ import {
   ASSISTANT_PLAN_MODELS,
   AI_PROVIDERS,
   aiModelSearchesWeb,
-  assistantModelName, noLongerOffered,
+  noLongerOffered,
   type AddAgentMemoryCommand,
   type AgentChatMessage,
   type AgentChatSummary,
@@ -357,7 +357,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       // A budget below one request would wait for a day that never comes.
       // With its provider's own web search a request may also make its searches (#954): the budget must hold that too.
       if (runReservationMicros(priced.price, true, aiModelSearchesWeb(priced.provider, option.id))! > centsToMicros(item.connection.dailyBudgetCents))
-        throw modelUnavailable(`One request on ${assistantModelName(option.id)} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
+        throw modelUnavailable(`One request on ${option.name} can cost more than this key's daily budget. Raise the budget in Connect AI.${still}`);
     }
     return { item, model: option.id };
   }

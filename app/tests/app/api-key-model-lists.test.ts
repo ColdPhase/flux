@@ -8,7 +8,7 @@ import { listKeyModels, parsePrivateTargets, providerPersonalCompute, PUBLIC_ONL
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { expectStatus, person, project, workspace, type Person } from './support/people.js';
-import { FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FakeQueue } from './support/personal-runs.js';
 import type { KeyListRequest } from './support/key-list-mock.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
@@ -64,6 +64,7 @@ describe('listing a key\'s models from its provider (#1218)', () => {
     const [asked] = await askedWith(key);
     assert.equal(asked!.path, '/lists/anthropic/v1/models?limit=1000');
     assert.equal(asked!.path.includes(key), false, 'the key never goes into the address');
+    assert.equal(asked!.version, '2026-10-21', 'the API version the adapter sends (SDK 1.x), and the key as its bearer token: the mock only finds a bearer');
     assert.equal(JSON.stringify(list).includes(key), false);
   });
 
@@ -153,7 +154,7 @@ describe('a key, its models and its agents (#1218)', () => {
     assert.equal(group.options.find((option) => option.id === 'claude-sonnet-5-7')!.name, 'Claude Sonnet 5.7', 'the provider\'s own name where Flux has none');
 
     await runs.enable(human(owner), { agentId, connection: key.id, model: 'claude-opus-5-5' });
-    await assert.rejects(runs.chooseModel(human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),
+    await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' }),
       { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: /Flux doesn't know the price of Claude Sonnet 5\.7 yet\. Enter it to use it with a daily budget\./ });
     // A price for a model Flux's table prices, or nonsense, is refused; the owner's price for the unpriced one is kept on the key.
     assert.equal(codeOf(await owner.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude-opus-5-5', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })), 'AI_PRICE_ALREADY_KNOWN');
@@ -165,8 +166,8 @@ describe('a key, its models and its agents (#1218)', () => {
     assert.equal((await someone.browser.request('PUT', `${path}/${key.id}/model-price`, { body: { model: 'claude-sonnet-5-8', inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 } })).status, 404);
     const option = (await runs.model(human(owner))).groups.find((item) => item.connection === key.id)!.options.find((item) => item.id === 'claude-sonnet-5-7')!;
     assert.deepEqual([option.priced, option.note], [true, 'Input $3, output $15 per 1M tokens']);
-    assert.deepEqual((await runs.chooseModel(human(owner), { connection: key.id, model: 'claude-sonnet-5-7' })).current, { connection: key.id, model: 'claude-sonnet-5-7' });
-    await runs.chooseModel(human(owner), { connection: key.id, model: 'claude-opus-5-5' });
+    assert.deepEqual((await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' })).current, { connection: key.id, model: 'claude-sonnet-5-7' });
+    await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-opus-5-5' });
 
     // A run on Opus goes to the provider with the model id the provider listed, at the table's Opus price.
     const compute = providerPersonalCompute({ enabled: true, policy: parsePrivateTargets(new URL(MOCK).hostname), timeoutMs: 5_000,
@@ -185,7 +186,7 @@ describe('a key, its models and its agents (#1218)', () => {
   test('a model the provider retires shows as no longer offered and pauses its agent, never switched; Try again reads the list through the worker', async () => {
     const apiKey = keyOf('anthropic');
     const key = expectStatus(await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-opus-5-5', apiKey, dailyBudgetCents: 500 } }), 201) as BackgroundComputeConnection;
-    await runs.chooseModel(human(owner), { connection: key.id, model: 'claude-fable-5-2' });
+    await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-fable-5-2' });
     const tryAgain = async () => (expectStatus(await owner.browser.request('POST', `${path}/${key.id}/model-list`), 200) as { listing: AssistantModelListing }).listing;
 
     await keyLists({ key: apiKey, omit: ['claude-fable-5-2', 'claude-opus-5-5'] });
@@ -195,12 +196,16 @@ describe('a key, its models and its agents (#1218)', () => {
     const choice = await runs.model(human(owner));
     assert.deepEqual(choice.current, { connection: key.id, model: 'claude-fable-5-2' }, 'the agent keeps its model: nothing switches by itself');
     const group = choice.groups.find((item) => item.connection === key.id)!;
-    assert.deepEqual(group.options.filter((option) => option.retired).map((option) => option.id), ['claude-opus-5-5'], 'the key\'s own model stays shown as no longer offered');
-    assert.equal(group.options.some((option) => option.id === 'claude-fable-5-2'), false);
-    await assert.rejects(runs.chooseModel(human(owner), { connection: key.id, model: 'claude-opus-5-5' }),
-      { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: /Opus 5\.5 is no longer offered by Anthropic\./ });
+    // CA-2: the agent's model and the key's own stay shown as "no longer offered"; a stale pick of either says so.
+    assert.deepEqual(group.options.filter((option) => option.retired).map((option) => [option.id, option.name]),
+      [['claude-opus-5-5', 'Opus 5.5'], ['claude-fable-5-2', 'Fable 5.2']], 'the key\'s own model first, then the agent\'s: both no longer offered');
+    assert.equal(group.options.find((option) => option.id === 'claude-fable-5-2')!.family, 'Fable');
+    for (const [model, name] of [['claude-opus-5-5', 'Opus 5\\.5'], ['claude-fable-5-2', 'Fable 5\\.2']]) {
+      await assert.rejects(chooseModel(runs, human(owner), { connection: key.id, model: model! }),
+        { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: new RegExp(`${name} is no longer offered by Anthropic\\.`) });
+    }
     // Choosing another model of the key goes on; a model back in the list is offered again.
-    await runs.chooseModel(human(owner), { connection: key.id, model: 'claude-sonnet-5-5' });
+    await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-5' });
     assert.equal((await runs.status(human(owner))).state, 'ready');
     await keyLists({ key: apiKey });
     await tryAgain();
@@ -211,7 +216,7 @@ describe('a key, its models and its agents (#1218)', () => {
     const apiKey = keyOf('anthropic');
     await keyLists({ key: apiKey, fail: true });
     const key = expectStatus(await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-sonnet-5', apiKey, dailyBudgetCents: 500 } }), 201) as BackgroundComputeConnection;
-    await runs.chooseModel(human(owner), { connection: key.id, model: 'claude-sonnet-5' });
+    await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5' });
     const tryAgain = async () => (expectStatus(await owner.browser.request('POST', `${path}/${key.id}/model-list`), 200) as { listing: AssistantModelListing }).listing;
     let group = (await runs.model(human(owner))).groups.find((item) => item.connection === key.id)!;
     assert.equal(group.listing?.state, 'unavailable');

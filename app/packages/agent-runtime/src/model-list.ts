@@ -22,6 +22,9 @@ export interface ModelListOptions {
 
 const MAX_MODELS = 1_000;
 
+/** The API version the Anthropic SDK 1.x sends (#1240; provider-adapters.test.ts asserts it on the adapter): the listing sends the same. */
+const ANTHROPIC_API_VERSION = '2026-10-21';
+
 /** OpenRouter states prices as USD per token in decimal strings; "-1" marks a variable price. */
 function perMillion(value: unknown): number | null {
   const number = typeof value === 'string' && /^\d+(\.\d+)?(e-?\d+)?$/i.test(value.trim()) ? Number(value) : typeof value === 'number' ? value : NaN;
@@ -84,7 +87,7 @@ const isoDate = (value: unknown): string | null => {
 /**
  * The models one key can use, read from its provider with that key (#1218). `key_refused`: the provider refused the key (401 or 403,
  * and Gemini's 400 `API_KEY_INVALID`); `unavailable`: a timeout, another status or an answer that is not a model list. The key goes
- * only into its provider's own header (`x-api-key`, `Authorization`, `x-goog-api-key`), never into the address, and nothing of it
+ * only into its provider's own header (`Authorization` for Anthropic and OpenAI, `x-goog-api-key` for Gemini), never into the address, and nothing of it
  * comes back in the result.
  */
 export async function listKeyModels(provider: AiProviderKind, apiKey: string, options: ModelListOptions = {}): Promise<AiModelList> {
@@ -106,7 +109,8 @@ export async function listKeyModels(provider: AiProviderKind, apiKey: string, op
       let url: string; let headers: Record<string, string>;
       if (provider === 'anthropic') {
         url = `${root}/v1/models?limit=1000${next ? `&after_id=${encodeURIComponent(next)}` : ''}`;
-        headers = { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' };
+        // As the adapter calls Anthropic since SDK 1.x (#1240, #1285): the key as a bearer token and the current API version.
+        headers = { authorization: `Bearer ${apiKey}`, 'anthropic-version': ANTHROPIC_API_VERSION };
       } else if (provider === 'openai') {
         url = `${root}/models`;
         headers = { authorization: `Bearer ${apiKey}` };

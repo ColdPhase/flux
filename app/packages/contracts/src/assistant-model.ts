@@ -150,6 +150,10 @@ export const PRICE_UNKNOWN_NOTE = 'Price unknown, enter it';
  * (founder direction, Hubert, 2026-11-12, #1218): its chat models by family, newest first, each with its price or "Price unknown,
  * enter it", and the key's own model where the list doesn't have it ("Other model id…", or one no longer offered). Flux's price
  * table only prices a listed model; it never adds one. Until the provider's list is read, the key offers only its own model.
+ * A model of an earlier list that the provider stopped offering stays in the list as `retired` (CA-2: "no longer offered by
+ * Anthropic"), so an agent on it shows why it is paused, and a stale pick of it says so.
+ * A listed model is named as its provider names it ("Claude Opus 5.5"), on every surface; Flux's short names serve a model the
+ * list does not name (the key's own, a retired one).
  */
 export function assistantApiModels(connection: { provider: AiProviderKind; model: string; toolCalling?: boolean | undefined; price?: AiPrice | null;
   models?: ApiKeyModels | null | undefined }): AssistantModelOption[] {
@@ -160,16 +164,19 @@ export function assistantApiModels(connection: { provider: AiProviderKind; model
     const own = id === connection.model;
     const price = own && connection.price !== undefined ? connection.price : assistantApiPrice(provider, id, prices);
     return {
-      id, name: Object.prototype.hasOwnProperty.call(NAMES, id) ? NAMES[id]! : name ?? id, note: price ? priceNote(price) : PRICE_UNKNOWN_NOTE,
+      id, name: name ?? assistantModelName(id), note: price ? priceNote(price) : PRICE_UNKNOWN_NOTE,
       callsTools: (!own || connection.toolCalling !== false) && aiModelCallsTools(provider, id),
+      ...(aiModelSeesPictures(provider, id) ? {} : { seesPictures: false }),
       family, priced: !!price, ...(retired.has(id) ? { retired: true } : {}),
     };
   };
   const options = groupModelsByFamily(connection.models?.listed ?? []).flatMap((group) => group.models.map((model) => option(model.id, model.name, group.family)));
   // The key's own model stays shown when the list lacks it: an id the owner typed, one the provider no longer offers, or a key
-  // whose list has not been read yet.
-  return options.some((entry) => entry.id === connection.model) ? options
-    : [option(connection.model, null, aiModelFamily(provider, connection.model)), ...options];
+  // whose list has not been read yet. So does every other model the provider stopped offering.
+  const shown = new Set(options.map((entry) => entry.id));
+  const own = shown.has(connection.model) ? [] : [option(connection.model, null, aiModelFamily(provider, connection.model))];
+  const gone = [...retired].filter((id) => id !== connection.model && !shown.has(id)).sort().map((id) => option(id, null, aiModelFamily(provider, id)));
+  return [...own, ...options, ...gone];
 }
 
 /**

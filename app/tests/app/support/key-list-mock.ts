@@ -8,7 +8,7 @@ import type http from 'node:http';
  * out (a model the provider retired), or a failure (500) until it is posted again without `fail`. `GET /__key-lists` returns what was
  * asked.
  */
-export interface KeyListRequest { provider: 'anthropic' | 'openai' | 'gemini'; path: string; key: string | null; at: number }
+export interface KeyListRequest { provider: 'anthropic' | 'openai' | 'gemini'; path: string; key: string | null; at: number; /** Anthropic's `anthropic-version` header. */ version: string | null }
 export const keyListRequests: KeyListRequest[] = [];
 const scripted = new Map<string, { omit: Set<string>; fail: boolean }>();
 
@@ -48,10 +48,10 @@ export function handleKeyLists(request: http.IncomingMessage, response: http.Ser
   const match = /^\/lists\/(anthropic|openai|gemini)\//.exec(url.pathname);
   if (!match) return false;
   const provider = match[1] as KeyListRequest['provider'];
-  const key = provider === 'anthropic' ? (request.headers['x-api-key'] as string | undefined) ?? null
-    : provider === 'gemini' ? (request.headers['x-goog-api-key'] as string | undefined) ?? null
-      : String(request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
-  keyListRequests.push({ provider, path: `${url.pathname}${url.search}`, key, at: Date.now() });
+  // Anthropic and OpenAI take the key as a bearer token (Anthropic's SDK 1.x does, #1240); Gemini in its own header.
+  const key = provider === 'gemini' ? (request.headers['x-goog-api-key'] as string | undefined) ?? null
+    : String(request.headers.authorization ?? '').replace(/^Bearer /, '') || null;
+  keyListRequests.push({ provider, path: `${url.pathname}${url.search}`, key, at: Date.now(), version: (request.headers['anthropic-version'] as string | undefined) ?? null });
   const { omit, fail } = scripted.get(key ?? '') ?? { omit: new Set<string>(), fail: false };
   const answer = () => {
     if (!key || key.includes('refused')) {
