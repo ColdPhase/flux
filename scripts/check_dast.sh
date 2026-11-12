@@ -57,7 +57,7 @@ jonas_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 # ZAP 2.17.0, pinned by digest (ghcr.io/zaproxy/zaproxy:stable on 2026-11-08).
 zap_image="ghcr.io/zaproxy/zaproxy@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af"
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml"
 
 cleanup() {
   status=$?

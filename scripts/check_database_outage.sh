@@ -28,7 +28,7 @@ export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | 
 # A blank VAPID pair keeps a developer's docker/.env out of the run.
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
 
 cleanup() {
   status=$?

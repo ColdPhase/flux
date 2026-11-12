@@ -45,7 +45,7 @@ export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT= FLUX_SMTP_URL= FLUX_MAIL_FROM=
 perf_password="perf-$(od -An -N12 -tx1 /dev/urandom | tr -d ' \n')"
 if [ -n "${FLUX_PERF_IMAGE_TAG:-}" ]; then export FLUX_IMAGE_TAG="$FLUX_PERF_IMAGE_TAG"; fi
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.perf.yaml"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.perf.yaml"
 . scripts/test_images.sh
 
 cleanup() {

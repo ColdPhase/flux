@@ -47,7 +47,7 @@ export FLUX_UI_SCREENSHOT_DIR="$out"
 owner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 partner_password="demo-$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
 
 cleanup() {
   status=$?

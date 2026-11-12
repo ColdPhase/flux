@@ -273,6 +273,24 @@ class AssistantFinish(unittest.TestCase):
                 expect(page2.get_by_role("group", name="Ada's assistant, details")).to_be_visible()
                 self.axe(page2, f"the assistant's panel ({tag})", ".aset-panel")
 
+    def test_15_leaving_ask_mode_in_a_thread_logs_no_layout_loop(self) -> None:
+        """The thread's feed is watched by several observers, and its short-thread lift is moved from one of them: when the composer changes
+        height (the ask bar leaves) the lift is taken in the next frame, never inside the delivery that reported the feed's size. WebKit
+        logged "ResizeObserver loop completed with undelivered notifications" about one such stop in two (#1228); the page fails on any
+        uncaught error, so repeating the stop makes a return of it near certain to show."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                self.stub_assistant(page)
+                self.stub_model(page)
+                self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
+                for _ in range(6):
+                    page.goto(f"{self.thread_url()}?ask=1")
+                    expect(page.locator("#project-ask")).to_be_visible()
+                    page.locator("#project-ask").get_by_role("button", name="Stop asking your assistant").click()
+                    expect(page.locator("#project-ask")).to_have_count(0)
+                    page.wait_for_timeout(150)
+
 
 if __name__ == "__main__":
     unittest.main()

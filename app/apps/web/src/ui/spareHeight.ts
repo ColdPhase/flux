@@ -23,14 +23,20 @@ export function useSpareHeight(feed: RefObject<HTMLElement | null>, column: RefO
     set(spare());
     let boxHeight = box.clientHeight;
     let boxWidth = box.clientWidth;
-    const observer = new ResizeObserver(() => {
+    let frame = 0;
+    const measure = () => {
+      frame = 0;
       // The feed's own size (a keyboard, a rotation, the panel docking so the text wraps again) takes the spare height afresh.
       if (box.clientHeight !== boxHeight || box.clientWidth !== boxWidth) { boxHeight = box.clientHeight; boxWidth = box.clientWidth; set(spare()); }
       // A row growing in place leaves the lift as it is: shrinking it would move the rows above the growth.
-    });
+    };
+    // The lift is part of what the feed's other observers watch, and reading the feed's size here forces a layout that can still be
+    // moving when the observation was gathered. Both happen in the next frame, never inside the delivery that reported the size
+    // (WebKit logs that as "ResizeObserver loop completed with undelivered notifications", #1228).
+    const observer = new ResizeObserver(() => { if (!frame) frame = requestAnimationFrame(measure); });
     observer.observe(box);
     observer.observe(content);
-    return () => observer.disconnect();
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
     // The refs are stable; the entries and the feed element are what the measurement follows.
   }, [feed, column, lift, count, ready]);
 }

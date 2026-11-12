@@ -25,7 +25,7 @@ export FLUX_AUTH_RATE_LIMIT=false FLUX_SMTP_URL=smtp://mailpit:1025 FLUX_MAIL_FR
 export FLUX_VAPID_PUBLIC_KEY= FLUX_VAPID_PRIVATE_KEY= FLUX_VAPID_SUBJECT=
 export FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY= FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE=
 export FLUX_LIVE_SOURCE_SHA="$(git rev-parse HEAD)"
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live-editing.test.yaml --profile test --profile two-api"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live-editing.test.yaml --profile test --profile two-api"
 . scripts/test_images.sh
 cleanup() {
   result=$?

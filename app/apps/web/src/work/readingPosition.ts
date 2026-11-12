@@ -139,7 +139,12 @@ export function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, no
       observe(reader);
     };
     const settled = () => { readerMoved.current = false; save(true); };
-    const grew = () => { if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
+    // What the end needs is read in the next frame: the reads force a layout, and one forced inside the delivery of a size can find the
+    // feed already another size (a composer that changed in the same task), which WebKit reports as "ResizeObserver loop completed
+    // with undelivered notifications" (#1228).
+    let growFrame = 0;
+    const settleGrown = () => { growFrame = 0; if (keepPointed()) return; if (following.current && !atEnd()) toEnd(); };
+    const grew = () => { if (!growFrame) growFrame = requestAnimationFrame(settleGrown); };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
     if (pane.firstElementChild) resize.observe(pane.firstElementChild);
@@ -159,6 +164,7 @@ export function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, no
     pane.addEventListener('pointermove', point, { passive: true });
     pane.addEventListener('pointerleave', left, { passive: true });
     return () => {
+      cancelAnimationFrame(growFrame);
       resize.disconnect();
       pane.removeEventListener('wheel', thaw); pane.removeEventListener('touchmove', thaw);
       pane.removeEventListener('keydown', thawKey); pane.removeEventListener('pointerdown', thawPress); pane.removeEventListener('focusin', thawFocus);

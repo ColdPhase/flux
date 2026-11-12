@@ -72,7 +72,7 @@ export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
 . scripts/csp_gate.sh
-compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
 
 cleanup() {
   status=$?

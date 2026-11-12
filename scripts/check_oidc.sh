@@ -62,7 +62,7 @@ sed -e "s#__CLIENT_SECRET__#${client_secret}#" -e "s#__PUBLIC_ORIGIN__#${FLUX_PU
 chmod 0444 "$FLUX_OIDC_TEST_REALM"
 
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.oidc.test.yaml --profile test --profile oidc"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml -f docker/compose.oidc.test.yaml --profile test --profile oidc"
 if [ "${FLUX_OIDC_CLOSEOUT:-0}" = "1" ]; then compose="$compose --profile mcp-clients"; fi
 
 cleanup() {

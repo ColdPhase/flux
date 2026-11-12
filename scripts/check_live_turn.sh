@@ -38,7 +38,7 @@ export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_TURN_TEST_TURN_UDP_PORT:-18865}"
 export FLUX_LIVEKIT_TURN_TLS_BIND=127.0.0.1
 export FLUX_LIVEKIT_TURN_TLS_HOST_PORT="${FLUX_LIVE_TURN_TEST_TLS_PORT:-18867}"
 
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml -f docker/compose.live.turn.yaml -f docker/compose.live.turn.test.yaml --profile live-test"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml -f docker/compose.live.turn.yaml -f docker/compose.live.turn.test.yaml --profile live-test"
 cleanup() {
   status=$?
   if [ -n "${stats_sampler_pid:-}" ]; then

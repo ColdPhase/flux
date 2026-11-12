@@ -52,7 +52,7 @@ else
   export FLUX_DEVELOPMENT_LIVE_EDITING_TELEMETRY= FLUX_DEVELOPMENT_LIVE_EDITING_API_INSTANCE=
 fi
 . scripts/test_images.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live-editing.test.yaml --profile ui"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live-editing.test.yaml --profile ui"
 collector=""
 
 cleanup() {

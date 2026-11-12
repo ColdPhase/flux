@@ -33,7 +33,7 @@ export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_UI_TURN_UDP_PORT:-18786}"
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 
 . scripts/csp_gate.sh
-compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile ui"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile ui"
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then

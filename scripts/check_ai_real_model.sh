@@ -57,7 +57,7 @@ export FLUX_IMAGE_TAG="$project"
 export FLUX_CLI_TOOLS_VOLUME="$project-claude-tools"
 export COMPOSE_FILE="docker/compose.source.yaml:docker/compose.source.runtime.yaml:docker/compose.test.yaml:docker/compose.cli-runtime.test.yaml:docker/compose.ai-real-model.test.yaml"
 . scripts/test_images.sh
-compose="docker compose -p $project --profile test --profile runtime"
+compose="docker compose --env-file /dev/null -p $project --profile test --profile runtime"
 installer="flux-agent-runtime-install:$project"
 network="${project}_default"
 model_container="${FLUX_AI_MODEL_CONTAINER-strata}"
