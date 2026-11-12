@@ -236,6 +236,13 @@ describe('wire details beyond the shared contract', () => {
       const asked = (await sent(wire.wire)).map((item) => (item.body as { stream?: unknown }).stream);
       assert.deepEqual(asked, [undefined, true], `${wire.provider}: only the request with a reader is streamed`);
     }
+    // A server that ends its lines with CRLF, one of them split across two chunks, is read the same.
+    const crlfWire = { ...openai('openai'), key: `sk-proj-${'owner-budget-key-'.repeat(3)}OA04` };
+    await control('/__reset', {});
+    await script('openai', { crlf: true, streamGapMs: 10 });
+    const crlfWhole = await personal(crlfWire).dispatch(request(crlfWire, { model: 'gpt-model' }), new AbortController().signal);
+    const crlfStreamed = await personal(crlfWire).dispatch(request(crlfWire, { model: 'gpt-model' }), new AbortController().signal, () => undefined);
+    assert.deepEqual(crlfStreamed, crlfWhole);
     // With the provider's own search the streamed answer keeps what the search found and its usage (#954).
     await control('/__reset', {});
     await script('anthropic', { search: { query: 'lux sensors', results: ['https://example.com/a', 'https://example.com/b'], cite: 'https://example.com/a' } });

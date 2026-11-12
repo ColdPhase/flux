@@ -428,7 +428,21 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(await processing, 'stopped');
     const kept = String((await row(stopping.run.id)).answer_body);
     assert.match(kept, /^The sensor is a PIR and it works well\./, 'what was written stays');
+
+    // The owner loses the agent while it writes, then presses Stop in the tab still open: the refusal wins and nothing is stored.
+    await resetFake();
+    await script({ calls: [{ name: 'flux_list_contexts' }], answer: 'The sensor is a PIR and it works well. ', stream: true, streamForever: true, streamGapMs: 40 });
+    const revoked = await ask();
+    const revoking = live.process(revoked.run.id);
+    await stream.until(() => words(revoked.run.id, stream).includes('works well'), 8000, 'the first words');
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/agent-connections/${(await settings()).connectionId}`), 204);
+    await runs.stop(human(owner), revoked.run.id);
+    assert.ok(['stopped', 'revoked'].includes(await revoking));
+    assert.equal((await row(revoked.run.id)).answer_body, null, 'nothing is stored after the refusal');
     await stream.close();
+    await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
+    await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
   test('revoking the assistant connection mid-run makes the next MCP call fail with 403 and ends the run', async () => {

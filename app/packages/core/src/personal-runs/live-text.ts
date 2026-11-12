@@ -20,6 +20,8 @@ export interface LiveText {
   step(tool: string): void;
   /** The current turn's words so far, whole and as the model wrote them (for a stop that keeps them). */
   readonly written: string;
+  /** The asker may no longer see the run (#1248): nothing more is sent, not even what is gathered; the words stop growing. */
+  abandon(): void;
   /** Sends what is gathered, then no more pieces; resolves once they are delivered. */
   close(): Promise<void>;
 }
@@ -96,9 +98,13 @@ export function liveText(port: RunLiveText | undefined, run: Pick<RunRecord, 'id
       if (!closed) deliver({ runId: run.id, step: tool });
     },
     get written() { return raw; },
+    abandon() {
+      closed = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+    },
     async close() {
       // The words gathered since the last batch go out first: the answer follows them.
-      if (timer) { clearTimeout(timer); flush(); }
+      if (timer && !closed) { clearTimeout(timer); flush(); }
       closed = true;
       await chain;
     },

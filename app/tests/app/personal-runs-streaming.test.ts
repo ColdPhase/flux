@@ -6,8 +6,8 @@ import { assistantRunPath, assistantRunStopPath, type AssistantRun, type Convers
 import { runLiveText } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
-import { db } from './support/db.js';
-import { addMember, expectStatus, grant, person, project as createProject, type Person } from './support/people.js';
+import { db, pool } from './support/db.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 
@@ -23,6 +23,8 @@ class StreamingCompute extends FakeCompute {
   sent: string[] = [];
   /** Endless: it keeps writing until it is stopped. */
   endless = false;
+  /** Runs after the last piece, before the answer is returned (e.g. a Stop that lands as it completes). */
+  beforeEnd: (() => Promise<void>) | null = null;
 
   override async dispatch(request: PersonalComputeRequest, signal: AbortSignal, onText?: (delta: string) => void): Promise<PersonalComputeResult> {
     this.dispatched.push(request);
@@ -34,6 +36,7 @@ class StreamingCompute extends FakeCompute {
       this.sent.push(piece);
       onText?.(piece);
     }
+    await this.beforeEnd?.();
     return { kind: 'completed', stopReason: 'end_turn', text: this.sent.join(''), usage: { inputTokens: Math.ceil(request.input.length / 4), outputTokens: 60 } };
   }
 }
@@ -137,6 +140,56 @@ describe('an answer appears as it is written (#1248)', () => {
     assert.equal((await read(early.run.id)).answer, null);
     compute.endless = false;
     compute.gapMs = 60;
+    await mine.close();
+  });
+
+  test('a Stop that lands as the answer completes keeps the whole answer, marked stopped', async () => {
+    compute.endless = false;
+    compute.pieces = ['All of it ', 'was written. '];
+    const started = await ask('One more');
+    compute.beforeEnd = async () => { expectStatus(await hubert.browser.request('POST', assistantRunStopPath(started.run.id)), 200); };
+    try {
+      assert.equal(await processor.process(started.run.id), 'stopped');
+    } finally { compute.beforeEnd = null; }
+    assert.equal((await read(started.run.id)).answer?.body, 'All of it was written.');
+  });
+
+  test('access lost while it writes: no more words reach the asker, and nothing is stored, with Stop or without', async () => {
+    const mine = await StreamClient.connect(hubert.browser);
+    await mine.ready();
+    compute.endless = true;
+    compute.gapMs = 80;
+    compute.pieces = ['The camera fails ', 'below 5 lux, ', 'the ToF sensor works. '];
+    const runText = (runId: string) => mine.messages.filter((message) => message.type === 'run_text' && (message as StreamRunText).runId === runId).length;
+
+    // Removed from the space, then Stop in the tab still open: the refusal wins, the words are not kept.
+    const stopped = await ask('Removed, then stopped');
+    const first = processor.process(stopped.run.id);
+    await mine.until(() => shown(mine.messages, stopped.run.id).text.includes('below 5 lux'), 5000, 'the first words');
+    await removeFromSpace(ada, lamp.id, hubert);
+    expectStatus(await hubert.browser.request('POST', assistantRunStopPath(stopped.run.id)), 200);
+    await first;
+    const stored = async (runId: string) => (await pool.query('SELECT status, answer_body FROM personal_runs WHERE id = $1', [runId])).rows[0] as { status: string; answer_body: string | null };
+    const ended = await stored(stopped.run.id);
+    assert.equal(ended.answer_body, null, `nothing is stored (${ended.status})`);
+    assert.ok(['stopped', 'denied'].includes(ended.status), ended.status);
+
+    // Removed while it writes, with no Stop: within about a second the words stop and the request is aborted; the run ends denied.
+    await grant(ada, lamp.id, hubert, 'contributor');
+    const lost = await ask('Removed while it writes');
+    const second = processor.process(lost.run.id);
+    await mine.until(() => shown(mine.messages, lost.run.id).text.includes('below 5 lux'), 5000, 'the first words');
+    const removedAt = Date.now();
+    await removeFromSpace(ada, lamp.id, hubert);
+    assert.equal(await second, 'denied');
+    assert.ok(Date.now() - removedAt < 4000, 'the endless answer was cut off soon after the access went');
+    const afterEnd = runText(lost.run.id);
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    assert.equal(runText(lost.run.id), afterEnd, 'nothing more arrives after the run ended');
+    assert.equal((await stored(lost.run.id)).answer_body, null);
+    compute.endless = false;
+    compute.gapMs = 60;
+    await grant(ada, lamp.id, hubert, 'contributor');
     await mine.close();
   });
 });

@@ -256,16 +256,25 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     return true;
   }
   const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}) });
-  /** Aborts the provider request as soon as the owner's stop is recorded. */
-  function watchStop(runId: string, controller: AbortController) {
+  /**
+   * Aborts the provider request as soon as the owner's stop is recorded. While the asker watches the words (`lost`, #1248), the owner's
+   * standing is also read again about once a second, as for a run on the owner's CLI: on a refusal (removed from the place, the agent or
+   * the connection taken away) no more words are sent and the request is aborted; the commit then ends the run in that refusal.
+   */
+  function watchStop(runId: string, controller: AbortController, lost?: () => void) {
     let active = true;
+    let polls = 0;
     const loop = async () => {
       while (active && !controller.signal.aborted) {
         await new Promise((resolve) => setTimeout(resolve, stopPollMs));
         if (!active) return;
         try {
           const run = await uow.run((ports) => ports.runs.findRun(runId));
-          if (run?.stopRequestedAt) controller.abort();
+          if (run?.stopRequestedAt) { controller.abort(); continue; }
+          if (!lost || !run || ++polls % Math.max(1, Math.round(1000 / stopPollMs)) !== 0) continue;
+          const refused = await uow.run((ports) => recheck(ports, connections, compute, run, 'before_commit', false))
+            .then((checked) => 'refusal' in checked, (error: unknown) => isAccessDenial(error));
+          if (refused && active) { lost(); controller.abort(); }
         } catch {
           // A failed poll only delays the best-effort abort; the commit recheck still sees the stop.
         }
@@ -343,8 +352,10 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null, written = ''): Promise<PersonalRunOutcome> {
     const answer = result?.kind === 'completed' && !early ? await answerToCommit(runId, result.text, sources) : null;
-    // What was written before a stop is worked out only for a run that did not answer: a stop is decided inside the transaction.
-    const kept = !answer && written.trim() ? await keptToCommit(runId, written, sources) : null;
+    // What a stop keeps (#1248), worked out before the transaction like the answer; whether the run was stopped is decided inside it. A stop
+    // that lands as the answer completes keeps the answer the asker saw, without a schedule or a question.
+    const kept = answer && result?.kind === 'completed' ? (/<(?:schedule|ask)\b/.test(result.text) ? await keptToCommit(runId, result.text, sources) : answer)
+      : written.trim() ? await keptToCommit(runId, written, sources) : null;
     return uow.run(async (ports) => {
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
@@ -357,8 +368,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // F-029: a run stopped because AI was turned off (the sweep's stop request, or the check itself) says so; nothing is posted.
       if ('refusal' in initial && initial.refusal === 'ai_off') return (await updateAndAnnounce(ports, run.id, ended('ai_off', 'before_commit', charge))).status;
       if (run.stopRequestedAt) {
-        // Stopped while it wrote `/ai`'s or a chat's answer (#1248): the words so far stay as its answer, marked stopped.
-        if (kept && isAsked(run) && kept.prepared.text.trim()) {
+        // Stopped while it wrote `/ai`'s or a chat's answer (#1248): the words so far stay as its answer, marked stopped, only while the
+        // owner still stands where the run was (access, enablement, the agent, the connection): a refusal stores nothing, as for an answer.
+        if (kept && isAsked(run) && kept.prepared.text.trim() && !('refusal' in initial)) {
           const body = await answerWithWebSources(ports, run, kept.prepared.text, kept.prepared.cited);
           return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', {
             ...charge, answerBody: body, answerTruncated: false, answerSources: kept.parsed.sources, answerRedacted: kept.redacted.changed, committedAt: new Date(),
@@ -369,6 +381,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // A tool result passed the MCP route's bound (F-022 "Caps"): the run ends in its own state, nothing is posted.
       if (run.mcpLimit) return (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_commit', { ...charge, endReason: 'mcp_results_too_large' }))).status;
       if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, { ...charge, ...(early.endReason ? { endReason: early.endReason } : {}) }))).status;
+      // The request was aborted because the owner no longer stands where the run was (#1248, `watchStop`): the run ends in that refusal.
+      if (result?.kind === 'failed' && result.reason === 'aborted' && 'refusal' in initial) return (await updateAndAnnounce(ports, run.id, ended(initial.refusal, 'before_commit', charge))).status;
       // A `tool_use` stop here means a request without tools came back asking for some: its text is
       // half an answer to a call that will never be made, so nothing is posted (the cost stays as observed).
       if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use' || result.stopReason === 'pause_turn') {
@@ -485,9 +499,9 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     if (ready.done) return ready.outcome;
 
     const controller = new AbortController();
-    const stopWatching = watchStop(run.id, controller);
     // `/ai` and a chat are answered to the asker while they are written (#1248): a task's or a schedule's run has nobody watching it.
     const shown: LiveText | undefined = live && isAsked(run) ? liveText(live, run) : undefined;
+    const stopWatching = watchStop(run.id, controller, shown ? () => shown.abandon() : undefined);
     if (session) {
       // A standing check between the turns of the loop: the same as before a dispatch. It also
       // touches the row, so a long loop is not swept as a crashed worker's.

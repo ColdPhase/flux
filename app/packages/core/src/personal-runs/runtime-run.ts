@@ -279,10 +279,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         return finish(run.id, 'dispatching', () => ended('unavailable', 'before_dispatch', free));
       }
 
+      // `/ai` and a chat are shown to the asker while the CLI writes them (#1248); the run token is never shown, even half.
+      const shown = live && isAsked(run) ? liveText(live, run, { secrets: [grant.token] }) : undefined;
       let stopWhy: 'owner' | 'limit' | 'standing' | 'local_tool' | null = null;
       let stopSent: Promise<void> | null = null;
       const stop = (why: 'owner' | 'limit' | 'standing' | 'local_tool') => {
         stopWhy ??= why;
+        // Once the run is to stop, the asker is sent no more of its words (#1248): not through the CLI's grace, and none after a refusal.
+        shown?.abandon();
         stopSent ??= (async () => {
           const answer = await runtime!.stop(target, run.id).catch(() => 'failed' as const);
           // Requested and acknowledged are separate states (F-022 "Stop").
@@ -301,8 +305,6 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const record = (step: (ports: PersonalRunPorts) => Promise<void>) => { recorded = recorded.then(() => uow.run(step)).catch(() => undefined); };
       const searchRows = new Map<number, string>();
       let searched = false;
-      // `/ai` and a chat are shown to the asker while the CLI writes them (#1248); the run token is never shown, even half.
-      const shown = live && isAsked(run) ? liveText(live, run, { secrets: [grant.token] }) : undefined;
       const onEvent = (event: PersonalRuntimeEvent) => {
         if (event.kind === 'init') { if (localToolInInit(event, grant.tools, webSearch)) stop('local_tool'); return; }
         if (event.kind === 'text') { shown?.turn(event.turn); shown?.push(event.text); return; }
@@ -372,10 +374,12 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const answer = end.kind === 'answer' && Buffer.byteLength(end.text, 'utf8') <= caps.maxAnswerBytes ? await prepare(end.text) : null;
       // The words the CLI had written when its owner stopped it (#1248), cleaned the same way; a `<schedule>` or `<ask>` block, whole or
       // begun, and what follows it are left out, so a stopped answer prepares and asks nothing.
-      const all = end.kind === 'answer' || !shown ? '' : shown.written;
+      // A stop that lands as the answer completes keeps that answer, the same way.
+      const all = end.kind === 'answer' ? end.text : shown ? shown.written : '';
       const cut = all.search(/<(?:schedule|ask)\b/);
       const written = cut >= 0 ? all.slice(0, cut) : all;
-      const kept = written.trim() && Buffer.byteLength(written, 'utf8') <= caps.maxAnswerBytes ? await prepare(written) : null;
+      const kept = !shown ? null : answer && cut < 0 ? answer
+        : written.trim() && Buffer.byteLength(written, 'utf8') <= caps.maxAnswerBytes ? await prepare(written) : null;
 
       return uow.run(async (ports) => {
         const located = await ports.runs.findRun(run.id);
@@ -388,8 +392,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // F-029: a run stopped because AI was turned off says so; nothing it produced is posted.
         if (refusal === 'ai_off') return save(ended('ai_off', 'before_commit', used));
         if (current.stopRequestedAt) {
-          // Stopped while it wrote (#1248): the words so far stay as its answer, marked stopped.
-          if (kept && kept.prepared.text.trim()) {
+          // Stopped while it wrote (#1248): the words so far stay as its answer, marked stopped, only while the owner still stands where the
+          // run was: a refusal stores nothing.
+          if (kept && kept.prepared.text.trim() && !refusal) {
             const words = await answerWithWebSources(ports, run, kept.prepared.text, kept.prepared.cited);
             return save(ended('stopped', 'before_commit', { ...used, answerBody: words.trim(), answerTruncated: false, answerSources: [], answerRedacted: kept.redacted.changed, committedAt: new Date() }));
           }

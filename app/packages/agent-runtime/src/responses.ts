@@ -105,7 +105,7 @@ async function streamedResponse(response: Response, onText: ((delta: string) => 
   let pending = '';
   let final: unknown = null;
   const event = (block: string) => {
-    const data = block.split('\n').filter((line) => line.startsWith('data:')).map((line) => line.slice(5).replace(/^ /, '')).join('\n');
+    const data = block.split(/\r?\n/).filter((line) => line.startsWith('data:')).map((line) => line.slice(5).replace(/^ /, '')).join('\n');
     if (!data || data === '[DONE]') return;
     let value: { type?: unknown; delta?: unknown; response?: unknown };
     try { value = JSON.parse(data) as typeof value; } catch { throw new MalformedResponseError('not JSON'); }
@@ -116,10 +116,11 @@ async function streamedResponse(response: Response, onText: ((delta: string) => 
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
-    pending += value.replace(/\r\n/g, '\n');
-    for (let end = pending.indexOf('\n\n'); end >= 0; end = pending.indexOf('\n\n')) {
-      event(pending.slice(0, end));
-      pending = pending.slice(end + 2);
+    // Events end at a blank line, written with `\n` or `\r\n`; a line end may be split across two chunks, so the split is made on what is joined.
+    pending += value;
+    for (let blank = /\r?\n\r?\n/.exec(pending); blank; blank = /\r?\n\r?\n/.exec(pending)) {
+      event(pending.slice(0, blank.index));
+      pending = pending.slice(blank.index + blank[0].length);
     }
   }
   if (pending.trim()) event(pending);

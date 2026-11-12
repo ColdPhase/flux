@@ -155,7 +155,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   const toEnd = () => requestAnimationFrame(() => { const el = feed.current; if (el) el.scrollTop = el.scrollHeight; });
   const assistant = useConversationAssistant({ meId, place: { kind: 'dm', dmId, threadRootId: rootId }, onShown: () => { stick.current = true; void load(); toEnd(); } });
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
-  useFollowEnd(() => feed.current, privateItems.replaceAll(',', '') ? privateItems : '');
+  useFollowEnd(() => feed.current, privateItems.replaceAll(',', '') ? privateItems : '', assistant.run?.id ?? null);
   // Opening is on the "New" divider when there is one in the replies read (#1246), otherwise at the end.
   const unreadLoaded = !opening && !!unreadFrom && shown.some((message) => message.id === unreadFrom);
   const unreadPlaced = useRef(false);

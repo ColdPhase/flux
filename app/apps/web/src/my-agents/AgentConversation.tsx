@@ -217,6 +217,9 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
   // reader who is at the end; one who is reading above is never moved, and what arrives is counted in "↓ N new".
   // Whether the reader is at the end is read from where they are now against where the feed ended after the last render: not from a flag that
   // scroll events keep, which is a frame behind a scroll (a turn that arrives in that frame would pull a reader who has just scrolled up back down).
+  // While the agent writes its answer (#1248), its growing words count as a change too: the chat follows them for a reader at the end.
+  const writingRun = (chat.runs ?? []).find((run) => isWorking(run))?.id ?? null;
+  const growing = useLiveRun(writingRun).text.length;
   const lastHeight = useRef(0);
   const forced = useRef(false);
   const placed = useRef(false);
@@ -235,7 +238,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
     if (forced.current || atEnd) el.scrollTop = el.scrollHeight;
     forced.current = false;
     lastHeight.current = el.scrollHeight;
-  }, [count, working, chat.opening, newFrom]);
+  }, [count, working, chat.opening, newFrom, growing]);
   useEffect(() => () => stopUnread.current?.(), []);
   useEffect(() => {
     if (!feedNode) return;

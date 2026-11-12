@@ -725,6 +725,10 @@ class PrivateAiJourney(unittest.TestCase):
         jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 20", arg=[words.element_handle(), len(first)], timeout=10000)
         self.assertTrue(words.inner_text().strip().startswith(first[:20]))
         expect(writing.locator(".assistant-writing__caret")).to_have_count(1)
+        # The thread panel follows the growing words while Jo is at its end: the newest words and Stop stay in view, unscrolled.
+        jo.wait_for_function("([el, n]) => el.innerText.trim().length > n + 60", arg=[words.element_handle(), len(first)], timeout=10000)
+        expect(writing.get_by_role("button", name="Stop")).to_be_in_viewport()
+        expect(writing.locator(".assistant-writing__caret")).to_be_in_viewport()
         shot(jo, "streaming-1440-writing-light")
         jo.emulate_media(color_scheme="dark")
         shot(jo, "streaming-1440-writing-dark")
@@ -768,9 +772,15 @@ class PrivateAiJourney(unittest.TestCase):
         self.ask_in(jo, "#thread-composer", "explain the network")
         writing = jo.locator(".assistant-writing")
         expect(writing).to_be_visible(timeout=20000)
-        writing.scroll_into_view_if_needed()
+        # Nothing is scrolled by hand: the thread follows the words, and Stop stays clear of the suggestions under the feed.
+        jo.wait_for_timeout(1500)
+        stop = writing.get_by_role("button", name="Stop")
+        expect(stop).to_be_in_viewport()
+        chips = jo.locator(".assistant-suggestions").first
+        if chips.count() and chips.is_visible():
+            self.assertLessEqual(stop.bounding_box()["y"] + stop.bounding_box()["height"], chips.bounding_box()["y"] + 1, "Stop is above the suggestions row")
         self.no_horizontal_scroll(jo)
-        box = writing.get_by_role("button", name="Stop").bounding_box()
+        box = stop.bounding_box()
         self.assertIsNotNone(box)
         self.assertGreaterEqual(box["height"], 43, "Stop is a touch target")
         shot(jo, "streaming-390-writing-light")
@@ -788,6 +798,24 @@ class PrivateAiJourney(unittest.TestCase):
             self.assertGreaterEqual(tool["height"], 43, f"{name} is a touch target")
         self.no_horizontal_scroll(jo)
         shot(jo, "streaming-390-done-light")
+
+    def test_11_the_agents_chat_follows_its_growing_answer_and_keeps_stop_in_view(self) -> None:
+        mock("/__script", {"reset": True, "text": "Here is the plan for the far beds. " * 40, "stream_gap": 0.05})
+        jo = self.page("jo")
+        jo.goto(f"/agents/{self.ids['agent']}")
+        box = jo.locator("#agent-composer")
+        box.fill("Plan the far beds")
+        jo.get_by_role("button", name="Send to Assistant").click()
+        bubble = jo.locator("[data-writing-run]")
+        expect(bubble).to_be_visible(timeout=20000)
+        jo.wait_for_function("(el) => el.innerText.length > 600", arg=bubble.element_handle(), timeout=15000)
+        stop = jo.locator("[data-chat-agent]").last.get_by_role("button", name="Stop")
+        expect(stop).to_be_in_viewport()
+        expect(bubble.locator(".assistant-writing__caret")).to_be_in_viewport()
+        shot(jo, "streaming-1440-chat-writing-light")
+        answer = jo.locator("[data-chat-agent]").last
+        expect(answer.get_by_role("button", name="Copy")).to_be_visible(timeout=30000)
+        expect(answer.get_by_role("button", name="Try again")).to_be_in_viewport()
 
 
 if __name__ == "__main__":

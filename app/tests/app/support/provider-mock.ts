@@ -35,13 +35,13 @@ import { handleCliVendor } from './cli-vendor-mock.js';
 type Wire = 'anthropic' | 'openai';
 type Mode = 'success' | 'truncated' | 'refusal' | 'status' | 'hang' | 'malformed' | 'no_usage' | 'redirect' | 'oversized' | 'paused';
 interface Search { query: string; results: string[]; cite: string }
-interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null; streamGapMs: number }
+interface Script { mode: Mode; text: string; usage: { input: number; output: number }; cost: number | null; status: number; delayMs: number; search: Search | null; errorMessage: string | null; streamGapMs: number; crlf: boolean }
 export interface RecordedProviderRequest {
   wire: Wire | 'other'; method: string; path: string; key: string | null; headers: Record<string, string | string[] | undefined>;
   body: unknown; aborted: boolean; at: number;
 }
 
-const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null, streamGapMs: 5 };
+const DEFAULT: Script = { mode: 'success', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_200, output: 80 }, cost: null, status: 500, delayMs: 0, search: null, errorMessage: null, streamGapMs: 5, crlf: false };
 const scripts: Record<Wire, Script> = { anthropic: { ...DEFAULT }, openai: { ...DEFAULT } };
 const requests: RecordedProviderRequest[] = [];
 
@@ -93,7 +93,7 @@ function responsesAnswer(script: Script, body: { model?: string }) {
 const textPieces = (text: string) => text.match(/\S*\s*/g)!.filter(Boolean).flatMap((word) => (word.length > 8 ? word.match(/.{1,8}/gs)! : [word]));
 
 /** Writes Server-Sent Events `gapMs` apart, then ends the response (#1248). */
-function sse(response: http.ServerResponse, events: { event: string; data: unknown }[], gapMs: number) {
+function sse(response: http.ServerResponse, events: { event: string; data: unknown }[], gapMs: number, crlf = false) {
   if (response.destroyed) return;
   response.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
   let index = 0;
@@ -101,7 +101,9 @@ function sse(response: http.ServerResponse, events: { event: string; data: unkno
     if (response.destroyed) return;
     if (index >= events.length) { response.end(); return; }
     const { event, data } = events[index++]!;
-    response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (!crlf) response.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    // `crlf`: the line ends a server may write, the last one split across two writes (#1248).
+    else { response.write(`event: ${event}\r\ndata: ${JSON.stringify(data)}\r\n\r`); setTimeout(() => { if (!response.destroyed) response.write('\n'); }, Math.max(1, gapMs / 2)); }
     setTimeout(next, gapMs);
   };
   next();
@@ -214,7 +216,7 @@ const server = http.createServer((request, response) => {
       if (url.pathname === '/anthropic/v1/messages' && streamed) return sse(response, anthropicEvents(anthropicAnswer(script, body as { model?: string })), script.streamGapMs);
       if (url.pathname === '/anthropic/v1/messages') return json(response, 200, anthropicAnswer(script, body as { model?: string }));
       if (url.pathname === '/openai/v1/chat/completions') return json(response, 200, openAiAnswer(script, body as { model?: string }));
-      if (url.pathname === '/openai/v1/responses' && streamed) return sse(response, responsesEvents(responsesAnswer(script, body as { model?: string })), script.streamGapMs);
+      if (url.pathname === '/openai/v1/responses' && streamed) return sse(response, responsesEvents(responsesAnswer(script, body as { model?: string })), script.streamGapMs, script.crlf);
       if (url.pathname === '/openai/v1/responses') return json(response, 200, responsesAnswer(script, body as { model?: string }));
       return json(response, 404, { error: 'not found' });
     };
