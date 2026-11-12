@@ -22,7 +22,7 @@ function EditRow({ title, value, open, onOpen, done, children }: {
     <li className="sset-acct">
       <div className="sset-row">
         <span className="sset-row__b"><span className="sset-row__t">{title}</span><span className="sset-row__s">{value}</span></span>
-        <Button variant="quiet" aria-expanded={open} aria-controls={open ? formId : undefined} onClick={() => onOpen(!open)}>
+        <Button variant="quiet" size="sm" aria-expanded={open} aria-controls={open ? formId : undefined} onClick={() => onOpen(!open)}>
           {open ? 'Cancel' : 'Change'}<span className="ui-vh"> {title.toLowerCase()}</span>
         </Button>
       </div>

@@ -6,7 +6,9 @@ composer, Settings (Account, Notifications, AI, Company), the direct messages, a
 every visible `ui-btn` is measured in the running app:
 - radius 10, weight 500, no shadow, and a height of the system: 32, 36 or 44 px on the computer, 44 px on a touch screen;
 - at most one primary (dark) button in the page of a screen, and in a window;
-- the empty Wiki's two buttons are one primary and one outline of one height; sign in's primary is as wide as its form.
+- a quiet button in a row (a settings or member row: Change, Edit, Remove) is the small size of the system (`sm`, the 12 px label);
+- the empty Wiki's two buttons are one primary and one outline of one height; sign in's primary is as wide as its form;
+- on Account a long address wraps inside its row: the text never runs under the row's Change button, at 1440 and 390 px.
 """
 
 from __future__ import annotations
@@ -25,7 +27,8 @@ from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forward
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 PASSWORD = "one button system"
-EMAIL = f"nia.buttons+{int(time.time() * 1000)}@example.test"
+# Long enough to run under a row's button on a phone when it does not wrap (it has no spaces to break at).
+EMAIL = f"nia.buttons.with.a.long.address+{int(time.time() * 1000)}@example.test"
 HEADERS = {"origin": ORIGIN, "content-type": "application/json"}
 HEIGHTS = {"computer": (32, 36, 44), "phone": (44,)}
 
@@ -34,12 +37,23 @@ BUTTONS = r"""(scope) => {
   const root = scope ? document.querySelector(scope) : document;
   const seen = (el) => { const box = el.getBoundingClientRect(), style = getComputedStyle(el);
     return box.width > 0 && box.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' && !el.closest('[inert], [aria-hidden="true"]'); };
+  const probe = document.createElement('span'); probe.style.fontSize = 'var(--fs-sm)'; document.body.appendChild(probe);
+  const small = getComputedStyle(probe).fontSize; probe.remove();
   return [...root.querySelectorAll('.ui-btn')].filter(seen).map((el) => { const box = el.getBoundingClientRect(), style = getComputedStyle(el);
     const kind = [...el.classList].filter((name) => /^ui-btn--/.test(name) && !/--(lg|sm|block)$/.test(name)).map((name) => name.slice(8)).join(' ') || 'secondary';
     return { text: (el.textContent || el.getAttribute('aria-label') || '').trim().slice(0, 40), kind, height: Math.round(box.height * 100) / 100,
       iconOnly: box.width <= box.height + 1, radius: style.borderTopLeftRadius, weight: style.fontWeight, shadow: style.boxShadow,
-      inWindow: !!el.closest('[role="dialog"], [role="alertdialog"]') }; });
+      inWindow: !!el.closest('[role="dialog"], [role="alertdialog"]'), inRow: !!el.closest('.sset-row, .people__row'), small: style.fontSize === small }; });
 }"""
+
+# Account's rows: each row's text (the value under its title) stays inside its own box and ends before the row's button, so a long
+# address wraps instead of running under Change.
+ACCOUNT_ROWS = r"""() => [...document.querySelectorAll('.sset-acct > .sset-row')].map((row) => {
+  const text = row.querySelector('.sset-row__b'), value = row.querySelector('.sset-row__s'), button = row.querySelector('.ui-btn');
+  const box = text.getBoundingClientRect(), other = button.getBoundingClientRect();
+  return { title: row.querySelector('.sset-row__t').textContent, overflow: value.scrollWidth - value.clientWidth, textRight: box.right, buttonLeft: other.left,
+    buttonRight: other.right, rowRight: row.getBoundingClientRect().right, page: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+})"""
 
 
 class ButtonSystem(unittest.TestCase):
@@ -113,6 +127,8 @@ class ButtonSystem(unittest.TestCase):
             self.assertEqual(item["weight"], "500", f"one weight in {where}")
             self.assertEqual(item["shadow"], "none", f"no shadow in {where}")
             self.assertTrue(any(abs(item["height"] - height) <= 0.5 for height in allowed), f"a height of the system {allowed} in {where}")
+            if item["kind"] == "quiet" and item["inRow"]:
+                self.assertTrue(item["small"], f"a quiet button in a row is size sm, with the small label, in {where}")
         primaries = [item["text"] for item in buttons if item["kind"] == "primary"]
         self.assertLessEqual(len(primaries), 1, f"{screen}: at most one primary button, found {primaries}")
         return buttons
@@ -127,7 +143,20 @@ class ButtonSystem(unittest.TestCase):
                     if ready:
                         expect(page.get_by_text(ready, exact=False).first).to_be_visible()
                     self.check(page, name, needs_buttons=name in ("Empty wiki", "Conversation"))
+                    if name == "Account":
+                        self.account_rows_fit(page, phone)
                     shot(page, f"1233-{name.lower().replace(' ', '-')}-{'390' if phone else '1440'}-{scheme}")
+
+    def account_rows_fit(self, page: Page, phone: bool) -> None:
+        expect(page.locator(".sset-acct")).to_have_count(3)  # Name, Email and Password, once the sign-in capabilities have loaded
+        rows = page.evaluate(ACCOUNT_ROWS)
+        self.assertEqual(len(rows), 3, f"Account has its Name, Email and Password rows {rows}")
+        for row in rows:
+            where = f"Account's {row['title']} row ({'phone' if phone else 'computer'}): {row}"
+            self.assertLessEqual(row["overflow"], 1, f"the value stays inside its box, wrapped, not running on {where}")
+            self.assertLessEqual(row["textRight"], row["buttonLeft"] + 0.5, f"the text ends before the row's button {where}")
+            self.assertLessEqual(row["buttonRight"], row["rowRight"] + 0.5, f"the button stays inside the row {where}")
+            self.assertLessEqual(row["page"], 1, f"the page does not scroll sideways {where}")
 
     def screens(self) -> list[tuple[str, str, str | None]]:
         return [

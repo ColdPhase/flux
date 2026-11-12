@@ -108,6 +108,5 @@
 .people--page .people__confirm { margin: 0 18px 14px; }
 .people--page .people__nameform { padding: 14px 18px 16px; }
 .people--page .people__guests { margin: 10px 4px 0; }
-.people__rolebtn.ui-btn { flex: none; gap: 2px; min-height: 32px; padding: 0 6px 0 10px; font-size: var(--fs-sm); color: var(--t2); }
+.people__rolebtn.ui-btn { flex: none; gap: 2px; padding: 0 6px 0 10px; color: var(--t2); }
 .people__rolebtn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
-@media (pointer: coarse) { .people__rolebtn.ui-btn { min-height: 44px; } }

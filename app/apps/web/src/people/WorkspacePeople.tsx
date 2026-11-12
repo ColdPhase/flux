@@ -238,7 +238,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
         {people.map((person) => (
           <li className="people__item" key={person.userId}><div className="people__row">
             <Avatar name={person.name} id={person.userId} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
-            <Button variant="quiet" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
+            <Button variant="quiet" size="sm" className="access__invite" busy={busy === person.userId} onClick={() => void restore(person)}>Restore</Button>
           </div></li>
         ))}
       </ul>
@@ -278,15 +278,15 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
         {spaces.map((space) => (
           <li className="people__item" key={space.id}><div className="people__row">
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
-            {space.member === false ? <Button variant="quiet" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
+            {space.member === false ? <Button variant="quiet" size="sm" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
             {/* Everyone holds the whole company and cannot be deleted; any other space can be, with a confirmation that names it (F-037). */}
-            {space.visibility === 'workspace' ? null : <Button variant="quiet" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
+            {space.visibility === 'workspace' ? null : <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
           </div></li>
         ))}
         {sealed.map((entry) => (
           <li className="people__item" key={entry.id} data-encrypted-space={entry.id}><div className="people__row">
             <span className="people__who"><b><Icon name="lock" size={13} /> {entry.name}</b><span>Encrypted · made {madeOn.format(new Date(entry.createdAt))} · you can delete it, not open it</span></span>
-            <Button variant="quiet" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
+            <Button variant="quiet" size="sm" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
           </div></li>
         ))}
       </ul>
@@ -414,7 +414,7 @@ function MemberRow({ member, self, workspace, myRole, page, editable, editing, o
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><PersonLine email={member.email} lastActiveAt={self ? undefined : member.lastActiveAt} /></span>
         {/* On the company's page the role is the control: "Admin ▾" opens the same editor under the row. */}
         {page && editable ? (
-          <Button ref={changeRef} variant="quiet" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
+          <Button ref={changeRef} variant="quiet" size="sm" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
             onClick={() => onEdit(!editing)}>{ROLE_LABEL[member.role]}<Icon name="chevron-down" size={14} /></Button>
         ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
         {!page && editable ? (

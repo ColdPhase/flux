@@ -148,7 +148,8 @@ grey-text "Import a Markdown file" at another height and weight, and a sign-in t
 - **A guard keeps it so.** `app/tests/app/button-system-core.test.ts` (a portable core test: it runs in `./scripts/check_application.sh` and in the pull-request check, with the other
   architecture rules) fails on a `<button>` that is neither a `ui-btn` or `ui-icon-btn`, nor of a role that is not an action (menu
   item, tab, radio, switch), nor one of the listed classes. It fails on `role="button"` on any other element and on a listed class
-  no button uses, so the list only shrinks. A new screen uses `Button`; it does not add a class to the list.
+  no button uses, so the list only shrinks. It also fails on a stylesheet that gives a `.ui-btn` a pill or a circle: a button of the
+  system has radius 10 on every screen, the map's dock included. A new screen uses `Button`; it does not add a class to the list.
 
 **Chips and tags** are one line high with a fixed height: 24 px for a tag (`--sub` fill, `--t2`
 text, 12 / 500) and 28 px for a person chip in a field, with a 20 px face and ×. They never wrap;

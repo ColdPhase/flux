@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, test } from 'node:test';
-import { buttonElements, handDrawnButtonRoles, loadApprovedClasses, NON_ACTION_ROLES, SYSTEM_CLASS, SYSTEM_FILES, unapprovedButtons } from './support/button-system.js';
+import { buttonElements, handDrawnButtonRoles, loadApprovedClasses, NON_ACTION_ROLES, pillButtonRules, SYSTEM_FAMILY, SYSTEM_FILES, unapprovedButtons } from './support/button-system.js';
 
 // One button system everywhere (#1233, docs/design/final/README.md, Buttons). Every action is a Button (ui-btn) or an IconButton
 // (ui-icon-btn). A raw <button> is a control of a named kind (a menu row, a whole-row target, a shell or composer control, an
@@ -16,6 +16,13 @@ function webSources(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {
     const path = join(dir, name);
     return statSync(path).isDirectory() ? webSources(path) : /\.tsx$/.test(path) ? [path] : [];
+  });
+}
+
+function webStyles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const path = join(dir, name);
+    return statSync(path).isDirectory() ? webStyles(path) : /\.css$/.test(path) ? [path] : [];
   });
 }
 
@@ -37,6 +44,11 @@ describe('the button system', () => {
     assert.deepEqual(found, [], 'use a <Button> or an approved control, not role="button"');
   });
 
+  test('no stylesheet draws a system button as a pill or a circle', () => {
+    const found = webStyles(web).flatMap((path) => pillButtonRules(readFileSync(path, 'utf8')).map((selector) => `${relative(web, path)}: ${selector}`));
+    assert.deepEqual(found, [], 'a button of the system has radius 10 (--r-btn) everywhere; the pill is for chips, avatars and segmented tracks');
+  });
+
   test('every approved class is still used by a raw <button>, so the list only shrinks', () => {
     const used = new Set(sources.flatMap((source) => buttonElements(source.text).flatMap((button) => button.classes)));
     const stale = [...approved].filter((name) => !used.has(name));
@@ -48,7 +60,7 @@ describe('the button system', () => {
     for (const [kind, { description, classes }] of Object.entries(categories)) {
       assert.ok(description.length > 30, `${kind} says what it is`);
       assert.ok(classes.length > 0, `${kind} has classes`);
-      assert.deepEqual(classes.filter((name) => SYSTEM_CLASS.test(name)), [], `${kind} lists a system class`);
+      assert.deepEqual(classes.filter((name) => SYSTEM_FAMILY.test(name)), [], `${kind} lists a system class`);
     }
   });
 
@@ -69,5 +81,22 @@ describe('the button system', () => {
     assert.deepEqual(unapprovedButtons('<ButtonGroup><buttons /></ButtonGroup>', none), []);
     assert.deepEqual(unapprovedButtons('<div>\n<button onClick={(event) => { if (a > b) go(); }} data-x="a>b">Go</button>', none), [{ line: 2, classes: [] }]);
     assert.deepEqual(handDrawnButtonRoles('<div role="button" tabIndex={0}>x</div>\nconst q = \'[role="button"]\';'), [1]);
+    // A variant or a size alone is not a system button: it needs ui-btn itself.
+    assert.deepEqual(unapprovedButtons('<button className="ui-btn--fancy">Go</button>', none), [{ line: 1, classes: ['ui-btn--fancy'] }]);
+    assert.deepEqual(unapprovedButtons('<button className="ui-icon-btn">x</button>', none), []);
+    // role in any quoting: a non-action role passes, role="button" by hand does not.
+    for (const quoted of ["role='tab'", "role={'tab'}", 'role={"tab"}', 'role={`tab`}', 'role = "tab"']) assert.deepEqual(unapprovedButtons(`<button ${quoted}>x</button>`, none), [], quoted);
+    assert.deepEqual(handDrawnButtonRoles("<div role='button'>x</div>\n<div role={'button'}>x</div>\n<div role={\"button\"}>x</div>\n<div role={`button`}>x</div>"), [1, 2, 3, 4]);
+    // A // inside a string is text, not a comment: the button after it is still seen. Real comments and URLs behave as before.
+    assert.deepEqual(unapprovedButtons("<span>{'a // b'}</span><button className=\"x\">Go</button>", none), [{ line: 1, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons('<span>{"a // b"}</span><button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons('<span>{`a // ${b}`}</span><button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons("const glob = '**/*.ts';\n<button className=\"x\">Go</button>\nconst end = '*/';", none), [{ line: 2, classes: ['x'] }]);
+    assert.deepEqual(unapprovedButtons('const a = 1; // <button className="x">gone</button>\n<button className="y">Go</button>', none), [{ line: 2, classes: ['y'] }]);
+    assert.deepEqual(unapprovedButtons('<a href="https://flux.example">x</a> <button className="x">Go</button>', none), [{ line: 1, classes: ['x'] }]);
+    // CSS: a pill or a circle on a system button is found; the icon button and ordinary radii are not.
+    assert.deepEqual(pillButtonRules('.sk-dock .ui-btn { min-height: 36px; border-radius: var(--r-pill); }'), ['.sk-dock .ui-btn']);
+    assert.deepEqual(pillButtonRules('a { color: red; }\n.bar .ui-btn--primary, .bar .ui-btn--outline { border-radius: 999px; }'), ['.bar .ui-btn--primary, .bar .ui-btn--outline']);
+    assert.deepEqual(pillButtonRules('.bar .ui-btn { border-radius: var(--r-btn); }\n.ui-icon-btn { border-radius: 50%; }\n.ui-btnx { border-radius: 50%; }\n/* .ui-btn { border-radius: 50%; } */'), []);
   });
 });

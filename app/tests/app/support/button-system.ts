@@ -11,8 +11,11 @@ import { readFileSync } from 'node:fs';
 /** Roles of a raw `<button>` that are controls of their own kind, styled by their container (menus, tab lists, radio groups). */
 export const NON_ACTION_ROLES = new Set(['menuitem', 'menuitemradio', 'menuitemcheckbox', 'option', 'tab', 'radio', 'switch', 'combobox', 'checkbox']);
 
-/** The classes that make a button a button of the system: `ui-btn`, its variants and sizes, and the icon button. */
-export const SYSTEM_CLASS = /^ui-(btn|icon-btn)(--[a-z]+)?$/;
+/** The classes that make a button a button of the system: `ui-btn` and the icon button themselves. A variant or a size alone (`ui-btn--fancy`) is not one. */
+export const SYSTEM_CLASS = /^ui-(btn|icon-btn)$/;
+
+/** Every class of the system's family, variants and sizes included: none of them may be listed as an approved class of a raw button. */
+export const SYSTEM_FAMILY = /^ui-(btn|icon-btn)(--[a-z]+)?$/;
 
 /** Files that define the system itself: they may draw a `<button>` from their own props. */
 export const SYSTEM_FILES = ['ui/Button.tsx'];
@@ -23,11 +26,35 @@ export interface ButtonElement {
   role: string | null;
 }
 
-/** Comments blanked out, keeping every newline so line numbers stay right. */
+/**
+ * Comments blanked out, keeping every newline so line numbers stay right. A `//` or a `/*` inside a quoted string is text, not a comment:
+ * a quote opens a string for the rest of its line (a backtick, until the next backtick), so an apostrophe in JSX text only ever keeps
+ * more of the line, never hides code. A `//` right after a colon is a URL.
+ */
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
-    .replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+  let result = '';
+  let quote = '';
+  for (let index = 0; index < source.length; index++) {
+    const char = source[index]!;
+    const next = source[index + 1];
+    if (quote) {
+      result += char;
+      if (char === '\\') result += source[++index] ?? '';
+      else if (char === quote || (char === '\n' && quote !== '`')) quote = '';
+    } else if (char === '/' && next === '*') {
+      const end = source.indexOf('*/', index + 2);
+      const stop = end < 0 ? source.length : end + 2;
+      result += source.slice(index, stop).replace(/[^\n]/g, ' ');
+      index = stop - 1;
+    } else if (char === '/' && next === '/' && source[index - 1] !== ':') {
+      while (index < source.length && source[index] !== '\n') { result += ' '; index++; }
+      index--;
+    } else {
+      if (char === '"' || char === "'" || char === '`') quote = char;
+      result += char;
+    }
+  }
+  return result;
 }
 
 /** The end of an opening tag that starts at `start`: the `>` that is outside every `{}` expression and quoted string. */
@@ -93,6 +120,9 @@ function classNames(attributes: string): string[] {
   return words;
 }
 
+/** The words of an attribute's value when it is a plain string: `role="x"`, `role='x'`, `role={"x"}`, `role={'x'}` or `role={`x`}`. */
+const ROLE = /\brole\s*=\s*(?:\{\s*)?(["'`])([a-z]+)\1/;
+
 /** Every raw `<button>` of a source file: its line, its class names and its role. */
 export function buttonElements(source: string): ButtonElement[] {
   const code = withoutComments(source);
@@ -103,7 +133,7 @@ export function buttonElements(source: string): ButtonElement[] {
     found.push({
       line: code.slice(0, match.index).split('\n').length,
       classes: classNames(attributes),
-      role: attributes.match(/\brole="([a-z]+)"/)?.[1] ?? null,
+      role: attributes.match(ROLE)?.[2] ?? null,
     });
   }
   return found;
@@ -117,9 +147,21 @@ export function unapprovedButtons(source: string, approved: ReadonlySet<string>)
     .map(({ line, classes }) => ({ line, classes }));
 }
 
-/** `role="button"` on an element that is not a `<button>`: a button drawn by hand, which the system has no room for. */
+/** `role="button"` (any quoting) on an element that is not a `<button>`: a button drawn by hand, which the system has no room for. */
 export function handDrawnButtonRoles(source: string): number[] {
-  return withoutComments(source).split('\n').flatMap((line, index) => (/\srole="button"/.test(line) ? [index + 1] : []));
+  const code = withoutComments(source);
+  return [...code.matchAll(/\srole\s*=\s*(?:\{\s*)?["'`]button["'`]/g)].map((match) => code.slice(0, match.index).split('\n').length);
+}
+
+/**
+ * The CSS rules that draw a system button (`.ui-btn` and its variants) with a shape of their own: a pill or a circle. The system's
+ * radius is 10 (`--r-btn`), set once in ui/ui.css; the icon button is its own round shape and is not checked.
+ */
+export function pillButtonRules(css: string): string[] {
+  const code = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  return [...code.matchAll(/([^{}]*\.ui-btn(?:--[a-z]+)?(?![\w-])[^{}]*)\{([^{}]*)\}/g)]
+    .filter(([, , body]) => /border-radius\s*:\s*(var\(--r-pill\)|\d{3,}px|50%)/.test(body!))
+    .map(([, selector]) => selector!.trim().replace(/\s+/g, ' '));
 }
 
 export interface ButtonClasses {

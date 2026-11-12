@@ -346,7 +346,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk-dock .sk-tools { gap: 4px; flex-wrap: wrap; justify-content: center; flex: 0 1 auto; min-width: 0; }
 .sk-dock__row { flex-wrap: wrap; justify-content: center; }
 .sk-dock__row > *, .sk-dock .sk-tools > * { flex: none; }
-.sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-pill); gap: 6px; }
+.sk-dock .ui-btn { min-height: 36px; padding: 0 14px; border-radius: var(--r-btn); gap: 6px; }
 .sk-dock .ui-btn svg { color: var(--t2); }
 .sk-dock .ui-btn[aria-pressed="true"] { background: var(--sub); }
 .sk-dock .ui-btn[aria-disabled="true"] { opacity: .55; }
