@@ -561,10 +561,17 @@ class LiveJourney(LiveBase):
         expect(space).to_be_visible()
         expect(space.locator("svg.side__live[data-call-mark]")).to_have_count(0)
         jonas = self.page("jonas")
-        # This run's server has no push keys: Jonas's browser is told it has them and has not been asked, as on a server that can push.
-        jonas.context.add_init_script("Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'default' });")
-        jonas.route("**/api/v1/push/public-key", lambda route: route.fulfill(status=200, content_type="application/json",
-                                                                              body=json.dumps({"status": "available", "publicKey": PUSH_KEY})))
+        # This run's server has no push keys: Jonas's page is told it has them and has not been asked, as on a server that can push (the page's
+        # own request is answered, so no route is stubbed and the service worker stays allowed).
+        jonas.context.add_init_script("""(() => {
+          Object.defineProperty(Notification, 'permission', { configurable: true, get: () => 'default' });
+          const real = window.fetch.bind(window);
+          window.fetch = (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+            if (url.includes('/api/v1/push/public-key')) return Promise.resolve(new Response(JSON.stringify({ status: 'available', publicKey: %s }), { status: 200, headers: { 'content-type': 'application/json' } }));
+            return real(input, init);
+          };
+        })();""" % json.dumps(PUSH_KEY))
         jonas.goto("/")
 
         # Lee starts it: each person runs at most a few calls at once, and the journeys before this one started theirs.
