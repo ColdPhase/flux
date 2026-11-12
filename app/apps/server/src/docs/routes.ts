@@ -48,7 +48,7 @@ const projectReader: ReplayCheck = (principal, stored, db) =>
  * The last change of each doc in one project: an agent author keeps its scoped owner while that person is in the
  * project's current audience (#339 AC-2), the same boundary as preserved message history.
  */
-async function scopedUpdaters(db: Database, items: DocSummary[]): Promise<DocSummary[]> {
+export async function scopedUpdaters(db: Database, items: DocSummary[]): Promise<DocSummary[]> {
   const agents = [...new Set(items.flatMap((item) => item.updatedBy.kind === 'agent' ? [item.updatedBy.id] : []))];
   if (!agents.length) return items;
   // A project's list page is one project and at most 100 rows, inside the owner read's bound.

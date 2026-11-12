@@ -30,6 +30,11 @@ if UI_BROWSER not in ("chromium", "webkit"):
     raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 
 
+def space_read(space: str) -> re.Pattern:
+    """The reads of the space itself: its own address, and its frame (`space-shell`, #1109), which is how a space's pages read it."""
+    return re.compile(rf".*/api/v1/projects/{space}(/space-shell)?$")
+
+
 class BackgroundRefresh(unittest.TestCase):
     browser: Browser
     state: dict = {}
@@ -155,7 +160,7 @@ class BackgroundRefresh(unittest.TestCase):
                 expect(title).to_have_text(self.state["name"])
                 feed = page.locator(".project-convo__feed")
                 expect(feed).to_be_visible()
-                reads = self.failing(page, re.compile(rf".*/api/v1/projects/{space}$"), how)
+                reads = self.failing(page, space_read(space), how)
                 after = self.rename(page)
                 self.wait_for(page, lambda: reads["reads"] >= 2, "a second read of the space, by itself")
                 expect(page.get_by_text(ERROR)).to_have_count(0)
@@ -182,7 +187,7 @@ class BackgroundRefresh(unittest.TestCase):
     def test_04_a_space_that_is_gone_in_a_refresh_still_says_so(self) -> None:
         self.world()
         space = self.state["space"]
-        pattern = re.compile(rf".*/api/v1/projects/{space}$")
+        pattern = space_read(space)
         # A page that was opened by its address, or returned to, lands on the nearest place that opens, with one line (#592).
         page = self.page()
         self.open(page, f"/projects/{space}")

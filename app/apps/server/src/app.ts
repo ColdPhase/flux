@@ -29,6 +29,7 @@ import { pictureRoutes } from './pictures/routes.js';
 import { sharpPictureRenderer } from './pictures/render.js';
 import { workRoutes } from './work/routes.js';
 import { workReadRoutes } from './work-read/routes.js';
+import { viewRoutes } from './views/routes.js';
 import { liveRoutes } from './live/routes.js';
 import { liveAccess } from './live/access.js';
 import { liveSessionStore } from './live/store.js';
@@ -222,6 +223,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(messagePlaceRoutes, { db, sessions: identity });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workReadRoutes, { db, sessions: identity });
+  // One read per screen (#1109): a space's frame and its Conversation.
+  await app.register(viewRoutes, { db, sessions: identity, storage: fileStorage });
   const githubConfig = loadGithubConfig(env, identityConfig.publicOrigin);
   await app.register(githubRoutes, { db, sessions: identity, config: githubConfig });
   // The read-only App provider for the agents' PR link (#160 AC-3) and the reads of personal runs; it adds no GitHub permission.

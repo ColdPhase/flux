@@ -148,6 +148,7 @@ export * from './pictures.js';
 export * from './sketch.js';
 export * from './work.js';
 export * from './work-read.js';
+export * from './views.js';
 export * from './live.js';
 export * from './agent-proposals.js';
 export * from './returns.js';

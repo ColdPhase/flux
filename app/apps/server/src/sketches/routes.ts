@@ -43,7 +43,7 @@ export interface SketchRouteOptions {
  * Project sketches name an agent creator with its scoped owner, as the project overview does (#339 AC-2). Each
  * project on the page gets one bounded audience read; sketches outside a project never carry it.
  */
-async function scopedCreators(db: Database, workspaceId: string, page: SketchPage): Promise<SketchPage> {
+export async function scopedCreators(db: Database, workspaceId: string, page: SketchPage): Promise<SketchPage> {
   const agentsByProject = new Map<string, Set<string>>();
   for (const sketch of page.items) {
     if (!sketch.projectId || sketch.createdBy.kind !== 'agent') continue;

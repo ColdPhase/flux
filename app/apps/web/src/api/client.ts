@@ -51,6 +51,7 @@ export interface ApiRequestInit {
   /**
    * With `keep`: a refresh the person or the stream asked for (focus, a poll, an event, a change of the Inbox), or the entry into a space,
    * does not take a kept answer; it reads, other callers of the address join it, and it keeps what it gets for the next view that opens.
+   * It never takes a part a view read handed over (`parts`) either.
    */
   fresh?: boolean;
   /**
@@ -59,6 +60,11 @@ export interface ApiRequestInit {
    * view that ask one after the other share one read, and the next page reads again.
    */
   onePage?: true;
+  /**
+   * A view read (#1109): the parts of its answer, by the addresses of their own reads (`handOver`). When nothing could have changed
+   * them while the view was read, each part answers the next read of its address once, without a request.
+   */
+  parts?: (data: never) => Record<string, unknown>;
 }
 
 /** How long the reads that every view of a space or the shell asks for are kept (#862). */
@@ -90,6 +96,12 @@ const kept = new Map<string, { answer: Answer; until: number; page: string | nul
 /** The page an answer was read on, for `onePage`. */
 const page = () => (typeof location === 'undefined' ? '' : location.pathname);
 let keptGeneration = 0;
+/**
+ * The parts of a view read (#1109), by the address of each part's own read: the next plain read of the address takes its part once,
+ * instead of a request, while it is younger than `KEEP_MS`. Anything that forgets kept answers forgets these too, so a part is never
+ * older than the last thing that could have changed it.
+ */
+const handed = new Map<string, { answer: Answer; until: number }>();
 
 /**
  * Forgets every kept answer and every shared read in flight (#862): a write, an event of the live stream, a resync or sign-out could have
@@ -97,6 +109,7 @@ let keptGeneration = 0;
  */
 export function forgetKeptReads() {
   kept.clear();
+  handed.clear();
   endSharedReads();
   keptGeneration += 1;
 }
@@ -126,6 +139,8 @@ function keptChangedBy(event: KeptEventRef): string[] | null {
 export function forgetKeptFor(event: KeptEventRef) {
   const changed = keptChangedBy(event);
   if (changed === null) { forgetKeptReads(); return; }
+  // A view's parts are read together: any event may have changed one of them, and they are taken at once anyway.
+  handed.clear();
   endSharedReads();
   keptGeneration += 1;
   for (const path of [...kept.keys()]) if (changed.some((prefix) => path === prefix || path.startsWith(`${prefix}?`) || path.startsWith(`${prefix}/`))) kept.delete(path);
@@ -265,6 +280,16 @@ function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
   });
 }
 
+function handOver(response: Answer, parts: (data: unknown) => Record<string, unknown>) {
+  let data: unknown;
+  try { data = JSON.parse(response.text); } catch { return; }
+  const until = Date.now() + KEEP_MS;
+  for (const [path, value] of Object.entries(parts(data))) {
+    if (value === null || value === undefined) continue;
+    handed.set(path, { answer: { ok: true, status: 200, statusText: 'OK', text: JSON.stringify(value) }, until });
+  }
+}
+
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const plainRead = init.share === true && (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
@@ -272,8 +297,16 @@ export async function request<T>(path: string, init: ApiRequestInit = {}): Promi
   // A fresh read drops what was kept, so a caller that asks while it is on its way joins it instead of taking the older answer.
   if (keep && init.fresh) kept.delete(path);
   const held = keep && !init.fresh ? kept.get(path) : undefined;
+  // The part of a view read that this address answers (#1109), once; a read that must be fresh asks the server.
+  const plainGet = (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
+  const part = plainGet && !init.fresh ? handed.get(path) : undefined;
+  if (part && part.until <= Date.now()) handed.delete(path);
   let response: Answer;
-  if (held && held.until > Date.now() && (held.page === null || held.page === page())) {
+  if (part && part.until > Date.now() && !init.signal?.aborted) {
+    handed.delete(path);
+    response = part.answer;
+    if (keep) kept.set(path, { answer: response, until: part.until, page: init.onePage ? page() : null });
+  } else if (held && held.until > Date.now() && (held.page === null || held.page === page())) {
     if (init.signal?.aborted) throw new DOMException('The operation was aborted.', 'AbortError');
     response = held.answer;
   } else {
@@ -281,6 +314,7 @@ export async function request<T>(path: string, init: ApiRequestInit = {}): Promi
     response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
     // Kept only when nothing could have changed it while it was read.
     if (keep && response.ok && generation === keptGeneration) kept.set(path, { answer: response, until: Date.now() + keep, page: init.onePage ? page() : null });
+    if (init.parts && response.ok && generation === keptGeneration) handOver(response, init.parts as (data: unknown) => Record<string, unknown>);
   }
   let data: unknown = null;
   if (response.text) {

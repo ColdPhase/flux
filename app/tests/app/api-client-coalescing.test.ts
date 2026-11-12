@@ -304,3 +304,52 @@ test('an event forgets only the kept answers it can change: a message none, a pa
 });
 
 function randomId() { return '33333333-3333-4333-8333-333333333333'; }
+
+test('a view read hands its parts to their own addresses: each answers the next read once, a fresh read and a change ask the server (#1109)', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const parts = (view: { a: unknown; b: unknown; none: null }) => ({ '/api/v1/view/a': view.a, '/api/v1/view/b': view.b, '/api/v1/view/none': view.none });
+  const view = request('/api/v1/view', { parts });
+  await settle();
+  calls[0]!.finish({ a: { one: 1 }, b: { two: 2 }, none: null });
+  await view;
+  assert.deepEqual(await request('/api/v1/view/a'), { one: 1 }, 'a part answers its address');
+  assert.deepEqual(await request('/api/v1/view/b', { share: true, keep: 10_000 }), { two: 2 }, 'a kept read takes it too');
+  assert.equal(calls.length, 1, 'neither was a request');
+  assert.deepEqual(await request('/api/v1/view/b', { share: true, keep: 10_000 }), { two: 2 }, 'and keeps it like any answer it reads');
+  const again = request('/api/v1/view/a');
+  const empty = request('/api/v1/view/none');
+  await settle();
+  assert.deepEqual(calls.map((call) => call.path).slice(1), ['/api/v1/view/a', '/api/v1/view/none'], 'a part answers once; a missing part is read');
+  calls[1]!.finish({ one: 'read' });
+  calls[2]!.finish({ none: 'read' });
+  assert.deepEqual(await again, { one: 'read' });
+  await empty;
+
+  const second = request('/api/v1/view', { parts });
+  await settle();
+  calls[3]!.finish({ a: { one: 3 }, b: { two: 4 }, none: null });
+  await second;
+  const fresh = request('/api/v1/view/a', { share: true, keep: 10_000, fresh: true });
+  await settle();
+  assert.equal(calls.length, 5, 'a fresh read asks the server');
+  calls[4]!.finish({ one: 'fresh' });
+  assert.deepEqual(await fresh, { one: 'fresh' });
+  forgetKeptFor({ kind: 'project.message_sent.v1', objectType: 'project', objectId: 'p', workspaceId: 'w' });
+  const after = request('/api/v1/view/b');
+  await settle();
+  assert.equal(calls.length, 6, 'an event forgets what a view handed over');
+  calls[5]!.finish({ two: 'read' });
+  assert.deepEqual(await after, { two: 'read' });
+
+  const raced = request('/api/v1/view', { parts });
+  await settle();
+  forgetKeptReads();
+  calls[6]!.finish({ a: { one: 5 }, b: { two: 6 }, none: null });
+  await raced;
+  const late = request('/api/v1/view/a');
+  await settle();
+  assert.equal(calls.length, 8, 'a view read across a change hands nothing over');
+  calls[7]!.finish({ one: 'read' });
+  await late;
+});

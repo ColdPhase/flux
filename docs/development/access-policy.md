@@ -440,7 +440,13 @@ Leaving, or being removed from, a company or an encrypted space (`removeMember`,
 with the company) records `workspace.access_ended.v1` for that person alone, by name (`recordAccessEnded`); `authorizeDelivery`
 lets it through from their own row although they are no longer a member, and it names the workspace and nothing else (the
 actor is stored, never sent). Their tabs forget every kept answer, read the shell again, and an open place of one of its spaces
-lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`).
+lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`, through `GET .../space-shell`, #1109).
+
+**One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages and work summary)
+and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices, sources, agents' questions and the roots' work
+associations) call each part's own use case with the caller's principal, so every part keeps its own access check; neither reads a
+table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
+agents' questions are `null` while the space's AI is off (AG-10), as their own route refuses them.
 
 **Someone saw your messages (#862).** The first sight of messages in a space (`POST .../observations` that stores new
 observations) records `project.messages_observed.v1` for the authors of those messages who can read the space now, and for

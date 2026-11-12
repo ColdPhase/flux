@@ -140,7 +140,7 @@ class StopAndQuestions(unittest.TestCase):
         self.assertEqual([(s["taskNumber"], s["stoppedBy"]["name"]) for s in stops], [(1, ADA["name"])])
 
     def route_question(self, page: Page, *, asked: str, message_id: str, conversation_id: str) -> list[dict]:
-        """Stubs the question read and the answer; returns the answers the page sent."""
+        """Stubs the question read (its own and the conversation view's) and the answer; returns the answers the page sent."""
         sent: list[dict] = []
         pid = self.ids["project"]
         state = {"answer": None}
@@ -162,7 +162,15 @@ class StopAndQuestions(unittest.TestCase):
                                "messageId": message_id, "at": "2026-10-08T10:01:00.000Z"}
             route.fulfill(status=200, content_type="application/json", body=json.dumps(question()))
 
+        def view(route: Route) -> None:
+            # The conversation's first read carries its questions (#1109): the stub's question stands in them there too.
+            response = route.fetch()
+            body = response.json()
+            body["agentQuestions"] = {"projectId": pid, "questions": [question()]}
+            route.fulfill(response=response, json=body)
+
         page.route(re.compile(r".*/api/v1/projects/[^/]+/agent-questions$"), read)
+        page.route(re.compile(r".*/api/v1/projects/[^/]+/conversation-view$"), view)
         page.route(re.compile(r".*/api/v1/agent-questions/[^/]+/answer$"), answer)
         return sent
 
