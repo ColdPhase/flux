@@ -147,12 +147,12 @@ one, and it has no implementation issue.
 
 ## Verification (2026-09-27)
 
-Both scripts run in Docker (`mcr.microsoft.com/playwright/python:v1.62.0-noble-arm64`, with `pip install -q playwright==1.62.0`), from the repository root:
+Both scripts run in Docker (`mcr.microsoft.com/playwright/python:v1.65.0-noble-arm64`, with `pip install -q playwright==1.65.0`), from the repository root:
 
 ```sh
 docker run --rm -v "$PWD/docs/design/personal-ai:/work" -w /work \
-  mcr.microsoft.com/playwright/python:v1.62.0-noble-arm64 \
-  sh -c "pip install -q playwright==1.62.0 && python3 tools/audit.py && python3 tools/interactions.py"
+  mcr.microsoft.com/playwright/python:v1.65.0-noble-arm64 \
+  sh -c "pip install -q playwright==1.65.0 && python3 tools/audit.py && python3 tools/interactions.py"
 ```
 
 - **`tools/audit.py`** is adapted from O-003's audit. It covers 38 states from 1440×900 to 360×780, both identities included, with touch emulation at 1024 px and below. Results: 0 horizontal overflow, 0 console errors, 0 text contrast failures below WCAG AA, 0 visible text under 12 px, 0 touch targets under 44 px in either width or height. Inline references in sentences need only 24 px, under the WCAG 2.5.8 inline exception. At 200% zoom there is no overflow in the default, assistant and ask states. On the software keyboard (390×480, ask mode), the composer and ask bar stay visible. The first 40 Tab stops show a focus ring every time: 39 stops default, 38 with no AI, 39 as Kai. Under reduced motion, 0 elements animate. Raw output is in [`audit.json`](audit.json). The [`screenshots/`](screenshots) folder is raw audit output, one `<w>x<h>-<state>.png` per audited state, not a curated reference set.

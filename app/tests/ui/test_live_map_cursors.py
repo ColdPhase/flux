@@ -441,11 +441,19 @@ class LiveCursors(LiveFixture):
             return {'ada': await ada_caret.bounding_box(), 'kai': await kai_caret.bounding_box(), 'ada_tag': await ada_tag.bounding_box(), 'kai_tag': await kai_tag.bounding_box()}
 
         box = await boxes()
+        # The carets are drawn in their own layer, which follows the editor's next measure: on WebKit 27.2 (Playwright 1.65) the first read
+        # can still show one caret where it was before the page settled (Kai's caret 173 px left of its own name). Read again until each name
+        # is over its caret; if they never agree, the assertions below fail with what was last read.
+        for _ in range(50):
+            if all(abs(box[f'{who}_tag']['x'] - box[who]['x']) <= 4 for who in ('ada', 'kai')):
+                break
+            await lia.wait_for_timeout(100)
+            box = await boxes()
         # Each name sits directly above its own caret, so it is never taken for the other person's.
         for who in ('ada', 'kai'):
             tag, caret = box[f'{who}_tag'], box[who]
             self.assertLessEqual(tag['y'] + tag['height'], caret['y'] + 1, f'{who}: the name is above the caret')
-            self.assertLessEqual(abs(tag['x'] - caret['x']), 4, f'{who}: the name starts at its caret')
+            self.assertLessEqual(abs(tag['x'] - caret['x']), 4, f'{who}: the name starts at its caret (tag {tag}, caret {caret}, all {box})')
         # Two tags on one row sit side by side without touching.
         self.assertLess(box['ada']['x'], box['kai']['x'], 'Ada is left of Kai in the same row, so her tag is first')
         self.assertGreaterEqual(box['kai_tag']['x'], box['ada_tag']['x'] + box['ada_tag']['width'], 'two tags on one row do not touch')

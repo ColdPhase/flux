@@ -14,7 +14,7 @@
 # the prototype Dockerfile under docs/product/research/evidence/460, which is research evidence and is never built.
 # Playwright is moved by hand on both sides of each pair, so it is ignored where Dependabot would move one side only: the
 # `playwright` npm package (app/package.json, which docker/Dockerfile's e2e image must match) and the
-# mcr.microsoft.com/playwright images (docker/Dockerfile, docker/ui-tests.Dockerfile, docker/public-sim/client.Dockerfile).
+# mcr.microsoft.com/playwright and playwright/python images (docker/Dockerfile, docker/ui-tests.Dockerfile, docker/public-sim/client.Dockerfile).
 version: 2
 updates:
   # The pnpm workspace. One lockfile at app/pnpm-lock.yaml governs every package under app/ (apps, packages, examples).
@@ -92,7 +92,10 @@ updates:
     commit-message:
       prefix: "Deps"
     ignore:
-      - dependency-name: "mcr.microsoft.com/playwright*"
+      # Dependabot names these images without the registry: its pull request #1194 (2026-11-10) read "Updates `playwright`" and
+      # "Updates `playwright/python`", so the earlier `mcr.microsoft.com/playwright*` entry matched neither. Both names are listed.
+      - dependency-name: "playwright"
+      - dependency-name: "playwright/python"
       # Every Node stage is pinned by digest alone (`FROM node@sha256:...`, with its tag in a comment): Dependabot has no tag to
       # follow and in #1086 offered the Debian `node:26` image. The pin is moved by hand to the current `node:24-alpine`
       # digest (docs/agents/ci-and-releases.md#security-scanning, #1179).

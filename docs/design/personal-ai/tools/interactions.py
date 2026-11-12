@@ -1,7 +1,7 @@
 """Exercise the #57 prototype's interactions in Docker Playwright (same image as tools/audit.py).
 
   docker run --rm -v "$PWD/docs/design/personal-ai:/work" -w /work \
-    mcr.microsoft.com/playwright/python:v1.62.0-noble python3 tools/interactions.py
+    mcr.microsoft.com/playwright/python:v1.65.0-noble python3 tools/interactions.py
 
 Each check prints PASS/FAIL. This proves static prototype behavior only: no model, billing,
 permission or persistence is involved.

@@ -14,8 +14,8 @@ def native_touch_driver(engine):
     if engine != "webkit":
         yield
         return
-    if version("playwright") != "1.62.0":
-        raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: Python Playwright 1.62.0 is required")
+    if version("playwright") != "1.65.0":
+        raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: Python Playwright 1.65.0 is required")
     from playwright._impl._driver import compute_driver_executable
     node, cli = compute_driver_executable()
     package = Path(cli).parent
@@ -38,11 +38,20 @@ def native_touch_driver(engine):
                 os.environ[name] = value
 
 
+def _driver_call(impl, kind, point):
+    """The extension's one private method. Playwright 1.65's client validates every method it sends and every result it
+    receives against its protocol scheme, which has no entry for `fluxNativeTouch`: register pass-through entries (the driver
+    extension validates the typed point itself) and send through the page's own channel, as an internal call."""
+    from playwright._impl.protocol.validator_primitives import scheme
+    for name in ("PageFluxNativeTouchParams", "PageFluxNativeTouchResult"):
+        scheme.setdefault(name, lambda value, path, context: value)
+    return impl._channel._call("fluxNativeTouch", {"type": kind, "point": point}, 30_000, None, is_internal=True)
+
+
 def _webkit_command(page, kind, point):
     impl = page._impl_obj
-    witness = page._sync(impl._channel.send_return_as_dict(
-        "fluxNativeTouch", None, {"type": kind, "point": point}, is_internal=True))
-    if witness != {"pageGuid": impl._guid, "transport": "webkit-native", "version": "1.62.0", "revision": "2336"}:
+    witness = page._sync(_driver_call(impl, kind, point))
+    if witness != {"pageGuid": impl._guid, "transport": "webkit-native", "version": "1.65.0", "revision": "2388"}:
         raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: wrong native transport or product Page GUID")
 
 
@@ -98,9 +107,8 @@ async def native_touch_sender(page):
         # Accepted native WebKit backend needs integer CSS points (at most half-pixel rounding).
         point = {"x": round(last[0]), "y": round(last[1]), "id": touch_id}
         impl = page._impl_obj
-        witness = await impl._channel.send_return_as_dict(
-            "fluxNativeTouch", None, {"type": kind, "point": point}, is_internal=True)
-        if witness != {"pageGuid": impl._guid, "transport": "webkit-native", "version": "1.62.0", "revision": "2336"}:
+        witness = await _driver_call(impl, kind, point)
+        if witness != {"pageGuid": impl._guid, "transport": "webkit-native", "version": "1.65.0", "revision": "2388"}:
             raise RuntimeError("FLUX_NATIVE_TOUCH_UNSUPPORTED: wrong native transport or product Page GUID")
 
     return send
