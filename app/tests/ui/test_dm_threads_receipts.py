@@ -174,7 +174,8 @@ class DmThreadsReceipts(unittest.TestCase):
         thoughts = self.get(page, f"/api/v1/sketches/{mine[0]['id']}")["thoughts"]
         self.assertEqual([t["text"] for t in thoughts], [ROOT_TEXT], "the message's words are a thought on My map")
         page.get_by_role("status").get_by_role("button", name="Open").click()
-        expect(page).to_have_url(re.compile(r"/map$"))
+        # My map opens on the person's one map, at its own address once that is known.
+        expect(page).to_have_url(re.compile(r"/map(/[0-9a-f-]+)?$"))
         expect(page.get_by_text(ROOT_TEXT).first).to_be_visible()
 
     # ------------------------------------------------------------------ private reply thread
