@@ -206,7 +206,7 @@ def main():
     examples = {}
     status, photo = first.call("PUT", "/api/v1/me/photo", small_png())
     if status == 200 and isinstance(photo, dict):
-        examples["/api/v1/pictures/:id/:size"] = {"id": photo["photo"], "size": "128"}
+        examples["/api/v1/pictures/:pictureId/:size"] = {"pictureId": photo["photo"], "size": "128"}
     document = openapi(routes, args.server, ids, args.only or None, examples)
     with open(f"{args.out}/openapi.json", "w", encoding="utf-8") as handle:
         json.dump(document, handle, indent=1)

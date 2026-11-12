@@ -40,9 +40,9 @@ export async function pictureRoutes(app: FastifyInstance, { db, sessions, storag
     return found;
   });
 
-  app.get<{ Params: { id: string; size: string } }>('/api/v1/pictures/:id/:size', async (request, reply) => {
+  app.get<{ Params: { pictureId: string; size: string } }>('/api/v1/pictures/:pictureId/:size', async (request, reply) => {
     const principal = (await sessions.requirePrincipal(request)).principal;
-    const bytes = await pictures.readPicture(principal, request.params.id, Number(request.params.size) as PictureSize);
+    const bytes = await pictures.readPicture(principal, request.params.pictureId, Number(request.params.size) as PictureSize);
     return reply.header('Content-Type', 'image/webp').header('Content-Length', bytes.byteLength)
       .header('Cache-Control', 'private, max-age=31536000, immutable').header('X-Content-Type-Options', 'nosniff')
       .header('Content-Security-Policy', "default-src 'none'; sandbox").header('Cross-Origin-Resource-Policy', 'same-origin')
