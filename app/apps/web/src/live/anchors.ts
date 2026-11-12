@@ -1,4 +1,4 @@
-import type { LiveContextRef, LivePresentationRef } from '@flux/contracts';
+import { plainMessageText, type LiveContextRef, type LivePresentationRef } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { getConversation } from '../conversations/api';
 import { getMaterial } from '../materials/api';
@@ -58,7 +58,7 @@ export function sameContext(a: LiveContextRef | null | undefined, b: LiveContext
 export async function anchorLabel(projectId: string, context: LiveContextRef, signal?: AbortSignal): Promise<string | null> {
   try {
     switch (context.type) {
-      case 'conversation': return excerpt((await getConversation(context.id, signal)).firstMessageBody);
+      case 'conversation': return excerpt(plainMessageText((await getConversation(context.id, signal)).firstMessageBody));
       case 'work': return (await getWork(context.id, signal)).title;
       case 'sketch': return (await getSketch(context.id, signal)).title;
       case 'doc': {

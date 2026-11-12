@@ -1,5 +1,5 @@
 import { useMatches } from 'react-router';
-import type { Conversation, ConversationRootWindow, Material } from '@flux/contracts';
+import { plainMessageText, type Conversation, type ConversationRootWindow, type Material } from '@flux/contracts';
 import { Icon } from '../ui';
 import { useShellData } from '../app/data';
 import { audienceLine, useProjectShell } from './data';
@@ -19,7 +19,7 @@ export function OverviewContext({ message = false }: { message?: boolean }) {
   const open = useOpenConversation();
   const { me } = useShellData();
   if (!shell || (!open?.conversation && !message)) return null;
-  const title = open?.conversation?.firstMessageBody.split('\n')[0];
+  const title = open?.conversation && plainMessageText(open.conversation.firstMessageBody).split('\n')[0];
   return <div className="ov-panel-context" aria-label="Overview context">
     <strong>{shell.project.name}</strong>
     {title ? <span title={title}>{title}</span> : null}

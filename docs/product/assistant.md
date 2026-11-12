@@ -222,6 +222,15 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   receives their messages. `/ai` works in a DM's threads too (#1016): the answer is a card in the
   thread panel that only the asker sees, Show everyone posts it as a reply in that thread, the
   model reads that thread and nothing else, and the line appears in the DM's main line.
+- **How an answer is written (#1247).** An agent's words, in its private chat, in a card and after Show
+  everyone, are drawn by the one message renderer, the same as a person's message. The agent may use
+  exactly this small subset of Markdown, where it helps: `**bold**`, `*italic*`, `` `inline code` ``, a
+  fenced code block, a list with `- ` or `1. `, and a quote with `> `. Its brief says so (the `FORMAT`
+  rule): sentences first, and a list only for several items.
+  Headings, tables, images, HTML and Markdown links are not part of it and stay as the raw symbols
+  that were written, so the brief forbids them; a bare web address, `#12`, `[[Wiki page]]` and the
+  `[S<n>]` source marks keep working as before. The stored body is the Markdown text: search and the
+  brief an agent reads see it as text, while Copy text and previews show the words without the marks.
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.

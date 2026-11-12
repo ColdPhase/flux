@@ -84,9 +84,9 @@ export type MessageReferenceCard =
 /**
  * The web addresses of a message that get a link card (#469), in order and without repeats: the one rule the reader and the
  * server share, so a card the server returns lands on the address the reader shows. The server reads them from the stored body,
- * never from a request, so no caller can name an address for it to fetch.
+ * never from a request, so no caller can name an address for it to fetch. A `*` ends no address: `**https://a.example**` is bold (#1247).
  */
-export const LINK_URL_SOURCE = String.raw`https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]]`;
+export const LINK_URL_SOURCE = String.raw`https?:\/\/[^\s<>"']+[^\s<>"'.,;:!?)\]*]`;
 export const LINK_CARD_LIMIT = 3;
 export const LINK_URL_MAX_LENGTH = 2048;
 export function messageLinkUrls(body: string): string[] {

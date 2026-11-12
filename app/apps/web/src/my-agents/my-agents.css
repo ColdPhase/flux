@@ -75,7 +75,7 @@
 .agc__meta { align-self: stretch; min-width: 0; }
 .agc__meta-rest { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agc__turn .dm-msg__body { white-space: pre-wrap; }
-.agc__answer > p { margin: 0; }
+.agc__answer > :is(p, .assistant-answer__body) { margin: 0; }
 .agc__state { color: var(--t2); }
 .agc__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); }
 .agc__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; margin-top: 8px; padding: 4px 10px; border-radius: var(--r-pill); background: var(--sub); font-size: var(--fs-xs); color: var(--t2); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

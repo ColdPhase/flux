@@ -2,6 +2,7 @@ import { type ReactNode, type Ref, type KeyboardEvent, type ClipboardEvent, type
 import { Icon, useToast } from '../ui';
 import { AttachButton } from './Files';
 import type { ComposerState } from './draft';
+import { formatKey } from './formatKeys';
 import { pastedFiles } from './paste';
 
 /**
@@ -44,7 +45,7 @@ export function ComposerBox({ id, label, placeholder, value, onChange, onKeyDown
       <label className="ui-vh" htmlFor={id}>{label}</label>
       <textarea id={id} ref={fieldRef} rows={1} value={value} maxLength={maxLength} placeholder={placeholder} disabled={disabled}
         onChange={(event) => onChange(event.target.value, event.target.selectionStart)} onSelect={onSelect ? (event) => onSelect(event.currentTarget.selectionStart) : undefined}
-        onBlur={onBlur} onKeyDown={onKeyDown} onPaste={onPaste} {...fieldProps} />
+        onBlur={onBlur} onKeyDown={(event) => { if (!formatKey(event)) onKeyDown?.(event); }} onPaste={onPaste} {...fieldProps} />
       <button type="button" className="composer__send" aria-label={sendLabel} aria-disabled={sendDisabled} onClick={onSend}><Icon name="send" /></button>
       {menu}
     </div>

@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection } from '@flux/contracts';
+import { plainMessageText, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type WorkRowProjection } from '@flux/contracts';
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
@@ -83,6 +83,8 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
     </section>
   );
 }
+
+const clip = (text: string) => (text.length > 280 ? `${text.slice(0, 279)}…` : text);
 
 /**
  * Details for a project (#117, direction C "overview"): what the open conversation — or one of
@@ -173,7 +175,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
-  const title: ReactNode = messageMode ? message ? <>Message from {author}</> : 'Message' : conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
+  const title: ReactNode = messageMode ? message ? <>Message from {author}</> : 'Message' : conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
 
   return (
     <div className={`details ov${projectMode ? ' ov--project' : ''}`} data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
@@ -191,7 +193,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         {/* A thread's or a message's Details name it and the space (#266). */}
         <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
         <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3></div>
-        {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
+        {message ? <p className="details__lead ov-quote">{clip(plainMessageText(message.body))}</p> : null}
       </>}
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>

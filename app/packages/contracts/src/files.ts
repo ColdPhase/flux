@@ -1,3 +1,5 @@
+import { plainMessageText } from './message-format.js';
+
 /**
  * Stored files (#154): bytes a person stages privately, then attaches to exactly one message. Contract:
  * docs/development/task-discussions/2026-10-01-contribution-effects-and-files.md ("Real bytes and
@@ -61,9 +63,16 @@ export interface MessageFile extends FileDetail {
   size: number;
 }
 
-/** A system preview; the stored authored message body remains unchanged. */
+const attachedFiles = (count: number) => (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
+
+/** A system preview: the message's words without its formatting marks (#1247). The stored authored message body remains unchanged. */
 export function messagePreview(body: string, count = 0): string {
-  return body || (count === 1 ? '1 attached file' : count > 1 ? `${count} attached files` : '');
+  return plainMessageText(body) || attachedFiles(count);
+}
+
+/** A conversation's opening words as they were typed (its first message, or what it attached): the text drawn again as a message, or kept on a map. */
+export function messageOpening(body: string, count = 0): string {
+  return body || attachedFiles(count);
 }
 
 /** Images a map thought may show (#252): checked by their bytes' signature, never by name or a declared type. SVG is never one. */

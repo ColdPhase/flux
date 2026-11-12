@@ -24,7 +24,7 @@ const applied = (state: string) => state === 'applied' || state === 'applied_aft
 /** The assistant's answer at `index` of the thread's feed. */
 export function answerElements(entry: AnswerEntry, context: AnswerContext): ReactNode[] {
   const { meId, assistant, changes, referenceWork } = context;
-  const lookups = { projectId: context.projectId, messages: context.messages, work: referenceWork.rows, author: context.author };
+  const lookups = { projectId: context.projectId, messages: context.messages, work: referenceWork.rows, author: context.author, people: context.lookups.people };
   const answerItem = (item: AnswerEntry) => {
     const answer = item.answer;
     const runChanges = changes.byRun.get(answer.runId);

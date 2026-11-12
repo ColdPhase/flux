@@ -1,4 +1,4 @@
-import type { Material } from '@flux/contracts';
+import { plainMessageText, type Material } from '@flux/contracts';
 import { AskBar } from '../assistant/ConversationParts';
 import { assistantUses, AssistantSuggestions } from '../assistant/MeetAssistant';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
@@ -29,7 +29,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
   const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
   const trayOpen = materials.trayOpen;
-  const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
+  const title = conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
   return <div className="composer project-convo__composer"><div className="composer__in">
     {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material: Material) => void actions.cite(material)} /> : null}
     <ConnectionLine />

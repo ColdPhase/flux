@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ComponentType, type ReactNode } from 'react';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import type { Conversation, ConversationMessage, ConversationRoot, NativeWorkRow, ObjectNotice } from '@flux/contracts';
+import { plainMessageText, type Conversation, type ConversationMessage, type ConversationRoot, type NativeWorkRow, type ObjectNotice } from '@flux/contracts';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { ApiError } from '../api/client';
 import { PanelMeta } from '../ui';
@@ -111,7 +111,7 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   // "Work on this together" starts at the open thread, or at the newest root as the project page did.
   const latest = roots.roots.at(-1) ?? null;
   const live = thread ? { id: thread.id, label: thread.firstMessageBody } : latest ? { id: latest.conversationId, label: latest.message.body } : null;
-  useRegisterLiveHere(live ? { projectId: project.id, context: { type: 'conversation', id: live.id }, label: excerpt(live.label) } : null, null);
+  useRegisterLiveHere(live ? { projectId: project.id, context: { type: 'conversation', id: live.id }, label: excerpt(plainMessageText(live.label)) } : null, null);
 
   const opener = useRef<string | null>(null);
   const open = useCallback((item: ConversationRoot, reply: boolean) => {

@@ -101,7 +101,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { messageWork, referenceWork } = reading;
   const others = (core.people ?? []).filter((person) => person.kind === 'human' && person.id !== me.user.id).map((person) => person.name.trim().split(/\s+/)[0] || person.name);
   const answers = { meId: me.user.id, projectId: project.id, writable, messages, assistant, changes, referenceWork, author, others,
-    lookups: { projectId: project.id, messages, work: referenceWork.rows, author },
+    lookups: { projectId: project.id, messages, work: referenceWork.rows, author, people: core.people },
     onAskAbout: writable && !aiOff ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null };
   return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}

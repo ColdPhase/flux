@@ -1,0 +1,21 @@
+/* Formatted text in a message (#1247, F-026 §6): bold, italic, inline code, a code block and lists, in every place a message's text is
+   drawn. Existing tokens only; inline code is the Wiki's (`.doc-prose code`), a code block is the Wiki's `pre` on the same surface. */
+.msg-strong { font-weight: 600; }
+.msg-em { font-style: italic; }
+.msg-code { padding: 1px 5px; border-radius: 4px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); font-family: var(--mono); font-size: .86em; overflow-wrap: anywhere; }
+
+.msg-list { margin: 6px 0; padding-left: 1.4em; }
+ul.msg-list { list-style: disc; }
+ol.msg-list { list-style: decimal; }
+.msg-list > li { padding-left: 2px; }
+.msg-list > li + li { margin-top: 2px; }
+.msg-list > li::marker { color: var(--t3); }
+
+.msg-codeblock { display: grid; min-width: 0; max-width: 100%; margin: 6px 0; border-radius: var(--r-sm); background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); white-space: normal; }
+.msg-codeblock__bar { user-select: none; display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: 0 var(--s-1) 0 var(--s-3); }
+.msg-codeblock__lang { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); }
+.msg-codeblock__pre { margin: 0; padding: 0 var(--s-3) var(--s-3); overflow-x: auto; font-family: var(--mono); font-size: var(--fs-md); line-height: 1.55; white-space: pre; tab-size: 2; border-radius: 0 0 var(--r-sm) var(--r-sm); }
+.msg-codeblock__pre:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+
+/* An own message's bubble is already the `--own` grey, within a step of `--sub`: code sits on `--el` there so that it still reads as a block. */
+.is-mine .message-bubble :is(.msg-code, .msg-codeblock) { background: var(--el); }
