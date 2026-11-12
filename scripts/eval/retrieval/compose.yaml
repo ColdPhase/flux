@@ -1,0 +1,54 @@
+# The retrieval bench (#1242): every engine runs on the same two CPUs (BENCH_CPUS, a cpuset shared by all of them, as on a 2 vCPU
+# host) with Flux's own memory limit for PostgreSQL (768 MiB, docker/compose.yaml) and 1 GiB for each added service. The harness is
+# the client and runs outside that cpuset. Run it with ./run.sh, never by hand: the project name and volumes are per run.
+name: ${COMPOSE_PROJECT_NAME:-flux-v021-rag}
+
+x-limits: &limits
+  cpuset: ${BENCH_CPUS:-20,21}
+
+services:
+  db:
+    <<: *limits
+    build: { context: ., dockerfile: Dockerfile.pg }
+    image: flux-v021-rag-pg:bench
+    environment: { POSTGRES_PASSWORD: bench, POSTGRES_USER: bench, POSTGRES_DB: bench }
+    command: ["postgres", "-c", "shared_preload_libraries=pg_search", "-c", "max_connections=40"]
+    mem_limit: 768m
+    memswap_limit: 768m
+    shm_size: 256m
+    ports: ["127.0.0.1:${BENCH_DB_PORT:-25910}:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U bench -d bench"], interval: 2s, retries: 60 }
+  embed:
+    <<: *limits
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4
+    command: ["--model-id", "${BENCH_EMBED_MODEL:-intfloat/multilingual-e5-small}", "--max-batch-tokens", "8192", "--auto-truncate"]
+    environment: { HF_HUB_DISABLE_TELEMETRY: "1" }
+    volumes:
+      - hf:/data
+    mem_limit: ${BENCH_EMBED_MEMORY:-2g}
+    memswap_limit: ${BENCH_EMBED_MEMORY:-2g}
+    ports: ["127.0.0.1:${BENCH_EMBED_PORT:-25911}:80"]
+  meili:
+    <<: *limits
+    image: getmeili/meilisearch:v1.56.2
+    environment: { MEILI_MASTER_KEY: bench-master-key-0123456789, MEILI_NO_ANALYTICS: "true", MEILI_ENV: development }
+    mem_limit: 1g
+    memswap_limit: 1g
+    ports: ["127.0.0.1:${BENCH_MEILI_PORT:-25912}:7700"]
+  harness:
+    build: { context: ., dockerfile: Dockerfile.harness }
+    image: flux-v021-rag-harness:bench
+    volumes:
+      - .:/bench
+    environment:
+      BENCH_DB: postgresql://bench:bench@db:5432/bench
+      BENCH_EMBED: http://embed:80
+      BENCH_MEILI: http://meili:7700
+      BENCH_EMBED_MODEL: ${BENCH_EMBED_MODEL:-intfloat/multilingual-e5-small}
+      BENCH_PROJECT: ${COMPOSE_PROJECT_NAME:-flux-v021-rag}
+    profiles: [run]
+    depends_on: { db: { condition: service_healthy } }
+
+volumes:
+  hf:
+    name: flux-v021-rag-hf

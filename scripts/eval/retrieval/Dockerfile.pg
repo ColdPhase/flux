@@ -1,0 +1,14 @@
+# The retrieval bench's PostgreSQL (#1242): PostgreSQL 18 with pg_search (ParadeDB, BM25), pgvector, pg_trgm and unaccent, plus a
+# Polish Hunspell dictionary (sjp.pl via Debian's hunspell-pl) installed as the `polish` ispell dictionary. Bench only: Flux's own
+# database stays the official postgres:18 image until a recorded decision changes it.
+FROM paradedb/paradedb:0.26.6-pg18
+USER root
+# A short Polish stop-word list written for the bench (the dictionary package ships none).
+COPY polish.stop /usr/share/postgresql/18/tsearch_data/polish.stop
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends hunspell-pl && rm -rf /var/lib/apt/lists/* \
+ && d=/usr/share/postgresql/18/tsearch_data \
+ && iconv -f ISO-8859-2 -t UTF-8 /usr/share/hunspell/pl_PL.dic > "$d/polish.dict" \
+ && iconv -f ISO-8859-2 -t UTF-8 /usr/share/hunspell/pl_PL.aff | sed 's/^SET ISO8859-2/SET UTF-8/' > "$d/polish.affix"
+# The image's bootstrap would add PostGIS, pg_cron and its own tuning; the bench keeps PostgreSQL's defaults, as Flux does.
+RUN rm -f /docker-entrypoint-initdb.d/10_bootstrap_paradedb.sh
+USER postgres

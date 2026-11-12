@@ -1,0 +1,1330 @@
+{
+ "_about": "Known-answer facts and questions for the retrieval bench (#1242). Each fact is one message placed in the seeded space; distractors are near-miss messages on the same topic. Each question names its gold facts. `keywords` is what an agent would type, taken from the QUESTION's words only (never the gold message's); `keywords_other` is their literal translation into the other language (Polish or English), as an agent asked to search in both languages would add. `answer_check` is a case-insensitive regex an answer must match for answer accuracy. Categories: exact (rare tokens shared), inflect (Polish inflection differs), paraphrase (other words, same language), crosslang (question and message in different languages), nodiacritics (Polish typed without diacritics), typo, temporal (needs a date filter or the latest of several), recent (inside today's 40-message window).",
+ "facts": [
+  {
+   "key": "sht45_order",
+   "conv": "czujniki-main",
+   "at": "2026-04-14T10:12",
+   "author": "bogdan",
+   "text": "Zamówienie na 400 sztuk SHT45 poszło dziś do TME, numer zamówienia TME-2026-04471. Dostawa ma być za 3 tygodnie."
+  },
+  {
+   "key": "sensor_decision_sept",
+   "conv": "czujniki-main",
+   "at": "2026-09-17T15:40",
+   "author": "ada",
+   "text": "Ustalone na dzisiejszym spotkaniu: w nowej wersji stacji zostajemy przy Sensirion SHT45, a BME688 odpada, bo w trybie gazowym zużywał za dużo prądu.",
+   "distractors": [
+    {
+     "at": "2026-09-03T11:05",
+     "author": "piotr",
+     "text": "A może jednak BME688 w nowej wersji? Ma pomiar gazów, klienci z miast by to docenili."
+    },
+    {
+     "at": "2026-06-10T09:30",
+     "author": "ada",
+     "text": "Ustalone: obudowę zamawiamy w kolorze grafitowym, biały za szybko żółknie na słońcu."
+    }
+   ]
+  },
+  {
+   "key": "battery_life",
+   "conv": "czujniki-kalibracja",
+   "at": "2026-05-22T13:00",
+   "author": "piotr",
+   "text": "Test baterii zakończony: przy pomiarze co 10 minut stacja wytrzymała 14 miesięcy na dwóch ogniwach 18650 (symulacja przyspieszona).",
+   "distractors": [
+    {
+     "at": "2026-05-02T12:00",
+     "author": "piotr",
+     "text": "Ruszył przyspieszony test baterii, wyniki za jakieś trzy tygodnie."
+    }
+   ]
+  },
+  {
+   "key": "calib_offset",
+   "conv": "czujniki-kalibracja",
+   "at": "2026-06-03T16:20",
+   "author": "marta",
+   "text": "Po kalibracji w komorze klimatycznej wychodzi stały offset +0,8°C dla serii z lutego; poprawkę wpisałam do firmware 2.3.1."
+  },
+  {
+   "key": "firmware_rollback",
+   "conv": "czujniki-main",
+   "at": "2026-07-08T08:55",
+   "author": "jonas",
+   "text": "Rolling back firmware 2.4.0 on all field units: it bricks the LoRa radio after a watchdog reset. We're back on 2.3.1 until Marta's fix lands."
+  },
+  {
+   "key": "lora_range",
+   "conv": "czujniki-main",
+   "at": "2026-05-05T17:10",
+   "author": "piotr",
+   "text": "Bramka LoRaWAN na dachu biurowca przy Grunwaldzkiej ma zasięg ok. 2,7 km, sprawdziłem rowerem z nadajnikiem testowym."
+  },
+  {
+   "key": "enclosure_seal",
+   "conv": "czujniki-main",
+   "at": "2026-08-19T14:30",
+   "author": "ola",
+   "text": "Obudowy od Plastmetu przeszły test szczelności IP67, ale uszczelka przy dławiku pęka po 200 cyklach termicznych. Trzeba zmienić materiał na EPDM."
+  },
+  {
+   "key": "wholesale_price",
+   "conv": "zarzad-main",
+   "at": "2026-06-25T11:00",
+   "author": "bogdan",
+   "text": "Cena dla klientów hurtowych na 2027: 1 290 zł netto za stację, przy 50+ sztukach rabat 12%."
+  },
+  {
+   "key": "investor",
+   "conv": "zarzad-main",
+   "at": "2026-10-02T18:15",
+   "author": "ada",
+   "text": "Fundusz Black Pine chce wejść z 2,5 mln zł za 15% udziałów, term sheet do końca października."
+  },
+  {
+   "key": "hire_embedded",
+   "conv": "rek-main",
+   "at": "2026-07-30T10:45",
+   "author": "marta",
+   "text": "Na stanowisko embedded developera wybraliśmy Kamila Dudę, startuje 1 września, umowa B2B."
+  },
+  {
+   "key": "qa_salary",
+   "conv": "rek-main",
+   "at": "2026-06-12T09:20",
+   "author": "marta",
+   "text": "Widełki dla junior QA: 7–9 tys. zł brutto na umowę o pracę."
+  },
+  {
+   "key": "pcb_supplier",
+   "conv": "dostawy-main",
+   "at": "2026-05-27T15:00",
+   "author": "sarah",
+   "text": "Decision: we're moving PCB assembly from Satel-Tech to Eurocircuits starting with the June batch. Satel-Tech's lead time slipped to 9 weeks.",
+   "distractors": [
+    {
+     "at": "2026-03-15T10:00",
+     "author": "sarah",
+     "text": "Satel-Tech confirmed the PCB assembly for March, lead time 4 weeks."
+    }
+   ]
+  },
+  {
+   "key": "hs_code",
+   "conv": "dostawy-main",
+   "at": "2026-04-02T12:40",
+   "author": "bogdan",
+   "text": "Paczka z Shenzhen utknęła na odprawie celnej w Małaszewiczach, brakowało kodu HS na fakturze. Podałem 9025 80 40."
+  },
+  {
+   "key": "courier_switch",
+   "conv": "dostawy-main",
+   "at": "2026-09-09T16:05",
+   "author": "ola",
+   "text": "Od października wysyłki krajowe robimy przez InPost, z DPD rezygnujemy, za dużo uszkodzonych paczek."
+  },
+  {
+   "key": "warehouse_june",
+   "conv": "dostawy-main",
+   "at": "2026-06-30T17:30",
+   "author": "piotr",
+   "text": "Stan magazynu w Pruszczu na koniec czerwca: 37 kompletnych stacji i 120 płytek bez obudów."
+  },
+  {
+   "key": "warehouse_sept",
+   "conv": "dostawy-main",
+   "at": "2026-09-30T17:20",
+   "author": "piotr",
+   "text": "Stan magazynu w Pruszczu na koniec września: 12 kompletnych stacji, 210 płytek, 0 obudów."
+  },
+  {
+   "key": "web_launch",
+   "conv": "www-main",
+   "at": "2026-10-20T12:00",
+   "author": "sarah",
+   "text": "New website goes live on November 24; we're freezing content on the 17th."
+  },
+  {
+   "key": "web_cms",
+   "conv": "www-main",
+   "at": "2026-05-14T14:10",
+   "author": "jonas",
+   "text": "We picked Payload over Strapi, mainly because of the TypeScript config and how easy it is to self-host."
+  },
+  {
+   "key": "web_domain",
+   "conv": "www-main",
+   "at": "2026-04-08T09:00",
+   "author": "jonas",
+   "text": "The domain zielonydach.eu renews on 2027-03-11; it's on Ada's OVH account."
+  },
+  {
+   "key": "web_analytics",
+   "conv": "www-main",
+   "at": "2026-07-21T11:25",
+   "author": "sarah",
+   "text": "Dropping Google Analytics. Plausible, self-hosted on our VPS, from now on, so no cookie banner needed."
+  },
+  {
+   "key": "gdansk_contract",
+   "conv": "gdansk-main",
+   "at": "2026-06-16T13:00",
+   "author": "ada",
+   "text": "Umowa z Gdańskiem podpisana: 60 stacji na przystankach, montaż do 30 września, kara umowna 0,2% za każdy dzień zwłoki."
+  },
+  {
+   "key": "gdansk_delay",
+   "conv": "gdansk-main",
+   "at": "2026-09-24T10:10",
+   "author": "tomasz",
+   "text": "Montaż na przystankach opóźniony o 2 tygodnie: ZTM nie wydał jeszcze zgody na podłączenie zasilania w wiatach."
+  },
+  {
+   "key": "gdansk_contact",
+   "conv": "gdansk-main",
+   "at": "2026-06-18T09:40",
+   "author": "ada",
+   "text": "Kontakt po stronie miasta: inż. Halina Kurek, tel. 58 323 11 47."
+  },
+  {
+   "key": "api_rate",
+   "conv": "czujniki-main",
+   "at": "2026-08-04T10:30",
+   "author": "jonas",
+   "text": "The cloud API now rate-limits each station to 120 requests per hour; anything above that gets a 429."
+  },
+  {
+   "key": "ce_report",
+   "conv": "czujniki-main",
+   "at": "2026-10-14T15:15",
+   "author": "ola",
+   "text": "Mamy certyfikat CE z laboratorium EMC w Gliwicach, raport nr EMC/2026/1187."
+  },
+  {
+   "key": "solar_panel",
+   "conv": "czujniki-main",
+   "at": "2026-07-15T12:50",
+   "author": "piotr",
+   "text": "Panel 6 W wystarcza do całorocznej pracy tylko na południowych dachach; na północnych trzeba dać 10 W."
+  },
+  {
+   "key": "humidity_drift",
+   "conv": "czujniki-kalibracja",
+   "at": "2026-09-29T14:00",
+   "author": "marta",
+   "text": "Dryf wilgotności po pół roku w terenie: średnio 2,1% RH, maksymalnie 4,5% na stacjach przy morzu."
+  },
+  {
+   "key": "standup_time",
+   "conv": "czujniki-main",
+   "at": "2026-11-09T16:00",
+   "author": "ada",
+   "text": "Od przyszłego tygodnia stand-up przenosimy na 9:30, we wtorki i czwartki.",
+   "recent": true
+  },
+  {
+   "key": "reboot_bug",
+   "conv": "czujniki-main",
+   "at": "2026-11-10T11:30",
+   "author": "jonas",
+   "text": "Found it: units reboot every 49.7 days because the millis() counter overflows. Patch goes into 2.5.2.",
+   "recent": true
+  },
+  {
+   "key": "gdansk_pickup",
+   "conv": "dostawy-main",
+   "at": "2026-11-07T10:00",
+   "author": "ola",
+   "text": "Kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada.",
+   "recent": true
+  },
+  {
+   "key": "pricing_copy",
+   "conv": "www-main",
+   "at": "2026-11-10T09:15",
+   "author": "sarah",
+   "text": "Pricing page copy is approved by Bogdan; the Polish translation is due Friday.",
+   "recent": true
+  },
+  {
+   "key": "ota_waves",
+   "conv": "czujniki-main",
+   "at": "2026-05-19T11:40",
+   "author": "jonas",
+   "text": "OTA updates go out in waves of 10% of the fleet, with a 24-hour pause between waves."
+  },
+  {
+   "key": "data_retention",
+   "conv": "czujniki-main",
+   "at": "2026-08-27T10:00",
+   "author": "ada",
+   "text": "Surowe pomiary trzymamy 13 miesięcy, potem zostają tylko agregaty godzinowe."
+  },
+  {
+   "key": "insurance",
+   "conv": "zarzad-main",
+   "at": "2026-04-21T10:00",
+   "author": "bogdan",
+   "text": "Polisa OC produktu w Warcie: suma ubezpieczenia 2 mln zł, składka 6 400 zł rocznie."
+  },
+  {
+   "key": "office_move",
+   "conv": "zarzad-main",
+   "at": "2026-09-12T12:30",
+   "author": "ada",
+   "text": "Przeprowadzka biura na Garbary 8 od 1 stycznia, czynsz 9 800 zł miesięcznie."
+  },
+  {
+   "key": "qa_candidate",
+   "conv": "rek-main",
+   "at": "2026-08-06T15:30",
+   "author": "marta",
+   "text": "Kandydatka na QA, Zofia Bąk: bardzo dobra z automatyzacji w Playwright, słabsza z SQL. Dajemy ofertę."
+  },
+  {
+   "key": "lora_band",
+   "conv": "czujniki-main",
+   "at": "2026-04-23T13:20",
+   "author": "piotr",
+   "text": "Wszystkie stacje nadają w paśmie EU868, kanały 1–8, domyślnie SF9."
+  },
+  {
+   "key": "hygrometer_cert",
+   "conv": "czujniki-kalibracja",
+   "at": "2026-04-29T09:10",
+   "author": "marta",
+   "text": "Referencyjny higrometr Vaisala HM40 wrócił z wzorcowania, świadectwo ważne do kwietnia 2027."
+  },
+  {
+   "key": "vat_invoice",
+   "conv": "dostawy-main",
+   "at": "2026-08-12T11:50",
+   "author": "bogdan",
+   "text": "Faktura FV/0812/2026 od Plastmetu ma złą stawkę VAT (23% zamiast 0% WDT), poprosiłem o korektę."
+  },
+  {
+   "key": "eurocircuits_defects",
+   "conv": "dostawy-main",
+   "at": "2026-07-14T16:45",
+   "author": "sarah",
+   "text": "First Eurocircuits batch: 3 of 250 boards failed ICT, all with a cold joint on the USB-C connector."
+  },
+  {
+   "key": "bracket_mount",
+   "conv": "gdansk-main",
+   "at": "2026-07-03T08:30",
+   "author": "tomasz",
+   "text": "Na wiatach montujemy na obejmach ze stali nierdzewnej A4, bez wiercenia w dachu wiaty."
+  },
+  {
+   "key": "city_complaint",
+   "conv": "gdansk-main",
+   "at": "2026-10-27T13:35",
+   "author": "ada",
+   "text": "Miasto zgłosiło, że 4 stacje na Przymorzu pokazują temperaturę o 5 stopni za wysoką. Podejrzewamy nagrzewanie osłony przez słońce."
+  },
+  {
+   "key": "logo_colour",
+   "conv": "www-main",
+   "at": "2026-06-02T10:20",
+   "author": "jonas",
+   "text": "Final logo: the green roof outline in #2E7D32, wordmark set in Inter Tight."
+  },
+  {
+   "key": "newsletter",
+   "conv": "www-main",
+   "at": "2026-09-01T09:45",
+   "author": "sarah",
+   "text": "Newsletter tool: Listmonk on our server, double opt-in on, the first issue goes to 340 subscribers."
+  },
+  {
+   "key": "dst_bug",
+   "conv": "czujniki-main",
+   "at": "2026-03-30T09:05",
+   "author": "jonas",
+   "text": "The DST switch last night shifted all chart timestamps by an hour: the backend stored local time instead of UTC. Fixed in API 1.8.3."
+  },
+  {
+   "key": "nbiot",
+   "conv": "czujniki-main",
+   "at": "2026-06-22T14:20",
+   "author": "piotr",
+   "text": "Do stacji bez zasięgu LoRa dajemy modem NB-IoT z kartą 1NCE, 10 lat transmisji za 14 euro."
+  },
+  {
+   "key": "summer_break",
+   "conv": "zarzad-main",
+   "at": "2026-07-01T10:30",
+   "author": "ada",
+   "text": "Firma zamknięta 10–21 sierpnia, dyżur techniczny ma Piotr."
+  },
+  {
+   "key": "ncbr_grant",
+   "conv": "zarzad-main",
+   "at": "2026-05-08T16:00",
+   "author": "bogdan",
+   "text": "Wniosek do NCBR (Szybka Ścieżka) złożony, budżet projektu 3,1 mln zł, wynik w listopadzie."
+  },
+  {
+   "key": "irrigation",
+   "conv": "czujniki-main",
+   "at": "2026-10-07T11:10",
+   "author": "ola",
+   "text": "Klient z Sopotu chce sterować pompą nawadniania na podstawie naszej wilgotności gleby. Wycenimy przekaźnik jako dodatek za 180 zł."
+  },
+  {
+   "key": "soil_calibration",
+   "conv": "czujniki-kalibracja",
+   "at": "2026-07-24T12:15",
+   "author": "marta",
+   "text": "Pojemnościowy czujnik wilgotności gleby trzeba kalibrować osobno dla piasku i gliny, różnica dochodzi do 18 punktów."
+  },
+  {
+   "key": "pentest",
+   "conv": "czujniki-main",
+   "at": "2026-09-22T09:30",
+   "author": "jonas",
+   "text": "Pen test by SecuRing found the debug UART left enabled in production builds; it's disabled in 2.4.3."
+  },
+  {
+   "key": "release_owner_old",
+   "conv": "czujniki-main",
+   "at": "2026-04-10T10:00",
+   "author": "ada",
+   "text": "Jonas przejmuje wydania firmware: on decyduje, kiedy wersja idzie na stacje."
+  },
+  {
+   "key": "release_owner_new",
+   "conv": "czujniki-main",
+   "at": "2026-10-15T10:00",
+   "author": "ada",
+   "text": "Zmiana: od teraz wydania firmware zatwierdza Marta, Jonas zajmuje się chmurą."
+  },
+  {
+   "key": "ovh_password",
+   "conv": "czujniki-main",
+   "at": "2026-08-14T19:05",
+   "author": "bogdan",
+   "text": "Hasło do panelu OVH tymczasowo: Kwiatek!2026, zmienię jutro rano.",
+   "role": "deletion"
+  },
+  {
+   "key": "battery_delivery",
+   "conv": "dostawy-main",
+   "at": "2026-10-05T09:00",
+   "author": "ola",
+   "text": "Dostawa akumulatorów Li-ion od Ecoprimy w piątek, paleta nr 4471-B.",
+   "role": "edit",
+   "edited_text": "Dostawa przesunięta na poniedziałek."
+  }
+ ],
+ "questions": [
+  {
+   "id": "q01",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Jaki był numer zamówienia SHT45 w TME?",
+   "keywords": "numer zamówienia SHT45 TME",
+   "gold": [
+    "sht45_order"
+   ],
+   "answer": "TME-2026-04471",
+   "answer_check": "04471",
+   "keywords_other": "order number SHT45 TME"
+  },
+  {
+   "id": "q02",
+   "category": "temporal",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "What did we decide about the sensors in September?",
+   "keywords": "decide sensors",
+   "after": "2026-09-01",
+   "before": "2026-10-01",
+   "gold": [
+    "sensor_decision_sept"
+   ],
+   "answer": "Stay with Sensirion SHT45; BME688 dropped for power use in gas mode",
+   "answer_check": "SHT45",
+   "keywords_other": "zdecydowaliśmy czujniki"
+  },
+  {
+   "id": "q03",
+   "category": "temporal",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Co postanowiliśmy we wrześniu w sprawie czujników?",
+   "keywords": "postanowiliśmy czujników",
+   "after": "2026-09-01",
+   "before": "2026-10-01",
+   "gold": [
+    "sensor_decision_sept"
+   ],
+   "answer": "Zostajemy przy SHT45, BME688 odpada",
+   "answer_check": "SHT45",
+   "keywords_other": "decided sensors"
+  },
+  {
+   "id": "q04",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "czujniki-kalibracja",
+   "question": "How long does a station last on batteries when it measures every ten minutes?",
+   "keywords": "battery station every ten minutes",
+   "gold": [
+    "battery_life"
+   ],
+   "answer": "14 months on two 18650 cells",
+   "answer_check": "14",
+   "keywords_other": "bateria stacja co dziesięć minut"
+  },
+  {
+   "id": "q05",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "czujniki-kalibracja",
+   "question": "Jaki offset temperatury wyszedł przy kalibracjach w komorach klimatycznych?",
+   "keywords": "offset kalibracjach komorach",
+   "gold": [
+    "calib_offset"
+   ],
+   "answer": "+0,8°C, poprawka w firmware 2.3.1",
+   "answer_check": "0[,.]8",
+   "keywords_other": "offset calibrations chambers"
+  },
+  {
+   "id": "q06",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Dlaczego wycofaliśmy oprogramowanie 2.4.0 ze stacji?",
+   "keywords": "wycofaliśmy 2.4.0",
+   "gold": [
+    "firmware_rollback"
+   ],
+   "answer": "Psuło radio LoRa po resecie watchdoga",
+   "answer_check": "LoRa|watchdog",
+   "keywords_other": "rolled back 2.4.0"
+  },
+  {
+   "id": "q07",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Jak daleko sięga sygnał z naszej bramki na biurowcu?",
+   "keywords": "sygnał bramki biurowcu",
+   "gold": [
+    "lora_range"
+   ],
+   "answer": "ok. 2,7 km",
+   "answer_check": "2[,.]7",
+   "keywords_other": "signal gateway office building"
+  },
+  {
+   "id": "q08",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Co pękało w obudowie Plastmetu podczas testów cyklu termicznego?",
+   "keywords": "pękało obudowie testów cyklu termicznego",
+   "gold": [
+    "enclosure_seal"
+   ],
+   "answer": "Uszczelka przy dławiku; zmiana na EPDM",
+   "answer_check": "uszczelk|dławik|EPDM",
+   "keywords_other": "cracked enclosure tests thermal cycle"
+  },
+  {
+   "id": "q09",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "zarzad-main",
+   "question": "Jaka jest cena hurtowa stacji na 2027?",
+   "keywords": "cena hurtowa 2027",
+   "gold": [
+    "wholesale_price"
+   ],
+   "answer": "1 290 zł netto, rabat 12% od 50 sztuk",
+   "answer_check": "1 ?290",
+   "keywords_other": "wholesale price 2027"
+  },
+  {
+   "id": "q10",
+   "category": "paraphrase",
+   "lang": "en",
+   "asked_in": "zarzad-main",
+   "question": "How much is the investment fund offering, and for what stake?",
+   "keywords": "investment fund offer stake",
+   "gold": [
+    "investor"
+   ],
+   "answer": "2.5 M PLN for 15%",
+   "answer_check": "2[,.]5|15 ?%",
+   "keywords_other": "fundusz inwestycyjny oferta udziały"
+  },
+  {
+   "id": "q11",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "rek-main",
+   "question": "Who did we hire as the embedded developer, and when do they start?",
+   "keywords": "hire embedded developer start",
+   "gold": [
+    "hire_embedded"
+   ],
+   "answer": "Kamil Duda, 1 September",
+   "answer_check": "Dud",
+   "keywords_other": "zatrudnić embedded developer start"
+  },
+  {
+   "id": "q12",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "rek-main",
+   "question": "Jakie są widełki płacowe dla juniora na stanowisko QA?",
+   "keywords": "widełki juniora QA",
+   "gold": [
+    "qa_salary"
+   ],
+   "answer": "7–9 tys. zł brutto",
+   "answer_check": "7.{0,3}9",
+   "keywords_other": "salary range junior QA"
+  },
+  {
+   "id": "q13",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Kto teraz montuje nam płytki i dlaczego zmieniliśmy firmę?",
+   "keywords": "montuje płytki zmieniliśmy firmę",
+   "gold": [
+    "pcb_supplier"
+   ],
+   "answer": "Eurocircuits; Satel-Tech miał 9 tygodni realizacji",
+   "answer_check": "Eurocircuits",
+   "keywords_other": "assembles boards changed company"
+  },
+  {
+   "id": "q14",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Jaki kod HS podaliśmy dla paczki z Shenzhen?",
+   "keywords": "kod HS Shenzhen",
+   "gold": [
+    "hs_code"
+   ],
+   "answer": "9025 80 40",
+   "answer_check": "9025",
+   "keywords_other": "HS code Shenzhen"
+  },
+  {
+   "id": "q15",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Dlaczego zrezygnowaliśmy z kuriera DPD?",
+   "keywords": "zrezygnowaliśmy kuriera DPD",
+   "gold": [
+    "courier_switch"
+   ],
+   "answer": "Za dużo uszkodzonych paczek; przechodzimy na InPost",
+   "answer_check": "uszkodz|InPost",
+   "keywords_other": "gave up courier DPD"
+  },
+  {
+   "id": "q16",
+   "category": "temporal",
+   "lang": "en",
+   "asked_in": "dostawy-main",
+   "question": "How many complete stations were left in the Pruszcz warehouse at the end of June?",
+   "keywords": "complete stations Pruszcz warehouse June",
+   "gold": [
+    "warehouse_june"
+   ],
+   "answer": "37",
+   "answer_check": "\\b37\\b",
+   "keywords_other": "kompletne stacje Pruszcz magazyn czerwiec"
+  },
+  {
+   "id": "q17",
+   "category": "temporal",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Ile kompletnych stacji mamy teraz w magazynie w Pruszczu?",
+   "keywords": "kompletnych stacji magazynie Pruszczu",
+   "gold": [
+    "warehouse_sept"
+   ],
+   "answer": "12 (stan na koniec września)",
+   "answer_check": "\\b12\\b",
+   "keywords_other": "complete stations warehouse Pruszcz"
+  },
+  {
+   "id": "q18",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "www-main",
+   "question": "Kiedy startuje nowa strona internetowa?",
+   "keywords": "startuje nowa strona",
+   "gold": [
+    "web_launch"
+   ],
+   "answer": "24 listopada",
+   "answer_check": "24",
+   "keywords_other": "launch new website"
+  },
+  {
+   "id": "q19",
+   "category": "paraphrase",
+   "lang": "en",
+   "asked_in": "www-main",
+   "question": "Which content management system did we choose for the site, and why?",
+   "keywords": "content management system choose site",
+   "gold": [
+    "web_cms"
+   ],
+   "answer": "Payload, for its TypeScript config and self-hosting",
+   "answer_check": "Payload",
+   "keywords_other": "system zarządzania treścią wybraliśmy strona"
+  },
+  {
+   "id": "q20",
+   "category": "exact",
+   "lang": "en",
+   "asked_in": "www-main",
+   "question": "When does zielonydach.eu renew?",
+   "keywords": "zielonydach.eu renew",
+   "gold": [
+    "web_domain"
+   ],
+   "answer": "2027-03-11",
+   "answer_check": "2027",
+   "keywords_other": "zielonydach.eu odnowienie"
+  },
+  {
+   "id": "q21",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "www-main",
+   "question": "Jakiego narzędzia do statystyk odwiedzin używamy na stronie?",
+   "keywords": "narzędzie statystyki odwiedzin strona",
+   "gold": [
+    "web_analytics"
+   ],
+   "answer": "Plausible (self-hosted)",
+   "answer_check": "Plausible",
+   "keywords_other": "tool visitor statistics website"
+  },
+  {
+   "id": "q22",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "gdansk-main",
+   "question": "Ile wynosi kara umowna w umowie z Gdańskiem?",
+   "keywords": "kara umowna Gdańsk",
+   "gold": [
+    "gdansk_contract"
+   ],
+   "answer": "0,2% za dzień zwłoki",
+   "answer_check": "0[,.]2",
+   "keywords_other": "contractual penalty Gdańsk"
+  },
+  {
+   "id": "q23",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "gdansk-main",
+   "question": "Why are the bus stop installations running late?",
+   "keywords": "bus stop installation late",
+   "gold": [
+    "gdansk_delay"
+   ],
+   "answer": "ZTM has not approved the power connection in the shelters",
+   "answer_check": "ZTM|zasilani|power",
+   "keywords_other": "przystanek montaż opóźniony"
+  },
+  {
+   "id": "q24",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "gdansk-main",
+   "question": "Jaki jest numer telefonu do Haliny Kurek?",
+   "keywords": "telefon Halina Kurek",
+   "gold": [
+    "gdansk_contact"
+   ],
+   "answer": "58 323 11 47",
+   "answer_check": "323 ?11 ?47",
+   "keywords_other": "phone Halina Kurek"
+  },
+  {
+   "id": "q25",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Ile zapytań na godzinę może wysłać jedna stacja do chmury?",
+   "keywords": "zapytań godzinę stacja chmura",
+   "gold": [
+    "api_rate"
+   ],
+   "answer": "120 na godzinę",
+   "answer_check": "120",
+   "keywords_other": "requests hour station cloud"
+  },
+  {
+   "id": "q26",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Jaki numer ma raport z laboratorium w Gliwicach?",
+   "keywords": "numer raport laboratorium Gliwice",
+   "gold": [
+    "ce_report"
+   ],
+   "answer": "EMC/2026/1187",
+   "answer_check": "1187",
+   "keywords_other": "number report laboratory Gliwice"
+  },
+  {
+   "id": "q27",
+   "category": "nodiacritics",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Jaki panel sloneczny jest potrzebny na polnocnych dachach?",
+   "keywords": "panel sloneczny polnocnych dachach",
+   "gold": [
+    "solar_panel"
+   ],
+   "answer": "10 W",
+   "answer_check": "10 ?W",
+   "keywords_other": "solar panel northern roofs"
+  },
+  {
+   "id": "q28",
+   "category": "nodiacritics",
+   "lang": "pl",
+   "asked_in": "czujniki-kalibracja",
+   "question": "Jaki jest dryf wilgotnosci po pol roku w terenie?",
+   "keywords": "dryf wilgotnosci pol roku",
+   "gold": [
+    "humidity_drift"
+   ],
+   "answer": "średnio 2,1% RH, maks. 4,5%",
+   "answer_check": "2[,.]1",
+   "keywords_other": "humidity drift half year"
+  },
+  {
+   "id": "q29",
+   "category": "recent",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "O której jest teraz stand-up?",
+   "keywords": "stand-up godzina",
+   "gold": [
+    "standup_time"
+   ],
+   "answer": "9:30, wtorki i czwartki",
+   "answer_check": "9[:.]30",
+   "keywords_other": "stand-up time"
+  },
+  {
+   "id": "q30",
+   "category": "recent",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "Why do the stations restart roughly every fifty days?",
+   "keywords": "stations restart fifty days",
+   "gold": [
+    "reboot_bug"
+   ],
+   "answer": "millis() counter overflow after 49.7 days; patch in 2.5.2",
+   "answer_check": "millis|overflow|49[,.]7",
+   "keywords_other": "stacje restart pięćdziesiąt dni"
+  },
+  {
+   "id": "q31",
+   "category": "recent",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Kiedy kurier odbiera stacje dla Gdańska?",
+   "keywords": "kurier odbiera stacje Gdańsk",
+   "gold": [
+    "gdansk_pickup"
+   ],
+   "answer": "czwartek 13 listopada",
+   "answer_check": "13",
+   "keywords_other": "courier pickup stations Gdańsk"
+  },
+  {
+   "id": "q32",
+   "category": "recent",
+   "lang": "en",
+   "asked_in": "www-main",
+   "question": "Has the pricing page text been approved?",
+   "keywords": "pricing page approved",
+   "gold": [
+    "pricing_copy"
+   ],
+   "answer": "Yes, by Bogdan; Polish translation due Friday",
+   "answer_check": "Bogdan|approved|yes",
+   "keywords_other": "cennik strona zatwierdzony"
+  },
+  {
+   "id": "q33",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Jak rozsyłamy aktualizacje oprogramowania na stacje?",
+   "keywords": "aktualizacje oprogramowania stacje",
+   "gold": [
+    "ota_waves"
+   ],
+   "answer": "Falami po 10% floty, 24 h przerwy",
+   "answer_check": "10 ?%",
+   "keywords_other": "software updates stations"
+  },
+  {
+   "id": "q34",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "How long do we keep the raw measurements?",
+   "keywords": "keep raw measurements",
+   "gold": [
+    "data_retention"
+   ],
+   "answer": "13 months, then hourly aggregates",
+   "answer_check": "13",
+   "keywords_other": "przechowujemy surowe pomiary"
+  },
+  {
+   "id": "q35",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "zarzad-main",
+   "question": "Na jaką sumę jest ubezpieczone OC naszego produktu?",
+   "keywords": "suma ubezpieczone OC produktu",
+   "gold": [
+    "insurance"
+   ],
+   "answer": "2 mln zł",
+   "answer_check": "2 mln",
+   "keywords_other": "sum insured liability product"
+  },
+  {
+   "id": "q36",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "zarzad-main",
+   "question": "Where is the office moving to, and from when?",
+   "keywords": "office moving",
+   "gold": [
+    "office_move"
+   ],
+   "answer": "Garbary 8 from 1 January",
+   "answer_check": "Garbary",
+   "keywords_other": "biuro przeprowadzka"
+  },
+  {
+   "id": "q37",
+   "category": "nodiacritics",
+   "lang": "pl",
+   "asked_in": "rek-main",
+   "question": "Co wiemy o kandydatce Zofii Bak?",
+   "keywords": "kandydatka Zofia Bak",
+   "gold": [
+    "qa_candidate"
+   ],
+   "answer": "Mocna w Playwright, słabsza z SQL; dostaje ofertę",
+   "answer_check": "Playwright|ofert",
+   "keywords_other": "candidate Zofia Bąk"
+  },
+  {
+   "id": "q38",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "W jakim paśmie i z jakim SF nadają stacje?",
+   "keywords": "paśmie SF nadają stacje",
+   "gold": [
+    "lora_band"
+   ],
+   "answer": "EU868, domyślnie SF9",
+   "answer_check": "868|SF9",
+   "keywords_other": "band SF transmit stations"
+  },
+  {
+   "id": "q39",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "czujniki-kalibracja",
+   "question": "Until when is the Vaisala reference hygrometer's certificate valid?",
+   "keywords": "Vaisala hygrometer certificate valid",
+   "gold": [
+    "hygrometer_cert"
+   ],
+   "answer": "April 2027",
+   "answer_check": "2027",
+   "keywords_other": "Vaisala higrometr świadectwo ważne"
+  },
+  {
+   "id": "q40",
+   "category": "exact",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Co jest nie tak z fakturą FV/0812/2026?",
+   "keywords": "faktura FV/0812/2026",
+   "gold": [
+    "vat_invoice"
+   ],
+   "answer": "Zła stawka VAT (23% zamiast 0% WDT), poproszono o korektę",
+   "answer_check": "VAT|WDT",
+   "keywords_other": "invoice FV/0812/2026"
+  },
+  {
+   "id": "q41",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Ile płytek z pierwszej partii od nowego montażysty miało wady i jakie?",
+   "keywords": "płytek pierwszej partii wady",
+   "gold": [
+    "eurocircuits_defects"
+   ],
+   "answer": "3 z 250, zimny lut na złączu USB-C",
+   "answer_check": "USB|\\b3\\b",
+   "keywords_other": "boards first batch defects"
+  },
+  {
+   "id": "q42",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "gdansk-main",
+   "question": "Jak mocujemy stacje do wiat przystankowych?",
+   "keywords": "mocujemy stacje wiat",
+   "gold": [
+    "bracket_mount"
+   ],
+   "answer": "Na obejmach ze stali A4, bez wiercenia",
+   "answer_check": "obejm|A4",
+   "keywords_other": "mount stations bus shelters"
+  },
+  {
+   "id": "q43",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "gdansk-main",
+   "question": "Which stations is the city complaining about, and what is the suspected cause?",
+   "keywords": "city complaining stations cause",
+   "gold": [
+    "city_complaint"
+   ],
+   "answer": "4 stations in Przymorze read 5° too high; sun heating the shield",
+   "answer_check": "Przymorz|słońc|sun",
+   "keywords_other": "miasto skarga stacje przyczyna"
+  },
+  {
+   "id": "q44",
+   "category": "paraphrase",
+   "lang": "en",
+   "asked_in": "www-main",
+   "question": "What hex colour is the green in our logo?",
+   "keywords": "hex colour green logo",
+   "gold": [
+    "logo_colour"
+   ],
+   "answer": "#2E7D32",
+   "answer_check": "2E7D32",
+   "keywords_other": "kolor hex zielony logo"
+  },
+  {
+   "id": "q45",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "www-main",
+   "question": "Ilu subskrybentów dostanie pierwszy newsletter?",
+   "keywords": "subskrybentów pierwszy newsletter",
+   "gold": [
+    "newsletter"
+   ],
+   "answer": "340",
+   "answer_check": "340",
+   "keywords_other": "subscribers first newsletter"
+  },
+  {
+   "id": "q46",
+   "category": "paraphrase",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "Why were the charts off by an hour at the end of March?",
+   "keywords": "charts off by an hour March",
+   "gold": [
+    "dst_bug"
+   ],
+   "answer": "DST: backend stored local time instead of UTC; fixed in API 1.8.3",
+   "answer_check": "UTC|DST",
+   "keywords_other": "wykresy przesunięte o godzinę marzec"
+  },
+  {
+   "id": "q47",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "What do we use for stations that are out of LoRa range?",
+   "keywords": "stations out of LoRa range",
+   "gold": [
+    "nbiot"
+   ],
+   "answer": "An NB-IoT modem with a 1NCE card",
+   "answer_check": "NB-IoT|1NCE",
+   "keywords_other": "stacje poza zasięgiem LoRa"
+  },
+  {
+   "id": "q48",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "zarzad-main",
+   "question": "Kto jest pod telefonem w czasie przerwy wakacyjnej?",
+   "keywords": "telefon przerwa wakacyjna",
+   "gold": [
+    "summer_break"
+   ],
+   "answer": "Piotr (10–21 sierpnia)",
+   "answer_check": "Piotr",
+   "keywords_other": "phone summer break"
+  },
+  {
+   "id": "q49",
+   "category": "nodiacritics",
+   "lang": "pl",
+   "asked_in": "zarzad-main",
+   "question": "Jaki budzet ma wniosek do NCBR?",
+   "keywords": "budzet wniosek NCBR",
+   "gold": [
+    "ncbr_grant"
+   ],
+   "answer": "3,1 mln zł",
+   "answer_check": "3[,.]1",
+   "keywords_other": "budget application NCBR"
+  },
+  {
+   "id": "q50",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "Which customer asked about controlling irrigation, and what would the add-on cost?",
+   "keywords": "customer irrigation add-on cost",
+   "gold": [
+    "irrigation"
+   ],
+   "answer": "A customer from Sopot; relay add-on for 180 zł",
+   "answer_check": "Sopot|180",
+   "keywords_other": "klient nawadnianie dodatek koszt"
+  },
+  {
+   "id": "q51",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "czujniki-kalibracja",
+   "question": "Czy czujniki gleby trzeba kalibrować inaczej dla różnych rodzajów gleb?",
+   "keywords": "czujniki gleby kalibrować gleb",
+   "gold": [
+    "soil_calibration"
+   ],
+   "answer": "Tak, osobno dla piasku i gliny, do 18 punktów różnicy",
+   "answer_check": "piask|glin",
+   "keywords_other": "soil sensors calibrate soils"
+  },
+  {
+   "id": "q52",
+   "category": "crosslang",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Co znalazł test penetracyjny w stacjach?",
+   "keywords": "test penetracyjny",
+   "gold": [
+    "pentest"
+   ],
+   "answer": "Włączony UART debug w buildach produkcyjnych; wyłączony w 2.4.3",
+   "answer_check": "UART",
+   "keywords_other": "penetration test"
+  },
+  {
+   "id": "q53",
+   "category": "temporal",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Kto teraz zatwierdza wydania firmware?",
+   "keywords": "zatwierdza wydania firmware",
+   "gold": [
+    "release_owner_new"
+   ],
+   "answer": "Marta (od 15 października)",
+   "answer_check": "Mart",
+   "keywords_other": "approves firmware releases"
+  },
+  {
+   "id": "q54",
+   "category": "typo",
+   "lang": "en",
+   "asked_in": "www-main",
+   "question": "When does the zielonydah.eu domain expire?",
+   "keywords": "zielonydah.eu domain expire",
+   "gold": [
+    "web_domain"
+   ],
+   "answer": "2027-03-11",
+   "answer_check": "2027",
+   "keywords_other": "zielonydah.eu domena wygasa"
+  },
+  {
+   "id": "q55",
+   "category": "typo",
+   "lang": "pl",
+   "asked_in": "gdansk-main",
+   "question": "Jaki telefon ma Halina Kurrek?",
+   "keywords": "telefon Halina Kurrek",
+   "gold": [
+    "gdansk_contact"
+   ],
+   "answer": "58 323 11 47",
+   "answer_check": "323 ?11 ?47",
+   "keywords_other": "phone Halina Kurrek"
+  },
+  {
+   "id": "q56",
+   "category": "typo",
+   "lang": "pl",
+   "asked_in": "dostawy-main",
+   "question": "Od kiedy wysyłamy przez InPsot?",
+   "keywords": "wysyłamy InPsot",
+   "gold": [
+    "courier_switch"
+   ],
+   "answer": "Od października",
+   "answer_check": "październik",
+   "keywords_other": "ship InPsot"
+  },
+  {
+   "id": "q57",
+   "category": "paraphrase",
+   "lang": "en",
+   "asked_in": "czujniki-main",
+   "question": "What was wrong with the gas sensor we considered for the new station version?",
+   "keywords": "gas sensor new station version",
+   "gold": [
+    "sensor_decision_sept"
+   ],
+   "answer": "BME688 used too much power in gas mode",
+   "answer_check": "prąd|power|BME688",
+   "keywords_other": "czujnik gazu nowa wersja stacji"
+  },
+  {
+   "id": "q58",
+   "category": "inflect",
+   "lang": "pl",
+   "asked_in": "czujniki-main",
+   "question": "Ile zamówiliśmy czujników SHT45 i kiedy miała być dostawa?",
+   "keywords": "zamówiliśmy czujników SHT45 dostawa",
+   "gold": [
+    "sht45_order"
+   ],
+   "answer": "400 sztuk, dostawa za 3 tygodnie",
+   "answer_check": "400",
+   "keywords_other": "ordered sensors SHT45 delivery"
+  },
+  {
+   "id": "q59",
+   "category": "crosslang",
+   "lang": "en",
+   "asked_in": "dostawy-main",
+   "question": "Why did the parcel from Shenzhen get stuck at customs?",
+   "keywords": "parcel Shenzhen customs stuck",
+   "gold": [
+    "hs_code"
+   ],
+   "answer": "The invoice lacked the HS code; 9025 80 40 given",
+   "answer_check": "HS|9025",
+   "keywords_other": "paczka Shenzhen cło utknęła"
+  },
+  {
+   "id": "q60",
+   "category": "paraphrase",
+   "lang": "pl",
+   "asked_in": "gdansk-main",
+   "question": "Ile urządzeń stawiamy dla miasta i do kiedy?",
+   "keywords": "urządzeń miasto do kiedy",
+   "gold": [
+    "gdansk_contract"
+   ],
+   "answer": "60 stacji, montaż do 30 września",
+   "answer_check": "60",
+   "keywords_other": "devices city deadline"
+  }
+ ],
+ "access_checks": [
+  {
+   "id": "a1",
+   "what": "A person loses a restricted space's grant; the next search by that person no longer finds its messages.",
+   "space": "zarzad",
+   "person": "bogdan",
+   "query": "cena hurtowa 2027",
+   "fact": "wholesale_price",
+   "change": "revoke_grant"
+  },
+  {
+   "id": "a2",
+   "what": "A space's AI is turned off; an agent's search no longer finds its messages.",
+   "space": "zarzad",
+   "agent": "fieldbot",
+   "query": "Black Pine fundusz",
+   "fact": "investor",
+   "change": "ai_off"
+  },
+  {
+   "id": "a3",
+   "what": "A company guest never finds messages of a workspace-visible space they were not added to.",
+   "space": "czujniki",
+   "person": "tomasz",
+   "query": "SHT45 TME zamówienie",
+   "fact": "sht45_order",
+   "change": "none"
+  },
+  {
+   "id": "a4",
+   "what": "A person removed from the company finds nothing.",
+   "space": "gdansk",
+   "person": "tomasz",
+   "query": "Halina Kurek telefon",
+   "fact": "gdansk_contact",
+   "change": "remove_member"
+  }
+ ],
+ "deletion_checks": [
+  {
+   "id": "d1",
+   "what": "A message removed by its author (removed_at) is not found by text or meaning, at once.",
+   "fact": "ovh_password",
+   "query": "hasło do panelu OVH",
+   "change": "remove"
+  },
+  {
+   "id": "d2",
+   "what": "A message deleted outright (DELETE) is not found, at once.",
+   "fact": "ovh_password",
+   "query": "hasło OVH Kwiatek",
+   "change": "delete"
+  },
+  {
+   "id": "d3",
+   "what": "An edited message is not found by the words the edit removed, at once, and is found by its new words once indexed.",
+   "fact": "battery_delivery",
+   "query": "akumulatorów Li-ion Ecoprimy paleta 4471-B",
+   "change": "edit"
+  }
+ ]
+}
