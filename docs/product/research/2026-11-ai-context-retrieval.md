@@ -515,7 +515,7 @@ Dependencies: 1 → 2 → 3; 5 can start at once (it measures today first); 4 af
   design without embeddings). Expect several hours: about 100 summary calls of ~4k tokens and 240 answers.
 - **An API engine:** only with a real key, which this host has none of; `BENCH_LLM_URL`, `BENCH_LLM_KEY` and
   `BENCH_LLM_MODEL` take any OpenAI-compatible endpoint. With the stand-in (`./run.sh answer --mock`) the plumbing and token
-  counts were checked: __MOCK__
+  counts are checked (result pending in this draft; it will be filled before review).
 - These runs are static (the context is built before the model sees it). The agentic run with the real tools is part 5 of
   the plan.
 
