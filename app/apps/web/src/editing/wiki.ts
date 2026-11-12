@@ -220,6 +220,10 @@ export class SharedWiki {
           // receipt lookup cannot establish that this recovery copy has the same fingerprint.
           this.pending.set(item.envelope.uuid, item);
         }
+        // A copy whose text the room already holds (a reload right after "Saved", whose version save the closing tab kept to
+        // retry, #1213) is resumed, not offered as a private copy: nothing in it is missing from the page. Its pending text and
+        // save still replay (and a page deleted meanwhile still offers its pending text); a refusal keeps the text privately as before.
+        if (!this.archivedRecovery && recovered.body === this.text.toString()) this.privateBody = null;
       } else if (this.archivedRecovery) {
         this.problem = 'An earlier session has private changes. Compare them before importing any text into this working copy.';
       }

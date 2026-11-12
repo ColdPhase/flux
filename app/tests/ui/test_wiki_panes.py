@@ -26,7 +26,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
 from create_window import kind_tab, open_create
-from wiki_text import existing_text, saved, saved_version, text_of, type_at_end, wait_until_shared
+from wiki_text import existing_text, has_text, saved, saved_version, text_of, type_at_end, wait_until_shared
 
 # WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
 # recorder that keeps what was written, so the test reads back exactly what the page copied.
@@ -359,6 +359,39 @@ class WikiPanesJourney(unittest.TestCase):
         page.keyboard.press("Backspace")
         page.keyboard.type(".", delay=60)
         self.typed_ahead_is_kept(page, "Flux residue", "Hello\nWipe it with alcohol.")
+
+    def test_04d_a_reload_straight_after_saved_offers_no_private_copy(self) -> None:
+        """#1213: a reload right after "Saved", before the text has rested into a version, comes back to the same text with no
+        "private copy from an earlier session": the copy the closing tab kept equals the page. The text is still saved as a version.
+        Both after typing at once on a new page (#1203) and after typing into a page that already had the caret."""
+        page = self.page("owner")
+        page.goto(self.url("lamp"))
+        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
+        open_create(page)
+        kind_tab(page, "Page").click()
+        made = page.get_by_role("dialog", name="New page")
+        made.get_by_role("textbox", name="Page title").fill("Reflow profile")
+        made.get_by_role("button", name=re.compile("^Create page")).click()
+        page.keyboard.type("Preheat to 150 degrees.")
+        expect(page.get_by_role("heading", level=2, name="Reflow profile")).to_be_visible()
+        doc_id = next(item for item in self.docs(page) if item["title"] == "Reflow profile")["id"]
+        expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs/{doc_id}") + "$"))
+        text = existing_text(page)
+        expect(text).to_be_focused()
+        for typed in ("Preheat to 150 degrees.", "Preheat to 150 degrees. Peak at 245 degrees."):
+            if typed.endswith("245 degrees."):
+                type_at_end(page, text, " Peak at 245 degrees.")
+            has_text(text, typed)
+            expect(saved(page)).to_be_visible()
+            # At once: the text is shared, and its version saves only once the typing has rested.
+            page.reload()
+            wait_until_shared(page)
+            expect(text).to_contain_text(typed)
+            self.assertEqual(text_of(text), typed)
+            expect(page.get_by_text("A private copy from an earlier session")).to_have_count(0)
+            self.assertEqual(saved_version(page, doc_id, typed)["body"], typed, "the text is saved as a version after the reload")
+            expect(saved(page)).to_be_visible()
+            expect(page.get_by_text("A private copy from an earlier session")).to_have_count(0)
 
     def choose_file(self, page: Page, name: str, data: bytes, mime: str) -> None:
         with page.expect_file_chooser() as chooser:
