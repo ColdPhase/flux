@@ -11,7 +11,7 @@ import { addMember, expectStatus, grant, person, project, workspace, type Person
 import { waitFor } from './support/push.js';
 
 // Calls are noticed (F-041, #1223): a call started in a space tells the space's other people in their Inbox, with Join, while someone is in
-// it; push follows the level; it is never emailed. The live dot of a space and the end of a call nobody joined. (The invitation's chime is #1243's.)
+// it; push follows the level; it is never emailed. The call glyph of a space and the end of a call nobody joined. (The invitation's chime is #1243's.)
 
 const human = (someone: Person) => ({ kind: 'human' as const, id: someone.id });
 const noRoom = async () => {};
@@ -22,6 +22,10 @@ async function callNotes(userId: string) {
 }
 async function needsYou(someone: Person) {
   return (expectStatus(await someone.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items;
+}
+/** The tab's "(N)" (#1243): at "Everything" an open call's notice counts, a finished one does not. */
+async function notifying(someone: Person) {
+  return (expectStatus(await someone.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).notifying;
 }
 
 test('a call started in a space reaches its other people in the Inbox with Join, only while someone is in it, and never by email', async () => {
@@ -52,15 +56,19 @@ test('a call started in a space reaches its other people in the Inbox with Join,
   await pool.query('UPDATE live_sessions SET empty_since = NULL WHERE id = $1', [call.id]);
   const item = (await needsYou(ada)).find((entry) => entry.url === url);
   assert.ok(item, 'the call is in the Inbox');
+  assert.equal(await notifying(ada), 0, 'at "Only what needs me" an open call does not count in the tab');
+  expectStatus(await ada.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything' } }), 200);
+  assert.equal(await notifying(ada), 1, 'at "Everything" an open call counts once');
   assert.equal(item.reason, 'call');
   assert.equal(item.title, 'Nia Call started a call in Gesture lamp');
   assert.deepEqual(item.call, { projectId: place.id, sessionId: call.id });
-  // The live dot of the space: for its people, never for someone outside it.
+  // The call glyph of the space: for its people, never for someone outside it.
   assert.ok((await liveSpaces(db, human(ada))).projectIds.includes(place.id));
   assert.ok(!(await liveSpaces(db, human(outsider))).projectIds.includes(place.id));
   await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [call.id]);
   assert.equal((await needsYou(ada)).find((entry) => entry.url === url), undefined, 'an ended call leaves the Inbox');
-  assert.ok(!(await liveSpaces(db, human(ada))).projectIds.includes(place.id), 'and its space loses the live dot');
+  assert.equal(await notifying(ada), 0, 'and the tab no longer counts it');
+  assert.ok(!(await liveSpaces(db, human(ada))).projectIds.includes(place.id), 'and its space loses the call glyph');
 });
 
 test('push for a call follows the level, and a call is never emailed', () => {

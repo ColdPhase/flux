@@ -43,7 +43,7 @@ export function ProjectsIndex() {
   const phone = useMediaQuery(MEDIA.phone);
   // An encrypted space has a small lock after its name, as in the sidebar (F-026 §4).
   const encryptedIn = useEncryptedWorkspaceIds();
-  // A call is on in the space (F-041): the live dot after its name, as in the sidebar.
+  // A call is on in the space (F-041): the call glyph after its name, as in the sidebar.
   const calls = useLiveSpaces();
   return (
     <div className="pane-scroll">

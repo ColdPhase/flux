@@ -153,7 +153,6 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     // What would notify the person now and is still unread (#1243): the tab's "(N)" and the app's badge.
     const level = (await ports.level?.(userId)) ?? 'needsYou';
     const channels = channelsOf({ level, emailMe: false });
-    const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push).length;
     // An agent's question with ready-made answers (S14, #763 IN-1/IN-2) is read from the question itself, not from the notification
     // that announced it: it carries its answers and leaves the queue once it is answered, here, in the conversation or in Agents.
     const asked = await ports.repository.agentQuestions(userId, [...projects], new Date(since), MAX_AGENT_QUESTIONS);
@@ -186,6 +185,14 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const running = callIds.length && ports.runningCalls ? await ports.runningCalls(callIds) : new Set<string>();
     // Invited to a call that also told you it started: one item, the invitation.
     const invitedTo = new Set(callNotes.flatMap((note) => { const call = note.reason === 'invitation' ? callOf(note.url) : null; return call ? [call.sessionId] : []; }));
+    // The tab's "(N)" counts what asks something now: a call's notice or invitation not once the call is over, and one call once (F-041).
+    const askingNow = (note: (typeof callNotes)[number]) => {
+      const call = callOf(note.url);
+      if (note.reason === 'call') return !!call && running.has(call.sessionId) && !invitedTo.has(call.sessionId);
+      return !(call && ports.runningCalls) || running.has(call.sessionId);
+    };
+    const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push
+      && (note.reason !== 'call' && note.reason !== 'invitation' || askingNow(note))).length;
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation' && note.reason !== 'call') || note.readAt || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'call' || note.reason === 'invitation' ? callOf(note.url) : null;

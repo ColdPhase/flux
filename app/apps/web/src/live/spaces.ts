@@ -4,7 +4,7 @@ import { liveSpaces } from './api';
 import { LIVE_CHANGED_EVENT, useLive } from './LiveProvider';
 
 /**
- * The spaces where a call is on with someone in it (F-041 point 3): the live dot after a space's name in the sidebar and the Spaces list.
+ * The spaces where a call is on with someone in it (F-041 point 3): the call glyph after a space's name in the sidebar and the Spaces list.
  * Read once, then again only when a call of one of your spaces starts, changes its people or ends (`project.live_changed.v1`), or when
  * the live stream may have missed something. No timer (#862).
  */

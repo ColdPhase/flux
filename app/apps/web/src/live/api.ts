@@ -58,5 +58,5 @@ export const replyToInvitation = (id: string, choice: 'later' | 'text') =>
 export const pendingInvitations = (signal?: AbortSignal) =>
   request<{ items: LiveInvitationRow[]; nextCursor: string | null }>(`${LIVE_INVITATIONS_PATH}?limit=50`, { signal });
 
-/** The spaces where a call is on with someone in it (F-041): the live dot in the sidebar and the Spaces list. */
+/** The spaces where a call is on with someone in it (F-041): the call glyph in the sidebar and the Spaces list. */
 export const liveSpaces = (signal?: AbortSignal) => request<LiveSpacesResponse>(LIVE_SPACES_PATH, { signal, share: true });

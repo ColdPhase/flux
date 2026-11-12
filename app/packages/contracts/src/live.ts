@@ -2,7 +2,7 @@
 export const LIVE_SESSIONS_PATH = '/api/v1/live-sessions';
 export const liveSessionPath = (id: string) => `${LIVE_SESSIONS_PATH}/${id}`;
 export const LIVE_CAPABILITIES_PATH = `${LIVE_SESSIONS_PATH}/capabilities`;
-/** The spaces you can open where a call is on with someone in it (F-041): the live dot in the sidebar and the Spaces list. */
+/** The spaces you can open where a call is on with someone in it (F-041): the call glyph in the sidebar and the Spaces list. */
 export const LIVE_SPACES_PATH = `${LIVE_SESSIONS_PATH}/spaces`;
 export interface LiveSpacesResponse { projectIds: string[] }
 export const projectLiveSessionsPath = (projectId: string) => `/api/v1/projects/${projectId}/live-sessions`;

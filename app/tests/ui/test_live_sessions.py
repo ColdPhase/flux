@@ -516,7 +516,7 @@ class LiveJourney(LiveBase):
             expect(self.bar(leaver)).to_have_count(0)
 
     def test_00d_a_call_is_noticed_in_the_inbox_and_sidebar_and_invitations_reach_people(self) -> None:
-        """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's live dot and her Inbox the call with
+        """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's call glyph and her Inbox the call with
         Join, within 2 s; Join joins it. Lee alone reads "Nobody joined · Invite someone"; Invite… invites Jonas and Kai. The call leaves
         the Inbox when it is over. (The invitation's chime is #1243's "Sound when someone calls me".)"""
         self.seed()
@@ -542,7 +542,7 @@ class LiveJourney(LiveBase):
         started = time.monotonic()
         expect(space).to_have_accessible_name(re.compile("call on"), timeout=2500)
         expect(space.locator("svg.side__live[data-call-mark]")).to_be_visible()
-        self.assertLess(time.monotonic() - started, 3, "the space's live dot shows within about 2 s")
+        self.assertLess(time.monotonic() - started, 3, "the space's call glyph shows within about 2 s")
         shot(ada, "live-desktop-1440-sidebar-call-on")
         # The Inbox: the call with Join (the notice is written by the worker, a moment after the start).
         ada.goto("/inbox")

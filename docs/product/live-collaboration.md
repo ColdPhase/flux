@@ -63,7 +63,8 @@ supersedes the quiet start of #59 (2026-09-27).
    pushes for any call in their spaces; "Only what needs me" pushes only for an
    invitation (point 4). Quiet hours hold push as for every notice. The notice is
    never emailed (a call may be over before the mail is read), and it stops asking
-   anything when the call ends. A muted space (#1249) sends no notice of an open call
+   anything when the call ends (the tab's "(N)" counts it only while the call runs, and
+   a call you were invited to once). A muted space (#1249) sends no notice of an open call
    there; an invitation to a call still arrives. While a call runs, the space's row in
    the sidebar and the Spaces list carries the call glyph (a shape, not a dot).
 4. **Invite.** After starting, the strip offers **Invite…** with the space's people
