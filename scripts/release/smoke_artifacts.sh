@@ -67,7 +67,8 @@ wait_timeout=${FLUX_SMOKE_WAIT:-300}
 step() { printf '\n== %s\n' "$*"; }
 json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"; }
 candidate_image=$(json_field "$assets/release.json" image)
-db_image() { sed -n 's/^ *image: *\(postgres@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
+# The database image a release pins: the official PostgreSQL image before v0.2.1, Flux's own database image from it on (F-041).
+db_image() { sed -n 's/^ *image: *\(\(postgres\|[^ ]*\/flux-database\)@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
 check_sums() { # in the current directory
   if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256SUMS >/dev/null; else shasum -a 256 -c SHA256SUMS >/dev/null; fi
 }
@@ -82,8 +83,11 @@ if [ -n "$previous_assets" ]; then
   ( cd "$previous_assets" && check_sums ) || fail "the previous release's assets do not match its SHA256SUMS"
   previous_image=$(json_field "$previous_assets/release.json" image)
   [ "$previous_image" != "$candidate_image" ] || fail "the previous release and the candidate pin the same image ($candidate_image); nothing would be upgraded"
+  [ -n "$(db_image "$previous_assets")" ] && [ -n "$(db_image "$assets")" ] || fail "a release pins no database image"
+  # The database image may change between releases (v0.2.1 moves from the official Alpine image to Flux's own); its PostgreSQL major may
+  # not, which INSTALL.md answers with a restore into a fresh installation. The data directory is checked on the new image below.
   [ "$(db_image "$previous_assets")" = "$(db_image "$assets")" ] ||
-    fail "the PostgreSQL pin differs between the releases; INSTALL.md says to restore into a fresh installation instead of upgrading in place"
+    echo "the database image changes: $(db_image "$previous_assets") -> $(db_image "$assets") (the PostgreSQL major must stay; checked after the upgrade)"
 fi
 
 # The agents' provider is a mock on the project's network (provider-mock.compose.yaml): the AI connection of the seeded data
@@ -133,6 +137,8 @@ ledger() { sql "$1" "$2" "$3" "SELECT string_agg(version::text, ',' ORDER BY ver
 # is rolled back, so nothing is left behind).
 database_check() { # project, environment file, assets directory
   sql "$1" "$2" "$3" "SELECT version()" | grep -q 'Debian' || fail "the database does not run the candidate's database image"
+  [ "$(sql "$1" "$2" "$3" "SELECT current_setting('server_version_num')::int / 10000")" = "$(cat "$up_dir/major.before")" ] ||
+    fail "the PostgreSQL major changed across the upgrade"
   [ "$(sql "$1" "$2" "$3" "SHOW shared_preload_libraries" | tr ',' '\n' | grep -cx 'pg_search')" = 1 ] || fail "pg_search is not preloaded"
   checked=$(sql "$1" "$2" "$3" "BEGIN; CREATE EXTENSION IF NOT EXISTS amcheck; SELECT count(bt_index_check(c.oid, true)) FROM pg_index i
     JOIN pg_class c ON c.oid = i.indexrelid JOIN pg_am a ON a.oid = c.relam JOIN pg_namespace n ON n.oid = c.relnamespace
@@ -287,6 +293,7 @@ dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout "$
 dc "$source_project" "$up_env" "$previous_assets" stop api worker
 table_snapshot "$source_project" "$up_env" "$previous_assets" "$up_dir/columns" > "$up_dir/tables.before"
 volume_stamps "$source_project" > "$up_dir/volumes.before"
+sql "$source_project" "$up_env" "$previous_assets" "SELECT current_setting('server_version_num')::int / 10000" > "$up_dir/major.before"
 
 echo "-- 3. pull and start the candidate with the same environment file and project"
 if [ -n "$inject" ]; then
