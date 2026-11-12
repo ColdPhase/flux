@@ -65,9 +65,12 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
 
 type ToolOutput = { content?: unknown; structuredContent?: unknown; isError?: boolean };
 
-/** Everything a tool result holds as text: each part's text, any other part (a resource, a link) and structured content as JSON. */
+/** A picture part of a result (#1217, `flux_view_image`): its bytes are no text, and they are bounded by the tool itself. */
+const isImage = (part: unknown) => !!part && typeof part === 'object' && (part as { type?: unknown }).type === 'image';
+
+/** Everything a tool result holds as text: each part's text, any other part (a resource, a link) and structured content as JSON. A picture is no text. */
 function resultText(result: ToolOutput): string {
-  const parts = Array.isArray(result?.content) ? result.content as unknown[] : [];
+  const parts = (Array.isArray(result?.content) ? result.content as unknown[] : []).filter((part) => !isImage(part));
   const texts = parts.map((part) => (typeof (part as { text?: unknown })?.text === 'string' ? (part as { text: string }).text : JSON.stringify(part)));
   if (result?.structuredContent !== undefined) texts.push(JSON.stringify(result.structuredContent));
   return texts.join('\n');
@@ -81,7 +84,11 @@ function resultText(result: ToolOutput): string {
  * part of it, and a result that is only links. A web page (`flux_read_web`) is not Flux text.
  */
 export async function boundRunResult<T extends ToolOutput>(db: Database, runId: string, result: T, tool: string): Promise<T | ReturnType<typeof toolError>> {
-  const bytes = Buffer.byteLength(JSON.stringify(result?.content ?? []), 'utf8');
+  // A picture counts by what it is to the model, not its base64: about 1,600 tokens, so 6,400 bytes (#1217). Its own size is the tool's
+  // bound (5 MB). Its bytes are neither counted towards the run's text nor kept as private text.
+  const content = Array.isArray(result?.content) ? result.content as unknown[] : [];
+  const pictures = content.filter(isImage).length;
+  const bytes = Buffer.byteLength(JSON.stringify(content.filter((part) => !isImage(part))), 'utf8') + pictures * 6_400;
   if (bytes > RUN_TOKEN_LIMITS.resultBytesPerCall) {
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'call'));
     return toolError(new DomainError(413, 'MCP_RESULT_TOO_LARGE', 'This result is larger than one assistant run may receive; the run stops'));

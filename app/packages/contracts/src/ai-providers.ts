@@ -38,6 +38,11 @@ export interface AiProviderInfo {
    * a provider without one simply has no search.
    */
   searchesWeb: boolean;
+  /**
+   * Whether its models take pictures as input on the wire format Flux speaks to it (#1217, C-58), unless `AI_MODELS_WITHOUT_VISION` names
+   * one. Flux cannot tell for OpenRouter or an OpenAI-compatible server, whose models differ, so those are taken to see none.
+   */
+  seesPictures: boolean;
 }
 
 /**
@@ -47,23 +52,23 @@ export interface AiProviderInfo {
 export const AI_PROVIDERS: Readonly<Record<AiProviderKind, AiProviderInfo>> = {
   anthropic: {
     kind: 'anthropic', label: 'Anthropic', wire: 'anthropic_messages', baseUrl: 'https://api.anthropic.com',
-    keyHint: 'An Anthropic API key beginning with sk-ant-.', keylessModelList: false, reportsCost: false, searchesWeb: true,
+    keyHint: 'An Anthropic API key beginning with sk-ant-.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
   },
   openai: {
     kind: 'openai', label: 'OpenAI', wire: 'openai_responses', baseUrl: 'https://api.openai.com/v1',
-    keyHint: 'An OpenAI project or service-account key beginning with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false, searchesWeb: true,
+    keyHint: 'An OpenAI project or service-account key beginning with sk-. Admin keys are refused.', keylessModelList: false, reportsCost: false, searchesWeb: true, seesPictures: true,
   },
   openrouter: {
     kind: 'openrouter', label: 'OpenRouter', wire: 'openai_chat_completions', baseUrl: 'https://openrouter.ai/api/v1',
-    keyHint: 'An OpenRouter key beginning with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false,
+    keyHint: 'An OpenRouter key beginning with sk-or-.', keylessModelList: true, reportsCost: true, searchesWeb: false, seesPictures: false,
   },
   gemini: {
     kind: 'gemini', label: 'Google Gemini', wire: 'openai_chat_completions', baseUrl: 'https://generativelanguage.googleapis.com/v1beta/openai',
-    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false,
+    keyHint: 'A Gemini API key beginning with AIza. Google’s terms allow only a paid (billing-enabled) key for use in the EEA, Switzerland and the UK.', keylessModelList: false, reportsCost: false, searchesWeb: false, seesPictures: true,
   },
   openai_compatible: {
     kind: 'openai_compatible', label: 'OpenAI-compatible endpoint', wire: 'openai_chat_completions', baseUrl: null,
-    keyHint: 'The key your endpoint expects. If it needs none, enter any placeholder of at least 8 characters.', keylessModelList: true, reportsCost: false, searchesWeb: false,
+    keyHint: 'The key your endpoint expects. If it needs none, enter any placeholder of at least 8 characters.', keylessModelList: true, reportsCost: false, searchesWeb: false, seesPictures: false,
   },
 };
 
@@ -206,6 +211,21 @@ export const AI_MODELS_WITHOUT_WEB_SEARCH: readonly { provider: AiProviderKind; 
 /** Whether a run on this provider and model may be offered the provider's built-in web search (#954). */
 export const aiModelSearchesWeb = (provider: AiProviderKind, model: string): boolean =>
   AI_PROVIDERS[provider].searchesWeb && !AI_MODELS_WITHOUT_WEB_SEARCH.some((entry) => entry.provider === provider && entry.model === model);
+
+/**
+ * Models of a provider that sees pictures which do not (#1217, C-58): an agent on one is not given `flux_view_image` and says it sees only
+ * the names of attached files; the model list says "Can't see pictures". A dated table; recheck a row before relying on it after its date.
+ */
+export const AI_MODELS_WITHOUT_VISION: readonly { provider: AiProviderKind; model: string; checkedOn: string; reason: string }[] = [
+  { provider: 'openai', model: 'o3-mini', checkedOn: '2026-11-12', reason: 'its model page lists text as its only input' },
+];
+
+/**
+ * Whether a run on this provider and model can be given a picture as input (#1217). A run on the owner's Claude Code or Codex always can:
+ * their models take pictures, and the CLI passes an MCP image result to its model (`engine: 'runtime'`).
+ */
+export const aiModelSeesPictures = (provider: AiProviderKind, model: string, engine: 'server' | 'runtime' = 'server'): boolean =>
+  engine === 'runtime' || (AI_PROVIDERS[provider].seesPictures && !AI_MODELS_WITHOUT_VISION.some((entry) => entry.provider === provider && entry.model === model));
 
 /** `POST /api/v1/ai-model-lists`: the provider's models, fetched by the server without a key. */
 export const AI_MODEL_LISTS_PATH = '/api/v1/ai-model-lists';

@@ -121,6 +121,7 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
               </div>
             ))}
             {picked && !picked.callsTools ? <p className="agp__hint" role="note">{picked.name}: can answer but can’t make changes.</p> : null}
+            {picked && picked.seesPictures === false ? <p className="agp__hint" role="note">{picked.name}: can’t see pictures, so it sees attached files only by name.</p> : null}
           </div>
         ) : <p className="nset__note">Connect AI to choose a model. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p>}
 

@@ -1,4 +1,4 @@
-import type { PersonalRunTokenIssuer, PersonalTool, PersonalToolHost, PersonalToolSession } from '@flux/core';
+import type { PersonalImage, PersonalRunTokenIssuer, PersonalTool, PersonalToolHost, PersonalToolSession } from '@flux/core';
 
 // The worker as an MCP client of the API's `/mcp` route with a run's token (F-027 AST-8, A6 with A2, #484).
 // The owner's switches, the result bounds, the place and the change log stay in the route: the worker only
@@ -33,9 +33,15 @@ async function rpc(url: string, token: string, id: number, method: string, param
   return { status: response.status, ...body };
 }
 
-const textOf = (content: unknown) => (Array.isArray(content) ? content : [])
+const PICTURE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const isPicture = (part: unknown): part is PersonalImage => !!part && typeof part === 'object' && (part as { type?: unknown }).type === 'image'
+  && PICTURE_TYPES.has(String((part as { mimeType?: unknown }).mimeType)) && typeof (part as { data?: unknown }).data === 'string';
+const textOf = (content: unknown) => (Array.isArray(content) ? content : []).filter((part) => !isPicture(part))
   .map((part) => (part && typeof part === 'object' && (part as { type?: unknown }).type === 'text' ? String((part as { text?: unknown }).text ?? '') : '[non-text content]'))
   .join('\n');
+/** The pictures of a result (#1217, `flux_view_image`): image input of the next request, never text. */
+const imagesOf = (content: unknown): PersonalImage[] => (Array.isArray(content) ? content : []).filter(isPicture)
+  .map((part) => ({ mimeType: part.mimeType, data: part.data }));
 
 /**
  * The tool schema as the model sees it, without what costs tokens and tells it nothing (#484): the draft
@@ -85,7 +91,8 @@ export function mcpToolHost(tokens: PersonalRunTokenIssuer, mcpUrl: string, fetc
           if (answer.status === 401 || answer.status === 403) return { content: REFUSED, isError: true };
           if (answer.error) return { content: `Flux refused this call: ${typeof answer.error.message === 'string' ? answer.error.message.slice(0, 300) : 'unavailable'}`, isError: true };
           if (answer.status !== 200 || !answer.result) return { content: 'The call failed.', isError: true };
-          return { content: textOf(answer.result.content), isError: answer.result.isError === true };
+          const images = answer.result.isError === true ? [] : imagesOf(answer.result.content);
+          return { content: textOf(answer.result.content), isError: answer.result.isError === true, ...(images.length ? { images } : {}) };
         },
         async close() {
           if (closed) return;

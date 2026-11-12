@@ -32,6 +32,8 @@ import { toolError, toolResult } from './tool-results.js';
 interface PictureServices { reader: WebReader; storage: FileStorage }
 let services: PictureServices | null = null;
 export function configureAgentPictures(next: PictureServices | null) { services = next; }
+/** The files volume, for a picture a run looks at (`flux_view_image`). */
+export const pictureStorage = () => services?.storage ?? null;
 
 const OPERATION = 'answer.picture.attach' as const;
 /** Plain words in place of a picture: an error result whose text the agent passes on, never a code. */

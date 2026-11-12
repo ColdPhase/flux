@@ -1,5 +1,6 @@
 import type http from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
+import { png } from './pictures.js';
 
 /**
  * TEST ONLY (scripts/check_ai_real_model.sh): the model hosts of the REAL Claude Code and Codex answered by a REAL local model (an
@@ -51,10 +52,25 @@ const id = (prefix: string) => `${prefix}_${randomBytes(10).toString('hex')}`;
 /** The model's reasoning before a tool call, kept here by the call's id: a CLI that drops it gets it back on its next request (gpt-oss wants it). */
 const reasoningOf = new Map<string, string>();
 
+/**
+ * The vision path's mock (#1217): the local model sees no pictures, so a picture a CLI sends (an MCP image result of flux_view_image, as an
+ * Anthropic `image` block or a Responses `input_image`) reaches it as words: what a vision model would say about the scenario's photo,
+ * known by its SHA-256, or that nothing can be made out. No vision-capable local model is on this host (2026-11-12); a run with one would
+ * pass the picture on instead.
+ */
+const KNOWN_PICTURES = new Map([[createHash('sha256').update(png(96, 64)).digest('hex'),
+  'a raised garden bed of larch boards with lettuce, and beans climbing a trellis behind it, on a sunny day']]);
+const pictureWords = (base64: string) => {
+  const known = KNOWN_PICTURES.get(createHash('sha256').update(Buffer.from(base64, 'base64')).digest('hex'));
+  return known ? `[Picture: ${known}.]` : '[Picture: nothing can be made out.]';
+};
+const imageData = (part: Json): string | null => part.type === 'image' && typeof (part.source as Json | undefined)?.data === 'string' ? (part.source as Json).data as string
+  : part.type === 'input_image' && typeof part.image_url === 'string' ? (/^data:[^;]+;base64,(.*)$/.exec(part.image_url)?.[1] ?? null) : null;
 const textOf = (content: unknown): string => typeof content === 'string' ? content
   : Array.isArray(content) ? content.map((part) => typeof part === 'string' ? part
     : typeof (part as Json).text === 'string' ? (part as Json).text as string
-      : textOf((part as Json).content)).filter(Boolean).join('\n') : '';
+      : imageData(part as Json) !== null ? pictureWords(imageData(part as Json)!)
+        : textOf((part as Json).content)).filter(Boolean).join('\n') : '';
 
 const auth = (): Record<string, string> => (MODEL_KEY ? { authorization: `Bearer ${MODEL_KEY}` } : {});
 let modelName: Promise<string> | null = null;

@@ -1,4 +1,4 @@
-import { aiModelCallsTools, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
+import { aiModelCallsTools, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
 import type { AiConnectionRef } from './personal-runs.js';
 
 // The model of each agent (F-027 AST-11, #596; Connect AI #854): picked from any of the person's connections, with the
@@ -20,6 +20,8 @@ export interface AssistantModelOption {
   note: string;
   /** False: the model can answer but can't make changes (AST-8.3). */
   callsTools: boolean;
+  /** False: the model can't see pictures, so its agent sees attached files only by name (#1217, C-58). Absent: it sees them. */
+  seesPictures?: boolean;
 }
 
 /** `claude_plan` and `chatgpt_plan`: the owner's subscription through its CLI; `api_key`: the owner's own key. */
@@ -110,10 +112,12 @@ export function assistantApiModels(connection: { provider: AiProviderKind; model
   const own: AssistantModelOption = {
     id: connection.model, name: assistantModelName(connection.model), note: "Your connection's model",
     callsTools: connection.toolCalling !== false && aiModelCallsTools(connection.provider, connection.model),
+    ...(aiModelSeesPictures(connection.provider, connection.model) ? {} : { seesPictures: false }),
   };
   const others = (API_MODELS[connection.provider] ?? []).filter((id) => id !== connection.model).flatMap((id) => {
     const row = tablePrice(connection.provider, id);
-    return row ? [{ id, name: assistantModelName(id), note: priceNote(row), callsTools: aiModelCallsTools(connection.provider, id) }] : [];
+    return row ? [{ id, name: assistantModelName(id), note: priceNote(row), callsTools: aiModelCallsTools(connection.provider, id),
+      ...(aiModelSeesPictures(connection.provider, id) ? {} : { seesPictures: false }) }] : [];
   });
   return [own, ...others];
 }

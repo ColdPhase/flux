@@ -9,7 +9,9 @@
 # Scenarios (app/tests/app/ai-real-model.check.ts), each on Claude Code (Ada) and Codex (Bogdan): summary (`/ai` summarises and makes a
 # task), task (a task given to the agent: Done or handed back by "What it may do"), link (reads a page a person posted), search (Polish law,
 # no link: searches and reads), injection (a page's prompt injection: C-30 and approvals), schedule (a schedule in plain words, Run now),
-# ask (one agent asks another with <ask>), others (nobody else prompts an agent). Assertions are on Flux's records and plain properties of
+# ask (one agent asks another with <ask>), others (nobody else prompts an agent), picture (#1217: finds a photo and attaches it to its answer,
+# fetched by the server), vision (#1217: says what a posted photo shows; the local model sees no pictures, so the shim's vision mock
+# describes the scenario's photo in words, support/real-model.ts). Assertions are on Flux's records and plain properties of
 # the answer, never its exact text. Evidence (Flux state, the model transcript, timings) per attempt goes to FLUX_AI_EVIDENCE_DIR.
 #
 # The model: an OpenAI-compatible Chat Completions server (tool calls, a 64k+ context).
@@ -65,7 +67,7 @@ model_container="${FLUX_AI_MODEL_CONTAINER-strata}"
 if [ -n "${FLUX_AI_MODEL_URL:-}" ]; then model_container=""; else export FLUX_AI_MODEL_URL="http://flux-model:${FLUX_AI_MODEL_PORT:-8080}"; fi
 model_started=""
 model_attached=""
-scenarios="${FLUX_AI_SCENARIOS:-summary task link search injection schedule ask others}"
+scenarios="${FLUX_AI_SCENARIOS:-summary task link search injection schedule ask others picture vision}"
 engines="${FLUX_AI_ENGINES:-claude codex}"
 
 step() { printf '\n== %s\n' "$*"; }

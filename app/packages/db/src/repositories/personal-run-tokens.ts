@@ -24,6 +24,9 @@ export interface RunTokenRow {
   agentId: string;
   status: typeof r.$inferSelect.status;
   engine: 'server' | 'runtime';
+  /** The provider and model the run was sent with: whether it sees pictures (#1217). */
+  provider: typeof r.$inferSelect.provider;
+  model: string;
   /** #841: a `task_answer` run only reads. */
   kind: typeof r.$inferSelect.kind;
   runTokenNonceHash: string | null;
@@ -42,7 +45,7 @@ const columns = {
   id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId, dmId: r.dmId, ownerUserId: r.ownerUserId,
   agentId: r.agentId, status: r.status, engine: r.engine, kind: r.kind, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
   runTokenExpiresAt: r.runTokenExpiresAt, runTokenClosedAt: r.runTokenClosedAt, runTools: r.runTools, mcpResultBytes: r.mcpResultBytes,
-  mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt, aiEpoch: r.aiEpoch,
+  mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt, aiEpoch: r.aiEpoch, provider: r.provider, model: r.model,
 };
 
 export function personalRunTokenRows(db: DbExecutor) {
