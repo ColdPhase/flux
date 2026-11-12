@@ -31,6 +31,10 @@ updates:
       prefix: "Deps"
     ignore:
       - dependency-name: "playwright"
+      # The types follow the runtime: every Node stage is node:24-alpine (docker/Dockerfile), so @types/node stays on 24.x. In #1084 it
+      # offered 26, whose typings describe APIs Node 24 does not have. Move this and the pin together when the runtime moves.
+      - dependency-name: "@types/node"
+        versions: [">=25"]
     groups:
       # These carry a local patch (app/patches, patchedDependencies in pnpm-workspace.yaml) for one exact version. A bump
       # fails to install until the patch is ported, so they travel together in one PR that a person finishes.

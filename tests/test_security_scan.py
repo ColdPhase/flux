@@ -524,6 +524,18 @@ class WorkflowRulesTest(unittest.TestCase):
         self.assertRegex(text, r'(?s)package-ecosystem: npm\n.*?ignore:\n\s+- dependency-name: "playwright"')
         self.assertRegex(text, r'(?s)package-ecosystem: docker\n.*?ignore:\n\s+- dependency-name: "mcr\.microsoft\.com/playwright\*"')
 
+    def test_dependabot_keeps_the_node_types_on_the_runtime_major(self) -> None:
+        text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+        # The runtime's major is named in docker/Dockerfile (node:24.x-alpine); @types/node 26 describes APIs it lacks (#1084, #1240).
+        runtime = re.search(r"node:(\d+)\.\d+\.\d+-alpine", (ROOT / "docker" / "Dockerfile").read_text(encoding="utf-8"))
+        self.assertIsNotNone(runtime, "docker/Dockerfile names the Node runtime's tag")
+        major = int(runtime.group(1))
+        pinned = re.search(r'"@types/node": "(\d+)\.\d+\.\d+"', (ROOT / "app" / "package.json").read_text(encoding="utf-8"))
+        self.assertIsNotNone(pinned)
+        self.assertEqual(int(pinned.group(1)), major, "@types/node is pinned to the runtime's major")
+        self.assertRegex(text, r'(?s)package-ecosystem: npm\n.*?ignore:\n(?:\s+(?:#.*|- dependency-name: "[^"]+")\n)*?'
+                         r'\s+- dependency-name: "@types/node"\n\s+versions: \[">=%d"\]\n' % (major + 1))
+
     def test_dependabot_leaves_the_digest_pinned_node_base_to_a_person(self) -> None:
         text = (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
         # A pin by digest alone has no tag for Dependabot to follow; in #1086 it offered the Debian `node:26` image.
