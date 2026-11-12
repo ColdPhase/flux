@@ -340,7 +340,8 @@ class ViewSwitch(unittest.TestCase):
         page.on("request", lambda request: writes.append(f"{request.method} {request.url}") if request.method != "GET" else None)
         page.keyboard.press("j")
         expect(page.locator(".nyc.is-selected")).to_have_count(1)
-        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(\?.*)?$")
+        # The space a click enters is read with its frame (`space-shell`, #1109).
+        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/space-shell)?(\?.*)?$")
         # A click on the sidebar leaves the focus on its link, which is no field: the key would reach the Inbox's handler.
         page.locator(".app__side").get_by_role("link", name=re.compile("Community garden sensors")).first.click()
         expect(page.locator("#content [data-pending-view]")).to_be_visible()
