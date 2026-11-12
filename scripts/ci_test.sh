@@ -111,7 +111,7 @@ printf 'ci_test: run https://github.com/%s/actions/runs/%s\n' "$repo" "$run_id"
 # A line now and then while waiting (gh run watch itself repeats the whole screen without a terminal).
 (
   waited=0
-  while sleep 120; do
+  while sleep 180; do
     waited=$((waited + 2))
     printf 'ci_test: still running after %s min\n' "$waited" >&2
   done
@@ -120,7 +120,7 @@ ticker=$!
 trap 'kill "$ticker" 2>/dev/null || true' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
-gh run watch "$run_id" -R "$repo" --interval 20 --compact --exit-status >/dev/null 2>&1 || true
+gh run watch "$run_id" -R "$repo" --interval 60 --compact --exit-status >/dev/null 2>&1 || true
 kill "$ticker" 2>/dev/null || true
 
 conclusion=$(gh run view "$run_id" -R "$repo" --json conclusion --jq .conclusion)
