@@ -18,7 +18,7 @@ import urllib.request
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from app_select import choose, expect_value, labels
+from app_select import choose, expect_value, labels, values
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -133,11 +133,13 @@ class AiConnectionSettings(unittest.TestCase):
         page.get_by_label("Endpoint base URL").fill(ENDPOINT)
         page.get_by_role("button", name="Show available models").click()
         expect(page.get_by_role("status").filter(has_text="2 models from OpenAI-compatible endpoint")).to_be_visible()
-        options = page.locator("datalist option")
-        self.assertEqual([options.nth(i).get_attribute("value") for i in range(options.count())], ["llama3.1:8b", "qwen2.5:7b-instruct"])
+        # #1218: the listed models fill the app's dropdown (no browser datalist), with "Other model id…" for any other id.
+        model = page.get_by_label("Model", exact=True)
+        self.assertEqual(values(model), ["llama3.1:8b", "qwen2.5:7b-instruct", "__other__"])
         self.assertEqual([item["authorization"] for item in mock_requests() if item["path"] == "/v1/models"], [None],
                          "the server lists models without any key")
-        page.get_by_label("Model", exact=True).fill("llama3.1:8b")
+        expect(page.locator("datalist")).to_have_count(0)
+        choose(model, value="llama3.1:8b")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_be_visible()
         page.get_by_label("Input price").fill("0")
         page.get_by_label("Output price").fill("0")
@@ -167,8 +169,13 @@ class AiConnectionSettings(unittest.TestCase):
         choose(page.get_by_label("Provider", exact=True), label="Anthropic")
         expect(page.get_by_label("Endpoint base URL")).to_have_count(0)
         expect(page.get_by_role("button", name="Show available models")).to_have_count(0)
-        expect(page.get_by_text("Type the model id exactly as the provider names it.")).to_be_visible()
-        page.get_by_label("Model", exact=True).fill("claude-sonnet-5")
+        # #1218: Provider → API key → Model; the key's own models fill the Model once the key field is left.
+        expect(page.get_by_label("Model", exact=True)).to_be_disabled()
+        key = page.get_by_label("API key", exact=True)
+        key.fill(KEYS["anthropic"])
+        key.blur()
+        expect(page.get_by_text("6 models from Anthropic.")).to_be_visible()
+        choose(page.get_by_label("Model", exact=True), value="claude-sonnet-5")
         expect(page.get_by_test_id("connection-price")).to_contain_text("$2.00 input · $10.00 output per 1M tokens · Flux price table, checked 2026-11-12")
         expect(page.get_by_role("group", name="Price per 1M tokens (USD)")).to_have_count(0)
         page.get_by_label("Name", exact=True).fill("Work Anthropic")
@@ -316,10 +323,11 @@ class AiConnectionSettings(unittest.TestCase):
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
                    if route.request.method == "GET" else route.continue_())
         page.goto(f"/settings/agents/{agent.json()['id']}")
+        # #1218: a key's models are the app's dropdown, named by the key.
         for item in owned:
-            expect(page.get_by_role("radiogroup", name=item["name"])).to_be_visible()
+            expect(page.get_by_role("combobox", name=item["name"])).to_be_visible()
         chosen = owned[0]
-        page.get_by_role("radiogroup", name=chosen["name"]).get_by_role("radio").click()
+        choose(page.get_by_role("combobox", name=chosen["name"]), value=chosen["model"])
         expect(page.get_by_role("alert")).to_be_visible()
         shot(page, "ai-connections-1440-agent-model-chosen")
         self.assertEqual(len(sent), 1)
@@ -367,9 +375,10 @@ class AiConnectionSettings(unittest.TestCase):
         expect(window.locator("[data-choice=api_key] input")).to_be_checked()
         window.get_by_role("button", name="Continue").click()
         choose(window.get_by_label("Provider", exact=True), label="Anthropic")
-        window.get_by_label("Model", exact=True).fill("claude-sonnet-5")
-        window.get_by_label("Name", exact=True).fill("From the window")
         window.get_by_label("API key", exact=True).fill(KEYS["anthropic"])
+        window.get_by_label("API key", exact=True).blur()
+        choose(window.get_by_label("Model", exact=True), value="claude-sonnet-5")
+        window.get_by_label("Name", exact=True).fill("From the window")
         window.get_by_label("Daily budget (USD)", exact=True).fill("0.10")
         window.get_by_role("button", name="Connect", exact=True).click()
         # One request's input and output at the model's price; its web searches are charged as reported, not reserved (#1113).
