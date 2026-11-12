@@ -94,6 +94,12 @@ fetch('https://{LEAK}/fetch'); new Image().src = 'https://{LEAK}/script-img'; do
 <div style="background: url(https://{LEAK}/inline-style.png)">styled</div>
 </body></html>""".encode()
 
+# The same hints in a page with a UTF-16 byte-order mark: the browser decodes it as UTF-16 whatever the header says (C-60).
+PAGE16 = (f'<link rel="preconnect" href="{TRAP_URL}"><LINK rel="preload" as="fetch" href="{TRAP_URL}/preload16">'
+          f'<link rel="dns-prefetch" href="{TRAP_URL}"><meta http-equiv="refresh" content="0;url={TRAP_URL}/meta16">'
+          '<h1 id="title">Sixteen-bit report</h1><p>Zażółć gęślą jaźń</p>')
+UTF16 = {"le": b"\xff\xfe" + PAGE16.encode("utf-16-le"), "be": b"\xfe\xff" + PAGE16.encode("utf-16-be")}
+
 # With Run scripts: what the page's own script can reach, written into the page for the test to read.
 PROBE = f"""<!doctype html><html><head><meta charset="utf-8"><title>Probe</title></head><body>
 <h1 id="title">Script probe</h1><ul id="out"></ul>
@@ -179,6 +185,8 @@ class FilePreview(unittest.TestCase):
         root("report", "Range report from Saturday", "range-report.html", REPORT)
         root("hostile", "The vendor's page, as they sent it", "vendor-page.html", HOSTILE)
         root("probe", "A page with a script", "probe.html", PROBE)
+        for order, data in UTF16.items():
+            root(f"utf16{order}", f"A UTF-16{order.upper()} page", f"report-{order}.html", data)
         for context in contexts.values():
             context.close()
 
@@ -327,6 +335,20 @@ class FilePreview(unittest.TestCase):
         if UI_BROWSER == "chromium":
             self.assertEqual(seen, {"frame-src"}, "the Flux page refused the other site in its frame")  # not every engine reports it
         self.assert_recorder_sees(page, outside)
+
+    def test_02a_a_utf16_page_is_made_inert_too(self) -> None:
+        for order in UTF16:
+            with self.subTest(order=order):
+                before = TRAP.connections
+                page, outside, events = self.open(f"utf16{order}")
+                self.viewer(page, f"utf16{order}", f"report-{order}.html")
+                inside = page.frame_locator(".file-viewer iframe")
+                expect(inside.locator("#title")).to_have_text("Sixteen-bit report")
+                expect(inside.get_by_text("Zażółć gęślą jaźń")).to_be_visible()
+                page.wait_for_timeout(2000)
+                self.assertEqual(outside, [], "nothing left the browser")
+                self.assertEqual(TRAP.connections, before, "no connection was opened to a host the page names")
+                self.assertEqual(events["pages"], [])
 
     def test_02b_the_connection_counter_sees_a_connection(self) -> None:
         """Control for test_02: the listener counts a connection this browser does open."""

@@ -26,6 +26,12 @@ async function upload(who: Person, projectId: string, bytes: Uint8Array, name: s
 const preview = (who: Person, id: string, headers: Record<string, string> = FRAME, scripts = false) =>
   fetch(new URL(filePreviewPath(id, scripts), who.browser.base), { headers: { cookie: who.browser.cookieHeader(), ...headers } });
 
+const PAGE16 = '<link rel="preconnect" href="https://leak.example"><LINK rel=preload as=fetch href="https://leak.example/p">'
+  + '<meta http-equiv="refresh" content="0;url=https://leak.example/m"><h1>sixteen bit: Zażółć</h1>';
+const utf16be = (text: string) => { const le = Buffer.from(text, 'utf16le'); for (let i = 0; i + 1 < le.length; i += 2) [le[i], le[i + 1]] = [le[i + 1]!, le[i]!]; return le; };
+/** A page with a UTF-16 byte-order mark, which the browser decodes as UTF-16 whatever the header says. */
+const HTML16 = { le: Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from(PAGE16, 'utf16le')]), be: Buffer.concat([Buffer.from([0xfe, 0xff]), utf16be(PAGE16)]) };
+
 async function scene() {
   const owner = await person('Preview owner');
   const reader = await person('Preview reader');
@@ -76,6 +82,24 @@ test('an HTML preview is a sandboxed, network-less page for a frame of a Flux pa
     assert.equal(refused.status, 403, JSON.stringify(headers));
     assert.equal((await refused.json() as { code: string }).code, 'PREVIEW_FRAME_ONLY');
     assert.equal(refused.headers.get('x-frame-options'), 'DENY');
+  }
+});
+
+test('a UTF-16 page is decoded, made inert and sent as UTF-8 without its byte-order mark', async () => {
+  const owner = await person('Preview sixteen');
+  const ws = await workspace(owner, 'Sixteen');
+  const place = await project(owner, ws.id, 'Sixteen-bit pages', 'restricted');
+  for (const [order, bytes] of Object.entries(HTML16)) {
+    const file = await upload(owner, place.id, bytes, `u16${order}.html`);
+    const response = await preview(owner, file.id);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'text/html; charset=utf-8');
+    const sent = Buffer.from(await response.arrayBuffer());
+    assert.equal(Number(response.headers.get('content-length')), sent.byteLength);
+    assert.notDeepEqual([...sent.subarray(0, 2)], [0xff, 0xfe], order);
+    assert.notDeepEqual([...sent.subarray(0, 2)], [0xfe, 0xff], order);
+    const text = new TextDecoder('utf-8', { fatal: true }).decode(sent);
+    assert.equal(text, PAGE16.replace(/<(link|meta)/gi, '<x-$1'), `${order}: every link and meta inert, the rest as written`);
   }
 });
 

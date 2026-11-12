@@ -84,10 +84,20 @@ const encodedName = (name: string) => encodeURIComponent(name).replace(/[!'()*]/
  * WebKit opens a connection for `<link rel="preconnect">` without asking the Content-Security-Policy, and DNS prefetch, prefetch and
  * preload are hints a browser may act on before any policy; a `<meta http-equiv>` could turn DNS prefetch back on. A still page loses
  * nothing it could use: the policy already refuses every stylesheet, icon and font a link names, and the response's own header sets the
- * charset. The bytes are read as Latin-1 so that every other byte is sent exactly as stored; a tag name ends at a space, `/` or `>`.
+ * charset. A tag name ends at a space, `/` or `>`.
+ *
+ * The rewrite must see the page as the browser decodes it. The response says UTF-8, and only a byte-order mark overrides that (the
+ * WHATWG encoding sniff puts the BOM first; a `<meta charset>` is ignored after a header, and is made inert anyway). So:
+ * - a UTF-16 BOM (`FF FE`, `FE FF`; a UTF-32 BOM begins with one and decodes the same way): the page is decoded as UTF-16, rewritten
+ *   and sent as UTF-8 without a BOM, which is what the header says;
+ * - anything else is ASCII-compatible to the browser (UTF-8, with or without its BOM): the bytes are read as Latin-1, so that every
+ *   other byte is sent exactly as stored.
  */
+const INERT = /<(link|meta)(?=[\t\n\f\r />])/gi;
 export function inertHead(bytes: Uint8Array): Buffer {
-  return Buffer.from(Buffer.from(bytes).toString('latin1').replace(/<(link|meta)(?=[\t\n\f\r />])/gi, '<x-$1'), 'latin1');
+  const utf16 = bytes[0] === 0xff && bytes[1] === 0xfe ? 'utf-16le' : bytes[0] === 0xfe && bytes[1] === 0xff ? 'utf-16be' : null;
+  if (utf16) return Buffer.from(new TextDecoder(utf16).decode(bytes).replace(INERT, '<x-$1'), 'utf8');
+  return Buffer.from(Buffer.from(bytes).toString('latin1').replace(INERT, '<x-$1'), 'latin1');
 }
 const previewKind = (name: string): 'html' | 'pdf' | null => /\.html?$/i.test(name) ? 'html' : /\.pdf$/i.test(name) ? 'pdf' : null;
 
