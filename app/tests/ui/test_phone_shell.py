@@ -151,7 +151,8 @@ class PhoneShellJourney(unittest.TestCase):
                     row = views.get_by_role("tab", name=re.compile(f"^{name}"))
                     self.assertGreaterEqual(self.box(row)["height"], 44, f"44px target: {name}")
                 header = self.box(page.locator("header"))
-                self.assertLessEqual(header["y"] + header["height"], 124, "the title row and the views row")
+                # 8 px, the title row (a name of two lines at 320 px makes it 65 px), 12 px and the views' 44 px row.
+                self.assertLessEqual(header["y"] + header["height"], 133, "the title row and the views row")
                 expect(page.locator(".state-row")).to_have_count(0)
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-tasks-phone-{width}")

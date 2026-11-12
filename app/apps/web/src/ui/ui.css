@@ -146,7 +146,8 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-tabs__tab:hover { color: var(--t1); }
 .ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
 .ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 500; }
-.ui-tabs__tab:focus-visible { outline-offset: -4px; }
+/* The ring is drawn in place inside the tab (no offset transition from the global 4px), so no frame of it is clipped by the row that scrolls. */
+.ui-tabs__tab, .ui-tabs__tab:focus-visible { outline-offset: -4px; }
 /* The label keeps the width of its heavier form, so selecting a tab never nudges the others. */
 .ui-tabs__label { display: inline-flex; flex-direction: column; }
 .ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 500; pointer-events: none; user-select: none; }

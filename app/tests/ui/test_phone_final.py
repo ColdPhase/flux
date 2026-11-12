@@ -330,6 +330,7 @@ class PhoneFinal(unittest.TestCase):
         views = page.get_by_role("navigation", name="Space views")
         conversation = views.get_by_role("tab", name=re.compile("^Conversation"))
         # One tab stop: the current view (Wiki), as a tab list has it; the others are reached with the arrows.
+        expect(views.get_by_role("tab")).to_have_count(4)
         self.assertEqual(views.get_by_role("tab").evaluate_all("tabs => tabs.map((tab) => tab.tabIndex)"), [-1, -1, -1, 0])
         conversation.focus()
         page.keyboard.press("Enter")
@@ -507,8 +508,8 @@ class PhoneFinal(unittest.TestCase):
           const plain = (el) => ({ fill: style(el).backgroundColor, shadow: style(el).boxShadow, icon: el.querySelector('svg').getBoundingClientRect().width });
           return { header: box(header), h1: box(h1), lines: Math.round(h1.getBoundingClientRect().height / line), clipped: h1.scrollHeight > h1.clientHeight + 1,
             back: box(back), more: box(more), tabs: box(header.querySelector('.phead__views')), bar: box(bar), barScrolls: bar.scrollWidth > bar.clientWidth + 1,
-            sub: box(header.querySelector('.phead__sub')), plainBack: plain(back), plainMore: plain(more),
-            others: [...header.querySelectorAll('button')].map((el) => el.getAttribute('aria-label') || el.textContent.trim()), page: document.documentElement.scrollWidth };
+            block: box(header.querySelector('.phead__title')), plainBack: plain(back), plainMore: plain(more),
+            others: [...header.querySelectorAll('button')].filter((el) => el.getClientRects().length).map((el) => el.getAttribute('aria-label') || el.textContent.trim()), page: document.documentElement.scrollWidth };
         }""")
 
     def test_12_the_space_header_is_back_the_name_and_more_with_the_views_under_it(self):
@@ -543,8 +544,8 @@ class PhoneFinal(unittest.TestCase):
                         else:
                             self.assertFalse(part["clipped"], "a normal name is whole: no ellipsis")
                         # 8 px under the top, 12 between the title row and the views (the row is as tall as its tallest part).
-                        row_bottom = max(part["back"]["bottom"], part["more"]["bottom"], part["sub"]["bottom"])
-                        row_top = min(part["back"]["y"], part["more"]["y"], part["h1"]["y"] - 2)
+                        row_bottom = max(part["back"]["bottom"], part["more"]["bottom"], part["block"]["bottom"])
+                        row_top = min(part["back"]["y"], part["more"]["y"], part["block"]["y"])
                         self.assertAlmostEqual(row_top - part["header"]["y"], 8, delta=1, msg="8 px above the title row")
                         self.assertAlmostEqual(part["tabs"]["y"] - row_bottom, 12, delta=3, msg="12 px between the title row and the views")
                         self.assertGreaterEqual(part["header"]["y"] + part["header"]["height"], part["bar"]["y"] + part["bar"]["height"] - 1)

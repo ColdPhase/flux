@@ -502,11 +502,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("list", name="Maps in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
-        # A title too long for the phone truncates; the people stay in the line under it, and Details lists them.
+        # A title too long for the phone wraps to two lines and then ends in an ellipsis (#1239); the people stay in the line under it, and Details lists them.
         page.goto(f"/projects/{self.ids['long_project']}")
         title = page.locator("header h1")
         expect(title).to_have_text(LONG_NAME)
-        self.assertTrue(title.evaluate("el => el.scrollWidth > el.clientWidth"), "the long title truncates")
+        self.assertTrue(title.evaluate("el => el.scrollHeight > el.clientHeight + 1"), "the long title is cut after two lines")
+        self.assertEqual(title.evaluate("el => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight))"), 2, "at two lines")
         expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
         open_details(page, tap=True)
