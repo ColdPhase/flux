@@ -13,8 +13,8 @@ const CODE = /(```[\s\S]*?```|`[^`\n]*`)/;
 const NUMBER = String.raw`[1-9]\d{0,2}`;
 const MARK = String.raw`(?:\[S?${NUMBER}\]|\[S${NUMBER}(?:,[ \t]?S${NUMBER})+\])`;
 const RUN = new RegExp(String.raw`([ \t]?)(${MARK}(?:[ \t]?${MARK})*)([ \t]?)`, 'g');
-/** ChatGPT-style marks, `【3†source】`: never a sentence's own text. */
-const LENTICULAR = /[ \t]?【[^】\n]{0,80}】/g;
+/** ChatGPT-style marks, `【3†source】`: never a sentence's own text. A mark holds no other opening bracket, so a run of them is scanned once. */
+const LENTICULAR = /[ \t]?【[^】【\n]{0,80}】/g;
 /** A web address as the mark check sees one: a run of non-blank characters that starts with a scheme. */
 const WEB = /https?:\/\/\S+/gi;
 const SENTENCE_END = /[.,;:!?…)"”’»]/;
@@ -52,7 +52,7 @@ function marksOut(part: string, gap: string, labels: ReadonlySet<string>): strin
   let keptEnd = -1;
   return text.replace(RUN, (match, lead: string, run: string, trail: string, offset: number, whole: string) => {
     // The supplied sources' marks of the run stay (the commit numbers them); the rest of it goes.
-    const supplied = [...run.matchAll(/\[([^\]]*)\]/g)].flatMap((found) => found[1]!.split(',').map((label) => label.trim())).filter((label) => labels.has(label));
+    const supplied = labels.size && run.includes('S') ? [...run.matchAll(/\[([^\]]*)\]/g)].flatMap((found) => found[1]!.split(',').map((label) => label.trim())).filter((label) => labels.has(label)) : [];
     if (supplied.length) return `${lead}${supplied.map((label) => `[${label}]`).join('')}${trail}`;
     const markAt = offset + lead.length;
     while (at < addresses.length && addresses[at]![1] <= markAt) at++;

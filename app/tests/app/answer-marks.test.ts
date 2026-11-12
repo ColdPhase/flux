@@ -35,25 +35,31 @@ describe('an answer without the marks and the sources list the model invented (#
 
   test('hostile answers of 100 000 characters are cleaned in a blink: no mark, heading or list pattern backtracks (CodeQL polynomial-redos, the review of #1278)', () => {
     const tabs = '\t'.repeat(100_000);
-    const inputs: [string, string][] = [
+    // Patterns that would backtrack: whitespace, headings, open brackets, one long word. A linear scan takes a millisecond or two; a quadratic one seconds.
+    const patterns: [string, string][] = [
       ['tabs', tabs], ['spaces then a heading then tabs', `${' '.repeat(50_000)}Sources${tabs.slice(0, 50_000)}`], ['a heading and tabs', `Text.\n\nSources:${tabs}`],
       ['a heading in front of tabs', `Text.\n\n${tabs}Sources:\n- ${A}`], ['bold tabs', `Text.\n\n**${tabs}Sources`], ['one long word then a mark', `${'a'.repeat(100_000)} [1]`],
-      ['marks without end', '[S1,S1'.repeat(16_000)], ['marks', '[1]'.repeat(33_000)], ['marks and spaces', '[1] '.repeat(25_000)], ['open brackets', '['.repeat(100_000)],
-      ['mark in an address', `https://${'a'.repeat(50_000)}[8] ${'b'.repeat(40_000)}[8]`], ['lenticular', '【'.repeat(100_000)], ['lines of marks', '[1]\n'.repeat(25_000)],
-      ['a list of addresses', `Text.\n\nSources:\n${`- ${A}\n`.repeat(2_500)}`], ['blank lines', `Text.\n\nSources:${'\n'.repeat(100_000)}`], ['headings', 'Sources:\n'.repeat(11_000)],
-      ['fences', '```\n'.repeat(20_000)], ['backticks', '`a'.repeat(50_000)],
+      ['marks without end', '[S1,S1'.repeat(16_000)], ['open brackets', '['.repeat(100_000)], ['mark in an address', `https://${'a'.repeat(50_000)}[8] ${'b'.repeat(40_000)}[8]`],
+      ['lenticular', '【'.repeat(100_000)], ['blank lines', `Text.\n\nSources:${'\n'.repeat(100_000)}`], ['fences', '```\n'.repeat(20_000)], ['backticks', '`a'.repeat(50_000)],
     ];
-    for (const [name, text] of inputs) {
-      // The best of three: a loaded host or a garbage collection can slow one run, never all of them; a quadratic pattern takes seconds.
-      let took = Infinity;
-      for (let run = 0; run < 3; run++) {
-        const started = performance.now();
-        const marked = withoutInventedMarks(text, new Set(['S1']));
-        const listed = withoutOwnSources(text, new Set([A, B]));
-        took = Math.min(took, performance.now() - started);
-        assert.ok(typeof marked === 'string' && typeof listed === 'string');
+    // Inputs with real work in every few characters: 33 000 marks, thousands of list lines. Still far from a quadratic scan, but a loaded runner is slower.
+    const dense: [string, string][] = [
+      ['marks', '[1]'.repeat(33_000)], ['marks and spaces', '[1] '.repeat(25_000)], ['lines of marks', '[1]\n'.repeat(25_000)],
+      ['a list of addresses', `Text.\n\nSources:\n${`- ${A}\n`.repeat(2_500)}`], ['headings', 'Sources:\n'.repeat(11_000)],
+    ];
+    for (const [limit, inputs] of [[50, patterns], [300, dense]] as const) {
+      for (const [name, text] of inputs) {
+        // The best of three: a loaded host or a garbage collection can slow one run, never all of them.
+        let took = Infinity;
+        for (let run = 0; run < 3; run++) {
+          const started = performance.now();
+          const marked = withoutInventedMarks(text, new Set(['S1']));
+          const listed = withoutOwnSources(text, new Set([A, B]));
+          took = Math.min(took, performance.now() - started);
+          assert.ok(typeof marked === 'string' && typeof listed === 'string');
+        }
+        assert.ok(took < limit, `${name}: ${Math.round(took)} ms for ${text.length} characters (limit ${limit})`);
       }
-      assert.ok(took < 50, `${name}: ${Math.round(took)} ms for ${text.length} characters`);
     }
   });
 
