@@ -179,6 +179,9 @@ export const tableRows = (model: TableModel) => Math.max(0, model.rowStart.lengt
  * Markdown drawn by the message renderer (#1247): bold, italic, code, lists and quotes; a web address is a link that opens a new tab with
  * `noopener`; an image or HTML stays as typed, so nothing loads. Chunks out of view are empty boxes of their last height.
  */
+/** A chunk's rows before it is drawn: its lines, or its characters over a reading line (a 4,000-character line is many rows). */
+const estimatedRows = (model: MarkdownModel, index: number) => Math.max(model.lines[index]!, Math.ceil((model.ends[index]! - model.starts[index]!) / 120));
+
 export function MarkdownView({ model, label }: { model: MarkdownModel; label: string }) {
   const scroller = useRef<HTMLDivElement>(null);
   const count = model.starts.length;
@@ -210,7 +213,7 @@ export function MarkdownView({ model, label }: { model: MarkdownModel; label: st
   for (let i = 0; i < count; i++) {
     const drawn = shown.has(i);
     chunks.push(<div key={i} data-chunk={i} data-drawn={drawn} className="message-body file-viewer__chunk"
-      style={drawn ? undefined : { height: heights.get(i) ?? `calc(${model.lines[i]} * var(--fs-base) * var(--lh))` }}>
+      style={drawn ? undefined : { height: heights.get(i) ?? `calc(${estimatedRows(model, i)} * var(--fs-base) * var(--lh))` }}>
       {drawn ? <MessageText body={markdownChunk(model, i)} /> : null}
     </div>);
   }
