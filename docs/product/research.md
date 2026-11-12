@@ -1,5 +1,9 @@
 # Research that changes a decision
 
+Open research for #1242 (v0.2.1, no decision yet): [how agents read long conversations, 2026-11-12](research/2026-11-ai-context-retrieval.md)
+measures today's window and search against PostgreSQL full text, BM25 (`pg_search`), pgvector hybrids and Meilisearch on a
+seeded 10k-message Polish/English space, with the questions Hubert must answer before the decision is recorded.
+
 Bounded research choice: [pinned Codex MCP protocol compatibility, 2026-10-10](research/2026-10-10-codex-mcp-protocol-compatibility.md)
 records actual default/flagged client experiments and a bounded stateless
 compatibility choice for #460, with delegated pre-review at `c39eea30`. Its public contract was accepted in PR #466 (merged at `ea2f13d2`, eligible approval 2026-10-11) after delegated pre-review at `93889087` / record `880340ab`; implementation (PR #467) and runtime acceptance remain pending; #160 Start/Resume gates

@@ -1,0 +1,25 @@
+{
+ "note": "plumbing check with answer.py --mock (a lexical stand-in, not a model); accuracy not meaningful",
+ "strategies": {
+  "window40": {
+   "input_tokens_mean": 1625,
+   "questions": 60,
+   "search": "hybrid_bm25"
+  },
+  "search_around": {
+   "input_tokens_mean": 1140,
+   "questions": 60,
+   "search": "hybrid_bm25"
+  },
+  "window_search": {
+   "input_tokens_mean": 2684,
+   "questions": 60,
+   "search": "hybrid_bm25"
+  },
+  "summaries": {
+   "input_tokens_mean": 3331,
+   "questions": 60,
+   "search": "hybrid_bm25"
+  }
+ }
+}

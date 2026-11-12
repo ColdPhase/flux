@@ -1,0 +1,36 @@
+{
+ "intfloat_multilingual-e5-small": {
+  "db": {
+   "peak_mib": 278.8,
+   "peak_cpu_percent": 103.89,
+   "samples": 135
+  },
+  "embed": {
+   "peak_mib": 921.7,
+   "peak_cpu_percent": 213.66,
+   "samples": 135
+  },
+  "meili": {
+   "peak_mib": 131.8,
+   "peak_cpu_percent": 111.46,
+   "samples": 135
+  }
+ },
+ "BAAI_bge-m3": {
+  "db": {
+   "peak_mib": 281.3,
+   "peak_cpu_percent": 105.29,
+   "samples": 300
+  },
+  "embed": {
+   "peak_mib": 3912.7,
+   "peak_cpu_percent": 207.58,
+   "samples": 300
+  },
+  "meili": {
+   "peak_mib": 162.2,
+   "peak_cpu_percent": 105.12,
+   "samples": 300
+  }
+ }
+}

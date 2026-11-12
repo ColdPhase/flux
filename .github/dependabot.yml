@@ -81,7 +81,7 @@ updates:
   # `image:tag@sha256:...` pins; an image pinned by digest alone (most of docker/) has no tag to follow and is updated
   # by hand (docs/agents/ci-and-releases.md#security-scanning).
   - package-ecosystem: docker
-    directories: ["/docker", "/docker/public-sim", "/scripts/promo"]
+    directories: ["/docker", "/docker/public-sim", "/scripts/promo", "/scripts/eval/retrieval"]
     schedule:
       interval: weekly
       day: monday
@@ -101,7 +101,7 @@ updates:
       images:
         patterns: ["*"]
   - package-ecosystem: docker-compose
-    directories: ["/docker", "/docker/public-sim"]
+    directories: ["/docker", "/docker/public-sim", "/scripts/eval/retrieval"]
     schedule:
       interval: weekly
       day: monday

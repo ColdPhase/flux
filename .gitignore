@@ -35,3 +35,6 @@ coverage/
 
 # ZAP reports written by scripts/check_dast.sh (#838).
 /dast-reports/
+
+# Retrieval bench output (#1242): the seed, vectors, results and stats of scripts/eval/retrieval/run.sh.
+/scripts/eval/retrieval/out/

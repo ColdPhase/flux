@@ -1,0 +1,1509 @@
+{
+ "model": "claude-sonnet-5-5",
+ "mock": false,
+ "search": "bm25",
+ "query": "question",
+ "strategies": {
+  "window40": {
+   "accuracy": 0.1,
+   "by_category": {
+    "crosslang": 0.06,
+    "exact": 0,
+    "inflect": 0.12,
+    "nodiacritics": 0,
+    "paraphrase": 0,
+    "recent": 1,
+    "temporal": 0,
+    "typo": 0
+   },
+   "input_tokens_mean": 2436,
+   "seconds_p50": 1.46,
+   "per_question": [
+    {
+     "id": "q01",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o numerze zamówienia SHT45 w TME.",
+     "input_tokens": 2465,
+     "seconds": 1.77
+    },
+    {
+     "id": "q02",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I don't know. The messages only cover 9–10 November 2026 and contain nothing about decisions on sensors in September.",
+     "input_tokens": 2457,
+     "seconds": 1.84
+    },
+    {
+     "id": "q03",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem. W podanych wiadomościach (z 9–10 listopada 2026) nie ma żadnych ustaleń z września dotyczących czujników.",
+     "input_tokens": 2469,
+     "seconds": 1.32
+    },
+    {
+     "id": "q04",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how long a station lasts on batteries when it measures every ten minutes. They only report battery levels at individual stations, such as Przymorze at 20%, and one message says stations send data every 3 minutes after update 2.4.1.",
+     "input_tokens": 2613,
+     "seconds": 2.43
+    },
+    {
+     "id": "q05",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o offsecie temperatury z kalibracji w komorach klimatycznych. Wspomniano tylko, że kalibracja zasilacza miała być 6 listopada rano w komorze, a wyniki testu zasilacza są w arkuszu (zakładka 5), ale bez żadnych wartości.",
+     "input_tokens": 2626,
+     "seconds": 1.59
+    },
+    {
+     "id": "q06",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o wycofaniu wersji 2.4.0. Wycofania (cofnięcia na próbę) dotyczą innych wersji: 2.2.0 (regresja w obsłudze płytki oraz czujnika gleby) i 2.3.1 (regresja w obsłudze modemu).",
+     "input_tokens": 2478,
+     "seconds": 1.76
+    },
+    {
+     "id": "q07",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o zasięgu sygnału bramki na biurowcu. Wspomniano tylko, że bramka LoRaWAN zgubiła 24 pakietów w nocy, ale rano wróciła.",
+     "input_tokens": 2471,
+     "seconds": 1.47
+    },
+    {
+     "id": "q08",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem. W podanych wiadomościach nie ma informacji o pękaniu obudowy Plastmetu podczas testów cyklu termicznego.",
+     "input_tokens": 2474,
+     "seconds": 2.06
+    },
+    {
+     "id": "q09",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o cenie hurtowej stacji na 2027.",
+     "input_tokens": 2491,
+     "seconds": 1.02
+    },
+    {
+     "id": "q10",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention any investment fund, an offer amount or a stake.",
+     "input_tokens": 2487,
+     "seconds": 1.13
+    },
+    {
+     "id": "q11",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say that anyone was hired as the embedded developer, or give a start date. They only mention embedded developer references checked, CVs under review, and interviews scheduled.",
+     "input_tokens": 2351,
+     "seconds": 1.21
+    },
+    {
+     "id": "q12",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o widełkach płacowych dla juniora na stanowisko QA.",
+     "input_tokens": 2357,
+     "seconds": 1.06
+    },
+    {
+     "id": "q13",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, kto montuje płytki ani o zmianie firmy i jej powodach.",
+     "input_tokens": 2548,
+     "seconds": 1.15
+    },
+    {
+     "id": "q14",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma żadnej informacji o kodzie HS ani o paczce z Shenzhen.",
+     "input_tokens": 2543,
+     "seconds": 1.85
+    },
+    {
+     "id": "q15",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o kurierze DPD ani o rezygnacji z niego. Wspomniany jest tylko kurier InPost, który ma odebrać 25 stacji dla Gdańska w czwartek 13 listopada.",
+     "input_tokens": 2542,
+     "seconds": 1.93
+    },
+    {
+     "id": "q16",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention how many complete stations were in the Pruszcz warehouse at the end of June.",
+     "input_tokens": 2542,
+     "seconds": 1.5
+    },
+    {
+     "id": "q17",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o liczbie kompletnych stacji w magazynie w Pruszczu. Pojawiają się tylko wzmianki o wysyłkach stacji (np. 25 stacji dla Gdańska w czwartek 13 listopada) oraz o 15 płytkach w magazynie, ale nie o stanie stacji.",
+     "input_tokens": 2546,
+     "seconds": 1.51
+    },
+    {
+     "id": "q18",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma daty startu nowej strony. Jedyna wzmianka o starcie to uwaga, że tekst o cookies wymaga sprawdzenia przez prawnika przed launchem, ale bez terminu.",
+     "input_tokens": 2098,
+     "seconds": 1.37
+    },
+    {
+     "id": "q19",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention a content management system or why one was chosen.",
+     "input_tokens": 2096,
+     "seconds": 1.42
+    },
+    {
+     "id": "q20",
+     "category": "exact",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention zielonydach.eu or when it renews.",
+     "input_tokens": 2093,
+     "seconds": 1.48
+    },
+    {
+     "id": "q21",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jakiego narzędzia do statystyk odwiedzin używacie na stronie. Pojawiają się tylko wyniki Lighthouse i wzmianka o audycie SEO, ale bez nazwy narzędzia analitycznego.",
+     "input_tokens": 2109,
+     "seconds": 1.32
+    },
+    {
+     "id": "q22",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o wysokości kary umownej w umowie z Gdańskiem.",
+     "input_tokens": 2438,
+     "seconds": 0.98
+    },
+    {
+     "id": "q23",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say the installations are running late or give any reason for a delay. They only report completed installations and upcoming crew schedules.",
+     "input_tokens": 2426,
+     "seconds": 1.16
+    },
+    {
+     "id": "q24",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma numeru telefonu Haliny Kurek.",
+     "input_tokens": 2435,
+     "seconds": 1.03
+    },
+    {
+     "id": "q25",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o limicie zapytań na godzinę dla jednej stacji. Jedyne pokrewne dane to to, że po aktualizacji 2.5.1 stacje wysyłają dane co 3 minut, a po 2.1.4 co 15 minut, ale to nie jest limit zapytań.",
+     "input_tokens": 2472,
+     "seconds": 1.71
+    },
+    {
+     "id": "q26",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o raporcie z laboratorium w Gliwicach ani o jego numerze.",
+     "input_tokens": 2468,
+     "seconds": 2.02
+    },
+    {
+     "id": "q27",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jaki panel słoneczny jest potrzebny na północnych dachach. Pojawia się tylko pytanie, czy w nowej wersji stacji zostawiamy panel słoneczny, ale bez odpowiedzi.",
+     "input_tokens": 2472,
+     "seconds": 1.53
+    },
+    {
+     "id": "q28",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o dryfie wilgotności po pół roku w terenie. Są tylko wzmianki o skokach pomiaru wilgotności (np. 4% na Przymorzu, 3% na Śródmieściu, 40% na Zaspie), ale nie dotyczą one dryfu długoterminowego.",
+     "input_tokens": 2618,
+     "seconds": 1.49
+    },
+    {
+     "id": "q29",
+     "category": "recent",
+     "ok": true,
+     "answer": "Według Ady Nowak stand-up od przyszłego tygodnia będzie o 9:30, we wtorki i czwartki. Wiadomość pochodzi z 9 listopada, więc w tym tygodniu obowiązuje jeszcze poprzednia godzina, ale w wiadomościach nie ma jej podanej.",
+     "input_tokens": 2456,
+     "seconds": 2.23
+    },
+    {
+     "id": "q30",
+     "category": "recent",
+     "ok": true,
+     "answer": "According to Jonas Berg, the units reboot every 49.7 days because the millis() counter overflows. The patch will go into firmware 2.5.2.",
+     "input_tokens": 2461,
+     "seconds": 1.37
+    },
+    {
+     "id": "q31",
+     "category": "recent",
+     "ok": true,
+     "answer": "Kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada (wiadomość Oli Lewandowskiej z 7 listopada).",
+     "input_tokens": 2539,
+     "seconds": 1.23
+    },
+    {
+     "id": "q32",
+     "category": "recent",
+     "ok": true,
+     "answer": "Yes. According to Sarah Mitchell on 2026-11-10, the pricing page copy is approved by Bogdan, and the Polish translation is due Friday.",
+     "input_tokens": 2092,
+     "seconds": 2.02
+    },
+    {
+     "id": "q33",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak rozsyłamy aktualizacje na stacje. Są tylko wzmianki o wgrywaniu firmware'u na jednostki testowe (np. 2.5.0 na 30 sztukach, 2.4.1 na 6) oraz o cofaniu wersji, ale bez opisu samego procesu dystrybucji.",
+     "input_tokens": 2471,
+     "seconds": 2.38
+    },
+    {
+     "id": "q34",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. None of the messages say how long the raw measurements are kept.",
+     "input_tokens": 2457,
+     "seconds": 1.25
+    },
+    {
+     "id": "q35",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o sumie ubezpieczenia OC produktu.",
+     "input_tokens": 2496,
+     "seconds": 1.07
+    },
+    {
+     "id": "q36",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages say nothing about an office move, neither where nor from when.",
+     "input_tokens": 2483,
+     "seconds": 1.53
+    },
+    {
+     "id": "q37",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma żadnej informacji o kandydatce Zofii Bak.",
+     "input_tokens": 2351,
+     "seconds": 1.08
+    },
+    {
+     "id": "q38",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o paśmie ani o SF, z jakim nadają stacje. Jedyne wzmianki o transmisji dotyczą bramki LoRaWAN, która zgubiła 24 pakiety w nocy, oraz interwałów wysyłania danych.",
+     "input_tokens": 2466,
+     "seconds": 2.36
+    },
+    {
+     "id": "q39",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention a Vaisala reference hygrometer or its certificate validity.",
+     "input_tokens": 2616,
+     "seconds": 1.14
+    },
+    {
+     "id": "q40",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma żadnej informacji o fakturze FV/0812/2026.",
+     "input_tokens": 2538,
+     "seconds": 1.59
+    },
+    {
+     "id": "q41",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o pierwszej partii płytek od nowego montażysty ani o ich wadach. Jedyna wzmianka o płytkach to stan magazynowy: 15 sztuk (Piotr Zieliński, 9 listopada).",
+     "input_tokens": 2547,
+     "seconds": 1.35
+    },
+    {
+     "id": "q42",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jak stacje są mocowane do wiat przystankowych.",
+     "input_tokens": 2434,
+     "seconds": 1.09
+    },
+    {
+     "id": "q43",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "The city reported that 4 stations at Przymorze show a temperature 5 degrees too high (Ada Nowak, 2026-10-27). The suspected cause is the sun heating up the radiation shield (osłona).",
+     "input_tokens": 2435,
+     "seconds": 1.91
+    },
+    {
+     "id": "q44",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I don't know. The messages don't mention the hex colour of the green in the logo.",
+     "input_tokens": 2093,
+     "seconds": 1.02
+    },
+    {
+     "id": "q45",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o liczbie subskrybentów, którzy dostaną pierwszy newsletter.",
+     "input_tokens": 2104,
+     "seconds": 1.53
+    },
+    {
+     "id": "q46",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention charts being off by an hour at the end of March.",
+     "input_tokens": 2461,
+     "seconds": 1.31
+    },
+    {
+     "id": "q47",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say what is used for stations that are out of LoRa range.",
+     "input_tokens": 2461,
+     "seconds": 1.27
+    },
+    {
+     "id": "q48",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, kto jest pod telefonem (dyżurze) w czasie przerwy wakacyjnej.",
+     "input_tokens": 2497,
+     "seconds": 1.52
+    },
+    {
+     "id": "q49",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o wniosku do NCBR ani o jego budżecie.",
+     "input_tokens": 2489,
+     "seconds": 1.4
+    },
+    {
+     "id": "q50",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention any customer asking about irrigation control or the cost of such an add-on.",
+     "input_tokens": 2469,
+     "seconds": 1.43
+    },
+    {
+     "id": "q51",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, czy czujniki gleby trzeba kalibrować inaczej dla różnych rodzajów gleb. Pojawia się tylko wzmianka o dodaniu wykresu wilgotności gleby do panelu klienta oraz o kalibracji zasilacza.",
+     "input_tokens": 2629,
+     "seconds": 1.44
+    },
+    {
+     "id": "q52",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o teście penetracyjnym stacji ani jego wynikach.",
+     "input_tokens": 2463,
+     "seconds": 1.54
+    },
+    {
+     "id": "q53",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, kto zatwierdza wydania firmware.",
+     "input_tokens": 2463,
+     "seconds": 1.34
+    },
+    {
+     "id": "q54",
+     "category": "typo",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention the zielonydah.eu domain or when it expires.",
+     "input_tokens": 2096,
+     "seconds": 1.33
+    },
+    {
+     "id": "q55",
+     "category": "typo",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o Halinie Kurrek ani o jej numerze telefonu.",
+     "input_tokens": 2431,
+     "seconds": 1.62
+    },
+    {
+     "id": "q56",
+     "category": "typo",
+     "ok": false,
+     "answer": "Messages nie podają, od kiedy wysyłamy przez InPost. Jedyna wzmianka (Ola Lewandowska, 7 listopada) dotyczy tego, że kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada, ale nie mówi, kiedy zaczęliśmy z nich korzystać.",
+     "input_tokens": 2535,
+     "seconds": 1.6
+    },
+    {
+     "id": "q57",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention a gas sensor being considered for the new station version. They only ask whether to keep the soil probe, battery, solar panel and gateway.",
+     "input_tokens": 2465,
+     "seconds": 2.14
+    },
+    {
+     "id": "q58",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o zamówieniu czujników SHT45 ani o terminie dostawy.",
+     "input_tokens": 2476,
+     "seconds": 1.35
+    },
+    {
+     "id": "q59",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages mention a customs clearance delay (3 days on 4 Nov, 6 days on 10 Nov, with calls to the agency), but they give no reason for it and do not mention a parcel from Shenzhen.",
+     "input_tokens": 2538,
+     "seconds": 1.36
+    },
+    {
+     "id": "q60",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o łącznej liczbie urządzeń do postawienia dla miasta ani o terminie. Są tylko wzmianki o pojedynczych ekipach montażowych (np. 4 stacje na Przymorzu Wielkim, 2–3 stacje na Zabiance) oraz o prośbie miasta o raport z 30 stacji za październik, ale to nie odpowiada na pytanie.",
+     "input_tokens": 2438,
+     "seconds": 2.16
+    }
+   ]
+  },
+  "window20": {
+   "accuracy": 0.033,
+   "by_category": {
+    "crosslang": 0,
+    "exact": 0,
+    "inflect": 0,
+    "nodiacritics": 0,
+    "paraphrase": 0,
+    "recent": 0.5,
+    "temporal": 0,
+    "typo": 0
+   },
+   "input_tokens_mean": 1310,
+   "seconds_p50": 1.48,
+   "per_question": [
+    {
+     "id": "q01",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w podanych wiadomościach nie ma informacji o numerze zamówienia SHT45 w TME.",
+     "input_tokens": 1347,
+     "seconds": 1.3
+    },
+    {
+     "id": "q02",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages are all from 2026-11-10 and contain no decision about the sensors from September.",
+     "input_tokens": 1339,
+     "seconds": 1.76
+    },
+    {
+     "id": "q03",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem. W podanych wiadomościach (z 10 listopada 2026) nie ma żadnych ustaleń z września dotyczących czujników.",
+     "input_tokens": 1351,
+     "seconds": 1.27
+    },
+    {
+     "id": "q04",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how long a station lasts on batteries when it measures every ten minutes. They only report battery levels on individual stations, such as Przymorze at 20%.",
+     "input_tokens": 1469,
+     "seconds": 1.49
+    },
+    {
+     "id": "q05",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o offsecie temperatury z kalibracji w komorach klimatycznych. Są tylko wzmianki o różnicy odczytów czujników temperatury (10 stopni na Przymorzu, 30 stopni na Pruszczu) oraz o planowanej kalibracji zasilacza w komorze, ale bez wyniku offsetu.",
+     "input_tokens": 1482,
+     "seconds": 2.02
+    },
+    {
+     "id": "q06",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o wycofaniu wersji 2.4.0. Ada Nowak pisała tylko o cofnięciu firmware 2.2.0 na próbę z powodu regresji w obsłudze czujnika gleby.",
+     "input_tokens": 1360,
+     "seconds": 2.92
+    },
+    {
+     "id": "q07",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o zasięgu sygnału bramki na biurowcu.",
+     "input_tokens": 1353,
+     "seconds": 1.19
+    },
+    {
+     "id": "q08",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem. W podanych wiadomościach nie ma informacji o obudowie Plastmetu ani o tym, co pękało podczas testów cyklu termicznego.",
+     "input_tokens": 1356,
+     "seconds": 1.74
+    },
+    {
+     "id": "q09",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o cenie hurtowej stacji na 2027.",
+     "input_tokens": 1284,
+     "seconds": 1.04
+    },
+    {
+     "id": "q10",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages say nothing about an investment fund, an offer amount or a stake.",
+     "input_tokens": 1280,
+     "seconds": 1.02
+    },
+    {
+     "id": "q11",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say that anyone was hired as the embedded developer, and they give no start date. They only mention CVs received for that role (6, 24 and 3) and an interview scheduled for a Thursday at 13:00.",
+     "input_tokens": 1286,
+     "seconds": 1.63
+    },
+    {
+     "id": "q12",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o widełkach płacowych dla juniora na stanowisko QA.",
+     "input_tokens": 1292,
+     "seconds": 1.09
+    },
+    {
+     "id": "q13",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, kto montuje płytki ani dlaczego zmieniliśmy firmę.",
+     "input_tokens": 1320,
+     "seconds": 1.69
+    },
+    {
+     "id": "q14",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma kodu HS ani informacji o paczce z Shenzhen.",
+     "input_tokens": 1315,
+     "seconds": 1.63
+    },
+    {
+     "id": "q15",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o rezygnacji z kuriera DPD ani o jej powodach. Jedyna wzmianka o problemie z kurierem dotyczy tego, że kurier nie odebrał paczki i Ola Lewandowska zamówiła ją ponownie na wtorek, ale nie podano nazwy firmy.",
+     "input_tokens": 1314,
+     "seconds": 1.97
+    },
+    {
+     "id": "q16",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages say nothing about complete stations in a Pruszcz warehouse at the end of June. The only stock mention is Piotr Zieliński's note that 15 boards (płytek) were left in the warehouse, and it does not name the location or the date.",
+     "input_tokens": 1314,
+     "seconds": 1.9
+    },
+    {
+     "id": "q17",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o liczbie kompletnych stacji w magazynie w Pruszczu. Jedyna informacja o stanie magazynu dotyczy 15 płytek (Piotr Zieliński), ale to nie są kompletne stacje.",
+     "input_tokens": 1318,
+     "seconds": 1.58
+    },
+    {
+     "id": "q18",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma daty startu nowej strony. Wspomniano tylko, że tekst o cookies wymaga przejrzenia przez prawnika przed startem, ale bez terminu.",
+     "input_tokens": 1138,
+     "seconds": 1.89
+    },
+    {
+     "id": "q19",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention which content management system was chosen or the reasons for it.",
+     "input_tokens": 1136,
+     "seconds": 1.54
+    },
+    {
+     "id": "q20",
+     "category": "exact",
+     "ok": false,
+     "answer": "I do not know. The messages do not say when zielonydach.eu renews.",
+     "input_tokens": 1133,
+     "seconds": 1.45
+    },
+    {
+     "id": "q21",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jakiego narzędzia do statystyk odwiedzin używacie na stronie. Pojawia się tylko wynik Lighthouse dla strony głównej (40, potem 24), ale to nie jest narzędzie do statystyk odwiedzin.",
+     "input_tokens": 1149,
+     "seconds": 2.13
+    },
+    {
+     "id": "q22",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w podanych wiadomościach nie ma informacji o wysokości kary umownej w umowie z Gdańskiem.",
+     "input_tokens": 1304,
+     "seconds": 1.11
+    },
+    {
+     "id": "q23",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o opóźnieniach montażu na przystankach. Wiadomo tylko, że montaże na Hucisku i w Jaśkowej Dolinie zostały zakończone, a na przystanku Brama Wyżynna stacja nie zgłasza się do sieci.",
+     "input_tokens": 1292,
+     "seconds": 2.15
+    },
+    {
+     "id": "q24",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma numeru telefonu Haliny Kurek ani żadnej wzmianki o niej.",
+     "input_tokens": 1301,
+     "seconds": 2.15
+    },
+    {
+     "id": "q25",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o limicie zapytań na godzinę dla jednej stacji. Jedyna wzmianka o częstotliwości dotyczy raportowania co 15 minut po wersji 2.1.4, ale nie jest to określone jako limit zapytań do chmury.",
+     "input_tokens": 1354,
+     "seconds": 1.7
+    },
+    {
+     "id": "q26",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o raporcie z laboratorium w Gliwicach ani o jego numerze.",
+     "input_tokens": 1350,
+     "seconds": 1.15
+    },
+    {
+     "id": "q27",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem. W wiadomościach nie ma informacji o tym, jaki panel słoneczny jest potrzebny na północnych dachach. Padło tylko pytanie, czy w nowej wersji stacji zostawiamy panel słoneczny, i nikt na nie nie odpowiedział.",
+     "input_tokens": 1354,
+     "seconds": 2.08
+    },
+    {
+     "id": "q28",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o dryfie wilgotności po pół roku w terenie. Pojawiają się tylko wzmianki o skokach pomiaru wilgotności na Zaspie (o 40%) i o błędnych odczytach na Morenie, ale nie dotyczą one dryfu po pół roku.",
+     "input_tokens": 1474,
+     "seconds": 1.43
+    },
+    {
+     "id": "q29",
+     "category": "recent",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o godzinie stand-upu.",
+     "input_tokens": 1338,
+     "seconds": 1.1
+    },
+    {
+     "id": "q30",
+     "category": "recent",
+     "ok": true,
+     "answer": "The units reboot every 49.7 days because the millis() counter overflows, according to Jonas Berg. The patch goes into firmware 2.5.2.",
+     "input_tokens": 1343,
+     "seconds": 1.17
+    },
+    {
+     "id": "q31",
+     "category": "recent",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o odbiorze stacji dla Gdańska przez kuriera. Wspomniano tylko, że kurier nie odebrał paczki i zamówiono go ponownie na wtorek, ale bez wzmianki o Gdańsku czy stacjach.",
+     "input_tokens": 1311,
+     "seconds": 1.71
+    },
+    {
+     "id": "q32",
+     "category": "recent",
+     "ok": true,
+     "answer": "Yes, according to Sarah Mitchell (2026-11-10 09:15), the pricing page copy is approved by Bogdan. The Polish translation is still due Friday.",
+     "input_tokens": 1132,
+     "seconds": 1.01
+    },
+    {
+     "id": "q33",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak rozsyłane są aktualizacje oprogramowania na stacje. Pojawiają się tylko wzmianki o wersjach firmware (np. poprawka w 2.5.2), ale bez opisu sposobu dystrybucji.",
+     "input_tokens": 1353,
+     "seconds": 1.47
+    },
+    {
+     "id": "q34",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. None of the messages say how long the raw measurements are kept.",
+     "input_tokens": 1339,
+     "seconds": 1.46
+    },
+    {
+     "id": "q35",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o sumie ubezpieczenia OC produktu.",
+     "input_tokens": 1289,
+     "seconds": 1.02
+    },
+    {
+     "id": "q36",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages say nothing about an office move, neither the new location nor the date.",
+     "input_tokens": 1276,
+     "seconds": 1.45
+    },
+    {
+     "id": "q37",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma żadnych informacji o kandydatce Zofii Bak.",
+     "input_tokens": 1286,
+     "seconds": 1.11
+    },
+    {
+     "id": "q38",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o paśmie ani o współczynniku SF, z jakimi nadają stacje. Jedyna wzmianka o LoRaWAN dotyczy bramki, która w nocy zgubiła 24 pakiety.",
+     "input_tokens": 1348,
+     "seconds": 1.54
+    },
+    {
+     "id": "q39",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention a Vaisala reference hygrometer or its certificate validity.",
+     "input_tokens": 1472,
+     "seconds": 0.99
+    },
+    {
+     "id": "q40",
+     "category": "exact",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma żadnej informacji o fakturze FV/0812/2026.",
+     "input_tokens": 1310,
+     "seconds": 1.34
+    },
+    {
+     "id": "q41",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o wadliwych płytkach z pierwszej partii od nowego montażysty. Jedyna wzmianka o płytkach dotyczy tego, że w magazynie zostało 15 sztuk (Piotr Zieliński, 9 listopada).",
+     "input_tokens": 1319,
+     "seconds": 1.54
+    },
+    {
+     "id": "q42",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jak stacje są mocowane do wiat przystankowych. Są tylko wzmianki o zakończonych montażach (Hucisko, Jaśkowa Dolina) i zdjęciach z montażu, ale bez opisu sposobu mocowania.",
+     "input_tokens": 1300,
+     "seconds": 1.43
+    },
+    {
+     "id": "q43",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I don't know. The messages don't say the city is complaining about any stations. The closest item is Ada Nowak's note that the Brama Wyżynna station isn't connecting to the network, but she gives no cause. The city only asked for reports (30 stations for October, 4 stations for May) and sent an acceptance protocol template.",
+     "input_tokens": 1301,
+     "seconds": 1.54
+    },
+    {
+     "id": "q44",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention the hex colour of the green in your logo.",
+     "input_tokens": 1133,
+     "seconds": 1.08
+    },
+    {
+     "id": "q45",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o liczbie subskrybentów, którzy dostaną pierwszy newsletter.",
+     "input_tokens": 1144,
+     "seconds": 1.51
+    },
+    {
+     "id": "q46",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not say anything about charts being off by an hour at the end of March.",
+     "input_tokens": 1343,
+     "seconds": 1.22
+    },
+    {
+     "id": "q47",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say what is used for stations that are out of LoRa range.",
+     "input_tokens": 1343,
+     "seconds": 1.11
+    },
+    {
+     "id": "q48",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem. W wiadomościach nie ma informacji o tym, kto jest pod telefonem (dyżurze) w czasie przerwy wakacyjnej.",
+     "input_tokens": 1290,
+     "seconds": 1.17
+    },
+    {
+     "id": "q49",
+     "category": "nodiacritics",
+     "ok": false,
+     "answer": "Nie wiem. W wiadomościach nie ma żadnych informacji o wniosku do NCBR ani o jego budżecie.",
+     "input_tokens": 1282,
+     "seconds": 1.09
+    },
+    {
+     "id": "q50",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention any customer asking about controlling irrigation, or the cost of such an add-on.",
+     "input_tokens": 1351,
+     "seconds": 1.68
+    },
+    {
+     "id": "q51",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, czy czujniki gleby trzeba kalibrować inaczej dla różnych rodzajów gleb. Jedyna wzmianka o glebie to wykres wilgotności gleby dodany do panelu klienta.",
+     "input_tokens": 1485,
+     "seconds": 1.8
+    },
+    {
+     "id": "q52",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o teście penetracyjnym stacji ani jego wynikach.",
+     "input_tokens": 1345,
+     "seconds": 1.79
+    },
+    {
+     "id": "q53",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, kto zatwierdza wydania firmware.",
+     "input_tokens": 1345,
+     "seconds": 1.15
+    },
+    {
+     "id": "q54",
+     "category": "typo",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention the zielonydah.eu domain or when it expires.",
+     "input_tokens": 1136,
+     "seconds": 1.17
+    },
+    {
+     "id": "q55",
+     "category": "typo",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o numerze telefonu Haliny Kurrek.",
+     "input_tokens": 1297,
+     "seconds": 2.53
+    },
+    {
+     "id": "q56",
+     "category": "typo",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o wysyłce przez InPsot ani o tym, od kiedy by ona obowiązywała.",
+     "input_tokens": 1307,
+     "seconds": 1.77
+    },
+    {
+     "id": "q57",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention a gas sensor being considered for the new station version, or any problem with one.",
+     "input_tokens": 1347,
+     "seconds": 1.31
+    },
+    {
+     "id": "q58",
+     "category": "inflect",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o zamówieniu czujników SHT45 ani o terminie dostawy.",
+     "input_tokens": 1358,
+     "seconds": 2.04
+    },
+    {
+     "id": "q59",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages only say that customs clearance has been going on for 6 days and that Ola Lewandowska is calling the agency, but they give no reason for the delay and do not mention Shenzhen.",
+     "input_tokens": 1310,
+     "seconds": 1.46
+    },
+    {
+     "id": "q60",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o liczbie urządzeń stawianych dla miasta ani o terminie. Pojawia się tylko prośba miasta o raport z 30 stacji za październik oraz o raport z 4 stacji za maj, ale to nie są dane o liczbie urządzeń do postawienia ani o terminie.",
+     "input_tokens": 1304,
+     "seconds": 1.56
+    }
+   ]
+  },
+  "window20_search": {
+   "accuracy": 0.6,
+   "by_category": {
+    "crosslang": 0.12,
+    "exact": 1,
+    "inflect": 1,
+    "nodiacritics": 1,
+    "paraphrase": 0.33,
+    "recent": 1,
+    "temporal": 0.6,
+    "typo": 1
+   },
+   "input_tokens_mean": 2874,
+   "seconds_p50": 1.49,
+   "per_question": [
+    {
+     "id": "q01",
+     "category": "exact",
+     "ok": true,
+     "answer": "Numer zamówienia na 400 sztuk SHT45 w TME to TME-2026-04471 (wiadomość Bogdana Kowalskiego z 14 kwietnia 2026).",
+     "input_tokens": 3150,
+     "seconds": 1.32
+    },
+    {
+     "id": "q02",
+     "category": "temporal",
+     "ok": true,
+     "answer": "W spotkaniu 17 września Ada Nowak ustaliła, że w nowej wersji stacji zostajemy przy czujniku Sensirion SHT45, a BME688 odpada, ponieważ w trybie gazowym zużywał za dużo prądu.",
+     "input_tokens": 2966,
+     "seconds": 1.38
+    },
+    {
+     "id": "q03",
+     "category": "temporal",
+     "ok": false,
+     "answer": "Nie wiem, czy we wrześniu zapadła jakaś decyzja w sprawie czujników. W rozmowie o czujnikach są z września tylko dwie wiadomości: Ada Nowak 7 września napisała, że wymieniła czujnik na stacji w Morenie i działa, a Piotr Zieliński 11 września zapytał o przeniesienie rozmowy na wtorek. Żadna z nich nie zawiera ustaleń ani decyzji.",
+     "input_tokens": 2671,
+     "seconds": 1.97
+    },
+    {
+     "id": "q04",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak długo stacja działa na baterii przy pomiarach co dziesięć minut. Są tylko wzmianki o niskim poziomie baterii na stacjach (Przymorze 5% i 20%, Śródmieście 12%, Zaspa 10%).",
+     "input_tokens": 2389,
+     "seconds": 1.34
+    },
+    {
+     "id": "q05",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Po kalibracji w komorze klimatycznej wyszedł stały offset +0,8°C dla serii z lutego (napisała Marta Wiśniewska 3 czerwca); poprawkę wpisano do firmware 2.3.1.",
+     "input_tokens": 3419,
+     "seconds": 1.3
+    },
+    {
+     "id": "q06",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o wycofaniu wersji 2.4.0. Wspomniano jedynie o cofnięciu wersji 2.2.0 z powodu regresji w obsłudze panelu słonecznego (22 lipca, Jonas Berg) oraz czujnika gleby (10 listopada, Ada Nowak).",
+     "input_tokens": 3087,
+     "seconds": 1.67
+    },
+    {
+     "id": "q07",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "Bramka LoRaWAN na dachu biurowca przy Grunwaldzkiej ma zasięg ok. 2,7 km. Piotr Zieliński sprawdził to rowerem z nadajnikiem testowym (wiadomość z 5 maja 2026).",
+     "input_tokens": 3185,
+     "seconds": 1.5
+    },
+    {
+     "id": "q08",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Według wiadomości Oli Lewandowskiej z 19 sierpnia uszczelka przy dławiku pękała po 200 cyklach termicznych, mimo że obudowy przeszły test szczelności IP67. Zaproponowano zmianę materiału na EPDM.",
+     "input_tokens": 2994,
+     "seconds": 1.62
+    },
+    {
+     "id": "q09",
+     "category": "exact",
+     "ok": true,
+     "answer": "Cena dla klientów hurtowych na 2027 to 1 290 zł netto za stację, a przy zamówieniu 50+ sztuk obowiązuje rabat 12%.",
+     "input_tokens": 2698,
+     "seconds": 1.3
+    },
+    {
+     "id": "q10",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages say nothing about an investment fund, an offer amount or a stake.",
+     "input_tokens": 2528,
+     "seconds": 1.33
+    },
+    {
+     "id": "q11",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem. W wiadomościach nie ma informacji o tym, kogo zatrudniono na embedded developera ani kiedy ta osoba zaczyna pracę. Są tylko wzmianki o rozmowach z kandydatami, sprawdzonych referencjach i przeglądanych CV.",
+     "input_tokens": 2773,
+     "seconds": 1.47
+    },
+    {
+     "id": "q12",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Widełki dla junior QA to 7–9 tys. zł brutto na umowę o pracę (wiadomość Marty Wiśniewskiej z 2026-06-12).",
+     "input_tokens": 2805,
+     "seconds": 1.56
+    },
+    {
+     "id": "q13",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, kto montuje płytki ani dlaczego zmieniono firmę. Wspomniano tylko, że w magazynie zostało 15 płytek, ale nie ma nic o montażu ani zmianie wykonawcy.",
+     "input_tokens": 2817,
+     "seconds": 2.13
+    },
+    {
+     "id": "q14",
+     "category": "exact",
+     "ok": true,
+     "answer": "Dla paczki z Shenzhen podano kod HS 9025 80 40 (Bogdan Kowalski wpisał go na fakturze, ponieważ paczka utknęła na odprawie celnej w Małaszewiczach z powodu braku tego kodu).",
+     "input_tokens": 3131,
+     "seconds": 1.39
+    },
+    {
+     "id": "q15",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zrezygnowaliśmy z DPD, bo było za dużo uszkodzonych paczek. Ola Lewandowska napisała 9 września, że od października wysyłki krajowe robimy przez InPost.",
+     "input_tokens": 2906,
+     "seconds": 1.32
+    },
+    {
+     "id": "q16",
+     "category": "temporal",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how many complete stations were in a Pruszcz warehouse at the end of June, and none mention that stock level.",
+     "input_tokens": 2937,
+     "seconds": 1.22
+    },
+    {
+     "id": "q17",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Najnowszy podany stan magazynu w Pruszczu, na koniec września (30.09.2026), to 12 kompletnych stacji (oraz 210 płytek i 0 obudów). Nowszych danych o kompletnych stacjach w wiadomościach nie ma, więc aktualnej liczby nie znam.",
+     "input_tokens": 2908,
+     "seconds": 1.88
+    },
+    {
+     "id": "q18",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma daty startu nowej strony. Jest tylko wzmianka, że tekst o cookies wymaga przejrzenia przez prawnika przed startem, oraz że polskie tłumaczenie strony z cennikiem jest potrzebne do piątku.",
+     "input_tokens": 2777,
+     "seconds": 2.16
+    },
+    {
+     "id": "q19",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "We chose Payload over Strapi, mainly because of its TypeScript config and how easy it is to self-host (Jonas Berg, 2026-05-14).",
+     "input_tokens": 2563,
+     "seconds": 1.13
+    },
+    {
+     "id": "q20",
+     "category": "exact",
+     "ok": true,
+     "answer": "zielonydach.eu renews on 2027-03-11, and it's on Ada's OVH account.",
+     "input_tokens": 2562,
+     "seconds": 1.49
+    },
+    {
+     "id": "q21",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o tym, jakiego narzędzia do statystyk odwiedzin używacie na stronie. Pojawia się tylko wynik Lighthouse dla strony głównej, ale to nie jest narzędzie do statystyk odwiedzin.",
+     "input_tokens": 2252,
+     "seconds": 1.46
+    },
+    {
+     "id": "q22",
+     "category": "exact",
+     "ok": true,
+     "answer": "Kara umowna w umowie z Gdańskiem wynosi 0,2% za każdy dzień zwłoki (przy montażu 60 stacji do 30 września).",
+     "input_tokens": 2742,
+     "seconds": 3.05
+    },
+    {
+     "id": "q23",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say that the bus stop installations are running late. They only report that the installations at Hucisko (2026-11-05) and Jaśkowa Dolina (2026-11-10) were completed. Separately, the Morena roof installation was postponed because of rain (2026-03-26), but that was a rooftop job, not a bus stop.",
+     "input_tokens": 2819,
+     "seconds": 1.56
+    },
+    {
+     "id": "q24",
+     "category": "exact",
+     "ok": true,
+     "answer": "Halina Kurek (inż., kontakt po stronie miasta) ma numer telefonu 58 323 11 47.",
+     "input_tokens": 2833,
+     "seconds": 2.28
+    },
+    {
+     "id": "q25",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o limicie zapytań na godzinę dla jednej stacji. Są tylko wzmianki o interwałach raportowania (np. co 10, 15 lub 30 minut), ale nie określają one limitu zapytań do chmury.",
+     "input_tokens": 3481,
+     "seconds": 1.63
+    },
+    {
+     "id": "q26",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Raport z laboratorium EMC w Gliwicach ma numer EMC/2026/1187 (dotyczy certyfikatu CE, wiadomość Oli Lewandowskiej z 14.10.2026).",
+     "input_tokens": 2962,
+     "seconds": 1.25
+    },
+    {
+     "id": "q27",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Na północnych dachach trzeba dać panel 10 W (panel 6 W wystarcza do całorocznej pracy tylko na dachach południowych), jak napisał Piotr Zieliński 15 lipca.",
+     "input_tokens": 3141,
+     "seconds": 1.81
+    },
+    {
+     "id": "q28",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Po pół roku w terenie dryf wilgotności wynosi średnio 2,1% RH, a maksymalnie 4,5% na stacjach przy morzu (wiadomość Marty Wiśniewskiej z 29.09.2026).",
+     "input_tokens": 3185,
+     "seconds": 1.59
+    },
+    {
+     "id": "q29",
+     "category": "recent",
+     "ok": true,
+     "answer": "Od przyszłego tygodnia stand-up będzie o 9:30, we wtorki i czwartki (Ada Nowak, 2026-11-09). Do tego czasu godzina nie była w wiadomościach podana, więc w tym tygodniu obowiązuje jeszcze dotychczasowy termin, którego nie znam.",
+     "input_tokens": 3103,
+     "seconds": 1.69
+    },
+    {
+     "id": "q30",
+     "category": "recent",
+     "ok": true,
+     "answer": "According to Jonas Berg, the units reboot every 49.7 days because the millis() counter overflows. A patch for this is planned for version 2.5.2.",
+     "input_tokens": 2619,
+     "seconds": 2.35
+    },
+    {
+     "id": "q31",
+     "category": "recent",
+     "ok": true,
+     "answer": "Kurier InPost odbierze 25 stacji dla Gdańska w czwartek 13 listopada (według wiadomości Oli Lewandowskiej z 7 listopada).",
+     "input_tokens": 2734,
+     "seconds": 1.62
+    },
+    {
+     "id": "q32",
+     "category": "recent",
+     "ok": true,
+     "answer": "Yes. On 2026-11-10, Sarah Mitchell wrote that the pricing page copy is approved by Bogdan, and that the Polish translation is due Friday.",
+     "input_tokens": 2101,
+     "seconds": 1.49
+    },
+    {
+     "id": "q33",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Z wiadomości wynika tylko tyle, że Jonas Berg przejmuje wydania firmware i to on decyduje, kiedy dana wersja idzie na stacje (Ada Nowak, 2026-04-10). Nie mam informacji o samej technice rozsyłania aktualizacji, np. o narzędziach czy procedurze.",
+     "input_tokens": 3009,
+     "seconds": 1.47
+    },
+    {
+     "id": "q34",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say how long raw measurements are kept.",
+     "input_tokens": 2786,
+     "seconds": 1.49
+    },
+    {
+     "id": "q35",
+     "category": "inflect",
+     "ok": true,
+     "answer": "OC produktu w Warcie jest ubezpieczone na sumę 2 mln zł (składka wynosi 6 400 zł rocznie), według wiadomości Bogdana Kowalskiego z 21.04.2026.",
+     "input_tokens": 2879,
+     "seconds": 1.4
+    },
+    {
+     "id": "q36",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention an office move, neither the new location nor a start date.",
+     "input_tokens": 2821,
+     "seconds": 1.29
+    },
+    {
+     "id": "q37",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Wiemy tylko, że Zofia Bąk aplikowała na stanowisko QA. Według Marty Wiśniewskiej (6 sierpnia) jest bardzo dobra z automatyzacji w Playwright, a słabsza z SQL, i zapadła decyzja: „Dajemy ofertę”. Nie ma informacji, czy przyjęła ofertę, a tego samego dnia Ada Nowak napisała ogólnie, że referencje kandydata na QA zostały sprawdzone, choć bez podania nazwiska.",
+     "input_tokens": 2850,
+     "seconds": 2.46
+    },
+    {
+     "id": "q38",
+     "category": "exact",
+     "ok": true,
+     "answer": "Stacje nadają w paśmie EU868, na kanałach 1–8, domyślnie z SF9 (według wiadomości Piotra Zielińskiego z 2026-04-23).",
+     "input_tokens": 2786,
+     "seconds": 1.19
+    },
+    {
+     "id": "q39",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Świadectwo wzorcowania referencyjnego higrometru Vaisala HM40 jest ważne do kwietnia 2027 (informacja z wiadomości Marty Wiśniewskiej z 29 kwietnia 2026).",
+     "input_tokens": 3248,
+     "seconds": 1.25
+    },
+    {
+     "id": "q40",
+     "category": "exact",
+     "ok": true,
+     "answer": "Faktura FV/0812/2026 od Plastmetu ma złą stawkę VAT: naliczono 23% zamiast 0% (WDT). Bogdan Kowalski poprosił o korektę.",
+     "input_tokens": 3118,
+     "seconds": 1.33
+    },
+    {
+     "id": "q41",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o pierwszej partii płytek od nowego montażysty ani o wadach.",
+     "input_tokens": 2894,
+     "seconds": 1.3
+    },
+    {
+     "id": "q42",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, jak mocujemy stacje do wiat przystankowych. Są tylko wzmianki o zakończonych montażach (np. na przystanku Hucisko i Jaśkowa Dolina), bez opisu sposobu mocowania.",
+     "input_tokens": 3016,
+     "seconds": 1.53
+    },
+    {
+     "id": "q43",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "The messages don't say the city is complaining about any stations. The city only asked for reports (30 stations for October, and 4 stations for May) and received an acceptance protocol from Zabianki. The only station issue mentioned is that the Brama Wyżynna station isn't connecting to the network (Ada Nowak, 6 Nov), and no cause is given. I don't know of any suspected cause.",
+     "input_tokens": 2572,
+     "seconds": 2.28
+    },
+    {
+     "id": "q44",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The green in the logo is #2E7D32. Jonas Berg gave this in the final logo message: the green roof outline in #2E7D32, with the wordmark set in Inter Tight.",
+     "input_tokens": 2475,
+     "seconds": 1.73
+    },
+    {
+     "id": "q45",
+     "category": "crosslang",
+     "ok": true,
+     "answer": "Pierwszy numer newslettera trafi do 340 subskrybentów (Sarah Mitchell, 2026-09-01; narzędzie to Listmonk na naszym serwerze, z włączonym double opt-in).",
+     "input_tokens": 2745,
+     "seconds": 1.32
+    },
+    {
+     "id": "q46",
+     "category": "paraphrase",
+     "ok": true,
+     "answer": "The charts were off by an hour because of the daylight saving time switch: the backend stored local time instead of UTC. Jonas Berg said this was fixed in API 1.8.3.",
+     "input_tokens": 2875,
+     "seconds": 1.13
+    },
+    {
+     "id": "q47",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not say what is used for stations that are out of LoRa range.",
+     "input_tokens": 2771,
+     "seconds": 1.68
+    },
+    {
+     "id": "q48",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, kto jest pod telefonem (dyżur) w czasie przerwy wakacyjnej. Jedyna wzmianka o urlopie to wiadomość Ady Nowak, że bierze urlop od 19 do 23 maja, ale nie dotyczy ona dyżurów.",
+     "input_tokens": 2898,
+     "seconds": 1.58
+    },
+    {
+     "id": "q49",
+     "category": "nodiacritics",
+     "ok": true,
+     "answer": "Wniosek do NCBR (Szybka Ścieżka) ma budżet projektu 3,1 mln zł; Bogdan Kowalski napisał o tym 8 maja 2026, a wynik miał być znany w listopadzie.",
+     "input_tokens": 2780,
+     "seconds": 1.18
+    },
+    {
+     "id": "q50",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages do not mention any customer asking about irrigation control or the cost of such an add-on.",
+     "input_tokens": 2877,
+     "seconds": 1.17
+    },
+    {
+     "id": "q51",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Tak. Marta Wiśniewska napisała 24 lipca, że pojemnościowy czujnik wilgotności gleby trzeba kalibrować osobno dla piasku i gliny, a różnica dochodzi do 18 punktów.",
+     "input_tokens": 3141,
+     "seconds": 1.58
+    },
+    {
+     "id": "q52",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "Nie wiem — w wiadomościach nie ma informacji o teście penetracyjnym stacji ani o jego wynikach.",
+     "input_tokens": 3159,
+     "seconds": 1.13
+    },
+    {
+     "id": "q53",
+     "category": "temporal",
+     "ok": true,
+     "answer": "Wydania firmware zatwierdza teraz Marta (Wiśniewska) – Ada Nowak ogłosiła tę zmianę 15 października 2026; wcześniej decydował o tym Jonas Berg, a on zajmuje się teraz chmurą.",
+     "input_tokens": 3012,
+     "seconds": 2.13
+    },
+    {
+     "id": "q54",
+     "category": "typo",
+     "ok": true,
+     "answer": "The question spells the domain \"zielonydah.eu\", but the messages mention \"zielonydach.eu\", which renews on 2027-03-11 (on Ada's OVH account). If that is the domain you mean, 2027-03-11 is the renewal date. The messages don't say anything about a domain spelled \"zielonydah.eu\".",
+     "input_tokens": 2565,
+     "seconds": 1.59
+    },
+    {
+     "id": "q55",
+     "category": "typo",
+     "ok": true,
+     "answer": "Nie znam telefonu do osoby o nazwisku „Kurrek”. W wiadomościach jest natomiast kontakt do inż. Haliny Kurek z miasta: tel. 58 323 11 47. Jeśli chodziło o nią, to jest ten numer.",
+     "input_tokens": 2808,
+     "seconds": 2.48
+    },
+    {
+     "id": "q56",
+     "category": "typo",
+     "ok": true,
+     "answer": "Od października – krajowe wysyłki robimy przez InPost (a z DPD rezygnujemy z powodu zbyt wielu uszkodzonych paczek), zgodnie z wiadomością Oli Lewandowskiej z 9 września 2026.",
+     "input_tokens": 3119,
+     "seconds": 1.44
+    },
+    {
+     "id": "q57",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "I do not know. The messages never mention a gas sensor being considered for the new station version, or any problem with one. They only repeat the question of whether the next version should keep the sensor, the battery, the solar panel or the gateway.",
+     "input_tokens": 2870,
+     "seconds": 1.35
+    },
+    {
+     "id": "q58",
+     "category": "inflect",
+     "ok": true,
+     "answer": "Zamówiono 400 sztuk SHT45 (zamówienie w TME, numer TME-2026-04471, złożone 14 kwietnia 2026). Dostawa miała nastąpić za 3 tygodnie od tej daty, czyli około 5 maja 2026.",
+     "input_tokens": 3061,
+     "seconds": 1.55
+    },
+    {
+     "id": "q59",
+     "category": "crosslang",
+     "ok": false,
+     "answer": "I do not know. The messages mention customs clearance delays, but none of them says why a parcel from Shenzhen was held, and Shenzhen is not mentioned at all.",
+     "input_tokens": 3142,
+     "seconds": 1.39
+    },
+    {
+     "id": "q60",
+     "category": "paraphrase",
+     "ok": false,
+     "answer": "Nie wiem – w wiadomościach nie ma informacji o tym, ile urządzeń stawiamy dla miasta ani do kiedy. Są tylko wzmianki o zakończonych montażach (Hucisko, Jaśkowa Dolina) oraz o prośbach miasta o raporty z 30 stacji za październik i z 4 stacji za maj, ale to nie odpowiada na pytanie.",
+     "input_tokens": 2924,
+     "seconds": 1.56
+    }
+   ]
+  }
+ },
+ "spend": {
+  "calls": 180,
+  "input_tokens": 397176,
+  "output_tokens": 12728,
+  "usd": 0.922,
+  "price_per_million": [
+   2.0,
+   10.0
+  ]
+ }
+}
