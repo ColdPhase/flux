@@ -1,0 +1,29 @@
+/* Notices (#1243, docs/design/final/README.md "Notices"): one card about someone else's message, mention, task or call,
+   at the bottom right on a computer and at the top on a phone, apart from the Undo toasts at the bottom centre.
+   Only the tokens: --el, --sh-pop (with the dark theme's inset outline), --r-card, the type sizes, Button and Avatar. */
+.ui-notices {
+  position: fixed; z-index: var(--z-toast); right: 20px; bottom: max(20px, var(--notice-lift, 0px));
+  width: min(360px, calc(100vw - 40px)); pointer-events: none;
+}
+.ui-notice {
+  pointer-events: auto; display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; column-gap: 10px; row-gap: 10px;
+  padding: 12px 8px 12px 12px; border-radius: var(--r-card); background: var(--el); color: var(--t1); box-shadow: var(--sh-pop);
+}
+.ui-notice__face { grid-column: 1; grid-row: 1; display: grid; }
+.ui-notice__text { grid-column: 2; grid-row: 1; min-width: 0; padding-top: 6px; }
+.ui-notice__title {
+  margin: 0; font-size: var(--fs-base); line-height: 20px; font-weight: 500; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.ui-notice__body {
+  margin: 0; color: var(--t2); font-size: var(--fs-base); line-height: 20px; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden;
+}
+.ui-notice__close { grid-column: 3; grid-row: 1; align-self: start; }
+.ui-notice__actions { grid-column: 2 / 4; grid-row: 2; display: flex; flex-wrap: wrap; gap: 8px; }
+/* The phone (MEDIA.phone): at the top, under the safe area, with the page's 16 px gutters.
+   The card stands on a band of the page's ground from the screen's top edge, so no part of the header shows at its corners. */
+@media (max-width: 640px) {
+  .ui-notices { top: 0; bottom: auto; left: 0; right: 0; width: auto; padding: calc(env(safe-area-inset-top) + 8px) 16px 8px; }
+  .ui-notices:has(.ui-notice) { background: var(--bg); pointer-events: auto; }
+}

@@ -211,9 +211,27 @@ export interface GeneratorPorts {
   recordWait?(event: GeneratorEvent): Promise<void>;
   /** The event of a wait, to replay it. */
   eventById?(id: string): Promise<GeneratorEvent | null>;
+  /**
+   * Announces notifications that interrupt their person on the live stream (#1243): one `<source>.notice.v1` event each, whose id is
+   * the notification's, for that person alone. Called once per batch, last, so the events' sequence lock is held only for these inserts.
+   */
+  announceNotices?(notices: readonly NoticeAnnouncement[]): Promise<void>;
   /** Runs `work` in a savepoint so one event that fails does not undo the batch. */
   isolate<T>(work: () => Promise<T>): Promise<T>;
 }
+
+/** A stored notification that interrupts its person now: its level lets the reason through, and it is not quiet hours (#1243). */
+export interface NoticeAnnouncement {
+  notificationId: string;
+  userId: string;
+  workspaceId: string;
+  source: SourceLookup;
+  /** The actor of the event it came from (`human:<id>`, `agent:<id>`). */
+  actorId: string;
+}
+
+/** The stream event kind that announces a notice about a source of this type. */
+export const noticeEventKind = (type: SourceLookup['type']) => `${type}.notice.v1`;
 
 export interface GeneratorUnitOfWork {
   run<T>(work: (ports: GeneratorPorts) => Promise<T>): Promise<T>;

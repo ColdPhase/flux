@@ -6,7 +6,7 @@ import type { JobRetryPolicy } from '../push/config.js';
 import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
 import { isQuestion, mentions } from './addressing.js';
-import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NotificationFacts } from './ports.js';
+import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NoticeAnnouncement, NotificationFacts } from './ports.js';
 import { channelsOf, inQuietHours } from './preferences.js';
 
 // Notifications from committed domain events (issue #116, foundation 8.9). The worker reads the
@@ -255,8 +255,11 @@ export interface GenerationOptions {
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
-/** Stores one candidate's notification and queues its push and email, as their preferences say. */
-async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: Candidate, options: GenerationOptions) {
+/**
+ * Stores one candidate's notification and queues its push and email, as their preferences say. A notification that interrupts the
+ * person now (the level lets its reason through and it is not quiet hours) is added to `notices`, for the open tabs' notice (#1243).
+ */
+async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: Candidate, options: GenerationOptions, notices: NoticeAnnouncement[] = []) {
   const preferences = await ports.preferences.get(candidate.userId);
   // A muted place keeps its ordinary messages quiet; what needs the person (a mention, a question, a task, a decision, an invitation, an agent
   // waiting) still arrives (#1249). The one rule is `quiet`.
@@ -283,6 +286,8 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   const now = options.now?.() ?? new Date();
   // Quiet hours (C-31): no push and no email while they last, and nothing is sent when they end; the inbox row is stored above.
   if (inQuietHours(preferences, now)) return true;
+  // The open tab's notice follows the same rule as push: the level and quiet hours, after the mute rule above (#1243, #1249).
+  if (channels.push) notices.push({ notificationId, userId: candidate.userId, workspaceId: event.workspaceId, source: candidate.source, actorId: event.actorId });
   if (channels.push) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
       await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId });
@@ -322,16 +327,21 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
     let created = 0;
     let done: number | null = null;
     let processed = 0;
+    // Notices of the events whose savepoints committed, announced last (see `announceNotices`).
+    const notices: NoticeAnnouncement[] = [];
+    const announce = async () => { if (notices.length) await ports.announceNotices?.(notices); };
     for (const event of events) {
       try {
         created += await ports.isolate(async () => {
           let count = 0;
+          const own: NoticeAnnouncement[] = [];
           for (const candidate of await candidatesFor(event, ports.facts)) {
             // Mentioned or asked in a thread: the person follows it from now on, whatever the notice does (a muted place, the level), unless
             // they chose either way before (#1249).
             if (candidate.thread) await ports.followThread?.(candidate.userId, candidate.thread);
-            if (await deliver(ports, event, candidate, options)) count++;
+            if (await deliver(ports, event, candidate, options, own)) count++;
           }
+          notices.push(...own);
           return count;
         });
       } catch (error) {
@@ -348,6 +358,7 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
         if (attempts < GENERATION_MAX_ATTEMPTS) {
           options.log?.('Notification generation failed; the event will be retried', { eventId: event.id, kind: event.kind, attempts, error: message });
           if (done !== null) await ports.advanceCursor(done);
+          await announce();
           return { processed, created, stalled: true };
         }
         await ports.deadLetter(event.id);
@@ -357,6 +368,7 @@ export async function generateNotifications(uow: GeneratorUnitOfWork, options: G
       processed++;
     }
     if (done !== null) await ports.advanceCursor(done);
+    await announce();
     return { processed, created, stalled: false };
   });
 }

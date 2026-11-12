@@ -69,7 +69,7 @@ export function useAgentOwners(project: Pick<Project, 'id' | 'workspaceId'> | nu
     };
   }, [scope, projectId, revalidator.state]);
   useStreamEvents(me.user.id, (event) => {
-    if (event.workspaceId === project?.workspaceId && !event.kind.endsWith('observed.v1')) reload.current();
+    if (event.workspaceId === project?.workspaceId && !event.kind.endsWith('observed.v1') && !event.kind.endsWith('.notice.v1')) reload.current();
   }, () => reload.current());
   return boundary.scope === scope && boundary.phase === revalidator.state && revalidator.state === 'idle' && read?.scope === scope ? read.owners : EMPTY;
 }

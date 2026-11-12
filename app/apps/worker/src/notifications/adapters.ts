@@ -8,13 +8,14 @@ import {
   notificationPreferenceRows,
   pushSubscriptionRepository,
   sql,
-  accessReader, type Database, type Transaction
+  accessReader, eventRepository, type Database, type Transaction
 } from '@flux/db';
 import {
   NOTIFICATION_EMAIL_JOB,
   PUSH_SEND_JOB,
   channelOn,
   inQuietHours,
+  noticeEventKind,
   policySourceReader,
   preferenceRepository,
   type EmailDeliveryUnitOfWork,
@@ -50,6 +51,14 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     deadLetter: (eventId) => rows.deadLetter(eventId),
     recordWait: (event) => rows.recordWait(event),
     eventById: (id) => rows.eventById(id),
+    // One stream event per notice, for its person alone by name; its id is the notification's, which the tab then reads (#1243).
+    async announceNotices(notices) {
+      const events = eventRepository(tx);
+      for (const notice of notices) {
+        await events.insert({ id: notice.notificationId, kind: noticeEventKind(notice.source.type), objectId: notice.source.id, actorId: notice.actorId,
+          data: {}, workspaceId: notice.workspaceId }, [`human:${notice.userId}`]);
+      }
+    },
     isolate: (work) => tx.transaction(() => work()),
   };
 }

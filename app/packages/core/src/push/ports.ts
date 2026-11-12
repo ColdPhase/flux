@@ -38,6 +38,8 @@ export interface NotificationRecord {
   readAt: Date | null;
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
+  /** Who it comes from, on the one-item read only (#1243): the actor of the event it was made from. */
+  from?: { kind: 'human' | 'agent'; name: string } | null;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */

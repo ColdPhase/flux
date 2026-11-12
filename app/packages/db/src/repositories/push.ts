@@ -80,6 +80,25 @@ export function pushSubscriptionRepository(db: DbExecutor) {
   };
 }
 
+/**
+ * Who a notification comes from (#1243): the actor of the event it was made from, as a person's or an agent's name, for the notice's
+ * face. Null for a notification made directly, or when the actor is gone.
+ */
+async function sender(db: DbExecutor, eventId: string | null): Promise<{ kind: 'human' | 'agent'; name: string } | null> {
+  if (!eventId) return null;
+  const [event] = await db.select({ actorId: schema.events.actorId }).from(schema.events).where(eq(schema.events.id, eventId));
+  const [kind, actor] = event ? [event.actorId.slice(0, event.actorId.indexOf(':')), event.actorId.slice(event.actorId.indexOf(':') + 1)] : [];
+  if (kind === 'human' && actor) {
+    const [user] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, actor));
+    return user ? { kind: 'human', name: user.name } : null;
+  }
+  if (kind === 'agent' && actor && /^[0-9a-f-]{36}$/i.test(actor)) {
+    const [agent] = await db.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, actor));
+    return agent ? { kind: 'agent', name: agent.name } : null;
+  }
+  return null;
+}
+
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
   const withHistory = (reverted: ReadonlySet<string>) => (row: { notification: NotificationRow }) => {
@@ -100,7 +119,8 @@ export function notificationRows(db: DbExecutor) {
     async findForRecipient(userId: string, id: string) {
       const [row] = await db.select({ notification: n }).from(n)
         .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenNotice(n)}`));
-      return row ? (await withHistories([row]))[0]! : null;
+      if (!row) return null;
+      return { ...(await withHistories([row]))[0]!, from: await sender(db, row.notification.eventId) };
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
