@@ -46,7 +46,7 @@ export function FaceSound({ live, person, children }: { live: LiveValue; person:
   return (
     <span className="lv-facesound">
       <button ref={button} type="button" className="lv-facesound__btn" aria-haspopup="dialog" aria-expanded={open}
-        aria-label={`Sound from ${name}${muted ? ', muted for you' : ''}`} data-tip={`Sound from ${name}`} onClick={() => setOpen((value) => !value)}>
+        aria-label={`Sound from ${name}${muted ? ', muted for you' : ''}`} data-tip={open ? undefined : `Sound from ${name}`} onClick={() => setOpen((value) => !value)}>
         {children}
         {muted ? <span className="lv-face__muted lv-face__quiet" aria-hidden="true"><Icon name="quiet" size={9} /></span> : null}
       </button>
