@@ -273,8 +273,8 @@ class DmThreadsReceipts(unittest.TestCase):
         expect(self.row(ada, self.run_y)).to_be_visible()
         # Kai already read the end of the conversation in the thread test: the last run is claimed for Kai, the earlier
         # run (far above his screen) is not, and sending or an open composer is not an observation.
-        expect(self.run_footer(ada, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
-        expect(self.run_footer(ada, self.run_x[1]).locator(".message-seen")).to_have_count(0)
+        expect(self.run_footer(ada, self.run_y).locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=20000)
+        expect(self.run_footer(ada, self.run_x[1]).locator(".seen")).to_have_count(0)
 
         kai = self.page("kai")
         kai.goto(f"/dm/{self.dm_id}")
@@ -285,14 +285,19 @@ class DmThreadsReceipts(unittest.TestCase):
         lee = self.page("lee")
         lee.goto(f"/dm/{self.dm_id}")
         expect(self.row(lee, self.run_y)).to_be_in_viewport()
-        expect(self.run_footer(ada, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai and Lee$"), timeout=20000)
-        expect(self.run_footer(ada, self.run_x[1]).locator(".message-seen")).to_have_count(0)
+        expect(self.run_footer(ada, self.run_y).locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Lee and Kai$"), timeout=20000)
+        expect(self.run_footer(ada, self.run_x[1]).locator(".seen")).to_have_count(0)
 
-        # Kai scrolls up and reads the whole earlier run; reading it makes the claim true for Kai alone.
+        # Kai scrolls up and reads the whole earlier run. Each reader is shown once, under the newest run they read (#1231), so the
+        # earlier run gets no face for him: it is true for him alone when asked alone, and the faces stay under the newer run.
         self.row(kai, self.run_x[0]).scroll_into_view_if_needed()
         self.row(kai, self.run_x[1]).scroll_into_view_if_needed()
-        expect(self.run_footer(ada, self.run_x[1]).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
-        self.assertEqual(self.post_receipts(ada, [self.run_x, self.run_x[:1]]), [["Kai Tanaka"], ["Kai Tanaka"]])
+        deadline = time.time() + 20
+        while self.post_receipts(ada, [self.run_x]) != [["Kai Tanaka"]] and time.time() < deadline:
+            time.sleep(0.5)
+        self.assertEqual(self.post_receipts(ada, [self.run_x]), [["Kai Tanaka"]], "the server saw Kai read the whole earlier run")
+        self.assertEqual(self.post_receipts(ada, [self.run_x, [self.run_y]]), [[], ["Kai Tanaka", "Lee Moreno"]], "and places him once, under the newer run")
+        expect(self.run_footer(ada, self.run_x[1]).locator(".seen")).to_have_count(0)
         shot(ada, "dm-threads-desktop-seen-light")
 
     def test_05_seen_by_in_the_thread_and_for_a_person_who_left(self) -> None:
@@ -303,13 +308,13 @@ class DmThreadsReceipts(unittest.TestCase):
         kai = self.page("kai")
         kai.goto(f"/dm/{self.dm_id}?thread={self.root}")
         expect(kai.locator("[data-dm-thread] .dm-msg__body", has_text="long hold to switch off")).to_be_in_viewport()
-        expect(reply.locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
+        expect(reply.locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=20000)
         # A person who left is never named again, whatever they saw.
         lee = self.context("lee")
         left = lee.request.post(f"/api/v1/dms/{self.dm_id}/leave", headers={"origin": ORIGIN})
         self.assertEqual(left.status, 204)
         ada.goto(f"/dm/{self.dm_id}")
-        expect(self.run_footer(ada, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
+        expect(self.run_footer(ada, self.run_y).locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=20000)
 
     @staticmethod
     def scrolled(page: Page) -> None:
@@ -468,22 +473,22 @@ class DmThreadsReceipts(unittest.TestCase):
         ada = self.page("ada")
         ada.goto(f"/projects/{self.project_id}")
         expect(ada.locator(f"#message-{b}")).to_be_visible()
-        expect(ada.locator(".message-seen")).to_have_count(0)
+        expect(ada.locator(".seen")).to_have_count(0)
         # Kai reads the end of the stream: both roots of Ada's run are on his screen, so the footer appears live.
         kai = self.page("kai")
         kai.goto(f"/projects/{self.project_id}")
         expect(kai.locator(f"#message-{b}")).to_be_in_viewport()
-        expect(ada.locator(f"#message-{b} .message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=30000)
-        expect(ada.locator(f"#message-{a} .message-seen")).to_have_count(0)
+        expect(ada.locator(f"#message-{b} .seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=30000)
+        expect(ada.locator(f"#message-{a} .seen")).to_have_count(0)
         # A thread: Ada's reply is claimed only once Kai has the thread open.
         self.post("ada", f"/api/v1/conversations/{second['id']}/messages", {"body": "Reply from the bench.", "clientMessageId": str(uuid.uuid4())}, 201)
         ada.goto(f"/projects/{self.project_id}/conversations/{second['id']}")
         reply = ada.locator("[id^=message-].is-mine", has_text="Reply from the bench.")
         expect(reply).to_be_visible()
-        expect(reply.locator(".message-seen")).to_have_count(0)
+        expect(reply.locator(".seen")).to_have_count(0)
         kai.goto(f"/projects/{self.project_id}/conversations/{second['id']}")
         expect(kai.locator("[id^=message-]", has_text="Reply from the bench.")).to_be_in_viewport()
-        expect(reply.locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=30000)
+        expect(reply.locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=30000)
         shot(ada, "dm-threads-desktop-project-thread-seen-light")
         # The API agrees, and an outsider to the project's audience learns nothing.
         runs = ada.request.post(f"/api/v1/projects/{self.project_id}/receipts", data={"runs": [[a, b]]}, headers={"origin": ORIGIN})
@@ -501,7 +506,7 @@ class DmThreadsReceipts(unittest.TestCase):
         page.get_by_role("button", name="Cancel").click()
         phone = self.page("ada", phone=True, dark=True)
         phone.goto(f"/dm/{self.dm_id}")
-        expect(self.run_footer(phone, self.run_y).locator(".message-seen")).to_have_text(re.compile(r"Seen by Kai$"), timeout=20000)
+        expect(self.run_footer(phone, self.run_y).locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Kai$"), timeout=20000)
         shot(phone, "dm-threads-phone-seen-dark")
 
     def test_10_thread_replies_from_both_people_stay_in_the_pane_with_one_toolbar(self) -> None:

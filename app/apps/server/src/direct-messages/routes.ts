@@ -7,6 +7,7 @@ import {
   type DmMessage,
   type DmTaskCopyCommand,
   type DmTaskCopyPreviewCommand,
+  type MessageReadersQuery,
   type MessageReceiptsQuery,
   type ObserveMessagesCommand,
   type PageQuery,
@@ -152,6 +153,11 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
   app.post<{ Params: { dmId: string }; Body: MessageReceiptsQuery }>(`${DM}/receipts`, {
     schema: { body: { type: 'object', required: ['runs'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: id } } } } },
   }, async (request) => dms.receipts(await principal(request), request.params.dmId, request.body));
+
+  // The readers of one run, a page at a time, when a person opens the list (#1231).
+  app.post<{ Params: { dmId: string }; Body: MessageReadersQuery }>(`${DM}/receipts/readers`, {
+    schema: { body: { type: 'object', required: ['runs', 'run'], additionalProperties: false, properties: { runs: { type: 'array', minItems: 1, maxItems: 20, items: { type: 'array', minItems: 1, maxItems: 50, items: id } }, run: { type: 'integer', minimum: 0, maximum: 19 }, after: { type: 'string', maxLength: 100 } } } },
+  }, async (request) => dms.readers(await principal(request), request.params.dmId, request.body));
 
   // An explicit excerpt copy into a project task (#537). The preview changes nothing; only the commit writes.
   app.post<{ Params: { dmId: string }; Body: DmTaskCopyPreviewCommand }>(`${DM}/task-copy/preview`, {

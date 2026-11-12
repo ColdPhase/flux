@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation } from 'react-router';
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
-import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
+import { dmReaders, dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
 import { askError, askState } from '../assistant/format';
 import { noteAssistantUse } from '../assistant/MeetAssistant';
 import { PrivateAiLines } from '../assistant/PrivateAiLines';
@@ -242,7 +242,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
     if (!atEnd) newBelow.add(countBelow(feed.current, ids, (id) => document.getElementById(id)));
   }, { animate: false });
   const runs = ownRuns(shown.map((m) => ({ id: m.id, authorId: m.authorId, createdAt: m.createdAt })).concat(outbox.pending.map((item) => ({ id: null as unknown as string, authorId: meId, createdAt: item.at }))), meId, !!older);
-  const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), runs, tick: receiptTick });
+  const seen = useReceipts({ scope: `${dmId}/${rootId}`, fetchReceipts: (list, signal) => dmReceipts(dmId, list, signal), fetchReaders: (list, run, after, signal) => dmReaders(dmId, list, run, after, signal), runs, tick: receiptTick });
   useObservation({ scope: dmId, observe: (list) => observeDmMessages(dmId, list), enabled: canObserve && !!root && !returned.pending, feed,
     ids: (root ? [root, ...shown] : shown).filter((m) => m.authorId !== meId).map((m) => m.id), depend: shown.length });
   const count = root?.replyCount ?? shown.length;
@@ -258,7 +258,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">
                 <DmBubble dmId={dmId} key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
-                  writable={writable} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
+                  writable={writable} arrived={false} observed={root.authorId !== meId} nav="thread"
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
             ) : <p className="thread__hint" role="status">Opening…</p>}
@@ -270,14 +270,14 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
                   return <DmBubble dmId={dmId} key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
-                    writable={writable} arrived={false} observed={false} seenBy={[]} nav="thread"
+                    writable={writable} arrived={false} observed={false} nav="thread"
                     onCreateTask={onCreateTask} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
                 const starts = message.id === unreadFrom;
                 const bubble = <DmBubble dmId={dmId} key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
                   day={newDay && !starts ? dayLabel : null} writable={writable} arrived={target === message.id} observed={!mine} nav="thread"
-                  seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
+                  receipt={seen.get(message.id)}
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
                 // Where what is new begins (#1246): its day line first, then the divider, then the reply.
                 return starts ? [newDay ? <MessageDay key={`day-${message.id}`} label={dayLabel} /> : null, <UnreadDivider key="unread" />, bubble] : bubble;

@@ -10,7 +10,7 @@ export function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
-const PIXELS = { sm: 20, md: 26, lg: 32 } as const;
+const PIXELS = { xs: 16, sm: 20, md: 26, lg: 32 } as const;
 
 /**
  * A person's photo over whatever circle holds it (F-039), or nothing when they have none or it cannot load: the circle's initials
@@ -30,7 +30,7 @@ export function PersonPhoto({ id, px }: { id: string | null | undefined; px: num
  * whenever it cannot load. `photo` draws a chosen picture before it is saved (the preview in Settings).
  */
 export function Avatar({ name, id, photo, size = 'md', tone = 'neutral' }: {
-  name: string; id?: string | null; photo?: string; size?: 'sm' | 'md' | 'lg'; tone?: 'neutral' | 'me';
+  name: string; id?: string | null; photo?: string; size?: 'xs' | 'sm' | 'md' | 'lg'; tone?: 'neutral' | 'me';
 }) {
   return (
     <span className={`ui-avatar ui-avatar--${size} ui-avatar--${tone}`} aria-hidden="true">

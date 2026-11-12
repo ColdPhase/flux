@@ -195,7 +195,8 @@ button.project-convo__contribution { cursor: pointer; }
 @keyframes convo-arrived { to { background: transparent; } }
 .convo-source-tag { align-self: flex-start; margin-bottom: 4px; padding: 2px 9px; border-radius: var(--r-pill); background: var(--sub); color: var(--t2); font-size: var(--fs-xs); font-weight: 500; line-height: 1.4; }
 .project-convo__message.is-mine > .convo-source-tag { align-self: flex-end; }
-.message-time { margin-top: 5px; color: var(--t3); font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.5; }
+/* The line under the last message of a group (#1231): the time in the interface font, then the faces of who read it (receipt-faces.css). One row, the same height with or without faces. */
+.message-time { display: flex; align-items: center; gap: 8px; min-height: calc(var(--fs-xs) * 1.5); margin-top: 5px; color: var(--t3); font-size: var(--fs-xs); line-height: 1.5; }
 @media (max-width: 680px) { .project-convo__message.is-mine { padding-right: 0; } }
 
 .thread__root { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }

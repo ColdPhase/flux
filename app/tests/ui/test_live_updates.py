@@ -119,12 +119,12 @@ class LiveUpdates(unittest.TestCase):
         kai = self.page("kai")
         kai.goto(f"/projects/{self.space}")
         expect(kai.locator(f"#message-{message}")).to_be_in_viewport()
-        seen = ada.locator(f"#message-{message} .message-seen")
-        expect(seen).to_contain_text("Kai")
+        seen = ada.locator(f"#message-{message} .seen")
+        expect(seen).to_have_attribute("aria-label", "Seen by Kai")
         kai.context.close()
         grant = next(g for g in self.call("ada", "GET", f"/api/v1/projects/{self.space}/grants") if g["principal"]["id"] == self.ids["kai"])
         self.call("ada", "DELETE", f"/api/v1/projects/{self.space}/grants/{grant['id']}", None, 204)
-        expect(ada.locator(f"#message-{message} .message-seen", has_text="Kai")).to_have_count(0)
+        expect(ada.locator(f"#message-{message} .seen")).to_have_count(0)
         self.call("ada", "POST", f"/api/v1/projects/{self.space}/grants", {"principal": {"kind": "human", "id": self.ids["kai"]}, "role": "contributor"}, 201)
 
 

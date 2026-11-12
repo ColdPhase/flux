@@ -1,0 +1,23 @@
+/* Who has read a message (#1231; docs/design/final/README.md "Time and who has read it"): at most 3 faces and a "+N" circle in one
+   16 px row, the same height for 1 reader or 500, as one button that opens the list of names and times. */
+.seen { position: relative; display: inline-flex; flex: none; align-items: center; gap: 2px; height: 16px; padding: 0; border-radius: var(--r-pill); color: var(--t2); }
+.seen:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+/* A finger needs more than 16 px: the target grows, the row does not. */
+@media (pointer: coarse) { .seen::before { content: ""; position: absolute; inset: -14px -8px; } }
+.seen__more { display: grid; place-items: center; box-sizing: border-box; min-width: 16px; height: 16px; padding: 0 2px; border-radius: var(--r-pill);
+  background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); color: var(--t2); font-size: var(--fs-glyph); font-weight: 600; line-height: 1; letter-spacing: 0; }
+
+/* The list: the menu's surface above (or below) the faces. Placed by script with fixed coordinates, so no scroll area clips it. */
+.seen-list { position: fixed; z-index: var(--z-menu); display: flex; flex-direction: column; width: min(300px, calc(100vw - 24px)); padding: 6px; border-radius: var(--r);
+  background: var(--el); box-shadow: var(--sh-pop), inset 0 0 0 1px var(--line); }
+.seen-list__scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; border-radius: var(--r-sm); }
+.seen-list__scroll:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.seen-list__rows { margin: 0; padding: 0; list-style: none; }
+.seen-list__row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px; }
+.seen-list__name { flex: 1; min-width: 0; overflow: hidden; color: var(--t1); font-size: var(--fs-md); text-overflow: ellipsis; white-space: nowrap; }
+.seen-list__at { flex: none; color: var(--t3); font-size: var(--fs-xs); white-space: nowrap; }
+.seen-list__more { display: flex; align-items: center; gap: 6px; min-height: 32px; margin: 0; padding: 0 8px; color: var(--t3); font-size: var(--fs-xs); }
+@media (pointer: coarse) {
+  .seen-list__row, .seen-list__more { min-height: 44px; }
+  .seen-list__name { font-size: var(--fs-base); }
+}

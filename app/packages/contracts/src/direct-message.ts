@@ -16,6 +16,7 @@ export const dmThreadPath = (dmId: string, rootId: string) => `${dmPath(dmId)}/t
 export const dmRepliesPath = (dmId: string, rootId: string) => `${dmThreadPath(dmId, rootId)}/replies`;
 export const dmObservationsPath = (dmId: string) => `${dmPath(dmId)}/observations`;
 export const dmReceiptsPath = (dmId: string) => `${dmPath(dmId)}/receipts`;
+export const dmReadersPath = (dmId: string) => `${dmReceiptsPath(dmId)}/readers`;
 export const dmTaskCopyPreviewPath = (dmId: string) => `${dmPath(dmId)}/task-copy/preview`;
 export const dmTaskCopiesPath = (dmId: string) => `${dmPath(dmId)}/task-copies`;
 
@@ -131,18 +132,31 @@ export interface ObserveMessagesCommand { messageIds: string[] }
 export interface ObserveMessagesResult { observed: number }
 
 /**
- * `POST /api/v1/dms/:dmId/receipts` (#534): each run lists consecutive messages of one author, at one level
- * (roots, or the replies of one thread). `seenBy` is the CURRENT participants, other than the author, who
- * observed EVERY message of the run.
+ * `POST /api/v1/dms/:dmId/receipts` (#534, #1231): each run lists consecutive messages of one author, at one level
+ * (roots, or the replies of one thread), oldest run first. A reader is a CURRENT participant, other than the author, who
+ * observed EVERY message of the run. Each reader is placed once, in the NEWEST run they observed whole; `count` is how many
+ * readers the run has and `readers` only the `RECEIPT_LIMITS.faces` newest of them (#1231), so an answer never grows with the audience.
  */
 export interface MessageReceiptsQuery { runs: string[][] }
-export interface MessageReceiptsResult { runs: { messageIds: string[]; seenBy: DmPerson[] }[] }
+/** One reader of a run and when they finished reading it (an ISO time: the last of the run's observations). */
+export interface MessageReader extends DmPerson { at: string }
+export interface MessageReceiptRun { messageIds: string[]; count: number; readers: MessageReader[] }
+export interface MessageReceiptsResult { runs: MessageReceiptRun[] }
+
+/**
+ * `POST .../receipts/readers` (#1231): the readers of one run, newest first, a page of `RECEIPT_LIMITS.listPage`. The same `runs` as the
+ * receipts request, because a reader belongs to the newest run they read; `run` is the index of the one asked about. `after` is the
+ * `next` of the previous page. It is made only when a person opens the list.
+ */
+export interface MessageReadersQuery { runs: string[][]; run: number; after?: string }
+export interface MessageReadersResult { count: number; readers: MessageReader[]; next: string | null }
 
 /** The same receipts for the project's conversation (#534): its roots and the replies of one thread. */
 export const projectObservationsPath = (projectId: string) => `/api/v1/projects/${projectId}/observations`;
 export const projectReceiptsPath = (projectId: string) => `/api/v1/projects/${projectId}/receipts`;
+export const projectReadersPath = (projectId: string) => `${projectReceiptsPath(projectId)}/readers`;
 
-export const RECEIPT_LIMITS = { messagesPerCall: 50, runsPerCall: 20, messagesPerQuery: 200 } as const;
+export const RECEIPT_LIMITS = { messagesPerCall: 50, runsPerCall: 20, messagesPerQuery: 200, faces: 3, listPage: 20 } as const;
 
 /** One person who could open the task, and why: they are in its project. Agents are not listed; an agent reads with exactly its owner's rights. */
 export interface DmTaskCopyPerson { id: string; name: string; reason: 'project' }

@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
-import { RECEIPT_LIMITS, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
+import { RECEIPT_LIMITS, type MessageReadersResult, type MessageReceiptsResult, type ObserveMessagesResult } from '@flux/contracts';
 import { schema, accessPorts, accessReader, type Database, type Executor } from '@flux/db';
-import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, principalKey, RuleViolationError, uuid, type Principal } from '@flux/core';
+import { enforce, evaluateProject, InvalidInputError, listProjectPeople, NotFoundError, placeReaders, principalKey, readersPage, receiptRun, RuleViolationError, runIndex, uuid, type Principal, type RunReader } from '@flux/core';
 import { eventPorts } from '../events.js';
 
 // Viewing receipts of the project's conversation (#534). A person observes messages of a project they can read
@@ -48,6 +48,58 @@ async function tellAuthors(tx: Executor, principal: Principal, workspaceId: stri
 const OBSERVED = 'project.messages_observed.v1';
 
 export function projectReceipts(db: Database) {
+  /** The runs checked against the stored messages, and who read each, placed once in the newest run they read whole. */
+  async function readersOfRuns(principal: Principal, projectId: string, input: { runs?: unknown }) {
+    if (principal.kind !== 'human') throw missing();
+    if (!Array.isArray(input?.runs) || !input.runs.length || input.runs.length > RECEIPT_LIMITS.runsPerCall) throw new InvalidInputError(`runs must list 1 to ${RECEIPT_LIMITS.runsPerCall} runs`);
+    const runs = input.runs.map((run) => ids(run, RECEIPT_LIMITS.messagesPerCall, 'each run'));
+    if (runs.reduce((sum, run) => sum + run.length, 0) > RECEIPT_LIMITS.messagesPerQuery) throw new InvalidInputError('Too many messages in one request');
+    uuid(projectId, 'projectId');
+    return db.transaction(async (tx) => {
+      enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx)), 'project');
+      const known = new Map((await facts(tx, projectId, [...new Set(runs.flat())])).map((row) => [row.id, row]));
+      // The people who can read the project now, never anyone from a historical roster.
+      const readers = new Map((await listProjectPeople(principal, projectId, tx as unknown as Database, accessPorts)).filter((p) => p.kind === 'human').map((p) => [p.id, p.name]));
+      const m = schema.projectMessages;
+      const c = schema.projectConversations;
+      const found: RunReader[] = [];
+      for (const [index, run] of runs.entries()) {
+        const rows = run.map((id) => known.get(id));
+        if (rows.some((row) => !row)) throw missing();
+        const list = rows as NonNullable<(typeof rows)[number]>[];
+        const root = list[0]!.sequence === 1;
+        const invalid = () => new RuleViolationError('A run is your own consecutive messages of one place', 'RECEIPT_RUN_INVALID');
+        if (list.some((row) => row.authorId !== principal.id || (row.sequence === 1) !== root || (!root && row.conversationId !== list[0]!.conversationId))) throw invalid();
+        let between: { id: string }[];
+        if (root) {
+          // The stream orders roots by (conversation created_at, id): a run holds every root between its ends.
+          const ordered = [...list].sort((a, b) => a.conversationAt.getTime() - b.conversationAt.getTime() || a.conversationId.localeCompare(b.conversationId));
+          const first = ordered[0]!, last = ordered.at(-1)!;
+          between = await tx.select({ id: m.id }).from(m).innerJoin(c, eq(c.id, m.conversationId))
+            .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(m.sequence, 1),
+              // A task's discussion is not a root of the stream (#868), so it does not break a run.
+              sql`NOT EXISTS (SELECT 1 FROM project_task_discussions d WHERE d.conversation_id = ${c.id})`,
+              // Compared in SQL so the ends keep PostgreSQL's microsecond precision.
+              sql`(${c.createdAt}, ${c.id}) >= (SELECT f.created_at, f.id FROM project_conversations f WHERE f.id = ${first.conversationId})`,
+              sql`(${c.createdAt}, ${c.id}) <= (SELECT l.created_at, l.id FROM project_conversations l WHERE l.id = ${last.conversationId})`));
+        } else {
+          const from = Math.min(...list.map((row) => row.sequence)), to = Math.max(...list.map((row) => row.sequence));
+          between = await tx.select({ id: m.id }).from(m).where(and(eq(m.conversationId, list[0]!.conversationId), sql`${m.sequence} BETWEEN ${from} AND ${to}`)).orderBy(asc(m.sequence));
+        }
+        if (between.length !== run.length || between.some((row) => !known.has(row.id))) throw new RuleViolationError('A run must list every message between its first and last', 'RECEIPT_RUN_INVALID');
+        const o = schema.projectMessageObservations;
+        const seen = await tx.select({ viewerId: o.viewerId, at: sql<Date>`max(${o.observedAt})`.mapWith(o.observedAt) }).from(o)
+          .where(and(eq(o.projectId, projectId), inArray(o.messageId, run), sql`${o.viewerId} <> ${principal.id}`))
+          .groupBy(o.viewerId).having(sql`count(distinct ${o.messageId}) = ${run.length}`);
+        for (const row of seen) {
+          const name = readers.get(row.viewerId);
+          if (name !== undefined) found.push({ run: index, id: row.viewerId, name, at: row.at });
+        }
+      }
+      return { runs, placed: placeReaders(found, runs.length) };
+    });
+  }
+
   return {
     async observe(principal: Principal, projectId: string, input: { messageIds?: unknown }): Promise<ObserveMessagesResult> {
       if (principal.kind !== 'human') throw missing();
@@ -68,53 +120,19 @@ export function projectReceipts(db: Database) {
       });
     },
 
+    /**
+     * Who read the person's own runs (#534, #1231): each run names its count and its 3 newest readers, and a reader is placed once, in
+     * the newest run they read whole. The count and the faces are all a page ever needs; the whole list is `readers`.
+     */
     async receipts(principal: Principal, projectId: string, input: { runs?: unknown }): Promise<MessageReceiptsResult> {
-      if (principal.kind !== 'human') throw missing();
-      if (!Array.isArray(input?.runs) || !input.runs.length || input.runs.length > RECEIPT_LIMITS.runsPerCall) throw new InvalidInputError(`runs must list 1 to ${RECEIPT_LIMITS.runsPerCall} runs`);
-      const runs = input.runs.map((run) => ids(run, RECEIPT_LIMITS.messagesPerCall, 'each run'));
-      if (runs.reduce((sum, run) => sum + run.length, 0) > RECEIPT_LIMITS.messagesPerQuery) throw new InvalidInputError('Too many messages in one request');
-      uuid(projectId, 'projectId');
-      return db.transaction(async (tx) => {
-        enforce(await evaluateProject(principal, 'project.read', projectId, accessReader(tx)), 'project');
-        const known = new Map((await facts(tx, projectId, [...new Set(runs.flat())])).map((row) => [row.id, row]));
-        // The people who can read the project now, never anyone from a historical roster.
-        const readers = new Map((await listProjectPeople(principal, projectId, tx as unknown as Database, accessPorts)).filter((p) => p.kind === 'human').map((p) => [p.id, p.name]));
-        const m = schema.projectMessages;
-        const c = schema.projectConversations;
-        const result: MessageReceiptsResult['runs'] = [];
-        for (const run of runs) {
-          const rows = run.map((id) => known.get(id));
-          if (rows.some((row) => !row)) throw missing();
-          const list = rows as NonNullable<(typeof rows)[number]>[];
-          const root = list[0]!.sequence === 1;
-          const invalid = () => new RuleViolationError('A run is your own consecutive messages of one place', 'RECEIPT_RUN_INVALID');
-          if (list.some((row) => row.authorId !== principal.id || (row.sequence === 1) !== root || (!root && row.conversationId !== list[0]!.conversationId))) throw invalid();
-          let between: { id: string }[];
-          if (root) {
-            // The stream orders roots by (conversation created_at, id): a run holds every root between its ends.
-            const ordered = [...list].sort((a, b) => a.conversationAt.getTime() - b.conversationAt.getTime() || a.conversationId.localeCompare(b.conversationId));
-            const first = ordered[0]!, last = ordered.at(-1)!;
-            between = await tx.select({ id: m.id }).from(m).innerJoin(c, eq(c.id, m.conversationId))
-              .where(and(eq(m.projectId, projectId), eq(c.projectId, projectId), eq(m.sequence, 1),
-                // A task's discussion is not a root of the stream (#868), so it does not break a run.
-                sql`NOT EXISTS (SELECT 1 FROM project_task_discussions d WHERE d.conversation_id = ${c.id})`,
-                // Compared in SQL so the ends keep PostgreSQL's microsecond precision.
-                sql`(${c.createdAt}, ${c.id}) >= (SELECT f.created_at, f.id FROM project_conversations f WHERE f.id = ${first.conversationId})`,
-                sql`(${c.createdAt}, ${c.id}) <= (SELECT l.created_at, l.id FROM project_conversations l WHERE l.id = ${last.conversationId})`));
-          } else {
-            const from = Math.min(...list.map((row) => row.sequence)), to = Math.max(...list.map((row) => row.sequence));
-            between = await tx.select({ id: m.id }).from(m).where(and(eq(m.conversationId, list[0]!.conversationId), sql`${m.sequence} BETWEEN ${from} AND ${to}`)).orderBy(asc(m.sequence));
-          }
-          if (between.length !== run.length || between.some((row) => !known.has(row.id))) throw new RuleViolationError('A run must list every message between its first and last', 'RECEIPT_RUN_INVALID');
-          const o = schema.projectMessageObservations;
-          const seen = await tx.select({ viewerId: o.viewerId }).from(o).where(and(eq(o.projectId, projectId), inArray(o.messageId, run), sql`${o.viewerId} <> ${principal.id}`))
-            .groupBy(o.viewerId).having(sql`count(distinct ${o.messageId}) = ${run.length}`);
-          const seenBy = seen.filter((row) => readers.has(row.viewerId)).map((row) => ({ id: row.viewerId, name: readers.get(row.viewerId)! }))
-            .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-          result.push({ messageIds: run, seenBy });
-        }
-        return { runs: result };
-      });
+      const { runs, placed } = await readersOfRuns(principal, projectId, input);
+      return { runs: runs.map((messageIds, index) => receiptRun(messageIds, placed[index]!)) };
+    },
+
+    /** One page of the readers of one run, newest first: made only when a person opens the list (#1231). */
+    async readers(principal: Principal, projectId: string, input: { runs?: unknown; run?: unknown; after?: unknown }): Promise<MessageReadersResult> {
+      const { runs, placed } = await readersOfRuns(principal, projectId, input);
+      return readersPage(placed[runIndex(input.run, runs.length)]!, input.after);
     },
   };
 }

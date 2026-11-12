@@ -172,7 +172,21 @@ Migration `0103_message_receipts_dm_threads.sql` (numbered 0103; the coordinator
   (project: current readers) other than the author who observed every message of the run. Those who left or
   lost access are never named. The client omits a run that starts at the first loaded message while earlier
   ones exist, or that is still being sent. New observations record `dm.observed.v1` (no data). The project
-  conversation has no event; its footer refreshes every 8 s while visible.
+  conversation records `project.messages_observed.v1` for the authors of the observed messages (#862); its
+  receipts are read again on that event and on focus, and on an 8 s timer only while the live stream is down.
+- **Faces under a message (#1231).** The receipt is drawn as small faces ([design](../design/final/README.md#time-and-who-has-read-it)),
+  so it answers a count and a few readers, never the audience. `POST .../receipts` takes the runs oldest first and
+  answers, for each, `{ messageIds, count, readers }`: `count` is every current reader who observed every message of
+  the run and `readers` the newest `RECEIPT_LIMITS.faces` (3) of them, each with `at`, the time they finished the run.
+  A reader is placed once, in the newest run of the request that they observed whole (later is newer), so the faces move
+  down the conversation as people read on. `POST .../receipts/readers` (DMs and projects alike) takes the same `runs`
+  and the index `run` of one of them, and answers `{ count, readers, next }`: a page of `RECEIPT_LIMITS.listPage` (20)
+  readers, newest first, `next` being the `after` of the following page (a cursor on the time and id of the last
+  reader, so a reader arriving meanwhile repeats or skips nobody). The client asks for it only when a person opens
+  the list, and for later pages when its end is scrolled into view. Both answers are computed from the same current
+  audience, so a person who left is in neither. An author's open page reads its receipts at most once every 1.5 s
+  because of events, however many people read in that time. Tests: `app/tests/app/message-receipt-faces.test.ts`
+  (500 readers: count, 3 faces, paging, placement), `dm-threads-receipts.test.ts` and `app/tests/ui/test_receipt_faces.py`.
 - **Task copy (#537).** `POST .../task-copy/preview` (changes nothing) returns the excerpt (a substring of the
   message, default all of it), the destination, the projects the caller can change and the destination's
   audience; `POST .../task-copies` carries the preview `token` (caller, DM, message version, excerpt, project,
