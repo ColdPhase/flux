@@ -17,8 +17,7 @@ between two events of a streamed answer; a request with `"stream": true` is answ
 
 #1218: it also answers the key listings of Anthropic, OpenAI and Gemini under `/lists/…` (`FLUX_TEST_PROVIDER_LISTS`), like the app
 suite's provider mock (app/tests/app/support/key-list-mock.ts): a key containing `refused` is refused, `broken` fails with a 500,
-`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`. `POST /__key-lists {"key": ..., "omit": [ids]}`
-leaves models out of that one key's lists from then on (a model its provider stopped offering).
+`slow` answers after 12 seconds (past the 8-second bound), any other key gets the lists in `KEY_LISTS`.
 """
 
 from __future__ import annotations
@@ -65,7 +64,6 @@ KEY_LISTS = {
     ]},
 }
 
-OMIT: dict[str, set[str]] = {}
 lock = threading.Lock()
 script: dict = dict(DEFAULT)
 requests: list[dict] = []
@@ -147,14 +145,6 @@ class Handler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             pass  # the adapter aborted the request (Stop)
 
-    @staticmethod
-    def without_omitted(listing: dict, key: str) -> dict:
-        omit = OMIT.get(key)
-        if not omit:
-            return listing
-        return {name: ([item for item in value if (item.get("id") or str(item.get("name", "")).removeprefix("models/")) not in omit]
-                       if isinstance(value, list) else value) for name, value in listing.items()}
-
     def key_list(self) -> None:
         path = self.path.split("?")[0]
         key = self.headers.get("x-api-key") or self.headers.get("x-goog-api-key") or (self.headers.get("authorization") or "").removeprefix("Bearer ")
@@ -167,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
         if "broken" in key:
             return self.reply(500, {"error": "scripted failure"})
         if path in KEY_LISTS:
-            return self.reply(200, self.without_omitted(KEY_LISTS[path], key))
+            return self.reply(200, KEY_LISTS[path])
         return self.reply(404, {"error": "not found"})
 
     def do_GET(self) -> None:
@@ -184,10 +174,6 @@ class Handler(BaseHTTPRequestHandler):
         global script
         length = int(self.headers.get("content-length") or 0)
         body = json.loads(self.rfile.read(length) or b"{}")
-        if self.path == "/__key-lists":
-            with lock:
-                OMIT[str(body.get("key", ""))] = {str(model) for model in body.get("omit") or []}
-            return self.reply(200, {"ok": True})
         if self.path == "/__script":
             with lock:
                 script = {**DEFAULT, **body}

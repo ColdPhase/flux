@@ -30,7 +30,7 @@ let serial = 0;
 const keyOf = (provider: 'anthropic' | 'openai' | 'gemini', tag = '') => {
   serial += 1;
   const tail = `${tag}${marker}${Date.now().toString(36)}${serial}`;
-  return provider === 'anthropic' ? `sk-ant-api03-${tail}` : provider === 'openai' ? `sk-proj-${tail}` : `AIza${tail}`;
+  return provider === 'anthropic' ? `sk-ant-api03-${tail}` : provider === 'openai' ? `sk-proj-${tail}` : `AIza${tail}-gemini-key-format`;
 };
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
