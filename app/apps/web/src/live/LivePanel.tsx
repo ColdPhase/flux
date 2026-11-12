@@ -89,7 +89,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
             <p className="lv-panel__text lv-panel__note"><Icon name="screen" size={14} />This browser cannot share its screen. You can still see screens others share, and show Flux work with <b>Show this</b>.</p>
           )}
         </div>
-        {live.audio ? <AudioSettingsRow onOpen={onClose} /> : null}
+        {live.audio && !live.quiet ? <AudioSettingsRow onOpen={onClose} /> : null}
         {presentable ? (
           <Button variant="secondary" icon="show" block className="lv-panel__show" onClick={onShow} title={`Show “${presentable.label}”`}><span>Show “{presentable.label}”</span></Button>
         ) : <p className="lv-panel__text">Open a task, result, doc or map in this space to show it here.</p>}

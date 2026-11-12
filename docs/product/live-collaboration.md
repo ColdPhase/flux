@@ -68,7 +68,7 @@ screens are drawn in the [design](../design/final/README.md#call-audio).
 - **Where.** One popover (a sheet on the phone), **Audio settings**: from the small arrow beside the microphone button on a
   computer, and from the "You" section of ⋯ on every device. It exists only while a call is running and not worked quietly.
 - **Microphone.**
-  - The device is chosen from `enumerateDevices()` (`audioinput`). While the microphone is on, `Room.switchActiveDevice('audioinput', id)`
+  - The device is chosen from `enumerateDevices()` (`audioinput`). While the microphone is on, the local track's `restartTrack()` with the chosen `deviceId`
     gives the same publication the new capture (no gap, no new publication); while it is off the choice is kept for the next start. A
     start asks for the chosen device with `deviceId: { exact }`; if that device is gone it starts the default one and says so.
   - **Volume 0 to 200 % (100 % by default)** is a Web Audio `GainNode` in a LiveKit audio track processor before the track is sent
@@ -93,7 +93,7 @@ screens are drawn in the [design](../design/final/README.md#call-audio).
   works (`muted`). Firefox lists output devices only after a permission: the Select is replaced by **Choose speakers or headphones**,
   which calls `MediaDevices.selectAudioOutput()`.
 - **Per person.** Each remote person has **Volume 0 to 200 %** and **Mute for me**, on their face in the strip and in ⋯ › Here now.
-  A voice plays at master × person; above 100 % in total the element's output goes through a `GainNode` (`createMediaElementSource`),
+  A voice plays at master × person; above 100 % in total the element's output goes through a `GainNode` (`createMediaStreamSource`),
   and is capped at 100 % where that cannot reach the chosen output (a non-default output in a browser without
   `AudioContext.setSinkId`). Several devices of one person share one volume. "Quiet" still stops every voice.
 - **Remembered.** `localStorage` key `flux.live.audio` (read and written inside `try/catch`; a blocked or full store means the settings
@@ -113,7 +113,7 @@ supports it):
 | `MediaDevices.selectAudioOutput` | no | 116 | no | no | Output permission on Firefox |
 | `AudioContext.setSinkId` | 110 | no | no | no | A boosted voice on a chosen output |
 | `HTMLMediaElement.volume` | 3 | 3.5 | 3.1 | 3, partial: always 1, setting has no effect | Master and per-person volume |
-| `createMediaElementSource`, `createGain` | 15 / 24 | 25 / 25 | 6 / 7 | 6 / 7 | Boost above 100 %, microphone volume |
+| `createMediaStreamSource`, `createGain` | 15 / 24 | 25 / 25 | 6 / 7 | 6 / 7 | Boost above 100 %, microphone volume |
 | `MediaDevices.enumerateDevices` | 47 | 116 (inputs and outputs; the promise waits for focus) | 11 | 11 | Device lists |
 | `getSupportedConstraints().echoCancellation` | 53 | 46 | 13.1 | 13.4 | Echo switch |
 | `getSupportedConstraints().noiseSuppression`, `.autoGainControl` | 67 | 55 | no | no | Noise and gain switches |
