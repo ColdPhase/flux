@@ -1272,7 +1272,7 @@
    "what": "A person loses a restricted space's grant; the next search by that person no longer finds its messages.",
    "space": "zarzad",
    "person": "bogdan",
-   "query": "cena hurtowa 2027",
+   "query": "cena klientów hurtowych 2027",
    "fact": "wholesale_price",
    "change": "revoke_grant"
   },
@@ -1299,7 +1299,7 @@
    "what": "A person removed from the company finds nothing.",
    "space": "gdansk",
    "person": "tomasz",
-   "query": "Halina Kurek telefon",
+   "query": "Halina Kurek tel",
    "fact": "gdansk_contact",
    "change": "remove_member"
   }

@@ -20,7 +20,7 @@ labelled a **vendor claim**, a **published result** or an **inference**.
   Plain PostgreSQL without an extension (any word, accents folded) reaches 0.40 (question) / 0.67 (bilingual).
 - **Embeddings are not worth their cost here yet.** A small local multilingual model (multilingual-e5-small, MIT) scored
   below keyword search (0.40) and pushed hybrid search below BM25 alone, while its server takes about 920 MiB of RAM, which
-  the 4 GB target (#862) does not have. __BGEM3_SHORT__ The person's own connection cannot be the embedder: Claude plans,
+  the 4 GB target (#862) does not have. A large one (bge-m3, 568M parameters) does lift recall (vector alone 0.63, hybrid with BM25 0.75 for the question as asked), but its server could not start in 4 GiB, idles at 3.2 GiB and embeds 10 messages a second on 2 CPUs; and with the agent searching in both languages BM25 alone (0.78) is within one question of that hybrid (0.80). The person's own connection cannot be the embedder: Claude plans,
   ChatGPT plans and Anthropic keys have no embeddings API, and embedding a whole space would send all of it to one person's
   provider.
 - **The agent's queries matter more than the engine.** The largest single gain is the agent searching in both of the
@@ -103,7 +103,8 @@ the implementation ([plan, part 4](#implementation-plan)).
 Command lines: `scripts/eval/retrieval/run.sh` (everything, multilingual-e5-small);
 `BENCH_EMBED_MODEL=BAAI/bge-m3 BENCH_EMBED_MEMORY=4g scripts/eval/retrieval/run.sh load index recall tokens`;
 `python3 scripts/eval/retrieval/report.py scripts/eval/retrieval/out/results-*.json` prints the tables below. Raw results:
-[`evidence/1242/`](evidence/1242/).
+[e5-small run](evidence/1242/results-intfloat_multilingual-e5-small.json), [bge-m3 run](evidence/1242/results-BAAI_bge-m3.json)
+and [peak memory and CPU per service](evidence/1242/peaks.json).
 
 ## Results
 
@@ -156,7 +157,30 @@ What the misses are (read from the per-question results):
 - **Temporal** questions need the date filter and "the latest of several": the filter helps (vec 0.60 had the right month's
   message), and choosing the newest is the reader's job.
 
-__BGEM3__
+### With a large embedding model (bge-m3)
+
+The same bench with BAAI/bge-m3 (MIT, 568M parameters, 1,024 dimensions; keyword rows unchanged):
+
+| Option | Question | Keywords | Bilingual | MRR (question) | Query p50 / p95 ms |
+|---|---|---|---|---|---|
+| bm25 (for comparison) | 0.60 | 0.58 | 0.78 | 0.57 | 1.8 / 2.7 |
+| vec (bge-m3) | 0.63 | 0.53 | 0.57 | 0.62 | 1.5 / 2.8 + 76 / 101 to embed the query |
+| hybrid_lang | 0.72 | 0.60 | 0.73 | 0.61 | 51 / 72 + embedding |
+| **hybrid_bm25** | **0.75** | **0.63** | **0.80** | **0.65** | 46 / 58 + embedding |
+| meili_hybrid | 0.50 | 0.45 | 0.50 | 0.49 | 10 / 21 + embedding |
+
+By kind of question (question form): hybrid_bm25 reaches 0.50 across languages and 0.58 on paraphrase, against BM25's
+0.12 and 0.42. In the bilingual form the difference shrinks to 0.75 / 0.67 against 0.69 / 0.58.
+
+- **Cost:** text-embeddings-inference with bge-m3 was killed for memory at a 4 GiB limit while warming up (with the default
+  8,192 batch tokens); with 2,048 batch tokens and 6 GiB it started and idled at 3.15 GiB, about 2 GiB while embedding.
+  It embedded **9.9 messages a second** (10,000 in 17 minutes), 101 ms p50 / 180 ms p95 for one message and 76 / 101 ms
+  for a query, on the two CPUs. Vectors and HNSW: 121.9 MiB per 10k messages (≈ 1.2 GiB per 100k, inferred).
+- The fused statement as written scanned the vectors exactly instead of through HNSW (vector search alone: 2.8 ms p95), so
+  its 58 ms is an upper bound; a production hybrid would run the two index scans separately.
+- **Reading:** a strong multilingual model closes most of the gap on questions asked in plain words across languages, but
+  it needs about a whole 4 GB server by itself; an agent that searches in both languages gets nearly the same recall from
+  BM25 alone.
 
 ### Cost of each option
 
@@ -231,7 +255,7 @@ For a self-hosted **2 vCPU / 4 GB** server (#862), whose base stack's memory lim
   pgvector 0.8's iterative scans so a filtered query still returns k rows. Fusion by reciprocal rank (k = 60, the constant
   of Cormack et al. 2009) of the top 50 of each list.
 - **Measured:** with multilingual-e5-small the vector list was weaker than keywords and dragged the fusion below BM25 alone.
-  __BGEM3_OPTION__
+  With bge-m3 the fusion was the best option measured for questions asked as-is (0.75 against BM25's 0.60), and level with BM25 for bilingual queries (0.80 against 0.78); see the bge-m3 table.
 - **Operations.** `pgvector` has no Alpine package either but builds from source in an Alpine image (C, PostgreSQL
   licence). The vectors take about 10 times the space of the keyword index. The real cost is the model (next section).
 
@@ -277,7 +301,7 @@ For a self-hosted **2 vCPU / 4 GB** server (#862), whose base stack's memory lim
 | Who | Cost | Allowed? | Quality here |
 |---|---|---|---|
 | **The person's own connection** | OpenAI `text-embedding-3-small` $0.02 per 1M tokens (OpenAI pricing page, read 2026-11-12): 10k messages ≈ 0.25M tokens ≈ $0.005. Trivial money. | **Mostly impossible and against AG-11.** Anthropic offers no embedding model ("Anthropic does not offer its own embedding model", Claude docs, read 2026-11-12; it points to Voyage AI). Claude plans and ChatGPT plans run through the CLIs and expose no embeddings API to Flux. Only OpenAI, Gemini, OpenRouter and OpenAI-compatible keys could. And an index is shared: embedding a space sends every message in it to one person's provider, not only what that person's agent read, which is more than AG-11's "What leaves Flux". Vectors from different people's providers cannot be mixed in one index. | not measured |
-| **A small local model in a container** | multilingual-e5-small (MIT, 118M parameters, 384 dimensions, Polish in its languages): 144 messages/s batched on 2 CPUs, a query in 10–17 ms, **about 920 MiB of RAM** for the server (text-embeddings-inference 1.9.4, Apache-2.0), killed at a 1 GiB limit while loading. __BGEM3_TABLE__ | Yes: nothing leaves the server. Encrypted spaces and spaces with AI off are never embedded. | e5-small 0.40 (question), below every keyword option but `fts_or`. __BGEM3_Q__ |
+| **A small local model in a container** | multilingual-e5-small (MIT, 118M parameters, 384 dimensions, Polish in its languages): 144 messages/s batched on 2 CPUs, a query in 10–17 ms, **about 920 MiB of RAM** for the server (text-embeddings-inference 1.9.4, Apache-2.0), killed at a 1 GiB limit while loading. bge-m3 (MIT, 568M, 1,024 dimensions): 9.9 messages/s, a query in 76–101 ms, **3.15 GiB idle**, killed at 4 GiB while warming up. | Yes: nothing leaves the server. Encrypted spaces and spaces with AI off are never embedded. | e5-small 0.40 (question), below every keyword option but `fts_or`. bge-m3 0.63 alone and 0.75 in a hybrid with BM25 (question form); 0.80 bilingual against BM25's 0.78. |
 | **None** (keywords, the agent's own query rewriting and reading around) | Nothing to run. | Yes. | bm25 0.60, 0.78 bilingual. |
 
 - **Polish quality** is the constraint. PIRB (Dadas et al., 2024) is the Polish retrieval benchmark to choose a model by;
@@ -413,8 +437,9 @@ and an API-key run through function calls see the same results):
    the image change:** core PostgreSQL with `unaccent` and "any word" queries (`fts_or`: 0.40 / 0.53 / 0.67), which needs
    no new image and still beats today by far; the Polish Hunspell dictionary is not recommended because of its memory per
    connection.
-2. **No embeddings and no separate engine in v0.2.1.** Revisit embeddings when a model that fits the 4 GB target beats BM25
-   on the bench, as an optional container for larger servers.
+2. **No embeddings and no separate engine in v0.2.1.** A model good enough to help (bge-m3) needs about a whole 4 GB server;
+   e5-small fits better but hurts. Revisit when a model that fits the target beats BM25 on this bench, or as an optional
+   container for larger servers (question 2).
 3. **Tools:** `flux_search` (all readable spaces, filters, snippets with links) and `flux_read_around`, the same for the
    server engine and the CLIs; tool descriptions and the brief tell the agent to search in the space's languages.
 4. **Brief:** a smaller window (size chosen by the evaluation) plus a line on how to find older messages.
@@ -559,9 +584,10 @@ Each needs an answer before the decision is recorded; the recommended answer is 
 1. **Search engine.** BM25 with the `pg_search` extension in Flux's PostgreSQL (best measured; needs a Flux-built Debian
    database image and a one-time image switch on upgrade), or core PostgreSQL only ("any word" + accents folded; weaker on
    Polish inflection and ranking, no image change)? A separate engine (Meilisearch or similar) is not recommended.
-2. **Embeddings.** None in v0.2.1 (recommended), or an optional local embedding container for servers larger than 4 GB? Using
-   a person's own connection to embed a space is not recommended (most connections cannot, and it sends the whole space to
-   one person's provider).
+2. **Embeddings.** None in v0.2.1 (recommended), or an optional local embedding container (bge-m3 class: +0.15 recall@10
+   on questions asked as-is, about 3–4 GiB of RAM, 10 messages a second to index) for servers well above the 4 GB target?
+   Using a person's own connection to embed a space is not recommended (most connections cannot, and it sends the whole
+   space to one person's provider).
 3. **Summaries.** On-demand only (a tool that summarises a conversation or thread since a date, paid by the asking agent's
    owner, nothing stored; recommended first), or stored summaries that every reader of the space can see, kept current and
    invalidated on edits and deletes? If stored: whose connection writes them, and are they shown to people or only to

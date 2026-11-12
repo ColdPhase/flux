@@ -357,6 +357,8 @@ class Searcher:
         self.db.execute("SET hnsw.iterative_scan = relaxed_order")
         self.space_of_conv = {c["key"]: next(s["id"] for s in data["spaces"] if s["key"] == c["space"]) for c in data["conversations"]}
         self.qv_cache = {}
+        space_ids = {x["key"]: x["id"] for x in data["spaces"]}
+        self.space_of_message = {m["id"]: space_ids[m["space"]] for m in data["messages"]}
 
     def query_vector(self, text):
         if text not in self.qv_cache:
@@ -518,7 +520,9 @@ def step_write(data, results, n=400):
 # ---------------------------------------------------------------- access loss and deletion
 
 def found(s, variant, principal, text, fact_id):
-    ids, _ = s.search(variant, principal, text, k=50)
+    # Today's tool searches one space: the fact's own (from the seed, so a deleted message still has one).
+    place = s.space_of_message.get(fact_id) if variant == "today" else None
+    ids, _ = s.search(variant, principal, text, place=place, k=50)
     return fact_id in ids
 
 
@@ -541,8 +545,6 @@ def step_access(data, results):
         args = {"space": spaces[check["space"]], "person": people.get(check.get("person", ""))}
         row = {}
         for variant in SEARCHERS:
-            if variant == "today":
-                continue  # one space per call; covered by the same readable_spaces rule
             before = found(s, variant, principal, check["query"], facts[check["fact"]])
             if check["change"] != "none":
                 s.db.execute(ACCESS_CHANGES[check["change"]][0], args)
@@ -600,7 +602,7 @@ def step_deletion(data, results):
         mid = facts[check["fact"]]
         seeded = next(m for m in data["messages"] if m["id"] == mid)
         restore(s, data, mid, seeded["body"])
-        row = {v: {"found_before": found(s, v, agent, check["query"], mid)} for v in SEARCHERS if v != "today"}
+        row = {v: {"found_before": found(s, v, agent, check["query"], mid)} for v in SEARCHERS}
         summary_before = s.db.execute("SELECT count(*) FROM conversation_summaries WHERE NOT stale AND source_ids @> ARRAY[%s::uuid]", (mid,)).fetchone()[0]
         edited = seeded["edited_body"]
         if check["change"] == "remove":
@@ -611,7 +613,8 @@ def step_deletion(data, results):
             s.db.execute("UPDATE messages SET body = %s, edited_at = now() WHERE id = %s", (edited, mid))
         changed_at = time.perf_counter()
         for variant in row:
-            ids, _ = s.search(variant, agent, check["query"], k=50)
+            place = s.space_of_message.get(mid) if variant == "today" else None
+            ids, _ = s.search(variant, agent, check["query"], place=place, k=50)
             row[variant]["found_at_once"] = mid in ids
             if variant.startswith("meili"):
                 row[variant]["found_at_once_with_recheck"] = mid in recheck(s, agent, ids)

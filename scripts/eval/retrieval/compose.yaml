@@ -21,7 +21,7 @@ services:
   embed:
     <<: *limits
     image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.9.4
-    command: ["--model-id", "${BENCH_EMBED_MODEL:-intfloat/multilingual-e5-small}", "--max-batch-tokens", "8192", "--auto-truncate"]
+    command: ["--model-id", "${BENCH_EMBED_MODEL:-intfloat/multilingual-e5-small}", "--max-batch-tokens", "${BENCH_EMBED_BATCH_TOKENS:-8192}", "--auto-truncate"]
     environment: { HF_HUB_DISABLE_TELEMETRY: "1" }
     volumes:
       - hf:/data
