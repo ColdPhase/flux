@@ -156,7 +156,8 @@ class NoticeJourney(unittest.TestCase):
         self.assertEqual(page.locator(".ui-notices").get_attribute("role"), "status")
         self.assertEqual(page.locator(".ui-notices").get_attribute("aria-live"), "polite")
         self.assertEqual(page.evaluate("() => document.activeElement?.tagName"), focused)
-        # Bottom right on a computer, 20 px from the edges.
+        # Bottom right on a computer, 20 px from the edges (measured once its entrance has ended).
+        card.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
         box = card.bounding_box()
         assert box
         self.assertAlmostEqual(box["x"] + box["width"], DESKTOP["width"] - 20, delta=1)
@@ -277,6 +278,7 @@ class NoticeJourney(unittest.TestCase):
             self.dm("Nia, can you water bed 2 on your way?", self.nia_dm_id)
             card = self.card(page)
             expect(card).to_be_visible(timeout=5000)
+            card.evaluate("el => Promise.all(el.getAnimations().map((animation) => animation.finished))")
             box = card.bounding_box()
             assert box
             self.assertLess(box["y"], 80, "at the top, under the safe area")
