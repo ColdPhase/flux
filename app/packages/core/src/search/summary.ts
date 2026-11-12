@@ -49,6 +49,8 @@ export interface DigestMessage {
   author: string;
   text: string;
   files: number;
+  /** What a task's contribution is, when it is more than text: a blocker, a handoff or what came of it. */
+  contribution?: 'blocker' | 'handoff' | 'came_of_it';
   /** A space's main conversation only: the thread the message is in and its opening words, null when its author deleted them. */
   thread?: { id: string; opening: string | null };
 }
@@ -84,7 +86,7 @@ export function digestPage(messages: readonly DigestMessage[], limits: { pageCha
     if (date !== day) block.push(`## ${date}`);
     if (message.thread && message.thread.id !== thread) block.push(`# thread ${message.thread.opening ? `“${cut(oneLine(message.thread.opening), 80).text}”` : '(its opening message was deleted)'}`);
     const body = cut(oneLine(message.text), limits.messageChars);
-    const text = [body.text, ...(message.files ? [`[${message.files === 1 ? '1 file' : `${message.files} files`}]`] : []),
+    const text = [...(message.contribution ? [`[${message.contribution.replace(/_/g, ' ')}]`] : []), body.text, ...(message.files ? [`[${message.files === 1 ? '1 file' : `${message.files} files`}]`] : []),
       ...(body.more ? [`… (+${body.more} characters; flux_read_around with messageId ${message.id} reads it whole)`] : [])].filter(Boolean).join(' ');
     block.push(`${message.at.toISOString().slice(11, 16)} ${oneLine(message.author) || 'Unknown'}: ${text}`);
     const size = block.reduce((sum, line) => sum + line.length + 1, 0);

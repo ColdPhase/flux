@@ -8,7 +8,7 @@ import { passphrase } from './support/encryption.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, removeFromSpace, type Person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
-import { assistantScene, human, text, type AssistantScene, type Message } from './support/assistant-scene.js';
+import { assistantScene, human, result, text, type AssistantScene, type Message } from './support/assistant-scene.js';
 
 // F-042, AG-12, #1292: `flux_summarize` reads one place since a date as a compact digest that the calling agent summarises itself. It is the
 // same tool for the server engine (a run token) and for the owner's Claude Code or Codex (an OAuth client), and it makes no model call of
@@ -21,6 +21,9 @@ const value = (message: Message) => JSON.parse(text(message)) as Digest;
 interface Digest { place: { type: string; id: string; space?: string }; after: string; before?: string; messages: number; complete: boolean; digest?: string; remaining?: number; next?: string; note: string }
 const lines = (answer: Digest) => (answer.digest ?? '').split('\n').filter(Boolean);
 const failure = (message: Message) => toolFailure(message as Record<string, unknown>);
+/** The code of a refusal: a tool error (in its body), or the route's own JSON-RPC error, which a run whose space has AI off gets before any tool (in its data). */
+const codeOf = (message: Message) => result(message)?.isError ? (JSON.parse(text(message)) as { code?: string }).code
+  : ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 
 describe('flux_summarize: a place since a date, on both engines, only what the caller may read now (#1292)', () => {
   let scene: AssistantScene;
@@ -162,22 +165,35 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     await scene.complete(live.runId);
   });
 
-  test('the owner\'s rights and the space\'s AI switch at the moment of the call: a lost grant and AI turned off are the answer of a place that is not there', async () => {
+  test('the owner\'s rights and the space\'s AI switch at the moment of the call: a lost grant and AI turned off are refused, and nothing of the place is told', async () => {
     const live = await run();
     assert.equal((await summarize(live, { after: '2026-11-02' })).messages, 3);
     await setSpaceAi(scene.place.id, 'blocked');
     for (const args of [{ after: '2026-11-02' }, { in: scene.place.id, after: '2026-11-02' }, { in: barrel.id, after: '2026-11-02' }]) {
-      const refused = failure((await live.call('flux_summarize', args)).message);
-      assert.equal(refused.code, 'PLACE_NOT_FOUND', JSON.stringify(args));
+      const refused = (await live.call('flux_summarize', args)).message;
+      assert.equal(codeOf(refused), 'SPACE_AI_OFF', `${JSON.stringify(args)}: the route refuses a run whose space has AI off`);
       for (const words of ['barrel', 'Jonas', 'lid seal', 'Lamp sensor']) assert.ok(!JSON.stringify(refused).includes(words), `${words} is not told`);
     }
     await ensureSpaceAiAllowed(scene.place.id);
     assert.equal((await summarize(live, { after: '2026-11-02' })).messages, 3, 'and again once it is on');
+    // A client of the owner's has no run to refuse it first: the tool itself answers as for a place that is not there.
+    const code = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string }).id;
+    const client = await agentConnection(pool, scene.owner.browser, code, [scene.place.id]);
+    assert.equal(value(await client.tool('flux_summarize', { in: talk.id, after: '2026-11-02' })).messages, 3);
+    await setSpaceAi(scene.place.id, 'blocked');
+    try {
+      for (const args of [{ in: talk.id, after: '2026-11-02' }, { in: scene.place.id, after: '2026-11-02' }, { in: barrel.id, after: '2026-11-02' }]) {
+        const refused = await client.tool('flux_summarize', args);
+        assert.ok(['PLACE_NOT_FOUND', 'SPACE_AI_OFF'].includes(codeOf(refused) ?? ''), `${JSON.stringify(args)}: ${JSON.stringify(refused)}`);
+        for (const words of ['barrel', 'Jonas', 'lid seal', 'Lamp sensor']) assert.ok(!JSON.stringify(refused).includes(words), `${words} is not told`);
+      }
+    } finally { await ensureSpaceAiAllowed(scene.place.id); }
     await removeFromSpace(scene.lead, scene.place.id, scene.owner);
     try {
-      const refused = failure((await live.call('flux_summarize', { after: '2026-11-02' })).message);
-      assert.equal(refused.code, 'PLACE_NOT_FOUND');
-      assert.ok(!JSON.stringify(refused).includes('barrel'));
+      for (const message of [(await live.call('flux_summarize', { after: '2026-11-02' })).message, await client.tool('flux_summarize', { in: talk.id, after: '2026-11-02' })]) {
+        assert.ok(codeOf(message), `refused: ${JSON.stringify(message)}`);
+        assert.ok(!JSON.stringify(message).includes('barrel'), 'nothing of the thread is told');
+      }
     } finally { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); }
     assert.equal((await summarize(live, { after: '2026-11-02' })).messages, 3, 'the grant is back');
     await scene.complete(live.runId);
@@ -193,6 +209,14 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     };
     await post(scene.owner, 'Can you send me the invoice?', '2026-11-06T07:00:00Z');
     await post(scene.peer, 'Sure, tonight.', '2026-11-06T07:05:00Z');
+    // Not from a run in a space, and not from the owner's own client, whoever asks for its id.
+    const inSpace = await run();
+    assert.equal(failure((await inSpace.call('flux_summarize', { in: dmId, after: '2026-11-01' })).message).code, 'PLACE_NOT_FOUND', 'a run in a space');
+    await scene.complete(inSpace.runId);
+    const code = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string }).id;
+    const client = await agentConnection(pool, scene.owner.browser, code, [scene.place.id]);
+    assert.equal(failure(await client.tool('flux_summarize', { in: dmId, after: '2026-11-01' })).code, 'PLACE_NOT_FOUND', 'the owner\'s own client');
+    // Inside a run in the direct message.
     const started = await scene.runs.invoke(human(scene.owner), { kind: 'dm', dmId, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Catch me up' });
     const inDm = await scene.liveOf(started.run.id);
     assert.deepEqual(inDm.tools.slice().sort(), ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_summarize'], 'a run in a direct message is minted the tool');
@@ -201,16 +225,11 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     assert.deepEqual(lines(answer), ['## 2026-11-06', '07:00 Ada Nowak: Can you send me the invoice?', '07:05 Jonas Berg: Sure, tonight.']);
     assert.equal((await summarize(inDm, { in: dmId, after: '2026-11-06' })).messages, 2, 'it may name its own direct message');
     for (const place of [scene.place.id, talk.id, barrel.id, randomUUID()]) assert.equal(failure((await inDm.call('flux_summarize', { in: place, after: '2026-11-01' })).message).code, 'PLACE_NOT_FOUND', place);
-    // Not from a run in a space, and not from the owner's own client, whoever asks for its id.
-    const inSpace = await run();
-    assert.equal(failure((await inSpace.call('flux_summarize', { in: dmId, after: '2026-11-01' })).message).code, 'PLACE_NOT_FOUND', 'a run in a space');
-    const code = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Claude Code', owner: 'self' } }), 201) as { id: string }).id;
-    const client = await agentConnection(pool, scene.owner.browser, code, [scene.place.id]);
-    assert.equal(failure(await client.tool('flux_summarize', { in: dmId, after: '2026-11-01' })).code, 'PLACE_NOT_FOUND', 'the owner\'s own client');
-    // The run in it ends reading when its owner is no longer one of its people.
+    // The run in it reads nothing once its owner is no longer one of its people.
     expectStatus(await scene.owner.browser.request('POST', `/api/v1/dms/${dmId}/leave`), 204);
-    assert.equal(failure((await inDm.call('flux_summarize', { after: '2026-11-06' })).message).code, 'PLACE_NOT_FOUND', 'after its owner left');
-    await scene.complete(inSpace.runId);
+    const left = (await inDm.call('flux_summarize', { after: '2026-11-06' })).message;
+    assert.ok(codeOf(left), `after its owner left: ${JSON.stringify(left)}`);
+    assert.ok(!JSON.stringify(left).includes('invoice'), 'nothing of the direct message is told');
     await scene.complete(started.run.id);
   });
 

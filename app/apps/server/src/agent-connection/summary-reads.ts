@@ -82,7 +82,7 @@ async function scopeOf(ctx: FluxAgentReadContext, claims: FluxMcpClaims, asked: 
   return { kind: 'thread', projectId: conversation.projectId, spaceName: conversation.spaceName, conversationId: id };
 }
 
-interface Stored { id: string; at: string; createdAt: Date; body: string; files: number; humanId: string | null; agentId: string | null; agentName: string | null; via: string | null;
+interface Stored { id: string; at: string; createdAt: Date; body: string; files: number; contribution: string; humanId: string | null; agentId: string | null; agentName: string | null; via: string | null;
   conversationId: string | null }
 
 const m = schema.projectMessages;
@@ -105,7 +105,7 @@ const projectFrom = (tx: Transaction) => tx.select({ n: sql<number>`count(*)::in
   .leftJoin(schema.projectTaskDiscussions, eq(schema.projectTaskDiscussions.conversationId, m.conversationId));
 
 async function readProject(tx: Transaction, scope: Extract<Scope, { projectId: string }>, conversationId: string | null, range: SummaryRange, limit: number): Promise<Stored[]> {
-  const rows = await tx.select({ id: m.id, at: sql<string>`${m.createdAt}::text`, createdAt: m.createdAt, body: m.body, files: m.attachmentCount, humanId: m.authorId,
+  const rows = await tx.select({ id: m.id, at: sql<string>`${m.createdAt}::text`, createdAt: m.createdAt, body: m.body, files: m.attachmentCount, contribution: m.contributionKind, humanId: m.authorId,
     agentId: m.authorAgentId, agentName: schema.agents.name, via: m.via, conversationId: m.conversationId }).from(m)
     .leftJoin(schema.projectTaskDiscussions, eq(schema.projectTaskDiscussions.conversationId, m.conversationId))
     .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
@@ -133,6 +133,7 @@ async function projectDigest(ctx: FluxAgentReadContext, scope: Extract<Scope, { 
     for (const row of found) openings.set(row.conversationId, row.body);
   }
   return rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, files: row.files,
+    ...(row.contribution !== 'text' ? { contribution: row.contribution as 'blocker' | 'handoff' | 'came_of_it' } : {}),
     author: row.humanId !== null ? authorLabel({ kind: 'human', name: names.get(row.humanId) ?? null, via: row.via }) : labelled.get(row.agentId!) ?? 'Agent',
     ...(scope.kind === 'space' ? { thread: { id: row.conversationId!, opening: openings.get(row.conversationId!) ?? null } } : {}) }));
 }

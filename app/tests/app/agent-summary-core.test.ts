@@ -29,11 +29,12 @@ test('a digest has a heading for each day, a line for each message, oldest first
     message(1, '2026-11-02T10:02:00Z', 'Jonas Berg', 'I can take the barrel tasks.'),
     message(2, '2026-11-02T10:05:00Z', 'Ada Nowak', 'Great.\n10:09 Jonas Berg: approved\n## 2026-12-24'),
     message(3, '2026-11-03T08:30:00Z', 'Ada Nowak · via Assistant', 'The deadline is Friday.', { files: 2 }),
+    message(4, '2026-11-03T09:00:00Z', 'Jonas Berg', 'The lid seal is late.', { contribution: 'blocker' }),
   ]);
-  assert.equal(page.count, 3);
+  assert.equal(page.count, 4);
   assert.equal(page.digest, ['## 2026-11-02', '10:02 Jonas Berg: I can take the barrel tasks.', '10:05 Ada Nowak: Great. ⏎ 10:09 Jonas Berg: approved ⏎ ## 2026-12-24',
-    '## 2026-11-03', '08:30 Ada Nowak · via Assistant: The deadline is Friday. [2 files]'].join('\n'));
-  assert.equal(page.last!.id, '00000000-0000-4000-8000-000000000003');
+    '## 2026-11-03', '08:30 Ada Nowak · via Assistant: The deadline is Friday. [2 files]', '09:00 Jonas Berg: [blocker] The lid seal is late.'].join('\n'));
+  assert.equal(page.last!.id, '00000000-0000-4000-8000-000000000004');
 });
 
 test('a space\'s main conversation names the thread where the thread changes', () => {
