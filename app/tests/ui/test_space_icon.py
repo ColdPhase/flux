@@ -204,7 +204,12 @@ class SpaceIcon(unittest.TestCase):
         row = self.icon_row(phone)
         row.get_by_role("button", name=f"Change the icon of {SPACE}").tap()
         grid = row.get_by_role("group", name="Emoji")
-        self.assertLessEqual(grid.evaluate("el => el.getBoundingClientRect().right"), 390, "the picker fits the phone")
+        # The picker fits its card on the phone: every emoji is inside it, in as many columns as fit (rows of 8 where there is room).
+        fit = grid.evaluate("""el => { const card = el.closest('.sset-card').getBoundingClientRect();
+          const boxes = [...el.querySelectorAll('button')].map((b) => b.getBoundingClientRect());
+          return { inside: boxes.every((b) => b.left >= card.left && b.right <= card.right), columns: new Set(boxes.map((b) => Math.round(b.left))).size }; }""")
+        self.assertTrue(fit["inside"], fit)
+        self.assertLessEqual(fit["columns"], 8)
         self.settle(phone)
         shot(phone, "phone-390-settings-light")
 
