@@ -30,7 +30,8 @@ LAYERS_ABOVE = r"""(root) => {
   const overlay = root.closest('.ui-overlay') || root, level = Number(getComputedStyle(overlay).zIndex) || 0;
   const box = root.getBoundingClientRect(), found = [];
   for (const el of document.body.querySelectorAll('*')) {
-    if (overlay.contains(el) || el.closest('.ui-toast')) continue;
+    // The toasts and the notice card are the layer above every window on purpose (--z-toast), and the notices' box is empty and click-through until one shows.
+    if (overlay.contains(el) || el.closest('.ui-toast, .ui-notices')) continue;
     const style = getComputedStyle(el);
     if (style.zIndex === 'auto' || Number(style.zIndex) < level) continue;
     const parent = el.parentElement ? getComputedStyle(el.parentElement).display : '';
