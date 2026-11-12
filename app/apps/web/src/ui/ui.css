@@ -128,31 +128,34 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 
 /* ---------- Tabs (view switcher) ---------- */
 .ui-tabs { position: relative; min-width: 0; }
-.ui-tabs__bar { position: relative; display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.ui-tabs__bar { position: relative; display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; }
 .ui-tabs__bar::-webkit-scrollbar { display: none; }
+/* Underline tabs (F-026 §4, #1239): each tab as wide as its word, 22 px between words (11 px of padding on each side, so a tab is also at least
+   44 px wide), the current one `--t1` at 500 with a 2 px underline, the others `--t3`. `--tab-below` is a hit area under the underline. */
 .ui-tabs__tab {
-  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 38px; padding: 0 8px;
-  border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 500; color: var(--t3); white-space: nowrap; text-decoration: none;
+  --tab-pad: 11px;
+  position: relative; display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 0 var(--tab-pad) var(--tab-below, 0px);
+  border-radius: var(--r-sm); font-size: var(--fs-md); font-weight: 400; color: var(--t3); white-space: nowrap; text-decoration: none;
   transition: var(--tr);
 }
 /* Hover previews the mark in a neutral tone; the current tab's own mark is the sliding indicator. */
 .ui-tabs__tab::after {
-  content: ""; position: absolute; left: var(--tab-pad, 8px); right: var(--tab-pad, 8px); bottom: 0; height: 2px; border-radius: var(--r-pill);
+  content: ""; position: absolute; left: var(--tab-pad); right: var(--tab-pad); bottom: var(--tab-below, 0px); height: 2px; border-radius: var(--r-pill);
   background: var(--line2); opacity: 0; transform: scaleX(.6); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-in) var(--ease-out);
 }
 .ui-tabs__tab:hover { color: var(--t1); }
 .ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
-.ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 600; }
-.ui-tabs__tab:focus-visible { outline-offset: -4px; }
-/* The label keeps the width of its bold form, so selecting a tab never nudges the others. */
+.ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 500; }
+/* The ring is drawn in place inside the tab (no offset transition from the global 4px), so no frame of it is clipped by the row that scrolls. */
+.ui-tabs__tab, .ui-tabs__tab:focus-visible { outline-offset: -4px; }
+/* The label keeps the width of its heavier form, so selecting a tab never nudges the others. */
 .ui-tabs__label { display: inline-flex; flex-direction: column; }
-.ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 600; pointer-events: none; user-select: none; }
+.ui-tabs__label::after { content: attr(data-text); height: 0; overflow: hidden; visibility: hidden; font-weight: 500; pointer-events: none; user-select: none; }
 .ui-tabs__count { font-family: var(--mono); font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
 .ui-tabs__indicator {
-  position: absolute; left: 0; bottom: 0; width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
+  position: absolute; left: 0; bottom: var(--tab-below, 0px); width: 1px; height: 2px; border-radius: var(--r-pill); background: var(--inv);
   transform-origin: 0 0; pointer-events: none; opacity: 0; transition: transform var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out);
 }
-@media (pointer: coarse) { .ui-tabs__tab { min-height: 44px; padding: 0 12px; --tab-pad: 12px; } }
 /* Segmented views (F-026 §4): a soft pill track; the current view is a raised white pill that slides. */
 .ui-tabs--seg .ui-tabs__bar { width: max-content; max-width: 100%; gap: 2px; padding: 3px; border-radius: var(--r-pill); background: var(--sub); box-shadow: var(--sh-seg); }
 .ui-tabs--seg .ui-tabs__tab { z-index: 1; min-height: calc(var(--ctl) - 6px); padding: 0 12px; border-radius: var(--r-pill); font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }

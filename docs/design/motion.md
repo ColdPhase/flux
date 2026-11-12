@@ -38,7 +38,7 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    - Leaving never delays focus or the next action. Closing while a surface opens, or the reverse, continues from
      where it is.
 4. **One motion per action.** An action makes one motion. The work area beside a panel or a sheet reflows without
-   animation. The sidebar's fold is the one exception (rule 8). Indicators (the view switch's pill, a segmented
+   animation. The sidebar's fold is the one exception (rule 8). Indicators (the view switch's underline, a segmented
    control, the phone tab bar) move with `transform` in `--dur-1` on `--ease-out`, or at once, and never animate
    `width`.
 5. **Nothing animates without a change by the person.** Nothing moves when it first appears (a view, its tabs, the

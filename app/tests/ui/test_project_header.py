@@ -1,6 +1,6 @@
 """The computer's one-row project header (#340, final design F-026 §4; Focus mode went with F-038, #872).
 
-One row holds the project name, the views as a segmented control, the people and agents, and More. What needs the
+One row holds the project name, the views as underline tabs, the people and agents, and More. What needs the
 person is only in the Inbox: the header carries no "N needs you" (#865).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
@@ -97,26 +97,29 @@ class ProjectHeader(unittest.TestCase):
             header = self.header(page)
             expect(header.get_by_role("heading", level=1, name=PROJECT)).to_be_visible()
             views = header.get_by_role("navigation", name="Space views")
-            self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Tasks", "Map", "Wiki"])
-            expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+            self.assertEqual([text.strip() for text in views.get_by_role("tab").all_inner_texts()], ["Conversation", "Tasks", "Map", "Wiki"])
+            expect(views.get_by_role("tab", name="Conversation")).to_have_attribute("aria-current", "page")
             # One row: the views sit beside the name, and no second toolbar row follows the header.
             name_box = header.get_by_role("heading", level=1).bounding_box()
             views_box = views.bounding_box()
             self.assertLess(abs((name_box["y"] + name_box["height"] / 2) - (views_box["y"] + views_box["height"] / 2)), 4)
             self.assertLessEqual(header.bounding_box()["height"], 72)
             expect(page.locator(".app__main > .views, .app__main > .state-row")).to_have_count(0)
-            # The current view is a raised pill that covers its whole tab.
-            current = views.get_by_role("link", name="Conversation").bounding_box()
-            pill = views.locator(".ui-tabs__indicator").bounding_box()
-            self.assertAlmostEqual(pill["width"], current["width"], delta=1.5)
+            # The views are underline tabs (#1239): the current one has a 2 px underline as wide as its word, on the header's hairline, and no track or pill.
+            word = views.get_by_role("tab", name="Conversation").locator(".ui-tabs__label").bounding_box()
+            mark = views.locator(".ui-tabs__indicator").bounding_box()
+            self.assertAlmostEqual(mark["width"], word["width"], delta=1.5)
+            self.assertAlmostEqual(mark["height"], 2, delta=0.1)
+            self.assertAlmostEqual(mark["y"] + mark["height"], header.bounding_box()["y"] + header.bounding_box()["height"], delta=1)
+            self.assertEqual(views.locator(".ui-tabs__bar").evaluate("el => getComputedStyle(el).boxShadow"), "none")
             # People and agents as faces, which open the space's settings.
             faces = header.get_by_role("button", name=re.compile("who can see this space$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
             # What needs Ada is in the Inbox alone: no chip in the header claims it (#865).
             expect(header.get_by_role("button", name=re.compile("needs you$"))).to_have_count(0)
             shot(page, f"340-header-1440-{scheme}")
-        page.get_by_role("link", name="Tasks", exact=True).click()
-        expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
+        page.get_by_role("tab", name="Tasks", exact=True).click()
+        expect(views.get_by_role("tab", name="Tasks")).to_have_attribute("aria-current", "page")
         faces.click()
         # The faces open the space's settings, where its people are (F-037).
         expect(page.get_by_role("heading", name="Space settings")).to_be_visible()

@@ -6,8 +6,8 @@ import { useShellData, type ProjectSummary } from './data';
 
 /**
  * The phone's chrome (F-026 §4 Phone, S2): one floating tab capsule Home · Projects · Inbox with a
- * round Search beside it, one floating "+" above it, and a header of round controls. A space's views are the
- * segmented control in the header's second row (#873); a direct message's one view is named by its title menu.
+ * round Search beside it, one floating "+" above it, and a header of plain icons. A space's views are the
+ * underline tabs in the header's second row (#873, #1239); a direct message's one view is named by its title menu.
  * A conversation gets the whole screen: the dock is not rendered there.
  */
 
@@ -67,16 +67,16 @@ export function PhoneDock({ places, onSearch, onCreate, create, capsule = true }
   );
 }
 
-/** A round button that leads back to where the person came from. */
+/** A plain chevron (no fill, a 44 px hit area) that leads back to where the person came from. */
 export function PhoneBack({ onBack }: { onBack: () => void }) {
-  return <IconButton icon="chevron-left" label="Back" size={20} className="phead__round phead__back" data-tip-align="start" onClick={onBack} />;
+  return <IconButton icon="chevron-left" label="Back" size={24} className="phead__round phead__back" data-tip-align="start" onClick={onBack} />;
 }
 
 export interface PhoneMenuItem { id: string; label: string; to: string; icon: IconName; note?: ReactNode; current?: boolean; end?: boolean }
 
 /**
  * A direct message's title menu: it names the conversation and opens the places inside it. "Message info" is the last row.
- * (A space's title is plain: its views are the segmented control, #873.)
+ * (A space's title is plain: its views are the underline tabs, #873.)
  */
 export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Message info', lead, mute }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;

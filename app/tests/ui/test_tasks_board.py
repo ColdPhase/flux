@@ -240,7 +240,7 @@ class TasksBoardJourney(unittest.TestCase):
         # Settings → Appearance → Text size reaches the board (#763 TY-1): Large scales the card titles, the column
         # headers and the project name in the header by the same 112.5 % as the rest, and the name is larger than the tabs.
         sizes = """() => Object.fromEntries([['card', '.tb-card__t'], ['column', '.tb-col__h'], ['project', '.top__title h1'],
-          ['tab', '.top__views .ui-tabs__tab, .views .ui-tabs__tab']].map(([key, sel]) => [key, parseFloat(getComputedStyle(document.querySelector(sel)).fontSize)]))"""
+          ['tab', '.top__views .ui-tabs__tab']].map(([key, sel]) => [key, parseFloat(getComputedStyle(document.querySelector(sel)).fontSize)]))"""
         normal = page.evaluate(sizes)
         self.assertEqual({key: normal[key] for key in ("card", "column", "project")}, {"card": 14, "column": 13, "project": 16}, "the type tokens at the default size")
         self.assertGreater(normal["project"], normal["tab"], "the project name is larger than the view tabs (TY-3)")

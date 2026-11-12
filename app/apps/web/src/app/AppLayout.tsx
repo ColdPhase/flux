@@ -682,7 +682,7 @@ function AppLayoutContent() {
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
-  // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
+  // The computer's header is one row (F-026 §4): the name, the place's views as underline tabs,
   // then what needs you, the people and agents, and More.
   // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02): a project's view, a direct message, the
   // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
@@ -711,9 +711,9 @@ function AppLayoutContent() {
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
-  // The phone's header (F-026 §4 Phone): inside a space the round Back, the space's plain title with who is here beneath it,
-  // Call, Search and More, and the views as the segmented control in the row under it (#873). The dock owns Search whenever
-  // it is present; a conversation keeps header Search because it hides the dock.
+  // The phone's header (F-026 §4 Phone): inside a space the title row is Back, the space's plain title (two lines at most) with who is here
+  // beneath it, and More, with Join between them while a call is live (#1239); Search and Call are the first rows of More. The views are
+  // the underline tabs in the row under it (#873). The dock owns Search wherever it is present.
   // An entry behind this one in the tab's history that Flux made (the router's index), not merely a non-initial key: opening
   // a `?open=` link replaces the first entry, so its key changes while there is still nothing of Flux behind it (#763 P2-2).
   const inAppBehind = () => { const index = (window.history.state as { idx?: unknown } | null)?.idx; return typeof index === 'number' && index > 0; };
@@ -742,7 +742,7 @@ function AppLayoutContent() {
   };
   // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
   const phoneBack = (fallback: string) => routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : <PhoneBack onBack={() => goBack(fallback)} />;
-  const searchButton = <IconButton icon="search" label="Search" size={20} className="phead__round" onClick={shell.openSearch} />;
+  const searchButton = <IconButton icon="search" label="Search" size={24} className="phead__round" onClick={shell.openSearch} />;
   const detailsEntry = () => shell.openDetails('place');
   const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
     if (!people) return '';
@@ -750,9 +750,10 @@ function AppLayoutContent() {
     const agents = includeAgents ? people.length - humans : 0;
     return `${humans} ${humans === 1 ? 'person' : 'people'}${agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}`;
   };
-  // The phone's More holds the space's Settings and its details, the one place they open from (#873). On a phone under 360 px wide the
-  // header has no room for Call as well, so it moves here, as the computer's narrow header moves it (Spokój rule 3); wider, the row keeps it.
+  // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
+  // and its details, the one place they open from (#873, #1239).
   const phoneMoreItems: MoreItem[] = projectId ? [
+    { label: 'Search', run: shell.openSearch },
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
     ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
@@ -761,13 +762,14 @@ function AppLayoutContent() {
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || dmId === 'new' || homePage;
+  const spaceHeader = !!activeProject && !!projectViews && !backOnly;
   const phoneHeader = (
-    <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
+    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
-        // The title is the title, not a menu: the views are the same segmented control as on every width, in the row under it (#873).
+        // The title is the title, not a menu: the views are the same underline tabs as on every width, in the row under it (#873).
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <div className="phead__id"><div className="phead__title">
             {encryptedMark ? <div className="phead__titlerow"><h1 title={place.title}>{place.title}</h1>{encryptedMark}</div> : <h1 title={place.title}>{place.title}</h1>}
@@ -793,12 +795,13 @@ function AppLayoutContent() {
       <div className="phead__right">
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
-        {/* The same two controls in every space view and direct message (Spokój #507); Call is dimmed where it is unavailable. */}
-        {activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
-        {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={20} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
+        {/* A space's header keeps only Join here, while a call is live (the CSS hides the rest of the entry); Search and Call are in More (#1239).
+            A direct message and a space's settings keep Call and Search, as before; Call is dimmed where it is unavailable. */}
+        {spaceHeader ? <LiveEntry /> : activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
+        {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {!backOnly && !activeProject && !activeDm && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
       </div>
-      {activeProject && projectViews && !backOnly ? <Tabs variant="segmented" className="phead__views" label="Space views" items={projectViews} /> : null}
+      {spaceHeader && projectViews ? <Tabs className="phead__views" label="Space views" items={projectViews} /> : null}
     </header>
   );
 
@@ -841,7 +844,7 @@ function AppLayoutContent() {
             {encryptedMark}
             {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
           </div>
-          {rowViews ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          {rowViews ? <Tabs className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />

@@ -1,5 +1,5 @@
 import { useCallback, useLayoutEffect, useRef, type KeyboardEvent, type ReactNode } from 'react';
-import { Link, NavLink, useNavigation } from 'react-router';
+import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { Icon, type IconName } from './Icon';
 import { publishTopEdge } from './edgeInset';
 import { choosesInPlace } from './motion';
@@ -57,15 +57,18 @@ function Count({ item }: { item: TabItem }): ReactNode {
 
 /** Whether a navigation to `path` opens this tab's route. */
 function opens(item: TabItem, path: string | null): boolean {
-  const to = item.to?.split(/[?#]/)[0];
-  if (!path || !to?.startsWith('/')) return false;
-  return path === to || (item.end === false && path.startsWith(to.endsWith('/') ? to : `${to}/`));
+  const to = item.to?.split(/[?#]/)[0]?.replace(/(.)\/$/, '$1');
+  const at = path?.replace(/(.)\/$/, '$1');
+  if (!at || !to?.startsWith('/')) return false;
+  return at === to || (item.end === false && at.startsWith(to.endsWith('/') ? to : `${to}/`));
 }
 
 /**
  * View switcher: labels with one 2px mark under the whole current label that slides
  * between tabs (translate + scaleX of a 1px bar, so only transform animates).
- * Navigation tabs are links with aria-current; in-page tabs follow the ARIA tabs pattern.
+ * Both kinds are an ARIA tab list. In-page tabs are buttons that select a panel; navigation tabs are links to
+ * routes (aria-current as well as aria-selected), opened on Enter or Space, and the arrow keys only move focus
+ * between them, so moving along the row never loads a view (#1239).
  * Navigation feedback (#155, UI116-5): the mark slides to a chosen tab at once, while its view loads;
  * the tab becomes current (aria-current) when its content shows. A newer choice retargets the mark, and
  * a navigation that ends elsewhere returns it.
@@ -79,6 +82,9 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
   const isNav = items.some((item) => item.to);
   const navigation = useNavigation();
   const pendingPath = isNav && navigation.state !== 'idle' ? navigation.location?.pathname ?? null : null;
+  const { pathname } = useLocation();
+  // Route tabs: the one that opens at this address, and so the one tab stop of the row (the first, where none opens, e.g. a space's settings).
+  const currentId = isNav ? items.find((item) => opens(item, pathname))?.id : undefined;
 
   const place = useCallback((animate: boolean, chosen?: HTMLElement) => {
     const bar = barRef.current;
@@ -135,7 +141,19 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
   }, [place]);
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (isNav) return;
+    if (isNav) {
+      // Route tabs: the arrows, Home and End move focus only (the person opens a view with Enter or Space); a link has no Space.
+      const tabs = [...(barRef.current?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [])];
+      const at = tabs.indexOf((event.target as HTMLElement).closest<HTMLElement>('[role="tab"]') as HTMLElement);
+      if (at < 0) return;
+      if (event.key === ' ') { event.preventDefault(); tabs[at]!.click(); return; }
+      const to = event.key === 'ArrowRight' ? (at + 1) % tabs.length : event.key === 'ArrowLeft' ? (at - 1 + tabs.length) % tabs.length
+        : event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : -1;
+      if (to < 0) return;
+      event.preventDefault();
+      tabs[to]!.focus();
+      return;
+    }
     // From the tab holding focus (a manual tab can hold it without being the current one), else from the current one.
     const focused = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab;
     const index = items.findIndex((item) => item.id === (focused ?? value));
@@ -155,17 +173,22 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
   if (isNav) {
     return (
       <nav className={['ui-tabs', segmented ? 'ui-tabs--seg' : null, className].filter(Boolean).join(' ')} aria-label={label}>
-        <div ref={barRef} className="ui-tabs__bar">
-          {items.map((item) => (
-            <NavLink key={item.id} to={item.to ?? '.'} end={item.end ?? true} className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)} onClick={(event) => {
-                // The mark starts moving in the next frame, from the click, before the router renders the
-                // pending navigation (#155); later renders keep it there or return it.
-                if (choosesInPlace(event)) place(true, event.currentTarget);
-                event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
-              }}>
-              <Label text={item.label} /><Count item={item} />
-            </NavLink>
-          ))}
+        <div ref={barRef} className="ui-tabs__bar" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+          {items.map((item, index) => {
+            const selected = item.id === currentId;
+            return (
+              <Link key={item.id} to={item.to ?? '.'} role="tab" className="ui-tabs__tab" data-tab={item.id} data-pending={opens(item, pendingPath) ? '' : undefined} aria-label={quietName(item)}
+                aria-selected={selected} aria-current={selected ? 'page' : undefined} tabIndex={selected || (currentId === undefined && index === 0) ? 0 : -1}
+                onClick={(event) => {
+                  // The mark starts moving in the next frame, from the click, before the router renders the
+                  // pending navigation (#155); later renders keep it there or return it.
+                  if (choosesInPlace(event)) place(true, event.currentTarget);
+                  event.currentTarget.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+                }}>
+                <Label text={item.label} /><Count item={item} />
+              </Link>
+            );
+          })}
           {indicator}
         </div>
       </nav>

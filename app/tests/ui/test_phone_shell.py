@@ -1,5 +1,5 @@
 """Phone-first shell, current place and motion (#266, docs/design/phone-first.md PF-1 to PF-7), as the final
-phone shell draws it (#341: the capsule, the views as a segmented row under the title, no chips; test_phone_final covers its criteria).
+phone shell draws it (#341: the capsule, the views as underline tabs under the title, no chips; test_phone_final covers its criteria).
 
 Actual authenticated browser and API data in Chromium or WebKit (FLUX_UI_BROWSER, default chromium;
 #20 MOB-7 needs both engines). Viewports and touch are emulated, which #266 item 10 accepts as phone
@@ -100,7 +100,7 @@ class PhoneShellJourney(unittest.TestCase):
     # ------------------------------------------------------------------ PF-1 and PF-2
 
     def views(self, page):
-        """The space's views: the one segmented control every width has (#873), in a row of its own under the title on a phone."""
+        """The space's views: the underline tabs every width has (#873, #1239), in a row of their own under the title on a phone."""
         views = page.get_by_role("navigation", name="Space views")
         expect(views).to_be_visible()
         return views
@@ -136,21 +136,23 @@ class PhoneShellJourney(unittest.TestCase):
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-home-phone-{width}")
 
-                # Inside a space there is no capsule (#507 AC-2): Search is in the header, and the four views are the segmented
-                # control under the title, in the order Conversation, Tasks, Map, Wiki (#873).
+                # Inside a space there is no capsule (#507 AC-2): Search is the first row of More (#1239), and the four views are the
+                # underline tabs under the title, in the order Conversation, Tasks, Map, Wiki (#873).
                 page.goto(f"/projects/{self.project['id']}/tasks")
                 expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
-                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
+                expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(0)
+                expect(page.locator("header").get_by_role("button", name="More", exact=True)).to_have_count(1)
                 views = self.views(page)
-                self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Tasks", "Map", "Wiki"])
+                self.assertEqual([text.strip() for text in views.get_by_role("tab").all_inner_texts()], ["Conversation", "Tasks", "Map", "Wiki"])
                 current = views.locator('[aria-current="page"]')
                 expect(current).to_have_count(1)
                 expect(current).to_contain_text("Tasks")
                 for name in VIEWS:
-                    row = views.get_by_role("link", name=re.compile(f"^{name}"))
+                    row = views.get_by_role("tab", name=re.compile(f"^{name}"))
                     self.assertGreaterEqual(self.box(row)["height"], 44, f"44px target: {name}")
                 header = self.box(page.locator("header"))
-                self.assertLessEqual(header["y"] + header["height"], 124, "a 56 px row and the views row")
+                # 8 px, the title row (a name of two lines at 320 px makes it 65 px), 12 px and the views' 44 px row.
+                self.assertLessEqual(header["y"] + header["height"], 133, "the title row and the views row")
                 expect(page.locator(".state-row")).to_have_count(0)
                 self.assertEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no sideways scroll")
                 shot(page, f"266-tasks-phone-{width}")
@@ -170,14 +172,14 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         expect(bar).to_have_count(0)
-        # Every space has all four views from the start: walk them through the segmented control.
+        # Every space has all four views from the start: walk them through the tabs.
         views = self.views(page)
-        expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
+        expect(views.get_by_role("tab", name="Conversation")).to_have_attribute("aria-current", "page")
         for name, path in (("Tasks", "/tasks"), ("Map", "/map"), ("Wiki", "/docs"), ("Conversation", "")):
-            views.get_by_role("link", name=re.compile(f"^{name}")).click()
+            views.get_by_role("tab", name=re.compile(f"^{name}")).click()
             expect(page).to_have_url(re.compile(rf"/projects/{self.project['id']}{path}(\?.*)?$"))
             expect(bar).to_have_count(0)
-            expect(views.get_by_role("link", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
+            expect(views.get_by_role("tab", name=re.compile(f"^{name}"))).to_have_attribute("aria-current", "page")
             expect(views.locator('[aria-current="page"]')).to_have_count(1)
         shot(page, "266-views-after-switching")
 
@@ -185,7 +187,7 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page()
         page.goto(f"/projects/{self.project['id']}")
         header = page.locator("header")
-        for name in ("Back", "Search", "More"):
+        for name in ("Back", "More"):
             button = header.get_by_role("button", name=name, exact=True)
             expect(button).to_be_visible()
             size = self.box(button)
@@ -199,26 +201,29 @@ class PhoneShellJourney(unittest.TestCase):
         expect(sheet.get_by_role("region", name="In this space")).to_have_count(0)
         page.keyboard.press("Escape")
         # The other views start right under the header.
-        self.views(page).get_by_role("link", name="Map").click()
+        self.views(page).get_by_role("tab", name="Map").click()
         expect(page).to_have_url(re.compile("/map$"))
         expect(page.locator(".state-row")).to_have_count(0)
 
-    def test_04_desktop_view_pill_covers_the_whole_tab_and_slides(self):
+    def test_04_desktop_view_underline_is_as_wide_as_the_word_and_slides(self):
         page = self.page({"width": 1440, "height": 900}, touch=False)
         page.goto(f"/projects/{self.project['id']}/tasks")
         tabs = page.get_by_role("navigation", name="Space views")
-        current = tabs.get_by_role("link", name=re.compile("^Tasks"))
+        current = tabs.get_by_role("tab", name=re.compile("^Tasks"))
         expect(current).to_have_attribute("aria-current", "page")
-        # The views are a segmented control in the header's one row (F-026 §4, #340).
+        # The views are underline tabs in the header's one row (F-026 §4, #1239): as tall as the row, so the underline sits on its hairline.
         expect(page.locator("header.top").get_by_role("navigation", name="Space views")).to_be_visible()
         indicator = page.locator(".top__views .ui-tabs__indicator")
         self.settle(page)
-        width = current.evaluate("el => el.getBoundingClientRect().width")
+        word = current.locator(".ui-tabs__label").evaluate("el => el.getBoundingClientRect().width")
         mark = indicator.evaluate("el => el.getBoundingClientRect().width")
-        self.assertAlmostEqual(mark, width, delta=1.5, msg="the raised pill is as wide as the current tab")
+        self.assertAlmostEqual(mark, word, delta=1.5, msg="the underline is as wide as the current word")
+        self.assertAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().height"), 2, delta=0.1)
+        self.assertAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().bottom"), page.locator("header.top").evaluate("el => el.getBoundingClientRect().bottom"), delta=1,
+                               msg="the underline sits on the header's hairline")
         before = indicator.evaluate("el => el.getBoundingClientRect().left")
-        tabs.get_by_role("link", name="Wiki").click()
-        expect(tabs.get_by_role("link", name="Wiki")).to_have_attribute("aria-current", "page")
+        tabs.get_by_role("tab", name="Wiki").click()
+        expect(tabs.get_by_role("tab", name="Wiki")).to_have_attribute("aria-current", "page")
         self.settle(page)
         self.assertNotAlmostEqual(indicator.evaluate("el => el.getBoundingClientRect().left"), before, delta=2)
         # The sidebar's current project is a raised white pill (F-026 §4).
@@ -287,7 +292,7 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page(reduced=True)
         page.goto(f"/projects/{self.project['id']}")
         self.assertIn(page.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--dur-in').trim()"), ("0ms", "0s"))
-        self.views(page).get_by_role("link", name="Map").click()
+        self.views(page).get_by_role("tab", name="Map").click()
         expect(page).to_have_url(re.compile("/map$"))
         page.get_by_role("button", name="Create", exact=True).click()
         expect(page.get_by_role("dialog", name="Create")).to_be_visible()
@@ -422,14 +427,13 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertGreaterEqual(self.box(field)["height"], 44)
 
     # #438 / #478 asked that the project header's small targets have whole 44 px hit squares that do not
-    # reach into each other. The final phone header (#341) moved the audience line into Details; its
-    # targets are the round Back, Search and More (and Call, from 360 px), side by side.
+    # reach into each other. The final phone header (#341) moved the audience line into Details; since #1239 its
+    # targets are the plain Back and More (Search and Call are rows of More; Join shows only while a call is live).
     def header_targets(self, page):
         page.goto(f"/projects/{self.project['id']}")
         header = page.locator("header.phead")
         targets = {"Back": header.get_by_role("button", name="Back", exact=True),
-                   "More": header.get_by_role("button", name="More", exact=True),
-                   "Search": header.get_by_role("button", name="Search", exact=True)}
+                   "More": header.get_by_role("button", name="More", exact=True)}
         for target in targets.values():
             expect(target).to_be_visible()
         self.settle(page)
@@ -447,7 +451,7 @@ class PhoneShellJourney(unittest.TestCase):
 
     def test_15_every_pixel_across_a_header_target_belongs_to_it(self):
         # Whole-pixel points: Chromium rounds a half-pixel point up, onto the next pixel.
-        selectors = {"Back": "button.phead__back", "More": "button[aria-label='More']", "Search": "button.phead__round:not(.phead__back):not([aria-label='More'])"}
+        selectors = {"Back": "button.phead__back", "More": "button[aria-label='More']"}
         for width in (320, 390, 640):
             with self.subTest(width=width):
                 page = self.page({"width": width, "height": 844})
@@ -467,7 +471,7 @@ class PhoneShellJourney(unittest.TestCase):
         page = self.page({"width": 390, "height": 844})
         self.header_targets(page)
         expect(page.get_by_role("heading", level=1).get_by_role("button")).to_have_count(0)
-        self.assertEqual(self.views(page).get_by_role("link").count(), 4)
+        self.assertEqual(self.views(page).get_by_role("tab").count(), 4)
 
 if __name__ == "__main__":
     unittest.main()

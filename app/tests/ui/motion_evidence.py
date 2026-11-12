@@ -136,7 +136,7 @@ class MotionEvidence(unittest.TestCase):
         """Views and places crossfade the content area only; the header, sidebar and tab bar stay still."""
         self.go(page, self.fx.project_url()); self.beat(page, 900)
         for name in ("Tasks", "Map", "Wiki", "Agents", "Conversation"):
-            page.locator(TABS).get_by_role("link", name=name).click(); self.beat(page, 1000)
+            page.locator(TABS).get_by_role("tab", name=name).click(); self.beat(page, 1000)
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox").click(); self.beat(page, 1000)
         page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click(); self.beat(page, 1000)
         self.go(page, "/settings/appearance"); self.beat(page, 800)
@@ -284,8 +284,8 @@ class MotionEvidence(unittest.TestCase):
         """AC-3: the old view fades out over the new one in the direction of travel; header, sidebar and tabs stay; Back reverses."""
         self.go(page, self.fx.project_url()); self.beat(page, 900)
         self.mark(page, box=(0, 0, 1440, 560), after=3.0, scale=0.55)
-        page.locator(TABS).get_by_role("link", name="Tasks").click(); self.beat(page, 1000)
-        page.locator(TABS).get_by_role("link", name="Conversation").click(); self.beat(page, 1000)
+        page.locator(TABS).get_by_role("tab", name="Tasks").click(); self.beat(page, 1000)
+        page.locator(TABS).get_by_role("tab", name="Conversation").click(); self.beat(page, 1000)
 
     def list_box(self, page: Page, pad: float = 16) -> tuple[float, float, float, float]:
         """Where every row of the list is, so the crop keeps whatever moves."""

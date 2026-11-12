@@ -362,7 +362,9 @@ class CreateWindow(unittest.TestCase):
             page = self.page(scheme, phone=True)
             self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": f"Order the probes {scheme}", "clientCommandId": str(uuid.uuid4())}, 201)
             page.goto(f"/projects/{self.ids['project']}/tasks")
-            page.get_by_role("button", name="Search", exact=True).tap()
+            # Inside a space the phone's Search is the first row of More (#1239).
+            page.get_by_role("button", name="More", exact=True).tap()
+            page.get_by_role("menuitem", name="Search", exact=True).tap()
             sheet = page.get_by_role("dialog", name="Search", exact=True)
             expect(sheet).to_be_visible()
             expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
@@ -952,8 +954,9 @@ class CreateWindow(unittest.TestCase):
         page.goto(f"/projects/{self.ids['other']}")
         expect(page.locator(".project-convo")).to_be_visible()
         page.goto(f"/projects/{self.ids['project']}/tasks")
-        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
-        page.get_by_role("button", name="Search", exact=True).tap()
+        expect(page.get_by_role("button", name="More", exact=True)).to_be_visible()
+        page.get_by_role("button", name="More", exact=True).tap()
+        page.get_by_role("menuitem", name="Search", exact=True).tap()
         sheet = page.get_by_role("dialog", name="Search", exact=True)
         listbox = sheet.get_by_role("listbox", name="Recent places and actions")
         # The same recent places and actions; the phone has no sidebar to hide and no focus mode, and no keys to press.
@@ -999,7 +1002,8 @@ class CreateWindow(unittest.TestCase):
                     page.keyboard.press("Escape")
                     expect(window(page)).to_have_count(0)
                     if phone:
-                        page.get_by_role("button", name="Search", exact=True).tap()
+                        page.get_by_role("button", name="More", exact=True).tap()
+                        page.get_by_role("menuitem", name="Search", exact=True).tap()
                     else:
                         page.keyboard.press("Control+k")
                     expect(page.get_by_role("dialog", name="Search", exact=True).get_by_role("listbox", name="Recent places and actions")).to_be_visible()

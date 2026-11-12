@@ -1023,7 +1023,8 @@ class ScenarioJourney:
         # Search finds the run, the experiment, the page and the map, in groups by kind (#870).
         page.goto(f"/projects/{lamp}")
         if self.phone:
-            page.get_by_role("button", name="Search", exact=True).tap()
+            page.get_by_role("button", name="More", exact=True).tap()
+            page.get_by_role("menuitem", name="Search", exact=True).tap()
         else:
             expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
             page.keyboard.press("Control+k")

@@ -395,9 +395,9 @@ class OneConversationJourney(unittest.TestCase):
         expect(self.thread(page)).to_contain_text(NUMBERS_REPLY)
         # The Conversation tab returns to the open thread after another view.
         tabs = page.get_by_role("navigation", name="Space views")
-        tabs.get_by_role("link", name=re.compile("^Tasks")).click()
+        tabs.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        tabs.get_by_role("link", name=re.compile("^Conversation")).click()
+        tabs.get_by_role("tab", name=re.compile("^Conversation")).click()
         expect(self.thread(page)).to_contain_text(NUMBERS_REPLY)
         expect(self.root(page, "r2")).to_be_in_viewport()
 
@@ -433,9 +433,9 @@ class OneConversationJourney(unittest.TestCase):
         expect(page.locator(".composer__audience")).to_have_count(0)  # the space's audience is the default (#871)
         # The draft stays with the project across views.
         tabs = page.get_by_role("navigation", name="Space views")
-        tabs.get_by_role("link", name=re.compile("^Tasks")).click()
+        tabs.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        tabs.get_by_role("link", name=re.compile("^Conversation")).click()
+        tabs.get_by_role("tab", name=re.compile("^Conversation")).click()
         expect(composer).to_have_value(body)
 
         # The server commits, the response is lost: the retry reuses the same key and adds one root.

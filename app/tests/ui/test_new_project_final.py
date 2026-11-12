@@ -100,8 +100,8 @@ class NewProject(unittest.TestCase):
 
     def view_names(self, page: Page) -> list[str]:
         views = page.locator("header.top").get_by_role("navigation", name="Space views")
-        expect(views.get_by_role("link").first).to_be_visible()
-        return [text.strip() for text in views.get_by_role("link").all_inner_texts()]
+        expect(views.get_by_role("tab").first).to_be_visible()
+        return [text.strip() for text in views.get_by_role("tab").all_inner_texts()]
 
     def open_window(self, page: Page, phone: bool = False):
         """New › Space: the one New space window, from New (C) on the computer and from the Spaces list on the phone."""
@@ -179,10 +179,10 @@ class NewProject(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         page.goto(f"/projects/{pid}")
-        # On the phone the four views are the segmented row under the title (#873).
+        # On the phone the four views are the underline tabs under the title (#873, #1239).
         views = page.get_by_role("navigation", name="Space views")
         for name in ("Conversation", "Tasks", "Map", "Wiki"):
-            expect(views.get_by_role("link", name=re.compile(f"^{name}"))).to_be_visible()
+            expect(views.get_by_role("tab", name=re.compile(f"^{name}"))).to_be_visible()
         shot(page, "874-phone-views-390")
 
     def test_05b_the_phones_create_sheet_offers_space_and_opens_the_new_space_window(self) -> None:

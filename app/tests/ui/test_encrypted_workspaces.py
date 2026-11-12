@@ -435,7 +435,7 @@ class EncryptedWorkspaces(Base):
                 if phone:
                     cy.goto(f"/projects/{world.a_project}/tasks")
                 else:
-                    cy.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks", exact=True).click()
+                    cy.get_by_role("navigation", name="Space views").get_by_role("tab", name="Tasks", exact=True).click()
                 expect(cy.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 self.unlock(world)
                 cy.goto(f"/projects/{world.a_project}")

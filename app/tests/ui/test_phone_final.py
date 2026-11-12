@@ -1,5 +1,5 @@
 """The final phone shell (#341, F-026 §4 Phone and S2): Home · Projects · Inbox with a round Search, one
-floating "+", the views as a segmented row under a plain title, and conversations without the tab bar.
+floating "+", the views as underline tabs under a plain title (Back, the name and More in the title row, #1239), and conversations without the tab bar.
 
 Real authenticated browser and API data with touch emulation, at 390 x 844 and 320 x 568, in light and
 dark. Gestures are real touch taps. FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -262,7 +262,7 @@ class PhoneFinal(unittest.TestCase):
 
     # ------------------------------------------------------------------ AC-3
 
-    def test_05_the_views_are_the_segmented_row_under_a_plain_title_with_no_chips(self):
+    def test_05_the_views_are_underline_tabs_under_a_plain_title_with_no_chips(self):
         for size, dark in self.variants():
             with self.subTest(width=size["width"], dark=dark):
                 page = self.page(size, dark)
@@ -275,28 +275,51 @@ class PhoneFinal(unittest.TestCase):
                 expect(page.locator("header .phead__sub")).to_contain_text(re.compile("person|people"))
                 views = page.get_by_role("navigation", name="Space views")
                 expect(views).to_be_visible()
-                labels = [text.strip().split("\n")[0].split(",")[0] for text in views.get_by_role("link").all_inner_texts()]
+                # A tab list: each view is a tab, the current one is selected (#1239).
+                tablist = views.get_by_role("tablist", name="Space views")
+                labels = [text.strip().split("\n")[0].split(",")[0] for text in tablist.get_by_role("tab").all_inner_texts()]
                 self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki"])
                 expect(views.locator('[aria-current="page"]')).to_have_count(1)
                 expect(views.locator('[aria-current="page"]')).to_contain_text("Tasks")
+                expect(tablist.get_by_role("tab", selected=True)).to_have_count(1)
+                expect(tablist.get_by_role("tab", name=re.compile("^Tasks"))).to_have_attribute("aria-selected", "true")
                 expect(views.get_by_text("Decisions")).to_have_count(0)
-                # AC-5: every phone touch target is at least 44 px, the views included, and the four are equal slots.
+                # AC-5: every phone touch target is at least 44 px, the views included. Each tab is as wide as its word (22 px of padding around
+                # it) and left-aligned: the words are not equal slots, and the first starts at the page's gutter.
+                tabs = tablist.get_by_role("tab").all()
                 widths = []
-                for item in views.get_by_role("link").all():
+                for item in tabs:
                     self.assertGreaterEqual(self.box(item)["height"], 44)
+                    self.assertGreaterEqual(self.box(item)["width"], 44)
                     widths.append(self.box(item)["width"])
-                # Equal slots; where "Conversation" needs more than a quarter of the row (a 320 px phone) the other three are equal.
-                for width in widths if size["width"] >= 375 else widths[1:]:
-                    self.assertAlmostEqual(width, widths[-1], delta=1, msg=f"the views are equal slots: {widths}")
+                self.assertNotAlmostEqual(widths[0], widths[-1], delta=20, msg=f"tabs are as wide as their words: {widths}")
+                first_word = page.evaluate("""() => { const label = document.querySelector('.phead__views .ui-tabs__label'); return label.getBoundingClientRect().left; }""")
+                self.assertAlmostEqual(first_word, 18, delta=3, msg="the first word lines up with the page's gutter")
+                gaps = [self.box(tabs[i + 1])["x"] - (self.box(tabs[i])["x"] + self.box(tabs[i])["width"]) for i in range(len(tabs) - 1)]
+                self.assertTrue(all(abs(gap) <= 1 for gap in gaps), f"tabs sit side by side; the 22 px between words is their padding: {gaps}")
+                look = page.evaluate("""() => {
+                  const mark = document.querySelector('.phead__views .ui-tabs__indicator'), bar = document.querySelector('.phead__views .ui-tabs__bar');
+                  const current = document.querySelector('.phead__views [aria-current="page"]'), other = document.querySelector('.phead__views [role="tab"]:not([aria-current])');
+                  const style = (el) => getComputedStyle(el);
+                  return { markHeight: mark.getBoundingClientRect().height, markColor: style(mark).backgroundColor, ink: style(current).color, ink2: style(other).color,
+                    weight: style(current).fontWeight, weight2: style(other).fontWeight, track: style(bar).borderRadius, fill: style(bar).backgroundColor,
+                    shadow: style(bar).boxShadow };
+                }""")
+                self.assertEqual(look["markHeight"], 2, "a 2 px underline")
+                self.assertEqual(look["markColor"], look["ink"], "the underline is the current tab's ink")
+                self.assertNotEqual(look["ink"], look["ink2"], "the others are quieter")
+                self.assertEqual((look["weight"], look["weight2"]), ("500", "400"))
+                self.assertEqual(look["shadow"], "none", "no raised track")
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-views-{size['width']}-{'dark' if dark else 'light'}")
-                views.get_by_role("link", name=re.compile("^Map")).click()
+                views.get_by_role("tab", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
-                # Settings and the space's details are in More, the one place they open from.
+                # Search, Call, Settings and the space's details are in More: the title row holds Back, the name and More only (#1239).
                 page.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                self.assertEqual(items, ["Settings", "Space details"] if size["width"] >= 360 else ["Call", "Settings", "Space details"])
+                # (Mute space, #1249, sits between Settings and the details.)
+                self.assertEqual([*items[:3], items[-1]], ["Search", "Call", "Settings", "Space details"])
                 menu.get_by_role("menuitem", name="Space details").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
                 expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
@@ -306,11 +329,29 @@ class PhoneFinal(unittest.TestCase):
         page = self.page(SIZES[0])
         page.goto(f"/projects/{self.project['id']}/docs")
         views = page.get_by_role("navigation", name="Space views")
-        conversation = views.get_by_role("link", name=re.compile("^Conversation"))
+        conversation = views.get_by_role("tab", name=re.compile("^Conversation"))
+        # One tab stop: the current view (Wiki), as a tab list has it; the others are reached with the arrows.
+        expect(views.get_by_role("tab")).to_have_count(4)
+        self.assertEqual(views.get_by_role("tab").evaluate_all("tabs => tabs.map((tab) => tab.tabIndex)"), [-1, -1, -1, 0])
         conversation.focus()
         page.keyboard.press("Enter")
         expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
-        expect(views.get_by_role("link", name=re.compile("^Conversation"))).to_have_attribute("aria-current", "page")
+        expect(views.get_by_role("tab", name=re.compile("^Conversation"))).to_have_attribute("aria-current", "page")
+        # Left and Right (wrapping), Home and End only move focus along the row; Enter or Space opens the tab in focus.
+        page.keyboard.press("ArrowRight")
+        expect(views.get_by_role("tab", name=re.compile("^Tasks"))).to_be_focused()
+        page.keyboard.press("End")
+        expect(views.get_by_role("tab", name=re.compile("^Wiki"))).to_be_focused()
+        page.keyboard.press("ArrowRight")
+        expect(views.get_by_role("tab", name=re.compile("^Conversation"))).to_be_focused()
+        page.keyboard.press("ArrowLeft")
+        expect(views.get_by_role("tab", name=re.compile("^Wiki"))).to_be_focused()
+        page.keyboard.press("Home")
+        page.keyboard.press("ArrowRight")
+        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
+        page.keyboard.press("Space")
+        expect(page).to_have_url(re.compile(r"/tasks(\?.*)?$"))
+        expect(views.get_by_role("tab", name=re.compile("^Tasks"))).to_have_attribute("aria-selected", "true")
         # More is a menu from the keyboard too: Escape closes it and focus returns to it.
         more = page.get_by_role("button", name="More", exact=True)
         more.focus()
@@ -345,7 +386,7 @@ class PhoneFinal(unittest.TestCase):
                 expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
                 # Back follows the way you came: from Tasks, opened through the views, it returns to the conversation.
                 page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
-                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
+                page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Tasks")).click()
                 expect(page).to_have_url(re.compile(r"/tasks"))
                 page.get_by_role("button", name="Back", exact=True).click()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
@@ -453,6 +494,101 @@ class PhoneFinal(unittest.TestCase):
         created_first = [item for item in first_work["items"] if item["title"] == title]
         self.assertEqual(len(created_selected), 1, "the submitted phone text becomes exactly one task in the persisted selected project")
         self.assertEqual(created_first, [], "submitting from the reloaded sheet does not create the task in the first project")
+
+    # ------------------------------------------------------------------ #1239
+
+    LONG_NAME = "North allotment community garden sensors and rain barrel monitoring"
+
+    def header_geometry(self, page):
+        """Boxes of the space header's parts, in CSS px, read in the page."""
+        return page.evaluate("""() => {
+          const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height }; };
+          const header = document.querySelector('header.phead'), h1 = header.querySelector('h1'), line = parseFloat(getComputedStyle(h1).lineHeight);
+          const back = header.querySelector('button.phead__back'), more = header.querySelector('button[aria-label="More"]'), bar = header.querySelector('.ui-tabs__bar');
+          const style = (el) => getComputedStyle(el);
+          const plain = (el) => ({ fill: style(el).backgroundColor, shadow: style(el).boxShadow, icon: el.querySelector('svg').getBoundingClientRect().width });
+          return { header: box(header), h1: box(h1), lines: Math.round(h1.getBoundingClientRect().height / line), clipped: h1.scrollHeight > h1.clientHeight + 1,
+            back: box(back), more: box(more), tabs: box(header.querySelector('.phead__views')), bar: box(bar), barScrolls: bar.scrollWidth > bar.clientWidth + 1,
+            block: box(header.querySelector('.phead__title')), plainBack: plain(back), plainMore: plain(more),
+            others: [...header.querySelectorAll('button')].filter((el) => el.getClientRects().length).map((el) => el.getAttribute('aria-label') || el.textContent.trim()), page: document.documentElement.scrollWidth };
+        }""")
+
+    def test_12_the_space_header_is_back_the_name_and_more_with_the_views_under_it(self):
+        # #1239: 320, 360, 390 and 430 px, light and dark, with a short and a very long name. The title row has Back, the name and More only,
+        # as plain icons with 44 px hit areas; the name wraps to two lines at most; nothing overlaps; the page never scrolls sideways.
+        long_project = self.call(self.page(SIZES[0]), "POST", f"/api/v1/workspaces/{self.workspace['id']}/projects", {"name": self.LONG_NAME, "visibility": "restricted"}, 201)
+        for width, height in ((320, 640), (360, 740), (390, 844), (430, 900)):
+            for dark in (False, True):
+                for project, name, long in ((self.project, "Community garden sensors", False), (long_project, self.LONG_NAME, True)):
+                    with self.subTest(width=width, dark=dark, name=name):
+                        page = self.page({"width": width, "height": height}, dark)
+                        page.goto(f"/projects/{project['id']}")
+                        heading = page.get_by_role("heading", level=1, name=name)
+                        expect(heading).to_be_visible()
+                        expect(heading).to_have_text(name)  # the full name is the accessible name, whatever the ellipsis shows
+                        page.evaluate("document.fonts.ready.then(() => true)")
+                        part = self.header_geometry(page)
+                        self.assertEqual(part["others"], ["Back", "More"], "the title row holds Back, the name and More only")
+                        # The line under the name is `--t3`, as the other, quiet words of the header (the tabs that are not current).
+                        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('header.phead .phead__sub')).color"),
+                                         page.evaluate("getComputedStyle(document.querySelector('header.phead [role=tab]:not([aria-current])')).color"))
+                        for control in ("back", "more"):
+                            self.assertGreaterEqual(part[control]["width"], 44, control)
+                            self.assertGreaterEqual(part[control]["height"], 44, control)
+                        for plain in ("plainBack", "plainMore"):
+                            self.assertIn(part[plain]["fill"], ("rgba(0, 0, 0, 0)", "transparent"), f"{plain} has no fill")
+                            self.assertEqual(part[plain]["shadow"], "none", f"{plain} has no shadow")
+                            self.assertAlmostEqual(part[plain]["icon"], 24, delta=0.5, msg=f"{plain} is a 24 px icon")
+                        self.assertLessEqual(part["lines"], 2, "the name wraps to two lines at most")
+                        self.assertLessEqual(part["back"]["right"], part["h1"]["x"] + 0.5, "Back and the name do not overlap")
+                        self.assertLessEqual(part["h1"]["right"], part["more"]["x"] + 0.5, "the name and More do not overlap")
+                        if long:
+                            self.assertEqual(part["lines"], 2)
+                            if width <= 390:
+                                self.assertTrue(part["clipped"], "a very long name ends in an ellipsis after two lines")
+                        else:
+                            self.assertFalse(part["clipped"], "a normal name is whole: no ellipsis")
+                        # 8 px under the top, 12 between the title row and the views (the row is as tall as its tallest part).
+                        row_bottom = max(part["back"]["bottom"], part["more"]["bottom"], part["block"]["bottom"])
+                        row_top = min(part["back"]["y"], part["more"]["y"], part["block"]["y"])
+                        self.assertAlmostEqual(row_top - part["header"]["y"], 8, delta=1, msg="8 px above the title row")
+                        self.assertAlmostEqual(part["tabs"]["y"] - row_bottom, 12, delta=3, msg="12 px between the title row and the views")
+                        self.assertGreaterEqual(part["header"]["y"] + part["header"]["height"], part["bar"]["y"] + part["bar"]["height"] - 1)
+                        self.assertEqual(part["page"], width, "no sideways page scroll")
+                        shot(page, f"1239-header-{width}-{'long' if long else 'short'}-{'dark' if dark else 'light'}")
+        # Large text (200%): the views row scrolls inside itself, and nothing in the header overlaps or scrolls the page.
+        page = self.page({"width": 320, "height": 640})
+        page.goto(f"/projects/{self.project['id']}")
+        expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
+        page.evaluate("document.documentElement.style.fontSize = '32px'")
+        page.wait_for_timeout(300)
+        part = self.header_geometry(page)
+        self.assertTrue(part["barScrolls"], "the views scroll sideways inside their own row")
+        self.assertEqual(part["page"], 320, "no sideways page scroll with large text")
+        self.assertLessEqual(part["back"]["right"], part["h1"]["x"] + 0.5)
+        self.assertLessEqual(part["h1"]["right"], part["more"]["x"] + 0.5)
+        shot(page, "1239-header-320-large-text")
+
+    def test_13_search_and_call_are_in_more_and_nothing_else_is_in_the_title_row(self):
+        page = self.page(SIZES[1])
+        page.goto(f"/projects/{self.project['id']}")
+        header = page.locator("header.phead")
+        expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
+        expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
+        page.get_by_role("button", name="More", exact=True).click()
+        # A Call that cannot start (this test server has no media server) says why in its row, as its popover did (#1239).
+        call = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))
+        expect(call).to_have_attribute("aria-disabled", "true")
+        expect(call.locator(".ui-vh")).to_be_visible()
+        expect(call.locator(".ui-vh")).to_have_text(re.compile(r"\S{8,}"))
+        page.get_by_role("menuitem", name="Search", exact=True).click()
+        expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
+        page.keyboard.press("Escape")
+        # A press shows the 44 px target, and a tap leaves nothing drawn: no lingering hover fill on Back or More.
+        more = page.get_by_role("button", name="More", exact=True)
+        more.tap()
+        self.assertIn(more.evaluate("el => getComputedStyle(el).backgroundColor"), ("rgba(0, 0, 0, 0)", "transparent"), "an open More leaves no filled circle")
+        shot(page, "1239-more-open-390")
 
 
 if __name__ == "__main__":

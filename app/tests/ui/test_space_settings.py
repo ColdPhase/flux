@@ -270,7 +270,7 @@ class SpaceSettings(unittest.TestCase):
                 expect(page.get_by_text("Cone 6 glaze tiles are in the kiln until Friday.").first).to_be_visible()
                 page.goto(f"/projects/{pid}/settings")
                 expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
-                conversation = page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Conversation"))
+                conversation = page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Conversation"))
                 expect(conversation).to_have_attribute("href", thread)
                 view_tab(page, "Conversation", tap)
                 expect(page).to_have_url(re.compile(re.escape(thread) + "$"))
