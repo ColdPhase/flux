@@ -37,7 +37,7 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * The bytes of the tool definitions with every switch on (one token per byte, PROV-3): 18 read tools took 14,464
  * before #484 and 7,729 after (2026-10-16); #400 adds the agents' thread read tool (19 reads). A3 (#403) adds the 16 change tools in their run-private view (no
  * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
- * that find and read around a message: 36 tools, about 25,000 bytes (2026-11-12; the bound was 24,000).
+ * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000).
  */
 const TOOL_DEFINITION_BYTES = 26_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
