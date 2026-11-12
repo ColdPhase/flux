@@ -8,6 +8,45 @@ git pull --ff-only && ./flux upgrade      # or: ./flux upgrade --pull
 written by v0.1, `./flux upgrade` refuses it and tells you to install v0.2 fresh: [see below](#from-v01-install-v02-fresh).
 Everything else on this page is for an upgrade from one v0.2 version to a later one.
 
+## Which versions upgrade to which
+
+An instance installed from **any release from v0.2.0 on** upgrades to **any later release**, by `./flux upgrade` (a source
+checkout) or by the release's upgrade steps ([a release installation](release-guide.md#upgrade)). Its data, files, settings,
+agents, encrypted spaces and sessions stay. You may skip releases: v0.2.0 goes straight to v0.3.0, and the migrations of the
+releases in between are applied in order.
+
+| Installed release | Upgrades to |
+| --- | --- |
+| v0.2.0 | every later release |
+
+This table gains a row with each release; the release notes of a release say which versions it was tested to upgrade from.
+Every release proves it before it is drafted ([how it is tested](#tested-with)): each of these releases is installed from its own
+assets, filled with data of every kind, upgraded to the candidate and read back. A release whose upgrade fails is not drafted.
+
+### The rules
+
+These hold for every release, and the checks below fail when one is broken. They are for people who change Flux as much as for
+operators: the engineering side is in [upgrade compatibility](../development/upgrade-compatibility.md).
+
+1. **Migrations are forward-only and immutable once released.** A file in `app/packages/db/migrations/` that a release contains
+   never changes, is never renamed and never deleted: instances have recorded it in their ledger, and the migrator refuses a
+   ledger row without a file. A fix is a new migration with the next free number, above the highest released one.
+2. **Every migration works on the data that any earlier release from v0.2.0 on left behind**, not only on an empty database or on
+   the data of the release just before. A backfill covers rows written by every earlier release (the missing `workspaces.company`
+   of a v0.1 database was the example, #1176).
+3. **No migration depends on application code that a later release may delete.** A migration is plain SQL that stands on its
+   own: it does not call a function of the application, read a constant of it or assume a table that only the application
+   creates.
+4. **Skipping versions is supported.** Any release goes straight to any later one; the migrations of the releases in between
+   are applied in numeric order, each in its own transaction.
+5. **A downgrade is not supported.** Forward migrations are not reversible. The way back is the backup that the upgrade took
+   first ([when it fails](#when-it-fails), [backup and restore](backup-restore.md)).
+6. **Configuration changes between releases are the launcher's to handle, never silent.** A new setting has a default that keeps
+   the old behaviour, so an old `.env` keeps working. A setting that a release renames or removes is listed in
+   [`docker/env-changes.txt`](../../docker/env-changes.txt); `./flux upgrade` moves a renamed setting to its new name and prints
+   what it did, and reports a removed one by name and reason. A release installation compares its `.env` with the new
+   `env.example` ([upgrade steps](release-guide.md#upgrade)), and the release notes list the same changes.
+
 `./flux upgrade` moves this checkout's instance to the code in the checkout:
 
 1. It asks for confirmation (`-y` answers yes) and reads the current schema from the database.
@@ -94,7 +133,28 @@ the old version on the partly migrated database.
 
 ## Tested with
 
-`./scripts/check_backup.sh` starts the previous version (the newest `main` commit with other migrations since v0.2's first
+`./scripts/check_upgrade_matrix.sh` ([upgrade compatibility](../development/upgrade-compatibility.md#the-upgrade-matrix)) is the proof
+of the rules above. For every published release from v0.2.0 on before the candidate it
+installs the release from its **own release assets** (`compose.yaml`, `env.example`, the image by digest) and
+fills it through the API with what an installation holds after use: people and a guest, spaces including an encrypted one, threads,
+direct messages, files, wiki history, maps, tasks with due dates and waits, notification settings, a second signed-in device,
+an API-key AI connection, and an agent with memory and schedules that has run. It upgrades that installation to the candidate with
+the release guide's steps, then reads everything back, checks that the second device's session still works, unlocks the encrypted
+space with its password, checks that a schedule's next times lie ahead, and writes new work, including a new agent run on a provider
+mock. The upgraded installation and the pre-upgrade backup are restored into fresh volumes. The same is repeated for a **source
+checkout** of each release: its tree is started with `./flux up`, seeded, replaced by the candidate's tree and moved with
+`./flux upgrade -y`. Each release goes straight to the candidate, so the older ones also prove that versions can be skipped. Against the oldest
+release it also adds a migration that breaks old data: the upgrade must stop, API and worker must not start, and the paired backup
+must restore into fresh volumes with that release's files and read back. Before any of this, `scripts/release/check_released_migrations.py`
+checks that every released migration file is byte-identical to the one in its release tag. A negative control for each failure
+(`FLUX_MATRIX_CONTROL=edited-migration` and `old-data`) must fail the check.
+
+[`final-release.yml`](../../.github/workflows/final-release.yml) runs the upgrade from the previous release in its `package` job and
+the matrix of every earlier release in its `upgrade` job; the draft is not made when either fails, and its notes name the versions
+it was tested to upgrade from. `app/tests/app/released-databases.test.ts` runs the real migrator on a database dumped from each
+release, in `./scripts/check_application.sh`.
+
+`./scripts/check_backup.sh` tests an upgrade from the previous version (the newest `main` commit with other migrations since v0.2's first
 one, `0003`, or `FLUX_UPGRADE_FROM`; before such a commit exists, this tree, upgraded to this tree plus one synthetic next
 migration), seeds it, upgrades it with `./flux upgrade -y`, and checks the applied migrations, the backup it made and the data
 through the API. It then adds a failing migration, checks that the upgrade fails with the restore instructions above, and

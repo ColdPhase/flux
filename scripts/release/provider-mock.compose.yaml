@@ -1,0 +1,25 @@
+# TEST ONLY (#1241): the upgrade checks' overlay on a release's own compose.yaml. It is the release guide's `compose.ai.yaml`
+# (the background key file mounted in api and worker, "Agents on your own AI key") plus one service, `provider-mock`, an
+# OpenAI-compatible endpoint that runs scripts/release/provider_mock.mjs with the release image's Node. The env file sets
+# FLUX_PERSONAL_RUNS=on, FLUX_AI_PRIVATE_TARGETS=provider-mock and FLUX_BACKGROUND_KEY_HOST_FILE (smoke_artifacts.sh writes them).
+# The overlay is never shipped and holds nothing of a release: every release's api, worker and migrate stay as the release made them.
+services:
+  api:
+    volumes:
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:?Set FLUX_BACKGROUND_KEY_HOST_FILE}:/run/secrets/flux_background_key:ro,z
+  worker:
+    volumes:
+      - ${FLUX_BACKGROUND_KEY_HOST_FILE:?Set FLUX_BACKGROUND_KEY_HOST_FILE}:/run/secrets/flux_background_key:ro,z
+  provider-mock:
+    image: ${FLUX_SMOKE_MOCK_IMAGE:?Set FLUX_SMOKE_MOCK_IMAGE}
+    entrypoint: ["node", "/mock/provider_mock.mjs"]
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    volumes:
+      - ${FLUX_SMOKE_MOCK_FILE:?Set FLUX_SMOKE_MOCK_FILE}:/mock/provider_mock.mjs:ro,z
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8091/__health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 20

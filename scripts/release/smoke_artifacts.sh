@@ -4,11 +4,16 @@
 #   smoke_artifacts.sh <assets> <state dir> <install project> <restore project>
 #   FLUX_SMOKE_PREVIOUS_ASSETS=<previous release's assets> smoke_artifacts.sh ...   (adds the upgrade leg)
 #
-# Leg 1, always: a clean install of the candidate's assets, an account, workspace and content created
-# through the API, an encrypted workspace (the keyring secrets of INSTALL.md), a paired PostgreSQL + files backup and its restore into fresh volumes.
+# Leg 1 (unless FLUX_SMOKE_LEGS=upgrade): a clean install of the candidate's assets EXACTLY as INSTALL.md says, with its default settings
+# and no overlay: an account, workspace and content created through the API (smoke_data.py seed: people, a guest, spaces, an encrypted
+# space with the keyring secrets of INSTALL.md, conversations, a wiki, a map, tasks, notification settings, a second device), a paired
+# PostgreSQL + files backup and its restore into fresh volumes. The agents' settings and the provider mock are not part of it.
 #
 # Leg 2, only when FLUX_SMOKE_PREVIOUS_ASSETS names the downloaded assets of the PREVIOUS release (its
-# compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally.
+# compose.yaml, env.example, release.json, SHA256SUMS): INSTALL.md's upgrade, followed literally. The previous release is ANY published
+# release from v0.2.0 on, not only the last one: check_upgrade_matrix.sh runs this leg for each of them (#1241). It is the leg that
+# seeds the agents' data: its environment file also sets the three switches of "Agents on your own AI key" and its projects carry the
+# provider mock overlay (an AI connection on an API key, an agent with memory and schedules, a run).
 #   1. Install the previous release, create the same content through its API and a file in the files volume.
 #   2. Take a paired backup with the previous release's files, then stop the writers with them.
 #   3. Pull and start the candidate's compose.yaml with the SAME environment file and project (same volumes).
@@ -16,13 +21,18 @@
 #      schemaVersion that did not go down; the migration ledger equals the candidate's migration files and
 #      contains every earlier row; the rows of the content tables are unchanged (count and md5 over the
 #      previous columns); the volumes were not recreated; the account signs in and every created item reads back;
-#      the instance accepts a new message.
+#      the instance accepts new work (smoke_data.py verify --write: messages of each kind, a task, a new agent run on the provider
+#      mock, a message in the unlocked encrypted space) and the second device's session still works.
 #   5. Back up the upgraded installation and restore it into fresh volumes with the candidate's files.
 #   6. Recovery path: restore the PRE-upgrade backup into fresh volumes with the PREVIOUS release's files,
 #      check it there, then upgrade that restored installation to the candidate and check it again.
-# The leg does not run in final-release.yml: the first release (v0.1, whose schema is the single baseline of #779)
-# has no previous release. The independent
-# reviewer runs it with the previous release's downloaded assets and the candidate's draft assets.
+# Leg 3, with Leg 2 and FLUX_SMOKE_RECOVERY=1: a migration that breaks the old data (it passes on an empty database; see
+# check_upgrade_matrix.sh) is added to the candidate. The upgrade stops with the failing migration, API and worker do not start,
+# and the paired backup taken with the previous release's files restores into fresh volumes with those files and reads back.
+# FLUX_SMOKE_INJECT=old-data adds that migration to Leg 2's upgrade itself: the leg must fail (the negative control).
+#
+# final-release.yml runs Leg 2 from the previous release in its `package` job and the matrix of every earlier release in its
+# `upgrade` job; the draft needs both. The agents' data is on a provider mock (provider-mock.compose.yaml, provider_mock.mjs), in Leg 2 and after only.
 #
 # Ports default to 18081 (installation) and 18082 (restore); set FLUX_SMOKE_PORT and FLUX_SMOKE_RESTORE_PORT for
 # a machine where those are taken. Both legs use them one after the other. Runs on GNU/Linux and macOS (bash 3.2).
@@ -33,6 +43,9 @@ state_dir=${2:?temporary state directory required}
 source_project=${3:?source project name required}
 restore_project=${4:?restore project name required}
 previous_assets=${FLUX_SMOKE_PREVIOUS_ASSETS:-}
+legs=${FLUX_SMOKE_LEGS:-all}
+recovery=${FLUX_SMOKE_RECOVERY:-}
+inject=${FLUX_SMOKE_INJECT:-}
 source_port=${FLUX_SMOKE_PORT:-18081}
 restore_port=${FLUX_SMOKE_RESTORE_PORT:-18082}
 root=$(cd "$(dirname "$0")/../.." && pwd)
@@ -46,10 +59,14 @@ up_env="$up_dir/source.env"
 up_restore_env="$up_dir/restore.env"
 
 fail() { echo "smoke_artifacts: $*" >&2; exit 1; }
+case "$legs" in all|upgrade) ;; *) fail "FLUX_SMOKE_LEGS is 'all' or 'upgrade', not '$legs'" ;; esac
+[ "$legs" = all ] || [ -n "$previous_assets" ] || fail "FLUX_SMOKE_LEGS=upgrade needs FLUX_SMOKE_PREVIOUS_ASSETS"
+case "$inject" in ''|old-data) ;; *) fail "FLUX_SMOKE_INJECT is 'old-data' or empty, not '$inject'" ;; esac
 # FLUX_SMOKE_WAIT: seconds `up --wait` allows (default 300; an emulated platform needs more).
 wait_timeout=${FLUX_SMOKE_WAIT:-300}
 step() { printf '\n== %s\n' "$*"; }
 json_field() { python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$1" "$2"; }
+candidate_image=$(json_field "$assets/release.json" image)
 db_image() { sed -n 's/^ *image: *\(postgres@sha256:[0-9a-f]*\).*/\1/p' "$1/compose.yaml"; }
 check_sums() { # in the current directory
   if command -v sha256sum >/dev/null 2>&1; then sha256sum -c SHA256SUMS >/dev/null; else shasum -a 256 -c SHA256SUMS >/dev/null; fi
@@ -64,16 +81,27 @@ if [ -n "$previous_assets" ]; then
   done
   ( cd "$previous_assets" && check_sums ) || fail "the previous release's assets do not match its SHA256SUMS"
   previous_image=$(json_field "$previous_assets/release.json" image)
-  candidate_image=$(json_field "$assets/release.json" image)
   [ "$previous_image" != "$candidate_image" ] || fail "the previous release and the candidate pin the same image ($candidate_image); nothing would be upgraded"
   [ "$(db_image "$previous_assets")" = "$(db_image "$assets")" ] ||
     fail "the PostgreSQL pin differs between the releases; INSTALL.md says to restore into a fresh installation instead of upgrading in place"
 fi
 
+# The agents' provider is a mock on the project's network (provider-mock.compose.yaml): the AI connection of the seeded data
+# is an owner API key whose base URL is that service. Its image is the candidate's own Node, so no other image is pulled.
+export FLUX_SMOKE_MOCK_IMAGE=$candidate_image FLUX_SMOKE_MOCK_FILE="$root/scripts/release/provider_mock.mjs"
+provider_overlay="$root/scripts/release/provider-mock.compose.yaml"
+provider_url=http://provider-mock:8091/v1
+background_key="$state_dir/background.key"
+inject_overlay="" # set while the candidate runs with the injected migration (Leg 3, FLUX_SMOKE_INJECT)
+# A project has the provider mock exactly when its environment file names the background key file (make_env ... agents): the default
+# install of Leg 1 has neither the settings nor the overlay.
+agents_on() { [ -f "$1" ] && grep -q '^FLUX_BACKGROUND_KEY_HOST_FILE=.' "$1"; }
 dc() { # project, environment file, assets directory, then docker compose arguments
-  local project=$1 env_file=$2 dir=$3
+  local project=$1 env_file=$2 dir=$3 files=(-f "$3/compose.yaml")
   shift 3
-  docker compose --env-file "$env_file" -p "$project" -f "$dir/compose.yaml" "$@"
+  if agents_on "$env_file"; then files+=(-f "$provider_overlay"); fi
+  if [ -n "$inject_overlay" ] && [ "$dir" = "$assets" ]; then files+=(-f "$inject_overlay"); fi
+  docker compose --env-file "$env_file" -p "$project" "${files[@]}" "$@"
 }
 down() { # project, environment file (the candidate's compose file names the same services as the previous one)
   if [ -f "$2" ]; then dc "$1" "$2" "$assets" down -v --remove-orphans >/dev/null 2>&1 || true; fi
@@ -145,8 +173,33 @@ restore_backup() { # project, environment file, assets directory, backup directo
   dc "$1" "$2" "$3" up -d --wait --wait-timeout "$wait_timeout"
   health "$5" >/dev/null
 }
-make_env() { # template, destination, port
+# A migration that breaks the old data: it passes on an empty database (no message rows) and fails on a database that holds
+# what a release wrote (#1241). It is mounted into the candidate's migrate service (the migrator reads its image's migrations
+# directory), so no image is rebuilt. The migrator expects the highest file to be its image's FLUX_SCHEMA_VERSION, so the file takes
+# the next number and the one compiled file that holds the constant is mounted as a copy of itself with the constant one higher.
+make_injection() { # directory
+  mkdir -p "$1"
+  injected_number=$(( $(expected_ledger | tr ',' '\n' | tail -n 1) + 1 ))
+  injected_file=$(printf '%04d_upgrade_check.sql' "$injected_number")
+  printf -- '-- smoke_artifacts.sh: a migration that works on an empty database and breaks the data of a release.\nALTER TABLE project_messages ADD CONSTRAINT upgrade_check_no_messages CHECK (false);\n' > "$1/$injected_file"
+  docker run --rm --entrypoint cat "$candidate_image" /app/packages/db/dist/index.js |
+    sed "s/^export const FLUX_SCHEMA_VERSION = [0-9]*;/export const FLUX_SCHEMA_VERSION = $injected_number;/" > "$1/index.js"
+  grep -q "^export const FLUX_SCHEMA_VERSION = $injected_number;" "$1/index.js" || fail "could not set the schema version of the injected migration"
+  chmod 644 "$1/$injected_file" "$1/index.js"
+  printf 'services:\n  migrate:\n    volumes:\n      - %s:/app/packages/db/migrations/%s:ro,z\n      - %s:/app/packages/db/dist/index.js:ro,z\n' "$1/$injected_file" "$injected_file" "$1/index.js" > "$1/compose.inject.yaml"
+}
+set_env() { # file, key, value: replaces the key's line or appends it (a value with no `#`)
+  if grep -q "^$2=" "$1"; then sed "s#^$2=.*#$2=$3#" "$1" > "$1.edit" && mv "$1.edit" "$1"; else printf '%s=%s\n' "$2" "$3" >> "$1"; fi
+  chmod 600 "$1"
+}
+make_env() { # template, destination, port, [agents]: INSTALL.md's values; with `agents` also the three switches of "Agents on your own AI key", on the provider mock
   python3 "$root/scripts/release/write_test_env.py" --source "$1" --destination "$2" --port "$3"
+  if [ "${4:-}" = agents ]; then
+    [ -f "$background_key" ] || { head -c 32 /dev/urandom > "$background_key"; chmod 644 "$background_key"; }
+    set_env "$2" FLUX_PERSONAL_RUNS on
+    set_env "$2" FLUX_AI_PRIVATE_TARGETS provider-mock
+    set_env "$2" FLUX_BACKGROUND_KEY_HOST_FILE "$background_key"
+  fi
 }
 restore_env_from() { # source environment file, destination, port
   sed -e "s/^FLUX_PORT=.*/FLUX_PORT=$3/" -e "s#^FLUX_PUBLIC_ORIGIN=.*#FLUX_PUBLIC_ORIGIN=http://127.0.0.1:$3#" "$1" > "$2"
@@ -154,26 +207,27 @@ restore_env_from() { # source environment file, destination, port
 }
 
 # ---------------------------------------------------------------------------------------------------------
-step "Leg 1: clean install of the candidate, paired backup and restore"
-# The environment template is the downloaded asset, filled in exactly as INSTALL.md instructs.
-make_env "$assets/env.example" "$source_env" "$source_port"
-restore_env_from "$source_env" "$restore_env" "$restore_port"
+if [ "$legs" = all ]; then
+  step "Leg 1: clean install of the candidate, paired backup and restore"
+  # The environment template is the downloaded asset, filled in exactly as INSTALL.md instructs.
+  make_env "$assets/env.example" "$source_env" "$source_port"
+  restore_env_from "$source_env" "$restore_env" "$restore_port"
 
-dc "$source_project" "$source_env" "$assets" config --quiet
-dc "$source_project" "$source_env" "$assets" pull
-dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
-health "$source_port" >/dev/null
-echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
-python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
-python3 "$root/scripts/release/smoke_data.py" encrypted --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
-# The database holds the account; this file in the files volume proves the paired archive too.
-probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
-write_probe "$source_project" "$source_env" "$assets" "$probe"
-paired_backup "$source_project" "$source_env" "$assets" "$state_dir"
-restore_backup "$restore_project" "$restore_env" "$assets" "$state_dir" "$restore_port"
-python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$state_dir/account.json" --write
-check_probe "$restore_project" "$restore_env" "$assets" "$probe"
-echo 'Packaged clean install, backup and restore passed.'
+  dc "$source_project" "$source_env" "$assets" config --quiet
+  dc "$source_project" "$source_env" "$assets" pull
+  dc "$source_project" "$source_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
+  health "$source_port" >/dev/null
+  echo "running: api $(dc "$source_project" "$source_env" "$assets" exec -T api uname -m), db $(dc "$source_project" "$source_env" "$assets" exec -T db uname -m)"
+  python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$state_dir/account.json"
+  # The database holds the account; this file in the files volume proves the paired archive too.
+  probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
+  write_probe "$source_project" "$source_env" "$assets" "$probe"
+  paired_backup "$source_project" "$source_env" "$assets" "$state_dir"
+  restore_backup "$restore_project" "$restore_env" "$assets" "$state_dir" "$restore_port"
+  python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$state_dir/account.json" --write
+  check_probe "$restore_project" "$restore_env" "$assets" "$probe"
+  echo 'Packaged clean install, backup and restore passed.'
+fi
 
 if [ -z "$previous_assets" ]; then
   echo 'Upgrade leg not run: FLUX_SMOKE_PREVIOUS_ASSETS is not set (the first release has no previous release).'
@@ -189,7 +243,7 @@ previous_digest=${previous_image##*@}
 candidate_digest=${candidate_image##*@}
 step "Leg 2: upgrade $previous_version ($previous_digest) to $candidate_version ($candidate_digest), then backup and restore"
 mkdir -p "$up_dir"
-make_env "$previous_assets/env.example" "$up_env" "$source_port"
+make_env "$previous_assets/env.example" "$up_env" "$source_port" agents
 restore_env_from "$up_env" "$up_restore_env" "$restore_port"
 candidate_ledger=$(expected_ledger)
 [ -n "$candidate_ledger" ] || fail "no migration files found under app/packages/db/migrations"
@@ -199,9 +253,16 @@ dc "$source_project" "$up_env" "$previous_assets" config --quiet
 dc "$source_project" "$up_env" "$previous_assets" pull
 dc "$source_project" "$up_env" "$previous_assets" up -d --wait --wait-timeout "$wait_timeout"
 health "$source_port" >/dev/null
-python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json"
+python3 "$root/scripts/release/smoke_data.py" seed --origin "http://127.0.0.1:$source_port" --state "$up_dir/account.json" --provider-url "$provider_url"
 up_probe=$(python3 -c 'import secrets; print(secrets.token_hex(16))')
 write_probe "$source_project" "$up_env" "$previous_assets" "$up_probe"
+if [ -n "${FLUX_SMOKE_DUMP:-}" ]; then
+  # The seeded database as the previous release wrote it (plain INSERTs, no owners): a fixture of app/tests/app/released-databases.test.ts.
+  mkdir -p "$(dirname "$FLUX_SMOKE_DUMP")"
+  dc "$source_project" "$up_env" "$previous_assets" exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" --no-owner --no-privileges --inserts' |
+    grep -v '^\\' | gzip -9n > "$FLUX_SMOKE_DUMP"
+  echo "dumped the seeded database of $previous_version to $FLUX_SMOKE_DUMP ($(wc -c < "$FLUX_SMOKE_DUMP") bytes)"
+fi
 schema_before=$(schema_version "$source_port")
 ledger "$source_project" "$up_env" "$previous_assets" | tr ',' '\n' > "$up_dir/ledger.before"
 table_columns "$source_project" "$up_env" "$previous_assets" > "$up_dir/columns"
@@ -216,9 +277,24 @@ table_snapshot "$source_project" "$up_env" "$previous_assets" "$up_dir/columns" 
 volume_stamps "$source_project" > "$up_dir/volumes.before"
 
 echo "-- 3. pull and start the candidate with the same environment file and project"
+if [ -n "$inject" ]; then
+  echo "NEGATIVE CONTROL: the candidate carries a migration that breaks the old data; this leg must fail"
+  make_injection "$up_dir/injected"; inject_overlay="$up_dir/injected/compose.inject.yaml"
+fi
 started=$(date +%s)
 dc "$source_project" "$up_env" "$assets" config --quiet
 dc "$source_project" "$up_env" "$assets" pull
+if [ -n "$inject" ]; then
+  # The negative control: this upgrade must stop at the injected migration, and the leg ends here, failed, saying why.
+  if dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout" > "$up_dir/inject.out" 2>&1; then
+    fail "NEGATIVE CONTROL FAILED: the upgrade with a migration that breaks the old data succeeded"
+  fi
+  tail -n 4 "$up_dir/inject.out"
+  migrate_log=$(docker logs "$(docker ps -aq --filter "label=com.docker.compose.project=$source_project" --filter "label=com.docker.compose.service=migrate" | head -n 1)" 2>&1 || true)
+  printf '%s\n' "$migrate_log" | tail -n 6
+  printf '%s' "$migrate_log" | grep -q 'upgrade_check_no_messages' || fail "the upgrade stopped, but not at the injected migration"
+  fail "the upgrade stopped at the injected migration $injected_file (the negative control: this leg is meant to fail)"
+fi
 dc "$source_project" "$up_env" "$assets" up -d --wait --wait-timeout "$wait_timeout"
 downtime=$(( $(date +%s) - started ))
 dc "$source_project" "$up_env" "$assets" ps
@@ -262,5 +338,33 @@ dc "$restore_project" "$up_restore_env" "$assets" up -d --wait --wait-timeout "$
 [ "$(ledger "$restore_project" "$up_restore_env" "$assets")" = "$candidate_ledger" ] || fail "the restored and upgraded installation has another ledger"
 python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$up_dir/account.json" --write
 check_probe "$restore_project" "$up_restore_env" "$assets" "$up_probe"
+
+if [ -n "$recovery" ]; then
+  echo "-- 7. a migration that breaks the old data: the upgrade stops, and the paired backup of the previous release restores"
+  make_injection "$up_dir/broken"
+  down "$restore_project" "$up_restore_env"
+  restore_backup "$restore_project" "$up_restore_env" "$previous_assets" "$up_dir/backup-previous" "$restore_port"
+  python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$up_dir/account.json"
+  paired_backup "$restore_project" "$up_restore_env" "$previous_assets" "$up_dir/backup-before-break"
+  inject_overlay="$up_dir/broken/compose.inject.yaml"
+  dc "$restore_project" "$up_restore_env" "$assets" config --quiet
+  if dc "$restore_project" "$up_restore_env" "$assets" up -d --wait --wait-timeout "$wait_timeout" > "$up_dir/break.out" 2>&1; then
+    fail "the upgrade with a migration that breaks the old data succeeded"
+  fi
+  tail -n 3 "$up_dir/break.out"
+  [ "$(docker inspect -f '{{.State.ExitCode}}' "$(dc "$restore_project" "$up_restore_env" "$assets" ps -aq migrate)")" != 0 ] || fail "the migrate service exited 0 with a broken migration"
+  dc "$restore_project" "$up_restore_env" "$assets" logs --no-color migrate 2>&1 | grep -q 'upgrade_check_no_messages' || fail "the migrate service did not name the failing migration"
+  [ -z "$(dc "$restore_project" "$up_restore_env" "$assets" ps -q --status running api worker)" ] || fail "API or worker run after a failed migration"
+  if health "$restore_port" >/dev/null 2>&1; then fail "the instance answers after a failed migration"; fi
+  case ",$(ledger "$restore_project" "$up_restore_env" "$assets")," in *,"$injected_number",*) fail "the failed migration is in the ledger" ;; esac
+  echo "the broken migration $injected_file stopped the upgrade: migrate failed naming it, API and worker did not start, the ledger lacks $injected_number"
+  inject_overlay=""
+  down "$restore_project" "$up_restore_env"
+  restore_backup "$restore_project" "$up_restore_env" "$previous_assets" "$up_dir/backup-before-break" "$restore_port"
+  [ "$(schema_version "$restore_port")" = "$schema_before" ] || fail "the restored previous release reports another schemaVersion"
+  python3 "$root/scripts/release/smoke_data.py" verify --origin "http://127.0.0.1:$restore_port" --state "$up_dir/account.json" --write
+  check_probe "$restore_project" "$up_restore_env" "$previous_assets" "$up_probe"
+  echo "restored from the backup taken before the failed upgrade: $previous_version reads back and accepts new work"
+fi
 
 echo "Packaged upgrade $previous_version ($previous_digest) to $candidate_version ($candidate_digest), backup and restore passed."

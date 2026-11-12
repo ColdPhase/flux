@@ -490,7 +490,7 @@ class WorkflowRulesTest(unittest.TestCase):
     def test_the_release_workflow_scans_both_images_before_the_draft(self) -> None:
         text = self.text("final-release.yml")
         self.assertRegex(text, r"(?m)^  scan:\n    name: Scan the images")
-        self.assertRegex(text, r"needs: \[candidate, image, package, scan\]")
+        self.assertRegex(text, r"needs: \[candidate, image, package, scan, upgrade\]")
         self.assertIn("scripts/security_scan.py image", text)
 
     def test_dependabot_covers_the_three_ecosystems_with_a_limit_and_weekly_grouping(self) -> None:
