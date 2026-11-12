@@ -271,8 +271,7 @@ class AssistantFinish(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 self.stub_assistant(page)
-                self.stub_model(page)
-                self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
+                self.stub_thread(page)
                 for _ in range(6):
                     page.goto(f"{self.thread_url()}?ask=1")
                     expect(page.locator("#project-ask")).to_be_visible()
