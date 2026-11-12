@@ -1,9 +1,10 @@
 import {
-  ConnectionQuality, DisconnectReason, LocalAudioTrack, createLocalAudioTrack, createLocalScreenTracks, createLocalVideoTrack, type LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track,
-  type LocalTrackPublication, type Participant, type TrackPublishOptions, type VideoResolution, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
+  ConnectionQuality, DisconnectReason, LocalAudioTrack, createLocalScreenTracks, createLocalVideoTrack, type LocalTrack, LocalVideoTrack, RemoteAudioTrack, RemoteVideoTrack, Room, RoomEvent, Track, TrackEvent,
+  type LocalTrackPublication, type Participant, type RemoteParticipant, type TrackPublishOptions, type VideoResolution, type RemoteTrack, type RemoteTrackPublication, type TrackPublication,
 } from 'livekit-client';
 import { canPublishScreen } from './capture.js';
 import { installIceServerNormalizer } from './ice-servers.js';
+import { CallAudio } from './call-audio.js';
 import { measurement as fmt, receiverReport, TrackDiagnostics } from './diagnostics.js';
 
 /**
@@ -186,6 +187,8 @@ export class LiveMediaConnection {
   /** A screen being published again in another mode: its unpublication is not a stop. */
   private republishing = false;
   private readonly stopDeviceWatch: () => void;
+  /** Sound settings of the call: devices, volumes, the meter (#1244). The interface reads it through its own snapshot. */
+  readonly audio: CallAudio;
 
   constructor() {
     installIceServerNormalizer();
@@ -202,6 +205,7 @@ export class LiveMediaConnection {
     this.audioHost.hidden = true;
     this.audioHost.dataset.liveAudio = '';
     document.body.append(this.audioHost);
+    this.audio = new CallAudio(this.room, () => this.hearing);
     this.snapshot = this.build();
 
     const update = () => this.emit();
@@ -218,8 +222,12 @@ export class LiveMediaConnection {
       .on(RoomEvent.ParticipantDisconnected, update)
       .on(RoomEvent.TrackPublished, update)
       .on(RoomEvent.TrackUnpublished, update)
-      .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => this.onSubscribed(track, publication))
-      .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => { this.trackDiagnostics.forget(publication.trackSid); track.detach().forEach((element) => element.remove()); update(); })
+      .on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => this.onSubscribed(track, publication, participant))
+      .on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication) => {
+        this.trackDiagnostics.forget(publication.trackSid);
+        track.detach().forEach((element) => { this.audio.playback.detach(element); element.remove(); });
+        update();
+      })
       .on(RoomEvent.TrackMuted, update)
       .on(RoomEvent.TrackUnmuted, update)
       .on(RoomEvent.ActiveSpeakersChanged, update)
@@ -227,7 +235,7 @@ export class LiveMediaConnection {
       .on(RoomEvent.AudioPlaybackStatusChanged, update)
       .on(RoomEvent.LocalTrackPublished, update)
       .on(RoomEvent.LocalTrackUnpublished, (publication: LocalTrackPublication) => this.onLocalUnpublished(publication))
-      .on(RoomEvent.MediaDevicesChanged, () => { void this.checkDevicesStillThere(); });
+      .on(RoomEvent.MediaDevicesChanged, () => { void this.checkDevicesStillThere(); void this.audio.refreshDevices(); });
 
     // A device permission revoked in site settings stops capture; say so instead of pretending.
     const watchers: (() => void)[] = [];
@@ -258,6 +266,7 @@ export class LiveMediaConnection {
     try {
       await this.room.connect(url, token, { autoSubscribe: true, maxRetries: 1 });
       this.connection = 'connected';
+      void this.audio.joined();
     } catch (error) {
       this.connection = 'disconnected';
       this.endReason = 'lost';
@@ -287,7 +296,8 @@ export class LiveMediaConnection {
       const local = this.room.localParticipant;
       // Capture first, publish only if this request is still the latest: a late permission
       // answer after Quiet, off or leave must never reach anyone.
-      if (kind === 'mic') captured = [await createLocalAudioTrack({ echoCancellation: true, noiseSuppression: true, autoGainControl: true })];
+      // The device and the three browser switches are the person's (Audio settings, #1244); on by default.
+      if (kind === 'mic') captured = [await this.audio.captureMic()];
       // Up to 1080p30; simulcast sends smaller layers too, and only the layers someone shows (#59 §7).
       else if (kind === 'camera') captured = [await createLocalVideoTrack({ resolution: { width: 1920, height: 1080, frameRate: 30 } })];
       else {
@@ -311,10 +321,15 @@ export class LiveMediaConnection {
       this.pending[kind].clear();
       const publication = local.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare);
       if (!publication?.track) return this.set(kind, { state: 'off', note: kind === 'screen' ? 'Nothing was chosen, so nothing is shared.' : null });
-      publication.track.mediaStreamTrack.addEventListener('ended', () => {
+      const onEnded = () => {
         const note = kind === 'screen' ? 'Screen sharing stopped from the browser.' : `The ${kind === 'mic' ? 'microphone' : 'camera'} stopped (unplugged or taken by another app).`;
         void this.stopDevice(kind, { state: 'off', note });
-      }, { once: true });
+      };
+      if (kind === 'mic') {
+        // The microphone's capture is replaced when another device or switch is chosen; the track's own event follows each one.
+        publication.track.on(TrackEvent.Ended, onEnded);
+        if (publication.track instanceof LocalAudioTrack) await this.audio.attachMic(publication.track);
+      } else publication.track.mediaStreamTrack.addEventListener('ended', onEnded, { once: true });
       return this.set(kind, { state: 'on', note: null });
     } catch (error) {
       captured.forEach((track) => this.pending[kind].delete(track));
@@ -366,7 +381,7 @@ export class LiveMediaConnection {
     for (const participant of this.room.remoteParticipants.values()) {
       for (const publication of participant.audioTrackPublications.values()) publication.setEnabled(on);
     }
-    for (const element of this.audioHost.querySelectorAll('audio')) element.muted = !on;
+    this.audio.setHearing();
     this.emit();
   }
 
@@ -390,6 +405,7 @@ export class LiveMediaConnection {
 
   dispose() {
     this.stopDeviceWatch();
+    this.audio.dispose();
     void this.disconnect().finally(() => this.audioHost.remove());
   }
 
@@ -462,6 +478,7 @@ export class LiveMediaConnection {
     const source = kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare;
     const publication = this.room.localParticipant.getTrackPublication(source);
     const track = publication?.track;
+    if (kind === 'mic') this.audio.detachMic();
     if (!track) return;
     // Unpublish and stop: a muted-but-captured device would keep the browser's recording light on.
     try { await this.room.localParticipant.unpublishTrack(track, true); } catch { track.stop(); }
@@ -514,15 +531,17 @@ export class LiveMediaConnection {
     this.trackDiagnostics.forget(publication.trackSid);
     const kind: DeviceKind | null = publication.source === Track.Source.Microphone ? 'mic'
       : publication.source === Track.Source.Camera ? 'camera' : publication.source === Track.Source.ScreenShare ? 'screen' : null;
+    if (kind === 'mic') this.audio.detachMic();
     if (kind && this.devices[kind].state === 'on' && !(kind === 'screen' && this.republishing))
       this.devices = { ...this.devices, [kind]: { state: 'off', note: kind === 'screen' ? 'Screen sharing stopped.' : null } };
     this.emit();
   }
 
-  private onSubscribed(track: RemoteTrack, publication: RemoteTrackPublication) {
+  private onSubscribed(track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) {
     if (track.kind === Track.Kind.Audio) {
       const element = track.attach() as HTMLAudioElement;
-      element.muted = !this.hearing;
+      // This voice's volume and Mute for me, and Quiet (#1244): how it plays is this person's own setting.
+      this.audio.playback.attach(element, userIdOf(participant.identity) ?? '');
       this.audioHost.append(element);
       if (!this.hearing) publication.setEnabled(false);
     }
@@ -539,6 +558,7 @@ export class LiveMediaConnection {
     else if (reason === DisconnectReason.CLIENT_INITIATED) this.endReason = 'left';
     else this.endReason = 'lost';
     this.devices = { mic: { state: 'off', note: null }, camera: { state: 'off', note: null }, screen: { state: 'off', note: null } };
+    this.audio.reset();
     for (const element of this.audioHost.querySelectorAll('audio')) element.remove();
     this.emit();
   }

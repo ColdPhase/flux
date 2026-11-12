@@ -716,6 +716,94 @@ menu's rows, the sidebar's end slot, the panel head's quiet actions and the exis
 - **Everything stays in step.** The ⋯ row, the sidebar mark, the Settings list and the thread's button read and write the same
   preferences that the Inbox, push and email use, and a change in one tab shows in the person's other open tabs without a reload.
 
+### Call audio
+
+Not in the drawings; composed from the drawn parts for [#1244](https://github.com/ColdPhase/flux/issues/1244) (founder request
+2026-11-10; the approved "Calls" board shows the Audio panel and the per-person popover). The contract and the browser support are in
+[live collaboration](../../product/live-collaboration.md#call-audio-devices-and-volumes-1244). Only the live strip's parts are used:
+`lv-pop` (the strip's popover), `Sheet` on the phone, `Select`, the settings' `SwitchRow`, `Button`, `IconButton`, the `Avatar` face and
+the existing icons (`mic`, `hearing`, `quiet`, `chevron-down`, `chevron-right`). The one new part is the **slider**, below.
+
+```
+Strip, computer: the microphone has a small arrow
+ ● Live   Call in Gesture lamp     (A)(J)(N)     Show this   [🎙|▾] [📷] [🖥]  ⋯   [Leave]
+
+Audio settings (a popover under the strip, 360 px; a sheet on the phone, opened from ⋯ › You › Audio settings)
+┌──────────────────────────────────────────────┐
+│ Audio                                     ✕  │
+├──────────────────────────────────────────────┤
+│ Microphone                                   │
+│ [ Built-in microphone                  ▾ ]   │
+│ ▮▮▮▮▮▮▮▯▯▯▯▯▯▯▯▯▯▯▯▯   Speaking              │
+│ Only you hear this check. Nothing is sent.   │
+│ Microphone volume      ──────●────   120%    │
+│ Reduce background noise               ( ● )  │
+│ Cancel echo                           ( ● )  │
+│ Even out my volume                    ( ● )  │
+├──────────────────────────────────────────────┤
+│ Speakers or headphones                       │
+│ [ Headphones                  ▾ ]  [Test sound] │
+│ Everything you hear    ───────────●   100%   │
+└──────────────────────────────────────────────┘
+
+Where the browser cannot choose the output or set its volume (an iPhone): one line and Test sound, no select and no slider
+│ Speakers or headphones                       │
+│ [Test sound]                                 │
+│ 🔈 Use your phone’s volume buttons.           │
+
+A person's sound (a popover under their face in the strip; the same two rows under their name in ⋯ › Here now)
+┌──────────────────────────────┐
+│ Nia Okafor                   │
+│ Volume        ───●────  80%  │
+│ Mute for me             ( ○ )│
+│ Only you hear this change.   │
+└──────────────────────────────┘
+```
+
+- **Where it opens.** On a computer the microphone button has a small arrow (`chevron-down`, 20 × 32 px, 28 × 44 px on a touch
+  screen) beside it; it opens the popover under the strip, right-aligned like ⋯'s panel. On every device ⋯'s panel has the row
+  **Audio settings** in its "You" section (the `hearing` icon, `chevron-right`), which closes the panel and opens the same
+  popover (a sheet on the phone, and wherever ⋯'s own panel is a sheet). The arrow is absent on the phone, which keeps one
+  microphone button. While you work quietly the strip has no devices, so there is no arrow. Escape or a click outside closes it
+  and focus returns to the arrow (or to ⋯).
+- **Microphone.** A `Select` (label "Microphone") with the devices the browser lists, "Default" first. A fixed 8 px **level
+  meter** under it: a track the width of the popover in `--hov`, filled from the left in `--t1` (`--r-pill`, moving with
+  `transform` only, never eased), with the word beside it, "Speaking" or "Quiet" (`--fs-sm`, `--t2`, held for a moment so it does not
+  flicker). The track is an image named "Microphone level: Speaking" and the word is its text alternative, so a screen reader reads it
+  on request and is not interrupted by it. While the microphone is off the meter listens only while the popover is open and only if
+  the browser already allows the microphone, with one line of `--t3` text under it, "Only you hear this check. Nothing is sent." (the
+  browser's own recording mark shows); otherwise the meter row is one quiet button, **Test microphone**, with the same line. Where
+  the browser refuses the microphone the row says "The browser blocks the microphone. Allow it in the site settings." Below it the
+  **Microphone volume** slider and three switches in plain words (the browser's noise suppression, echo cancellation and automatic
+  gain, all on by default and each drawn only where the browser has it).
+- **Speakers or headphones.** A `Select` (label "Speakers or headphones") with a quiet **Test sound** beside it (one soft
+  tone through the chosen output at the chosen volume; the button says "Playing…" while it plays), then the **Everything you hear**
+  slider. Where the browser cannot choose an output (no `setSinkId`, or an iPhone or iPad) the Select is not drawn, and where it
+  cannot set the media volume at all (iOS) the slider is not drawn either: one line of `--t3` text with the `hearing` icon says
+  why, "Use your phone’s volume buttons." on iOS and "This browser plays sound through the output chosen in your system settings."
+  where only the choice is missing; Test sound stays. On Firefox, which lists output devices only after the person allows them, the
+  Select is one secondary button, **Choose speakers or headphones**, that opens the browser's own permission list.
+- **The slider** (`ui/Slider.tsx`) is a real `input type="range"`, so the arrow keys (one step), Page keys, Home and End and
+  assistive technology work as the browser gives them, with a visible label to its left and its value to its right in `Geist Mono`
+  (`--fs-sm`, `--t2`, tabular figures, a fixed 4-character width so the track never moves). The track is 4 px high in `--hov`, the part
+  up to the value in `--inv`, both with `--r-pill`; the thumb is a 16 px circle in `--inv` with a 2 px ring in `--el`, and 24 px on a
+  touch screen inside a 44 px high target. Focus is a 2 px `--t1` outline around the thumb, like the switch's. The slider's name is
+  its label ("Microphone volume") and its value text is the percent ("120%"). The microphone and each person go from 0 to 200 %;
+  "Everything you hear" from 0 to 100 % (it only lowers; the device's own volume sets the top). No motion: the thumb follows the
+  pointer.
+- **A person's sound.** A remote person's face in the strip is a button (name "Sound from Nia Okafor"; the speaking ring and the
+  muted-microphone badge stay) that opens a small popover under the face, the strip's own `lv-pop` at 280 px: their name, **Volume**
+  0 to 200 % and the switch **Mute for me**, and under them one line: "Only you hear this change." A person who is muted for you
+  shows the `quiet` icon as the face's badge in place of the microphone badge. These two controls are the same two rows in
+  ⋯ › Here now, under a remote person's name behind a quiet **Volume** button (it reads **Muted** with the `quiet` icon while they are muted for you; the strip's faces are not
+  shown below 980 px, and the phone has none), so every device reaches them. Nobody else is told and nothing is shared.
+- **Remembered.** Devices, volumes, the three switches, each person's volume and mute are kept on this device and come back in the
+  next call. A device that is gone (unplugged headphones) falls back to the default, and one calm toast (and, while the settings are open, one line in them) says so: "“Headphones” was
+  disconnected. Sound plays through the default output." (for a microphone: "… Flux uses the default microphone."), with no action.
+  Nothing here changes who can hear or see anything.
+- **Words.** "Audio settings", "Microphone", "Microphone volume", "Reduce background noise", "Cancel echo", "Even out my volume",
+  "Speakers or headphones", "Test sound", "Everything you hear", "Volume", "Mute for me". No jargon on screen.
+
 ### Create
 
 The phone's "+" and the computer's New (`C`) open Create with the same five types: Task, Thought,

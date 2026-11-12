@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Avatar, Button, Icon, IconButton } from '../ui';
+import { AudioSettingsRow } from './AudioSettings';
 import { inviteToSession } from './api';
 import { KIND_WORD, type Presentable } from './anchors';
 import { DeviceButton } from './DeviceButton';
 import { audienceOf } from './LiveEntry';
+import { PersonSound } from './ParticipantVolume';
 import type { LiveValue } from './LiveProvider';
 import { canPublishScreen } from './capture';
 import type { DiagnosticRow, MediaPerson } from './media';
@@ -55,6 +57,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
                 <Avatar name={live.fullName(person.userId)} id={person.userId} size="md" tone={person.local ? 'me' : 'neutral'} />
                 <span className="lv-person__b"><b>{person.local ? 'You' : live.nameOf(person.userId)}</b><span>{person.local && live.quiet ? 'quiet: not sending or hearing' : presence(person)}</span></span>
                 {person.speaking ? <span className="lv-person__speaking">speaking</span> : null}
+                <PersonSound live={live} person={person} />
               </li>
             ))}
           </ul>
@@ -86,6 +89,7 @@ export function LivePanel({ live, presentable, onShow, onClose }: { live: LiveVa
             <p className="lv-panel__text lv-panel__note"><Icon name="screen" size={14} />This browser cannot share its screen. You can still see screens others share, and show Flux work with <b>Show this</b>.</p>
           )}
         </div>
+        {live.audio ? <AudioSettingsRow onOpen={onClose} /> : null}
         {presentable ? (
           <Button variant="secondary" icon="show" block className="lv-panel__show" onClick={onShow} title={`Show “${presentable.label}”`}><span>Show “{presentable.label}”</span></Button>
         ) : <p className="lv-panel__text">Open a task, result, doc or map in this space to show it here.</p>}
