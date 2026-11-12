@@ -35,7 +35,9 @@
 .nset__panel { padding: 8px 18px 16px; }
 .nset__panel .sset-row { padding-inline: 0; min-height: 0; }
 .nset__times { display: flex; flex-wrap: wrap; gap: 10px 14px; margin: 6px 0 0; }
-.nset__times label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
+.nset__times label, .nset__time { display: grid; gap: 4px; }
+.nset__times label, .nset__time > label { font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
+@media (pointer: fine) { .nset__times .ui-pick { min-height: 36px; } }
 .nset__zone .ui-select { max-width: 260px; }
 
 /* The addresses, as the final design draws them: a tick on the left, the address with a line under it, then Send again and Remove at the
@@ -52,10 +54,10 @@
 .nset__add input { flex: 1; min-width: 0; }
 .nset__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .nset__row .ui-select { flex: 1; min-width: 0; }
-.nset__row input, .nset__add input, .nset__times input, .nset__row .ui-select, .nset__times .ui-select {
+.nset__row input, .nset__add input, .nset__row .ui-select, .nset__times .ui-select {
   min-height: 36px; border: 1px solid var(--line2); border-radius: var(--r); padding: 0 10px; background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md);
 }
-.nset__row input:focus-visible, .nset__add input:focus-visible, .nset__times input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.nset__row input:focus-visible, .nset__add input:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
 .nset__add input[aria-invalid="true"] { border-color: var(--t1); }
 .nset__add-error { display: flex; align-items: center; gap: 6px; flex: 1 1 100%; margin: 0; font-size: var(--fs-sm); color: var(--t1); }
 
@@ -79,7 +81,7 @@
 .unsub__link .ui-btn { margin-top: 0; }
 
 @media (pointer: coarse) {
-  .nset__row input, .nset__add input, .nset__row .ui-select, .nset__times input, .nset__times .ui-select { min-height: 44px; }
+  .nset__row input, .nset__add input, .nset__row .ui-select, .nset__times .ui-select { min-height: 44px; }
   /* The tick is a 44 px target; the row's own padding gives way to it. */
   .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto auto; padding-left: 4px; }
   .nset__tick { height: 44px; margin-block: -8px; }

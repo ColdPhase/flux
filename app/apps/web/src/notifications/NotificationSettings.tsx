@@ -8,7 +8,7 @@ import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
-import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
+import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup, TimeField } from '../ui';
 import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import { LEVELS } from './levels';
 import { notificationsChanged } from './mutes';
@@ -300,8 +300,8 @@ function QuietHours({ prefs, open, panelId, onToggle, onChange }: { prefs: Notif
             onChange={(on) => set(on && quiet.timeZone === 'UTC' && suggested !== 'UTC' ? { enabled: true, timeZone: suggested } : { enabled: on })} />
           {quiet.enabled ? (
             <div className="nset__times">
-              <label>From<input type="time" value={quiet.start} onChange={(event) => event.target.value && set({ start: event.target.value })} /></label>
-              <label>Until<input type="time" value={quiet.end} onChange={(event) => event.target.value && set({ end: event.target.value })} /></label>
+              <div className="nset__time"><label htmlFor={`${panelId}-from`}>From</label><TimeField id={`${panelId}-from`} value={quiet.start} onChange={(start) => set({ start })} /></div>
+              <div className="nset__time"><label htmlFor={`${panelId}-until`}>Until</label><TimeField id={`${panelId}-until`} value={quiet.end} onChange={(end) => set({ end })} /></div>
               <label className="nset__zone">Time zone
                 <Select value={quiet.timeZone} onChange={(next) => set({ timeZone: next })}>
                   {zones.map((zone) => <Option key={zone} value={zone}>{zoneLabel(zone)}</Option>)}

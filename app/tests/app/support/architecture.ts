@@ -228,3 +228,16 @@ export function nativeSelects(source: string): number[] {
     .replace(/(^|\s)\/\/.*$/gm, '$1');
   return code.split('\n').flatMap((line, index) => (/<select(?![\w-])|createElement\(\s*['"`]select['"`]/.test(line) ? [index + 1] : []));
 }
+
+/**
+ * Lines (1-based) that use the browser's own date or time controls or its suggestion list: `<input type="date|time|datetime-local|
+ * month|week">`, `<datalist>` and `showPicker()` (#1251). Their popups are drawn by the browser and ignore the tokens, the dark theme
+ * and the phone sheet; the shared `DateField` and `TimeField` (apps/web/src/ui) replace them. Comments are ignored.
+ */
+export function nativePickers(source: string): number[] {
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, (comment) => comment.replace(/[^\n]/g, ' '))
+    .replace(/(^|\s)\/\/.*$/gm, '$1');
+  return code.split('\n').flatMap((line, index) =>
+    (/\btype\s*[=:]\s*\{?\s*['"`](date|time|datetime-local|month|week)['"`]/.test(line) || /<datalist(?![\w-])/.test(line) || /\bshowPicker\b/.test(line) ? [index + 1] : []));
+}

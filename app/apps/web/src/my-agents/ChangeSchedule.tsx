@@ -1,6 +1,6 @@
 import { useId, useState } from 'react';
 import type { AssistantJob, AssistantJobSchedule } from '@flux/contracts';
-import { Button, Option, Select } from '../ui';
+import { Button, Option, Select, TimeField } from '../ui';
 import type { AgentSchedulesState } from './useAgentSchedules';
 
 // Change (F-036 AG-9, #858; mockup AgentReports "Turned on · Change"): what a schedule does, in the owner's own words, and for a daily, weekday or
@@ -40,7 +40,7 @@ export function ChangeSchedule({ job, state, agentName, onDone }: { job: Assista
               {DAYS.map((name, index) => <Option key={name} value={index + 1}>{name}</Option>)}
             </Select>
           ) : <span className="agp__hint">{job.schedule.kind === 'daily' ? 'Every day' : 'Weekdays'}</span>}
-          <input className="agp__input agc__time-input" type="time" aria-label="Time" value={at} onChange={(event) => setAt(event.target.value)} />
+          <TimeField aria-label="Time" value={at} onChange={setAt} />
         </div>
       ) : <p className="agp__hint">To change when it runs, tell {agentName}.</p>}
       <div className="agc__change-actions">

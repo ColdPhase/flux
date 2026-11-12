@@ -1,0 +1,69 @@
+/* The date and time fields (#1251, ui/DateField.tsx and ui/TimeField.tsx; Prostota "Date and time pickers"). Prostota tokens only,
+   so light and dark follow the theme. The field is the select's trigger (a text field and a chevron in one frame); the time list is
+   the select's own list (select.css), the date picker below is a month on the same surface. */
+.ui-pick {
+  position: relative; display: inline-flex; align-items: stretch; min-width: 0; min-height: var(--ctl); padding: 0 0 0 10px;
+  border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1);
+  font-size: var(--fs-md); line-height: 1.3;
+}
+.ui-pick__input {
+  flex: 1; min-width: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit;
+  font: inherit; font-variant-numeric: tabular-nums; outline: none; box-shadow: none;
+}
+.ui-pick__input:focus, .ui-pick__input:focus-visible { outline: none; box-shadow: none; }
+.ui-pick__input::placeholder { color: var(--t3); }
+.ui-pick--date .ui-pick__input { width: 13ch; }
+.ui-pick--time .ui-pick__input { width: 7ch; }
+.ui-pick__btn {
+  flex: none; display: grid; place-items: center; width: 32px; padding: 0; border-radius: 0 calc(var(--r) - 1px) calc(var(--r) - 1px) 0;
+  background: transparent; color: var(--t3); cursor: pointer;
+}
+.ui-pick__btn:disabled { cursor: default; }
+.ui-pick__btn:focus-visible { outline: 2px solid var(--t1); outline-offset: -3px; }
+.ui-pick__chev { transition: transform var(--dur-1) var(--ease-out); }
+.ui-pick[data-open] .ui-pick__chev { transform: rotate(180deg); }
+/* The soft field focus of the select and the other inputs (--t1 hairline inside, --sub halo), on the whole frame. */
+.ui-pick:focus-within { box-shadow: inset 0 0 0 1px var(--t1), 0 0 0 3px var(--sub); }
+/* Text that is not a day or a time: the invalid field's ring (--t1, 1.5 px), as the other fields'. */
+.ui-pick[data-invalid] { box-shadow: inset 0 0 0 1.5px var(--t1); }
+.ui-pick[data-invalid]:focus-within { box-shadow: inset 0 0 0 1.5px var(--t1), 0 0 0 3px var(--sub); }
+.ui-pick[data-disabled] { opacity: .55; }
+@media (hover: hover) { .ui-pick:not([data-disabled]):hover { border-color: var(--t3); } }
+@media (pointer: coarse) {
+  .ui-pick { min-height: 44px; font-size: var(--fs-input-touch); }
+  .ui-pick__btn { width: 44px; }
+  /* The text is a 44 px target in its own right: it reaches over the frame's hairline. */
+  .ui-pick__input { margin-block: -1px; }
+}
+
+/* The month on a computer: the select's list surface (select.css, .ui-select__pop) with a month inside. */
+.ui-cal-pop { width: 268px; }
+.ui-cal { display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 8px; overflow-y: auto; overscroll-behavior: contain; }
+.ui-cal__head { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.ui-cal__title { flex: 1; min-width: 0; margin: 0; color: var(--t1); font-size: var(--fs-md); font-weight: 500; text-align: center; }
+.ui-cal__nav { flex: none; }
+.ui-cal__grid { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; }
+.ui-cal__dow { padding: 4px 0; color: var(--t3); font-size: var(--fs-sm); font-weight: 500; text-align: center; }
+.ui-cal__grid td { padding: 0; text-align: center; }
+.ui-cal__day {
+  display: grid; place-items: center; width: 100%; height: 36px; padding: 0; border-radius: var(--r-sm); background: transparent; color: var(--t1);
+  font: inherit; font-size: var(--fs-md); font-variant-numeric: tabular-nums; cursor: pointer;
+}
+.ui-cal__day[data-outside] { color: var(--t3); }
+.ui-cal__day:disabled { color: var(--t3); opacity: .5; cursor: default; }
+/* Today is outlined; the chosen day is filled --inv, the app's one inverted fill. */
+.ui-cal__day[data-today] { box-shadow: inset 0 0 0 1px var(--t2); }
+.ui-cal__day[data-selected] { background: var(--inv); color: var(--oninv); box-shadow: none; font-weight: 500; }
+@media (hover: hover) { .ui-cal__day:hover:not(:disabled, [data-selected]) { background: var(--sub); } }
+.ui-cal__day:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
+.ui-cal__day[data-selected]:focus-visible { outline-color: var(--oninv); }
+.ui-cal__foot { display: flex; align-items: center; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
+.ui-cal__clear { margin-left: auto; }
+@media (pointer: coarse) { .ui-cal__day { height: 44px; } .ui-cal__nav { width: 44px; height: 44px; } .ui-cal-pop { width: 340px; } }
+
+/* The month in the phone's sheet (select.css, .ui-select-sheet): the days share the width, 44 px and more high. */
+.ui-select-sheet .ui-cal { padding: 4px 4px 0; gap: 6px; }
+.ui-select-sheet .ui-cal__day { height: 44px; font-size: var(--fs-lg); }
+.ui-select-sheet .ui-cal__title { font-size: var(--fs-lg); }
+.ui-select-sheet .ui-cal__dow { font-size: var(--fs-md); }
+.ui-select-sheet .ui-cal__foot .ui-btn { min-height: 44px; font-size: var(--fs-md); }

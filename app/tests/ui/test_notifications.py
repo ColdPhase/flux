@@ -289,7 +289,9 @@ class NotificationJourney(unittest.TestCase):
         quiet.click()
         expect(quiet).to_have_attribute("aria-checked", "true")
         page.get_by_label("From", exact=True).fill("21:30")
+        page.get_by_label("From", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         page.get_by_label("Until", exact=True).fill("07:15")
+        page.get_by_label("Until", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         expect_value(page.get_by_label("Time zone"), "Europe/Warsaw")
         expect(quiet_row).to_contain_text("21:30–7:15 · no email or push then; the Inbox keeps everything")
 
@@ -310,14 +312,18 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual((prefs["level"], prefs["emailMe"]), ("needsYou", True))
         # Rapid edits of two fields both survive a reload.
         page.get_by_label("From", exact=True).fill("21:45")
+        page.get_by_label("From", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         page.get_by_label("Until", exact=True).fill("06:30")
+        page.get_by_label("Until", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:45" and stored["quietHours"]["end"] == "06:30")
         page.reload()
         page.get_by_role("button", name="Change quiet hours").click()
         expect(page.get_by_label("From", exact=True)).to_have_value("21:45")
-        expect(page.get_by_label("Until", exact=True)).to_have_value("06:30")
+        expect(page.get_by_label("Until", exact=True)).to_have_value("6:30")
         page.get_by_label("From", exact=True).fill("21:30")
+        page.get_by_label("From", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         page.get_by_label("Until", exact=True).fill("07:15")
+        page.get_by_label("Until", exact=True).press("Enter")  # typed times commit on Enter or on leaving the field
         self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:30" and stored["quietHours"]["end"] == "07:15")
         expect(page.get_by_text("21:30–7:15 · no email or push then")).to_be_visible()
         shot(page, "notifications-desktop-1440-settings")

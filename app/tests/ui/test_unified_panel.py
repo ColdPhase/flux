@@ -248,7 +248,9 @@ class UnifiedPanel(unittest.TestCase):
         # Due: a date saved at once, cleared at once.
         panel.get_by_role("button", name="Due, add a date").click()
         day = (datetime.date.today() + datetime.timedelta(days=9)).isoformat()
-        panel.get_by_label("Due date").fill(day)
+        due = panel.get_by_label("Due date", exact=True)
+        due.fill(day)
+        due.press("Enter")  # a typed date commits on Enter (the month under the field saves a click)
         expect(panel.get_by_role("button", name=re.compile(r"^Due "))).to_be_visible()
         self.assertEqual(self.stored(task)["dueOn"], day)
         # Status changes with a key; the controls did not move.
@@ -272,7 +274,7 @@ class UnifiedPanel(unittest.TestCase):
         # Spokój rule 7: no control changed place.
         self.assertEqual(self.positions(page, names), before)
         panel.get_by_role("button", name=re.compile(r"^Due ")).click()
-        panel.get_by_role("button", name="Clear").click()
+        page.get_by_role("dialog", name="Due date").get_by_role("button", name="Clear", exact=True).click()
         expect(panel.get_by_role("button", name="Due, add a date")).to_be_visible()
         self.assertIsNone(self.stored(task)["dueOn"])
 

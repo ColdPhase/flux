@@ -1,6 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
-import { Morph, StatusGlyph } from '../ui';
+import { DateField, Morph, StatusGlyph } from '../ui';
 import { STATUS_LABEL, TASK_STATES, dueLabel, statusPhrase } from './format';
 import { PropertyMenu } from './PropertyMenu';
 
@@ -46,18 +46,13 @@ export { dueLabel } from './format';
 const todayKey = () => { const now = new Date(); return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`; };
 
 /**
- * The due day, edited where it is read: "Add a date" or the day, a click opens the browser's own date field, choosing
- * saves at once and Clear takes it away. Past its day and not finished, the word says so.
+ * The due day, edited where it is read: "Add a date" or the day; a click opens the date field with its calendar (a popover on a
+ * computer, the sheet on a phone), where a day, Today, Tomorrow or Clear saves at once and a typed "14 Nov" saves with Enter.
+ * Esc or a press outside leaves it unchanged. Past its day and not finished, the word says so.
  */
 export function DueField({ value, editable, finished, disabled, onSave }: { value: string | null; editable: boolean; finished: boolean; disabled?: boolean; onSave: (day: string | null) => Promise<boolean> }) {
   const [editing, setEditing] = useState(false);
-  const field = useRef<HTMLInputElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
-  useLayoutEffect(() => {
-    if (!editing) return;
-    field.current?.focus({ preventScroll: true });
-    try { field.current?.showPicker?.(); } catch { /* The field is still there to type in. */ }
-  }, [editing]);
   const leave = () => { setEditing(false); requestAnimationFrame(() => opener.current?.focus({ preventScroll: true })); };
   const late = !!value && !finished && value < todayKey();
   const text = value ? dueLabel(value) : 'Add a date';
@@ -71,10 +66,8 @@ export function DueField({ value, editable, finished, disabled, onSave }: { valu
   }
   return (
     <span className="wd-due-edit" onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); leave(); } }}>
-      <input ref={field} type="date" className="wd-due-edit__field" aria-label="Due date" value={value ?? ''} min="1970-01-01" max="9999-12-31"
-        onChange={(event) => { const next = event.target.value; if (next && next !== value) void onSave(next).then((ok) => { if (ok) leave(); }); }} />
-      {value ? <button type="button" className="wd-due-edit__clear" onClick={() => void onSave(null).then((ok) => { if (ok) leave(); })}>Clear</button> : null}
-      <button type="button" className="wd-due-edit__clear" onClick={leave}>Cancel</button>
+      <DateField aria-label="Due date" value={value ?? ''} clearable defaultOpen onDismiss={leave}
+        onChange={(next) => void onSave(next || null).then((ok) => { if (ok) leave(); })} />
     </span>
   );
 }

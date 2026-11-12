@@ -1,0 +1,1 @@
+- A task's due date, a schedule's time and Quiet hours use the app's own date and time pickers in place of the browser's, whose popups ignored the dark theme and the phone sheet: a field you can type in ("14 Nov", "9 pm") with a month (Today, Tomorrow, Clear) or the day in half hours opening under it, as a sheet on a phone ([#1251](https://github.com/ColdPhase/flux/issues/1251)).
