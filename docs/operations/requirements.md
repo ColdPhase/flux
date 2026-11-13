@@ -41,13 +41,14 @@ Off by default. Search ranks by BM25 alone ([F-042](../product/decisions.md#f-04
 which needs nothing beyond the table above. An operator with a larger server can turn on a local embedding container
 (`docker/compose.embeddings.yaml`, `FLUX_EMBEDDINGS=on` for a source checkout): the worker then stores a vector for each searchable
 row, and search fuses the nearest vectors with BM25, which found more of the questions asked in plain words, across languages and by
-paraphrase (recall@10 0.75 against 0.60 on the bench of [#1242](../product/research/2026-11-ai-context-retrieval.md#with-a-large-embedding-model-bge-m3)).
+paraphrase (recall@10 0.683 against BM25's 0.467, measured through Flux's own search on the bench of [#1242](../product/research/2026-11-ai-context-retrieval.md#measured-in-flux-itself-1294-2026-11-13);
+the research's own run gave 0.75 against 0.60).
 
 | | Needs | Notes |
 | --- | --- | --- |
 | **Memory** | **about 3 to 4 GiB**, on top of the base stack | text-embeddings-inference with bge-m3 (568 M parameters). Measured: 3.15 GiB idle and 3.9 GiB at its peak on 2 cores ([#1242](../product/research/2026-11-ai-context-retrieval.md#with-a-large-embedding-model-bge-m3)); 2.2 GiB idle and 2.8 GiB at its peak embedding 10,000 messages on a 24-thread host with the overlay's two tokenization workers. The Compose limit is 6 GiB (`FLUX_EMBEDDINGS_MEMORY`): 4 GiB killed it while it warmed up. With the base stack's 2.9 GB it wants a server of 8 GB or more. |
 | **CPU** | 2 cores | About 10 messages a second on 2 cores: 10,000 existing rows take about 17 minutes, then each new message is embedded within a second or so. A query costs about 80 ms more. |
-| **Disk** | 2.3 GB for the model, about 120 MiB of PostgreSQL per 10,000 rows | The model is downloaded on the first start into the `embeddings` volume. Vectors and their index grow with the rows; at 100,000 rows give `FLUX_DB_MEMORY` more room so the index stays in memory. |
+| **Disk** | 2.3 GB for the model, about 26 MiB of PostgreSQL per 10,000 rows | The model is downloaded on the first start into the `embeddings` volume. Vectors (half precision, 2 KiB each, no index) grow with the rows. Each search reads the vectors of every row the person may see, about 1 ms per 1,000 of them, so at 100,000 rows give `FLUX_DB_MEMORY` room for them (about 260 MiB) to stay in memory. |
 | **Network** | outbound HTTPS to `huggingface.co` on the first start | Nothing leaves the server afterwards: every text is embedded in the container. |
 
 Encrypted spaces and spaces with AI off are never embedded, and nothing is embedded through a person's own AI connection. Turning

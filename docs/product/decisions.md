@@ -653,7 +653,10 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   recorded here against the target; no tuning on the judged questions). Measured through Flux's own statement on the research bench
   (seed 1242, 10,000 messages, 60 questions as asked, bge-m3): the hybrid's recall@10 0.700 against BM25 alone 0.583; three questions
   explain the gap to the research's own run. Depth 20 or k = 10 reached 0.75 on these same 60 questions and were not adopted for that
-  reason. That figure was measured before #1293's visible-set BM25 replaced pg_search's score as the BM25 list; it was not measured again.
+  reason. Measured again on #1341's review with #1293's visible-set BM25 as the BM25 list and the exact half-precision vector list
+  (same seed, same container): **the hybrid 0.683, BM25 alone 0.467**, the vector list alone 0.733 (keywords 0.583 / 0.450;
+  bilingual 0.667 / 0.567). The hybrid lost one question; BM25 alone lost seven (#1293's ranking, not this change). Recorded as
+  measured; nothing was tuned on the judged questions.
 
 **Costs.** The database image is about 800 MB instead of the Alpine image's 300 MB (the Debian base about 150 MB more, the `pg_search` library 282 MB). The index is about 4 MiB per 10k short
 messages; a write costs about a quarter of a millisecond more (research). No new container, no new setting, no new polling.

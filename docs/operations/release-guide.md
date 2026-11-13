@@ -331,8 +331,8 @@ docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d 
 
 Until the model is loaded search ranks by BM25 alone and the worker retries by itself; it then embeds every searchable row of a space
 whose AI is on (about 17 minutes of two cores for 10,000 messages). Encrypted spaces and spaces with AI off are never embedded, and
-nothing is embedded through a person's own AI connection. On the bench of F-042 the fused ranking found 0.700 of the answers in the
-first ten for questions as asked, against 0.583 for BM25 alone.
+nothing is embedded through a person's own AI connection. On the bench of F-042 the fused ranking found 0.683 of the answers in the
+first ten for questions as asked, against 0.467 for BM25 alone.
 
 Once it is on, **pass `-f compose.embeddings.yaml` to every command** in this guide, next to the other overlays you use. To turn it
 off, run `docker compose --env-file .env -f compose.yaml up -d --wait --remove-orphans` without it: the next worker start deletes

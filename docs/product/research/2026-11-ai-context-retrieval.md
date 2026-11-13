@@ -232,6 +232,24 @@ statement. Command: `FLUX_CHECK_EMBEDDINGS=on FLUX_CHECK_EMBEDDINGS_CACHE=<dir> 
   3.15 idle and 3.9 peak on 2 cores); the vector list alone takes 2.9 ms through the index at 400 candidates and 25.7 ms at 1,000 (the exact scan 28.6 ms, at
   10,000 rows). An English question about a Polish message that shares none of its words found nothing by BM25 and the message first
   by the hybrid, through `ranked` and through the API container's `flux_search`.
+- **Changed on review (#1341, 2026-11-13): no HNSW index, exact distances over the visible rows only.** #1293's rule (no statistic of
+  the index and no row the caller may not see influences what they are shown) applies to the vector list too. An HNSW scan walks a
+  graph built over every vector of the instance and filters after its candidate list, so which visible rows it returns can depend on
+  hidden ones. Measured in pgvector 0.8.7 (PostgreSQL 18, synthetic clustered 1,024-dimension vectors, 20 queries, the visible rows
+  filtered by a join as in Flux): at 10,000 visible vectors and `ef_search` 1,000 the list equalled the exact one and 2,000 hidden rows
+  near the queries changed nothing; at 50,000 it differed from the exact list for 6 of 20 queries, and at `ef_search` 100 the 2,000
+  hidden rows changed the visible list of 4 of 20 queries. The statement therefore computes every visible row's distance exactly
+  (`search-vectors.test.ts` holds it with thirty hidden rows nearer to the query than anything visible). Its cost, one distance per
+  visible vector on one core: 23 ms at 10,000 and 170 ms at 50,000 for full-precision vectors read from TOAST, 90 to 100 ms at 50,000
+  kept in the row, **36 to 45 ms at 50,000 at half precision kept in the row** (`halfvec`, the same top 50 for the probed query), which
+  migration 0068 now uses (2 KiB a vector, 132 MiB for 50,000 against 268 MiB). The figures above with "HNSW" describe the statement
+  before this change; the exact scan they compare against is what the statement does now. The BM25 list fused is #1293's, computed
+  over the visible hits only. **Recall measured again with both changes** (the same seed and container, 2026-11-13,
+  [raw results](evidence/1294/results-flux-hybrid-bge-m3-review-1341.json)): question 0.467 BM25 / **0.683 hybrid** / 0.733 vectors
+  alone; keywords 0.450 / 0.583 / 0.633; bilingual 0.567 / 0.667 / 0.717. The vector list alone is unchanged at half precision (0.733,
+  as at full precision above) and takes 11 ms mean, 13 ms p95, over the 10,000 visible messages. The hybrid lost one question of 60
+  against the table above; BM25 alone lost seven, which is #1293's visible-set ranking (term frequency one, statistics over the visible
+  hits), not the vectors. The worker embedded the corpus in 1,554 s this time (6.4 a second; the host was shared with other suites). Probes and their output: [evidence/1294/review-1341](evidence/1294/review-1341/) (`hnsw-probe*.sql`, `storage-probe.sql`, run in `pgvector/pgvector:0.8.7-pg18-trixie`).
 
 ### Cost of each option
 

@@ -194,8 +194,8 @@ describe('optional embeddings: off by default, hybrid ranking when on', () => {
     try {
       for (let index = 0; index < 30; index += 1) await say(ari, thread.id, `Cat kitten kot ${index}.`);
       await settled();
-      const near = await pool.query(`SELECT 1 FROM search_vectors v JOIN search_documents d ON d.id = v.document_id WHERE d.project_id = $1`, [council.id]);
-      assert.equal(near.rowCount, 31, 'the hidden rows have their vectors');
+      const near = await pool.query(`SELECT 1 FROM search_vectors v JOIN search_documents d ON d.id = v.document_id WHERE d.project_id = $1 AND d.kind = 'message'`, [council.id]);
+      assert.equal(near.rowCount, 31, 'the hidden messages have their vectors');
       assert.deepEqual({ all: await answer(), here: await answer({ type: 'project', id: open.id }) }, before);
     } finally {
       await pool.query('DELETE FROM project_messages WHERE conversation_id = $1', [thread.id]);

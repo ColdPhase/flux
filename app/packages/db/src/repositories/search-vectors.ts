@@ -32,7 +32,9 @@ export const vectorLiteral = (vector: number[]) => `[${vector.join(',')}]`;
  * same filters** (`visible`: the audiences, the place, the author, the dates, the task lifecycle), each distance computed exactly. No
  * approximate index is used (#1326's rule, F-042: no row the caller may not read may influence what they see): an HNSW scan walks a graph
  * built over every row of the instance and filters afterwards, so which visible rows it returns could depend on hidden ones. The cost is
- * one distance per visible vector (about 2.3 ms per 1,000 on the review's host, #1341).
+ * one distance per visible vector (half precision kept in the row: about 1 ms per 1,000 on one core, #1341). The visible rows are found
+ * through the BM25 index's audience field (`pdb.all()` under the audiences: pg_search matches, nothing is scored) and each one's vector
+ * by its key, so the work grows with what the caller may see, not with the instance (a join let PostgreSQL read every vector).
  *
  * The score is the fused sum scaled to (0, 1] (a row first in both lists is 1, first in one 0.5), like the squashed BM25 rank, so
  * an encrypted space's rows still merge with it; the task the query names by its number keeps its added 10.
@@ -47,8 +49,10 @@ export function hybridMatched(parts: { vector: string; visible: SQL; number: num
         SELECT r.id, r.numbered, r.rank, r.at FROM ranked r ORDER BY r.numbered DESC, r.rank DESC, r.at DESC, r.id DESC LIMIT ${depth}) l
     ),
     distances AS MATERIALIZED (
-      SELECT sd.id, v.embedding <=> ${parts.vector}::halfvec AS distance FROM search_documents sd
-      JOIN search_vectors v ON v.document_id = sd.id WHERE ${parts.visible}
+      SELECT d.id, d.distance FROM (
+        SELECT sd.id, (SELECT v.embedding <=> ${parts.vector}::halfvec FROM search_vectors v WHERE v.document_id = sd.id) AS distance
+        FROM search_documents sd WHERE ${parts.visible} AND sd.id @@@ pdb.all()) d
+      WHERE d.distance IS NOT NULL
     ),
     nearest AS MATERIALIZED (
       SELECT n.id, row_number() OVER (ORDER BY n.distance, n.id) AS rk FROM (

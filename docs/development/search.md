@@ -231,11 +231,24 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 
 Off unless the operator runs `docker/compose.embeddings.yaml` (text-embeddings-inference with bge-m3, pinned by digest) and the worker
 finds `FLUX_EMBEDDINGS_URL`. Then ranked search (`searchRows(db, vectors).ranked`) fuses two lists inside its one statement, by
-reciprocal rank (k = 60): the best 50 rows by BM25 and the best 50 by cosine distance of their vector to the vector of the
-query's words (the HNSW index looking at 1,000 candidates), each under the same audiences and filters. A row in both lists ranks
-higher; a page is a position in that fused list (at most 100 rows), and a vector that is missing, or a container that is down, leaves the BM25 list alone.
+reciprocal rank (k = 60): the best 50 of the BM25 order above (computed over the visible hits, `rankedStatement`) and the best 50
+by cosine distance of their vector to the vector of the query's words **among the rows the reader may see under the same filters**
+(`hybridMatched` in `packages/db/src/repositories/search-vectors.ts`). A row in both lists ranks higher; a page is a position in that
+fused list (at most 100 rows), and a vector that is missing, or a container that is down, leaves the BM25 list alone.
 
-- **Storage** (migration 0068): `search_vectors` (`document_id`, `vector(1024)`, an HNSW index) per `search_documents` row,
+- **No hidden row moves the order here either** (#1293's rule). Every distance is computed exactly, over the visible, filtered rows
+  only; there is no HNSW index. An HNSW scan walks a graph built over every vector of the instance and filters after its candidate
+  list, so which visible rows it returns depends on the hidden ones: on #1341's review, at 50,000 visible vectors and `ef_search` 100,
+  2,000 hidden rows near the queries changed the visible list of 4 of 20 queries. The exact list costs one distance per visible vector:
+  about 40 ms at 50,000 at half precision kept in the row (170 ms for full-precision vectors read from TOAST), 23 ms at 10,000 at
+  full precision, on one core. The visible rows come from the BM25 index's audience field (`sd.id @@@ pdb.all()` under the audiences;
+  nothing is scored) and each one's vector by its key, so the work grows with what the reader may see, not with the instance: a plain
+  join let PostgreSQL read every vector of the instance (`evidence/1294/review-1341/plan-probe.log` in the research folder).
+  `search-vectors.test.ts` holds it with thirty hidden rows nearer to the query than anything visible.
+- **The score** in a position is the fused sum scaled to (0, 1] (first in both lists: 1, first in one: 0.5), so that an encrypted
+  space's rows still merge with it as they do with the squashed BM25 rank; the task a query names by its number keeps its added 10.
+
+- **Storage** (migration 0068): `search_vectors` (`document_id`, `halfvec(1024)` kept in the row with `STORAGE PLAIN`, about 2 KiB) per `search_documents` row,
   `search_vector_queue` and `search_vector_state`. The one state row is what switches embeddings on; without it the triggers return at
   once, so an installation that never turns them on writes nothing here and sends no NOTIFY. The worker deletes the row, and empties
   both tables, at the first start without `FLUX_EMBEDDINGS_URL`.
