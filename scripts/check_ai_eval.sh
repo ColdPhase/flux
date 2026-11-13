@@ -24,8 +24,8 @@
 # FLUX_EVAL_ENGINE (#1441): empty runs the questions in the worker's own agent loop (the 0.847 baseline); `pi` runs them in pi in the
 # agent runtime (FLUX_AGENT_RUNTIME=pi: runtime-egress, runtime-manager and runtime-1 join the stack), with the same key, model and
 # questions. pi's model requests go through the worker's model gateway, whose Anthropic upstream is the same recording proxy, so the
-# ledger and the cap see every request. The runtime needs a host with kernel.yama.ptrace_scope >= 1 and Landlock ABI 4 (a GitHub runner:
-# .github/workflows/ai-eval.yml); on another host runtime-1 stays unhealthy and the run stops before any question.
+# ledger and the cap see every request. The runtime needs a host with kernel.yama.ptrace_scope >= 1 and Landlock ABI 4 (founder decision
+# 2026-11-13: run it on this host, with the key file above); on another host runtime-1 stays unhealthy and the run stops before any question.
 set -eu
 
 cd "$(dirname "$0")/.."

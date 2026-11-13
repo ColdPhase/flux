@@ -88,20 +88,6 @@ required PR checks, and building/publishing the finished version. Scope and
 credentials come from the release contract. Routine pipeline work within that
 authorization can proceed without repeated permission requests.
 
-## The answer-accuracy evaluation on demand (`ai-eval.yml`, #1295, #1441)
-
-[`ai-eval.yml`](../../.github/workflows/ai-eval.yml) runs `scripts/check_ai_eval.sh` on a runner, exactly as locally, so that the pi
-engine (`engine: pi`, `FLUX_EVAL_ENGINE=pi`: the agent runtime with `FLUX_AGENT_RUNTIME=pi`) can be measured on a host with
-`kernel.yama.ptrace_scope` 1 and Landlock ABI 4. It is the one workflow that uses a provider key, so: `workflow_dispatch` only, one run at
-a time (`concurrency: ai-eval`, never cancelled midway), `permissions: contents: read`, actions pinned by SHA, inputs through `env`
-after validation, a cap per run (`max_usd`, at most 2 dollars; the recording proxy refuses any request that could pass it), 90 minutes.
-The key is the `FLUX_EVAL_ANTHROPIC_KEY` secret of the `ai-eval` **environment** (an operator creates it; agents never do, and never put
-a key in a workflow, a log or a PR); it reaches only the step that writes the script's key file (mode 600). The artifact (7 days) keeps
-`results.json`, `results.md`, `summary.txt`, the run's `spend.tsv` line and the log's tail, looked through for the key before the upload;
-add the spend line to the harness ledger (`.worktrees/ai-eval-evidence/spend.tsv`). A workflow is dispatchable only once it is on `main`:
-then `gh workflow run ai-eval.yml -f ref=<branch> -f engine=pi -f label=<label>`. The tested ref's scripts run with the key: dispatch refs
-you have read. `tests/test_ai_eval_workflow.py` guards its shape.
-
 ## Available in this foundation
 
 [Repository checks](../../.github/workflows/repository-checks.yml) runs
