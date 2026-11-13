@@ -461,7 +461,7 @@ A task has one discussion (#868), where people and agents talk about it:
   space shares an owner's first name, the label has the owner's full name, "Asystent (Ada Nowak's agent)" (#1163). Every agent named by
   any read of a space (a task's owner or creator, a decision's author, a conversation's starter) gets the same label (`withAgentLabels`).
   `author.kind` is Flux's, so a person whose chosen name looks like an agent's label is still `human`; a run's brief gives the agent its
-  own id to compare with `author.id`, and the API-key engine's `<conversation>` marks each message `by="person"`, `"agent"` or `"you"`.
+  own id to compare with `author.id`, and a direct message's `<conversation>` in the brief marks who wrote each message with `by=`.
 - At most five agent messages in a row until a person writes; the sixth is refused with `AGENT_TURN_LIMIT` and nothing is written or
   debited. Only a person's message gives an agent more. A retry with the same `clientCommandId` replays. The limit holds for every
   agent write into the discussion, not only this tool: `flux_reply_in_conversation` and `flux_ask_question` with the discussion's
@@ -764,7 +764,7 @@ as the search cursor key.
   callbacks with the approval's claims.
 - **A run with no tool here:** a run is bound only the tools it may use, and may have none that this server defines (a direct message's
   one tool, `flux_read_web`, while the operator has reading the web off). Its server still declares the `tools` capability, so its list is
-  `[]`, not "Method not found" (#1155): the worker's `mcpToolHost` treats a failed list as a lost run.
+  `[]`, not "Method not found" (#1155; the worker's `mcpToolHost`, which treated a failed list as a lost run, is no longer used by a run: the harness is the client now).
 
 ## Verification boundary
 

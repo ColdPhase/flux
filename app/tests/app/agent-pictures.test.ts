@@ -1,28 +1,24 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import { assistantChangeActionPath, assistantRunShowPath, filePath, imageTypeOf, pictureBounds, type ShowAnswerResult } from '@flux/contracts';
-import { type PersonalComputeResult } from '@flux/core';
 import { pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 import { png } from './support/pictures.js';
 import { assertSamePixels } from './support/picture-pixels.js';
 // The pictures are read back with the same sharp the server uses (its own dependency, not the test workspace's).
 import sharp from '../../apps/server/node_modules/sharp/dist/index.mjs';
 
-// An agent attaches a picture to its answer (#1217, F-036 AG-8, C-59), on the real /mcp route with a run's token and through the real worker
-// loop with a fake provider. The API of the check stack reaches the link mock as `public.test` (a closed world: every other address, and
+// An agent attaches a picture to its answer (#1217, F-036 AG-8, C-59), on the real /mcp route with a run's token and, for an API-key agent,
+// as pi in the agent runtime (#1441, RT-1) whose model is a scripted stand-in for Flux's model gateway. The API of the check stack reaches the link mock as `public.test` (a closed world: every other address, and
 // every IP literal, is not public). The server downloads the picture, keeps only the picture, stages it for the asker, and Show everyone
 // posts it with the answer, where every member of the space can open it. Every refusal is plain words, and nothing is kept.
 
 const SITE = process.env.FLUX_LINK_MOCK_URL ?? 'http://linkmock:8098';
 const at = (path: string) => `http://public.test${path}`;
 const hits = async (prefix = '/pic') => (await (await fetch(`${SITE}/__hits?prefix=${encodeURIComponent(prefix)}`)).json()) as { path: string }[];
-const usage = { inputTokens: 300, outputTokens: 20 };
-const calls = (...list: { name: string; input: Record<string, unknown> }[]): PersonalComputeResult => ({ kind: 'completed', text: 'working', stopReason: 'tool_use', usage,
-  toolCalls: list.map((call, index) => ({ id: `call-${index}-${randomUUID()}`, name: call.name, input: call.input })) });
-const answer = (words: string): PersonalComputeResult => ({ kind: 'completed', text: words, stopReason: 'end_turn', usage });
 const stagedFor = async (userId: string) => (await pool.query(`SELECT id, name, size, message_id, uploader_id, uploader_agent_id FROM project_files
   WHERE uploader_id = $1 AND message_id IS NULL ORDER BY created_at`, [userId])).rows as { id: string; name: string; size: number; message_id: string | null; uploader_id: string | null; uploader_agent_id: string | null }[];
 const pictureChanges = async (runId: string) => (await changesOf(runId)).filter((row) => row.operation === 'answer.picture.attach');
@@ -34,24 +30,24 @@ const download = async (who: AssistantScene['owner'], id: string) => {
 
 describe('flux_attach_image: an agent attaches a public picture to its answer', () => {
   let scene: AssistantScene;
-  before(async () => { scene = await assistantScene('pic'); });
+  let pi: PiRuntime;
+  before(async () => { pi = await startPiRuntime(); scene = await assistantScene('pic', { pi }); });
+  after(async () => { await pi.close(); });
   beforeEach(async () => {
     await scene.reset();
     await fetch(`${SITE}/__reset`);
-    scene.compute.dispatched.length = 0;
     await pool.query(`DELETE FROM project_files WHERE uploader_id = $1 AND message_id IS NULL`, [scene.owner.id]);
   });
 
   test('/ai "find a picture of a raised garden bed and show it": the picture is the asker\'s until Show everyone, then every member sees it', async () => {
-    const replies = [calls({ name: 'flux_attach_image', input: { clientCommandId: randomUUID(), url: at('/pic/raised-bed.png'), caption: 'Raised garden bed' } }),
-      answer('Here is a raised garden bed made of larch boards, from public.test.')];
-    scene.compute.respond = async () => replies.shift()!;
+    pi.gateway.script([{ tool: 'mcp__flux__flux_attach_image', args: { clientCommandId: randomUUID(), url: at('/pic/raised-bed.png'), caption: 'Raised garden bed' } },
+      { text: 'Here is a raised garden bed made of larch boards, from public.test.' }]);
     const started = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'find a picture of a raised garden bed and show it' });
-    assert.equal(await scene.processor.process(started.run.id), 'completed');
-    // The provider was offered the tool, and told how to use it; the tool's words came back as plain text.
-    assert.ok(scene.compute.dispatched[0]!.tools?.some((tool) => tool.name === 'flux_attach_image'), 'offered on /ai in a space');
-    assert.match(scene.compute.dispatched[0]!.system, /attach it to your answer with flux_attach_image/);
-    assert.match(JSON.stringify(scene.compute.dispatched[1]!.turns), /The picture is attached to your answer/);
+    assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    // The model was offered the tool, and told how to use it; the tool's words came back as plain text.
+    assert.ok(pi.gateway.requests[0]!.tools.includes('mcp__flux__flux_attach_image'), 'offered on /ai in a space');
+    assert.match(pi.gateway.requests[0]!.prompt, /attach it to your answer with flux_attach_image/);
+    assert.match(pi.gateway.requests[1]!.results[0] ?? '', /The picture is attached to your answer/);
     // One applied change, its line, and the file: the asker's, staged, with only the picture in it.
     const [change] = await pictureChanges(started.run.id);
     assert.deepEqual([change!.state, change!.object_title], ['applied', 'Raised garden bed from public.test/pic/raised-bed.png'], 'its line names where it comes from');

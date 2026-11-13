@@ -2,8 +2,9 @@
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh. That stack is composed with the
 TEST-ONLY switch `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`: every person has a fixture key
-connection and the real worker sends runs through the real `@flux/agent-runtime` Anthropic
-adapter to `tests/ui/anthropic_mock.py`. Nothing here calls a model; no test is a provider,
+connection, and the real worker runs each agent in pi in the agent runtime (#1441, RT-1); pi's model
+requests go through the worker's model gateway to `tests/ui/anthropic_mock.py`, and pi reads the space with Flux's
+own tools. Nothing here calls a model; no test is a provider,
 billing or compatibility pass. The production fail-closed states (provider off, no key) are
 exercised against the production composition in tests/app/personal-runs.test.ts; here they are
 only rendered from a stubbed status response, which proves wording, not behaviour.
@@ -287,7 +288,10 @@ class PersonalAssistantJourney(unittest.TestCase):
     # ---------------------------------------------------------------- a run, its working line and the shared answer
 
     def test_06_owner_sees_the_working_line_and_the_private_answer_and_nobody_else_sees_either(self) -> None:
-        mock("/__script", {"reset": True, "delay": 2.5, "text": "Fact: the camera fails below 5 lux {second}. Interpretation: the ToF sensor is the better next test {first}."})
+        # pi is not given the conversation: the model reads it with a Flux tool, then answers and cites what the tool returned (C-62). `{cite1}` is the
+        # opening message, `{cite2}` Kai's reply.
+        mock("/__script", {"reset": True, "delay": 2.5, "text": "Fact: the camera fails below 5 lux {cite2}. Interpretation: the ToF sensor is the better next test {cite1}.",
+                           "tool": [{"name": "flux_get_conversation", "input": {"projectId": self.ids["project"], "id": self.ids["conversation"]}}]})
         jo = self.conversation("jo")
         kai = self.conversation("kai")
         self.ask(jo, "Summarize where we are")
@@ -313,23 +317,24 @@ class PersonalAssistantJourney(unittest.TestCase):
         cite = card.locator(".assistant-cite").first
         expect(cite).to_have_text("1")
         expect(cite).to_have_attribute("aria-label", re.compile(r"^Source \d+: message #\d+ by Kai Lund$"))
-        # What left Flux: one count, one Messages request, the fixture key, no retries, no DM.
+        # What left Flux: two Messages requests (the tool call, then the answer), the fixture key, no retries, no DM.
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
-        self.assertEqual(len(sent), 1)
+        self.assertEqual(len(sent), 2)
         self.assertTrue(all(item["key_ok"] for item in mock("/__requests")["requests"]))
-        self.assertEqual(sent[0]["retry_count"], "0")
         body = sent[0]["body"]
-        self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 4000, {"effort": "low"}))
+        self.assertEqual(body["model"], "claude-sonnet-5")
         # F-027 A6 (#484) and A3 (#403): the run offers its exact tools (reads and change tools), listed by /mcp to its
         # run token; the co-work claim, transfer and request tools, bootstrap and proposal tools are never offered to a run.
-        tools = sorted(tool["name"] for tool in body.get("tools", []))
+        # pi names a Flux tool `mcp__flux__<tool>` and offers its own read, bash, edit and write beside them.
+        tools = sorted(tool["name"].removeprefix("mcp__flux__") for tool in body.get("tools", []) if tool["name"].startswith("mcp__flux__"))
         self.assertIn("flux_get_conversation", tools)
         self.assertIn("flux_create_task", tools)
         self.assertIn("flux_create_unit", tools)  # the owner-assistant hand-off, with its own private input
         for absent in ("flux_bootstrap", "flux_claim_unit", "flux_transfer_unit", "flux_create_proposal", "flux_undo_task_creation", "flux_ask_question"):
             self.assertNotIn(absent, tools)
-        self.assertIn(KAI_REPLY, json.dumps(body))
-        self.assertNotIn(DM_TOKEN, json.dumps(body))
+        # The answer came from what the tool returned: the conversation, with Kai's reply, and nothing of the DM.
+        self.assertIn(KAI_REPLY, json.dumps(sent[1]["body"]))
+        self.assertNotIn(DM_TOKEN, json.dumps([item["body"] for item in sent]))
         run = self.own_runs(jo)[0]
         self.assertEqual((run["status"], run["cost"]["state"]), ("completed", "observed"))
         card.get_by_role("button", name="Dismiss").click()
@@ -362,8 +367,7 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_07b_working_motion_follows_execution_and_pauses_unseen(self) -> None:
         """#155 AC-3/AC-4: the working mark moves only while the run actually executes, pauses under a modal
         or off screen, is static while stopping, and the line's text always says what is happening."""
-        # The provider answers after 12 s, so the run is executing for the whole check; Stop ends it below
-        # (the worker holds the stopped call until the provider answers, so the delay stays short).
+        # The provider answers after 12 s, so the run is executing for the whole check; Stop ends it below.
         mock("/__script", {"reset": True, "delay": 12})
         jo = self.conversation("jo")
         self.ask(jo, "Compare the two sensors once more")

@@ -175,8 +175,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 
 Kept from PROV-4:
 
-- API keys are sealed at rest (AEAD) and only the worker decrypts them. The API sends a key only
-  while it is being added, to list its models (CA-2), before sealing it. A key never appears in API
+- API keys are sealed at rest (AEAD). The worker decrypts a key for each model request of its model gateway; the API decrypts
+  one only for `flux_web_search`, one search of a run in pi on the run's own key (#1441, RT-5). The API sends a key while it is being
+  added, to list its models (CA-2), before sealing it. A key never appears in API
   responses, stream frames, jobs, logs, exports or error bodies; a seeded-key absence test runs
   for every adapter.
 - **Base URL guard.** Public HTTPS by default; redirects are not followed; response time and size

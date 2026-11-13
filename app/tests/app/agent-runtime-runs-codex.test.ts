@@ -95,7 +95,6 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     await slot.close();
   });
   beforeEach(async () => {
-    compute.dispatched = [];
     await resetFake();
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
@@ -240,7 +239,6 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     const second = await ask();
     assert.equal(await processor.process(second.run.id), 'unavailable');
     assert.deepEqual([(await row(second.run.id)).end_reason, (await row(second.run.id)).plan_limit_resets_at], ['plan_limit', null]);
-    assert.equal(compute.dispatched.length, 0);
   });
 
   test('expired login, both timeouts, crash, oversized output, a broken stream and the turn cap each end in their own state', async () => {
@@ -268,7 +266,6 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
         await pool.query(`UPDATE agent_runtime_connections SET state = 'signed_in', signed_in_at = now() WHERE owner_user_id = $1 AND client = 'codex'`, [owner.id]);
       }
     }
-    assert.equal(compute.dispatched.length, 0);
   });
 
   test('Stop ends the CLI; a token-shaped string or the run token in the answer is redacted', async () => {

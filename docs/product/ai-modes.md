@@ -366,7 +366,7 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   Responses' `web_search`), with no other tool and Flux's own short instruction, and at most three searches (Anthropic `max_uses`,
   OpenAI `max_tool_calls`); it holds the request's largest cost for that bound, the searches' fees included, against the key's daily
   budget before sending it (a search that does not fit is refused with that reason and nothing is sent) and charges what the provider
-  reported on the run after it, the gateway's rule (a request never sent and a complete error answer cost nothing); and it records the query and the result addresses like a CLI's search (C-30). A key whose
+  reported on the run after it, the gateway's rule (a request never sent, and an error the provider documents as free, cost nothing; any other failure keeps the hold); and it records the query and the result addresses like a CLI's search (C-30). A key whose
   provider has no hosted search through Flux's adapters (OpenRouter, Gemini's OpenAI-compatible endpoint, OpenAI-compatible and
   self-hosted, CA-6) has no such tool and its brief says it has no web search; it reads the pages it is given with
   `flux_read_web`. `FLUX_WEB_READS=off` removes it. Pages are read with `flux_read_web` only, never from the sandbox's network.

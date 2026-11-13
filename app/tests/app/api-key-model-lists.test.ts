@@ -1,26 +1,22 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { after, before, describe, test } from 'node:test';
-import { createDatabase, personalConnectionLookup } from '@flux/db';
-import { createPersonalRunProcessor, type Principal } from '@flux/core';
+import { before, after, describe, test } from 'node:test';
+import { personalConnectionLookup } from '@flux/db';
+import type { Principal } from '@flux/core';
 import { AI_MODEL_LISTS_PATH, groupModelsByFamily, type AiModelList, type AssistantModelListing, type BackgroundComputeConnection, type Conversation } from '@flux/contracts';
-import { listKeyModels, parsePrivateTargets, providerPersonalCompute, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
+import { listKeyModels, parsePrivateTargets, PUBLIC_ONLY } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
-import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
+import { db, pool } from './support/db.js';
 import { expectStatus, person, project, workspace, type Person } from './support/people.js';
 import { chooseModel, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import type { KeyListRequest } from './support/key-list-mock.js';
-import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // An API key's models come from its provider, read with that key (CA-2, #1218), against the provider mock's key listings
 // (`/lists/…`, FLUX_TEST_PROVIDER_LISTS): the listing and its failures, the key test before a save, the picker by family with prices,
-// a model priced by its owner, a model the provider retired, Try again through the worker, and a run sent with the listed model id.
+// a model priced by its owner, a model the provider retired, Try again through the worker, and a run sent with the listed model id: the run
+// is an API-key run in pi in the agent runtime (#1441, RT-1; support/pi-runtime.ts) on a scripted model.
 // The keys carry the marker check_application.sh looks for in the logs. No real provider is called.
-
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) throw new Error('DATABASE_URL is required');
-const { pool, db } = createDatabase(connectionString);
-after(() => pool.end());
 
 const MOCK = process.env.FLUX_PROVIDER_MOCK_URL ?? 'http://providermock:8095';
 const path = '/api/v1/background-compute-connections';
@@ -40,10 +36,6 @@ const lists = { policy: parsePrivateTargets(new URL(MOCK).hostname),
 async function keyLists(body?: unknown) {
   const response = await fetch(`${MOCK}/__key-lists`, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
   return ((await response.json()) as { requests: KeyListRequest[] }).requests;
-}
-async function providerRequests(body?: unknown, pathname = '/__requests') {
-  const response = await fetch(`${MOCK}${pathname}`, body === undefined ? {} : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
-  return ((await response.json()) as { requests: RecordedProviderRequest[] }).requests;
 }
 const askedWith = async (key: string) => (await keyLists()).filter((item) => item.key === key);
 
@@ -118,7 +110,9 @@ describe('a key, its models and its agents (#1218)', () => {
   let owner: Person;
   let agentId: string;
   let thread: Conversation;
-  const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections: personalConnectionLookup(db), providerEnabled: true });
+  let pi: PiRuntime;
+  const connections = personalConnectionLookup(db);
+  const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections, providerEnabled: true });
 
   before(async () => {
     owner = await person('model-list-owner');
@@ -127,7 +121,10 @@ describe('a key, its models and its agents (#1218)', () => {
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
+    pi = await startPiRuntime();
+    await pi.place(owner.id);
   });
+  after(async () => { await pi.close(); });
 
   test('a key its provider refuses is not saved: "This key was refused by Anthropic"', async () => {
     const before = (expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).length;
@@ -185,18 +182,16 @@ describe('a key, its models and its agents (#1218)', () => {
     assert.deepEqual((await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-sonnet-5-7' })).current, { connection: key.id, model: 'claude-sonnet-5-7' });
     await chooseModel(runs, human(owner), { connection: key.id, model: 'claude-opus-5-5' });
 
-    // A run on Opus goes to the provider with the model id the provider listed, at the table's Opus price.
-    const compute = providerPersonalCompute({ enabled: true, policy: parsePrivateTargets(new URL(MOCK).hostname), timeoutMs: 5_000,
-      baseUrls: { anthropic: `${MOCK}/anthropic` }, resolveKey: async (keyRef) => (keyRef === key.id ? apiKey : null) });
-    const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: personalConnectionLookup(db), compute, stopPollMs: 20 });
-    await providerRequests({}, '/__reset');
-    await providerRequests({ wire: 'anthropic', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } }, '/__script');
+    // A run on Opus goes to pi with the model id the provider listed; Flux's gateway forwards it to the provider with the key (what it
+    // charges at the table's Opus price is the gateway's own suite).
+    const processor = pi.processor(connections);
+    pi.gateway.script([{ text: 'Fact: the camera fails below 5 lux.' }]);
     const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
-    assert.equal(await processor.process(asked.run.id), 'completed');
-    const sent = (await providerRequests()).filter((item) => item.path === '/anthropic/v1/messages');
-    assert.deepEqual(sent.map((item) => (item.body as { model: string }).model), ['claude-opus-5-5']);
-    const row = (await pool.query('SELECT model, charged_micros FROM personal_runs WHERE id = $1', [asked.run.id])).rows[0];
-    assert.deepEqual(row, { model: 'claude-opus-5-5', charged_micros: Math.ceil((1_000 * 4_000_000 + 100 * 20_000_000) / 1_000_000) });
+    assert.equal(await processor.process(asked.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.deepEqual(pi.gateway.requests.map((item) => [item.path, item.model]), [['/anthropic/v1/messages', 'claude-opus-5-5']]);
+    assert.equal(JSON.stringify(pi.gateway.requests).includes(apiKey), false, 'the key stays in Flux');
+    const row = (await pool.query('SELECT model FROM personal_runs WHERE id = $1', [asked.run.id])).rows[0];
+    assert.deepEqual(row, { model: 'claude-opus-5-5' });
   });
 
   test('a model the provider retires shows as no longer offered and pauses its agent, never switched; Try again reads the list through the worker', async () => {
