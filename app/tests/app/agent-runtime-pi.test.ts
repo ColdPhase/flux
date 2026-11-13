@@ -230,11 +230,10 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
 
 describe('pi\'s launcher templates and the protocol (#1441)', () => {
   test('the flags: JSON mode, nothing persisted or discovered, pi\'s MCP only, exactly its four tools and Flux\'s', () => {
-    const args = piArgs(true, 'brief', 'claude-haiku-5-5');
+    const args = piArgs('brief', 'claude-haiku-5-5');
     for (const flag of ['--no-session', '--no-extensions', '--no-skills', '--no-prompt-templates', '--no-themes', '--no-context-files', '--no-approve', '--offline']) assert.ok(args.includes(flag), flag);
     assert.deepEqual(args.slice(args.indexOf('-e'), args.indexOf('-e') + 2), ['-e', 'builtin:mcp']);
     assert.equal(args[args.indexOf('--tools') + 1], 'read,bash,edit,write,mcp__flux__*');
-    assert.equal(piArgs(false, 'brief', 'm')[piArgs(false, 'brief', 'm').indexOf('--tools') + 1], 'mcp__flux__*', 'without the sandbox: Flux\'s tools only');
   });
 
   test('the gateway adapter: each provider\'s wire format below the gateway, the run token by name, no address-based guessing', () => {

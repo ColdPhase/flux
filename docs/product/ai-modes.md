@@ -32,7 +32,8 @@ the option C comment before it), on the harness research ([PR #1440](https://git
    "Ask me first", which covers changes in Flux only, never commands inside the agent's own sandbox. **The agent runtime is a requirement
    of Flux AI, like Docker.** There is no other engine: the Flux worker has no agent loop of its own (removed in v0.2.1) and never runs
    pi itself. Where the runtime cannot run, Flux AI is unavailable: `./flux up` checks the host and says in one sentence what to fix
-   (for example `kernel.yama.ptrace_scope=1`), and Settings › AI shows the same reason with the runtime-off wording plans already have.
+   (for example `kernel.yama.ptrace_scope=1`, or "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)."
+   for a kernel without Landlock ABI 4, founder decision 2026-11-13), and Settings › AI shows the same reason with the runtime-off wording plans already have.
 2. **Only models that call tools can be agents.** The server refuses a model that cannot call tools the way it refuses an unpriced
    one, and decides it by **one check, not by tables or owner switches** (founder-approved direction, 2026-11-13): when a key is added
    in Connect AI, and when a model of a key's list is chosen for an agent, the server sends the provider one small request on that
@@ -282,9 +283,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   logged or sent). What this cannot catch: a value the model rewrites (encoded, split) before sending it; accepted risk 10. What Codex reads from
   its home at start (instructions, settings, skills, hooks, its `.env`) is removed before and after every run with its own tools, and a login the run wrote over its own (an attacker's account, which would
   carry the person's next runs there) is replaced by the one the run started with.
-- **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled), the runtime keeps its
-  CLIs as before: Flux's tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs
-  `tools_off` once at start.
+- **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled) **the runtime does not
+  start** (founder decision 2026-11-13, #1441): there is no mode where agents run without their own shell and files, so Flux AI is
+  off. The runtime's start check and `./flux up` say one sentence: "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu
+  24.04 or Debian 13)."
 - **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex, or an API-key run in pi (#1441), names a file of its scratch by its path; the Flux
   server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
   while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
@@ -584,7 +586,7 @@ operator decides for their server through the operator step (RT-9).
    egress and the per-run sandbox (RT-5), not the tool list: no command reaches the vendor login, the run token, another
    person, another run, `/data`, the database or the LAN, and nothing it writes outside the scratch outlives the run. What a
    shell can still do: use the run's CPU, memory and scratch up to the run's limits; read the system's own files and other
-   people's command lines (RT-3). It has no network (the tools are off on a kernel without Landlock's network rules). Codex is
+   people's command lines (RT-3). It has no network (the runtime does not start on a kernel without Landlock's network rules). Codex is
    the weaker side: it applies an `apply_patch` itself, outside the shell sandbox, and its `exec_command` (0.160.1) starts the
    shell the model names, which then runs under Codex's outer domain only (its own home, its login included, the scratch and
    the egress). Flux kills every process of the person the moment Codex reports such a change or command, refuses a Flux change
