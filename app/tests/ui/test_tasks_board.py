@@ -515,7 +515,9 @@ class TasksBoardJourney(unittest.TestCase):
         # The Decisions view's list and archive are gone, and so are its old links: an address with one is just the board.
         for old in ("needs", "rules"):
             page.goto(f"/projects/{self.ids['project']}/tasks?status={old}")
-            expect(page).to_have_url(re.compile(rf"/tasks\?status={old}$"))
+            # The board mirrors its view into the address (replaceState), so the unknown status leaves it once the board is drawn:
+            # either address is the board, never another list.
+            expect(page).to_have_url(re.compile(rf"/tasks(\?status={old})?$"))
             expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
         expect(page.get_by_role("region", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
