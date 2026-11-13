@@ -35,7 +35,7 @@ import './project-header.css';
 import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext';
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
-import { OwnWorkingAgentsProvider, ProjectAgentStop, useAgentWorkingIn } from './WorkingAgent';
+import { OwnWorkingAgentsProvider, ProjectAgentStop } from './WorkingAgent';
 import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { retireLeftCopies } from '../docs/drafts';
@@ -584,7 +584,6 @@ function AppLayoutContent() {
   ] : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audience = project ? audienceLine(project.people, me.user.id) : 'People with space access';
-  const agentWorking = useAgentWorkingIn(projectId);
   // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
   const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
   // A task or decision opens in the one detail panel with its kind as a chip (F-026 S4).
@@ -891,7 +890,7 @@ function AppLayoutContent() {
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} working={agentWorking} onOpen={openAudience} />
+            {project?.people ? <HeaderFaces people={project.people} meId={me.user.id} audience={audience} projectId={projectId} onOpen={openAudience} />
               : lockedHere && lockedPeople ? <HeaderFaces people={lockedPeople} meId={me.user.id} audience={audienceLine(lockedPeople, me.user.id)} onOpen={() => shell.openDetails({ kind: 'people', workspaceId: lockedSpace.id })} /> : null}
             {activeProject ? <LiveEntry /> : null}
             {/* ⋯ is there only where it has rows: My tasks, My map and an agent's chat have none, so no empty menu opens (#1424). */}

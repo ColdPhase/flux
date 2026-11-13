@@ -2,16 +2,18 @@ import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type 
 import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, IconButton, Kreska, usePop } from '../ui';
 import { activeFirst } from '../people/lastActive';
+import { useAgentWorkingIn } from './WorkingAgent';
 
 /**
  * The people of a space as faces, one button to the space's people (F-026 §4 header). Agents are not members: they are not counted in "+N" and
- * have no face here except one that works for its owner right now, drawn as Kreska after the people and only while it works (`working`, S13).
+ * have no face here except one that works for its owner right now on a task of `projectId`, drawn as Kreska after the people and only while it works (S13).
  * People are grey circles with initials. The faces touch, side by side as drawn, and what does not fit is one "+N" face. The button hugs them
  * and ends at the slot's right edge; the slot (`top__faces-slot`) keeps the width the header's other controls rely on whatever the number of
  * faces (#873), so no pill is wider than its faces (#1236). A header pane of 70 rem and up has room for three people, the agent and "+N"; a
  * narrower one for two people, the agent and "+N" (a two-digit one too), so both counts are drawn and the pane's width chooses (project-header.css).
  */
-export function HeaderFaces({ people, meId, audience, working = false, onOpen }: { people: ProjectPerson[]; meId: string; audience: string; working?: boolean; onOpen: () => void }) {
+export function HeaderFaces({ people, meId, audience, projectId, onOpen }: { people: ProjectPerson[]; meId: string; audience: string; projectId?: string; onOpen: () => void }) {
+  const working = useAgentWorkingIn(projectId);
   // The people active now come first (#1236, #1225), then the others as the list has them.
   const humans = activeFirst(people, meId).filter((person) => person.kind === 'human');
   const shown = humans.slice(0, 3);
