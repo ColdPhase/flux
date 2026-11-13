@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import type { Conversation, Project } from '@flux/contracts';
 import type { PersonalComputeResult, PersonalToolCall } from '@flux/core';
-import { db, pool } from './support/db.js';
+import { pool } from './support/db.js';
 import { expectStatus, project as createProject } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';

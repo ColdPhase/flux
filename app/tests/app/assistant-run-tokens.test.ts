@@ -44,7 +44,7 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * #1381 (C-62) tells the agent in three descriptions to look in the Wiki for how, what and why and how to cite a page: 37 tools, MEASURED UTF-8 bytes
  * (2026-11-13, local test.sh run; the bound was 27,000).
  */
-const TOOL_DEFINITION_BYTES = 27_000;
+const TOOL_DEFINITION_BYTES = 27_600;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);

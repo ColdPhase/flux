@@ -164,7 +164,6 @@ export async function sourcesShown(ports: PersonalRunPorts, run: Pick<RunRecord,
       case 'doc': case 'decision': return { type: source.type, id: source.id, projectId: source.projectId, title: '' };
       case 'work': return { type: 'work', id: source.id, revision: source.revision, projectId: source.projectId };
       case 'message': return { type: 'message', id: source.id, revision: source.revision, projectId: source.projectId };
-      default: return { ...source };
     }
   });
 }
