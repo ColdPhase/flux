@@ -137,13 +137,6 @@ run_browser() {
 $compose build
 $compose up -d db migrate
 $compose --profile setup run --rm files-init
-if [ -n "$runtime_up" ]; then
-  $compose up -d --wait runtime-egress runtime-manager runtime-1
-  attempt=0
-  until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
-    attempt=$((attempt + 1)); [ "$attempt" -lt 60 ] || { echo "the worker's model gateway did not listen" >&2; exit 1; }; sleep 1
-  done
-fi
 
 # Fresh VAPID keys per run, created with the same command operators use (docs/development/containers.md).
 keys=$($compose run --rm --no-deps -T migrate apps/worker/node_modules/.bin/web-push generate-vapid-keys --json)
@@ -154,6 +147,15 @@ export FLUX_VAPID_SUBJECT="mailto:push-test@example.test"
 if [ -z "$FLUX_VAPID_PUBLIC_KEY" ] || [ -z "$FLUX_VAPID_PRIVATE_KEY" ]; then
   echo "VAPID key generation failed: $keys" >&2
   exit 1
+fi
+# The runtime and the worker whose model gateway it reaches, started once the worker's whole environment (VAPID above) is set.
+if [ -n "$runtime_up" ]; then
+  $compose up -d --wait runtime-egress runtime-manager runtime-1
+  $compose up -d worker
+  attempt=0
+  until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
+    attempt=$((attempt + 1)); [ "$attempt" -lt 60 ] || { echo "the worker's model gateway did not listen" >&2; exit 1; }; sleep 1
+  done
 fi
 
 # F-037: the first account on a server sets up its company and owns its Everyone space. One made here, before any test,
