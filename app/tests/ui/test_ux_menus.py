@@ -113,6 +113,18 @@ class UxSimplicityPartAMenus(unittest.TestCase):
                     expect(menu.get_by_role("menuitem", name=re.compile(gone))).to_have_count(0)
                 expect(page.locator(header).get_by_role("button", name=re.compile("^(Call|Join)"))).to_have_count(0)
 
+    def test_06_message_info_left_open_does_not_follow_into_a_space(self) -> None:
+        # A space has no panel of its own: the docked Message info of a direct message closes on the way to a space, never an empty panel.
+        page = self.page()
+        page.goto(f"/dm/{self.ids['dm']}")
+        expect(page.get_by_role("heading", level=1, name=re.compile("Jonas Berg"))).to_be_visible()
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info").click()
+        expect(page.locator("#details")).to_contain_text("Message info")
+        page.locator(".app__side").get_by_role("link", name=re.compile("^Community garden sensors")).first.click()
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
+        expect(page.locator("#details")).to_have_count(0)
+
     def test_07_a_member_with_nothing_connected_sees_no_new_agent_and_no_plan_the_server_cannot_run(self) -> None:
         page = self.page("jonas")
         # The test composition gives every person a fixture key (docs/development/personal-runs.md), so "nothing connected" is what the
