@@ -712,7 +712,7 @@ class NotificationJourney(unittest.TestCase):
         expect(hide).to_have_attribute("aria-checked", "false")
         self.assertFalse(self.api(page, "GET", "/api/v1/notification-preferences")["hidePreviews"], "off by default")
         # Plain words, in the Where card, between this device and quiet hours; no other control or sample came with it.
-        row = where.locator(".sset-row").filter(has=hide)
+        row = where.locator(".sset-row").filter(has=page.get_by_role("switch", name="Hide previews"))
         expect(row).to_contain_text("Notifications show who and where, never the message")
         labels = [re.sub(r"\s+", " ", text).strip() for text in where.locator(".sset-row__t").all_inner_texts()]
         self.assertEqual(labels[labels.index("On this device") + 1:labels.index("On this device") + 3], ["Hide previews", "Quiet hours"])
