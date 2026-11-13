@@ -153,7 +153,8 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.deepEqual(await compute().dispatch(other, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' });
     const otherWire = { ...request, connection: { ...request.connection, provider: 'openai' as const } };
     for (const bad of [{ ...request, model: 'not a model id' }, { ...request, maxTokens: 4_001 }, { ...request, effort: 'high' as 'low' }, otherWire]) {
-      await assert.rejects(compute().dispatch(bad, new AbortController().signal));
+      // Never sent, so it costs nothing (security review of #1453): refused, not thrown.
+      assert.deepEqual(await compute().dispatch(bad, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' });
     }
     assert.equal(seen.length, 0, 'no request reached the provider');
     assert.deepEqual(resolved, ['someone-else'], 'an out-of-limit request never even resolves a key');
