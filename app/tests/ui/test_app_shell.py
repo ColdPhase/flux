@@ -623,7 +623,8 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
+                # The sidebar has no row of ⋯ (#1376): Settings and Space details are the plain rows, Mute space the one with its hint.
+                self.assertEqual([text for text in geometry["rowTexts"] if not text.startswith("Mute")], ["Settings", "Space details"], f"Settings and Space details are shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
                     # 44 px rows measure 43.99998… while the menu is still settling (WebKit): a rounding tolerance, not a smaller target.
