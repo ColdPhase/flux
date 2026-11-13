@@ -206,6 +206,10 @@ class VideoPlayback(unittest.TestCase):
         expect(download).to_have_attribute("href", f"/api/v1/files/{self.ids['odd:file']}")
         expect(download).to_have_attribute("download", "Odd codec.mov")
         expect(viewer.get_by_role("alert")).to_have_count(0)
+        # Readable on the viewer's black: the viewer's own light text, not the grey of a light sheet.
+        light = viewer.get_by_text("This browser can't play this video.").evaluate(
+            "p => getComputedStyle(p).color.match(/[\\d.]+/g).slice(0, 3).map(Number).every(c => c > 200)")
+        self.assertTrue(light, "the message is light on the black stage")
         self.shot(page, "video-unsupported-1440")
         # The download itself is the whole file, as sent.
         self.assertEqual(page.request.get(f"/api/v1/files/{self.ids['odd:file']}").body(), ODD_CODEC)
