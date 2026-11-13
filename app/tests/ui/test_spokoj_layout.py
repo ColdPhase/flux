@@ -411,10 +411,10 @@ class SpokojLayout(unittest.TestCase):
                 expect(page.get_by_label("Only mine")).to_have_count(0)
                 expect(page.get_by_role("textbox", name=re.compile("Add a task", re.I))).to_have_count(0)
                 self.assert_same_place(board, controls(), f"{size['width']} list with Mine")
-                # One page of tasks has no Previous and Next (Spokój rule 4); Refresh stays.
+                # One page of tasks has no Previous and Next (Spokój rule 4) and says "3 tasks"; Refresh stays.
                 names["Mine"].click()
                 pages = page.get_by_role("navigation", name="Work pages")
-                expect(pages).to_contain_text("1–3 of 3 tasks")
+                expect(pages).to_contain_text("3 tasks")
                 expect(pages.get_by_role("button", name="Previous", exact=True)).to_have_count(0)
                 expect(pages.get_by_role("button", name="Next", exact=True)).to_have_count(0)
                 expect(pages.get_by_role("button", name="Refresh", exact=True)).to_be_visible()

@@ -34,7 +34,7 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/agents', label: 'AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
   // The company's name and people have one stable place (F-037, #763 PE-1): read-only for members and guests.
   { to: '/settings/company', label: 'Company', match: /^\/settings\/company/ },
-  { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
+  { to: '/settings/shortcuts', label: 'Shortcuts', match: /^\/settings\/shortcuts$/ },
 ];
 
 /** A guest has no agents and no AI (F-036 AG-2), so Settings shows them no AI section. */
@@ -450,7 +450,7 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['Z'], action: 'Undo' },
   { keys: ['R'], action: 'Reply in thread' },
   { keys: ['T'], action: 'Create a task from a message' },
-  { keys: ['1', '–', '5'], action: 'Task state' },
+  { keys: ['1', '–', '4'], action: 'Task state' },
   { keys: ['['], action: 'Collapse the sidebar' },
   { keys: ['Esc'], action: 'Close a panel or menu' },
 ];
@@ -459,9 +459,9 @@ export function KeyboardShortcuts() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Keyboard shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
+        <PageHead title="Shortcuts" lead="On a computer, or a tablet with a keyboard. The keys also show next to their actions in menus." />
         <table className="sset-card sset-keys">
-          <caption className="ui-vh">Keyboard shortcuts</caption>
+          <caption className="ui-vh">Shortcuts</caption>
           <thead className="ui-vh"><tr><th scope="col">Keys</th><th scope="col">Action</th></tr></thead>
           <tbody>
             {SHORTCUTS.map((shortcut) => (

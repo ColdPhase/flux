@@ -171,7 +171,7 @@ class PhoneFinal(unittest.TestCase):
                     expect(bar.locator('[aria-current="page"]')).to_have_count(1)
                 page.goto("/projects")
                 expect(page.get_by_role("heading", level=1, name="Spaces")).to_be_visible()
-                expect(page.get_by_role("heading", name="Direct messages")).to_be_visible()
+                expect(page.get_by_role("heading", name="Messages", exact=True)).to_be_visible()
                 row = page.get_by_role("link", name=re.compile("Kai Tanaka"))
                 expect(row).to_be_visible()
                 self.assertGreaterEqual(self.box(row)["height"], 44)

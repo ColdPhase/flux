@@ -216,7 +216,7 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 .ws-none__b { padding: 0; font: inherit; font-weight: 500; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
 .ws-group { scroll-margin-top: 12px; }
 .ws-pages { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 12px 0; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.ws-pages__range { color: var(--t3); font-family: var(--mono); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.ws-pages__range { color: var(--t3); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .ws-pages__actions { display: flex; gap: 4px; }
 @media (pointer: coarse) {
   .ws-mine { min-height: 44px; }

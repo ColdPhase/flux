@@ -205,7 +205,7 @@ function AccountNotificationSettings() {
       <h3 className="sset-sec" id={ids.sound}>Sound</h3>
       <div className="sset-card" role="group" aria-labelledby={ids.sound}>
         <SwitchRow label="Sound for messages" checked={prefs.sound.messages}
-          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for direct messages and mentions while Flux is open'}
+          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for messages to you and mentions while Flux is open'}
           onChange={(messages) => change({ sound: { messages } }, (current) => ({ ...current, sound: { ...current.sound, messages } }))} />
         <SwitchRow label="Sound when someone calls me" checked={prefs.sound.calls}
           detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'One soft chime when someone invites you to a call'}
@@ -412,7 +412,7 @@ function MutePicker({ places, onMute, pending }: { places: MutedPlace[]; onMute:
       <Select id={selectId} value={choice} disabled={!!pending} onChange={(next) => { choiceVersion.current += 1; setChoice(next); }}>
         <Option value="">Choose a space or conversation…</Option>
         {places.some((item) => item.type === 'project') ? <OptionGroup label="Spaces">{places.filter((item) => item.type === 'project').map((item) => <Option key={item.id} value={`project:${item.id}`}># {item.name}</Option>)}</OptionGroup> : null}
-        {places.some((item) => item.type === 'dm') ? <OptionGroup label="Direct messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
+        {places.some((item) => item.type === 'dm') ? <OptionGroup label="Messages">{places.filter((item) => item.type === 'dm').map((item) => <Option key={item.id} value={`dm:${item.id}`}>{item.name}</Option>)}</OptionGroup> : null}
       </Select>
       <Button disabled={!place && !pending} busy={!!pending} onClick={() => {
         if (!place) return;
