@@ -194,7 +194,7 @@ ICE_PATH = """async () => {
 }"""
 
 JOIN_PROBE = """() => {
-  const region = document.querySelector('[role="region"][aria-label="Live session"]');
+  const region = document.querySelector('[role="region"][aria-label="Call"]');
   const live = window.__live || {};
   return { url: location.pathname, userAgent: navigator.userAgent,
     header: document.querySelector('header.top, header.phead')?.innerText.slice(0, 200) ?? null,
@@ -224,15 +224,15 @@ STAGE_PROBE = """() => {
     transform: cs?.transform ?? null, atBackCenter, viewport: [innerWidth, innerHeight] };
 }"""
 
-CAMERA_LABELS = """() => [...document.querySelectorAll('[role="dialog"][aria-label="Live session"] button')]
+CAMERA_LABELS = """() => [...document.querySelectorAll('[role="dialog"][aria-label="Call details"] button')]
   .map((b) => b.getAttribute('aria-label')).filter((label) => label && /Camera/.test(label))"""
 
 SHEET_PROBE = """() => {
   const rect = (el) => { if (!el) return null; const b = el.getBoundingClientRect();
     return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; };
   const describe = (el) => el ? `${el.tagName.toLowerCase()}.${String(el.className).split(' ').slice(0, 2).join('.')}` : null;
-  const sheet = document.querySelector('[role="dialog"][aria-label="Live session"]');
-  const camera = [...document.querySelectorAll('[role="dialog"][aria-label="Live session"] button')].find((b) => /^Camera off/.test(b.getAttribute('aria-label') || ''));
+  const sheet = document.querySelector('[role="dialog"][aria-label="Call details"]');
+  const camera = [...document.querySelectorAll('[role="dialog"][aria-label="Call details"] button')].find((b) => /^Camera off/.test(b.getAttribute('aria-label') || ''));
   let atCameraCenter = null;
   if (camera) { const b = camera.getBoundingClientRect(); atCameraCenter = describe(document.elementFromPoint(b.x + b.width / 2, b.y + b.height / 2)); }
   return { sheet: rect(sheet), camera: rect(camera), atCameraCenter, viewport: [innerWidth, innerHeight] };
@@ -401,8 +401,8 @@ class PlatformRows(LiveBase):
 
         # Honest capability state: no screen button in the strip, and the panel explains why.
         expect(bar.get_by_role("button", name=re.compile("Share a window"))).to_have_count(0)
-        bar.get_by_role("button", name="Session details and more").click()
-        sheet = page.get_by_role("dialog", name="Live session")
+        bar.get_by_role("button", name="Call details and more").click()
+        sheet = page.get_by_role("dialog", name="Call details", exact=True)
         expect(sheet).to_contain_text("This browser cannot share its screen.")
         expect(sheet.get_by_role("button", name=re.compile("Share a window"))).to_have_count(0)
         self.observed[row.name]["sheetDiagnostics"] = page.evaluate(SHEET_PROBE)

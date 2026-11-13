@@ -67,14 +67,14 @@ AI**, which opens Details with the options marked "not available yet". Nothing c
 ## PWA (#41) in the shell
 
 `main.tsx` registers the service worker, the router root renders the update prompt on every
-page, the account menu holds this device's notification control and session, the shell
+page, Settings (opened by the name at the foot of the sidebar, #1419) holds this device's notification control and session, the shell
 refreshes the push subscription after sign-in, and sign-out calls `signOutDevice()`. The
 update prompt is a row above the shell with **Later** and **Reload**, never a layer over it
 ([mobile-pwa.md](../../product/mobile-pwa.md)).
 
 ## Signing out
 
-**Sign out** in the account menu is a navigation (a form post to `/sign-out`), not a background
+**Sign out** in Settings › Account is a navigation (a form post to `/sign-out`), not a background
 request, so it replaces whatever the tab is still loading: a slow page can never land after the
 sign-in page or take its address. It ends on `/sign-in` with "You’re signed out." When the server
 cannot sign the device out, the person stays signed in and the sign-out page says so and offers

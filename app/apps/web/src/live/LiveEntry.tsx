@@ -1,8 +1,9 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { useNavigate } from 'react-router';
 import type { LiveSession, ProjectPerson } from '@flux/contracts';
 import { Avatar, Button, Spinner, useLoopPause } from '../ui';
 import { useProjectShell } from '../project/data';
-import { anchorLabel, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
+import { anchorLabel, anchorPath, KIND_WORD, sameContext, type LiveAnchor } from './anchors';
 import { sessionAt, useLive, useLiveHere, useProjectSessions } from './LiveProvider';
 import { Popover } from './Popover';
 
@@ -49,7 +50,7 @@ export function joinWords(session: LiveSession, opts: { who: string | null; plac
 }
 
 /**
- * “Work on this together” where the work is (#59 §1): one action starts a session at the current task, map, doc or the space (from its
+ * “Call” where the work is (#59 §1; one name for a call, #1424): one action starts a call at the current task, map, doc or the space (from its
  * conversation, F-041), joins it with every device off and tells the space's people. Any call of the space with someone in it turns the
  * header's Call into Join wherever the person is in the space (#1230): the one at this place first, else the newest elsewhere.
  */
@@ -59,6 +60,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
 }) {
   const live = useLive();
   const here = useLiveHere();
+  const navigate = useNavigate();
   const anchor = given ?? here.anchor;
   const shell = useProjectShell();
   const projectId = anchor?.projectId ?? shell?.project.id;
@@ -76,7 +78,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   const awayLabel = useWarmLabel(away);
 
   // Spokój rule 7: the header's Call keeps its place in every view. Where there is nothing to work on together
-  // (nothing open to anchor a session, a session already joined, or still checking) it stays, and a click says why
+  // (nothing open to anchor a call, or still checking) it stays, and a click says why
   // (#763 sweep: a permanently greyed button read as broken).
   // While you are in the call the slot shows the call's state, "In call" with the live dot (a spinner while it connects), not a Call button again
   // (#1378); it is the same quiet button and explains itself, so it starts nothing and the slot keeps its width.
@@ -101,24 +103,50 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   // on #1419 item 4, #1424). Until the server has said which it is (one short read), nothing is shown either, so a server without calls never
   // flashes a Call that goes away.
   if (!configured) return null;
-  // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why.
-  if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to work on it together.');
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
 
+  // In the call, the header's slot shows the call and takes you to it, not a Call that does nothing (#1424): the call's place when you are
+  // elsewhere, else its stage (a shared screen or the cameras, again to put it away), else the strip's own place button.
+  const goToCall = () => {
+    const where = live.anchor;
+    if (!where) return;
+    const screens = live.media?.screens ?? [];
+    const cameras = live.media?.cameras ?? [];
+    if (!here.anchor || !sameContext(here.anchor.context, where.context)) navigate(anchorPath(where), { state: { liveFollow: true } });
+    else if (screens.length || cameras.length) { if (live.stage.open) live.closeStage(); else live.openStage(screens[0]?.key ?? null); }
+    else document.querySelector<HTMLElement>('.lv-bar .lv-where')?.focus();
+  };
   if (inSession) {
-    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a call.', busy ? 'connecting' : 'in');
+    if (busy && (variant === 'header' || variant === 'more')) return dimmed('Connecting to the call.', 'connecting');
+    if (variant === 'more') return (
+      <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); goToCall(); }}>
+        <LiveDot on={!live.quiet} /><span className="lv-now__t">In call</span><span id={noteId} className="ui-vh">Go to the call.</span>
+      </button>
+    );
+    if (variant === 'header') return (
+      <span className="lv-entry">
+        <Button variant="quiet" className="lv-entry__btn lv-entry__btn--on" aria-label="In call" aria-describedby={noteId} data-tip="Go to the call" onClick={goToCall}>
+          <LiveDot on={!live.quiet} /><span className="lv-entry__label">In call</span>
+        </Button>
+        <span id={noteId} className="ui-vh">You are in this call. Go to it.</span>
+      </span>
+    );
     if (anchor && live.session && sameContext(live.session.context, anchor.context))
       return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the call for this {KIND_WORD[anchor.context.type]}.</p>;
     return null;
   }
+
+  // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why (the order of #763:
+  // the place first).
+  if (!anchor && !(hereJoinable ?? away)) return dimmed('Open a conversation, task, map or page to start a call there.');
 
   const target = hereJoinable ?? away;
   const word = anchor ? KIND_WORD[anchor.context.type] : 'space';
   const audience = audienceOf(projectPeople, live.meId);
   const joinable = !!target;
   const present = target ? (target.participants ?? []).map((p) => p.userId).filter((id) => id !== live.meId) : [];
-  const label = target ? joinWords(target, { who: whoIsIn(target, nameOf, live.meId), place: awayLabel, away: target === away }) : 'Work on this together';
+  const label = target ? joinWords(target, { who: whoIsIn(target, nameOf, live.meId), place: awayLabel, away: target === away }) : 'Call';
 
   const act = () => {
     if (target && target === away) void live.join(away, awayAnchor(away, awayLabel, shell?.project));
@@ -129,14 +157,14 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   if (variant === 'more') return (
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow lv-now" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
       {joinable ? <LiveDot on /> : null}<span className="lv-now__t">{joinable ? label : 'Call'}</span>
-      <span id={noteId} className="ui-vh">{joinable ? 'Microphone and camera stay off.' : `Work on this ${word} together. ${audience}.`}</span>
+      <span id={noteId} className="ui-vh">{joinable ? 'Microphone and camera stay off.' : `Call about this ${word}. ${audience}.`}</span>
     </button>
   );
 
   if (variant === 'inline') {
     return (
       <div className="lv-inline">
-        <Button variant={joinable ? 'primary' : 'secondary'} icon="together" busy={busy} onClick={act} aria-describedby={noteId}>{joinable ? (present.length ? `Join ${namesLine(present, nameOf, live.meId)}` : 'Join the session') : label}</Button>
+        <Button variant={joinable ? 'primary' : 'secondary'} icon="together" busy={busy} onClick={act} aria-describedby={noteId}>{joinable ? (present.length ? `Join ${namesLine(present, nameOf, live.meId)}` : 'Join the call') : label}</Button>
         <p id={noteId} className="lv-inline__note">{joinable ? `${present.length ? 'Live now · ' : ''}microphone and camera stay off until you turn them on` : `${audience} · nothing turns on until you choose`}</p>
       </div>
     );
@@ -152,7 +180,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
         {joinable && present.length ? <span className="lv-faces" aria-hidden="true">{present.slice(0, 2).map((id) => <Avatar key={id} name={nameOf(id)} id={id} size="sm" />)}</span> : null}
         <span className="lv-entry__label">{joinable ? 'Join' : 'Call'}</span>
       </Button>
-      <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}. Nothing turns on until you choose.`}</span>
+      <span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Call about this ${word}. ${audience}. Nothing turns on until you choose.`}</span>
     </span>
   );
 }
@@ -279,7 +307,7 @@ export function LiveCue({ id, buttonId }: { id: string; buttonId: string }) {
   return (
     <span className="top__live-cue" id={id}>
       <LiveDot on />
-      <span className="ui-vh">{others.length ? 'live now in this space' : 'live session here'}</span>
+      <span className="ui-vh">{others.length ? 'live now in this space' : 'live now here'}</span>
       {others.map((session) => <LabelWarm key={session.id} session={session} />)}
     </span>
   );

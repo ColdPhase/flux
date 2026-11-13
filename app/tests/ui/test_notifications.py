@@ -180,13 +180,15 @@ class NotificationJourney(unittest.TestCase):
         expect(cards).to_have_count(3)
         # Every item has its reason in words and says where it came from; replies, direct messages and assigned
         # work are notifications, not needs, and stay out of the queue (they reach you where they happen).
-        for title, kind in [
-            ("Decision proposed", None),
-            ("Kai Tanaka asked you in Garden sensors", "Question"),
-            ("Kai Tanaka mentioned you in Garden sensors", None),
+        # Each row is "Kind · who · space" and then what it says (#1424): a question and a mention have no "asked you in" sentence of their own.
+        for title, shape in [
+            ("Switch to capacitive probes", "Decision · "),
+            ("could you check the calibration table before Friday?", "Question · Kai Tanaka · Garden sensors"),
+            ("the dashboard is live now", "Mention · Kai Tanaka · Garden sensors"),
         ]:
-            if kind:
-                expect(page.locator(".nyc", has_text=title)).to_contain_text(kind)
+            expect(page.locator(".nyc", has_text=title).locator(".nyc__eyebrow--row")).to_contain_text(shape)
+        expect(cards.filter(has_text="asked you")).to_have_count(0)
+        expect(cards.filter(has_text="mentioned you")).to_have_count(0)
         expect(page.locator(".nyc", has_text="Switch to capacitive probes")).to_contain_text("They do not corrode in wet soil")
         expect(cards.filter(has_text="soldering iron")).to_have_count(0)
         expect(cards.filter(has_text="replied in")).to_have_count(0)
@@ -198,7 +200,7 @@ class NotificationJourney(unittest.TestCase):
     def test_02_open_the_exact_source_and_done_reads_it(self) -> None:
         page = self.page("ada")
         page.goto("/inbox")
-        open_item(page.locator(".nyc", has_text="asked you in Garden sensors")).get_by_role("button", name="Reply").click()
+        open_item(page.locator(".nyc", has_text="could you check the calibration table before Friday?")).get_by_role("button", name="Reply").click()
         expect(page).to_have_url(re.compile(re.escape(self.urls["question"]) + "$"))
         message = page.locator("#" + self.urls["question"].split("#", 1)[1])
         expect(message).to_be_visible()
@@ -211,7 +213,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 3)
 
         # Done leaves the queue and reads the notification; Undo (Z) brings both back. Nothing is deleted.
-        mention = page.locator(".nyc", has_text="mentioned you")
+        mention = page.locator(".nyc", has_text="the dashboard is live now")
         # The Inbox opens one item at a time (#763): the selected card carries Done; a click on a card's free space selects it.
         mention.locator(".nyc__card > :first-child").click()  # its face: free space, not a link or button
         expect(mention).to_have_attribute("aria-current", "true")
@@ -227,7 +229,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual(self.api(page, "GET", "/api/v1/needs-you")["count"], 2)
         self.assertTrue(read())
         page.keyboard.press("z")
-        expect(page.locator(".nyc", has_text="mentioned you")).to_have_count(1)
+        expect(page.locator(".nyc", has_text="the dashboard is live now")).to_have_count(1)
         for _ in range(40):
             if not read():
                 break
@@ -251,7 +253,7 @@ class NotificationJourney(unittest.TestCase):
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__t").all_inner_texts()], ["Only what needs me", "Everything", "Nothing"])
         # #1173: each line names what reaches Ada at that level (pinned against the reasons in notification-level-words.test.ts).
         self.assertEqual([re.sub(r"\s+", " ", text).strip() for text in levels.locator(".sset-row__s").all_inner_texts()], [
-            "Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to work together and agents waiting for you",
+            "Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to a call and agents waiting for you",
             "Also every reply in conversations you are part of and calls started in your spaces", "No push or email. Everything still waits in the Inbox"])
         expect(levels.get_by_role("radio", name="Only what needs me")).to_be_checked()
         start = self.api(page, "GET", "/api/v1/notification-preferences")
@@ -411,7 +413,19 @@ class NotificationJourney(unittest.TestCase):
         capsule = page.get_by_role("navigation", name="Main places").get_by_role("link", name=re.compile("^Inbox"))
         expect(capsule).to_have_attribute("aria-current", "page")
         assert_touch_target(self, page, capsule)
+        # #1424: Settings' row says what the person hears about as it is now, and names quiet hours only while they are on.
+        kept = self.api(page, "GET", "/api/v1/notification-preferences")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou", "quietHours": {"enabled": False}})
         page.get_by_role("link", name="Settings and account").tap()
+        row = page.get_by_role("link", name=re.compile("^Notifications"))
+        expect(row).to_contain_text("Only what needs me")
+        expect(row).not_to_contain_text("quiet")
+        expect(row).not_to_contain_text("Needs you and quiet hours")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"quietHours": {"enabled": True, "start": "22:00", "end": "07:00"}})
+        page.reload()
+        expect(page.get_by_role("link", name=re.compile("^Notifications"))).to_contain_text("Only what needs me · quiet 22:00–7:00")
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": kept["level"], "quietHours": kept["quietHours"]})
+        page.reload()
         page.get_by_role("link", name=re.compile("^Notifications")).tap()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")
@@ -665,7 +679,11 @@ class NotificationJourney(unittest.TestCase):
         before = len(waiting())
         page.goto("/inbox")
         card = page.locator(f'.nyc[data-key="{item["key"]}"]')
-        expect(card).to_contain_text("Kai Tanaka asked you in Garden sensors")
+        # On a phone the one open card is the expanded one: the sender, then "Question · space" (a row of the list is "Question · Kai Tanaka · space").
+        expect(card).to_contain_text("Kai Tanaka")
+        expect(card).to_contain_text("Question · Garden sensors")
+        expect(card).to_contain_text(asked)
+        expect(card).not_to_contain_text("asked you in")
         open_item(card).get_by_role("button", name="Reply").tap()
         expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/conversations/{conversation['id']}")))
         thread = page.get_by_role("dialog", name=re.compile("^Replies"))

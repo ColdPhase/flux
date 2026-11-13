@@ -16,7 +16,6 @@ import { PrivateAiLines } from '../assistant/PrivateAiLines';
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useAssistantChanges } from '../assistant/WaitingChanges';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
-import { useProjectMaterials } from '../materials/useProjectMaterials';
 import { useTyping } from '../typing/useTyping';
 import { useCreateWorkFromMessage } from '../work/inline';
 import { MessageWorkPages } from '../work/MessageWorkPages';
@@ -48,7 +47,7 @@ export function ProjectConversation() {
 
 /**
  * One conversation's pane: in the stream it is the composer that starts a root (UI116-1); in the thread
- * beside it, the replies with their own composer, assistant and sources. The parts live in this folder:
+ * beside it, the replies with their own composer and assistant. The parts live in this folder:
  * the replies (`useThreadReplies`), how they are read (`useThreadReading`, `useThreadPlace`), the composer
  * (`useComposerDrafts`, `useComposerMenu`, `useComposerSend`), the assistant (`useAssistantAsk`, `useAskBar`)
  * and the views (`ThreadFeed`, `PaneComposer`).
@@ -62,9 +61,7 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const { accessLost, hideIfDenied } = usePaneAccess(core);
   const drafts = useComposerDrafts(core);
   const { asking, publicComposer } = drafts;
-  const materials = useProjectMaterials({ userId: me.user.id, project, inThread: !!conversation, writable, initial: data.materials, initialTotal: data.materialTotal,
-    onDenied: hideIfDenied, onSaved: () => { void thread.refresh(); } });
-  const thread = useThreadReplies(core, { sent: publicComposer.sent, hideIfDenied, mergeMaterials: materials.merge, onThreadSize });
+  const thread = useThreadReplies(core, { sent: publicComposer.sent, hideIfDenied, onThreadSize });
   const { messages } = thread;
   // The signed-in person's own assistant (#68, #842): ask mode, their working line and their private answers, here or in the space's main conversation.
   const assistant = useConversationAssistant({ meId: me.user.id, place: core.place, enabled: !aiOff,
@@ -79,9 +76,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const typing = useTyping(me.user.id, conversation && !accessLost ? { kind: 'conversation', id: conversation.id } : null, writable && !asking && !drafts.busy);
   const ask = useAssistantAsk(core, { drafts, assistant, scrollRef: reading.scrollRef, scrollToEnd: reading.scrollToEnd });
   const askBar = useAskBar(core, assistant, ask);
-  const menu = useComposerMenu(core, { drafts, assistant, ask, typing, openSources: () => materials.setSourcesOpen(true) });
-  const actions = useComposerSend(core, { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd: reading.scrollToEnd, hideIfDenied,
-    closeSources: () => materials.setSourcesOpen(false), onPosted, onSending });
+  const menu = useComposerMenu(core, { drafts, assistant, ask, typing });
+  const actions = useComposerSend(core, { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd: reading.scrollToEnd, hideIfDenied, onPosted, onSending });
   const { arrived, seen, unreadFrom, newBelow } = useThreadPlace(core, { thread, reading, outbox, rootMessageId, hideIfDenied });
   // Files dropped anywhere on the conversation join its draft (#348).
   const drop = useFileDrop(publicComposer, writable && !asking);
@@ -109,8 +105,8 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
       waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} unreadFrom={unreadFrom} newBelow={newBelow} />}
     {conversation ? <MessageWorkPages read={messageWork} /> : null}
     {conversation && referenceWork.state.phase === 'unavailable' ? <div className="ws-message-pages" role="alert">Referenced tasks could not be checked. Your reply is kept. <Button variant="link" size="sm" onClick={referenceWork.refresh}>Refresh task references</Button></div> : null}
-    <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} materials={materials} typing={typing}
-      readFailure={thread.readFailure} author={author} />
+    <PaneComposer core={core} drafts={drafts} menu={menu} actions={actions} ask={ask} askBar={askBar} assistant={assistant} typing={typing}
+      readFailure={thread.readFailure} />
   </div>;
 }
 

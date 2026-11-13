@@ -74,7 +74,7 @@ class MenuDepartures(unittest.TestCase):
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         menu = page.get_by_role("menu", name="More")
         expect(menu.get_by_role("menuitem", name="Settings")).to_be_visible()
-        expect(menu.get_by_role("menuitem", name="Space details")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name=re.compile("details", re.I))).to_have_count(0)  # a space has no panel of its own (#1419)
         expect(menu.get_by_role("menuitem", name=re.compile("the sidebar"))).to_have_count(0)
         expect(menu.locator("kbd")).to_have_count(0)
 

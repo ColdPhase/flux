@@ -14,6 +14,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlencode, urlsplit, urlunsplit
 
 from playwright.sync_api import expect, sync_playwright
+from account import back_to, open_settings, sign_out_button
 from create_window import submit_button
 from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
@@ -114,13 +115,8 @@ class SharedComposerJourney(unittest.TestCase):
         target = container or page
         with page.expect_file_chooser() as chooser:
             target.get_by_role("button", name="Attach files", exact=True).click()
+        # Several files chosen in the system's picker attach at once, in the order it returns them, on a phone too (#1424).
         chooser.value.set_files(files)
-        if len(files) > 1 and (page.viewport_size or {}).get("width", 1440) <= 640:
-            # On a phone several files open the numbered picker (#348 AC-4); tapping them in order attaches them in that order.
-            sheet = page.get_by_role("dialog", name="Choose files to send")
-            for item in files:
-                sheet.get_by_role("button", name=item["name"]).click()
-            sheet.get_by_role("button", name=f"Add {len(files)}").click()
 
     def file(self, name="measurements.bin", content=b"\x00\xff\x04\n\x80 exact bytes"):
         return {"name": name, "mimeType": "application/octet-stream", "buffer": content}
@@ -140,14 +136,9 @@ class SharedComposerJourney(unittest.TestCase):
         return self.api(page, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": body, "clientMessageId": str(uuid.uuid4()), "kind": "text"}, 201)
 
     def cite(self, page, project, conversation):
+        """The thread's pane. A reply no longer cites a saved source from the composer (the Sources tray and `/source` are gone, #1419)."""
         page.goto(f"/projects/{project['id']}/conversations/{conversation}")
-        pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
-        # "/source" opens the saved sources, as the old Sources button did (F-026 S5).
-        field = pane.get_by_label("Reply", exact=True)
-        field.fill("/source")
-        field.press("Enter")
-        pane.get_by_role("button", name="Discuss this version").click()
-        return pane
+        return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
 
     def test_01_file_only_first_root_and_reply_keep_authors_order_and_exact_downloads(self):
         owner = self.page()
@@ -226,7 +217,6 @@ class SharedComposerJourney(unittest.TestCase):
         # The unsent message keeps its command, text, source and files across the reload.
         expect(queued.get_by_role("alert")).to_contain_text("Not sent")
         expect(queued).to_contain_text(lost[0]["body"])
-        expect(queued.get_by_text("Source: Verified measurements · v1")).to_be_visible()
         expect(self.box(page)).to_have_value("")
         page.get_by_role("link", name="Open in Conversation", exact=True).click()
         pane = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -240,7 +230,6 @@ class SharedComposerJourney(unittest.TestCase):
         discussion = self.discussion(page, a)
         matching = [item for item in discussion["messages"] if item["body"] == lost[0]["body"]]
         self.assertEqual(len(matching), 1)
-        self.assertEqual(matching[0]["source"], {"materialId": material["materialId"], "version": 1})
         page.goto(f"/projects/{project['id']}/tasks?open=work:{a['id']}")
         details = page.locator("#details")
         expect(details.get_by_label("Write to this task")).to_have_value("")
@@ -273,10 +262,8 @@ class SharedComposerJourney(unittest.TestCase):
         self.choose(page, [self.file(f"large-{index}.bin", b"x" * (5 * 1024 * 1024)) for index in range(4)], pane)
         expect(pane.get_by_role("alert")).to_contain_text("20 MiB")
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("Keep the careful comparison")
-        expect(pane.get_by_text("Source: Verified measurements · v1")).to_be_visible()
         record = self.record(page, project, a)
         self.assertEqual(len(record["files"]), 1)
-        self.assertEqual(len(record["references"]), 1)
         page.reload()
         expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).get_by_label("Reply", exact=True)).to_have_value(record["body"])
 
@@ -358,7 +345,6 @@ class SharedComposerJourney(unittest.TestCase):
         self.box(page).fill("B stays separate")
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value("The newest second edit")
-        expect(page.get_by_text("Source: Verified measurements · v1")).to_be_visible()
         expect(page.get_by_text("Ready, private", exact=False)).to_have_count(1)
 
     def test_06_interrupted_upload_reselects_same_bytes_and_uuid_after_reload(self):
@@ -469,14 +455,8 @@ class SharedComposerJourney(unittest.TestCase):
                 pane.get_by_label('Reply', exact=True).fill('Compare these two files with the saved measurements')
                 self.choose(page, [self.file('01-negative-measurement.bin'), self.file('02-sensor-wiring.bin')], pane)
                 expect(pane.get_by_text('Ready, private', exact=False)).to_have_count(2)
-                expect(pane.locator('.composer-files__ref')).to_contain_text('Source: Verified measurements · v1')
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), width)
                 shot(page, f'shared-reply-draft-{width}')
-                field = pane.get_by_label('Reply', exact=True)
-                field.fill('/source')
-                field.press('Enter')
-                expect(page.get_by_role('heading', name=f"Sources · saved for {project['name']}", exact=True)).to_be_visible()
-                shot(page, f'shared-sources-{width}')
 
     def test_09_real_revocation_during_upload_and_send_keeps_the_complete_draft(self):
         owner, writer = self.page(), self.page("writer")
@@ -508,7 +488,6 @@ class SharedComposerJourney(unittest.TestCase):
         expect(writer.get_by_role("alert")).to_contain_text("Upload unavailable")
         kept = self.record(writer, project, a, "writer")
         self.assertEqual(kept["body"], before["body"])
-        self.assertEqual(kept["references"], before["references"])
         self.assertEqual(kept["files"][0], before["files"][0])
         writer.get_by_role("button", name="Remove revoked.bin").click()
         command_before = self.record(writer, project, a, "writer")
@@ -530,7 +509,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.open_agents(writer, project, a)
         expect(writer.get_by_text("This send is unconfirmed. Retry sends the same command once.", exact=True)).to_be_visible()
         kept = self.record(writer, project, a, "writer")
-        for field in ("body", "files", "references", "commandId"):
+        for field in ("body", "files", "commandId"):
             self.assertEqual(kept[field], command_before[field])
         self.assertTrue(kept["unconfirmed"])
         self.assertEqual(len(self.discussion(owner, a)["messages"]), 1)
@@ -637,7 +616,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_role("alert")).to_contain_text("expired file")
         kept = self.record(page, project, a)
-        for field in ("body", "references", "commandId"):
+        for field in ("body", "commandId"):
             self.assertEqual(kept[field], original[field])
         self.assertEqual(kept["files"][0]["staged"]["id"], original["files"][0]["staged"]["id"])
         page.unroute(f"**/api/v1/work/{a['id']}/discussion", expire)
@@ -652,13 +631,12 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_role("alert")).to_contain_text("conflicts with an earlier command")
         conflicted = self.record(page, project, a)
-        for field in ("body", "files", "references", "commandId"):
+        for field in ("body", "files", "commandId"):
             self.assertEqual(conflicted[field], recovered[field])
         pane.get_by_label("Reply", exact=True).fill(recovered['body'] + " · confirmed revised intent")
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         self.stored(page)
-        self.assertEqual(self.discussion(page, a)["messages"][-1]["source"], {"materialId": recovered['references'][0]['materialId'], "version": 1})
 
     def test_12_a_slow_switch_between_tasks_never_writes_to_the_wrong_task(self):
         # A task's composer lives in its Details (F-038); switching tasks while the next one is still being read must leave the old
@@ -719,7 +697,6 @@ class SharedComposerJourney(unittest.TestCase):
         edited_b = self.record(page, project, b)
         self.assertNotEqual(edited_b['commandId'], before_b['commandId'])
         self.assertEqual(edited_b['files'], before_b['files'])
-        self.assertEqual(edited_b['references'], before_b['references'])
         self.assertEqual(self.record(page, project, a), before_a)
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value(before_a['body'])
@@ -778,9 +755,9 @@ class SharedComposerJourney(unittest.TestCase):
                 def fail(route):
                     route.fulfill(status=503, content_type="application/json", body="{}")
                 page.route("**/api/auth/sign-out", fail)
-                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                open_settings(page)
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
-                    page.get_by_role("button", name="Sign out", exact=True).click()
+                    sign_out_button(page).click()
                 self.assertEqual(response.value.status, 503)
                 # Sign-out is a navigation (#195): a failure lands on the sign-out page, which says so.
                 expect(page).to_have_url(re.compile(r"/sign-out$"))
@@ -788,8 +765,8 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(page.get_by_role("alert")).to_be_visible()
                 self.assertEqual(self.record(page, project, task), persisted)
                 page.unroute("**/api/auth/sign-out", fail)
-                # Back in the conversation, the failed sign-out has kept the newest text.
-                page.go_back()
+                # Back in the conversation (past Settings, where Sign out is), the failed sign-out has kept the newest text.
+                back_to(page, "/conversations/")
                 expect(pane.get_by_label("Reply", exact=True)).to_have_value(newest)
                 self.assertEqual(self.record(page, project, task), persisted)
                 held = []
@@ -801,9 +778,9 @@ class SharedComposerJourney(unittest.TestCase):
                 page.route(f"**/api/v1/projects/{project['id']}/files?*", hold_upload)
                 self.choose(page, [self.file("private-late-signout.bin")], pane)
                 page.wait_for_function("() => window.__fluxSignoutUploadReady === true")
-                page.get_by_role("button", name=re.compile("account and sign out")).click()
+                open_settings(page)
                 with page.expect_response(lambda response: response.url.endswith("/api/auth/sign-out")) as response:
-                    page.get_by_role("button", name="Sign out", exact=True).click()
+                    sign_out_button(page).click()
                 self.assertEqual(response.value.status, 200)
                 expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
                 self.assertIsNone(self.record(page, project, task))
@@ -841,9 +818,9 @@ class SharedComposerJourney(unittest.TestCase):
         def fail(route):
             route.fulfill(status=503, content_type='application/json', body='{}')
         page.route('**/api/auth/sign-out', fail)
-        page.get_by_role('button', name=re.compile('account and sign out')).click()
+        open_settings(page)
         with page.expect_response(lambda response: response.url.endswith('/api/auth/sign-out')) as response:
-            page.get_by_role('button', name='Sign out', exact=True).click()
+            sign_out_button(page).click()
         self.assertEqual(response.value.status, 503)
         # Sign-out is a navigation (#195): a failure lands on the sign-out page, which offers to try again.
         expect(page).to_have_url(re.compile(r'/sign-out$'))

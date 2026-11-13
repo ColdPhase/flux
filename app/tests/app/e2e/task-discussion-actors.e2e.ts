@@ -566,8 +566,11 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.equal(await row.locator('.agent-for').count(), 0, 'an old authorized response cannot reintroduce the relation');
     // The same live document signs into a guest account after permissions changed.
     await page.evaluate(() => { (window as unknown as { sameDocument: boolean }).sameDocument = true; });
-    await page.getByRole('button', { name: /Scoped Manager.*account and sign out/ }).click();
-    await page.getByRole('dialog', { name: 'Account', exact: true }).getByRole('button', { name: 'Sign out', exact: true }).click();
+    // The name at the foot of the sidebar opens Settings and Sign out is in its Account section (#1419): router navigation, the same document.
+    await page.getByRole('link', { name: /Scoped Manager, Settings$/ }).click();
+    await page.getByRole('link', { name: /^Account/ }).first().click();
+    await page.getByRole('heading', { name: 'Account', exact: true }).waitFor();
+    await page.locator('form[action="/sign-out"] button').click();
     await page.getByRole('heading', { name: 'Sign in' }).waitFor();
     await page.getByLabel('Email').fill(guest.email); await page.getByLabel('Password', { exact: true }).fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();

@@ -141,14 +141,18 @@ class DecisionTrace(unittest.TestCase):
         composer = a_thread.get_by_label("Reply", exact=True)
         composer.fill(f"/decide {title}")
         a_thread.get_by_role("button", name="Send reply").click()
-        panel = self.details(ada, phone)
-        expect(panel.get_by_label("Decision")).to_have_value(title)
-        expect(panel).to_contain_text(QUESTION_DESKTOP if key == "desktop" else QUESTION_PHONE)
-        panel.get_by_label("Why").fill("It works in the dark and keeps no pictures.")
-        panel.get_by_role("button", name="Propose decision").click()
-        expect(panel.get_by_role("heading", name=title)).to_be_visible()
-        lines = self.notices(ada)
-        mine = [line for line in lines if line["title"] == title]
+        # The one Create window on Decision, with the thread's opening message as its source (#1419); proposing is held for Undo.
+        window = ada.get_by_role("dialog", name="New decision")
+        expect(window.get_by_role("textbox", name="Decision", exact=True)).to_have_value(title)
+        expect(window.locator(".create__source")).to_contain_text(QUESTION_DESKTOP if key == "desktop" else QUESTION_PHONE)
+        window.get_by_label("Why", exact=True).fill("It works in the dark and keeps no pictures.")
+        window.get_by_role("button", name=re.compile("^Propose decision")).click()
+        mine = []
+        for _ in range(80):
+            mine = [line for line in self.notices(ada) if line["title"] == title]
+            if mine:
+                break
+            ada.wait_for_timeout(250)
         self.assertEqual([(line["kind"], line["status"], line["by"]["id"]) for line in mine], [("decision.proposed", "proposed", self.ids["ada"])])
         self.assertEqual(mine[0]["conversationId"], self.ids[key], "the line belongs to the thread it was proposed in")
         self.assertEqual(mine[0]["sources"][0]["type"], "message")
@@ -162,8 +166,8 @@ class DecisionTrace(unittest.TestCase):
         expect(proposed.get_by_role("button", name=re.compile(rf"^Open decision {re.escape(title)}, proposed$"))).to_be_visible()
         shot(jonas, f"decision-trace-{'phone' if phone else 'desktop'}-thread-proposed")
 
-        # Ada's own thread, after she goes back to it, shows the same line.
-        self.back_to_thread(ada, phone)
+        # Ada's own thread shows the same line.
+        expect(self.thread(ada)).to_be_visible()
         expect(a_thread.locator('.convo-object[data-object-kind="decision.proposed"]', has_text=title)).to_have_count(1)
         expect(a_thread.locator(".convo-object .convo-notice__meta").first).to_contain_text("Ada Kowalska · you")
 

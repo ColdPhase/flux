@@ -64,9 +64,9 @@ export function notificationRepository(db: DbExecutor): NotificationRepository {
     findForRecipient: (userId, id) => rows.findForRecipient(userId, id),
     markRead: (userId, id) => rows.markRead(userId, id),
     markAllRead: (userId) => markAllNotificationsRead(db, userId),
-    async listReadable(userId, limit) {
+    async listReadable(userId, limit, options?: { from?: boolean }) {
       const audience = await inboxAudience(db, userId);
-      return { items: await rows.listForRecipient(userId, audience, limit), unread: await rows.countUnread(userId, audience) };
+      return { items: await rows.listForRecipient(userId, audience, limit, options), unread: await rows.countUnread(userId, audience) };
     },
   };
 }

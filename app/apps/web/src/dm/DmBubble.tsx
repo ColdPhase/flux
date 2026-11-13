@@ -1,7 +1,7 @@
 import type { DmMessage } from '@flux/contracts';
 import { Avatar, Icon, Kreska } from '../ui';
 import { MessageContent } from '../composer/Files';
-import { OutboxStatus, PendingSource } from '../composer/Outbox';
+import { OutboxStatus } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
 import { MessageDay, MessageTime, ShownAnswerName, shownAnswer, shownLabel } from '../app/messageParts';
 import type { Receipt } from '../app/receipts';
@@ -83,7 +83,7 @@ export function DmBubble({ dmId, message, pending, mine: authored, name, continu
         {day ? <MessageDay as="p" label={day} /> : null}
         <div className="dm-msg__row">
           <div className="dm-msg__main is-mine">
-            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>}><PendingSource item={item} className="project-convo__source" /></MessageContent>
+            <MessageContent body={<div className="dm-msg__body"><MessageText body={item.body} /></div>} />
             <OutboxStatus item={item} onRetry={onRetry ?? (() => undefined)} onRemove={onRemove ?? (() => undefined)} />
           </div>
         </div>

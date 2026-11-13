@@ -20,7 +20,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 from app_select import choose
 
 from author_columns import assert_author_column
-from create_window import add_task, submit_button, title_field
+from create_window import add_task, open_decision, propose_decision, submit_button, title_field
 from message_gestures import open_message_menu
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder, view_tab
 
@@ -101,6 +101,15 @@ class WorkDecisionsJourney(unittest.TestCase):
     def details(self, page: Page):
         return page.locator("#details")
 
+    def wait_decision(self, page: Page, title: str) -> dict:
+        """A proposal is held for Undo (6 s) and sent when that window ends: its record, once it exists."""
+        for _ in range(80):
+            found = next((item for item in self.work(page)["decisions"] if item["title"] == title), None)
+            if found:
+                return found
+            page.wait_for_timeout(250)
+        self.fail(f"the proposal {title!r} was not sent when the Undo window ended")
+
     # ---------------------------------------------------------------- set up two people
 
     def test_01_two_people_share_a_project(self) -> None:
@@ -177,24 +186,24 @@ class WorkDecisionsJourney(unittest.TestCase):
     def test_03_propose_and_accept_a_decision_with_the_keyboard(self) -> None:
         page = self.open_conversation("owner")
         message = page.locator(f"#message-{self.messages['idea']}")
-        # A message has no Propose a decision (#867): the Create window's Decision tab, opened with C; its full form in Details is one key away.
-        page.locator("body").press("c")
-        page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
-        window = page.get_by_role("dialog", name="New decision")
+        # A message has no Propose a decision (#867): the Create window's Decision tab, opened with C, is the one form (#1419).
+        window = open_decision(page)
         window.get_by_role("textbox", name="Decision", exact=True).fill(IDEA)
+        # The replace choice is in the same window, reachable by keyboard.
         window.get_by_role("button", name="Replace an accepted decision…").focus()
+        expect(window.get_by_role("button", name="Replace an accepted decision…")).to_be_focused()
+        window.get_by_role("textbox", name="Decision", exact=True).fill("Use a camera for gesture control")
+        window.get_by_role("textbox", name="Why", exact=True).fill("It recognises the richest set of gestures")
+        expect(window.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
+        window.get_by_role("button", name="Propose decision", exact=True).focus()
         page.keyboard.press("Enter")
+        # Proposing is held for Undo and reaches the people who can accept it when that window ends.
+        expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
+        proposed = self.wait_decision(page, "Use a camera for gesture control")
+        self.assertEqual(proposed["status"], "proposed")
+        page.goto(f"/projects/{self.project_id}?open=decision:{proposed['id']}")
         panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
-        expect(panel.get_by_label("Decision")).to_have_value(IDEA)
-        panel.get_by_label("Decision").fill("Use a camera for gesture control")
-        panel.get_by_label("Why").fill("It recognises the richest set of gestures")
-        # Native rule choices and their page controls are now keyboard reachable.
-        expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
-        panel.get_by_role("button", name="Propose decision", exact=True).focus()
-        page.keyboard.press("Enter")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        self.assertEqual(self.work(page)["decisions"][0]["status"], "proposed")
         shot(page, "decision-desktop-1440-proposed")
         panel.get_by_role("button", name="Accept", exact=True).focus()
         page.keyboard.press("Enter")
@@ -241,11 +250,12 @@ class WorkDecisionsJourney(unittest.TestCase):
         add_task(page, "Design the diffuser")
         expect(panel.get_by_role("heading", name="Design the diffuser")).to_be_visible()
 
-        page.goto(f"/projects/{self.project_id}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
-        panel.get_by_role("textbox", name="Decision", exact=True).fill(PIVOT)
-        panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
-        choose(panel.get_by_label("Does it replace an earlier one?"), label="Use a camera for gesture control")
-        panel.get_by_role("button", name="Propose decision").click()
+        # A message has no Propose a decision (#867): the one Create window proposes it, naming the decision it replaces (#1419).
+        page.goto(f"/projects/{self.project_id}")
+        propose_decision(page, PIVOT, why="The camera failed in low light; a ToF sensor works in the dark and stores no images", replaces="Use a camera for gesture control")
+        pivot = self.wait_decision(page, PIVOT)
+        page.goto(f"/projects/{self.project_id}?open=decision:{pivot['id']}")
+        panel = self.details(page)
         # The panel says what it replaces in one plain sentence, and there is nothing to decide about tasks.
         expect(panel.get_by_text("This replaces the decision Use a camera for gesture control")).to_be_visible()
         expect(panel.get_by_role("heading", name="What happens to current work?")).to_have_count(0)

@@ -51,7 +51,7 @@ ADD_STRIP = """() => {
   const main = document.querySelector('.app__main');
   const bar = document.createElement('section');
   bar.className = 'lv-bar';
-  bar.setAttribute('aria-label', 'Live session');
+  bar.setAttribute('aria-label', 'Call');
   bar.innerHTML = '<div class="lv-row"><span class="lv-status">Live</span><div class="lv-row__acts">'
     + '<button type="button" class="lv-dev" aria-label="Turn microphone on">m</button>'
     + '<button type="button" class="ui-btn" aria-label="Leave">Leave</button></div></div>';

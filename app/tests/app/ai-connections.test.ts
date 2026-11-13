@@ -59,7 +59,8 @@ describe('provider-neutral owner AI connections (#179)', () => {
           price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table', checkedOn: '2026-11-12' } } },
       { body: { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000 } }, key: keys.openai,
         expect: { provider: 'openai', model: 'gpt-model', baseUrl: null, price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000, source: 'owner', checkedOn: null } } },
-      { body: { provider: 'gemini', model: 'gemini-model' }, key: keys.gemini, expect: { provider: 'gemini', model: 'gemini-model', price: null } },
+      { body: { provider: 'gemini', model: 'gemini-model', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } }, key: keys.gemini,
+        expect: { provider: 'gemini', model: 'gemini-model', price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null } } },
       { body: { provider: 'openrouter', model: 'vendor/flux-test-model', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 } }, key: keys.openrouter,
         expect: { provider: 'openrouter', model: 'vendor/flux-test-model', price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000, source: 'owner', checkedOn: null } } },
       { body: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: `${COMPATIBLE}/`, price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 } },
@@ -120,7 +121,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
     }
     // The test stack's operator allowlist names the provider mock only (compose.test.yaml).
     expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE,
-      apiKey: keys.openai_compatible } }), 201);
+      price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }, apiKey: keys.openai_compatible } }), 201);
   });
 
   test('model lists are read by the server without a key, through the same guard', async () => {
@@ -145,9 +146,19 @@ describe('a key whose budget is below one request is refused when saved (#179 PR
     // 64,000 × $30/M + 4,000 × $60/M = $2.16 per request, above this key's $0.20 daily budget: it would wait for a day that never comes.
     assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model',
       price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai, dailyBudgetCents: 20 } })), 'AI_BUDGET_TOO_SMALL');
-    // A model without a known price is saved without one; a runtime that needs a price will not use it.
+    // A model without a known price is not saved, through the form or the API (#1424): no key that "can't be used" can exist. The owner is asked
+    // for the price (0 is one), and nothing is stored.
+    const before = expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[];
+    for (const body of [{ provider: 'openrouter', model: 'vendor/priced-model', apiKey: keys.openrouter }, { provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini },
+      { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, apiKey: keys.openai_compatible }]) {
+      const refused = await owner.browser.request('POST', path, { body: { ...consent, ...body } });
+      assert.deepEqual([refused.status, codeOf(refused)], [422, 'AI_PRICE_REQUIRED'], body.provider);
+      assert.match((refused.json as { error?: string }).error ?? '', /^Enter this model’s price to use it with a daily budget/);
+      assert.equal(refused.text.includes(body.apiKey), false, 'no key in an error body');
+    }
+    assert.deepEqual(expectStatus(await owner.browser.request('GET', path), 200), before, 'a refused save stores nothing');
     assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
-      apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price, null);
+      price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }, apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price?.source, 'owner');
   });
 });
 

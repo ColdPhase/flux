@@ -106,7 +106,7 @@ export function useLiveHere(): Here {
 }
 
 /**
- * A view says where the person is (an anchor for "Work on this together") and what it could
+ * A view says where the person is (an anchor for a task's "Call") and what it could
  * show ("Show this"). It never publishes anything by itself: private navigation is private.
  */
 export function useRegisterLiveHere(anchor: LiveAnchor | null, presentable: Presentable | null) {
@@ -368,7 +368,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     setStage({ open: false, focus: null });
     await connectionRef.current?.disconnect().catch(() => undefined);
     if (current) await leaveSession(current.id).catch(() => undefined);
-    toast({ message: alone ? 'You left. Nobody else was here, so the session closes shortly. Your work is saved.' : 'You left the session. Everything you saved stays where it is.' });
+    toast({ message: alone ? 'You left. Nobody else was here, so the call closes shortly. Your work is saved.' : 'You left the call. Everything you saved stays where it is.' });
   }, [media, toast]);
 
   // The connection dropped without you leaving: rejoin through Flux (current access is
@@ -381,8 +381,8 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
     if (endReason === 'elsewhere' || endReason === 'removed') {
       setPhase('ended'); setSession(null); setShown(null); setFollowing(null);
       setNotice(endReason === 'elsewhere'
-        ? 'You joined this session from another window, so this one stopped. Nothing was lost.'
-        : 'You were disconnected from the session, for example by leaving in another window or signing out.');
+        ? 'You joined this call from another window, so this one stopped. Nothing was lost.'
+        : 'You were disconnected from the call, for example by leaving in another window or signing out.');
       return;
     }
     rejoining.current = true;

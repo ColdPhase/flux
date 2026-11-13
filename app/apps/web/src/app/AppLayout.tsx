@@ -43,6 +43,7 @@ import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
+import { inComposer } from '../ui/keys';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -63,25 +64,24 @@ const LOCKED_VIEWS = [{ id: 'conversation', label: 'Conversation' }, { id: 'task
 const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
-const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'propose-decision']);
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', 'thought-tasks': 'Tasks' };
 /**
- * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "Space details" or
- * "Message info" for the place's own panel, the form's or the button's own words for the rest. Its close control is "Close <heading>",
- * except where the heading is a request ("Propose a decision"), which only reads as "Close". A panel with a chip keeps "Details" as
- * its name for assistive technology, with its kind after it.
+ * The heading of a panel that has no kind chip is the label of what opened it (#1058; #871 one label per thing): "Message info" for a
+ * direct message's own panel (a space has no panel of its own, #1419), "Linked objects" for a message's, the button's own words for the rest.
+ * Its close control is "Close <heading>", except where the heading is a request ("Add to a Wiki page"), which only reads as "Close". A panel
+ * with a chip keeps "Details" as its name for assistive technology, with its kind after it.
  */
-const panelHeading = (view: DetailsView, placeLabel: string): { title: string; close: string } => {
+const panelHeading = (view: DetailsView): { title: string; close: string } => {
   const named = (title: string) => ({ title, close: `Close ${title.charAt(0).toLowerCase()}${title.slice(1)}` });
   const asked = (title: string) => ({ title, close: 'Close' });
-  if (view === 'place') return named(placeLabel);
+  if (view === 'place') return named('Message info');
   if (view === 'connect-ai') return asked('Connect your AI');
   switch (view.kind) {
     case 'add-to-doc': return asked('Add to a Wiki page');
-    case 'propose-decision': return asked('Propose a decision');
     case 'people': return named('People and encryption');
-    case 'overview': return named(view.messageId ? 'Linked objects' : placeLabel);
+    case 'overview': return named('Linked objects');
     default: return named('Details');
   }
 };
@@ -97,14 +97,14 @@ const NO_ORIGIN = { key: '', path: '/', label: '' };
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
 /**
- * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
- * Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
+ * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Add to docs,
+ * Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
  */
 const KEPT_VIEWS = new Set(['work', 'decision', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
   if (view === 'place' || view === 'connect-ai') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
-  return view.kind === 'overview' ? { kind: 'overview', ...(view.messageId ? { messageId: view.messageId } : {}) } : view;
+  return view.kind === 'overview' ? { kind: 'overview', messageId: view.messageId } : view;
 };
 const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string; view: DetailsView }[]): DetailsPlace => {
   const shown = persistable(view);
@@ -123,7 +123,7 @@ function isDetailsPlace(value: unknown): value is DetailsPlace {
 
 function isTyping(target: EventTarget | null) {
   const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
+  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]') || inComposer(el));
 }
 
 /**
@@ -428,8 +428,7 @@ function AppLayoutContent() {
   }, [panelScrollTo]);
   usePaneMemory(paneRef, location, navType);
   // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
-  // opens that object in Details on its project; `?open=people` (an agent's request to join, #763) opens its
-  // Details, where the request is answered. Each address is handled once, and the flag leaves it without reloading the
+  // opens that object in Details on its project. Each address is handled once, and the flag leaves it without reloading the
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
@@ -439,18 +438,14 @@ function AppLayoutContent() {
     const params = new URLSearchParams(location.search);
     const open = params.get('open') ?? '';
     const match = /^(work|decision):([0-9a-f-]{36})$/i.exec(open);
-    const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
-    // The phone's "+" Create → Decision (F-026 S2) opens "Propose a decision" on its project.
-    const propose = open === 'propose-decision' && projectId ? projectId : null;
-    if (!match && !people && !propose) return;
+    if (!match) return;
     openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
     // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
-    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() }
-      : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview' });
-  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell, projectId]);
+    shell.openDetails({ kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() });
+  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
   useEffect(() => {
@@ -658,7 +653,8 @@ function AppLayoutContent() {
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject
-    ? { crumb: null, title: activeProject.name }
+    // A space has no panel of its own (#1419): a place panel left open from a direct message closes here, never an empty "Message info".
+    ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
     ? { crumb: null, title: 'My map', noDetails: true }
@@ -709,9 +705,7 @@ function AppLayoutContent() {
     : activeProject && projectViews ? { items: projectViews, label: 'Space views', inactive: false }
       : lockedHere ? { items: LOCKED_VIEWS, label: 'Space views', inactive: true }
       : null;
-  // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
-  const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
-  const heading = panelHeading(detailsView, placeDetailsLabel);
+  const heading = panelHeading(detailsView);
   // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
   // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
   const offersBulkRead = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects';
@@ -726,7 +720,8 @@ function AppLayoutContent() {
     ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
     // An agent's chat keeps its Settings in ⋯ on the computer as on the phone (#1419 item 14): the header names it once.
     ...(activeAgent ? [{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }] : []),
-    ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
+    // Only a direct message has a panel of its own; a space's people, AI and GitHub are in its settings (#1419).
+    ...(activeDm ? [{ label: 'Message info', run: () => shell.openDetails('place') }] : []),
     // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
   // The same conditions as the rows above: My tasks, My map, an agent's chat and Settings have none, and then no ⋯ is shown (#1424).
@@ -771,20 +766,18 @@ function AppLayoutContent() {
     return `${humans} ${humans === 1 ? 'person' : 'people'}`;
   };
   // The phone's More holds the space's Search and Call (Join, while a call is live, which the header also shows from 360 px wide), its Settings
-  // and its details, the one place they open from (#873, #1239).
+  // and Mute: a space has no panel of its own (#873, #1239, #1419).
   const phoneMoreItems: MoreItem[] = projectId ? [
     { label: 'Search', run: shell.openSearch },
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     { label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) },
     ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
-    ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
   ] : [];
-  // A direct message's More holds what a space's does that applies to it: Search and Call first, Mute and Message info (#1374).
+  // A direct message's More holds what a space's does that applies to it: Search first, Mute and Message info (#1374). It has no calls (#1419).
   const phoneDmItems: MoreItem[] = activeDm ? [
     { label: 'Search', run: shell.openSearch },
-    { label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> },
     ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, run: dmMute.run }] : []),
-    { label: placeDetailsLabel, run: () => shell.openDetails('place') },
+    { label: 'Message info', run: () => shell.openDetails('place') },
   ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
@@ -833,10 +826,10 @@ function AppLayoutContent() {
         <span className="top__actions" ref={setActionSlot} />
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {/* A space's header keeps only Join here, while a call is live (the CSS hides the rest of the entry); Search and Call are in More (#1239).
-            A direct message's header is the same (#1374); a space's settings keep Call and Search icons; Call is dimmed where it is unavailable. */}
-        {spaceHeader || activeDm ? <LiveEntry /> : activeProject ? <><LiveEntry />{searchButton}</> : null}
+            A direct message's header has no Join: it has no calls (#1374, #1419). A space's settings keep Call and Search icons; Call is dimmed where it is unavailable. */}
+        {spaceHeader ? <LiveEntry /> : activeProject ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
-        {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
+        {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
         {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}
@@ -916,9 +909,9 @@ function AppLayoutContent() {
           </main>
           <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : heading.title} closeLabel={opening ? 'Cancel opening the thread' : ownedShown ? ownedShown.closeLabel : heading.close} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? false : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
-            context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
+            context={opening ? undefined : phone && typeof detailsView === 'object' && detailsView.kind === 'overview' ? <OverviewContext /> : undefined}>
             {opening ? <ThreadOpening /> : null}
-            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, meId: me.user.id, people: activeDm.people, peopleIds: activeDm.peopleIds, audience: activeDm.audience } : null} onBack={() => { if (activeDm) setDetailsView('place'); else closePanel(); }} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

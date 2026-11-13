@@ -109,7 +109,7 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari replied in “Camera or sensor for the lamp?”'), 'other messages are grouped per conversation');
     const changed = back.items.find((item) => item.text === 'Decision changed: Use a PIR sensor')!;
     assert.equal(changed.detail, 'Previously: Use the camera · No reason was recorded.', 'the previous decision, and a missing reason is said');
-    assert.ok(list.includes('Ari added a task for you: Mount the PIR sensor'));
+    assert.ok(list.includes('Ari created a task for you: Mount the PIR sensor'));
     const lens = back.items.find((item) => item.text === 'Blocked: Order the lens')!;
     assert.equal(lens.detail, 'No reason was recorded.');
     assert.ok(list.includes('New material: Low-light test plan'));

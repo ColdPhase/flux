@@ -48,7 +48,7 @@ export function UpdatePrompt() {
   return (
     <div ref={row} role="status" aria-live="polite" className="pwa-update" data-testid="flux-update-prompt">
       <div className="pwa-update__card">
-        <span className="pwa-update__text">{inSession ? 'A new version of Flux is available. Reloading leaves the live session; saved work and drafts stay.' : 'A new version of Flux is available.'}</span>
+        <span className="pwa-update__text">{inSession ? 'A new version of Flux is available. Reloading leaves the call; saved work and drafts stay.' : 'A new version of Flux is available.'}</span>
         <span className="pwa-update__actions">
           <button type="button" className="ui-btn ui-btn--quiet" onClick={() => setLater(update)}>Later</button>
           <button type="button" className="ui-btn ui-btn--primary" onClick={() => update.apply()}>Reload</button>

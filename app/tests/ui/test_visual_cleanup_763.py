@@ -72,7 +72,7 @@ class VisualCleanup763(unittest.TestCase):
         cls.pw.stop()
 
     def page(self, viewport: dict, touch: bool = False) -> Page:
-        options = dict(base_url=ORIGIN, viewport=viewport, storage_state=self.states["ada"], locale="en-GB", service_workers="block")
+        options: dict = {"base_url": ORIGIN, "viewport": viewport, "storage_state": self.states["ada"], "locale": "en-GB", "service_workers": "block"}
         if touch:
             options.update(is_mobile=UI_BROWSER == "chromium", has_touch=True)
         context = self.browser.new_context(**options)
@@ -149,6 +149,22 @@ class VisualCleanup763(unittest.TestCase):
             expect(page.get_by_text("Open a conversation, task, map or page to work on it together.")).to_have_count(0)
         expect(page.get_by_text("Live sessions", exact=False)).to_have_count(0)
 
+    def test_04b_with_a_media_server_call_says_why_instead_of_looking_disabled(self) -> None:
+        page = self.page(DESKTOP)
+        # A server with no media server shows no Call (#1424); this one is read as if it had one.
+        page.context.route("**/api/v1/live-sessions/capabilities", lambda route: route.fulfill(json={"status": "configured"}))
+        page.goto(f"/projects/{self.project}/tasks")
+        together = page.locator("header.top").get_by_role("button", name="Call", exact=True)
+        expect(together).to_be_visible()
+        expect(together).not_to_have_attribute("aria-disabled", "true")
+        self.assertEqual(together.evaluate("(el) => getComputedStyle(el).opacity"), "1", "not greyed out")
+        together.click()
+        dialog = page.get_by_role("dialog", name="Call")
+        expect(dialog).to_contain_text("Open a conversation, task, map or page to start a call there.")
+        page.keyboard.press("Escape")
+        expect(dialog).to_have_count(0)
+        expect(together).to_be_focused()
+
     def test_05_icon_buttons_take_the_control_token(self) -> None:
         page = self.page(DESKTOP)
         page.goto(f"/projects/{self.project}")
@@ -160,8 +176,6 @@ class VisualCleanup763(unittest.TestCase):
         self.assertEqual(round(attach["height"]), 32)
         sizes = composer.evaluate("(box) => [...box.querySelectorAll('.composer__send svg, .composer__attach svg')].map((svg) => Math.round(svg.getBoundingClientRect().width))")
         self.assertEqual(set(sizes), {16}, "one icon size among the composer's tools")
-        gear = page.get_by_role("link", name="Settings").first.bounding_box()
-        self.assertEqual((round(gear["width"]), round(gear["height"])), (32, 32))
 
     def test_06_placeholder_without_the_shared_input_style(self) -> None:
         page = self.page(DESKTOP)

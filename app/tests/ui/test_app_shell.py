@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 
 from playwright.sync_api import Browser, BrowserContext, Page, TimeoutError as PlaywrightTimeoutError, expect, sync_playwright
+from account import sign_out
 
 from app_select import choose, expect_value
 
@@ -99,25 +100,6 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
-def open_sources(page: Page, scope=None) -> None:
-    """Opens the project's sources above a composer (#117), where materials are saved and cited.
-
-    A writer types "/source" in the composer (F-026 S5: no Sources button); a reader has no composer, so
-    its Sources button stays. With a thread open (UI116-1) pass the thread as `scope` to use its composer."""
-    within = scope or page
-    region = within.get_by_role("region", name="Space materials")
-    if not region.is_visible():
-        button = within.get_by_role("button", name=re.compile("^Sources"))
-        if button.count():
-            if button.get_attribute("aria-expanded") != "true":
-                button.click()
-        else:
-            field = scope.get_by_role("textbox") if scope else page.locator("#project-composer")
-            field.fill("/source")
-            field.press("Enter")
-    expect(region).to_be_visible()
-
-
 def thread_of(page: Page):
     """The open root's thread in the one panel: beside the stream on a computer, a sheet or overlay on a phone or tablet (UI116-1, #488)."""
     return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -159,24 +141,57 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
     link.tap() if tap else link.click()
 
 
+_PANEL_TASKS: dict[str, str] = {}
+
+
+def panel_task(page: Page, project_id: str) -> str:
+    """The task whose panel a test opens, a space having none of its own (#1419): its first task, or one made for the purpose, once, so that the
+    counts of later tests hold."""
+    if project_id not in _PANEL_TASKS:
+        items = page.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/work?limit=1").json()["items"]
+        if not items:
+            made = page.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
+            assert made.status == 201, made.text()
+            items = [made.json()]
+        _PANEL_TASKS[project_id] = items[0]["id"]
+    return _PANEL_TASKS[project_id]
+
+
 def open_details(page: Page, tap: bool = False) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); on the phone a space has the same More in
-    its header (#873) and a direct message has the same (#1374: "Message info" is its last row). Only a space and a direct message
-    have Details (Home has none, #964)."""
-    if page.viewport_size["width"] <= 640:
-        page.locator("header.phead button[aria-label='More']").first.wait_for()
-        more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
+    """The one detail panel (a sheet on the phone). A direct message has its own, "Message info", in More; a space has none (#1419), so
+    there the panel is a task's, opened from the task's address on a task made for the purpose."""
+    if re.search(r"/dm/[0-9a-f-]{36}", page.url):
+        if page.viewport_size["width"] <= 640:
+            page.locator("header.phead button[aria-label='More']").first.wait_for()
+            more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
+            close_modal_thread(page, tap)
+            more.tap() if tap else more.click()
+            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")
+            item.tap() if tap else item.click()
+            return
         close_modal_thread(page, tap)
-        more.tap() if tap else more.click()
-        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
-        item.tap() if tap else item.click()
+        header = page.locator("header.top")
+        page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
+        header.get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info").click()
         return
-    close_modal_thread(page, tap)
-    header = page.locator("header.top")
-    page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
-    header.get_by_role("button", name="More", exact=True).click()
-    # One meaning per word (#506 AC-4): "Space details" in a project, "Message info" in a direct message.
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$")).click()
+    project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
+    assert project, page.url
+    # The panel opens over the place the test is at (a map, a board, a thread), so the address keeps its path.
+    page.goto(f"{urllib.parse.urlsplit(page.url).path}?open=work:{panel_task(page, project.group(1))}")
+
+
+def open_details_in_app(page: Page) -> None:
+    """Like open_details, but through the router, as a link inside the app would (a notification's, a Wiki card's): whatever is open stays loaded,
+    and a thread's panel gives way to the task with a way back to it."""
+    project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
+    assert project, page.url
+    page.evaluate("""([path, id]) => {
+        const state = window.history.state ?? {};
+        window.history.pushState({ usr: null, key: Math.random().toString(36).slice(2, 10), idx: (state.idx ?? 0) + 1 }, '', `${path}?open=work:${id}`);
+        window.dispatchEvent(new PopStateEvent('popstate'));
+    }""",
+                  [urllib.parse.urlsplit(page.url).path, panel_task(page, project.group(1))])
 
 
 def shot(page: Page, name: str) -> None:
@@ -405,7 +420,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page).to_have_url(f"{ORIGIN}/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_role("button", name=re.compile(NAME))).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile(rf"{NAME}, Settings$"))).to_be_visible()
         # F-037: a server's company was set up by its first account (check_ui.sh makes that one); a person who signs up
         # later is in no company until invited. The test deployment's fixture route gives this person their own.
         made = page.request.post(f"{ORIGIN}/api/v1/workspaces", headers={"origin": ORIGIN}, data={"name": "Personal"})
@@ -519,11 +534,15 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button. Since ⋯ lost its
-        # sidebar row (#1376) My map has nothing for ⋯, so its header has no ⋯ at all: no empty menu to open (README §4).
+        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button.
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
+        # #1424: and with nothing to hold, no ⋯ either: My map and Settings have no button that opens an empty menu.
         expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
-        expect(page.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
+        page.goto("/settings")
+        expect(page.get_by_role("heading", level=1, name="Settings", exact=True)).to_be_visible()
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
+        page.go_back()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
         expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)
@@ -581,7 +600,7 @@ class AppShellJourney(unittest.TestCase):
                     expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
                     expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
                     expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
-                    # The phone's More holds Settings and Space details, the one place they open from (#873).
+                    # The phone's More holds Search, Call, Settings and Mute: a space has no panel of its own (#873, #1419).
                     expect(header.get_by_role("button", name="More", exact=True)).to_have_count(1)
                     geometry = page.evaluate("""() => ({header: document.querySelector('header.phead').getBoundingClientRect().height,
                       width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
@@ -612,6 +631,7 @@ class AppShellJourney(unittest.TestCase):
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
                     rowHeights: rows.filter(el => !el.querySelector('small')).map(el => el.getBoundingClientRect().height), hintedHeights: hinted,
                     labels: rows.map(el => (el.querySelector('span > span, span') || el).firstChild.textContent.trim()),
+                    rowTexts: rows.map(el => el.textContent.trim()),
                     viewport: document.documentElement.clientWidth};
                 }""")
                 after = header.bounding_box()
@@ -620,11 +640,12 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                # A space's ⋯ holds Settings, Mute space and Space details, and no row for the sidebar (README §4, #1376).
-                # A narrower header may move People and Call in front of them (Spokój rule 3).
-                self.assertEqual(geometry["labels"][-3:], ["Settings", "Mute space", "Space details"], f"the space's rows, in order: {geometry}")
-                self.assertFalse([label for label in geometry["labels"] if re.search("sidebar", label, re.I)], f"no row for the sidebar: {geometry}")
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and Space details are shown (no Call row on a server without a media server, #1424): {geometry}")
+                # A space's ⋯ holds Settings and Mute space, no row for the sidebar (README §4, #1376) and no Space details: a space has no
+                # panel of its own (#1419). A narrower header may move People and Call in front of them (Spokój rule 3).
+                self.assertEqual(geometry["labels"][-2:], ["Settings", "Mute space"], f"the space's rows, in order: {geometry}")
+                self.assertFalse([label for label in geometry["labels"] if re.search("sidebar|details", label, re.I)], f"no row for the sidebar or details: {geometry}")
+                self.assertEqual([text for text in geometry["rowTexts"] if not text.startswith("Mute") and text not in ("People", "Call")], ["Settings"], f"Settings is the space's plain row: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 1, f"Settings is shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
                     # 44 px touch rows; WebKit lays a menu that starts on a fractional pixel out to 43.99998… while it settles (#1375 adds the People row at 820):
@@ -665,7 +686,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        # Home and My map have no Details (#871); a space has its own.
+        # Home and My map have no Details (#871); a task has the panel.
         page.goto(f"/projects/{self.first_space(page)}")
         expect(page.locator(".project-convo")).to_be_visible()
         open_details(page)
@@ -705,8 +726,8 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Details opens a full-screen sheet from a space's More (Home has the button only with an encrypted space, #865); Jo's space
-        # is the one test_04aa made, and the views row of projects is in test_phone_final.
+        # Details opens a sheet (a task's, in Jo's space: the one test_04aa made; a space has no panel of its own, #1419); the views
+        # row of projects is in test_phone_final.
         spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
                   for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
         self.assertTrue(spaces, "test_04aa made a space")
@@ -717,7 +738,7 @@ class AppShellJourney(unittest.TestCase):
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
         sheet_box = box(page, sheet)
-        self.assertEqual((round(sheet_box["x"]), round(sheet_box["y"]), round(sheet_box["width"]), round(sheet_box["height"])), (0, 0, PHONE["width"], PHONE["height"]), "Details is a full-screen sheet")
+        self.assertEqual((round(sheet_box["x"]), round(sheet_box["width"]), round(sheet_box["y"] + sheet_box["height"])), (0, PHONE["width"], PHONE["height"]), "Details is a sheet that rests on the bottom edge")
         shot(page, "phone-390-details-light")
         # #433: when a dialog surface itself holds keyboard focus, it shows a visible inset ring.
         # Tab establishes keyboard modality in every engine: the focus ring is for keyboard focus only (final design focus
@@ -730,7 +751,7 @@ class AppShellJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         open_details(page)
-        page.get_by_role("dialog", name=re.compile("Space details|Message info")).get_by_role("button", name=re.compile("^Close (space details|message info)$")).click()
+        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
     def test_07_phone_dark_and_narrow(self) -> None:
@@ -790,22 +811,16 @@ class AppShellJourney(unittest.TestCase):
     def test_08_theme_choice_persists_and_reduced_motion(self) -> None:
         page = self.page()
         page.goto("/")
-        account = page.get_by_role("button", name=re.compile(NAME))
+        # One way to Settings (#1419): the name at the foot of the sidebar is the link. There is no account menu and no gear beside it.
+        account = page.locator(".side .me").get_by_role("link", name=re.compile(NAME))
+        expect(page.locator(".side .me").get_by_role("link")).to_have_count(1)
+        expect(page.get_by_role("dialog", name="Account")).to_have_count(0)
         account.click()
-        menu = page.get_by_role("dialog", name="Account")
-        expect(menu).to_be_visible()
-        # The account menu is short (C-34): the name with the email, Settings and Sign out. The session line, this device's
-        # notifications and the theme are in Settings.
-        expect(menu.get_by_text(EMAIL)).to_be_visible()
-        expect(menu.get_by_role("link", name="Settings", exact=True)).to_be_visible()
-        expect(menu.get_by_role("button", name="Sign out")).to_be_visible()
-        expect(menu.get_by_text("Signed in on this device until")).to_have_count(0)
-        expect(menu.get_by_text("Notifications on this device")).to_have_count(0)
-        expect(menu.get_by_role("radio")).to_have_count(0)
+        expect(page).to_have_url(f"{ORIGIN}/settings")
+        page.get_by_role("link", name=re.compile(r"^Account")).first.click()
+        expect(page.get_by_role("heading", name="Account", exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name="Signed in as").get_by_text(EMAIL)).to_be_visible()
         shot(page, "desktop-1440-account-light")
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(account).to_be_focused()
         # The theme is Settings > Appearance, and it persists across a reload.
         page.goto("/settings/appearance")
         themes = page.get_by_role("radiogroup", name="Theme")
@@ -937,8 +952,7 @@ class AppShellJourney(unittest.TestCase):
 
     def sign_out_while_loading(self, page: Page, name: str) -> None:
         """Signs out while the tab still waits for answers, then lets every answer arrive."""
-        page.get_by_role("button", name=re.compile(rf"{name}.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page, name)
         expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         expect(page.get_by_role("status").filter(has_text="You’re signed out.")).to_be_visible()
         # What the tab was loading before sign-out answers now, while the sign-in page's own check
@@ -981,8 +995,7 @@ class AppShellJourney(unittest.TestCase):
     def test_11c_a_failed_sign_out_says_so_and_can_be_retried(self) -> None:
         page, _, _ = self.person_with_a_task("Ida Holm", slow=False, service_workers="block")
         page.route("**/api/auth/sign-out", lambda route: route.fulfill(status=503, json={"code": "TEST_UNAVAILABLE", "message": "test: sign-out unavailable"}))
-        page.get_by_role("button", name=re.compile("Ida Holm.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page, "Ida Holm")
         # The sign-out page says what happened and offers to try again; the session is still live.
         expect(page).to_have_url(f"{ORIGIN}/sign-out")
         expect(page.get_by_role("heading", name="Sign out of Flux?")).to_be_visible()
@@ -1055,20 +1068,11 @@ class AppShellJourney(unittest.TestCase):
         opening.hover()
         opening.get_by_role("button", name="Reply in thread", exact=True).click()
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Add material").click()
-        owner.get_by_label("Title").fill("Privacy options")
-        owner.get_by_label("Text").fill("PIR avoids storing images")
-        owner.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-        owner.go_back()
-        expect(owner.get_by_label("Title")).to_have_value("Privacy options")
-        expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
-        owner.get_by_role("button", name="Save for this space").press("Enter")
-        expect(owner.get_by_text("Privacy options")).to_be_visible()
-        owner.get_by_role("button", name="Discuss this version").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
-        owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
-        owner.get_by_role("button", name="Send reply").click()
+        # There is no Sources tray in the composer (#1419): a source saved for the space is cited by the API alone, and a reply that carries one shows its card.
+        saved = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": "Privacy options", "body": "PIR avoids storing images", "clientMutationId": str(uuid.uuid4())}, headers={"Origin": ORIGIN})
+        self.assertEqual(saved.status, 201, saved.text())
+        cited = owner.context.request.post(f"{ORIGIN}/api/v1/conversations/{conversation_id}/messages", data={"body": "This is the version we should prototype", "clientMessageId": str(uuid.uuid4()), "source": {"materialId": saved.json()["materialId"], "version": 1}}, headers={"Origin": ORIGIN})
+        self.assertEqual(cited.status, 201, cited.text())
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
         source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
@@ -1160,24 +1164,6 @@ class AppShellJourney(unittest.TestCase):
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
-        read_failures = {"count": 0}
-        def fail_first_citation(route) -> None:
-            read_failures["count"] += 1
-            if read_failures["count"] == 1:
-                route.abort("failed")
-            else:
-                route.continue_()
-        owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
-        owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Discuss this version").click()
-        expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
-        owner.get_by_role("button", name="Retry read").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
-        self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Reload after lost reply")
-        owner.get_by_label("Reply", exact=True).fill("")
-        owner.get_by_role("button", name="Remove material citation").click()
-        owner.unroute("**/api/v1/materials/*/versions/1", fail_first_citation)
 
         partner_email = f"partner+{int(time.time() * 1000)}@example.test"
         partner = self.page(signed_in=False)
@@ -1287,25 +1273,18 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
             if index == 0:
                 first_id = result.json()["id"]
-            material = request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": f"Material {index:03}", "body": "A saved project note", "clientMutationId": str(uuid.uuid4())}, headers=headers)
-            self.assertEqual(material.status, 201, material.text())
         self.assertTrue(first_id)
         owner.reload()
-        open_sources(owner)
         # One stream (UI116-1): the newest 50 roots, then earlier windows on request.
         stream = owner.get_by_role("region", name="Messages")
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
         for loaded_count in (100, 101):
             stream.get_by_role("button", name="Load earlier messages").click()
             expect(roots).to_have_count(loaded_count)
         expect(stream.get_by_role("button", name="Load earlier messages")).to_have_count(0)
-        owner.get_by_role("button", name="Load more materials").click()
         expect(roots.first).to_contain_text("Thread 000")
-        expect(owner.get_by_role("article").filter(has_text="Material 000")).to_be_visible()
         self.assertEqual(roots.count(), 101)
-        self.assertEqual(owner.locator(".project-convo__material").count(), 101)
 
         for index in range(1, 121):
             result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": f"Reply {index:03}", "clientMessageId": str(uuid.uuid4())}, headers=headers)
@@ -1361,26 +1340,6 @@ class AppShellJourney(unittest.TestCase):
         expect(held).to_have_count(0)
         expect(owner.get_by_text("Held reply", exact=True)).to_have_count(1)
         expect(reply_box).to_have_value("")
-
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Add material").click()
-        owner.get_by_label("Title").fill("Held material")
-        owner.get_by_label("Text").fill("Do not lose this text")
-        owner.evaluate("""() => {
-          const actual = window.fetch.bind(window);
-          window.fetch = (input, init) => {
-            const url = typeof input === 'string' ? input : input.url;
-            if (url.includes('/materials') && init?.method === 'POST') {
-              return new Promise((resolve) => { window.releaseMaterial = () => resolve(actual(input, init)); });
-            }
-            return actual(input, init);
-          };
-        }""")
-        owner.get_by_role("button", name="Save for this space").click()
-        expect(owner.get_by_label("Title")).to_be_disabled()
-        expect(owner.get_by_label("Text")).to_be_disabled()
-        owner.evaluate("() => { window.releaseMaterial(); }")
-        expect(owner.get_by_role("article").filter(has_text="Held material")).to_be_visible()
 
     def test_14_your_agent_app_shows_how_to_connect_what_it_may_do_and_disconnects(self) -> None:
         """A first-time owner sees how a client signs in (one click, no form), sets what a connected client may do, and disconnects it (#859)."""

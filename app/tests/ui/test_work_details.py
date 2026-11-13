@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 from playwright.sync_api import expect, sync_playwright
 
 from app_select import choose, expect_value, values
+from create_window import open_decision
 from test_app_shell import ORIGIN, UPSTREAM, SHOTS, shot, start_forwarder
 from test_work_pagination import api
 
@@ -121,20 +122,27 @@ class NativeDetailsJourney(unittest.TestCase):
         expect(field).to_have_value("My unfinished blocker explanation is private until saved")
 
     def test_04_all_current_rules_reachable_and_selected_rule_persists_on_another_page(self):
-        page=self.page();page.goto(f"/projects/{self.project}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
-        panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
-        panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
-        why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Does it replace an earlier one?",exact=True);seen={value for value in values(select) if value}
-        nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Choices it can replace")
+        # The one decision form is the Create window's (#1419): its "Replace an accepted decision…" choice pages through every accepted rule.
+        page=self.page();page.goto(f"/projects/{self.project}/tasks")
+        window=open_decision(page)
+        window.get_by_role("textbox",name="Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
+        why=window.get_by_role("textbox",name="Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
+        window.get_by_role("button",name="Replace an accepted decision…").click();self.choices_ready(window,"Decisions it can replace")
+        nav=window.get_by_role("navigation",name="Decisions it can replace");select=window.get_by_label("Does it replace an earlier decision?",exact=True);seen={value for value in values(select) if value}
+        nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
-        chosen=self.rules[0];choose(select, chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()
-        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Choices it can replace")
+        chosen=self.rules[0];choose(select, chosen["id"]);expect(window.get_by_role("button",name=re.compile("^Propose decision"))).to_be_enabled()
+        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(window,"Decisions it can replace")
         expect_value(select, chosen["id"]);expect(why).to_have_value("Retain the complete earlier measurements before changing the cable")
-        panel.get_by_role("button",name="Propose decision",exact=True).click()
-        expect(page.locator('.wd[data-detail-kind="decision"]')).to_contain_text("Keep a manual off switch")
-        saved=api(self.ctx,"GET",self.root+"/decisions?limit=100")["items"]
-        proposal=next(item for item in saved if item["title"]=="Keep a manual off switch after measuring both shields")
+        window.get_by_role("button",name=re.compile("^Propose decision")).click()
+        # The proposal is held for Undo and reaches the people who can accept it when that window ends.
+        expect(page.locator(".ui-toast",has_text="Decision proposed")).to_be_visible()
+        proposal=None
+        for _ in range(80):
+            proposal=next((item for item in api(self.ctx,"GET",self.root+"/decisions?limit=100")["items"] if item["title"]=="Keep a manual off switch after measuring both shields"),None)
+            if proposal:break
+            page.wait_for_timeout(250)
+        self.assertIsNotNone(proposal,"the proposal was sent when the Undo window ended")
         self.assertEqual(proposal["supersedes"],chosen["id"]);self.assertEqual(proposal["rationale"],"Retain the complete earlier measurements before changing the cable")
         self.__class__.pivot=proposal
 

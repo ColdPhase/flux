@@ -388,7 +388,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
     people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
     so it is never a heading over nothing (#1424);
-  - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
+  - your name at the bottom, with your face. It opens Settings, the one way in, as your face does on the phone
+    (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). There is no gear beside it and no
+    account menu; Sign out is in Settings › Account.
   - **The drawer (a narrow window) holds the sidebar's items in the same places** (#1375): no "+" beside
     Spaces or Messages (New is the one way to create; only an empty Messages has its "+", as above), the ⋯ beside Spaces, no email under the name,
     and no frame around the drawer; the rail's people are faces, not links. Where a list is longer than the window, the edge it can still
@@ -408,9 +410,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   and an empty Everyone does not say "1 agent". The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
   too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
-  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
-  **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
-  [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
+  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings and
+  **Mute space** / **Unmute space**; there is no Space details panel (founder decision, Hubert, 2026-11-13, #1419): who is in the space, its
+  AI switch and its **GitHub** row are all in the space's settings ([Spaces](#spaces)). It has no row for the sidebar:
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424, #1460): Home, My tasks, My map, an
   agent's chat on the computer and a page of Settings have none, so they show no ⋯ and no empty menu.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
@@ -422,6 +424,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
   board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
   card lies over the work's right edge; on the phone it is the sheet below.
+  A reply the person has just sent stays whole above the field in a thread, also in the phone's sheet, whatever the
+  engine does with the list as the reply is stored ([#1424](https://github.com/ColdPhase/flux/issues/1424)).
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -434,7 +438,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   and, next to it, "My map" (Hubert, 2026-11-03). The tab bar stays at three tabs. Your face at the
   top of Home opens Settings.
 - **One "+".** A floating soft-fill button above the tab bar opens Create: Task, Thought, Decision,
-  Page, Space. These are the same five types as on the computer.
+  Page, Space. These are the same five types as on the computer. There is one "+" for each thing (founder
+  decision, Hubert, 2026-11-13, #1419): the Spaces tab has no "+ New space" button (the "+" › Space is the one way in), and the
+  Messages list has no floating "+" (it cannot make a message), only its own **+ New message**, which starts a message.
 - **Inside a space.** Founder direction, Hubert, 2026-11-12 (#1239); the approved mock-up is the
   v0.2.1 canvas, boards "Phone header" and "Phone: long names + view switch options", variant A.
   - **Title row: Back, the space's name and ⋯, and nothing else.** Search and Call are the first
@@ -454,7 +460,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, Join between the name and ⋯ while a call is live, and ⋯, with **Search** and **Call** as its first rows, then Mute conversation and "Message info". Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and "Message info". A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -535,7 +541,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". The assistant's suggestions are in that menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -556,7 +562,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | P1 | **Home** has two parts: Waiting for you (the top three, with Open Inbox) and Continue where you left off. Every row is clickable and ends in an arrow. |
 | P3 | Kreska is the agent icon everywhere (section 3). |
 | P4 | **A decision is one card on both devices:** who proposed it, the decision, its reason, then Accept / Not now / Discuss and who can accept it. Plain sentences appear only when they apply: "This replaces the decision **Wi-Fi in every bed** (12 Oct)." and "Shown on the Wiki page **Sensor network**." Accepting only marks the replaced decision "replaced"; Flux never moves or parks tasks. |
-| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "made a task from Jonas's message", "Planner · Ada's agent is on it". (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
+| P5 | **Creating a task is separate from its notice.** The conversation only announces it, in one line with its source: "Ada created #1 …", "created a task from Jonas's message", "Planner · Ada's agent is on it". A new task is **created** everywhere it is said: the line, the toast ("Task #12 created"), the task's activity ("created the task", "created it from a message") and Home's "since you were away" line (#1424). (The Map has no Create task, #867.) Founder report 2026-10-28 ([#694](https://github.com/ColdPhase/flux/issues/694)): a decision is announced the same way, because a decision proposed in a thread left no trace anywhere. One line, "Ada proposed a decision" (or "accepted a decision"; a message has no Propose a decision, #867), then the decision as one card with its state now (Proposed, Accepted, Replaced) that opens it in the one panel. The line is in the space's stream by time and in the thread it came from; it updates for every member who can read the space, and it is information, not a message. There is no result card: Done may carry one "What came of it" line in the task's discussion. |
 | P6 | Attachments sit inside their message (section 6). |
 | P7 | Monochrome with light, dark and system; no accent colour. |
 | P8 | The action is called "Create task", never "Create work". |
@@ -704,8 +710,10 @@ These functional rules from UI116-4 remain required:
   - Sending, offline and failure show on the photo itself: progress in %, "sends when you're
     back", Retry.
   - Before sending, thumbnails with × sit in the composer.
-  - On the phone the picker numbers your choices in send order. The full-screen viewer is always
-    dark, with Reply, Create task, Save and Share.
+  - On the phone the system's own picker numbers your choices as you make them and hands them back in that
+    order. Flux adds no picker of its own (founder review 2026-11-13, [#1424](https://github.com/ColdPhase/flux/issues/1424)):
+    the files arrive in the draft at once, each with its name, numbered "Sends 1", "Sends 2" on its thumbnail. The
+    full-screen viewer is always dark, with Reply, Create task, Save and Share.
 - **A file preview** (founder decisions 2026-11-10 and 2026-11-12, [#1252](https://github.com/ColdPhase/flux/issues/1252),
   [C-60](../../product/decisions.md)). HTML, plain text (`.txt`, `.log`, source code), Markdown, JSON,
   CSV/TSV and PDF open in the photo viewer's frame. Pressing the row's name opens the preview; the
@@ -764,13 +772,23 @@ These functional rules from UI116-4 remain required:
   - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
     "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
     row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
-    the browser's own controls (`controls`, `playsinline`) and the poster shown until Play. It
+    the browser's own controls (`controls`, `playsinline`) and the poster shown until the first frame. The
+    row's ▶ is Play: the viewer opens **playing** (one click, founder review 2026-11-13,
+    [#1424](https://github.com/ColdPhase/flux/issues/1424)); a browser that refuses sound before a press on the
+    player itself leaves it paused with its controls. It
     starts at once and seeks without loading the file: the bytes come in ranges. On the phone the
     stage is the whole screen between the bars, and the browser's controls and full-screen button do
     the rest. Closing stops the video and its download.
   - **A video this browser cannot play** (its codec is not one the browser has) shows on the stage
     "This browser can't play this video." with Download as the one button, as a PDF does. A person
     who lost access sees "You no longer have access to this file." and nothing else.
+  - **The limits line** ("Private until sent · 5 MiB each, videos 200 MiB · 10 files / 20 MiB per message") is not under
+    the composer the whole time files are attached ([#1424](https://github.com/ColdPhase/flux/issues/1424)): each row already
+    says "Ready, private". It shows below the files only when a file or the draft was refused, or when the draft is
+    within two files of the count or at four fifths of the message's bytes (the videos together against their own cap).
+    After the picker the focus is back in the message field on a computer (on a phone the field is tapped, so no keyboard
+    rises over the files), and no single-key shortcut (`C`, `G` `I`, `[`, the Inbox's and a task's keys, `End`) fires anywhere
+    inside a composer, its paperclip, Send and a file's × included.
   - **In the composer** a video is a thumbnail like a photo's (its poster once drawn, else the page
     icon), with its name, "Video · size · Uploading 42%" and ×; Retry upload as for any file. Over the
     limit it says "A video can be at most 200 MiB." (the operator's number); in an encrypted space a
@@ -778,7 +796,7 @@ These functional rules from UI116-4 remain required:
 
 | | |
 | --- | --- |
-| ![Photo picker](screens/phone-photopick.webp) Photo picker | ![Photo viewer](screens/phone-photoview.webp) Photo viewer |
+| ![Photo viewer](screens/phone-photoview.webp) Photo viewer |
 
 These boards date from 2026-10-07. Their files, references and photos are current; their task
 words and the conversation header follow sections 2 and 4.
@@ -868,8 +886,9 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
   being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
   item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; every kind has the same shape
-  (a muted line that starts with the kind, no bold name before it and no time; a notification's own title already says who and where, so its line is
-  its kind, #1424); the open row is
+  (a muted line "Kind · who · space" that starts with the kind, no bold name before it and no time, #1424). A question or a mention is titled by what it
+  says, a call by its place ("Call in Gesture lamp", "At “Order sensors”"); the notification's own sentence ("Jonas asked you in Rain barrel monitor") stays in
+  Notices, push and the API. A message between two people has a sender and no space ("Question · Jonas"); a group message keeps its sentence, which names the group; the open row is
   the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
@@ -982,7 +1001,7 @@ screen, setting or mode, and Settings › Notifications stays the overview. Ever
 menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
 
 - **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
-  computer's ⋯; on the phone the direct message's ⋯, after Search and Call and one row above "Message info"). A space reads **Mute space** /
+  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "Message info"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
   person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
@@ -1169,8 +1188,8 @@ Space header, computer (a call of the space is on; Join keeps Call's fixed slot,
 
 Live strip (the starter, alone)
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│ ● Live   Call in Gesture lamp      (H)          [Invite…]  🎙  📷  🖥   ⋯   [Leave]           │
-│ Nobody joined · [Invite someone]                                                              │
+│ ● Live   Call in Gesture lamp      (H)     [Invite someone]  🎙  📷  🖥   ⋯   [Leave]           │
+│ Nobody joined                                                                                 │
 └─────────────────────────────────────────────────────────────────────────────────────────────┘
 
 Conversation, an event line like a task line (reading column)
@@ -1189,26 +1208,33 @@ Live strip, someone shares a screen
   Nia", and "Join · Nia · at “Loan rules”" when the call is at another task, map or page than the one open (a call of
   the space itself has no "at"). Below 44 rem the header has moved Call into ⋯: ⋯ carries the live dot and its first row
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
-- **While you are in the call** the header's slot shows the call's state, not a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)):
-  the live dot (a spinner while it connects) and **In call**, the same quiet button in the same slot, so nothing moves. It explains itself in its popover
-  ("You are in a call." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
+- **In the call, the header's slot shows the call** (#1424): "In call" with the live dot, the same quiet button, which takes you
+  to the call: its place when you are somewhere else, else its stage (a shared screen or the cameras; again to put it away),
+  else the strip's own place button. It never says "You are in a live session" and does nothing. ⋯'s row reads the same. While the
+  call connects ([#1378](https://github.com/ColdPhase/flux/issues/1378)) the dot is a spinner and the button only says "Connecting to the call."; the slot keeps
+  its width either way, so nothing moves.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
   the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
 - **No media server, no Call** (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424). A server that has no media server shows
   no Call anywhere: not in the header on any view (Tasks, Map and Wiki lists included), not as a greyed row in ⋯ or on the phone, not on a task, and no
   popover that explains it. Its words "media server" and "live sessions" are not said to members: a call that fails says "Calls are not working right now."
+  A direct message never has a Call row (it has no calls).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
-  and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
+  and the call's place (the same button), with nothing else; its devices, Invite someone, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
   starts nothing more, so a slow connection never looks like nothing happened and a second click cannot start a second call (#1304).
 - **⋯ with calls.** Further calls of the space are rows "Join · Kai · at “Order sensors”" (dot first), and **Start a
   call here** starts a separate call at the place open. Starting from the conversation joins the space's call instead.
 - **The strip's place** is the button it always was; a call of the space reads "Call in Gesture lamp" with no kind
   word, a task's call keeps "Order sensors · task".
-- **Invite…** is a quiet button in the strip before the devices (in ⋯'s sheet on the phone). It opens the strip's
-  existing popover (a sheet on the phone) with the space's people who are not in the call, each with Invite → "Invited".
-- **Nobody joined.** While the starter is alone in a call nobody else joined, one `lv-line` under the strip: "Nobody
-  joined" and a quiet **Invite someone**, which opens Invite…. After 10 minutes alone the call ends and the strip's ended
+- **Invite someone** is the strip's one invite control, a quiet button before the devices on a computer and a tablet (#1424). It
+  opens a small popover (on a phone a sheet of half the screen's height, so the call stays in view above it) that holds only the space's people who are not in the call, each with Invite →
+  "Invited", and nothing else: it never repeats the microphone, camera or screen, which are the strip's and ⋯'s. The same name
+  everywhere: there is no "Invite…" beside it. It is not shown when nobody is left to invite. On a phone the row has no room for
+  it: ⋯'s sheet has one "Invite someone" row, which opens that same sheet.
+- **Nobody joined.** While the starter is alone in a call nobody else joined, one `lv-line` under the strip says "Nobody
+  joined"; on a phone it carries the quiet **Invite someone** (the computer's strip has it in its row, so the line has no
+  second one). After 10 minutes alone the call ends and the strip's ended
   row says "Nobody joined, so the call ended. Your work is saved." with Dismiss.
 - **The conversation line** is one line in the reading column, the size, colour and indent of a task line ("Ada created
   #1 …"): the starter's face, "**Hubert** started a call", then while it runs the faces of who is in it, "N people",
@@ -1248,6 +1274,14 @@ the composer. The right-hand phone above shows the sheet.
   nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
   remembered between openings. After Create the window closes and the task opens in the panel as
   before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
+- **A decision is one form** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). New ›
+  Decision and `/decide …` in a conversation open the same Create window on Decision, in the same words: "What is being decided?" with
+  what was typed after `/decide`, "Why this is the right call (optional)", the message it came from quoted as "From the message" (a
+  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an accepted
+  decision…** that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
+  are more than one page of them. The footer says "Goes to the Inbox of those who can accept it" and the one primary is **Propose
+  decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
+  access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and the default
   status and owner. `C` keeps the space the last task was created in until the person goes to another
@@ -1313,7 +1347,10 @@ the composer. The right-hand phone above shows the sheet.
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
 - Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
-  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts.
+  match marked; decisions are listed with Tasks, and maps and drafts with Thoughts. The server ranks the
+  results and the groups follow it: **the group of the best match comes first**, then the one that holds the next best, so a
+  task that shares a word with a plain question never stands above the message that answers it
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)); inside a group the server's order stands.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page.
@@ -1328,6 +1365,13 @@ the composer. The right-hand phone above shows the sheet.
   address. The text of a PDF, a Word document, Markdown, plain text and CSV/TSV is found; images,
   audio, video and anything in an encrypted space are not. A file counts once however many of its
   parts match.
+- **Opening a result** puts the person at the thing itself and adds nothing to the screen
+  ([#1424](https://github.com/ColdPhase/flux/issues/1424)). A message opens in its conversation, scrolled to the middle and
+  marked with the arrival's soft fill (rule 6); its thread opens beside it (a sheet on the phone) only when the message is in
+  one: a reply, or a root that has replies. A root nobody answered opens no thread: there is nothing to show in an empty
+  panel. A result carries no "‹ where I came from" control: the header's name and tabs never move for it, and the phone's
+  round back stays the plain chevron. The browser's Back (and the phone's gesture) returns to where Search was opened,
+  as it restores any entry.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
@@ -1508,6 +1552,11 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     shows up here".
   - There is no Schedules section: schedules live only in the agent's chat (below).
   - "Delete Planner. Its tasks go back to you."
+- **Connect AI lists only what this server offers** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)):
+  a Claude plan or a ChatGPT plan the server cannot run is not a greyed row saying "Not offered on this Flux server"; it is not there. A
+  choice that is only late (the sign-in place is still starting, or Flux could not check just now) keeps its row with that one line, since
+  it will work. **New agent** appears once an AI is connected: an agent without a connection can do nothing, and Assistant comes with the
+  first connection.
 - **Connect AI** is one window in steps: choose a Claude plan, a ChatGPT plan or an API key; sign
   in on claude.ai and paste the code, or enter the device code for ChatGPT; "Couldn't connect"
   with Use an API key and Try again; an API key with its one daily budget. The API key offers
@@ -1520,6 +1569,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     "Opus", "Haiku"), each option "Claude Opus 5.5 · $4 / $20" or "Claude Sonnet 5.7 · price
     unknown, enter it". Its last option, "Other model id…", shows the plain field under it. A model
     carries the name its provider gives it ("Claude Opus 5.5") here and on the agent's page alike.
+  - **The window's buttons keep their side** (#1424): on every step the secondary action is on the left and the one primary on
+    the right, in one row: Cancel and Continue, Use an API key and Try again, Cancel and Connect. Connect does not swap sides with
+    Cancel on the key step.
+  - A list of exactly one model has that model chosen already (nothing to pick between); a list of several has none chosen.
   - Nothing is saved on a model nobody chose. Enter in the key field reads the models, as leaving the
     field does, instead of saving. Connect before a model is chosen (the list is still being read)
     puts "Choose a model first. Flux lists the models of your key once you have entered it and left
@@ -1531,7 +1584,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - A list that can't be read in time shows the plain Model field with "Anthropic's model list
     couldn't be read. Type the model id from Anthropic's documentation." Connect works.
   - An unpriced model shows the two price fields under the Model (as for an own endpoint) with
-    "Flux doesn't know this model's price yet. Enter it to use it with a daily budget."
+    "Flux doesn't know this model's price yet. Enter it to use it with a daily budget." Both are needed (0 is a price):
+    Connect without them puts "Enter this model's price to use it with a daily budget…" above the form and saves nothing, and the
+    server refuses such a key from any client with the same words, so Settings never shows a key that "can't be used" (#1424).
   - OpenRouter and an OpenAI-compatible endpoint keep "Show available models" and the field.
 - **The Model of an agent with an API key** lists the key's models under its connection, in the
   same family order, in the app's `Select` (a plan keeps its few models as segments), each with its
@@ -1664,8 +1719,9 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     it gets the same label and agent message, with the Kreska in the default ink (`--inv`).
   - **The screen reader** reads the message as "Hubert's Assistant, shown by Hubert".
   - **The private card says the same:** "Show everyone posts it as “Hubert's Assistant”".
-  - **Where only text fits** (notifications, search results, what an agent reads) the line stays
-    "Hubert · via Assistant": it names the person as the author.
+  - **Where only text fits** (notifications, search results, the "since you were away" lines, what an agent reads) it is the same
+    name, "Hubert's Assistant" (founder decision, 2026-11-13, #1424: one name everywhere; #1232 for the label). Only a person's
+    local client keeps the "via" form, "Hubert · via Claude Code" (LC-2): that is the person's own message, sent from their tool.
 - **A web answer lists its sources once** (#1222, founder decision, Hubert, 2026-11-12). Flux's own
   list under the answer, "Searched the web for" and "Found on the web", is the only list. The words of
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
@@ -1716,7 +1772,7 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     "No AI in encrypted spaces" as its line. The scrim covers the sidebar as in Create.
 - **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
   under the header at every computer width (the tablet and phone keep their own padding):
-  - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
+  - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - **Add people also takes a new person's email** (founder decision, 2026-11-13, #1438). Under the company's people, the open
@@ -1726,6 +1782,10 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     simply ticked in the list instead. The inviter gets "<name> joined <company>" naming the space when they join. A space admin
     who is not a company admin has no such row. About 6 clicks instead of 13.
   - The AI switch.
+  - **GitHub**, for the space's admins: one row, **GitHub repositories**, that leads to the GitHub page (where repositories are connected and
+    managed), which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
+    settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,
+    [#1419](https://github.com/ColdPhase/flux/issues/1419)).
   - Leave space, and Delete space… for admins.
   - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
     "ask whoever runs Flux" (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424): what a server cannot do is not shown.
@@ -1888,6 +1948,7 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   and "quiet".
 - **Places:** projects become Spaces. No workspace switching, no sidebar group headers, no
   workspace-wide Wiki, no templates and no goal (or its "goal reached" moment).
+  - the Space details panel (#1419).
 - **Ideas:** the Sketchbook (now My map), "Sketch", the DM "Sketches" tab, "Drafts" and "Notes".
 - **Agents:**
   - the space's Agents view and the Agents section, and agent project grants, policy and
@@ -1904,8 +1965,11 @@ The renders are the approved mockups as drawn; where a later decision differs, f
 - **Messages and creating:**
   - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
     composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
+  - the `/map`, `/handoff` and `/source` commands (the composer's `/` has four: `/task`, `/decide`, `/ai`, `/file`) and the Sources tray
+    `/source` opened; **My assistant** and the agents in the `@` list (#1419);
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;
   - the column "+", the ⌘K Create group, and the Map toolbar's Create task and Note.
+  - the Spaces tab's "+ New space" and the Messages list's floating "+" (#1419).
 - **Tasks:** Not pursued, the Result object, Results and Activity sections, and "Came from". Also
   ⋯ on board cards and the phone's "+" in the Tasks header.
 - **Wiki:**
@@ -1918,7 +1982,8 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   - focus mode and `F`;
   - the per-kind notification matrix and the plain morning summary;
   - the global AI switch;
-  - theme, People and device notifications in the account menu.
+  - theme, People and device notifications in the account menu; the account menu itself and the sidebar's gear (the name opens
+    Settings, #1419).
 - **Looks and words:**
   - accent colour families and the theme colour picker;
   - gradient orbs, robot glyphs and corner status dots for agents (Kreska replaces them);

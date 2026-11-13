@@ -499,7 +499,7 @@ scene, 2026-11-09):
   first page of sketches (20, no empty ones), first page of pages (100) and work summary. Entering a space reads it, never from
   a kept answer, so a lost space still says so (#592): a refusal of the space (404, 423) is the whole read's answer.
 - **`GET /api/v1/projects/:id/conversation-view`** (`ConversationView`): the newest roots, the task and decision notices, the
-  sources, the agents' questions (`null` while the space's AI is off) and the work associations of the newest roots' messages.
+  agents' questions (`null` while the space's AI is off) and the work associations of the newest roots' messages.
 - **Access per part.** Each part is its own route's use case called with the caller's principal (`apps/server/src/views/`), so
   each keeps its own access check; neither read queries a table itself. Context parts the person may not read are `null`.
 - **The client takes the parts where they are asked for.** A view read hands each part to the address of the part's own read

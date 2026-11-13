@@ -14,6 +14,7 @@ import time
 import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_map_options, own_company, show_map_as, shot, start_forwarder
 
@@ -533,8 +534,7 @@ class SketchJourney(unittest.TestCase):
         self.assertTrue(any(s["frames"] for s in sockets), "the first account's stream is live")
 
         # Sign out and in as the other person without leaving the tab.
-        page.get_by_role("button", name=re.compile(NAME)).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page)
         expect(page).to_have_url(re.compile(r"/sign-in"))
         before = len(sockets)
         page.get_by_label("Email").fill(other_email)

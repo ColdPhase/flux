@@ -197,7 +197,7 @@ function AccountNotificationSettings() {
         ) : null}
         {pushServerOff ? null : (
           <>
-            <div className="sset-row sset-row--stack"><span className="sset-row__t">On this device</span><NotificationsButton installStepsBelow={phone} /></div>
+            <div className="sset-row sset-row--stack"><span className="sset-row__t">On this device</span><NotificationsButton /></div>
             {/* One switch (founder decision, 2026-11-13, #1346): what a push says. It is about push, so a server that cannot push does not offer it. */}
             <SwitchRow label="Hide previews" checked={prefs.hidePreviews}
               detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'Notifications show who and where, never the message'}
@@ -268,7 +268,7 @@ function AccountNotificationSettings() {
       {/* Installing Flux, last on the page, so an install offer that arrives late never moves another row. The card
           shows only when it has a row. */}
       <section className="nset__sec nset__this-device">
-        <div className="sset-card"><InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} phone={phone} /></div>
+        <div className="sset-card"><InstallFlux title={phone ? 'Flux on this phone' : 'Install Flux'} phone={phone} stepsSaidAbove={!pushServerOff} /></div>
       </section>
     </div></div>
   );

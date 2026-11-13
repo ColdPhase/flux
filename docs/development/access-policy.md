@@ -278,7 +278,7 @@ filtering. `limit` is 1–100 (default 50) and `offset` is 0–10000.
 **In the web app** ([#188](https://github.com/ColdPhase/flux/issues/188)) these routes back two
 places, with no change to the rules above:
 
-- **People** (Settings › Company, also from the account menu; #763 PE-1)
+- **People** (Settings › Company; #763 PE-1)
   lists the members and roles. Owners and admins add an existing account by email with a role, change roles and remove
   people; anyone leaves. Guests, who may not read the roster, see only their own place. `ACCOUNT_NOT_FOUND` points to an
   [invite link](#invite-links-f-035) for someone without an account (#763 PE-2; Flux sends no invitation email), and
@@ -449,7 +449,7 @@ actor is stored, never sent). Their tabs forget every kept answer, read the shel
 lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`, through `GET .../space-shell`, #1109).
 
 **One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages and work summary)
-and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices as far back as those roots, sources, agents' questions,
+and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices as far back as those roots, agents' questions,
 the roots' work associations and the company's people without their last-active times, #1429) call each part's own use case with the
 caller's principal, so every part keeps its own access check; neither reads a table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
 agents' questions are `null` while the space's AI is off (AG-10), as their own route refuses them.

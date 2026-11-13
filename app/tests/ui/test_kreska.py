@@ -176,18 +176,34 @@ class KreskaJourney(unittest.TestCase):
         page.goto("/sign-in")
         self.assertEqual(page.locator('link[rel="icon"][type="image/svg+xml"]').get_attribute("href"), "/icons/icon.svg")
 
+    def linked_objects(self, page, project: str, conversation: str, message: str, title: str):
+        """A message's linked objects, the panel a space and its thread no longer have a version of (#1419): the message has more tasks than it
+        shows, so its "view linked objects" opens the rest; the page that holds `title` is found with Next."""
+        for index in range(52):
+            self.api(page, "POST", f"/api/v1/projects/{project}/work", {"title": f"Soil check {index + 1:02d}", "sources": [{"type": "message", "id": message}]})
+        page.goto(f"/projects/{project}/conversations/{conversation}")
+        expect(page.get_by_label("Reply", exact=True)).to_be_visible()
+        opening = page.locator(f"#message-{message}")
+        opening.scroll_into_view_if_needed()
+        opening.hover()
+        opening.get_by_role("button", name=re.compile("view linked objects")).click()
+        overview = page.locator(".ov")
+        expect(overview).to_have_attribute("data-overview-phase", "ready")
+        pages = overview.get_by_role("navigation", name="Overview object pages")
+        for _ in range(3):
+            if overview.locator(".ov-row", has_text=title).count():
+                break
+            pages.get_by_role("button", name="Next", exact=True).click()
+            expect(overview).to_have_attribute("data-overview-phase", "ready")
+        return overview
+
     def test_05_overview_names_an_agent_owner_with_kreska_the_tag_and_the_owner(self) -> None:
         self.ensure_account()
         page = self.page()
         thread = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/conversations", {"body": "Probe the soil at two depths.", "clientMessageId": str(uuid.uuid4())})
         message = thread["messages"][0]["id"]
         self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Log the soil readings", "owner": {"kind": "agent", "id": self.ids["agent"]}, "sources": [{"type": "message", "id": message}]})
-        page.goto(f"/projects/{self.ids['project']}/conversations/{thread['id']}")
-        expect(page.get_by_label("Reply", exact=True)).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
-        overview = page.locator(".ov")
-        expect(overview).to_have_attribute("data-overview-phase", "ready")
+        overview = self.linked_objects(page, self.ids["project"], thread["id"], message, "Log the soil readings")
         row = overview.locator(".ov-row", has_text="Log the soil readings")
         # The agent's own icon is its direct child; the "Agent" tag carries its own small Kreska.
         expect(row.locator(".ov-row__s .agent-id > .kreska")).to_have_count(1)
@@ -207,12 +223,7 @@ class KreskaJourney(unittest.TestCase):
         # Revoke only the agent (it has no grant of its own, F-036); the owner keeps the project and stays in the audience.
         revoked = page.request.fetch(f"{ORIGIN}/api/v1/agents/{agent['id']}", method="DELETE", headers={"origin": ORIGIN})
         self.assertEqual(revoked.status, 200, revoked.text())
-        page.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
-        expect(page.get_by_label("Reply", exact=True)).to_be_visible()
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
-        overview = page.locator(".ov")
-        expect(overview).to_have_attribute("data-overview-phase", "ready")
+        overview = self.linked_objects(page, project["id"], thread["id"], message, "Check the retained owner")
         row = overview.locator(".ov-row", has_text="Check the retained owner")
         expect(row.locator(".ov-row__s .agent-id > .kreska")).to_have_count(1)
         expect(row.locator(".ov-row__s .agent-tag")).to_have_count(0)

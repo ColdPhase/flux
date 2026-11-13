@@ -188,6 +188,11 @@
 .lv-diag__v { grid-column: 1 / -1; font-family: var(--mono); color: var(--t2); font-variant-numeric: tabular-nums; }
 .lv-diag__warn { grid-column: 1 / -1; display: flex; gap: 4px; align-items: center; color: var(--t2); }
 .lv-sheet .lv-panel__head { padding-top: 8px; }
+/* The invite sheet is a short list: half the screen on a phone, the one sheet's half height, so the call stays in view above it (#1424). */
+.ui-overlay--bottom .ui-overlay__surface.lv-sheet--half {
+  inset: auto 0 0 0; height: min(calc(100% - 12px), max(56%, 300px)); overflow-y: auto; overscroll-behavior: contain;
+  border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom, 0px);
+}
 
 /* ---------- Stage: screens and cameras over the work area ---------- */
 .app__pane { position: relative; }

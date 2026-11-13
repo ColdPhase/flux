@@ -37,7 +37,9 @@
 .ui-overlay .newspace-win:has(.newspace--pinned) { overflow: hidden; }
 .newspace--pinned { display: flex; flex-direction: column; gap: 0; padding: 0; max-height: inherit; min-height: 0; }
 .newspace--pinned .newspace__head { flex: none; padding: 22px 24px 12px; }
-.newspace--pinned .newspace__body { display: grid; gap: 16px; align-content: start; flex: 1 1 auto; min-height: 0; padding: 4px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
+/* Its rows are as tall as their content (`max-content`): an `auto` row shrinks to the room left, and the card holding AI, Encrypted and the password (it clips what
+   overflows it) was squeezed on a short phone, with "Suggest six random words" and the recovery code cut off inside it. The body scrolls instead (#1419). */
+.newspace--pinned .newspace__body { display: grid; grid-auto-rows: max-content; gap: 16px; align-content: start; flex: 1 1 auto; min-height: 0; padding: 4px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
 .newspace--pinned .newspace__foot { flex: none; padding: 12px 24px 18px; border-top: 1px solid var(--line); }
 .newspace__why { align-self: center; margin: 0 auto 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .newspace__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }

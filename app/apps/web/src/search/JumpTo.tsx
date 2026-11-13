@@ -1,13 +1,14 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { useLocation, useNavigate } from 'react-router';
+import { flushPlace } from '../place/memory';
 import type { SearchResult } from '@flux/contracts';
 import { useShellData } from '../app/data';
-import { useFollow } from '../place/origin';
 import { Icon, MEDIA, Mascot, Spinner, useMediaQuery, type IconName } from '../ui';
 import { targetHref } from './api';
 import { SEARCH_HINT } from './hint';
 import { placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
-import { groupResults, ResultBody } from './ResultRow';
+import { groupResults } from './groups';
+import { ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import { UnsearchedSpaces } from '../encryption/LockedSpace';
 import './search.css';
@@ -36,10 +37,14 @@ const OWN_PLACE: Record<string, PlaceName> = {
 };
 const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);
 
-/** Opens a result at its exact place (work, decisions and results in Details on Tasks). */
+/**
+ * Opens a result at its exact place (work, decisions and results in Details on Tasks). A result carries no "‹ where I came from" control: the
+ * header would gain it and its name and tabs would move (a control never changes place, #1424). Back still returns to the place Search was
+ * opened from, as it restores any entry (#592); `found` tells the conversation a link brought the person to one message.
+ */
 export function useOpenResult() {
-  const follow = useFollow();
-  return (result: SearchResult) => follow(targetHref(result.target));
+  const navigate = useNavigate();
+  return (result: SearchResult) => { flushPlace(); return navigate(targetHref(result.target), { state: { found: true } }); };
 }
 
 /**

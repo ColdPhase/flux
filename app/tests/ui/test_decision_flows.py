@@ -32,6 +32,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from app_select import choose
+from create_window import open_decision
 from message_gestures import centre, long_press, real_touch
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
@@ -281,17 +282,17 @@ class DecisionFlows(unittest.TestCase):
         self.assertEqual(selected, [0, len(CLAUSE)], "the title is selected, so typing replaces it")
         page.keyboard.press("Escape")
 
-    def test_11_propose_a_decision_has_one_title_and_no_single_page_pager(self) -> None:
+    def test_11_the_one_decision_form_has_no_second_form_and_no_single_page_pager(self) -> None:
         page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=propose-decision")
-        panel = self.panel(page)
-        # The panel's own heading is the one title: it is the label of what opened it, and the form does not repeat it (#1058).
-        expect(page.locator("#details").get_by_role("heading", name="Propose a decision")).to_have_count(1)
-        expect(page.locator("#details").get_by_role("heading", level=2, name="Propose a decision")).to_be_visible()
-        expect(panel).not_to_contain_text("New proposal")
-        select = panel.get_by_label("Does it replace an earlier one?", exact=True)
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        window = open_decision(page)
+        # One form (#1419): "Replace an accepted decision…" shows its choice in this window, not in a second form in the panel.
+        window.get_by_role("button", name="Replace an accepted decision…").click()
+        expect(page.locator("#details")).to_have_count(0)
+        expect(page.get_by_role("heading", name="Propose a decision")).to_have_count(0)
+        select = window.get_by_label("Does it replace an earlier decision?", exact=True)
         expect(select).to_be_enabled()
-        expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
+        expect(window.get_by_role("navigation", name="Decisions it can replace")).to_have_count(0)
 
     # ---------------------------------------------------------------- B3 (phone)
 

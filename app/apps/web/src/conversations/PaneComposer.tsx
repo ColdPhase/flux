@@ -1,4 +1,4 @@
-import { plainMessageText, type Material } from '@flux/contracts';
+import { plainMessageText } from '@flux/contracts';
 import { AskBar } from '../assistant/ConversationParts';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { ComposerMenu } from '../app/ComposerMenu';
@@ -6,8 +6,6 @@ import { Button } from '../ui';
 import { ComposerBox } from '../composer/ComposerBox';
 import { ComposerFiles } from '../composer/Files';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
-import { MaterialTray } from '../materials/MaterialTray';
-import type { ProjectMaterials } from '../materials/useProjectMaterials';
 import { TypingNotice } from '../typing/TypingNotice';
 import type { useTyping } from '../typing/useTyping';
 import type { PaneCore } from './paneCore';
@@ -19,22 +17,20 @@ import type { ComposerSend } from './useComposerSend';
 
 interface Props {
   core: PaneCore; drafts: ComposerDrafts; menu: ComposerMenuState; actions: ComposerSend; ask: AssistantAsk; askBar: ReturnType<typeof useAskBar>;
-  assistant: ReturnType<typeof useConversationAssistant>; materials: ProjectMaterials; typing: ReturnType<typeof useTyping>;
-  readFailure: { message: string; retry: () => void } | null; author: (id: string) => string;
+  assistant: ReturnType<typeof useConversationAssistant>; typing: ReturnType<typeof useTyping>;
+  readFailure: { message: string; retry: () => void } | null;
 }
 
 /** The hint of S5, and what it shortens to on a field too narrow for it (a small phone, large text), so it never wraps (#1374). */
 const MESSAGE_HINTS = ['Message · @ mention · / actions', 'Message · @ · /', 'Message'] as const;
 
-/** The pane's composer (F-026 S5): sources, the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
-export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materials, typing, readFailure, author }: Props) {
-  const { project, conversation, writable, aiOff, composerId } = core;
+/** The pane's composer (F-026 S5): the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
+export function PaneComposer({ core, drafts, menu, actions, ask, askBar, typing, readFailure }: Props) {
+  const { project, conversation, composerId } = core;
   const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
-  const trayOpen = materials.trayOpen;
   const title = conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
   return <div className="composer project-convo__composer"><div className="composer__in">
-    {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material: Material) => void actions.cite(material)} /> : null}
     <ConnectionLine />
     {/* A space's conversation and its threads are read by the space's people, the default, so no audience is said (#871). */}
     {asking ? <AskBar id="project-ask" state={askBar.state} error={askBar.error} onExit={ask.exitAsk} onAction={askBar.onAction} />
@@ -49,7 +45,7 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
       attach={asking ? null : publicComposer}
       sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
       sendDisabled={!drafts.composer.canSend || busy || askBusy || (asking && askBar.state.kind !== 'ready')} onSend={() => void actions.send()}
-      menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={menu.trigger?.char ?? '@'} aiOff={aiOff} onPick={menu.pick} onHover={menu.setMenuIndex} />} />
+      menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={menu.trigger?.char ?? '@'} onPick={menu.pick} onHover={menu.setMenuIndex} />} />
     {conversation ? <TypingNotice {...typing} /> : null}
     <SendAnnouncer pending={publicComposer.pending} />
     {menu.commandHint ? <p className="project-convo__hint" role="status">{menu.commandHint}</p> : null}

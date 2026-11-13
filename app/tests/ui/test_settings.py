@@ -322,6 +322,10 @@ class SettingsJourney(unittest.TestCase):
             # One word for each theme on every device: the computer's "Match system" (#1424), and no line about an accent colour to pick.
             self.assertEqual(themes.get_by_role("radio").all_inner_texts(), ["Light", "Dark", "Match system"])
             expect(page.get_by_text(re.compile("no accent colou?r", re.I))).to_have_count(0)
+            # "Match system" is one line at 390 px: its text is one box of one line's height, inside its third of the row.
+            for label in themes.locator(".sset-theme__label").all():
+                lines = label.evaluate("el => { const text = [...el.childNodes].find((node) => node.nodeType === 3 && node.textContent.trim()); const r = document.createRange(); r.selectNodeContents(text); return r.getClientRects().length; }")
+                self.assertEqual(lines, 1, f"{label.inner_text()!r} wraps")
             shot(page, f"1424-appearance-phone-390-{'dark' if dark else 'light'}")
             expect(page.get_by_role("switch", name="Show the face on loading and empty screens")).to_be_visible()
             # This phone's notifications and install steps are under Notifications → This phone (#763 SG-8).

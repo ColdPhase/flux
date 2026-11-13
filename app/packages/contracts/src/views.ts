@@ -1,6 +1,6 @@
 import type { Page, Project, ProjectPerson, WorkspaceMember } from './access.js';
 import type { AgentQuestions } from './agent-questions.js';
-import type { ConversationRootWindow, Material } from './conversation.js';
+import type { ConversationRootWindow } from './conversation.js';
 import type { DocSummary } from './docs.js';
 import type { Sketch } from './sketch.js';
 import type { ObjectNotice, TaskCreationNotice } from './work.js';
@@ -43,7 +43,7 @@ export const projectConversationViewPath = (projectId: string) => `/api/v1/proje
  * (#1429): every notice at or after the oldest root of the window and the first one before it, or every notice when the window holds the
  * oldest root, at least `notices` and at most `noticesReach`. So the stream has what it shows beside its roots without paging back.
  */
-export const CONVERSATION_VIEW_LIMITS = { notices: 100, noticesReach: 500, materials: 100 } as const;
+export const CONVERSATION_VIEW_LIMITS = { notices: 100, noticesReach: 500 } as const;
 
 /**
  * The newest roots of the space's one stream with what the stream shows beside them. The roots and sources are required (a
@@ -59,8 +59,6 @@ export interface ConversationView {
   taskNotices: Page<TaskCreationNotice>;
   /** `GET /projects/:id/object-notices`, the decisions the stream announces, as far back as the roots reach. */
   objectNotices: Page<ObjectNotice>;
-  /** `GET /projects/:id/materials` (first page): the space's sources. */
-  materials: Page<Material>;
   /** `GET /projects/:id/agent-questions`; `null` while the space's AI is off (AG-10), when that route refuses. */
   agentQuestions: AgentQuestions | null;
   /**

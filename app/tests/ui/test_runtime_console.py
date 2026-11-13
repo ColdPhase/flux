@@ -151,9 +151,9 @@ class RuntimeConsole(unittest.TestCase):
         connect = page.get_by_role("region", name="Connect AI", exact=True)
         connect.get_by_role("button", name="Connect AI", exact=True).click()
         window = page.get_by_role("dialog", name="Connect your AI")
+        # A plan this server cannot run is not listed, not shown greyed (#1419).
         for kind in ("claude_plan", "chatgpt_plan"):
-            expect(window.locator(f"[data-choice={kind}]")).to_contain_text("Not offered on this Flux server")
-            expect(window.locator(f"[data-choice={kind}] input")).to_be_disabled()
+            expect(window.locator(f"[data-choice={kind}]")).to_have_count(0)
         expect(window.locator("[data-choice=api_key] input")).to_be_enabled()
         window.get_by_role("button", name="Cancel").click()
         expect(window).to_have_count(0)

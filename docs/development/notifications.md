@@ -56,7 +56,9 @@ work item, project sketch or doc title, excerpted to 80 characters) and opens
 `/projects/:p/live/:session?invitation=:invitation`. Repeated invites of the same person to
 the same session converge on one invitation row and record no second event, so there is one
 inbox row and one push. Migration `0021_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
-21) adds the reason to the `notifications.reason` check.
+21) adds the reason to the `notifications.reason` check. Its title is "Ada invited you to a call" (#1424), and in an encrypted
+workspace "Ada invited you to a call in <workspace>": migration `0080_call_invitation_words.sql` makes that the form the content-free
+check accepts, in place of "invited you to work together in".
 
 ### The notice on an open tab (#1243)
 
@@ -105,7 +107,7 @@ The settings page sends its saves one after another, numbered, and shows only th
   invitation or notice is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33. The line under each level in Settings names exactly these reasons
   (`app/apps/web/src/notifications/levels.ts`, #1173): "Questions, mentions, messages to you, tasks that need you, decisions about
-  your work, invitations to work together and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
+  your work, invitations to a call and agents waiting for you", then "Also every reply in conversations you are part of and calls started in your spaces";
   `notification-level-words.test.ts` pins the words against `channelsOf`. A task "that needs you" is `assigned`: given to you, waiting
   for you while blocked, ready for you to check or able to continue. An agent's question is a `question`, and an agent waiting for your
   OK is `approval` (#1186).
@@ -238,7 +240,7 @@ each with its reason, title, excerpt and time; opening one marks it read and ope
 holds "Tell me about" (Only what needs me, Everything, Nothing), then "Where" (Email me too, On this device and
 Quiet hours as one row each), the email addresses, and muted places behind a link row (#872; the focus pause went
 with F-038, the plain morning summary is gone, F-038, #858). Installing Flux is the last row, when the browser
-offers it. The account menu has no notifications row any more: the name, Settings and Sign out (C-34). `/inbox/:id` (email link) and
+offers it. There is no account menu: the name at the foot of the sidebar opens Settings, and Sign out is in Settings › Account (C-34, superseded by #1419). `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 
 ## Tests

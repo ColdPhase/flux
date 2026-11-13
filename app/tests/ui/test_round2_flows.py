@@ -223,15 +223,15 @@ class Round2Flows(unittest.TestCase):
             time.sleep(0.25)
         self.assertIsNotNone(found, "the proposal was sent when the Undo window ended")
         self.assertEqual(found["status"], "proposed")
-        # The full form with Replaces stays one step away.
+        # Replacing an earlier decision is a choice in the same window, with the words kept (#1419): no second form opens.
         page.locator("body").press("c")
         page.get_by_role("dialog", name="New task").get_by_role("tab", name="Decision", exact=True).click()
-        page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True).fill(CLAUSE)
-        page.get_by_role("dialog", name="New decision").get_by_role("button", name="Replace an accepted decision…").click()
-        panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
-        expect(panel.get_by_label("Decision", exact=True)).to_have_value(CLAUSE)
-        expect(panel.get_by_label("Does it replace an earlier one?", exact=True)).to_be_visible()
+        dialog = page.get_by_role("dialog", name="New decision")
+        dialog.get_by_role("textbox", name="Decision", exact=True).fill(CLAUSE)
+        dialog.get_by_role("button", name="Replace an accepted decision…").click()
+        expect(page.locator("#details")).to_have_count(0)
+        expect(dialog.get_by_role("textbox", name="Decision", exact=True)).to_have_value(CLAUSE)
+        expect(dialog.get_by_label("Does it replace an earlier decision?", exact=True)).to_be_visible()
 
     # ---------------------------------------------------------------- WF-2
 
@@ -239,11 +239,11 @@ class Round2Flows(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         notice = page.locator(".convo-notice", has_text="Order six capacitive probes").first
-        expect(notice.locator(".convo-notice__what")).to_have_text("made a task from your message")
+        expect(notice.locator(".convo-notice__what")).to_have_text("created a task from your message")
         jonas = self.page("jonas")
         jonas.goto(f"/projects/{self.ids['project']}")
         notice = jonas.locator(".convo-notice", has_text="Order six capacitive probes").first
-        expect(notice.locator(".convo-notice__what")).to_have_text("made a task from their own message")
+        expect(notice.locator(".convo-notice__what")).to_have_text("created a task from their own message")
 
 
     # ---------------------------------------------------------------- H11-3

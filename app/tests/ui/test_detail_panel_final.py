@@ -6,7 +6,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 from native_touch import drag_touch, native_touch_driver
 
@@ -381,16 +381,6 @@ class DetailPanelFinal(unittest.TestCase):
                 sheet.focus()
                 page.keyboard.press("Escape")
                 expect(sheet).to_have_count(0)
-
-    def test_08b_a_sheet_that_is_not_this_component_is_not_marked(self):
-        """Negative control for test_08: the full-screen Details sheet (place details, no object) is not a two-height sheet."""
-        page = self.page(phone=True)
-        page.goto(f"/projects/{self.project}/tasks")
-        open_details(page)
-        sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet).to_be_visible()
-        expect(page.locator("[data-detent-sheet]")).to_have_count(0)
-        expect(sheet.locator(".ui-grabber")).to_have_count(0)
 
     def test_07_phone_thread_is_a_sheet_with_a_grabber(self):
         page = self.page(phone=True)

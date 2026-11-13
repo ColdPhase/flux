@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Avatar, Button, Icon, IconButton } from '../ui';
 import { AudioSettingsRow } from './AudioSettings';
-import { inviteToSession } from './api';
 import { KIND_WORD, type Presentable } from './anchors';
 import { DeviceButton } from './DeviceButton';
+import { peopleToInvite } from './InvitePanel';
 import { audienceOf } from './LiveEntry';
 import { PersonSound } from './ParticipantVolume';
 import type { LiveValue } from './LiveProvider';
@@ -20,43 +20,25 @@ function presence(person: MediaPerson): string {
 }
 
 /**
- * Everything beyond the strip, on request: who is here and who can join, your devices and
+ * Everything beyond the strip, on request: who is here, your devices and
  * their real state, quiet, measured connection details and what personal help does (not).
  */
-export function LivePanel({ live, presentable, focusInvite = false, onShow, onClose }: {
+export function LivePanel({ live, presentable, onShow, onClose, onInvite }: {
   live: LiveValue; presentable: Presentable | null; onShow(): void; onClose(): void;
-  /** Opened from Invite… (F-041): the first person who can join takes focus. */
-  focusInvite?: boolean;
+  /** On a phone the strip has no room for "Invite someone", so ⋯ holds its one row; on a computer the strip has it and this is absent (#1424). */
+  onInvite?: () => void;
 }) {
-  const canJoin = useRef<HTMLHeadingElement>(null);
-  useEffect(() => {
-    if (!focusInvite) return undefined;
-    const frame = requestAnimationFrame(() => {
-      const first = canJoin.current?.parentElement?.querySelector<HTMLElement>('.lv-person--absent button');
-      (first ?? canJoin.current)?.focus({ preventScroll: false });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [focusInvite]);
-  const [invited, setInvited] = useState<Record<string, 'sending' | 'sent' | 'failed'>>({});
   const [diagOpen, setDiagOpen] = useState(false);
   const people = live.media?.people ?? [];
-  const inRoom = new Set(people.map((person) => person.userId));
-  const absent = live.people.filter((person) => person.kind === 'human' && !inRoom.has(person.id) && person.id !== live.meId);
   const anchor = live.anchor!;
-
-  const invite = async (userId: string) => {
-    if (!live.session) return;
-    setInvited((current) => ({ ...current, [userId]: 'sending' }));
-    try { await inviteToSession(live.session.id, userId); setInvited((current) => ({ ...current, [userId]: 'sent' })); }
-    catch { setInvited((current) => ({ ...current, [userId]: 'failed' })); }
-  };
+  const canInvite = !!onInvite && live.phase === 'in' && !live.quiet && peopleToInvite(live).length > 0;
 
   return (
     <div className="lv-panel">
       <header className="lv-panel__head">
         {/* Always in the first screen: on a phone the sheet fills the view and has no Escape. */}
         <IconButton icon="x" label="Back to work" onClick={onClose} className="lv-panel__close" />
-        <p className="lv-panel__k">{anchor.context.type === 'space' ? 'Call in the space' : `Working together on this ${KIND_WORD[anchor.context.type]}`}</p>
+        <p className="lv-panel__k">{anchor.context.type === 'space' ? 'Call in the space' : `Call on this ${KIND_WORD[anchor.context.type]}`}</p>
         <h2 className="lv-panel__t">{anchor.label}</h2>
         <p className="lv-panel__aud"><Icon name="lock" size={12} />{audienceOf(live.people, live.meId)} · the same people who can open it</p>
       </header>
@@ -75,22 +57,7 @@ export function LivePanel({ live, presentable, focusInvite = false, onShow, onCl
             ))}
           </ul>
         ) : <p className="lv-panel__text">Connecting to the call…</p>}
-        {absent.length ? (
-          <>
-            <h3 className="lv-panel__sub" ref={canJoin} tabIndex={-1}>Can join</h3>
-            <ul className="lv-people">
-              {absent.map((person) => (
-                <li key={person.id} className="lv-person lv-person--absent">
-                  <Avatar name={person.name} id={person.id} size="md" />
-                  <span className="lv-person__b"><b>{person.name}</b><span>{invited[person.id] === 'sent' ? 'Invited · one quiet item in their inbox' : invited[person.id] === 'failed' ? 'Could not invite. They may no longer have access.' : 'Not in the session'}</span></span>
-                  {invited[person.id] === 'sent' ? <Icon name="check" size={14} /> : (
-                    <Button variant="quiet" busy={invited[person.id] === 'sending'} onClick={() => void invite(person.id)}>Invite</Button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
+        {canInvite ? <Button variant="quiet" icon="plus" onClick={onInvite}>Invite someone</Button> : null}
       </section>
 
       <section className="lv-panel__sec" aria-labelledby="lv-you">
@@ -105,16 +72,16 @@ export function LivePanel({ live, presentable, focusInvite = false, onShow, onCl
         {live.audio && !live.quiet ? <AudioSettingsRow onOpen={onClose} /> : null}
         {presentable ? (
           <Button variant="secondary" icon="show" block className="lv-panel__show" onClick={onShow} title={`Show “${presentable.label}”`}><span>Show “{presentable.label}”</span></Button>
-        ) : <p className="lv-panel__text">Open a task, result, doc or map in this space to show it here.</p>}
+        ) : <p className="lv-panel__text">Open a task, Wiki page or map in this space to show it here.</p>}
         <button type="button" role="switch" aria-checked={live.quiet} className="lv-switch" onClick={() => { live.setQuiet(!live.quiet); }}>
           <span className="lv-switch__track" aria-hidden="true"><span className="lv-switch__knob" /></span>
-          <span className="lv-switch__b"><b>Work quietly</b><span>Stops your microphone, camera and screen and what you hear. You stay in the session and can return.</span></span>
+          <span className="lv-switch__b"><b>Work quietly</b><span>Stops your microphone, camera and screen and what you hear. You stay in the call and can return.</span></span>
         </button>
       </section>
 
       <section className="lv-panel__sec" aria-labelledby="lv-help">
         <h3 id="lv-help">Help and privacy</h3>
-        <p className="lv-help"><Icon name="spark" size={14} /><span><b>Personal assistants</b> are not used in live sessions yet. No assistant hears the room or sees cameras and screens, and nobody can use your AI connection.</span></p>
+        <p className="lv-help"><Icon name="spark" size={14} /><span><b>Personal assistants</b> are not used in calls yet. No assistant hears the room or sees cameras and screens, and nobody can use your AI connection.</span></p>
         <p className="lv-help"><Icon name="mic-off" size={14} /><span><b>Audio notes</b> are not available. Nothing said here is recorded, transcribed or summarized.</span></p>
         <p className="lv-help"><Icon name="alert" size={14} /><span>On phones and tablets the browser may pause sound or camera when you switch apps or lock the screen. Drafts and saved work stay, and Flux reconnects when you come back.</span></p>
       </section>
@@ -128,7 +95,7 @@ export function LivePanel({ live, presentable, focusInvite = false, onShow, onCl
 
       <footer className="lv-panel__foot">
         <Button variant="quiet" onClick={onClose}>Close</Button>
-        <Button variant="danger" icon="leave" onClick={() => { onClose(); void live.leave(); }}>Leave session</Button>
+        <Button variant="danger" icon="leave" onClick={() => { onClose(); void live.leave(); }}>Leave call</Button>
       </footer>
     </div>
   );

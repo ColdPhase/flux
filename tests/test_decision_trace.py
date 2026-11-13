@@ -64,7 +64,8 @@ class DecisionTrace(unittest.TestCase):
             self.assertIn(words, rule)
         conversation = source("app/apps/web/src/conversations/useComposerSend.ts")
         self.assertRegex(conversation, r"fromThread = conversation && rootMessageId \?")
-        self.assertIn("kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread", conversation)
+        # `/decide` opens the one Create window on Decision, as `/task` opens it on Task (#1419), with the same source.
+        self.assertIn("kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume,", conversation)
         self.assertIn("sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }", conversation)
 
     def test_a_card_never_decides_or_changes_anything(self) -> None:

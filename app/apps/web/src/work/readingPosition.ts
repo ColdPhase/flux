@@ -69,7 +69,9 @@ export function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, no
     const observe = (reader: boolean) => {
       if (reader) readerMoved.current = true;
       if (atEnd()) following.current = true;
-      else if (reader && pane.scrollTop < lastTop.current - 1) following.current = false;
+      // Only the reader's own input leaves the end: an engine that moves a feed whose content just changed (WebKit does, as a reply joins a
+      // thread) is not the reader going up, and a reply the person has just sent must stay in view above the composer (#1424).
+      else if (reader && byReader() && pane.scrollTop < lastTop.current - 1) following.current = false;
       lastTop.current = pane.scrollTop;
       lastSeenAt.current = performance.now();
       save(reader);
@@ -147,7 +149,9 @@ export function useMessageReadingPosition(ref: RefObject<HTMLElement | null>, no
     const grew = () => { if (!growFrame) growFrame = requestAnimationFrame(settleGrown); };
     const resize = new ResizeObserver(grew);
     resize.observe(pane);
-    if (pane.firstElementChild) resize.observe(pane.firstElementChild);
+    // Every child: the column a feed grows in is not always its first (a short feed's spare height, its lift, comes before it), so a reply that
+    // joins a thread has to be seen as growth for a reader at the end to follow it (#1424).
+    for (const child of pane.children) resize.observe(child);
     // The reader's own input (wheel, touch, scroll keys, a press on the scroll bar, focus moving to something in the feed) makes
     // the position theirs again at once.
     const thaw = () => { frozenUntil.current = 0; };

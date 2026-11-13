@@ -50,7 +50,7 @@ Agents is one list with a row for each of Hubert's two agents' connections and M
 | Thread feed < 400 px | A docked panel on a small laptop has no room beside a bubble: the three message actions sit in the bubble's corner | container | `work/message-actions.css` `@container thread-feed` |
 | Map pane ≤ 680 px, canvas ≤ 1080 px wide or ≤ 560 px tall | "Select several" is its icon alone; the zoom controls rise above the tools; the minimap goes | container | `sketch/sketch.css` `@container` |
 | Agents | One list in an 854 px column; the three connections are three rows | per surface | `agents/agents.css` |
-| Window ≤ 480 px tall, rail | The rail tightens; Settings is in the account menu. Its middle band, the four places with the projects and messages, scrolls as one, so every project is reachable from the rail (#727). The toggle, New, Stop and the account stay outside it, in place, and their menus are not clipped | viewport | `app/app.css` `.side__rail-middle`, `app/Sidebar.tsx` |
+| Window ≤ 480 px tall, rail | The rail tightens; Settings is the face at its foot (the one way in, #1419). Its middle band, the four places with the projects and messages, scrolls as one, so every project is reachable from the rail (#727). The toggle, New, Stop and the account stay outside it, in place, and their menus are not clipped | viewport | `app/app.css` `.side__rail-middle`, `app/Sidebar.tsx` |
 
 No rule caps the whole application. Reading measures are set per surface.
 

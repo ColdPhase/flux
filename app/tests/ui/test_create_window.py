@@ -14,6 +14,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
+from account import sign_out
 
 from app_select import choose, expect_value
 
@@ -237,7 +238,7 @@ class CreateWindow(unittest.TestCase):
         expect(page.locator(".ui-toast").filter(has_text=f"Task #{made[0]['number']} created").get_by_role("button", name="Undo")).to_be_visible()
         self.assertEqual([(link["role"], link["to"]) for link in made[0]["links"]], [("source", {"type": "message", "id": self.ids["message"]})])
         expect(page.locator(".convo-notice")).to_have_count(before + 1)
-        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("made a task from")
+        expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("created a task from")
 
     # ---------------------------------------------------------------- AC-3: ⌘K finds (no Create group, #870)
 
@@ -1064,8 +1065,7 @@ class CreateWindow(unittest.TestCase):
         self.visit(page, f"/projects/{self.ids['other']}", "Cargo bike co-op")
         self.visit(page, "/", "Home")
         self.assertTrue(page.evaluate("Object.keys(localStorage).some((k) => k.startsWith('flux.places.recent.'))"))
-        page.get_by_role("button", name=re.compile("Ada Create")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page)
         expect(page).to_have_url(re.compile(r"/sign-in"))
         self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))"), [])
         # Signing in again on a project page (not Home): nothing remembered from before, so ⌘K lists only the actions.

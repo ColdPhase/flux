@@ -713,8 +713,9 @@ class SpaceOrder(unittest.TestCase):
         expect(drawer.get_by_role("button", name="New space", exact=True)).to_have_count(0)
         # No "+" of its own (New creates, #1375); this person has no message and no agent yet, so Messages has the computer sidebar's "+" (#1424).
         expect(drawer.get_by_role("link", name="New message", exact=True)).to_have_count(1)
-        mail = drawer.locator(".me__text span").bounding_box()
-        self.assertLessEqual(mail["width"], 1, "the email is not drawn under the name")
+        # The name at the foot is a link to Settings with the name alone (#1457): no email under it, not even an empty one.
+        expect(drawer.get_by_role("link", name=re.compile(r", Settings$"))).to_be_visible()
+        expect(drawer.locator(".me__text span")).to_have_count(0)
         self.assertEqual(tablet.evaluate("getComputedStyle(document.getElementById('nav-drawer')).outlineStyle"), "none", "no frame around the whole drawer")
 
     def test_mark_all_as_read_on_the_phone_from_the_inbox_and_the_spaces_tab(self):

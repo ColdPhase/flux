@@ -20,7 +20,9 @@ import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
+from urllib.parse import urlsplit
+
+from test_app_shell import ORIGIN, UPSTREAM, panel_task, shot, start_forwarder
 
 PASSWORD = "a calm one row header"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -49,12 +51,12 @@ class SpokojLayout(unittest.TestCase):
         cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
         cls.kai_email = f"kai-spokoj-{uuid.uuid4()}@example.test"
-        kai = cls.browser.new_context(base_url=ORIGIN)
+        kai = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         response = kai.request.post("/api/auth/sign-up/email", data={"email": cls.kai_email, "password": PASSWORD, "name": "Kai Spokoj"}, headers={"origin": ORIGIN})
         assert response.status == 200, response.text()
         cls.kai_id = kai.request.get("/api/v1/me").json()["user"]["id"]
         kai.close()
-        context = cls.browser.new_context(base_url=ORIGIN)
+        context = cls.browser.new_context(base_url=ORIGIN, service_workers="block")
         page = context.new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill("Ada Spokoj")
@@ -142,10 +144,12 @@ class SpokojLayout(unittest.TestCase):
                 boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")))
         return boxes
 
-    def open_panel(self, page: Page) -> None:
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-        expect(page.locator(".ui-panel--docked")).to_be_visible()
+    def open_panel(self, page: Page, path: str | None = None) -> None:
+        """The one panel, on a task of the space: a space has no panel of its own (#1419), so the panel is a task's, opened from its address,
+        over the place the test is at (the Wiki's page, for one, is `/docs/:id`)."""
+        here = path if path is not None else urlsplit(page.url).path
+        page.goto(f"{here}?open=work:{panel_task(page, self.project_id)}")
+        expect(page.locator("#details")).to_be_visible()
         # The panel slides in from 24 px to the right; measure it once the animation has landed.
         page.wait_for_function(SETTLED)
 
@@ -196,8 +200,7 @@ class SpokojLayout(unittest.TestCase):
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Wiki")).click()
                 expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
                 page.wait_for_function(SETTLED)
-                page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+                self.open_panel(page)
                 expect(page.locator(".ui-panel--docked")).to_be_visible()
                 expect(page.locator(".ui-panel--overlay")).to_have_count(0)
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel beside the page")
@@ -218,13 +221,13 @@ class SpokojLayout(unittest.TestCase):
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                # Mute space (#1249) sits between Settings and the space's details, under its own one-line hint.
-                # There is no media server on this test server, so there is no Call row, not even a greyed one (#1424).
-                self.assertEqual(items[:4], ["People", "Settings", "Mute space", "Space details"], items)
-                expect(menu.get_by_role("menuitem", name="Call")).to_have_count(0)
-                menu.get_by_role("menuitem", name="Space details").click()
-                expect(page.locator("#details")).to_be_visible()
-                page.wait_for_function(SETTLED)
+                # Mute space (#1249) follows Settings, under its own one-line hint. Live sessions are off on this test server, so there is no Call
+                # row, not even a dimmed one (#1419), and a space has no details panel of its own.
+                self.assertEqual(items[:3], ["People", "Settings", "Mute space"], items)
+                self.assertNotIn("Call", items)
+                self.assertNotIn("Space details", items)
+                page.keyboard.press("Escape")
+                self.open_panel(page)
                 self.assert_one_row(page, f"{size['width']} panel open")
                 self.assert_same_place(views, self.header_boxes_views_only(page), f"{size['width']} panel opened")
                 if size is NARROW:
@@ -264,12 +267,16 @@ class SpokojLayout(unittest.TestCase):
         head = self.box(page.locator("header.top"))
         body = self.box(page.locator(".app__body"))
         leaving = page.evaluate("""async () => {
+          const panel = document.querySelector('.ui-panel--docked');
+          let seen = null;
+          // The class comes with the first frame of the exit and the panel may be gone a moment later: watch for it from before the click.
+          const note = () => { if (!seen && panel.classList.contains('is-leaving')) { const box = panel.getBoundingClientRect(); seen = {x: box.x, y: box.y, right: box.right, bottom: box.bottom, running: panel.getAnimations().length}; } };
+          const observer = new MutationObserver(note);
+          observer.observe(panel, {attributes: true, attributeFilter: ['class']});
           document.querySelector('.ui-panel--docked .ui-panel__close').click();
-          await new Promise((done) => requestAnimationFrame(done));
-          const panel = document.querySelector('.ui-panel--docked.is-leaving');
-          if (!panel) return null;
-          const box = panel.getBoundingClientRect();
-          return {x: box.x, y: box.y, right: box.right, bottom: box.bottom, running: panel.getAnimations().length};
+          for (let frame = 0; frame < 8 && !seen; frame++) await new Promise((done) => requestAnimationFrame(done));
+          observer.disconnect();
+          return seen;
         }""")
         self.assertIsNotNone(leaving, "the panel leaves with its fade")
         self.assertGreaterEqual(leaving["y"], head["y"] + head["height"] - 1, "it stays under the header")
@@ -306,9 +313,9 @@ class SpokojLayout(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.wait_for_function(SETTLED)
         self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 Conversation to Tasks")
-        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365).
-        header.get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365). A space has no
+        # panel of its own (#1419): it is a task's.
+        self.open_panel(page)
         expect(page.locator(".ui-panel--float")).to_be_visible()
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         page.wait_for_function(SETTLED)
@@ -347,10 +354,10 @@ class SpokojLayout(unittest.TestCase):
         rail = page.locator(".side--rail")
         expect(rail).to_be_visible()
         names = rail.locator("a, button").evaluate_all("els => els.map(el => el.getAttribute('aria-label') || el.getAttribute('title'))")
-        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "My tasks", "My map", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj", "Settings"]
+        order = ["Expand sidebar", "New", "Search", "Home", "Inbox", "My tasks", "My map", "Community garden sensors", "Messages", "Kai Spokoj", "Ada Spokoj, Settings"]
         positions = [next((index for index, name in enumerate(names) if name and name.startswith(item)), -1) for item in order]
         self.assertTrue(all(position >= 0 for position in positions), names)
-        self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account and its settings last: {names}")
+        self.assertEqual(positions, sorted(positions), f"the sidebar's order, the account (the one way to Settings, #1419) last: {names}")
         expand = self.box(rail.get_by_role("button", name="Expand sidebar"))
         self.assertAlmostEqual(expand["y"], collapse["y"], delta=1, msg="the toggle stays in the top row")
         page.locator("body").press("[")
@@ -545,7 +552,7 @@ class SpokojLayout(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}")
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name="Space details")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="Space details")).to_have_count(0)
         expect(menu.get_by_role("menuitem", name="Details", exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
         page.goto(self.dm_path)

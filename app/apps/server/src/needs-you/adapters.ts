@@ -48,7 +48,8 @@ export const needsYouUseCases = (db: Database, assistant?: NeedsYouAssistant) =>
   aiAllowed: (projectId) => aiAllowedInProject(db, projectId),
   ...(assistant ? { assistant } : {}),
   repository: needsYouRows(db),
-  inbox: notificationRepository(db),
+  // The Inbox's rows say who they come from ("Question · Maja · Community garden sensors", #1424).
+  inbox: { listReadable: async (userId, limit) => notificationRepository(db).listReadable(userId, limit, { from: true }) },
   level: async (userId) => (await preferenceRepository(notificationPreferenceRows(db)).get(userId)).level,
   work: workRepository(db),
   // A call is on while it is available and someone is in it: its room is not empty (F-041).

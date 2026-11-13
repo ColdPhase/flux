@@ -175,8 +175,8 @@ class ConnectAiJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "agent": agent["id"], "connection": connection["id"]}
 
     def test_02_settings_ai_puts_connect_ai_first_then_the_assistant_and_the_agent_app(self) -> None:
-        """#854 (mockup Main): with nothing connected yet, Connect AI opens its window with the three kinds of connection. The check
-        stack does not run the plans, so they say so in their row; an API key is offered. The assistant and the agent app follow."""
+        """#854 (mockup Main): with nothing connected yet, Connect AI opens its window with what this server offers. The check stack does not
+        run the plans, so they are not listed at all, not as greyed rows (#1419); an API key is offered. The assistant and the agent app follow."""
         page = self.page("ines")
         page.goto("/settings/agents")
         expect(page.get_by_role("heading", level=2, name="AI", exact=True)).to_be_visible()
@@ -187,11 +187,10 @@ class ConnectAiJourney(unittest.TestCase):
         window = page.get_by_role("dialog", name="Connect your AI")
         expect(window).to_contain_text("Connect the AI you pay for.")
         expect(window).not_to_contain_text("each agent uses one")
-        for kind, title in (("claude_plan", "Claude plan"), ("chatgpt_plan", "ChatGPT plan")):
-            row = window.locator(f"[data-choice={kind}]")
-            expect(row).to_contain_text(title)
-            expect(row).to_contain_text("Not offered on this Flux server")
-            expect(row.locator("input")).to_be_disabled()
+        # Only what this server offers is listed (#1419): the plans it cannot run are not greyed rows, they are not there.
+        for kind in ("claude_plan", "chatgpt_plan"):
+            expect(window.locator(f"[data-choice={kind}]")).to_have_count(0)
+        expect(window).not_to_contain_text("Not offered")
         api_key = window.locator("[data-choice=api_key]")
         expect(api_key).to_contain_text("API key")
         expect(api_key.locator("input")).to_be_checked()
@@ -393,6 +392,11 @@ class ConnectAiJourney(unittest.TestCase):
             expect(window.get_by_role("heading", name="Use an API key")).to_be_visible()
             expect(window.get_by_label("Daily budget (USD)", exact=True)).to_have_value("5.00")
             expect(page).to_have_url(re.compile(r"/settings/agents$"))
+            # #1424: the window's buttons keep their side from step to step: the secondary one, then the one primary, on the right.
+            cancel, primary, frame = (window.get_by_role("button", name="Cancel").bounding_box(), window.get_by_role("button", name="Connect", exact=True).bounding_box(),
+                                      window.bounding_box())
+            self.assertLess(cancel["x"], primary["x"], "Cancel is left of Connect, as it is left of Continue")
+            self.assertGreater(primary["x"] + primary["width"] / 2, frame["x"] + frame["width"] / 2, "the primary sits on the right, as Continue and Try again do")
             self.no_horizontal_scroll(page)
             window.get_by_role("button", name="Cancel").click()
             expect(window.locator("[data-choice=api_key]")).to_be_visible()
@@ -487,7 +491,7 @@ class ConnectAiJourney(unittest.TestCase):
         expect(row.get_by_role("link", name="Change Claude plan")).to_have_attribute("href", "/settings/agents/claude-code")
 
     def test_08e_a_failed_read_of_the_plans_says_so_and_never_calls_them_not_offered(self) -> None:
-        """#854: a plan is called "Not offered" only when the server says so; a failed read has its own line with Try again."""
+        """#854: a plan is never hidden by a failed read; it keeps its row, with its own line, and the page offers Try again (#1419: what the server cannot run is not listed)."""
         page = self.page("tom")
         page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=500, content_type="application/json", body="{}"))
         page.goto("/settings/agents")

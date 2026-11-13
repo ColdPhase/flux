@@ -28,35 +28,15 @@
 .project-convo__source:hover { background: var(--hov); color: var(--t1); }
 .project-convo__contribution { gap: 5px; margin-right: 6px; border: 0; cursor: default; }
 button.project-convo__contribution { cursor: pointer; }
-.project-convo__muted { color: var(--t3); font-size: var(--fs-sm); padding: 6px 0; }
-.project-convo__material-form, .project-setup form { display: grid; gap: 14px; margin-top: 16px; }
-.project-convo__material-fields { display: grid; gap: 12px; min-width: 0; padding: 0; margin: 0; border: 0; }
-.project-convo__material-form label { font-size: var(--fs-sm); }
-.project-convo__material-form textarea { border: 1px solid var(--line2); border-radius: var(--r); padding: 9px; min-height: 90px; resize: vertical; background: var(--el); color: var(--t1); }
-.project-convo__form-actions { display: flex; gap: 8px; }
+.project-setup form { display: grid; gap: 14px; margin-top: 16px; }
 .project-convo__composer { border-top: 1px solid var(--line); background: var(--bg); padding-top: 8px; }
 .project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
 .project-convo__composer .composer__audience > span { min-width: 0; overflow-wrap: anywhere; }
 .project-convo__current-thread { display: none; }
-/* Sources: saved text and links, opened from the composer and cited in one step. */
-.project-convo__materials { margin-bottom: 8px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line), 0 6px 18px rgb(0 0 0 / .06); }
-.project-convo__section-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 4px 12px; color: var(--t3); font-size: var(--fs-xs); }
-.project-convo__section-head h3 { flex: 1; font: inherit; font-weight: 600; }
-.project-convo__tray-close { display: grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-sm); color: var(--t3); }
-.project-convo__tray-close:hover { background: var(--hov); color: var(--t1); }
-.project-convo__tray { display: grid; gap: 6px; max-height: min(44vh, 360px); overflow: auto; overscroll-behavior: contain; padding: 0 12px 12px; }
-.project-convo__tray > .ui-btn { justify-self: start; }
-.project-convo__material { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: var(--fs-md); overflow-wrap: anywhere; }
-.project-convo__material > div { min-width: 0; }
-.project-convo__material strong { display: block; font-weight: 500; }
-.project-convo__material small { display: block; color: var(--t3); font-size: var(--fs-xs); }
-.project-convo__material .ui-btn--link { flex: none; padding-inline: 0; }
-.project-convo__citation { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--t2); padding: 4px 4px 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 6px; }
-.project-convo__citation button { min-width: 28px; min-height: 28px; }
 .project-convo__error { color: var(--t1); font-size: var(--fs-sm); margin-top: 6px; }
 .project-convo__hint { color: var(--t2); font-size: var(--fs-sm); margin-top: 6px; }
 .project-setup { max-width: 560px; }
-@media (pointer: coarse) { .project-convo__material .ui-btn--link { min-height: 44px; } .project-convo__tray-close { width: 44px; height: 44px; } .project-convo__message-meta span { visibility: visible; } }
+@media (pointer: coarse) { .project-convo__message-meta span { visibility: visible; } }
 /* Touch (#436, #443): the source chip and an author's name keep their size. A --ctl (44 px) tap area of their own,
    centred on them and never narrower than 44 px (a one-letter name is 8 px wide), takes the tap, so neither the
    chip's background nor the author line grows. */

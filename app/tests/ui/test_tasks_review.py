@@ -16,6 +16,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, start_forwarder, view_tab
 
@@ -351,8 +352,7 @@ class TasksReviewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
     def sign_out_in_app(self, page: Page, who: str = "ada") -> None:
-        page.get_by_role("button", name=re.compile(f"{PEOPLE[who]['name']}.*account and sign out")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out", exact=True).click()
+        sign_out(page)
         expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
 
     def test_10_real_sign_out_retires_undo_for_shared_and_unrelated_next_accounts(self) -> None:

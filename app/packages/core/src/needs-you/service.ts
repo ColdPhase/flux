@@ -192,6 +192,9 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     };
     const notifying = inbox.items.filter((note) => !note.readAt && note.reason && note.reason in channels && channels[note.reason].push
       && (note.reason !== 'call' && note.reason !== 'invitation' || askingNow(note))).length;
+    // The space of a notification made in a space, read together (#1424): the Inbox says "Kind · who · space" for every row.
+    const noteProjects = [...new Set(inbox.items.filter((note) => note.source.type === 'project' && !note.readAt).map((note) => note.source.id))].filter((id) => !projectNames.has(id));
+    if (noteProjects.length) for (const [id, name] of await ports.access.projectNames(noteProjects)) projectNames.set(id, name);
     for (const note of inbox.items) {
       if ((note.reason !== 'mention' && note.reason !== 'question' && note.reason !== 'invitation' && note.reason !== 'call') || note.readAt || note.createdAt.getTime() < since) continue;
       const call = note.reason === 'call' || note.reason === 'invitation' ? callOf(note.url) : null;
@@ -201,8 +204,16 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
       if (note.reason === 'question' && questionOf(note.url)) continue;
       // Someone asking you something, or to join them, is a question; a mention is a mention.
       const kind: NeedsYouKind = note.reason === 'mention' ? 'mention' : 'question';
+      // Who and where, as for every other kind. What a mention or a question says is then its title and a call's place is its words, since "Maja asked
+      // you in Community garden sensors" would say the line above again; a notification of an encrypted space has no words, so it keeps its sentence.
+      const from = note.from?.id ? { kind: note.from.kind, id: note.from.id, name: note.from.name } : null;
+      const project = note.source.type === 'project' ? { id: note.source.id, name: projectNames.get(note.source.id) ?? 'Space' } : null;
+      // A message between two people has a sender and no space: its sentence ends with the phrase, where a group's names the group.
+      const pair = note.source.type === 'dm' && / (asked|mentioned) you$/.test(note.title);
+      const words = from && (project || pair) ? excerpt(note.body) : '';
+      const plain = words && (note.reason === 'mention' || note.reason === 'question' || note.reason === 'call');
       items.push({
-        key: `note:${note.id}`, kind, title: note.title, detail: excerpt(note.body), project: null, from: null,
+        key: `note:${note.id}`, kind, title: plain ? words : note.title, detail: plain ? '' : excerpt(note.body), project, from,
         at: iso(note.createdAt), url: note.url ?? `/inbox/${note.id}`, decision: null, blocked: null, reason: note.reason, snoozeTask: null,
         ...(call ? { call } : {}),
       });

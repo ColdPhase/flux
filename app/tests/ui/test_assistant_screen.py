@@ -181,7 +181,7 @@ class AssistantScreen(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's assistant", "owner": "self"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "agent": agent["id"]}
 
-    def test_08_at_my_assistant_comes_first_and_starts_an_ask(self) -> None:
+    def test_08_at_lists_people_only_and_the_assistant_is_asked_with_ai(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
@@ -190,11 +190,14 @@ class AssistantScreen(unittest.TestCase):
                 page.goto(self.thread_url())
                 box = page.get_by_placeholder(re.compile("Reply in thread"))
                 box.fill("@")
-                options = page.get_by_role("listbox", name="Mention").get_by_role("option")
-                expect(options.first).to_contain_text("My assistant")
-                expect(options.first).to_contain_text("Agent · for you")
-                shot(page, f"at-list-{self.tag(phone)}")
-                options.first.click()
+                # `@` mentions people only (#1419): the assistant and the agents are not in it, so with nobody else in the space the list does not open.
+                expect(page.get_by_role("listbox", name="Mention")).to_have_count(0)
+                box.fill("/")
+                actions = page.get_by_role("listbox", name="Actions")
+                ai = actions.get_by_role("option").filter(has_text="/ai")
+                expect(ai).to_be_visible()
+                shot(page, f"slash-list-{self.tag(phone)}")
+                ai.click()
                 expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
                 self.stub_thread(page)
 

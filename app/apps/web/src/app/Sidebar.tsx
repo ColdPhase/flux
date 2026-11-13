@@ -20,6 +20,7 @@ import { SpaceFace } from '../ui/SpaceFace';
 import { useLiveSpaces } from '../live/spaces';
 import { lockedLine, useEncryptedWorkspaceIds, useLockedWorkspaces } from '../encryption/state';
 import { usePlaceMutes } from '../notifications/mutes';
+import { inComposer } from '../ui/keys';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -181,7 +182,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
     const onKey = (event: KeyboardEvent) => {
       if (event.key.toLowerCase() !== 'c' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
-      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]')) return;
+      if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]') || inComposer(target)) return;
       event.preventDefault();
       openCreate(projectId ? { projectId } : {});
     };
@@ -239,7 +240,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         </div>
         </div>
         <WorkingAgent compact />
-        <UserMenu compact id={user.id} name={user.name} email={user.email} />
+        <UserMenu compact id={user.id} name={user.name} />
       </div>
     );
   }
@@ -357,7 +358,7 @@ export function Sidebar({ directMessages, agents = [], user, onClose, titleId, i
         </nav>
       </div>
       <WorkingAgent />
-      <UserMenu id={user.id} name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
+      <UserMenu id={user.id} name={user.name} onNavigate={onClose} />
     </div>
   );
 }

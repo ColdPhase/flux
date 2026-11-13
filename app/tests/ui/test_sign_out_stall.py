@@ -16,6 +16,7 @@ import time
 import unittest
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeout
+from account import open_settings, sign_out_button
 from playwright.sync_api import expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
@@ -71,8 +72,8 @@ class SignOutJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         before = page.evaluate(WORKER_STATE_JS)
 
-        page.get_by_role("button", name=re.compile(NAME)).click()
-        sign_out = page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out")
+        open_settings(page, NAME)
+        sign_out = sign_out_button(page)
         try:
             with page.expect_request(lambda request: request.method == "POST" and request.url.endswith("/api/auth/sign-out"), timeout=15000):
                 sign_out.click(no_wait_after=True)

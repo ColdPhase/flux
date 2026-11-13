@@ -28,7 +28,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose
 from message_gestures import long_press
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "connected work flow study"
 STAMP = int(time.time() * 1000)
@@ -185,37 +185,6 @@ class ConnectedFlow(unittest.TestCase):
         self.assertEqual((made[0]["source"] or {}).get("projectMessageId"), self.ids["lockers"], "the phone keeps the source")
         shot(page, "cw1-phone-add-to-map")
 
-    def test_05_slash_map_in_a_thread_puts_its_opening_message_on_the_map(self) -> None:
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
-        composer = page.locator("#thread-composer")
-        expect(composer).to_be_visible()
-        composer.click()
-        composer.press_sequentially("/ma")
-        menu = page.get_by_role("listbox", name="Actions")
-        expect(menu.locator(".cmenu__cmd", has_text="/map")).to_be_visible()
-        # Enter first picks "/map" from the menu, then sends it.
-        composer.fill("/map")
-        composer.press("Enter")
-        expect(composer).to_have_value("/map ")
-        composer.press("Enter")
-        expect(page).to_have_url(re.compile(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}"))
-        draft = page.get_by_role("form", name="New thought draft")
-        expect(draft.get_by_role("textbox", name="Thought text")).to_have_value(SMS)
-        # The draft lands in free space in view, not over a thought or under the breadcrumb (CW-12).
-        page.wait_for_timeout(300)
-        shot(page, "cw12-arrival-desktop")
-        ghost = page.locator(".sk-ghost--draft").bounding_box()
-        canvas = page.locator(".sk-canvas").bounding_box()
-        if ghost and canvas:
-            self.assertGreaterEqual(ghost["y"], canvas["y"] + 60)
-            for box in page.locator(".sk-node").evaluate_all("els => els.map(el => el.getBoundingClientRect().toJSON())"):
-                overlap = not (ghost["x"] + ghost["width"] <= box["left"] or box["right"] <= ghost["x"] or ghost["y"] + ghost["height"] <= box["top"] or box["bottom"] <= ghost["y"])
-                self.assertFalse(overlap, f"the new thought overlaps a thought at {box}")
-        draft.get_by_role("button", name="Cancel").click()
-
-    # ---------------------------------------------------------------- CW-6: a task and its criteria
-
     def test_06_a_task_lists_its_criteria_unchecked(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
@@ -237,10 +206,11 @@ class ConnectedFlow(unittest.TestCase):
         panel = page.locator("#details")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel).not_to_contain_text("Current rule")
-        # The space's own details have no "Now": what is current lives in the Tasks and the Inbox (#865).
+        # A space has no details panel, so no "Now": what is current lives in the Tasks and the Inbox (#865, #1419).
         page.goto(f"/projects/{self.ids['project']}")
-        open_details(page)
-        expect(page.locator("#details").get_by_role("region", name="Now", exact=True)).to_have_count(0)
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("details", re.I))).to_have_count(0)
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- CW-9, CW-5: a card under a heading, a toast clear of the sheet
 

@@ -11,7 +11,6 @@ import { assumeReachable, connectionState, onConnectionChange, reportReachable, 
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
 import { forgetPlaces } from '../place/memory';
 
-export interface DraftReference { materialId: string; version: number; title: string }
 export interface DraftFile {
   uploadId: string; name: string; size: number;
   state: 'uploading' | 'failed' | 'ready';
@@ -22,7 +21,7 @@ export interface DraftFile {
   progress?: number;
 }
 export interface ComposerDraft {
-  version: 1; body: string; files: DraftFile[]; references: DraftReference[];
+  version: 1; body: string; files: DraftFile[];
   commandId: string; unconfirmed: boolean;
 }
 /**
@@ -30,7 +29,7 @@ export interface ComposerDraft {
  * pressed, with its command id. "sending" includes one queued behind another of the same composer.
  */
 export interface PendingSend {
-  id: string; body: string; files: DraftFile[]; references: DraftReference[];
+  id: string; body: string; files: DraftFile[];
   state: 'uploading' | 'sending' | 'waiting' | 'failed';
   /** Why it was not sent, beside "Not sent". */
   error?: string;
@@ -72,10 +71,10 @@ const RETIREMENT_KEY = 'flux:session:composer-retirement';
 let sessionGeneration = 0;
 let retiredStorage = false;
 export const composerKey = (accountId: string, projectId: string, context: string) => `${PREFIX}${accountId}:${projectId}:${context}`;
-const empty = (): ComposerDraft => ({ version: 1, body: '', files: [], references: [], commandId: crypto.randomUUID(), unconfirmed: false });
+const empty = (): ComposerDraft => ({ version: 1, body: '', files: [], commandId: crypto.randomUUID(), unconfirmed: false });
 const uuid = (value: unknown): value is string => typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 const storageFor = (context: string) => context.startsWith('dm:') ? sessionStorage : localStorage;
-const blank = (draft: ComposerDraft) => !draft.body.trim() && !draft.files.length && !draft.references.length;
+const blank = (draft: ComposerDraft) => !draft.body.trim() && !draft.files.length;
 
 const readRetirement = () => { try { return localStorage.getItem(RETIREMENT_KEY) ?? ''; } catch { return ''; } };
 let storageRetirement = readRetirement();
@@ -153,8 +152,6 @@ function alive(key: string, generation: number) {
 
 const validFile = (file: DraftFile, projectId: string) => uuid(file.uploadId) && typeof file.name === 'string' && typeof file.size === 'number'
   && ['uploading', 'failed', 'ready'].includes(file.state) && (file.state !== 'ready' || (!!file.staged && uuid(file.staged.id) && file.staged.projectId === projectId));
-const validRefs = (refs: unknown): refs is DraftReference[] => Array.isArray(refs) && refs.length <= 1
-  && refs.every((ref: DraftReference) => uuid(ref.materialId) && Number.isInteger(ref.version) && typeof ref.title === 'string');
 // A reload interrupts an upload: its bytes are gone, so the person selects the same file again.
 const interrupted = (files: DraftFile[]) => files.map((file): DraftFile => file.state === 'uploading'
   ? { ...file, state: 'failed', offline: undefined, error: 'Upload was interrupted. Select the same file to retry.' } : file);
@@ -170,13 +167,12 @@ function load(key: string, accountId: string, projectId: string, context: string
     if (stored) {
       const value = JSON.parse(stored) as ComposerDraft & { pending?: PendingSend[] };
       if (value.version === 1 && typeof value.body === 'string' && value.body.length <= 100000 && uuid(value.commandId)
-        && Array.isArray(value.files) && value.files.length <= FILE_LIMITS.messageFiles && value.files.every((file) => validFile(file, projectId))
-        && validRefs(value.references)) {
-        const { pending: queued, ...rest } = value;
-        draft = { ...rest, files: interrupted(value.files) };
+        && Array.isArray(value.files) && value.files.length <= FILE_LIMITS.messageFiles && value.files.every((file) => validFile(file, projectId))) {
+        const { pending: queued, version, body, commandId, unconfirmed } = value;
+        draft = { version, body, commandId, unconfirmed: unconfirmed === true, files: interrupted(value.files) };
         if (Array.isArray(queued)) {
           pending = queued.filter((item) => uuid(item.id) && typeof item.body === 'string' && item.body.length <= 100000 && Array.isArray(item.files)
-            && item.files.length <= FILE_LIMITS.messageFiles && item.files.every((file) => validFile(file, projectId)) && validRefs(item.references)
+            && item.files.length <= FILE_LIMITS.messageFiles && item.files.every((file) => validFile(file, projectId))
             && ['uploading', 'sending', 'waiting', 'failed'].includes(item.state) && typeof item.at === 'string')
             // An outcome a reload interrupted is unknown: it is sent again, with the same id, when it can be.
             .map((item) => ({ ...item, files: interrupted(item.files), state: item.state === 'failed' ? 'failed' : 'waiting' }));
@@ -287,7 +283,7 @@ function refuse(key: string, queued: PendingSend, cause: unknown, reason: string
   const item = current.pending.find((other) => other.id === queued.id) ?? queued;
   if (blank(current.draft)) {
     put(key, { ...current, error: reason, pending: current.pending.filter((other) => other.id !== item.id),
-      draft: { version: 1, body: item.body, files: item.files, references: item.references, commandId: item.id, unconfirmed: !!item.attempted } });
+      draft: { version: 1, body: item.body, files: item.files, commandId: item.id, unconfirmed: !!item.attempted } });
     settle(item.id, { status: 'failed', cause, restored: true });
   } else {
     changePending(key, item.id, (other) => ({ ...other, state: 'failed', error: notSentReason(cause) || reason }));
@@ -328,10 +324,8 @@ function kick(key: string) {
     if (item.state !== 'uploading') changePending(key, item.id, (other) => ({ ...other, state: 'uploading' }));
     return;
   }
-  const ref = item.references[0];
   const command: SendMessageCommand = { body: item.body, clientMessageId: item.id,
-    ...(item.files.length ? { attachmentIds: item.files.map((file) => file.staged!.id) } : {}),
-    ...(ref ? { source: { materialId: ref.materialId, version: ref.version } } : {}) };
+    ...(item.files.length ? { attachmentIds: item.files.map((file) => file.staged!.id) } : {}) };
   running.add(key);
   changePending(key, item.id, (other) => ({ ...other, state: 'sending', error: undefined, attempted: true }));
   void deliver(place.projectId, place.context, command).then((sent) => {
@@ -487,10 +481,8 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     const current = snapshots.get(key)!;
     const value = current.draft;
     if (current.sending || value.files.some((file) => file.state !== 'ready') || (!value.body.trim() && !value.files.length)) return null;
-    const ref = value.references[0];
     const command: SendMessageCommand = { body: value.body.trim(), clientMessageId: value.commandId,
-      ...(value.files.length ? { attachmentIds: value.files.map((file) => file.staged!.id) } : {}),
-      ...(ref ? { source: { materialId: ref.materialId, version: ref.version } } : {}) };
+      ...(value.files.length ? { attachmentIds: value.files.map((file) => file.staged!.id) } : {}) };
     put(key, { ...current, sending: true, error: '', draft: { ...value, unconfirmed: true } });
     return command;
   }
@@ -511,7 +503,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
     const current = snapshots.get(key)!;
     const value = current.draft;
     if (current.sending || value.files.some((file) => file.state === 'failed') || (!value.body.trim() && !value.files.length)) return null;
-    const item: PendingSend = { id: value.commandId, body: value.body.trim(), files: value.files, references: value.references,
+    const item: PendingSend = { id: value.commandId, body: value.body.trim(), files: value.files,
       state: connectionState() !== 'online' ? 'waiting' : value.files.some((file) => file.state === 'uploading') ? 'uploading' : 'sending',
       attempted: value.unconfirmed || undefined, waited: connectionState() !== 'online' || undefined, at: new Date().toISOString(), ...(after === undefined ? {} : { after }) };
     const outcome = new Promise<SendOutcome>((resolve) => { waiters.set(item.id, resolve); });
@@ -555,7 +547,7 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
       return;
     }
     put(key, { ...current, error: '', pending: current.pending.filter((other) => other.id !== id),
-      draft: { version: 1, body: item.body, files: item.files, references: item.references, commandId: item.id, unconfirmed: !!item.attempted } });
+      draft: { version: 1, body: item.body, files: item.files, commandId: item.id, unconfirmed: !!item.attempted } });
     settle(id, { status: 'removed' });
   }
   return { ...snapshot, key, canSend: !snapshot.sending && draft.files.every((file) => file.state !== 'failed') && (!!draft.body.trim() || !!draft.files.length),
@@ -568,7 +560,6 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
       if (current.draft.body === submitted.body && current.draft.commandId === submitted.commandId)
         edit(key, (value) => ({ ...value, body: '' }));
     },
-    setReference: (reference: DraftReference | null) => { if (active()) edit(key, (value) => ({ ...value, references: reference ? [reference] : [] })); },
     removeFile: (uploadId: string) => { if (!active() || snapshots.get(key)!.sending) return; selected.get(key)?.delete(uploadId); edit(key, (value) => ({ ...value, files: value.files.filter((file) => file.uploadId !== uploadId) })); },
     addFiles, retryFile, begin, finish, submit, retry, remove,
   };

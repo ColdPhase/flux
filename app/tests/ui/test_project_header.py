@@ -124,7 +124,7 @@ class ProjectHeader(unittest.TestCase):
         # The faces open the space's settings, where its people are (F-037).
         expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
 
-    def test_02_more_lists_settings_mute_and_details_and_no_sidebar_row(self) -> None:
+    def test_02_more_lists_settings_and_mute_and_nothing_else(self) -> None:
         self.ensure_project()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
@@ -135,17 +135,18 @@ class ProjectHeader(unittest.TestCase):
         items = menu.locator("[role^=menuitem]:visible")
         # Mute space (#1249) carries a one-line hint inside its label, so only the single-line labels are compared.
         labels = [text.strip() for text in items.locator("span").all_inner_texts() if "\n" not in text.strip()]
-        self.assertEqual(labels, ["Settings", "Mute space", "Space details"])
+        self.assertEqual(labels, ["Settings", "Mute space"], "a space has no details panel of its own (#1419)")
         # The sidebar has its own control and `[`: no row for it here, so no key hint on touch either (#1376).
-        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, None])
+        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None])
         self.assertEqual(items.locator("kbd").all_inner_texts(), [])
         expect(menu.get_by_role("menuitem", name="Settings")).to_be_focused()
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(more).to_be_focused()
         more.click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Details").click()
-        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Settings").click()
+        expect(page).to_have_url(re.compile(r"/settings$"))
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
 
     NAMES = ("Ada Kowalska", "Maja Wiśniewska", "Jonas Berg", "Piotr Nowak", "Sara Olsen", "Kai Tanaka", "Lee Moreno", "Nia Okafor", "Ben Okafor", "Zoe Lindqvist", "Ari Haddad", "Mia Novak")
     FACES = """() => {

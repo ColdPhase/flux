@@ -16,6 +16,7 @@ import unittest
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from account import sign_out
 
 from test_app_shell import UI_BROWSER, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -188,8 +189,7 @@ class HomeTasksJourney(unittest.TestCase):
             page.wait_for_timeout(50)
         self.assertEqual(len(late), 1, "Nia's tasks were being read again")
         self.assertEqual(late[0][1].status, 200)
-        page.get_by_role("button", name=re.compile("Nia Berg")).click()
-        page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
+        sign_out(page)
         expect(page).to_have_url(re.compile("/sign-in"))
         page.get_by_label("Email").fill(PEOPLE["olek"][1])
         page.get_by_label("Password").fill(PASSWORD)
