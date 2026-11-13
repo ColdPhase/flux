@@ -32,6 +32,14 @@
 
 /* The New space window. */
 .newspace { display: grid; gap: 16px; padding: 22px 24px 22px; width: 100%; }
+/* Its head and footer stay in view and only the middle scrolls, whatever the window's height (#1361): Cancel and Create space are never below the
+   fold, which matters most with Encrypted on, when the form is long. */
+.ui-overlay .newspace-win:has(.newspace--pinned) { overflow: hidden; }
+.newspace--pinned { display: flex; flex-direction: column; gap: 0; padding: 0; max-height: inherit; min-height: 0; }
+.newspace--pinned .newspace__head { flex: none; padding: 22px 24px 12px; }
+.newspace--pinned .newspace__body { display: grid; gap: 16px; align-content: start; flex: 1 1 auto; min-height: 0; padding: 4px 24px 16px; overflow-y: auto; overscroll-behavior: contain; }
+.newspace--pinned .newspace__foot { flex: none; padding: 12px 24px 18px; border-top: 1px solid var(--line); }
+.newspace__why { align-self: center; margin: 0 auto 0 0; font-size: var(--fs-sm); color: var(--t2); }
 .newspace__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .newspace__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); }
 .newspace__x { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
@@ -101,6 +109,11 @@
 .delspace .newspace__foot .ui-btn { min-height: 36px; }
 @media (max-width: 640px) {
   .newspace, .delspace { padding: 18px 16px 22px; }
+  .newspace--pinned { padding: 0; }
+  .newspace--pinned .newspace__head { padding: 18px 16px 10px; }
+  .newspace--pinned .newspace__body { padding: 4px 16px 14px; }
+  .newspace--pinned .newspace__foot { padding: 10px 16px 14px; flex-wrap: wrap; }
+  .newspace__why { flex: 1 0 100%; }
   /* A person's row stacks on the phone: the name and address on the first line in full, the role and Remove under them. */
   .spset .sset-row[data-person] { flex-wrap: wrap; row-gap: 6px; }
   .spset__who { flex: 1 1 calc(100% - 52px); }
@@ -116,3 +129,5 @@
 .spset__keys:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 .spset__keys .sset-row { display: flex; align-items: center; gap: 12px; }
 .spset__keys .sset-row__b { flex: 1; min-width: 0; }
+/* On touch the window's footer buttons are 44 px high at every width, a tablet's included (#1361). */
+@media (pointer: coarse) { .newspace__foot .ui-btn { min-height: 44px; } }

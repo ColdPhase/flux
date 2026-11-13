@@ -42,7 +42,7 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   const passwordRef = useRef<HTMLInputElement>(null);
   const repeatRef = useRef<HTMLInputElement>(null);
   const downloadRef = useRef<HTMLButtonElement>(null);
-  const ids = { hint: useId(), length: useId(), code: useId() };
+  const ids = { hint: useId(), length: useId(), code: useId(), why: useId() };
   useEffect(() => { nameRef.current?.focus(); }, []);
 
   // Whether this server can make encrypted spaces (its key service answers): asked once, and the switch says so when it cannot.
@@ -91,12 +91,15 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
   }
 
   const spaceName = name.trim() || 'this space';
+  // Create stays off until the recovery code is downloaded, and the footer says why, so the reason is in view wherever the form is scrolled (#1361).
+  const needsCode = encrypted && !downloaded;
   return (
-    <form className="newspace" aria-labelledby="newspace-title" noValidate onSubmit={(event) => void submit(event)}>
+    <form className="newspace newspace--pinned" aria-labelledby="newspace-title" noValidate onSubmit={(event) => void submit(event)}>
       <div className="newspace__head">
         <h2 id="newspace-title">New space</h2>
         <button type="button" className="newspace__x" aria-label="Close" onClick={onCancel}><Icon name="x" size={18} /></button>
       </div>
+      <div className="newspace__body">
       <Input ref={nameRef} label="Name" aria-label="Space name" placeholder="e.g. Volunteer sign-up app" value={name} onChange={(event) => { setName(event.target.value); setMissing(false); }}
         maxLength={200} error={missing ? 'Give the space a name.' : undefined} />
       <div className="newspace__field">
@@ -105,22 +108,24 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
           : <PeoplePicker candidates={candidates} value={people} onChange={setPeople} disabled={busy} companyName={companyName} />}
       </div>
       <div className="newspace__switches">
+        {/* An encrypted space has no AI: the row stays, dimmed and off, and says so (F-026 §7 Spaces). */}
         {encrypted
-          ? <div className="sset-row" data-encrypted-line=""><span className="sset-row__ic" aria-hidden="true"><Icon name="lock" size={16} /></span>
-            <span className="sset-row__b"><span className="sset-row__t">No AI in encrypted spaces</span><span className="sset-row__s">Only people work here.</span></span></div>
+          ? <SwitchRow label="AI" detail="No AI in encrypted spaces" checked={false} onChange={() => undefined} disabled />
           : <SwitchRow label="AI" detail="Agents can work here, with each person’s own AI" checked={ai} onChange={setAi} disabled={busy} />}
         <SwitchRow label="Encrypted" icon={<Icon name="lock" size={16} />} checked={encrypted} onChange={chooseEncrypted} disabled={busy || (available === false && !encrypted)}
           detail={available === false && !encrypted ? 'Not available on this server right now: its key service isn’t running.' : 'Can’t be turned off later'} />
-      </div>
       {encrypted ? (
         <div className="newspace__secret" data-encryption-password="">
           <p className="newspace__hint" data-admins-see-name="">Company admins will see this space’s name, never what’s in it.</p>
-          <Input ref={passwordRef} label="Your unlock password" type={reveal ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false}
-            value={password} aria-describedby={`${ids.hint} ${ids.length}`} error={problem?.field === 'password' ? problem.message : null} disabled={busy}
-            onChange={(event) => { setPassword(event.target.value); setReveal(false); setProblem(null); }} />
-          <Input ref={repeatRef} label="Repeat" type={reveal ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={repeat}
-            error={problem?.field === 'repeat' ? problem.message : null} disabled={busy}
-            onChange={(event) => { setRepeat(event.target.value); setReveal(false); setProblem(null); }} />
+          {/* The password and its repeat sit side by side where the window is wide enough, as drawn (#1361). */}
+          <div className="newspace__pair">
+            <Input ref={passwordRef} label="Your unlock password" type={reveal ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false}
+              value={password} aria-describedby={`${ids.hint} ${ids.length}`} error={problem?.field === 'password' ? problem.message : null} disabled={busy}
+              onChange={(event) => { setPassword(event.target.value); setReveal(false); setProblem(null); }} />
+            <Input ref={repeatRef} label="Repeat" type={reveal ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false} value={repeat}
+              error={problem?.field === 'repeat' ? problem.message : null} disabled={busy}
+              onChange={(event) => { setRepeat(event.target.value); setReveal(false); setProblem(null); }} />
+          </div>
           <PasswordLength id={ids.length} check={check} />
           <div className="newspace__quiet">
             <Button variant="quiet" disabled={busy} onClick={() => void suggest()}>Suggest six random words</Button>
@@ -135,12 +140,15 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
           <p className="newspace__warning">If every unlock password and the recovery code are lost, everything in this space is gone for good. Nobody can recover it, not even whoever runs this server.</p>
         </div>
       ) : null}
+      </div>
       {!space ? <p role="alert" className="newspace__error">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>
         : !allowed ? <p role="alert" className="newspace__error">Guests can’t start spaces. Ask someone in {space.name} to add you to one.</p> : null}
       {error ? <p role="alert" className="newspace__error"><Icon name="alert" size={14} />{error}</p> : null}
+      </div>
       <div className="newspace__foot">
+        {needsCode ? <p className="newspace__why" id={ids.why} data-create-needs-code="">Download the recovery code first.</p> : null}
         <Button variant="secondary" onClick={onCancel}>Cancel</Button>
-        <Button type="submit" variant="primary" busy={busy} disabled={!allowed}>Create space</Button>
+        <Button type="submit" variant="primary" busy={busy} disabled={!allowed || needsCode} aria-describedby={needsCode ? ids.why : undefined}>Create space</Button>
       </div>
     </form>
   );

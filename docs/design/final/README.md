@@ -1492,6 +1492,12 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   unlock password and Repeat side by side, a strength hint and Download recovery code. Create space
   stays disabled until the code is downloaded. A note explains that after each server restart an
   admin of the space unlocks it.
+  - **The window keeps its head and its footer in view** (#1361): only the middle scrolls, so Cancel
+    and Create space are never below the fold, at 1280 × 800 and 1180 × 820 too. While Create is off the
+    footer says why, "Download the recovery code first.", to the left of the buttons (the same line
+    describes the button to a screen reader). The password and Repeat sit side by side while the window
+    is wide enough (440 px inside the card) and stack below that. The AI row stays, dimmed and off, with
+    "No AI in encrypted spaces" as its line. The scrim covers the sidebar as in Create.
 - **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
   under the header at every computer width (the tablet and phone keep their own padding):
   - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
@@ -1504,7 +1510,19 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
   in place of the content. A member sees "Payroll is locked" and the admins who can unlock it, with
   no buttons. A space admin sees the unlock password field, Unlock and Use recovery code. The rest
-  of the company works normally.
+  of the company works normally (#1360).
+  - **The header** is the space's own: its name and lock, the four views as the
+    [underline tabs](#underline-tabs-the-views-switch) but inactive (every word `--t3`, none current,
+    no underline, not links, `aria-disabled`), the people's faces (they open People and encryption)
+    and ⋯. There is no line under the name: the card says what the header would. On the phone it is
+    the space header of §4: Back, the name and lock, and the inactive views in the row under it.
+  - **The card** is centred both ways in the space's pane at every window (420 px at most): the
+    lock in a round tile, "Payroll is locked", then one paragraph that says what happened and who can
+    unlock it once ("Ada locked Payroll at 09:00. Ada can unlock it." or "The server restarted at
+    22:15. Ada and Piotr can unlock it."). A space admin's card adds the password field and Unlock on
+    one row, "Use the recovery code" under them and "People and encryption" last, all centred. The line
+    a refusal is said in is kept at the card's foot, under them, so nothing in the card moves when one
+    appears.
 
 ### Last active
 

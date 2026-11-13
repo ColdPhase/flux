@@ -146,6 +146,8 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-tabs__tab:hover { color: var(--t1); }
 .ui-tabs__tab:hover:not([aria-current="page"], [aria-selected="true"])::after { opacity: 1; transform: none; }
 .ui-tabs__tab[aria-current="page"], .ui-tabs__tab[aria-selected="true"] { color: var(--t1); font-weight: 500; }
+/* Views that cannot be opened now (a locked space): every word `--t3`, nothing to hover or press. */
+.ui-tabs--inactive .ui-tabs__tab { color: var(--t3); cursor: default; pointer-events: none; }
 /* The ring is drawn in place inside the tab (no offset transition from the global 4px), so no frame of it is clipped by the row that scrolls. */
 .ui-tabs__tab, .ui-tabs__tab:focus-visible { outline-offset: -4px; }
 /* The label keeps the width of its heavier form, so selecting a tab never nudges the others. */

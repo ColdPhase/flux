@@ -33,6 +33,11 @@ interface TabsProps {
   panelIdPrefix?: string;
   /** `segmented`: a pill track with a raised pill behind the current tab (F-026 §4 project header). */
   variant?: 'line' | 'segmented';
+  /**
+   * The views of a place that cannot be opened now (a locked space, F-026 §7 Spaces): the same row, every word `--t3`, no current tab, no mark and
+   * no link or key, so the header keeps its shape and nothing moves when the place opens.
+   */
+  inactive?: boolean;
 }
 
 /** A quiet tab without a visible count still names it, e.g. "Tasks, 2 open" (an exact name). */
@@ -73,7 +78,7 @@ function opens(item: TabItem, path: string | null): boolean {
  * the tab becomes current (aria-current) when its content shows. A newer choice retargets the mark, and
  * a navigation that ends elsewhere returns it.
  */
-export function Tabs({ items, value, onChange, label, className, panelIdPrefix, variant = 'line' }: TabsProps) {
+export function Tabs({ items, value, onChange, label, className, panelIdPrefix, variant = 'line', inactive = false }: TabsProps) {
   const segmented = variant === 'segmented';
   const barRef = useRef<HTMLDivElement>(null);
   const indicatorRef = useRef<HTMLSpanElement>(null);
@@ -169,6 +174,16 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
   };
 
   const indicator = <span ref={indicatorRef} className="ui-tabs__indicator" aria-hidden="true" />;
+
+  if (inactive) {
+    return (
+      <div className={['ui-tabs', 'ui-tabs--inactive', className].filter(Boolean).join(' ')}>
+        <div className="ui-tabs__bar" role="tablist" aria-label={label}>
+          {items.map((item) => <span key={item.id} role="tab" className="ui-tabs__tab" data-tab={item.id} aria-disabled="true"><Label text={item.label} /></span>)}
+        </div>
+      </div>
+    );
+  }
 
   if (isNav) {
     return (
