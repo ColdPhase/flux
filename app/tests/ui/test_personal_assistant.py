@@ -523,13 +523,16 @@ class PersonalAssistantJourney(unittest.TestCase):
     def test_08c_an_answer_cites_what_it_used_from_flux_as_chips_that_open_exactly_it(self) -> None:
         # C-62 (#1381): a Wiki page and its section, a decision and an id that points at nothing; the marks the model wrote with the ids its tools gave
         # become the same numbered chips as any source, in one list, and the unknown one goes. The section opens the page at its heading.
+        # Only what the run's own tools returned is cited: the agent reads the page and the decision first.
         project = self.ids["project"]
         jo = self.conversation("jo")
         page = self.api(jo, "POST", f"/api/v1/projects/{project}/docs", {"title": "Calibration", "body": "# Calibration\nHow to calibrate.\n\n## Install\nMount the probe.\n\n## Readings\nWithin 2%."}, status=201)
         decision = self.api(jo, "POST", f"/api/v1/projects/{project}/decisions", {"title": "Use the reference probe"}, status=201)
         unknown = "00000000-0000-4000-8000-000000000000"
         mock("/__script", {"reset": True, "text": f"Mount the probe first [doc:{page['id']}#2] and read it within 2% [doc:{page['id']}#3]. "
-                                                  f"We decided on it [decision:{decision['id']}], not on [doc:{unknown}]."})
+                                                  f"We decided on it [decision:{decision['id']}], not on [doc:{unknown}].",
+                           "tool": [{"name": "flux_get_doc", "input": {"projectId": project, "id": page["id"]}},
+                                    {"name": "flux_get_decision", "input": {"projectId": project, "id": decision["id"]}}]})
         self.ask(jo, "How do we calibrate the north barrel?")
         card = jo.locator(".assistant-private").last
         expect(card).to_be_visible(timeout=20000)

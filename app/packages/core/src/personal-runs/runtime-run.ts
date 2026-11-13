@@ -19,7 +19,6 @@ import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './b
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
 import { fluxMarks, resolveCites } from './cites.js';
-import { readWikiIndex } from './wiki-index.js';
 import { parseOutput } from './validation.js';
 import { addressesIn, boundedWebSearch, keepPrivateText, WEB_SEARCH_BOUNDS } from './web-addresses.js';
 
@@ -53,8 +52,6 @@ export interface RuntimeRunDeps {
   now?: () => number;
   /** The asker's live view (#1248): the words the CLI streams for `/ai` and a chat, and the Flux tool it uses now. */
   live?: RunLiveText;
-  /** The evaluation switch `FLUX_AI_BRIEF_WIKI_INDEX=on` (C-62, #1381): the brief of a run in a space lists that space's Wiki pages. */
-  wikiIndex?: boolean;
 }
 
 /**
@@ -170,7 +167,7 @@ function unreadContext(run: RunRecord, brief: AgentBrief | null): RuntimeContext
   };
 }
 
-export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now, live, wikiIndex = false }: RuntimeRunDeps) {
+export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now, live }: RuntimeRunDeps) {
   const caps: RuntimeCaps = {
     maxTurns: Math.min(lowered.maxTurns ?? RUNTIME_RUN_LIMITS.maxTurns, RUNTIME_RUN_LIMITS.maxTurns),
     wallClockSeconds: Math.min(lowered.wallClockSeconds ?? RUNTIME_RUN_LIMITS.wallClockSeconds, RUNTIME_RUN_LIMITS.wallClockSeconds),
@@ -341,9 +338,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const read = await uow.run((ports) => runtimeContext(ports, run))
           .catch(async () => unreadContext(run, await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null)));
         // One brief for every place and both engines (#1064): the same text an API-key run gets, on standard input.
-        const index = wikiIndex ? await uow.run((ports) => readWikiIndex(ports, run, true, grant.tools)).catch(() => null) : null;
         const briefed: BriefInput = {
-          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief, wikiIndex: index,
+          engine: 'runtime', kind: run.kind, tools: grant.tools, ...read.facts, now: new Date(now()), agent: read.brief,
           prompt: grant.context ? `${run.prompt}\n${grant.context}` : run.prompt, requestedAt: run.createdAt, sources: read.sources, leftOut: read.leftOut,
           turns: read.turns, earlier: null, thought: run.targetSketchId && run.targetThoughtId ? { sketchId: run.targetSketchId, thoughtId: run.targetThoughtId } : null,
           webSearch,

@@ -98,15 +98,7 @@ export interface BriefInput {
   thought: { sketchId: string; thoughtId: string } | null;
   /** The calls of the place, oldest first, shown among the messages as events. Absent: none. */
   events?: readonly CallEvent[];
-  /**
-   * The space's Wiki as an index (C-62, variant B of #1381, only while the evaluation switch `FLUX_AI_BRIEF_WIKI_INDEX` is on): each page's title and first line, the most
-   * recently edited first, and how many more the space has. Absent or empty: the brief says nothing of the Wiki's pages and the agent finds them with its tools (variant A).
-   */
-  wikiIndex?: WikiIndex | null;
 }
-
-/** The Wiki index of a brief: `more` pages are not listed. */
-export interface WikiIndex { pages: readonly { title: string; line: string }[]; more: number }
 
 const EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 
@@ -300,11 +292,6 @@ function findLine(input: Placed): string {
     + '(use each language the people here write in, and other words when little comes back); flux_read_around reads the messages around a hit.';
 }
 
-/** The Wiki index is told only to a run in a space that can read a page, and only when there is a page to list. */
-const indexed = (input: BriefInput) => input.place.kind === 'space' && input.tools.includes('flux_get_doc') && !!input.wikiIndex?.pages.length;
-export const WIKI_INDEX_LINE = '<wiki_index> lists this space\'s Wiki pages, the most recently edited first, each by its title and its first line. For a how, what or why question about '
-  + 'the space, read the page that fits with flux_get_doc (find it with flux_search or flux_list_docs) before you answer, then search the messages.';
-
 /** What the run's tools reach, the ids they need, and the web rule (C-30). */
 function toolRules(input: Placed): string[] {
   const owner = input.ownerName;
@@ -318,8 +305,6 @@ function toolRules(input: Placed): string[] {
   if (!tools.length) return place.kind === 'chat' ? ['Flux tools', 'You have no Flux tools here: use the chat so far and general knowledge.']
     : place.kind === 'dm' ? [] : ['Flux tools', 'You have no Flux tools in this run: use what is below.'];
   const find = canFind(input) ? [findLine(input)] : [];
-  // Variant B of #1381 (C-62): the index of the space's Wiki; the agent reads the page that fits with the tool.
-  if (indexed(input)) find.push(WIKI_INDEX_LINE);
   if (place.kind === 'dm') {
     const lead = find.length ? `Your Flux tools reach only this direct message.${tools.includes('flux_read_web') ? ' Besides them, one Flux tool reads a public web page.' : ''}`
       : 'The only Flux tool you have reads a public web page.';
@@ -367,11 +352,10 @@ function dataTags(input: Placed): string[] {
   if (input.place.kind === 'chat') return input.kind === 'scheduled' ? [] : ['<chat>'];
   if (input.place.kind === 'dm') return ['<place>', '<conversation>'];
   const read = input.engine === 'server';
-  const index = indexed(input) ? ['<wiki_index>'] : [];
   const space = read ? ['<open_tasks>', ...(input.kind === 'map_thought' ? ['<selected_thought>'] : []), '<conversation>'] : [];
-  if (input.kind === 'task') return ['<place>', '<task>', ...index, ...space];
-  if (input.kind === 'task_answer') return ['<place>', '<task>', ...index, ...space, '<question>'];
-  return ['<place>', ...index, ...space];
+  if (input.kind === 'task') return ['<place>', '<task>', ...space];
+  if (input.kind === 'task_answer') return ['<place>', '<task>', ...space, '<question>'];
+  return ['<place>', ...space];
 }
 
 /** How to read a message's marks (#1064). */
@@ -455,12 +439,6 @@ function taskTag(task: TaskFacts): string[] {
     '</task>'];
 }
 
-/** The space's Wiki as its pages' titles and first lines: other people's words, so in the request and fenced, never in `system`. */
-function wikiIndexTag(index: WikiIndex): string[] {
-  return ['<wiki_index>', ...index.pages.map((page) => `- ${text(page.title)}${page.line ? `: ${text(page.line)}` : ''}`),
-    ...(index.more > 0 ? [`… and ${index.more} more pages: flux_list_docs lists them all.`] : []), '</wiki_index>'];
-}
-
 /** A message in its tag. `thread`: the opening words of its thread, given only when they differ from the message before (a main conversation). */
 function messageTag(message: MessageSource, label: string | null, zone: string, agentId: string, thread: string | null, ids = false): string {
   const fields = [...(label ? [`ref="${label}"`] : []), ...(thread ? [`thread="${attr(thread.length > 80 ? `${thread.slice(0, 79).trimEnd()}…` : thread)}"`] : []),
@@ -511,7 +489,6 @@ function request(input: Placed): string {
   const zone = input.zone;
   const blocks: string[][] = [placeTag(input)];
   if (input.task) blocks.push(taskTag(input.task));
-  if (indexed(input)) blocks.push(wikiIndexTag(input.wikiIndex!));
   const sources = input.sources;
   const thought = sources.find((source) => source.item.kind === 'thought');
   if (thought && thought.item.kind === 'thought') blocks.push([`<selected_thought ref="${thought.label}">${text(thought.item.text)}</selected_thought>`]);
@@ -584,7 +561,6 @@ export function briefPrivateText(input: BriefInput): string {
       return [message.authorName, message.body, message.via ?? '', message.thread ?? '', ...(message.files ?? []).map((file) => file.name)];
     }),
     ...(input.events ?? []).flatMap((event) => [event.starter, ...event.others]),
-    ...(input.wikiIndex?.pages ?? []).flatMap((page) => [page.title, page.line]),
     ...input.turns.flatMap((turn) => [turn.prompt, turn.answer]), input.earlier ?? '',
     ...(input.thought ? [input.thought.sketchId, input.thought.thoughtId] : []), input.prompt];
   return pieces.filter((piece) => piece.trim()).join('\n');

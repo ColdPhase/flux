@@ -12,7 +12,6 @@ the wiring between services or enables test-only code.
 | `DATABASE_URL` | Set by Compose from `POSTGRES_USER`, `POSTGRES_PASSWORD` and `POSTGRES_DB`. |
 | `PORT` | Set by Compose to `8080`, the API's port inside its container. |
 | `NODE_EXTRA_CA_CERTS` | Node.js: extra CA certificates, for an SMTP server or provider with a private CA. Set it in an override and mount the file. |
-| `FLUX_AI_BRIEF_WIKI_INDEX` | Evaluation switch, not a setting ([C-62](../product/decisions.md), #1381): `on` lists the Wiki pages of a space in the brief of a run in it (variant B); `off`, the default, says nothing of them (variant A). Read by the worker. The `test` Compose file passes it through; it is removed once the evaluation (#1295) has chosen. |
 | `FLUX_ANTHROPIC_MOCK_URL` | Browser-test profile only (mock provider). |
 | `FLUX_API_INTERNAL_URL` | How the worker reaches the API inside Compose; default `http://api:8080`. |
 | `FLUX_API_URL` | Test profile only. |
@@ -56,7 +55,6 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
-| `FLUX_TEST_AI_VARIANT` | Test deployments only, together with `FLUX_TEST_FAILURE_INJECTION=true`: the evaluation's named variants of an AI change under evaluation (#1295, its variant option); `wiki-index` is the Wiki index of #1381. |
 | `FLUX_TEST_ANTHROPIC_PROXY_URL` | Test deployments only, with `FLUX_TEST_FAILURE_INJECTION`: the worker sends real API-key runs through the answer-accuracy evaluation's recording proxy (#1295, `scripts/check_ai_eval.sh`). |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |
 | `FLUX_TEST_CSP_EVAL` | Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs). |

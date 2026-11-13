@@ -546,15 +546,10 @@ export function personalRunRows(db: DbExecutor) {
       return found;
     },
 
-    /** The Wiki of a space, newest change first: each page's title and the start of its text, and how many pages there are (the brief's index, C-62). */
-    async wikiPages(projectId: string, limit: number) {
-      const m = schema.projectMaterials;
-      const v = schema.projectMaterialVersions;
-      const current = and(eq(m.projectId, projectId), eq(m.kind, 'doc'))!;
-      const rows = await db.select({ title: v.title, lead: sql<string>`left(${v.body}, 600)` }).from(m)
-        .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion))).where(current).orderBy(desc(v.createdAt), desc(m.id)).limit(limit);
-      const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)::int` }).from(m).where(current);
-      return { pages: rows, total };
+    /** The kept texts that list the marks the run's tools returned (C-62): those that start with the control character `keptCites` writes. */
+    async keptCites(runId: string) {
+      const p = schema.personalRunPrivateTexts;
+      return (await db.select({ body: p.body }).from(p).where(and(eq(p.runId, runId), sql`starts_with(${p.body}, chr(2))`))).map((row) => row.body);
     },
 
     async thought(sketchId: string, thoughtId: string) {

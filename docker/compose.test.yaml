@@ -112,8 +112,6 @@ services:
       FLUX_AI_PRIVATE_TARGETS: providermock
       FLUX_DB_CONNECT_TIMEOUT_MS: ${FLUX_DB_CONNECT_TIMEOUT_MS:-10000}
       FLUX_PUSH_ALLOW_PRIVATE_NETWORK: "true"
-      # The evaluation switch of #1381 (C-62): `on` lists the space's Wiki pages in a run's brief (variant B). Not a product setting.
-      FLUX_AI_BRIEF_WIKI_INDEX: ${FLUX_AI_BRIEF_WIKI_INDEX:-off}
       NODE_EXTRA_CA_CERTS: /tls/cert.pem
     volumes:
       - pushtls:/tls:ro

@@ -535,23 +535,24 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
   a run in it, while its owner is one of its people; an encrypted space never.
 - **The Wiki is the space's knowledge base, reached with tools, and the agent cites what it uses**
-  ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). **Variant A, the
-  default:** the brief says nothing of the Wiki's pages; the descriptions of `flux_list_docs`, `flux_get_doc` and `flux_search` tell the agent that a how, what or why
-  question about the space is usually answered by a page, to look there before it says it does not know, and to read the page and not only its snippet. `flux_get_doc`
-  also lists, on its first page, the page's headings (levels 1 to 3, in order) so that a section can be cited. **Variant B:** A, and the brief of a run in a space also
-  holds `<wiki_index>`: each page's title and first line, the 40 most recently edited, at most 6,000 characters (about 1,500 tokens), with how many more there are, only for
-  a run that has `flux_get_doc` and a space with pages; a private chat, a schedule and a DM have none. The variant is the operator-side evaluation switch
-  `FLUX_AI_BRIEF_WIKI_INDEX=off|on` (the worker; off by default; [internal names](../development/configuration-internal.md)), or in a test deployment the variant name `wiki-index` of
-  `FLUX_TEST_AI_VARIANT` (the evaluation harness's `FLUX_EVAL_VARIANT=wiki-index`), not a product setting: #1295's evaluation runs both,
-  the better on answer correctness and citation accuracy at comparable cost and tool calls wins, a tie goes to A, and the other code and the switch are then removed.
+  ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). The brief says
+  nothing of the Wiki's pages; the descriptions of `flux_list_docs`, `flux_get_doc` and `flux_search` tell the agent that a how, what or why question about the
+  space is usually answered by a page, to look there before it says it does not know, and to read the page and not only its snippet. `flux_get_doc` also lists,
+  on its first page, the page's headings (levels 1 to 3, in order) so that a section can be cited. This is variant A of the decision: #1295's evaluation
+  (2026-11-13, two runs per arm) found A and B (an index of the space's pages in the brief) tied on correctness (A 0.790 and 0.847, B 0.831 and 0.806) and on
+  citations (the gold source linked in 0.75 to 0.78 of the questions with either, 0.055 before), A at main's cost and B 8% cheaper but with 3 of 124 runs ended
+  at the input bound; on a tie the decision takes A, and B was removed.
 - **Citations.** Every tool result that returns a page, task, decision or message carries the mark that cites it as `cite` (search hits of those kinds, the lists and reads of
   pages, tasks and decisions, and every message a conversation, thread or discussion read returns). An answer that states a fact it read in Flux with a tool copies that mark after
   the statement: `[doc:ID]`, `[doc:ID#2]` (a section: the heading's number in `flux_get_doc`'s `sections`), `[task:ID]`, `[decision:ID]`, `[message:ID]`; an answer with no Flux fact has none.
-  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. At the commit Flux resolves each mark to an object the run
-  may cite (a run in a space: that space; a private chat or a schedule: any space its owner reads with AI on; never a DM's run, never an encrypted space), and numbers it
-  `[n]` with the supplied sources' `[S3]` in one list, in the order they stand, one number for an object however it was cited; a mark that points at nothing the run may cite is
-  taken out like an invented `[8]`. The chip opens exactly the page (a section opens the version it was numbered in, at its heading), task, decision or message, and its
-  label says which. Show everyone keeps the words and drops the marks, as before. The access rules of the tools are unchanged.
+  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. The `cite` fields a run's tools return are kept with the
+  private Flux text it read (C-30); at the commit Flux resolves each mark of the answer that one of them returned (a mark someone wrote in a message, a page or the request is
+  words, and is taken out) to an object the run may cite (a run in a space: that space; a private chat or a schedule: any space its owner reads with AI on; never a DM's run,
+  never an encrypted space), and numbers it `[n]` with the supplied sources' `[S3]` in one list, in the order they stand, one number for an object however it was cited; a
+  mark that points at nothing the run may cite is taken out like an invented `[8]`. The chip opens exactly the page (a section opens the version it was numbered in, at its
+  heading), task, decision or message, and its label says which. Each time the answer is read, a source in another space than the answer's (a private chat's or schedule's)
+  is checked against its owner's access again: one they no longer read keeps its number, says only what kind of thing it was and opens nothing. Show everyone keeps the
+  words and drops the marks, as before. The access rules of the tools are unchanged.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
   turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the

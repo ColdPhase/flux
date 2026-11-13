@@ -14,7 +14,6 @@ import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule, preparedAnswer } from './schedule-request.js';
 import { fluxMarks, resolveCites } from './cites.js';
-import { readWikiIndex } from './wiki-index.js';
 import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerCleaner } from './answer-addresses.js';
 import { answerWithWebSources } from './web-sources.js';
@@ -94,8 +93,6 @@ export interface PersonalRunProcessorDeps {
   runtimeCaps?: Partial<RuntimeCaps>;
   /** The asker's live view (#1248): the words of `/ai` and of a chat as they are written, and the current step. Without it nothing is sent. */
   live?: RunLiveText;
-  /** The evaluation switch `FLUX_AI_BRIEF_WIKI_INDEX=on` (C-62, #1381): the brief of a run in a space lists that space's Wiki pages. Off by default; not a product setting. */
-  wikiIndex?: boolean;
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
@@ -248,7 +245,7 @@ const SEARCH_REFUSED_MS = 6 * 3600_000;
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
 
 export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
-  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps, live, wikiIndex = false }: PersonalRunProcessorDeps) {
+  wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps, live }: PersonalRunProcessorDeps) {
   /**
    * The keys and models whose provider refused its own web search tool (#954), until when: their runs are not offered it, so not every
    * run sends a refused request first. In this worker's memory only; a restart asks again.
@@ -263,7 +260,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     searchRefusedUntil.delete(`${connectionId}:${model}`);
     return true;
   }
-  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}), wikiIndex });
+  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}), ...(live ? { live } : {}) });
   /**
    * Aborts the provider request as soon as the owner's stop is recorded. While the asker watches the words (`lost`, #1248), the owner's
    * standing is also read again about once a second, as for a run on the owner's CLI: on a refusal (removed from the place, the agent or
@@ -443,12 +440,10 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
     // One brief for every place and both engines (#1064); its request is rendered again as the fit drops old messages.
     const asked = new Date(now());
-    // Variant B of #1381 (C-62): the space's Wiki as an index, read once for the run, only while the evaluation switch is on.
-    const index = wikiIndex ? await uow.run((ports) => readWikiIndex(ports, run, true, session ? session.tools.map((tool) => tool.name) : [])).catch(() => null) : null;
     const briefInput = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean): BriefInput => ({
       engine: 'server', kind: run.kind, tools: session ? session.tools.map((tool) => tool.name) : [], webSearch, ...read.facts, now: asked,
       agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
-      events: read.events, wikiIndex: index,
+      events: read.events,
     });
     const brief = (sources: SuppliedSource[], dropped: boolean, webSearch: boolean) => buildBrief(briefInput(sources, dropped, webSearch));
     let fitted: Awaited<ReturnType<typeof fit>>;

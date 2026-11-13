@@ -314,11 +314,8 @@ export interface PersonalRunRepository {
    * its headings (`docHeadings`), and its current version. An object that is not there, or a message that was removed, is simply missing. Fakes may omit it.
    */
   cites?(scope: { workspaceId: string; projectId: string | null }, refs: readonly CiteRequest[]): Promise<CitedObject[]>;
-  /**
-   * The Wiki of a space for the brief's index (C-62, variant B): its latest `limit` pages by their last change, newest first, each with its title and the start of
-   * its text, and how many pages the space has. No access decision: the run has read access to the space already. Fakes may omit it.
-   */
-  wikiPages?(projectId: string, limit: number): Promise<{ pages: { title: string; lead: string }[]; total: number }>;
+  /** The kept texts that list the marks the run's tools returned (`keptCites`, C-62), as kept. Fakes may omit it: then the run cites nothing by mark. */
+  keptCites?(runId: string): Promise<string[]>;
   thought(sketchId: string, thoughtId: string): Promise<ThoughtSource | null>;
   /**
    * Whether the agent's rights connection (F-027 AST-3) is live. Runs that hold a run token end `revoked` once it is revoked

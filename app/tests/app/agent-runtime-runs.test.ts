@@ -776,7 +776,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       assert.equal(await searching.process(started.run.id), 'completed');
       const run = (await calls()).find((entry) => entry.event === 'run') as { prompt: string };
       assert.ok(run.prompt.includes('add that object\'s cite mark right after it, copied as the tool gave it, such as [doc:ID]'), 'the brief says how to cite');
-      assert.ok(!run.prompt.includes('<wiki_index>'), 'variant A: nothing of the Wiki\'s pages');
       assert.equal(String((await row(started.run.id)).answer_body), 'The sensor is a PIR [1]. It works well.', 'one list: the page of this space; another space\'s page, an unknown id and an invented number go');
       const sources = (await pool.query('SELECT answer_sources FROM personal_runs WHERE id = $1', [started.run.id])).rows[0].answer_sources as Record<string, unknown>[];
       assert.deepEqual(sources.map((source) => [source.type, source.id, source.projectId]), [['doc', docId, place.id]]);

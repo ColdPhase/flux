@@ -17,7 +17,6 @@ import { startPersonalRunRecovery } from './recovery.js';
 
 export { personalRunWorkerUnitOfWork } from './adapters.js';
 export { personalRunWorkerComposition } from './composition.js';
-export { wikiIndexSwitch } from './wiki-index-switch.js';
 export { mcpToolHost } from './mcp-session.js';
 export { runTokenIssuer } from './run-tokens.js';
 export { managerPersonalRuntime } from './runtime-engine.js';
@@ -35,7 +34,7 @@ const STOP_WAIT_MS = 5_000;
  * The queue never retries a dispatch (`PERSONAL_RUN_QUEUE`, created by the migrator).
  */
 export async function registerPersonalRunWorker(boss: PgBoss, db: Database, options: {
-  connections?: PersonalConnectionLookup; compute?: PersonalCompute; tools?: PersonalToolHost; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime; wikiIndex?: boolean;
+  connections?: PersonalConnectionLookup; compute?: PersonalCompute; tools?: PersonalToolHost; tokens?: PersonalRunTokenIssuer; runtime?: PersonalRuntime;
 } = {}) {
   const uow = personalRunWorkerUnitOfWork(db);
   const processor = createPersonalRunProcessor({
@@ -45,7 +44,6 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
     ...(options.tools ? { tools: options.tools } : {}),
     ...(options.tokens ? { tokens: options.tokens } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
-    ...(options.wikiIndex ? { wikiIndex: true } : {}),
     // The asker sees `/ai` and a chat answered as they are written (#1248), over the API's live stream.
     live: runLiveText(db),
   });

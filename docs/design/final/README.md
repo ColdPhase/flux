@@ -1575,6 +1575,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   cites them, each object once; nothing new is drawn. The chip's label says what it opens ("Source 2: Wiki page “Calibration”, section “Install”"), and it opens exactly that:
   the page, a section at its heading in the version it was numbered in (the Contents' `section-N`), the task or decision in Details, the message in its conversation. An answer
   that used nothing from Flux has no chip, and Show everyone keeps the words and drops the chips, as for every source.
+  A chip of a private chat's answer whose space its owner no longer reads keeps its number, opens nothing and says only what it was ("Source 3: a Wiki page in a space you
+  no longer read"); it looks like every other chip.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 

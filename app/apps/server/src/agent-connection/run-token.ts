@@ -1,5 +1,5 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, keepPrivateText, requireSpaceAi } from '@flux/core';
+import { DomainError, keepPrivateText, keptCites, requireSpaceAi, resultCites } from '@flux/core';
 import { personalRunTokenRows, personalRunWebReadRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -97,6 +97,12 @@ export async function boundRunResult<T extends ToolOutput>(db: Database, runId: 
     await db.transaction((tx) => personalRunTokenRows(tx).markMcpLimit(runId, 'run'));
     return toolError(new DomainError(413, 'MCP_RESULTS_TOO_LARGE', 'This run has read as much as one assistant run may; the run stops'));
   }
-  if (tool !== 'flux_read_web') await personalRunWebReadRows(db).addPrivateText(runId, await keepPrivateText(resultText(result)));
+  if (tool !== 'flux_read_web') {
+    const rows = personalRunWebReadRows(db);
+    await rows.addPrivateText(runId, await keepPrivateText(resultText(result)));
+    // The marks it returned to be cited (C-62): an answer cites only what its own tools returned, never a mark someone wrote.
+    const cites = resultCites(result);
+    if (cites.length) await rows.addPrivateText(runId, keptCites(cites));
+  }
   return result;
 }
