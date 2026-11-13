@@ -308,9 +308,14 @@ assert run[0]["authorization"] == "run_token", run[0]["authorization"]
 assert "FLUX_RUN_TOKEN" in run[0]["envNames"]
 assert not any(arg.startswith("eyJ") for arg in run[0]["argv"]), "the token is an argument"
 overrides = run[0]["overrides"]
-assert overrides["features"]["shell_tool"] is False and overrides["web_search"] == "disabled", overrides
+# This host has the sandbox (9e required Landlock ABI 4): Codex keeps its own shell, inside the sandbox of the run (#1437, RT-5); everything else stays off.
+features = overrides["features"]
+assert features["shell_tool"] is True and features["unified_exec"] is False and features["apps"] is False and features["multi_agent"] is False, features
+assert overrides["web_search"] in ("disabled", "cached"), overrides["web_search"]
 assert list(overrides["mcp_servers"]) == ["flux"] and overrides["mcp_servers"]["flux"]["required"] is True
 methods = [c.get("method") for c in calls if c.get("event") == "app_server" and c.get("method") != "initialized"]
+# The plan model read (#1332, `model/list` on an app-server of its own) may come at any tick after the sign-in, before the run: not part of the run.
+while methods[:4] == ["initialize", "model/list", "initialize", "model/list"]: methods = methods[2:]
 assert methods == ["initialize", "model/list", "initialize", "config/read", "initialize", "account/rateLimits/read"], methods
 results = [c for c in calls if c.get("event") == "tool_result"]
 assert results and all(r["status"] == 200 and not r["isError"] for r in results), results

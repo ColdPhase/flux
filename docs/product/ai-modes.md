@@ -216,6 +216,17 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   an abstract socket outside the sandbox. The CLI itself runs under an outer domain: it writes only its own home and the run's
   scratch and reads only those, the system and the run's settings, never the other CLI's home. Claude Code's own file tools
   are confined to its working directory by `--restricted` as well.
+- **Only the sandbox shell can start** (coordinator decision on #1437's open risk, 2026-11-13). The pinned Codex's `exec_command`
+  starts whatever shell the model names, so the CLI's outer domain may **execute nothing** but the CLI's own program (with the
+  loader or interpreter it needs to start; the pinned Codex is a static program and needs none) and Flux's sandbox: no
+  directory, the scratch and the CLI's homes included, holds anything it may execute. A shell a model names (`/bin/sh`,
+  `/bin/bash`, busybox, Python, …) is refused by the kernel (`EACCES`) and never runs, not even for a moment. The sandbox, under
+  the names `bash` and `sh`, cannot start a shell inside that domain either: it hands the command, with its standard input,
+  output and error, to the run's **broker**, a process of the person that the supervisor starts beside the CLI, outside the
+  CLI's domain, under the tools' own confinement. The broker starts the real shell in the scratch, in a session of its own,
+  passes on the signals the CLI sends, ends the shell's session when the CLI lets go of it, and returns its exit status. Its
+  socket is in a directory of the run only the person can enter; the tools cannot reach it (no socket of any kind). The
+  supervisor still kills the whole run at once when Codex reports a command outside the sandbox shell (defence in depth).
 - **A fixed toolbox, nothing installed** (founder decision 2026-11-13, #1437). Agents never install tools from the internet (no
   PyPI, npm or apk through the egress; the sandbox has no network). The runtime image ships a pinned toolbox for every harness:
   Python 3 with pandas, openpyxl, python-docx and matplotlib, Node, pandoc with typst for PDF (no browser), jq, ripgrep and libvips's
@@ -231,7 +242,7 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - **No new credential is readable.** The run token stays in the CLI's own environment and the vendor login in the CLI's home;
   neither reaches the tools. The supervisor's secret is in a non-dumpable root process.
 - **The CLI's own login never leaves through Flux** (coordinator decision on #1437). Codex applies an `apply_patch` itself, outside
-  the shell sandbox, and its `exec_command` starts the shell the model names, so a steered Codex can reach its own home. So the
+  the shell sandbox, so a steered Codex can reach its own home (a shell the model names can no longer start, above). So the
   supervisor reads the run's login file as the person when the run starts and keeps its values (every run of 20 or more token
   characters, and each long piece of a dotted one) in memory while the run lasts; every Flux tool call of the run (`flux_attach_file`,
   every change, and every read, such as an address `flux_read_web` would fetch) is refused when what it would send holds one (the server asks the run's supervisor through runtime-manager, and only "found"

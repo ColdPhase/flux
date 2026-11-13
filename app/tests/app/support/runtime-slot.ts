@@ -56,7 +56,8 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     await mkdir(scratchRoot, { mode: 0o711 });
     await mkdir(join(bin, 'sandbox'));
     const binary = join(bin, 'sandbox', 'flux-sandbox');
-    await writeFile(binary, '#!/bin/sh\n[ "$1" = cli ] || exit 2\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n');
+    // A stand-in for the sandbox (no Landlock here): `cli` runs the CLI as it is, and `broker` (#1437) says it listens and waits to be ended.
+    await writeFile(binary, '#!/bin/sh\nif [ "$1" = broker ]; then echo ready; exec sleep 3600; fi\n[ "$1" = cli ] || exit 2\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n');
     await writeFile(join(bin, 'sandbox', 'bash'), '#!/bin/sh\nexec /bin/sh "$@"\n');
     await chmod(binary, 0o755);
     await chmod(join(bin, 'sandbox', 'bash'), 0o755);

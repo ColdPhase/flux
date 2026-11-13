@@ -162,7 +162,10 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   when the run ends. Every command starts in Flux's sandbox shell (`/opt/flux-runtime/sandbox/bin/bash`), which uses Linux
   **Landlock** to keep it, and all it starts, to the scratch and the system's own programs: not the person's CLI homes (their
   login), `/data`, `/tmp`, the tools volume or anyone else's scratch, and no other process's environment. It has no TCP (Landlock's
-  network rules) and no socket of any kind (a seccomp filter: no UDP or DNS, no Unix socket by path, no io_uring). **The tools need
+  network rules) and no socket of any kind (a seccomp filter: no UDP or DNS, no Unix socket by path, no io_uring). The CLI itself may
+  execute nothing but its own program and that shell, so a shell a model names never starts; the sandbox shell hands each command
+  to the run's broker (`flux-sandbox broker`, a process of the person beside the CLI under the tools' confinement), which starts the
+  real shell in the scratch. **The tools need
   Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
   and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
   egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without

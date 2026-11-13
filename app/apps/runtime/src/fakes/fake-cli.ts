@@ -225,8 +225,9 @@ function ownShell(client: FakeClient, command: string, chosen?: string): { shell
   if (!shell) return { shell: null, exit: null, output: 'No suitable shell found.' };
   const ran = spawnSync(shell, client === 'claude_code' ? ['-c', '-l', command] : ['-lc', command], { cwd: process.cwd(), env: process.env, encoding: 'utf8',
     timeout: 120_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
-  // Killed (a limit of the run, #1437): 137, as a shell reports it.
-  return { shell, exit: ran.status ?? (ran.signal ? 137 : null), output: `${ran.stdout ?? ''}${ran.stderr ?? ''}`.slice(0, 16_000) };
+  // Killed (a limit of the run, #1437): 137, as a shell reports it. Not started at all (the CLI's domain refuses the program): its error.
+  const error = ran.error ? `${(ran.error as NodeJS.ErrnoException).code ?? ran.error.message}\n` : '';
+  return { shell, exit: ran.status ?? (ran.signal ? 137 : null), output: `${error}${ran.stdout ?? ''}${ran.stderr ?? ''}`.slice(0, 16_000) };
 }
 
 /** Whether a file tool's path lies in the working directory (Claude Code's `--restricted`, observed with 2.1.285 on 2026-11-13). */
@@ -451,7 +452,9 @@ function claudeOwnTool(argv: string[], planned: PlannedCall): { isError: boolean
   if (!offered.includes(planned.name)) return { isError: true, text: `<tool_use_error>No such tool available: ${planned.name}</tool_use_error>` };
   const args = planned.args ?? {};
   if (planned.name === 'Bash') {
-    const ran = ownShell('claude_code', String(args.command ?? ''));
+    // `args.shell` stands for any program the CLI itself might start in place of its shell (the pinned Claude Code takes no shell from the
+    // model, but a CLI that did would be held the same way, #1437): the sandbox check names one.
+    const ran = ownShell('claude_code', String(args.command ?? ''), typeof args.shell === 'string' ? args.shell : undefined);
     return { isError: ran.exit !== 0, text: ran.exit === 0 ? ran.output : `Exit code ${ran.exit}\n${ran.output}`, shell: ran.shell, exit: ran.exit, output: ran.output };
   }
   const path = String(args.file_path ?? '');

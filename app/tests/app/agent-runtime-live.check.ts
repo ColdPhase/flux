@@ -376,13 +376,16 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`CODEX_SIGNED_IN=${done.signedIn}`);
   },
   /**
-   * T6 (#281): the same owner turns the assistant on again, now with Codex (the CLI they signed in to last), and
-   * asks. The real worker runs the fake `codex exec --json` under their own user id through runtime-egress's /mcp.
+   * T6 (#281): the same owner switches the assistant to Codex, which they signed in to last, and asks. The real worker runs the fake
+   * `codex exec --json` under their own user id through runtime-egress's /mcp. A plan assistant's standing is its own CLI's (C-3: an agent's
+   * model is its own, nothing switches by itself), so before the switch it is still Claude Code's, though Codex is signed in.
    */
   async 'codex-run'(label) {
     const someone = await owner(label!);
     const before = expectStatus(await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH), 200) as PersonalAssistantStatus;
-    assert.deepEqual([before.setup.runtime.state, before.setup.runtime.client, before.setup.runtime.payer], ['signed_in', 'codex', 'chatgpt_plan']);
+    assert.deepEqual([before.setup.runtime.state, before.setup.runtime.client, before.setup.runtime.payer], ['signed_in', 'claude_code', 'claude_plan'],
+      'the assistant made for the Claude run keeps its own CLI until its owner changes it');
+    assert.equal((await status(someone)).connections.codex?.state, 'signed_in', 'Codex is signed in beside it');
     const ws = await company(someone);
     const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'restricted' } }), 201) as { id: string };
     const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
@@ -396,6 +399,8 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       ? await someone.browser.request('PATCH', myAgentPath(agent.id), { body: { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } })
       : await someone.browser.request('POST', MY_AGENTS_PATH, { body: { agentId: agent.id, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } });
     assert.ok(enabled.status === 200 || enabled.status === 201, enabled.text);
+    const after = expectStatus(await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH), 200) as PersonalAssistantStatus;
+    assert.deepEqual([after.setup.runtime.state, after.setup.runtime.client, after.setup.runtime.payer], ['signed_in', 'codex', 'chatgpt_plan'], 'now its own CLI is Codex');
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
     assert.equal(started.runtimeClient, 'codex');
