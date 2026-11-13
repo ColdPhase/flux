@@ -1,0 +1,56 @@
+# https://www.tbench.ai/leaderboard/terminal-bench/2.0 as served 2026-11-13 (page heading: Terminal-Bench 4.1); rank, date, agent, model, accuracy %
+1	2026-09-22	Claude Code	Opus 5.5	65.76
+1	2026-11-09	Claude Code	Fable 5.2	65.76
+3	2026-09-28	Claude Code	Sonnet 5.5	63.94
+4	2026-09-29	Codex	GPT-6.1 Sol	60.91
+5	2026-09-03	Codex	GPT-6 Astra	60.3
+6	2026-09-03	Codex	GPT-6 Astra	60
+7	2026-09-03	Codex	GPT-6 Astra	59.7
+7	2026-10-24	Claude Code	Kimi K3.1 Pro	59.7
+9	2026-09-01	Claude Code	Fable 5.1	57.58
+10	2026-09-01	Claude Code	Fable 5.1	57.27
+11	2026-09-03	Codex	GPT-6 Astra	55.15
+12	2026-09-01	Claude Code	Fable 5.1	54.85
+13	2026-09-01	Claude Code	Fable 5.1	53.94
+14	2026-07-24	Claude Code	Opus 5	53.33
+14	2026-10-26	Codex	GPT-6.1 Terra	53.33
+16	2026-07-24	Claude Code	Opus 5	52.12
+17	2026-09-03	Codex	GPT-6 Astra	50.91
+18	2026-09-22	Codex	GPT-6 Sol	50.3
+19	2026-07-24	Claude Code	Opus 5	49.7
+20	2026-07-24	Claude Code	Opus 5	45.15
+21	2026-06-09	Claude Code	Fable 5	44.85
+22	2026-09-01	Claude Code	Fable 5.1	43.33
+23	2026-08-14	Claude Code	GLM-5.3	41.21
+24	2026-10-07	Claude Code	Haiku 5.5	40
+25	2026-09-21	Grok Build	Grok 4.7	38.79
+26	2026-06-26	Codex	GPT-5.6 Sol	38.48
+26	2026-10-17	Claude Code	DeepSeek V4.1 Flash 1017	38.48
+28	2026-11-04	Claude Code	Hy4	37.88
+29	2026-08-26	Claude Code	GLM-5.3-Flash	36.97
+30	2026-08-26	Claude Code	GLM-5.3-Flash	35.45
+31	2026-07-24	Claude Code	Opus 5	34.85
+32	2026-11-09	Muse Code	Muse Ember	30.61
+33	2026-10-06	Claude Code	Mistral Large 4	27.58
+34	2026-09-02	Claude Code	Qwen3.8-Max-0902	26.97
+34	2026-09-22	mini-swe-agent	MiMo V2.6 Pro	26.97
+36	2026-05-28	Claude Code	Opus 4.8	23.64
+37	2026-07-16	Claude Code	Kimi K3	23.03
+38	2026-06-26	Codex	GPT-5.6 Terra	21.52
+39	2026-08-12	Grok Build	Grok 4.6	19.7
+40	2026-09-02	mini-SWE-agent	Gemini 3.8 Flash	18.18
+41	2026-06-26	Codex	GPT-5.6 Luna	17.58
+42	2026-09-22	mini-swe-agent	MiMo V2.6 Flash	16.06
+43	2026-09-22	Codex	GPT-6 Luna	15.15
+44	2026-09-02	Muse Code	Muse Spark 1.3	14.85
+45	2026-11-05	mini-swe-agent	Inkling Small 2	13.03
+46	2026-08-13	mini-SWE-agent	Gemini 3.7 Flash	12.42
+46	2026-07-16	Grok Build	Grok 4.5	12.42
+48	2026-06-30	Claude Code	Sonnet 5	12.12
+49	2026-06-01	mini-swe-agent	MiniMax M3	7.58
+50	2026-08-13	Claude Code	DeepSeek V4 Pro 0813	6.67
+51	2026-10-16	mini-swe-agent	Beam 1.0	6.36
+52	2026-03-17	Codex	GPT-5.4 Mini	1.82
+53	2026-07-30	mini-swe-agent	Inkling Small	0.91
+54	2026-10-15	mini-swe-agent	Nemotron 3.5 Super VL	0.3
+55	2026-07-17	mini-swe-agent	Inkling	0
