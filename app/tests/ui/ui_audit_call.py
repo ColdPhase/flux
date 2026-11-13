@@ -56,6 +56,15 @@ class CallScreens(LiveBase):
         self.addCleanup(context.close)
         return context.new_page()
 
+    def open_space(self, page: Page) -> None:
+        """The seeded space's conversation, with any thread panel closed (under 360 px Join folds into ⋯, so only the header is awaited)."""
+        page.goto(f"/projects/{self.ids['project']}")
+        expect(page.locator("header.top, header.phead").first).to_be_visible()
+        page.wait_for_timeout(1200)
+
+    def press(self, locator, touch: bool) -> None:
+        locator.tap() if touch else locator.click()
+
     def test_01_the_call_screens_at_each_window_and_theme(self) -> None:
         self.seed()
         for dark in (False, True):
@@ -66,39 +75,50 @@ class CallScreens(LiveBase):
             for win in WINDOWS:
                 touch = win in ("390", "320", "820p")
                 jonas = self.window("jonas", win, dark)
-                self.open_conversation(jonas)
+                self.open_space(jonas)
                 self.capture(jonas, f"{theme}-{win}-join-offered")
-                join = jonas.locator("header.top, header.phead").get_by_role("button", name="Join")
+                header = jonas.locator("header.top, header.phead")
+                join = header.get_by_role("button", name="Join")
                 if join.count() and join.first.is_visible():
-                    join.first.tap() if touch else join.first.click()
-                else:  # under 360 px Join folds into ⋯
-                    jonas.get_by_role("button", name=re.compile("^More")).first.tap()
-                    jonas.get_by_role("menuitem", name=re.compile("Join")).first.tap()
+                    self.press(join.first, touch)
+                else:  # under 360 px Join folds into ⋯ (#1239)
+                    self.press(header.get_by_role("button", name=re.compile("^More")).first, touch)
+                    self.capture(jonas, f"{theme}-{win}-join-in-more")
+                    self.press(jonas.get_by_role("menuitem", name=re.compile("Join")).first, touch)
                 bar = self.bar(jonas)
                 expect(bar).to_be_visible(timeout=20000)
+                jonas.wait_for_timeout(2500)
                 self.capture(jonas, f"{theme}-{win}-strip")
-                # The live bar on another page.
-                jonas.goto("/")
-                jonas.wait_for_timeout(1500)
-                self.capture(jonas, f"{theme}-{win}-live-bar-home")
-                self.open_conversation(jonas)
-                audio = bar.get_by_role("button", name="Audio settings")
+                # Audio settings: the arrow beside the microphone.
+                audio = bar.get_by_role("button", name=re.compile("Audio settings|Audio|Sound", re.I))
                 if audio.count() and audio.first.is_visible():
-                    audio.first.tap() if touch else audio.first.click()
+                    self.press(audio.first, touch)
                     self.capture(jonas, f"{theme}-{win}-audio-settings")
                     jonas.keyboard.press("Escape")
-                more = jonas.locator("header.top, header.phead").get_by_role("button", name=re.compile("^More"))
-                if more.count():
-                    more.first.tap() if touch else more.first.click()
-                    self.capture(jonas, f"{theme}-{win}-more-menu-in-call")
-                    here = jonas.get_by_role("menuitem", name=re.compile("Here now"))
+                    jonas.wait_for_timeout(400)
+                # The strip's ⋯: Here now and the rest.
+                more = bar.get_by_role("button", name=re.compile("^More", re.I))
+                if more.count() and more.first.is_visible():
+                    self.press(more.first, touch)
+                    self.capture(jonas, f"{theme}-{win}-strip-more")
+                    here = jonas.get_by_role("menuitem", name=re.compile("Here now|People", re.I))
                     if here.count():
-                        here.first.tap() if touch else here.first.click()
+                        self.press(here.first, touch)
                         self.capture(jonas, f"{theme}-{win}-here-now")
                     jonas.keyboard.press("Escape")
-                leave = bar.get_by_role("button", name=re.compile("^Leave"))
-                if leave.count():
-                    leave.first.tap() if touch else leave.first.click()
+                    jonas.wait_for_timeout(400)
+                # The live bar on another place, reached inside the app (a reload would leave the call).
+                home = jonas.get_by_role("link", name=re.compile("^Home"))
+                if home.count() and home.first.is_visible():
+                    self.press(home.first, touch)
+                else:
+                    back = header.get_by_role("button", name=re.compile("^Back")).or_(header.get_by_role("link", name=re.compile("^Back")))
+                    self.press(back.first, touch)
+                jonas.wait_for_timeout(1500)
+                self.capture(jonas, f"{theme}-{win}-live-bar-elsewhere")
+                leave = self.bar(jonas).get_by_role("button", name=re.compile("^Leave"))
+                if leave.count() and leave.first.is_visible():
+                    self.press(leave.first, touch)
                 jonas.context.close()
             nia.context.close()
 

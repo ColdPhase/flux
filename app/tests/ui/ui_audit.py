@@ -91,8 +91,8 @@ UA_DEVICE = {("chromium", "phone"): "Pixel 7", ("chromium", "tablet"): "Galaxy T
              ("webkit", "phone"): "iPhone 15", ("webkit", "tablet"): "iPad Pro 11"}
 
 LONG_SPACE = "Community garden sensors and the long-range LoRa gateway for the far east beds behind the hawthorn hedge"
-LONG_TASK = ("Replace every corroded resistive probe in the north raised beds with the capacitive ones from the second order, "
-             "recalibrate them against the dry and wet readings and write the numbers into the Wiki page before Saturday")
+LONG_TASK = ("Replace every corroded resistive probe in the north raised beds with the capacitive ones from the second order "
+             "and write the dry and wet readings into the Wiki before Saturday")
 LONG_PAGE = "Sensor placement, wiring, calibration numbers and the volunteer watering rota for the 2027 growing season"
 LOCKED = "Grant applications (encrypted)"
 NEWCOMER_PASSWORD = vca.EXTRA_PASSWORD
@@ -131,26 +131,45 @@ def seed(browser: Browser) -> dict:
     admin = vca.sign_in(browser, "ada@demo.flux.test", ada_password)
     media = media_scene.build(browser, admin)
     print(f"media scene: {json.dumps({k: v for k, v in media.items() if k != 'tasks'})}", flush=True)
-    # The #763 extras on top of the scene: Maja (member), Piotr (newcomer), tasks in every state, an empty space.
-    vca.WORKSPACE = COMPANY
-    vca.LIBRARY = "Tool library for the makerspace"
-    vca.EMPTY = "Seed swap shelf"
-    data = vca.seed(browser)
-    ids = data["ids"]
-    states = data["states"]
-    contexts = {key: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for key, state in states.items()}
-    ada, jonas = contexts["ada"], contexts["jonas"]
+    # Extras on top of the scene (#763's people): Maja (a member with a long name), Piotr (a newcomer with nothing yet), an empty
+    # space, a DM, a thread with replies, a mention. (visual_consistency_audit.seed predates F-037's spaces and is not used.)
+    contexts = {"ada": admin, "jonas": vca.sign_in(browser, "jonas@demo.flux.test", vca.DEMO["jonas"][2])}
+    for key, (name, email) in vca.EXTRA.items():
+        contexts[key] = vca.sign_in(browser, email, NEWCOMER_PASSWORD, name)
     contexts["tomasz"] = vca.sign_in(browser, "tomasz@demo.flux.test", media_scene.EXTRA_PASSWORD)
     contexts["basia"] = vca.sign_in(browser, "basia@demo.flux.test", media_scene.EXTRA_PASSWORD)
+    ada, jonas, maja = contexts["ada"], contexts["jonas"], contexts["maja"]
     me = {key: call(c, "GET", "/api/v1/me")["user"]["id"] for key, c in contexts.items()}
-    ws = ids["ws"]
-    ids["p"] = media["project"]
-    ids["sketch"] = media["sketch"]
-    ids["doc"] = media["doc"]
-    ids["decision"] = media["decision"]
-    ids["me_ada"] = me["ada"]
+    ws = media["workspace"]
+    for key in ("maja", "piotr"):
+        soft(f"member {key}", lambda key=key: call(ada, "POST", f"/api/v1/workspaces/{ws}/members", {"email": vca.EXTRA[key][1], "role": "member"}, ok=(201, 409)))
+    garden = media["project"]
+    soft("maja in garden", lambda: call(ada, "POST", f"/api/v1/projects/{garden}/grants", {"principal": {"kind": "human", "id": me["maja"]}, "role": "contributor"}))
+    projects = {p["name"]: p["id"] for p in vca.items(call(ada, "GET", f"/api/v1/workspaces/{ws}/projects"))}
+    empty = soft("empty space", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": "Seed swap shelf"})["id"], "")
+    ids = {"ws": ws, "p": garden, "p2": projects.get("Tool library", ""), "pe": empty, "sketch": media["sketch"], "doc": media["doc"],
+           "decision": media["decision"], "me_ada": me["ada"], "task": media["tasks"].get("calibrate", ""), "blocked": media["tasks"].get("box", "")}
+    if ids["p2"]:
+        for title in ("Label every drawer in the tool wall", "Fix the band saw guard", "Write the borrowing rules"):
+            soft("library task", lambda title=title: call(ada, "POST", f"/api/v1/projects/{ids['p2']}/work", {"title": title}))
+    soft("long-name task", lambda: call(ada, "POST", f"/api/v1/projects/{garden}/work", {"title": vca.SEED_MARK + " before the volunteer weekend in May, with the spare probes from the blue box",
+                                                                                         "owner": {"kind": "human", "id": me["maja"]}, "status": "in_progress"}))
+    soft("mention", lambda: call(maja, "POST", f"/api/v1/projects/{garden}/conversations", {"body": "@Ada Kowalska the volunteer rota is in the Wiki now, could you read it before the weekend?",
+                                                                                            "clientMessageId": str(uuid.uuid4())}))
+    def dm_maja():
+        dm = call(ada, "POST", f"/api/v1/workspaces/{ws}/dms", {"participantIds": [me["maja"]]})["id"]
+        for who, body in ((ada, "Welcome to the garden! Ask me anything."), (maja, "Thanks! Where do the spare probes live?"),
+                          (ada, "In the blue box under the shed bench, next to the solder station.")):
+            call(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
+    soft("dm maja", dm_maja)
+    convs = vca.items(call(ada, "GET", f"/api/v1/projects/{garden}/conversations"))
+    threaded = [c for c in convs if (c.get("replyCount") or c.get("replies") or 0)] or convs
+    ids["conv"] = media["conversation"] or (threaded or [{"id": ""}])[0]["id"]
+    dms = vca.items(call(ada, "GET", f"/api/v1/workspaces/{ws}/dms"))
+    ids["dm"] = next((d["id"] for d in dms if any(p.get("id") == me["jonas"] for p in d.get("participants", []))), "")
+    states = {}
     # Long names: a space, a task, a Wiki page and a message with a long unbroken address.
-    long_space = soft("long space", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": LONG_SPACE, "visibility": "workspace"})["id"], "")
+    long_space = soft("long space", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": LONG_SPACE})["id"], "")
     if long_space:
         ids["pl"] = long_space
         soft("long task", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/work", {"title": LONG_TASK, "owner": {"kind": "human", "id": me["maja"]}}))
@@ -180,7 +199,11 @@ def seed(browser: Browser) -> dict:
     # A message by its id, a material, an invitation link.
     ids["msg"] = soft("message id", lambda: call(ada, "GET", f"/api/v1/conversations/{media['conversation']}")["messages"][0]["id"], "")
     ids["material"] = soft("material", lambda: call(ada, "POST", f"/api/v1/projects/{ids['p']}/materials", {
-        "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())})["id"], "")
+        "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())}), "")
+    if isinstance(ids["material"], dict):
+        made = ids["material"]
+        print(f"material answer keys: {sorted(made)}", flush=True)
+        ids["material"] = made.get("id") or (made.get("material") or {}).get("id") or (made.get("item") or {}).get("id") or ""
     invite = soft("invite", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/invites", {"role": "member"}), {}) or {}
     ids["invite"] = invite.get("link", "").replace(ORIGIN, "") if invite else ""
     # A locked encrypted space: Ada owns it, Jonas is a member; Ada locks it.
@@ -191,9 +214,9 @@ def seed(browser: Browser) -> dict:
                     headers={"authorization": f"Bearer {token}"})
         enc = made["workspace"]["id"]
         call(ada, "POST", f"/api/v1/workspaces/{enc}/members", {"email": "jonas@demo.flux.test", "role": "member"})
-        project = call(ada, "POST", f"/api/v1/workspaces/{enc}/projects", {"name": "Spring grant", "visibility": "workspace"})["id"]
+        project = call(ada, "POST", f"/api/v1/workspaces/{enc}/projects", {"name": "Spring grant"})["id"]
         call(ada, "POST", f"/api/v1/projects/{project}/conversations", {"body": "The draft budget is in the Wiki.", "clientMessageId": str(uuid.uuid4())})
-        call(ada, "POST", f"/api/v1/workspaces/{enc}/lock")
+        call(ada, "POST", f"/api/v1/workspaces/{enc}/lock", {})
         return enc, project
     ids["enc"], ids["encp"] = soft("locked space", locked_space, ("", ""))
     queue = soft("inbox", lambda: call(ada, "GET", "/api/v1/needs-you").get("items", []), [])
@@ -202,7 +225,6 @@ def seed(browser: Browser) -> dict:
     for key, c in contexts.items():
         states[key] = c.storage_state()
         c.close()
-    # A throwaway account for the journeys that change a person's own settings.
     print(f"seeded ids: {json.dumps(ids)}", flush=True)
     return {"ids": ids, "states": states, "me": me}
 
@@ -263,20 +285,27 @@ EXTRA_SCREENS = [
     # Overlays: menus, sheets, dialogs, notices.
     S("message-actions", "/projects/{p}", steps=[("menu", ".project-convo__message >> nth=-2")]),
     S("dm-message-actions", "/dm/{dm}", steps=[("menu", "[data-message-id] >> nth=-1")], needs=("dm",)),
-    S("new-space-encrypted", "/", steps=[("press", "c"), ("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form"),
+    S("new-space-encrypted", "/", steps=[("press", "c"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input"),
                                         ("role", "switch", "Encrypted")], only="wide"),
-    S("new-space-encrypted-phone", "/projects", steps=[("click", "button:has-text('New space')"), ("wait", "[role='dialog'] form"),
-                                                      ("role", "switch", "Encrypted")], only="phone"),
+    S("new-space-encrypted-phone", "/", steps=[("click", ".phone-fab"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input"),
+                                              ("role", "switch", "Encrypted")], only="phone"),
     S("notice", "/", steps=[("dm_from", "jonas", "Are you at the garden this afternoon? I have the ladder."), ("wait", "[role='status'] >> text=Jonas")], isolated=True),
-    S("push-offer", "/inbox", init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}))", isolated=True, needs=("me_ada",)),
-    S("push-blocked", "/inbox", init=("localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));"
+    S("push-offer", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}))", isolated=True, needs=("me_ada",)),
+    S("push-blocked", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init=("localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));"
                                       "Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), isolated=True, needs=("me_ada",)),
     S("photo-sheet-phone", "/projects/{p}", steps=[("role", "button", "Add photos or files|Attach|Add a photo|Photos")], only="phone"),
     S("task-state-menu", "/projects/{p}/tasks?view=board&open=work:{task}", steps=[("role", "button", "In progress|State|Status")], needs=("task",)),
-    S("select-open", "/settings/notifications", steps=[("click", ".ui-select button, button[aria-haspopup='listbox'] >> nth=0")]),
-    S("here-and-call-menu", "/projects/{p}", steps=[("click", "button[aria-label='More']"), ("wait", "[role='menu']"), ("role", "menuitem", "Here now|Call")]),
+    S("select-open", "/settings/agents", steps=[("click", "button[role='combobox']")]),
 ]
-SCREENS = vca.SCREENS + EXTRA_SCREENS
+# #763's ways into New space (⋯ › Details, "New space" buttons) are gone: Create's Space type is the one way (S3, S20).
+OPEN_SPACE_WIDE = [("press", "c"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input")]
+OPEN_SPACE_PHONE = [("click", ".phone-fab"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input")]
+REPLACED = {"new-space", "new-project", "new-project-phone"}
+EXTRA_SCREENS += [
+    S("new-space", "/", steps=OPEN_SPACE_WIDE, only="wide"),
+    S("new-space-phone", "/", steps=OPEN_SPACE_PHONE, only="phone"),
+]
+SCREENS = [s for s in vca.SCREENS if s.name not in REPLACED] + EXTRA_SCREENS
 for s in SCREENS:
     if not hasattr(s, "init"):
         s.init = ""
@@ -441,9 +470,21 @@ def capture_page(page: Page, engine: str, theme: str, win: str, name: str) -> di
     return rec
 
 
-def applies(screen, win: str) -> bool:
-    touch = WINDOWS[win]["kind"] != "computer"
-    return not (screen.only == "phone" and not touch or screen.only == "wide" and touch)
+def layout_of(pw, browser, engine: str, win: str, data: dict) -> str:
+    """"phone" when the window gets the phone's layout (the tab bar and the floating +), else "wide" (sidebar, New and C).
+    A tablet gets either, by its width; screens limited to one layout are N/A in the other."""
+    context = browser.new_context(**context_options(pw, engine, win, "light", who="ada", data=data))
+    page = context.new_page()
+    try:
+        page.goto(ORIGIN + "/", wait_until="domcontentloaded", timeout=25000)
+        vca.settle(page)
+        return "phone" if page.locator(".phone-fab").count() else "wide"
+    finally:
+        context.close()
+
+
+def applies(screen, lay: str) -> bool:
+    return not screen.only or screen.only == lay
 
 
 def capture_combo(pw, engine: str, theme: str, data: dict) -> None:
@@ -453,13 +494,16 @@ def capture_combo(pw, engine: str, theme: str, data: dict) -> None:
     with (OUT / f"results-capture-{engine}-{theme}.jsonl").open("w", encoding="utf-8") as sink:
         for win in WINDOW_NAMES:
             touch = WINDOWS[win]["kind"] != "computer"
+            lay = layout_of(pw, browser, engine, win, data)
             contexts: dict[str, BrowserContext] = {}
 
             def context_for(who: str, init: str = "") -> BrowserContext:
                 if init or who not in contexts:
                     context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data))
                     if init:
-                        context.add_init_script(init.format(**ids))
+                        for key, value in ids.items():
+                            init = init.replace("{" + key + "}", str(value))
+                        context.add_init_script(init)
                         return context
                     contexts[who] = context
                 return contexts[who]
@@ -467,9 +511,9 @@ def capture_combo(pw, engine: str, theme: str, data: dict) -> None:
             for screen in SCREENS:
                 if ONLY and screen.name not in ONLY:
                     continue
-                rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win}
-                if not applies(screen, win):
-                    rec["na"] = f"{screen.only} only"
+                rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win, "layout": lay}
+                if not applies(screen, lay):
+                    rec["na"] = f"{screen.only} layout only"
                     sink.write(json.dumps(rec) + "\n")
                     continue
                 if any(not ids.get(n) for n in screen.needs):
@@ -544,8 +588,9 @@ def phase_states(pw, engine: str, data: dict) -> None:
         for theme in THEMES:
             for win in STATE_WINDOWS:
                 touch = WINDOWS[win]["kind"] != "computer"
+                lay = layout_of(pw, browser, engine, win, data)
                 for screen in SCREENS:
-                    if screen.name not in STATE_SCREENS or (ONLY and screen.name not in ONLY) or not applies(screen, win):
+                    if screen.name not in STATE_SCREENS or (ONLY and screen.name not in ONLY) or not applies(screen, lay):
                         continue
                     if any(not ids.get(n) for n in screen.needs):
                         continue
@@ -656,7 +701,15 @@ MOTION_JS = r"""
     return {name: a.animationName || a.transitionProperty || a.constructor.name, duration: t.duration, iterations: t.iterations,
             target: target ? target.tagName.toLowerCase() + '.' + String(target.className || '').split(' ').slice(0, 2).join('.') : ''};
   }).filter((a) => (typeof a.duration === 'number' ? a.duration : 0) > 20 || a.iterations === Infinity);
-  return running.slice(0, 10);
+  // Rule 9: with reduced motion every duration and delay is zero, so a transition or animation left in CSS is a finding too.
+  const timed = new Map();
+  for (const el of document.querySelectorAll('body *')) {
+    const s = getComputedStyle(el);
+    const t = Math.max(...s.transitionDuration.split(',').map(parseFloat), ...s.transitionDelay.split(',').map(parseFloat));
+    const a = s.animationName !== 'none' ? Math.max(...s.animationDuration.split(',').map(parseFloat), ...s.animationDelay.split(',').map(parseFloat)) : 0;
+    if (t > 0.001 || a > 0.001) { const key = el.tagName.toLowerCase() + '.' + String(el.className || '').split(' ').slice(0, 2).join('.') + (a > 0.001 ? ' animation ' + s.animationName : ' transition ' + s.transitionProperty); timed.set(key, (timed.get(key) || 0) + 1); }
+  }
+  return running.slice(0, 10).concat([...timed.entries()].slice(0, 10).map(([k, n]) => ({name: 'timed while reduced', target: `${k} ×${n}`, duration: null})));
 }
 """
 
@@ -686,8 +739,9 @@ def phase_a11y(pw, engine: str, data: dict) -> None:
         for theme in THEMES:
             for win in A11Y_WINDOWS:
                 touch = WINDOWS[win]["kind"] != "computer"
+                lay = layout_of(pw, browser, engine, win, data)
                 for screen in SCREENS:
-                    if (ONLY and screen.name not in ONLY) or not applies(screen, win) or any(not ids.get(n) for n in screen.needs) or screen_init(screen):
+                    if (ONLY and screen.name not in ONLY) or not applies(screen, lay) or any(not ids.get(n) for n in screen.needs) or screen_init(screen):
                         continue
                     if screen.name in ("notice", "sign-out"):
                         continue
@@ -1298,13 +1352,13 @@ def phase_mob(pw, engine: str, data: dict) -> None:
                 assert found, "no push offer"
                 card = page.locator("[data-push-offer], [aria-label*='otification' i]").first
                 return f"offer says {found.group(0)!r}; card {card.count()}"
-            check.run("MOB-4 push offer appears (server can push)", open_at("/inbox", init=offer), push_offer)
+            check.run("MOB-4 push offer appears (server can push)", open_at("/", init=offer), push_offer)
 
             def push_blocked(page):
                 text = page.inner_text("body")
                 assert re.search(r"blocked|Block|turn them back on|allow", text, re.I), "no way back after a denial"
                 return "says how to allow again"
-            check.run("MOB-4 after a denial the way back is shown", open_at("/inbox", init=offer + ";Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), push_blocked)
+            check.run("MOB-4 after a denial the way back is shown", open_at("/", init=offer + ";Object.defineProperty(Notification, 'permission', {get: () => 'denied'})"), push_blocked)
 
             def settings_notifications(page):
                 text = page.inner_text("main") if page.locator("main").count() else page.inner_text("body")
@@ -1459,7 +1513,7 @@ def child(args: list[str]) -> subprocess.Popen:
 
 
 def main() -> int:
-    if UPSTREAM:
+    if UPSTREAM and len(sys.argv) == 1:  # the children use the parent's forwarder
         start_forwarder(ORIGIN, UPSTREAM)
     OUT.mkdir(parents=True, exist_ok=True)
     if len(sys.argv) > 1:  # a child process: one phase for one engine (and theme)

@@ -27,6 +27,8 @@ export FLUX_MAILPIT_PORT="${FLUX_UIAUDIT_MAILPIT_PORT:-$((FLUX_PORT + 1))}"
 export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_UI_SCREENSHOT_DIR="$out"
 . scripts/test_images.sh
+# FLUX_UIAUDIT_IMAGES=<tag> runs on images already built for this commit (tagged :<tag>) instead of building them; they are kept.
+if [ -n "${FLUX_UIAUDIT_IMAGES:-}" ]; then export FLUX_IMAGE_TAG="$FLUX_UIAUDIT_IMAGES" FLUX_KEEP_TEST_IMAGES=1; fi
 state="$out/.stack.env"
 reuse="${FLUX_UIAUDIT_REUSE:-}"
 if [ -n "$reuse" ] && [ -f "$state" ]; then
@@ -54,6 +56,8 @@ export FLUX_SMTP_URL="smtp://mailpit:1025" FLUX_MAIL_FROM="Flux <flux@example.te
 export FLUX_AUTH_RATE_LIMIT=false
 # The same throwaway test configuration as scripts/check_ui.sh. TEST ONLY: never set these in a deployment.
 export FLUX_TEST_FAILURE_INJECTION=true FLUX_TEST_PERSONAL_RUNS=anthropic-mock FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+# An API key is checked against the mock's model lists (the media scene connects Ada's AI with one).
+export FLUX_TEST_PROVIDER_LISTS=http://anthropic-mock:8090
 export FLUX_AI_PRIVATE_TARGETS=openai-mock FLUX_LINK_PREVIEWS=on FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 export FLUX_BACKGROUND_KEY_HOST_FILE="$out/.secrets/background_key"
 compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
@@ -62,13 +66,20 @@ audit_env="-e FLUX_DEMO_OWNER_PASSWORD=$owner_password -e FLUX_DEMO_PARTNER_PASS
   -e FLUX_UIAUDIT_PARALLEL -e FLUX_UIAUDIT_STATE_WINDOWS -e FLUX_UIAUDIT_A11Y_WINDOWS -e FLUX_UIAUDIT_ANNOTATE"
 mount="-v $PWD/app/tests/ui:/work/tests/ui:ro,z"
 
+# The Playwright container writes as root: hand the output back to the person who ran the audit.
+own_output() {
+  $compose run --rm --no-deps -T -v "$out:/out:z" --entrypoint chown ui-test -R "$(id -u):$(id -g)" /out >/dev/null 2>&1 || true
+}
+
 cleanup() {
   status=$?
   if [ "${FLUX_UIAUDIT_KEEP:-}" = 1 ]; then
-    echo "Stack kept: $project. Rerun phases with FLUX_UIAUDIT_REUSE=$project FLUX_UIAUDIT_PHASES=... $0 $out; stop it with: $compose down -v"
+    own_output
+    echo "Stack kept: $project. Rerun phases with FLUX_UIAUDIT_REUSE=$project FLUX_UIAUDIT_PHASES=... $0 $out; stop it with: docker compose -p $project down -v"
     exit $status
   fi
   if [ "$status" -ne 0 ]; then $compose logs --no-color api | tail -60 || true; fi
+  own_output
   $compose down -v >/dev/null 2>&1 || true
   remove_project_images
   chmod 0600 "$out/.secrets/background_key" 2>/dev/null || true
@@ -78,7 +89,11 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 if [ -z "$reuse" ]; then
-  $compose build migrate ui-test
+  if [ -n "${FLUX_UIAUDIT_IMAGES:-}" ]; then
+    echo "Using the images tagged :$FLUX_UIAUDIT_IMAGES (no build)."
+  else
+    $compose build migrate ui-test
+  fi
   $compose up -d db migrate
   $compose --profile setup run --rm files-init
   # Throwaway VAPID keys (the pinned command `./flux up` uses), so the server can push and the push offer can show.
