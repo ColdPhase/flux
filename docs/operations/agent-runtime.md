@@ -350,6 +350,13 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   changes were made. Nothing moves to another connection, and there is no button to switch. For Codex, the supervisor also
   reads the plan's remaining usage from the app-server after each run, for Connect AI's line ("48% of your weekly limit
   left · resets Mon"); for Claude Code, Connect AI says "Plan limits apply" until a limit is reached.
+- **A plan's models are read from its CLI** ([#1332](https://github.com/ColdPhase/flux/issues/1332), [CA-2](../product/model-providers.md#ca-2--models)).
+  The worker's reconciliation tick asks the signed-in person's slot for the models their CLI offers, when they sign in and then about every six
+  hours (a failed read again after five minutes), at most one plan per tick (every ten seconds) so a runtime with many people never starts
+  many CLIs at once. Reading starts the CLI for a few seconds as that person (Claude Code: its headless initialization, no model call; Codex:
+  `app-server` `model/list`), inside their own lane: while a run holds it the request is answered *busy* and the last list stays. A Codex run
+  also reads `model/list` once just before it starts, to cut its model catalog down to what the account offers. If a CLI cannot be reached, the
+  last list stays; Flux keeps no model list of its own.
 - **No Flux limits** (#843). Flux sets no runs a day, no five-minute clock, no step count and no change limit
   of its own. A run never waits behind a sign-in, a status check or another run in the person's serial lane (it
   ends *busy*). Only these technical safety bounds remain; nobody meets them in normal use:

@@ -32,9 +32,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 ## CA-2 — Models
 
 - Each agent picks its model from any of its owner's connections. The picker is grouped by
-  connection, for example "Claude plan: Opus · Sonnet · Haiku" and "ChatGPT plan: GPT-6.1 Sol ·
-  Astra · Luna". Connect AI sets the default for new agents: the connection made first, at its
-  default model (implemented on the assistant, #854; wave 2 #857 moves it onto every agent).
+  connection, for example "Claude plan: Opus · Sonnet · Haiku" and "ChatGPT plan: GPT-6.1-Sol ·
+  GPT-6-Astra · GPT-6-Luna", as the signed-in CLI lists them (below). Connect AI sets the default
+  for new agents: the connection made first, at its default model (implemented on the assistant,
+  #854; wave 2 #857 moves it onto every agent).
 - **An API key's models come from the provider, read with that key** (founder direction, Hubert,
   2026-11-10 and 2026-11-12, [#1218](https://github.com/ColdPhase/flux/issues/1218)). There is no
   model list written into Flux anywhere in the picker: Flux's price table only prices a listed
@@ -75,6 +76,41 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 - **One name per model.** A listed model carries the name its provider gives it ("Claude Opus 5.5") on
   the Connect form and on the agent page alike; Flux's short names serve only a model the list does
   not name (the key's own, a retired one).
+- **A plan's models come from the signed-in CLI, not from a list in Flux** (founder direction,
+  Hubert, 2026-11-12, [#1332](https://github.com/ColdPhase/flux/issues/1332); F-022 amended).
+  After Claude Code or Codex signs in, Flux reads the models that CLI offers that account and fills
+  the plan's choices from them; nothing about a plan's models is written into Flux, so a model the
+  vendor adds or removes shows up without a Flux release.
+  - **Where the list comes from.** Claude Code: the `models` of its headless initialization answer
+    (`claude -p --input-format stream-json`, one `initialize` control request; observed with
+    Claude Code 2.1.285, 2026-11-12; Agent SDK `supportedModels()`), which needs no model call: each
+    entry's alias (`opus`, `sonnet`, `haiku`), display name and description. Its `default` entry only
+    names which listed model is the account's default. Codex: `codex app-server` `model/list`,
+    paged (observed with Codex 0.160.1, 2026-11-12): id, display name, description, whether it is
+    the default, hidden, and its input types. Both are read by the supervisor in the person's own
+    runtime, in memory, and reach Flux as ids, names and one-line notes; never a credential.
+  - **What shows.** Exactly that list, in the CLI's own order, minus two kinds: a hidden model
+    (Codex marks it; it is not in the CLI's own picker) and **Fable**, which can bill usage credits
+    that Flux cannot see (it is dropped where the list is read, and again where it is shown). A model
+    whose id could be read as a flag or a path is not shown either. The CLI's own default is the
+    plan's default for a new agent, else its first model. A model the CLI lists carries the name the
+    CLI gives it, on the agent's page and everywhere else, as an API key's models do.
+  - **When it is read.** When the person signs in (and not before, so a plan that is not signed in
+    shows no models), and again about every six hours, in the worker's existing runtime
+    reconciliation tick: at most one plan per tick, a failed read tried again after five minutes,
+    and a read never waits behind a run (the supervisor answers busy, and the last list stays). Signing out or a different account clears it.
+  - **When the CLI can't be reached** the last known list stays and keeps working; the agent page
+    does not call it stale. A plan whose list was never read shows no models yet and its agents keep
+    running on the model they have: nothing is paused for a list Flux could not read.
+  - **A model the plan stopped offering** (in an earlier list, missing from the latest) reads
+    "no longer offered by Claude" or "…by ChatGPT", wherever its agents show it, exactly as for an
+    API key; the agents on it pause until their owner picks another model, and Flux never switches
+    the model by itself.
+  - **Codex runs only models its account lists.** Flux's reviewed copy of the pinned catalog
+    ([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web))
+    is cut down for each run to the models the account's own `model/list` returns just before the
+    run, so it can never offer a model the account lacks. A model the account lists that the pinned
+    catalog does not hold cannot run until the pin moves; the run ends with the line below.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
 - An API-key model that cannot call tools can answer but cannot change anything, and the picker
