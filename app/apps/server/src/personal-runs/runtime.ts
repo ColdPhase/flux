@@ -17,7 +17,7 @@ export function personalRuntimeAvailability(config: AgentRuntimeConfig, db: Data
       const clients = available();
       if (!config.manager || !clients.length || (client && !clients.includes(client))) return { state: 'off', payer: null, accountLabel: null, client: null };
       const row = await personalRuntimeRow(db, ownerUserId, client ? [client] : clients);
-      return { state: row.state, payer: row.state === 'signed_in' ? runtimePayer(row.authMethod) : null, accountLabel: row.accountLabel, client: row.client, signedInAt: row.signedInAt };
+      return { state: row.state, payer: row.state === 'signed_in' ? runtimePayer(row.authMethod) : null, accountLabel: row.accountLabel, client: row.client, signedInAt: row.signedInAt, models: row.models };
     },
   };
 }

@@ -9,7 +9,7 @@ import { stopPersonRuns } from './run.js';
 // The supervisor's listener on its own network (port 7700). It answers only the manager: a POST to
 // `/v1/<request>` with its own secret and a JSON body of at most 64 KiB, checked against the closed set
 // before anything runs. Each person's requests run one at a time in their own lane (F-022 "Caps": sign-in,
-// status, run and sign-out never overlap), except stop and the read-only report, and one person's lane never
+// status, models, run and sign-out never overlap), except stop and the read-only report, and one person's lane never
 // waits for another's (#860). The sign-in console (T4) is the one upgrade it accepts: `GET /v1/login` to
 // `flux-console/1`, same secret.
 
@@ -100,7 +100,7 @@ export function createSupervisorServer(config: SupervisorConfig): SupervisorServ
         if (request.kind === 'status' && !request.client) return { result: await slotReport(config) };
         // Recheck after queue wait. A delayed auth command may not target a new
         // supervisor process, even if a stale API still knows its old binding.
-        if ((request.kind === 'logout' || (request.kind === 'status' && request.client)) && request.bootId !== config.bootId) {
+        if ((request.kind === 'logout' || request.kind === 'models' || (request.kind === 'status' && request.client)) && request.bootId !== config.bootId) {
           return { error: 'invalid_request' as const };
         }
         if (removing() && request.kind !== 'release') return { error: 'busy' as const };
@@ -110,9 +110,10 @@ export function createSupervisorServer(config: SupervisorConfig): SupervisorServ
       }
     };
     const lanePass = request.kind === 'stop' || person === undefined;
-    // A run never waits behind a sign-in, a status check or another run of theirs: the answer is `busy` (F-022 "Caps").
+    // A run never waits behind a sign-in, a status check or another run of theirs: the answer is `busy` (F-022 "Caps"). Nor does a read of the
+    // CLI's models (#1332) wait behind a run: it takes the lane only when it is free, and the worker keeps its last list.
     const running = lanePass ? work() : request.kind === 'bind' ? binds.run(() => laneOf(person).run(work) ?? Promise.resolve({ error: 'busy' as const }))
-      : request.kind === 'run' ? laneOf(person).tryRun(work) : laneOf(person).run(work);
+      : request.kind === 'run' || request.kind === 'models' ? laneOf(person).tryRun(work) : laneOf(person).run(work);
     if (!running) { send({ t: 'error', code: 'busy' }); res.end(); return; }
     let stopping: NodeJS.Timeout | undefined;
     if (request.kind === 'release') {

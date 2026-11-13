@@ -40,6 +40,7 @@ async function setup() {
     async release() { return { ok: true,value:{ deleted:true,logoutFailed:false,notInstalled:[] } }; },
     async status() { return { ok:true,value:{ ...signed,bootId } }; },
     async logout() { return { ok:true,value:{ logout:'ok',bootId } }; },
+    async models() { return { ok: false, code: 'busy' }; },
   };
   const second=createDatabase(connectionString), store=agentRuntimeStore(db), otherStore=agentRuntimeStore(second.db);
   const runtime=agentRuntimeUseCases(config,store,manager), otherRuntime=agentRuntimeUseCases(config,otherStore,manager);

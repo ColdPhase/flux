@@ -114,6 +114,44 @@ function KeyModels({ group, chosen, agentName, onChoose, onError }: {
   );
 }
 
+/** A plan with at most this many models keeps them as segments (the few of a Claude plan); more, the app's Select (#1332). */
+const PLAN_SEGMENTS = 4;
+
+/**
+ * A plan's models on an agent (CA-2, #1332): exactly what the signed-in CLI lists, in its order and under its names. Up to four stay
+ * segments; more, or an agent on a model the plan stopped offering, get the app's Select, where that model reads "no longer offered by
+ * Claude" and cannot be chosen, with the line that says the agent is paused. A plan whose list was never read says so.
+ */
+function PlanModelChoice({ group, chosen, agentName, onChoose }: { group: AssistantModelGroup; chosen: string | null; agentName: string; onChoose: (model: string) => void }) {
+  const current = chosen ? group.options.find((option) => option.id === chosen) : undefined;
+  const offered = group.options.filter((option) => !option.retired);
+  if (!group.options.length) return <p className="agp__hint" role="note">Flux hasn’t read this plan’s models yet. It reads them when you sign in and again every few hours.</p>;
+  if (offered.length <= PLAN_SEGMENTS && !current?.retired) {
+    return (
+      <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${group.connection}`}>
+        {offered.map((option) => {
+          const on = chosen === option.id;
+          return (
+            <button key={option.id} type="button" role="radio" className="seg__b" aria-checked={on} tabIndex={on ? 0 : -1} data-model={option.id} data-connection={group.connection}
+              onClick={() => { if (!on) onChoose(option.id); }}>{option.name}</button>
+          );
+        })}
+      </div>
+    );
+  }
+  const retired = `no longer offered by ${group.company}`;
+  return (
+    <div className="agp__key-models">
+      <Select aria-labelledby={`model-${group.connection}`} value={chosen ?? ''} placeholder="Choose a model" onChange={(next) => { if (next !== chosen) onChoose(next); }}>
+        {group.options.filter((option) => !option.retired || option.id === chosen).map((option) => (
+          <Option key={option.id} value={option.id} disabled={option.retired}>{option.name}{option.retired ? ` · ${retired}` : option.note ? ` · ${option.note}` : ''}</Option>
+        ))}
+      </Select>
+      {current?.retired ? <p className="agp__hint" role="note">{current.name} is {retired}. {agentName} is paused until you choose another model.</p> : null}
+    </div>
+  );
+}
+
 export function AgentPage() {
   const { agentId = '' } = useParams();
   const { agents } = useShellData();
@@ -206,15 +244,8 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
                   <KeyModels group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
                     onChoose={(model) => save({ connection: item.connection, model }, 'Model changed')} onError={(cause) => setError(failure(cause))} />
                 ) : (
-                <div className="seg seg--fit" role="radiogroup" aria-labelledby={`model-${item.connection}`}>
-                  {item.options.map((option) => {
-                    const on = agent.model.connection === item.connection && agent.model.model === option.id;
-                    return (
-                      <button key={option.id} type="button" role="radio" className="seg__b" aria-checked={on} tabIndex={on ? 0 : -1} data-model={option.id} data-connection={item.connection}
-                        onClick={() => { if (!on) void save({ connection: item.connection, model: option.id }, 'Model changed'); }}>{option.name}</button>
-                    );
-                  })}
-                </div>
+                  <PlanModelChoice group={item} chosen={agent.model.connection === item.connection ? agent.model.model : null} agentName={agent.name}
+                    onChoose={(model) => void save({ connection: item.connection, model }, 'Model changed')} />
                 )}
               </div>
             ))}

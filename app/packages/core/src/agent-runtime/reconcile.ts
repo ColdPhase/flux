@@ -11,7 +11,8 @@ import type { AgentRuntimeStore, RuntimeManagerPort, RuntimeSlotRow } from './po
 // - a runtime that holds something it should not leaves use, and the operator is told;
 // - with the operator's idle policy, a binding unused for that many days is released;
 // - each runtime's capacity is recorded: the number of agents that may run at once;
-// - a working run the runtime no longer has is ended, so a lost run does not hold a place on the server.
+// - a working run the runtime no longer has is ended, so a lost run does not hold a place on the server;
+// - a signed-in plan's model list is read from its CLI when it is due (#1332), at most one plan per tick.
 
 export interface ReconcileReport {
   error?: string;
@@ -23,9 +24,17 @@ export interface ReconcileReport {
   ready: string[];
   outOfPool: string[];
   idle: number;
+  /** Plans whose model list was read this tick, and those whose reading failed (the last list stays). */
+  modelsRead: number;
+  modelsFailed: number;
 }
 
 const STALE_RESERVATION_MS = 2 * 60_000;
+/** A plan's models are read again about this often (#1332), and a reading that failed this soon after: modest, never a polling storm. */
+export const MODELS_REFRESH_MS = 6 * 3600_000;
+export const MODELS_RETRY_MS = 5 * 60_000;
+/** Each reading starts the person's CLI for a few seconds: one plan per tick (every ten seconds), the oldest first. */
+export const MODELS_PER_TICK = 1;
 
 export async function reconcileAgentRuntime({ config, store, manager, endLostRuns, signal, now = () => new Date(), log = () => undefined }: {
   config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort;
@@ -35,7 +44,7 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
   endLostRuns?: (running: string[]) => Promise<number>;
   now?: () => Date; log?: (event: Record<string, unknown>) => void;
 }): Promise<ReconcileReport> {
-  const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
+  const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0, modelsRead: 0, modelsFailed: 0 };
   // Every write and every release is a step the lock protects: the loss of the lock is looked at just before each, not only between loops (#961).
   const live = () => signal?.throwIfAborted();
   // Expired/crashed auth commands retain their binding until a full release proves quiescence
@@ -122,6 +131,24 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
     live();
     const lost = await endLostRuns(sightings.value.flatMap((entry) => (entry.reachable ? entry.running : [])));
     if (lost) log({ event: 'lost_runs_ended', lost });
+  }
+  // Last, so a release never waits for a CLI. A slot that did not answer is skipped; its plans stay due.
+  const reachable = new Map(sightings.value.flatMap((entry) => (entry.reachable ? [[entry.slot, entry.bootId] as const] : [])));
+  const at = now();
+  const due = await store.modelsDue({ clients: config.clients, refreshBefore: new Date(at.getTime() - MODELS_REFRESH_MS), retryBefore: new Date(at.getTime() - MODELS_RETRY_MS), limit: MODELS_PER_TICK });
+  for (const item of due) {
+    const bootId = reachable.get(item.slot);
+    if (!bootId) continue;
+    live();
+    const read = await manager.models(item.slot, item.bindingId, item.client, bootId);
+    live();
+    await store.saveModels(item.bindingId, item.client, read.ok ? read.value.models : null, now());
+    if (read.ok) report.modelsRead += 1;
+    else {
+      report.modelsFailed += 1;
+      // `busy`: the person's lane was taken (a run, a sign-in): the ordinary reason, tried again soon, and not worth a line.
+      if (read.code !== 'busy') log({ event: 'models_unreadable', slot: item.slot, client: item.client, code: read.code });
+    }
   }
   return report;
 }

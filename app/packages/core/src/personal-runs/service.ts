@@ -4,10 +4,11 @@ import type { AgentSetup } from '../assistant/ports.js';
 import { randomUUID } from 'node:crypto';
 import {
   AGENT_LIMITS,
-  ASSISTANT_PLAN_MODELS,
+  ASSISTANT_PLANS,
   AI_PROVIDERS,
   aiModelSearchesWeb,
   noLongerOffered,
+  noLongerOfferedBy,
   type AddAgentMemoryCommand,
   type AgentChatMessage,
   type AgentChatSummary,
@@ -44,7 +45,7 @@ import type {
   PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
 import {
-  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, modelRetired, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
+  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, modelRetired, defaultPick, isModelId, modelChoice, modelNameOf, planModelRetired, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import { endedWithWebSources } from './web-sources.js';
@@ -145,10 +146,10 @@ const runNotFound = () => new NotFoundError('Assistant run', 'ASSISTANT_RUN_NOT_
 export const enablementConnection = (record: Pick<EnablementRecord, 'engine' | 'connectionId' | 'provider'>): AiConnectionRef =>
   record.engine === 'runtime' ? planRef(runtimeClientOf(record.provider)) : record.connectionId ?? '';
 
-/** The model in force: the stored one, or its connection's default. */
+/** The model in force: the stored one, or on a plan the CLI's own default (the engine's label; Flux holds no model of its own, #1332). */
 function modelOf(record: EnablementRecord): string {
   if (record.assistantModel) return record.assistantModel;
-  return record.engine === 'runtime' ? ASSISTANT_PLAN_MODELS[runtimeClientOf(record.provider)].default : '';
+  return record.engine === 'runtime' ? runtimeVendor(runtimeClientOf(record.provider)).model : '';
 }
 
 function enablementView(record: EnablementRecord): PersonalRunEnablement {
@@ -326,7 +327,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     for (const client of ['claude_code', 'codex'] as const) {
       const standing = await runtimeStanding(owner, client);
       if (standing.state !== 'signed_in' || (standing.client && standing.client !== client)) continue;
-      const account = runtimeModelAccount(client);
+      const account = runtimeModelAccount(client, standing.models);
       found.push({ ref: planRef(client), label: account.plan, account, connection: null, since: standing.signedInAt?.getTime() ?? 0 });
     }
     if (providerEnabled) {
@@ -346,10 +347,12 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const item = (await ownConnections(owner)).find((connection) => connection.ref === ref);
     if (!item) {
       const client = clientOfPlan(ref);
-      throw modelUnavailable(client ? `Sign in to ${ASSISTANT_PLAN_MODELS[client].company} first.${still}` : `Connect that API key first.${still}`);
+      throw modelUnavailable(client ? `Sign in to ${ASSISTANT_PLANS[client].company} first.${still}` : `Connect that API key first.${still}`);
     }
     const option = isModelId(model, item.account.engine ?? 'runtime') ? item.account.options.find((entry) => entry.id === model) : undefined;
     if (!option) throw modelUnavailable(`Your ${item.connection ? 'API key' : item.label} doesn't offer that model.${still}`);
+    // A plan's model it stopped offering stays in the list so its agents can say why they are paused; it cannot be chosen (#1332).
+    if (!item.connection && option.retired) throw modelUnavailable(`${option.name} is ${noLongerOfferedBy(item.account.company ?? item.label)}.${still}`);
     if (item.connection) {
       if (option.retired) throw modelUnavailable(`${option.name} is ${noLongerOffered(item.connection.provider)}.${still}`);
       const priced = connectionOnModel(item.connection, option.id);
@@ -371,8 +374,13 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   /** The model of a new agent: the one named, else Connect AI's default (the connection made first, at its default model). */
   async function modelFor(owner: string, connectionWanted: unknown, modelWanted: unknown, still: string) {
     if (connectionWanted === undefined && modelWanted === undefined) {
-      const first = defaultPick(await ownConnections(owner));
-      if (!first) throw modelUnavailable(`Connect AI first.${still}`);
+      const connections = await ownConnections(owner);
+      const first = defaultPick(connections);
+      if (!first) {
+        // A plan is signed in but its CLI has not listed its models yet (#1332): that is not "no connection".
+        const waiting = connections.find((item) => !item.connection && !item.account.options.length);
+        throw modelUnavailable(waiting ? `Flux is still reading the models of your ${waiting.label}. Try again in a moment.${still}` : `Connect AI first.${still}`);
+      }
       return pick(owner, first.connection, first.model, still);
     }
     return pick(owner, connectionWanted, modelWanted, still);
@@ -402,7 +410,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const view = enablementView(enablement);
     if (enablement.engine === 'runtime') {
       // A plan: its limits are the provider's, never Flux's (#843).
-      const problem = runtimeProblem(standing);
+      // A plan that stopped offering the agent's model pauses it until its owner picks another; nothing switches (CA-2, #1332).
+      const problem = runtimeProblem(standing) ?? (planModelRetired(standing.models, enablement.assistantModel) ? 'model_retired' : null);
       return { state: problem ? 'unavailable' : 'ready', unavailableReason: problem, enablement: view, setup, today: null };
     }
     const key = providerEnabled && enablement.connectionId ? await connections.resolve(owner, enablement.connectionId) : null;
@@ -432,7 +441,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     Promise<{ ok: true; fields: Pick<NewRun, 'reservedMicros' | 'provider' | 'model'> & Pick<NewRun, 'resumeAt' | 'endReason'> } | { ok: false; problem: PersonalAssistantUnavailableReason; client: PersonalRuntimeClient | null }> {
     if (enablement.engine === 'runtime') {
       const client = runtimeClientOf(enablement.provider);
-      const problem = runtimeProblem(await runtimeStanding(owner, client));
+      const standing = await runtimeStanding(owner, client);
+      const problem = runtimeProblem(standing) ?? (planModelRetired(standing.models, enablement.assistantModel) ? 'model_retired' : null);
       if (problem) return { ok: false, problem, client };
       const vendor = runtimeVendor(client);
       // The model is fixed when the request is sent (F-027 AST-11): a later change never reaches this run.

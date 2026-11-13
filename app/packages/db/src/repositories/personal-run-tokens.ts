@@ -1,4 +1,5 @@
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
+import type { PlanModelEntry, PlanModels } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -114,6 +115,8 @@ export interface PersonalRuntimeRow {
   accountLabel: string | null;
   /** While signed in: when (Connect AI's default is the connection made first, #854). */
   signedInAt: Date | null;
+  /** While signed in: the models the CLI last listed for the account (#1332); null until the first reading. */
+  models: PlanModels | null;
 }
 
 /**
@@ -124,8 +127,9 @@ export interface PersonalRuntimeRow {
  */
 export async function personalRuntimeRow(db: DbExecutor, ownerUserId: string, clients: readonly ('claude_code' | 'codex')[] = ['claude_code']): Promise<PersonalRuntimeRow> {
   const wanted = clients.length ? [...clients] : ['claude_code'];
-  const result = await db.execute<{ id: string; slot: string; binding_state: string; client: string | null; connection_state: string | null; auth_method: string | null; account_label: string | null; signed_in_at: Date | string | null }>(sql`
-    SELECT b.id, b.slot, b.state AS binding_state, c.client, c.state AS connection_state, c.auth_method, c.account_label, c.signed_in_at
+  const result = await db.execute<{ id: string; slot: string; binding_state: string; client: string | null; connection_state: string | null; auth_method: string | null; account_label: string | null; signed_in_at: Date | string | null;
+    models: { listed?: PlanModelEntry[]; retired?: { id: string; name: string }[] } | null; models_status: 'listed' | 'unavailable' | null; models_checked_at: Date | string | null }>(sql`
+    SELECT b.id, b.slot, b.state AS binding_state, c.client, c.state AS connection_state, c.auth_method, c.account_label, c.signed_in_at, c.models, c.models_status, c.models_checked_at
     FROM agent_runtime_bindings b
     LEFT JOIN agent_runtime_connections c ON c.binding_id = b.id AND c.client IN (${sql.join(wanted.map((client) => sql`${client}`), sql`, `)}) AND c.revoked_at IS NULL
     WHERE b.owner_user_id = ${ownerUserId} AND b.state <> 'released'
@@ -133,12 +137,14 @@ export async function personalRuntimeRow(db: DbExecutor, ownerUserId: string, cl
     LIMIT 1`);
   const row = result.rows[0];
   const fallback = (wanted[0] === 'codex' ? 'codex' : 'claude_code') as PersonalRuntimeRow['client'];
-  if (!row) return { state: 'signed_out', client: fallback, slot: null, bindingId: null, authMethod: null, accountLabel: null, signedInAt: null };
+  if (!row) return { state: 'signed_out', client: fallback, slot: null, bindingId: null, authMethod: null, accountLabel: null, signedInAt: null, models: null };
   const client = (row.client === 'codex' || row.client === 'claude_code' ? row.client : fallback) as PersonalRuntimeRow['client'];
   const state = row.binding_state === 'sign_in_again' || row.connection_state === 'sign_in_again' ? 'sign_in_again'
     : row.binding_state === 'active' && row.connection_state === 'signed_in' ? 'signed_in' : 'signed_out';
+  const read = state === 'signed_in' && row.models_status !== null && row.models_checked_at !== null;
   return { state, client, slot: row.slot, bindingId: row.id, authMethod: state === 'signed_in' ? row.auth_method : null, accountLabel: row.account_label,
-    signedInAt: state === 'signed_in' && row.signed_in_at ? new Date(row.signed_in_at) : null };
+    signedInAt: state === 'signed_in' && row.signed_in_at ? new Date(row.signed_in_at) : null,
+    models: read ? { listed: row.models?.listed ?? [], retired: row.models?.retired ?? [], state: row.models_status!, checkedOn: new Date(row.models_checked_at!).toISOString().slice(0, 10) } : null };
 }
 
 /** A run used the binding: the operator's idle policy counts from here (F-022 "Bindings"). */

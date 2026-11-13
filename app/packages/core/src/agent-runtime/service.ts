@@ -190,7 +190,23 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
       fingerprint: facts?.accountDigest && options.accountFingerprint ? options.accountFingerprint(facts.accountDigest) : null,
     });
     if (!accepted) await store.recoverAuth(operation);
+    else if (facts) await readModels(ownerUserId, operation);
     return accepted;
+  }
+
+  /**
+   * Reads the models the CLI offers right after a sign-in (#1332), so the plan's choices exist as soon as the person is connected. Best effort:
+   * a reading that fails leaves the list unread, which the worker's reconciliation tick (every few seconds) reads again.
+   */
+  async function readModels(ownerUserId: string, operation: RuntimeAuthOperation) {
+    try {
+      const binding = (await store.ownerView(ownerUserId)).binding;
+      if (!binding || binding.id !== operation.bindingId) return;
+      // A status check of a sign-in that already has its list (the sign-in itself clears it) reads nothing again.
+      if ((await store.connections(ownerUserId)).some((row) => row.bindingId === binding.id && row.client === operation.client && row.models)) return;
+      const read = await manager!.models(binding.slot, binding.id, operation.client, operation.bootId);
+      if (read.ok) await store.saveModels(binding.id, operation.client, read.value.models, new Date());
+    } catch { /* the tick */ }
   }
 
   return {

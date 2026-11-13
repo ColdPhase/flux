@@ -79,6 +79,7 @@ test('the worker\'s release: not_installed is confirmed only against the history
     async release() { dirs.length = 0; return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
     async status() { return { ok: false, code: 'x' }; },
     async logout() { return { ok: false, code: 'x' }; },
+    async models() { return { ok: false, code: 'x' }; },
   };
   // Codex had a console claimed (so a login may exist); Claude Code never did.
   await claim(c, 'codex', 'console');
@@ -96,6 +97,7 @@ test('the worker\'s release is confirmed when the slot finds nothing and the his
     async release() { dirs.length = 0; return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
     async status() { return { ok: false, code: 'x' }; },
     async logout() { return { ok: false, code: 'x' }; },
+    async models() { return { ok: false, code: 'x' }; },
   };
   await store.requestRelease({ ownerUserId: c.ownerUserId }, 'owner');
   await reconcileAgentRuntime({ config, store, manager });

@@ -19,6 +19,7 @@ import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { chooseModel, FakeCompute, FakeQueue } from './support/personal-runs.js';
+import { seedPlanModels } from './support/plan-models.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { waitFor } from './support/wait.js';
 
@@ -49,7 +50,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     const text = await readFile(join(home(), 'fake-calls.jsonl'), 'utf8').catch(() => '');
     return text.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line) as Call);
   }
-  const resetFake = async () => { for (const name of ['fake-scenario', 'fake-run.json', 'fake-calls.jsonl', 'fake-rate-limits.json']) await writeFile(join(home(), name), ''); };
+  const resetFake = async () => { for (const name of ['fake-scenario', 'fake-run.json', 'fake-calls.jsonl', 'fake-rate-limits.json', 'fake-models.json']) await writeFile(join(home(), name), ''); };
   const ask = (prompt = 'What do the notes say about the sensor?') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
   async function row(runId: string) {
     return (await pool.query(`SELECT status, end_reason, answer_body, answer_redacted, plan_limit_resets_at, cost_state, reserved_micros, engine,
@@ -77,6 +78,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot.config.slot]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, signed_in_at)
       VALUES ($1, $2, $3, 'codex', 'signed_in', 'device_code', 'chatgpt', now())`, [randomUUID(), owner.id, bindingId]);
+    await seedPlanModels(pool, bindingId, 'codex');
     assert.ok((await callSupervisor({ host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }, { kind: 'bind', bindingId })).ok);
 
     runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
@@ -137,8 +139,9 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.deepEqual(Object.keys(run.overrides.mcp_servers), ['flux']);
     assert.deepEqual(run.overrides.mcp_servers.flux, { url: `${apiUrl}/mcp`, bearer_token_env_var: 'FLUX_RUN_TOKEN', required: true, enabled_tools: run.allowed,
       default_tools_approval_mode: 'approve' });
-    // #1127: Flux's model catalog (plain tools, no code mode or sub-agents), and no request_user_input.
-    assert.equal(run.overrides.model_catalog_json, CODEX_MODEL_CATALOG);
+    // #1127: Flux's model catalog (plain tools, no code mode or sub-agents), cut down to the account's models for this run (#1332), and no request_user_input.
+    assert.match(run.overrides.model_catalog_json, /\/run-[0-9a-f-]+\/models\.json$/);
+    assert.notEqual(run.overrides.model_catalog_json, CODEX_MODEL_CATALOG);
     assert.equal(run.overrides.tools.experimental_request_user_input.enabled, false);
     assert.ok(run.allowed.length > 0);
     assert.deepEqual([...listed.tools].sort(), [...run.allowed].sort(), 'the route listed exactly the run\'s tools');
@@ -146,10 +149,10 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.ok(run.envNames.includes('FLUX_RUN_TOKEN'));
     assert.ok(!run.argv.some((arg) => /eyJ[A-Za-z0-9_-]{10,}\./.test(arg)), 'the token is never an argument');
     assert.equal(run.persist, false);
-    // The app-server client sent only initialize, config/read (the preflight) and, after the run, what is left of the plan for its
-    // usage line (#854), and nothing else; the app-server never had the token.
+    // The app-server client sent only model/list (the account's models, just before the run: #1332), config/read (the preflight) and, after the
+    // run, what is left of the plan for its usage line (#854), and nothing else; the app-server never had the token.
     const methods = recorded.filter((entry) => entry.event === 'app_server').map((entry) => entry.method);
-    assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
+    assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'model/list', 'initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
     const appServer = recorded.find((entry) => (entry.argv as string[]).includes('app-server')) as { envNames: string[] };
     assert.ok(!appServer.envNames.includes('FLUX_RUN_TOKEN'), 'the preflight never sees the run token');
     // #1133: the usage read runs with the run's settings too (plugins and apps off), so it never calls ChatGPT's plugin endpoints.
@@ -230,7 +233,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(stored.end_reason, 'plan_limit');
     assert.equal((stored.plan_limit_resets_at as Date).toISOString(), new Date(1791374400 * 1000).toISOString(), 'the reset of the window at 100 %');
     const methods = (await calls()).filter((entry) => entry.event === 'app_server').map((entry) => entry.method).filter((method) => method !== 'initialized');
-    assert.deepEqual(methods, ['initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
+    assert.deepEqual(methods, ['initialize', 'model/list', 'initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
     await resetFake();
     await writeFile(join(home(), 'fake-scenario'), 'run_plan_limit');
     await writeFile(join(home(), 'fake-rate-limits.json'), JSON.stringify({ primary: { usedPercent: 'n/a' } }));
@@ -319,6 +322,43 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.deepEqual([(await row(refused.run.id)).end_reason, (await row(refused.run.id)).answer_body], ['model_unavailable', null]);
     assert.deepEqual((await runs.model(human(owner))).current, { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
   });
+  test('#1332: a run\'s model catalog is the reviewed one cut down to the account\'s models, and a model the account lacks never starts the CLI', async () => {
+    const ran = async () => (await calls()).filter((entry) => entry.event === 'run') as unknown as { catalogSlugs: string[] | null; overrides: { model_catalog_json?: string } }[];
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    await chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' });
+    const first = await ask();
+    assert.equal(await processor.process(first.run.id), 'completed');
+    const [run] = await ran();
+    // The fixture catalog holds five models and a hidden one; the account lists three (and hides one): the run's catalog is exactly those three.
+    assert.deepEqual(run!.catalogSlugs, ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna'], 'no model the account lacks, and the hidden one is not offered either');
+    assert.notEqual(run!.overrides.model_catalog_json, CODEX_MODEL_CATALOG, 'the run\'s own catalog, not the image\'s whole copy');
+    assert.match(String(run!.overrides.model_catalog_json), /\/run-[0-9a-f-]+\/models\.json$/);
+    const listing = (await calls()).filter((entry) => entry.event === 'app_server' && entry.method === 'model/list');
+    assert.equal(listing.length, 1, 'the account\'s list was read once, just before the run');
+
+    // The account stops offering a model between Flux's last reading and the request: the catalog loses it, and a run on it never starts.
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    await writeFile(join(home(), 'fake-models.json'), JSON.stringify([{ id: 'gpt-6-astra', model: 'gpt-6-astra', displayName: 'GPT-6-Astra', hidden: false, isDefault: true }]));
+    const lost = await ask();
+    assert.equal(await processor.process(lost.run.id), 'unavailable');
+    assert.deepEqual([(await row(lost.run.id)).end_reason, (await row(lost.run.id)).answer_body], ['model_unavailable', null]);
+    assert.equal((await ran()).length, 0, 'the CLI was not started on a model its account lacks');
+    // The same account on a model it still lists: the catalog is what is left.
+    await chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6-astra' });
+    const still = await ask();
+    assert.equal(await processor.process(still.run.id), 'completed');
+    assert.deepEqual((await ran())[0]!.catalogSlugs, ['gpt-6-astra']);
+
+    // An account whose list cannot be read ends the run as a crash (nothing is guessed), before the CLI starts.
+    await resetFake(); await scenario('models_unreadable');
+    const blind = await ask();
+    assert.equal(await processor.process(blind.run.id), 'provider_failed');
+    assert.equal((await row(blind.run.id)).end_reason, 'crashed');
+    assert.equal((await ran()).length, 0);
+    await resetFake();
+    await chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
+  });
+
   describe('#1065: Codex searches with its own search, opens any address but one carrying what it read in Flux, and lists its searches (C-30)', () => {
     // The fake prints the pinned CLI's `web_search` item; flux_read_web reads the link mock as public.test.
     const at = (path: string) => `http://public.test${path}`;

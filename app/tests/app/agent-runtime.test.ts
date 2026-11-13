@@ -57,7 +57,9 @@ describe('runtime tables hold display facts only', () => {
       'sign_out_failed:boolean',
       // 0003 (#854): the provider's remaining usage as the last run saw it: a share 0–100, a window name, a time, one boolean.
       'usage_left_percent:smallint', 'usage_window:text', 'usage_resets_at:timestamp with time zone', 'usage_limit_reached:boolean',
-      'usage_read_at:timestamp with time zone'],
+      'usage_read_at:timestamp with time zone',
+      // 0069 (#1332): the models the signed-in CLI offers the account: ids, names and one-line notes (a jsonb list), whether the last reading worked, and when.
+      'models:jsonb', 'models_status:text', 'models_checked_at:timestamp with time zone'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
     // 0097: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
     agent_runtime_auth_operations: ['binding_id:uuid', 'client:text', 'owner_user_id:text', 'operation_id:uuid', 'revision:integer',
@@ -128,6 +130,7 @@ describe('the PostgreSQL store under the owner use cases', () => {
     async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); return { ok: true, value: { deleted: true, logoutFailed: true, notInstalled: [] } }; },
     async status(slot) { return { ok: true, value: { signedIn: false, facts: null, bootId: boots.get(slot)! } }; },
     async logout(slot) { return { ok: true, value: { logout: 'ok', bootId: boots.get(slot)! } }; },
+    async models() { return { ok: false, code: 'busy' }; },
   };
   const store = agentRuntimeStore(db);
 
@@ -180,6 +183,7 @@ describe('the idle policy and a guest (#1090)', () => {
     async release(_slot, id) { dirs.splice(dirs.indexOf(id), 1); return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: [] } }; },
     async status() { return { ok: true, value: { signedIn: false, facts: null, bootId: boot } }; },
     async logout() { return { ok: true, value: { logout: 'ok', bootId: boot } }; },
+    async models() { return { ok: false, code: 'busy' }; },
   };
   const store = agentRuntimeStore(db);
 

@@ -8,6 +8,7 @@ import type { ConsoleClock, SpawnPty } from './pty.js';
 import { statusFacts } from './status.js';
 import { cliEnvironment, LOGOUT_TEMPLATES, STATUS_TEMPLATES } from './templates.js';
 import { reportedRuns, runCli, stopRun } from './run.js';
+import { readPlanModels } from './models.js';
 
 // One handler per request of the closed set. A handler answers with zero or more `step` frames and
 // exactly one `result` or `error`. Login runs only in the sign-in console (console.ts, T4): as a plain
@@ -28,6 +29,8 @@ export interface SupervisorConfig {
   /** The operator's `FLUX_AGENT_RUNTIME`, as this slot reads it. */
   enabled: RuntimeClient[];
   cliPaths: Record<RuntimeClient, string>;
+  /** Flux's reviewed copy of the pinned Codex's model catalog (default: the image's, `CODEX_MODEL_CATALOG`); a run's own catalog is cut from it (#1332). Tests point it at a fixture. */
+  codexCatalogPath?: string;
   egressHost: string;
   /** The Flux MCP route as the CLI reaches it (default `http://<egress>:8080/mcp`, runtime-egress's forwarder); tests point it elsewhere. */
   mcpUrl?: string;
@@ -136,6 +139,15 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       if (!open.ok) return { error: open.code };
       if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
       return { result: { kind: 'status', client: await clientStatus(config, request.client, open.dir, open.person) } };
+    }
+    case 'models': {
+      // The models the signed-in CLI offers (#1332). Read-only: no run is touched, and nothing it prints is kept.
+      if (!config.enabled.includes(request.client)) return { error: 'client_off' };
+      const open = await openBinding(config.dataDir, request.bindingId, config.separate);
+      if (!open.ok) return { error: open.code };
+      if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
+      const models = await readPlanModels(config, request.client, open.dir, open.person);
+      return models ? { result: { kind: 'models', client: request.client, models } } : { error: 'not_available' };
     }
     case 'login':
       // Only in the sign-in console, where the command runs in a PTY the owner's session is attached to.

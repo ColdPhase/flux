@@ -2,6 +2,7 @@ import { createHash, randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { GOLDEN_HELP } from '../contract/goldens.js';
+import { FAKE_CLAUDE_MODELS, FAKE_CODEX_MODELS } from './fake-models.js';
 
 // TEST ONLY (F-022 Docker test plan): fake `claude` and `codex` with the same command shapes, streams,
 // messages and exit codes as the pinned CLIs (Claude Code 2.1.285, Codex rust-v0.160.1), so the runtime
@@ -29,7 +30,8 @@ import { GOLDEN_HELP } from '../contract/goldens.js';
 // login_hangs (waits at the prompt for good), login_without_credentials (succeeds without writing a
 // login), console_profile (a `--console` login stores a keyless Anthropic profile OUTSIDE
 // CLAUDE_CONFIG_DIR, in `$HOME/.config/anthropic`, as Claude Code 2.1.242 and later do),
-// logout_fails (`Logout failed: …`, exit 1), logout_hangs.
+// logout_fails (`Logout failed: …`, exit 1), logout_hangs, models_unreadable (#1332: Claude Code answers its `initialize` request with an error,
+// Codex's `model/list` fails), models_hang (Claude Code never answers it).
 
 export type FakeClient = 'claude_code' | 'codex';
 
@@ -244,6 +246,30 @@ interface RunScript {
 }
 
 /**
+ * `claude -p --input-format stream-json …` without a prompt (#1332): the headless initialization the supervisor reads the account's models
+ * from. It waits for control requests on standard input and answers one `initialize` with `models` (`fake-models.json` in the home, else the
+ * pinned CLI's account-free list), as Claude Code 2.1.285 does; it never calls a model. It ends when its input does.
+ */
+async function claudeInitialize(argv: string[]): Promise<number> {
+  const mode = scenario('claude_code');
+  const next = lineReader();
+  for (;;) {
+    const line = await next();
+    if (line === null) return 0;
+    let message: { type?: string; request_id?: string; request?: { subtype?: string } };
+    try { message = JSON.parse(line) as typeof message; } catch { continue; }
+    if (message.type !== 'control_request' || message.request?.subtype !== 'initialize') continue;
+    record('claude_code', argv, { event: 'initialize' });
+    if (mode === 'models_hang') await forever();
+    const reply = (response: Record<string, unknown>) => out(`${JSON.stringify({ type: 'control_response', response: { request_id: message.request_id, ...response } })}\n`);
+    if (mode === 'models_unreadable') { reply({ subtype: 'error', error: 'Initialization failed' }); continue; }
+    let models: unknown = FAKE_CLAUDE_MODELS;
+    try { models = JSON.parse(readHome('claude_code', 'fake-models.json') || 'null') ?? models; } catch { /* the default */ }
+    reply({ subtype: 'success', response: { commands: [], agents: [], output_style: 'default', models, account: { tokenSource: 'none', apiProvider: 'firstParty' }, pid: process.pid } });
+  }
+}
+
+/**
  * `claude -p --output-format stream-json …` (F-022 T5): reads the prompt on stdin, connects to the Flux MCP
  * server named in `--mcp-config` with the Authorization header that config names (expanding
  * `${FLUX_RUN_TOKEN}` from its environment), prints `system/init` with the tools that server lists, makes
@@ -379,6 +405,12 @@ async function claudeRun(argv: string[]): Promise<number> {
   return 0;
 }
 
+/** The models of the catalog a run was started with (`model_catalog_json`): what the pinned CLI would be able to offer; null without one. */
+function catalogSlugs(config: Record<string, unknown>): string[] | null {
+  if (typeof config.model_catalog_json !== 'string') return null;
+  try { return (JSON.parse(readFileSync(config.model_catalog_json, 'utf8')) as { models: { slug: string }[] }).models.map((model) => model.slug); } catch { return []; }
+}
+
 /** Codex's `-c key=value` options as a nested object, with TOML-ish values (booleans, numbers, JSON strings and arrays, else a bare string). */
 function codexOverrides(argv: string[]): Record<string, unknown> {
   const root: Record<string, unknown> = {};
@@ -457,7 +489,8 @@ async function codexRun(argv: string[]): Promise<number> {
   const token = tokenVariable ? process.env[tokenVariable] ?? '' : '';
   const enabled = Array.isArray(flux.enabled_tools) ? (flux.enabled_tools as string[]) : null;
   record('codex', argv, { event: 'run', promptBytes: prompt.length, prompt, allowed: enabled ?? [], overrides: config,
-    authorization: !tokenVariable ? 'none' : token && token === process.env.FLUX_RUN_TOKEN ? 'run_token' : 'other', persist: !argv.includes('--ephemeral') });
+    authorization: !tokenVariable ? 'none' : token && token === process.env.FLUX_RUN_TOKEN ? 'run_token' : 'other', persist: !argv.includes('--ephemeral'),
+    catalogSlugs: catalogSlugs(config) });
   if (!argv.includes('--ephemeral')) {
     mkdirSync(join(home('codex'), 'sessions', '2026'), { recursive: true });
     writeFileSync(join(home('codex'), 'sessions', '2026', 'rollout.jsonl'), `${JSON.stringify({ type: 'user', prompt })}\n`);
@@ -597,7 +630,8 @@ async function codexRun(argv: string[]): Promise<number> {
  * `codex app-server` (codex-rs `app-server-protocol` at rust-v0.160.1): JSON-RPC over stdio without the
  * `jsonrpc` field, one message per line. Answers `initialize`, `config/read` (the effective configuration:
  * here exactly the root `-c` overrides, as the pinned server merges them as its session-flags layer) and
- * `account/rateLimits/read` (from `fake-rate-limits.json` in the home, or a limit reached with a reset).
+ * `account/rateLimits/read` (from `fake-rate-limits.json` in the home, or a limit reached with a reset) and `model/list` (#1332: the
+ * account's models from `fake-models.json` or the pinned CLI's shape; paged; only a configured catalog's models when `-c model_catalog_json` names one).
  * Every method it receives is recorded, so tests see that Flux sends nothing else. Scenarios:
  * config_ignores_overrides (config/read without the `-c` layer), rate_limits_unreadable (an error).
  */
@@ -630,6 +664,21 @@ async function codexAppServer(argv: string[]): Promise<number> {
       reply({ id: message.id, result: { rateLimits } });
       continue;
     }
+    if (message.method === 'model/list') {
+      if (mode === 'models_unreadable') { reply({ id: message.id, error: { code: -32603, message: 'failed to fetch models' } }); continue; }
+      const params = (message.params ?? {}) as { limit?: number; cursor?: string; includeHidden?: boolean };
+      let all: Record<string, unknown>[] = FAKE_CODEX_MODELS;
+      try { all = JSON.parse(readHome('codex', 'fake-models.json') || 'null') ?? all; } catch { /* the default */ }
+      // A configured catalog is authoritative, as in the pinned app-server (a static models manager): it lists only the catalog's models.
+      const slugs = catalogSlugs(config);
+      if (slugs) all = slugs.map((slug) => ({ id: slug, model: slug, displayName: slug, description: '', hidden: false, isDefault: false, inputModalities: ['text', 'image'] }));
+      const visible = params.includeHidden ? all : all.filter((entry) => entry.hidden !== true);
+      // `fake-model-page` in the home caps a page, so a test can read a list in several.
+      const size = Math.min(Number(params.limit) > 0 ? Number(params.limit) : 100, Number(readHome('codex', 'fake-model-page')) || 100);
+      const start = Number(params.cursor ?? 0) || 0;
+      reply({ id: message.id, result: { data: visible.slice(start, start + size), nextCursor: start + size < visible.length ? String(start + size) : null } });
+      continue;
+    }
     // A real app-server has many more methods (command/exec among them); the fake answers none of them.
     reply({ id: message.id, error: { code: -32601, message: `fake app-server: ${String(message.method).slice(0, 40)} not implemented` } });
   }
@@ -652,7 +701,7 @@ export async function fakeCli(client: FakeClient, argv: string[]): Promise<numbe
   const key = words.join(' ');
   const flags = words.filter((word) => word.startsWith('-'));
   record(client, argv);
-  if (client === 'claude_code' && words[0] === '-p') return claudeRun(argv);
+  if (client === 'claude_code' && words[0] === '-p') return argv.includes('--input-format') ? claudeInitialize(argv) : claudeRun(argv);
   if (client === 'claude_code' && words[0] === 'auth' && words[1] === 'login' && !flags.includes('--help')) return claudeLogin(argv, words.slice(2));
   if (client === 'codex' && key === 'login --device-auth') return codexDeviceLogin(argv);
   if (client === 'codex' && key === 'login --with-api-key') return codexStdinLogin(argv, 'api_key');
