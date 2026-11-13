@@ -232,7 +232,8 @@ export async function visibleFilter(principal: AccessPrincipal, workspaceId: str
   return visibleFilterOf(await loadActor(principal, workspaceId, db), kind);
 }
 
-function visibleFilterOf(actor: AccessActor, kind: 'project' | 'sketch' | 'dm'): SQL {
+/** `visibleFilter` for an actor already loaded in this transaction (#1429: search loads it once for all its audiences). */
+export function visibleFilterOf(actor: AccessActor, kind: 'project' | 'sketch' | 'dm'): SQL {
   if (kind === 'sketch') return visibleSketchesSql(actor);
   if (kind === 'dm') return visibleDmsSql(actor);
   return visibleProjectsSql(actor);
@@ -245,9 +246,12 @@ function visibleFilterOf(actor: AccessActor, kind: 'project' | 'sketch' | 'dm'):
  * space are unchanged; direct messages are not spaces. The actor is loaded once for both parts (#955).
  */
 export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'sketch', db: DbExecutor): Promise<SQL> {
-  const actor = await loadActor(principal, workspaceId, db);
+  return memberFilterOf(await loadActor(principal, workspaceId, db), kind);
+}
+/** `memberFilter` for an actor already loaded in this transaction. */
+export function memberFilterOf(actor: AccessActor, kind: 'project' | 'sketch'): SQL {
   const base = visibleFilterOf(actor, kind);
-  if (principal.kind !== 'human' && principal.kind !== 'agent') return base;
+  if (actor.principal.kind !== 'human' && actor.principal.kind !== 'agent') return base;
   if (kind === 'project') return and(base, projectMemberSql(actor, schema.projects.id, schema.projects.visibility))!;
   return and(base, sql`(${schema.sketches.scope} <> 'project' OR ${projectMemberSql(actor, schema.sketches.projectId, sketchProjectVisibility)})`)!;
 }
@@ -292,6 +296,20 @@ function humanProjectRead(role: WorkspaceRole) {
 }
 
 /**
+ * `locateProject`, `loadActor` and `readProject` of a person's unlocked check in one statement (#1429): the space, the person's role in
+ * its company and their level, the level written per role exactly as `humanProjectRead` writes it. Composed once.
+ */
+const ROLES = ['owner', 'admin', 'member', 'guest'] as const satisfies readonly WorkspaceRole[];
+const personProjectRead = preparedTemplate<typeof schema.projects.$inferSelect & { role: WorkspaceRole | null; level: number }>(() => {
+  const user = sql.placeholder('user') as unknown as string;
+  const levels = sql.join(ROLES.map((role) => sql`WHEN ${sql.raw(`'${role}'`)} THEN ${humanLevel(user, role, sql`p.id`, sql`p.visibility`)}`), sql` `);
+  return sql`SELECT p.id, p.workspace_id AS "workspaceId", p.name, p.visibility, p.created_by AS "createdBy", p.version,
+    p.created_at AS "createdAt", p.updated_at AS "updatedAt", m.role, CASE m.role ${levels} ELSE 0 END AS level
+    FROM projects p LEFT JOIN workspace_members m ON m.workspace_id = p.workspace_id AND m.user_id = ${sql.placeholder('user')}
+    WHERE p.id = ${sql.placeholder('project')}`;
+});
+
+/**
  * SQL (F-039, #1226): the viewer can see the person in `person` (a user id column or value), so the person's photo shows to them. Both
  * are in one workspace, and a guest there sees only the people of the spaces they are added to (guests may not read the roster): those
  * with a grant on one of the guest's spaces, and the members of a space everyone is in. Anyone sees themselves. Someone removed from
@@ -327,6 +345,15 @@ export function accessReader(db: DbExecutor) {
           .from(schema.projects).where(eq(schema.projects.id, projectId));
       // Reached only for an active member (core loads the actor first), so only a member learns a lock (423).
       return row ? { ...row, project: openRow('projects', row.project, await sealOf(db, row.project.workspaceId, { write: false })) } : null;
+    },
+
+    async readProjectAsPerson(userId: string, projectId: string) {
+      const [row] = (await personProjectRead(db, { user: userId, project: projectId })).rows;
+      if (!row) return null;
+      const { role, level, ...project } = row;
+      // As `readProject`: only a member reads the space, so only a member learns a lock (423).
+      return { workspaceId: project.workspaceId, role, read: role === null ? null
+        : { project: openRow('projects', project, await sealOf(db, project.workspaceId, { write: false })), level: Number(level) } };
     },
 
     async readAgent(agentId: string) {

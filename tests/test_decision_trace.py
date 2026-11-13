@@ -29,7 +29,7 @@ class DecisionTrace(unittest.TestCase):
     def test_the_lines_are_read_by_the_audience_of_the_project_and_no_one_else(self) -> None:
         service = source("app/packages/core/src/work/service.ts")
         # The same reader path as the task announcements: the project must be readable by the caller.
-        self.assertRegex(service, r"listObjectNotices: \(principal: Principal, projectId: string, query\?: PageQuery\): Promise<Page<ObjectNotice>> =>\s+list\(principal, projectId, query")
+        self.assertRegex(service, r"listObjectNotices: \(principal: Principal, projectId: string, query\?: PageQuery, reach\?: NoticeReach\): Promise<Page<ObjectNotice>> =>\s+list\(principal, projectId, query")
         self.assertIn("await ports.access.requireProject(principal, 'read', project);", service, "the shared list helper checks read access first")
         # The query is bound to one project and never reads another project's rows.
         repo = source("app/packages/db/src/repositories/work.ts")

@@ -137,6 +137,8 @@ function scene(options: Scene = {}, checked = true) {
     memberRole: async () => { log('projects.memberRole'); return 'member' as const; },
     deleteGrant: async () => { log('projects.deleteGrant'); },
     get: async () => { log('projects.get'); return project; },
+    // A space's icon (#1277) is read for its answer; this space has none.
+    icons: async () => new Map(),
     insert: async (row: { id: string; name: string; visibility: 'workspace' | 'restricted' }) => {
       log('projects.insert');
       return { ...project, id: row.id, name: row.name, visibility: row.visibility };

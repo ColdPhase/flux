@@ -1,0 +1,1 @@
+- Opening a space with many tasks takes 7 requests instead of 11, the Tasks view and the conversation's task links need about a third fewer database statements, and agents' search no longer waits for the disk three times a call ([#1429](https://github.com/ColdPhase/flux/issues/1429)).

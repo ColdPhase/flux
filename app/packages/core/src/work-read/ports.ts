@@ -44,6 +44,8 @@ export interface WorkReadRepository {
   /** Thoughts are validated structurally; missing/foreign ones are simply not visible. */
   thoughtTasks(projectId: string, thoughtIds: readonly string[]): Promise<WorkThoughtTasksObservation>;
   observedAt(): Promise<string>;
+  /** `observedAt` and `sourceVisibilityFingerprint` in one statement (#1429). Optional: without it the read asks for each. */
+  observation?(projectId: string, sources?: WorkAssociationSelection): Promise<{ observedAt: string; fingerprint: string }>;
 }
 export interface WorkReadPorts { access: WorkReadAccess; rows: WorkReadRepository }
 /** Every count/page/name/ref/policy query runs in ONE read-only REPEATABLE READ transaction. */

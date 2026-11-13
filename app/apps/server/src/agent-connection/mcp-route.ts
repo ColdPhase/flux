@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import { enforce, evaluateProject, isUuid, requireSpaceAi, SpaceAiOffError } from '@flux/core';
-import { agentConnectionWorkspaceId, loadActor, accessReader, schema, type Database, type QueryVectors, type Transaction } from '@flux/db';
+import { agentConnectionWorkspaceId, commitWithoutFlush, loadActor, accessReader, schema, type Database, type QueryVectors, type Transaction } from '@flux/db';
 import { and, eq } from 'drizzle-orm';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
@@ -74,6 +74,8 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       // New references bind the verified, AS-owned client_id to one durable grant.
       if (referenceId !== undefined && typeof referenceId !== 'string') throw new Error('Invalid grant');
       await db.transaction(async (tx) => {
+        // Only checks, held FOR SHARE: no flush wait at its COMMIT (#1429).
+        await commitWithoutFlush(tx);
         const store = createAgentConnectionStore(tx);
         const grant = await (runClaims ? store.grantForRun : store.grantForOauth)(ownerUserId,
           typeof referenceId === 'string' ? referenceId : connectionId);
@@ -128,7 +130,8 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
       const actor = await loadActor({ kind: 'agent', id: grant.connection.agentId }, grant.connection.workspaceId, tx, { lock: true });
       if (!actor.active || actor.agent?.ownerUserId !== ownerUserId) throw new Error('Agent unavailable');
       for (const [projectId, action] of [...d.projects].sort(([a], [b]) => a.localeCompare(b))) {
-        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true }), 'project');
+        // The agent's standing was just read and locked above; each space's check uses it (#1429).
+        const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, action, projectId, accessReader(tx), { lock: true, known: actor }), 'project');
         if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Project unavailable');
       }
       // A direct message's words (a run in it, #1290) go out only while its owner is still one of its people.

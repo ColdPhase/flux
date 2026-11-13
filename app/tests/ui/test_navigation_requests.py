@@ -42,6 +42,11 @@ BUDGET = {
     "Conversation → another space": (8, 0),
     "another space → My tasks": (5, 0),
 }
+# #1429: a space with more task announcements than one page (100), entered from Home right after the page loads (nothing of it read or
+# kept yet, and no composer has needed the file limits). The perf seed's busy space cost 11 requests here: two more pages of
+# announcements, the company's people and the file limits. Its own budget, the same target.
+BUSY_TASKS = 120
+BUSY_BUDGET = {"Home → a busy space (Conversation), first visit": (7, 0)}
 
 
 class NavigationRequests(unittest.TestCase):
@@ -94,7 +99,13 @@ class NavigationRequests(unittest.TestCase):
                                                                          **({"blocker": "waiting for sizes"} if index % 3 == 2 else {})}, 201)
         doc = self.api(page, "POST", f"/api/v1/projects/{first['id']}/docs", {"title": "How the barrels fill", "body": "Rain fills barrel one first.", "state": "published", "reason": "First page"}, 201)
         self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Where the sensors go", "scope": "project", "projectId": first["id"]}, 201)
-        type(self).ids = {"workspace": ws["id"], "project": first["id"], "other": second["id"], "doc": doc["id"]}
+        # A busy space: a few messages, then more tasks than one page of announcements, all newer than every message (as the perf seed's).
+        busy = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Seed library", "visibility": "workspace"}, 201)
+        for index in range(3):
+            self.api(page, "POST", f"/api/v1/projects/{busy['id']}/conversations", {"body": f"Seed swap {index + 1}: bring labelled jars", "clientMessageId": str(uuid.uuid4())}, 201)
+        for index in range(BUSY_TASKS):
+            self.api(page, "POST", f"/api/v1/projects/{busy['id']}/work", {"title": f"Sort seed packet {index + 1}"}, 201)
+        type(self).ids = {"workspace": ws["id"], "project": first["id"], "other": second["id"], "doc": doc["id"], "busy": busy["id"]}
         type(self).state = context.storage_state()
 
     def measure(self, page: Page, name: str, act, quiet_ms: int = 900) -> tuple[int, list[str]]:
@@ -184,6 +195,19 @@ class NavigationRequests(unittest.TestCase):
                 failures.append(f"{name}: {count} requests (at most {allowed}), repeated {', '.join(repeated) or 'nothing'} (at most {allowed_repeats} addresses)")
         self.assertEqual(failures, [], "a navigation costs no more than the budget recorded for it (#850); the target it is heading for is %d requests and none repeated" % TARGET)
 
+
+    def test_02b_entering_a_busy_space_stays_within_its_budget(self) -> None:
+        """#1429: the space's frame and its Conversation carry what the stream shows, however many tasks it announces."""
+        page = self.warm_page()
+        name = "Home → a busy space (Conversation), first visit"
+        count, repeated = self.measure(page, name, lambda: page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("^Seed library")).click())
+        expect(page.locator(".project-convo__message").first).to_be_visible()
+        # Every announcement is in the stream (folded), read with the view and not page by page.
+        expect(page.locator(".convo-fold__t").filter(has_text=f"{BUSY_TASKS} task updates")).to_be_visible()
+        allowed, allowed_repeats = BUSY_BUDGET[name]
+        self.assertLessEqual(count, allowed, f"{name}: {count} requests (at most {allowed}); the requests are listed below")
+        self.assertLessEqual(len(repeated), allowed_repeats, f"{name}: repeated {', '.join(repeated)}")
+        self.assertLessEqual(count, TARGET)
 
     def test_03_an_open_tab_makes_at_most_four_requests_a_minute(self) -> None:
         """#862: an open tab nobody touches asks the server at most 4 times a minute; the live stream tells it what changed."""

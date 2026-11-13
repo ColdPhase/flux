@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, startTransition, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
 import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
@@ -666,7 +666,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];
                 if (entry.kind === 'fold') {
                   const folded = entry.notices.map((item) => item.notice);
-                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
+                  return [divider, <NoticeFold key={entry.key} fold={{ key: entry.key, notices: folded }} shown={revealed} summary={foldSummary(folded, authorOf, (notice) => notice.createdBy.name?.split(/\s+/)[0] ?? 'Someone')}>{folded.map(noticeItem)}</NoticeFold>];
                 }
                 const { root } = entry;
                 const previous = display[index - 1], next = display[index + 1];
@@ -782,8 +782,12 @@ function NoticeItem({ notice, meId, owners, row, authorOf, hasMessage, onOpenTas
  * Several announcements in a row as one line (S8): how many, who and what, opening to the announcements
  * themselves. Folded ones stay in the page, hidden, so a link to one can still find and open it.
  */
-function NoticeFold({ fold, summary, children }: { fold: { key: string; notices: TaskCreationNotice[] }; summary: string; children: ReactNode }) {
+function NoticeFold({ fold, summary, shown, children }: { fold: { key: string; notices: TaskCreationNotice[] }; summary: string; shown: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(false);
+  // The hidden announcements join the page in a transition once the stream is shown (#1429): a space that announces hundreds of tasks
+  // opens as fast as one with a few, and the page still answers while they are drawn.
+  const [drawn, setDrawn] = useState(false);
+  useEffect(() => { if (shown) startTransition(() => setDrawn(true)); }, [shown]);
   const faces = [...new Map(fold.notices.map((notice) => [`${notice.createdBy.kind}:${notice.createdBy.id}`, notice.createdBy])).values()].slice(0, 2);
   const listId = `${fold.key}-list`;
   return (
@@ -793,7 +797,7 @@ function NoticeFold({ fold, summary, children }: { fold: { key: string; notices:
         <span className="convo-fold__t"><b>{fold.notices.length} task updates</b><span className="convo-fold__s"> · {summary}</span></span>
         <Icon name={open ? 'chevron-up' : 'chevron-down'} size={16} />
       </button>
-      <ol id={listId} className="convo-fold__list" hidden={!open}>{children}</ol>
+      <ol id={listId} className="convo-fold__list" hidden={!open}>{open || drawn ? children : null}</ol>
     </li>
   );
 }

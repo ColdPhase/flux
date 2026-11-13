@@ -185,12 +185,24 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
 export async function evaluateProject<P extends ProjectFacts = ProjectFacts>(principal: Principal, action: ActionsByResource['project'], projectId: string, reader: AccessReader<P>, options?: LoadOptions): Promise<ProjectEvaluation<P>> {
   const none = { ...DENIED, actor: null, project: null, level: 0 };
   if (!isUuid(projectId)) return none;
-  const located = await reader.locateProject(projectId);
-  if (!located) return none;
-  const actor = await reader.loadActor(principal, located.workspaceId, options);
-  if (!actor.active) return { ...none, actor };
-  if (options?.lock) await reader.lockProjectAccess(actor, projectId);
-  const row = await reader.readProject(actor, projectId);
+  let actor: Actor, row: { project: P; level: number } | null;
+  if (principal.kind === 'human' && !options?.lock && reader.readProjectAsPerson) {
+    // A person's unlocked check is one statement (#1429): the same facts as the three reads below, from one snapshot.
+    const found = await reader.readProjectAsPerson(principal.id, projectId);
+    if (!found) return none;
+    actor = { principal, workspaceId: found.workspaceId, role: found.role, agent: null, active: found.role !== null };
+    if (!actor.active) return { ...none, actor };
+    row = found.read;
+  } else {
+    const located = await reader.locateProject(projectId);
+    if (!located) return none;
+    const known = options?.known;
+    actor = known && known.workspaceId === located.workspaceId && known.principal.kind === principal.kind && known.principal.id === principal.id ? known
+      : await reader.loadActor(principal, located.workspaceId, options);
+    if (!actor.active) return { ...none, actor };
+    if (options?.lock) await reader.lockProjectAccess(actor, projectId);
+    row = await reader.readProject(actor, projectId);
+  }
   if (!row || row.level < LEVEL.contributor) return { ...none, actor };
   const needed = action === 'project.manage' ? LEVEL.manager : LEVEL.contributor;
   return { allowed: row.level >= needed, visible: true, actor, project: row.project, level: row.level };

@@ -77,6 +77,7 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
   };
   return {
     sourceVisibilityFingerprint: visibility.fingerprint,
+    observation: visibility.observation,
     summary: summary.summary, observedAt: summary.observedAt,
     async view(projectId, principal, selection, limit, cursor) {
       if (selection.purpose === 'choices' && selection.choice === 'open_work' && selection.selected) await requireObjects(projectId, [{ kind: 'work', id: selection.selected }]);

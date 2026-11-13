@@ -25,7 +25,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, TaskChangeVia, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, NativeCommandReceipt, NoticeReach, ObjectLinkRecord, NewObjectLink, TaskChangeVia, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
   lockProjectGraphs, sortedIds } from './task-graph.js';
 import * as valid from './validation.js';
@@ -309,7 +309,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     return uow.run(async (ports) => {
       await ports.access.requireProject(principal, 'read', project);
       const { items, total } = await read(ports, project, window);
-      return { items: await present(ports, items), total, ...window };
+      // A page that reaches back further than its limit (`NoticeReach`) says how many it holds.
+      return { items: await present(ports, items), total, ...window, limit: Math.max(window.limit, items.length) };
     });
   }
   const presentWorks = async (ports: WorkPorts, items: WorkRecord[]) => { const view = await presenter(ports, items.map((i) => i.id), workActors(items), true, waitsOf(items)); return items.map(view.work); };
@@ -320,28 +321,25 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listWork(project, window), presentWorks),
     listDecisions: (principal: Principal, projectId: string, query?: PageQuery) =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listDecisions(project, window), presentDecisions),
-    listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<TaskCreationNotice>> =>
-      list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window), async (ports, items) => {
-        const found = await ports.work.findWorks(items.map((item) => item.workId));
-        const records = items.map((item) => found.get(item.workId) ?? null);
-        const names = await ports.work.names([...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...records.flatMap((record) => record?.creationRevertedBy ? [record.creationRevertedBy] : [])]);
-        return items.map((item, index) => {
-          const record = records[index];
-          const { waitingFor, reason, ...notice } = item;
+    listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<TaskCreationNotice>> =>
+      list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window, reach), async (ports, items) => {
+        const names = await ports.work.names([...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...items.flatMap((item) => item.reverted ? [item.reverted.by] : [])]);
+        return items.map((item) => {
+          const { waitingFor, reason, reverted, ...notice } = item;
           return { ...notice, createdAt: iso(item.createdAt),
             ...(item.kind === 'task.blocked' ? { reason: reason ?? null, waitingFor: waitingFor ? { ...waitingFor, name: names.get(key(waitingFor)) ?? 'Former member' } : null }
               : item.kind === 'task.resumed' ? { reason: reason ?? null } : {}),
-            lifecycle: record?.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
-              ? { state: 'creation_reverted' as const, noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt),
-                revertedBy: { ...record.creationRevertedBy, name: names.get(key(record.creationRevertedBy)) ?? 'Former member' } }
+            lifecycle: reverted
+              ? { state: 'creation_reverted' as const, noticeId: reverted.noticeId, revertedAt: iso(reverted.at),
+                revertedBy: { ...reverted.by, name: names.get(key(reverted.by)) ?? 'Former member' } }
               : { state: 'active' as const },
             createdBy: { ...item.createdBy, name: names.get(key(item.createdBy)) ?? (item.createdBy.kind === 'agent' ? 'Agent' : 'Former member') } };
         });
       }),
 
     /** What the conversation says about decisions (#694): the project's audience reads it, no one else. */
-    listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<ObjectNotice>> =>
-      list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window), async (ports, items) => {
+    listObjectNotices: (principal: Principal, projectId: string, query?: PageQuery, reach?: NoticeReach): Promise<Page<ObjectNotice>> =>
+      list(principal, projectId, query, (ports, project, window) => ports.work.listObjectNotices(project, window, reach), async (ports, items) => {
         const names = await ports.work.names(items.map((item) => item.by));
         return items.map((item) => ({ ...item, createdAt: iso(item.createdAt),
           by: { ...item.by, name: names.get(key(item.by)) ?? (item.by.kind === 'agent' ? 'Agent' : 'Former member') } }));

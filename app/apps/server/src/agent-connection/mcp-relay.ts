@@ -3,7 +3,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { toWebRequest } from '@modelcontextprotocol/node';
 import { sql } from 'drizzle-orm';
 import { SpaceAiOffError } from '@flux/core';
-import type { Database, Transaction } from '@flux/db';
+import { commitWithoutFlush, type Database, type Transaction } from '@flux/db';
 
 /**
  * Request-owned delivery fence (#316 AC-3). `check` runs inside a short database transaction that holds the
@@ -59,7 +59,8 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
       if (!fence) { action(); handedOver = true; return true; }
       if (gate) await db.transaction(async (tx) => { await tx.execute(sql`SELECT pg_advisory_xact_lock_shared(hashtext(${gate}))`); });
       try {
-        await db.transaction(async (tx) => { await fence.check(tx); action(); handedOver = true; });
+        // A check that holds locks and writes nothing: its COMMIT need not wait for a disk flush before the answer ends (#1429).
+        await db.transaction(async (tx) => { await commitWithoutFlush(tx); await fence.check(tx); action(); handedOver = true; });
         return true;
       } catch (error) { aiOff = error instanceof SpaceAiOffError; return false; }
     };

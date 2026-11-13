@@ -220,7 +220,9 @@ isolation. What is guaranteed:
   count and the page are separate statements) see a consistent snapshot of committed
   rows as of that statement. A change that commits between the count and the page
   of one request can make them differ by that change. Nothing is cached, so the next
-  request, event delivery or job step always evaluates fresh.
+  request, event delivery or job step always evaluates fresh. A person's unlocked check of a space reads the space, their role
+  in its company and their level in one statement (`readProjectAsPerson`, #1429), the same facts the three reads of a locked
+  or an agent's check give, from one snapshot.
 
 `app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
@@ -443,9 +445,9 @@ actor is stored, never sent). Their tabs forget every kept answer, read the shel
 lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`, through `GET .../space-shell`, #1109).
 
 **One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages and work summary)
-and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices, sources, agents' questions and the roots' work
-associations) call each part's own use case with the caller's principal, so every part keeps its own access check; neither reads a
-table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
+and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices as far back as those roots, sources, agents' questions,
+the roots' work associations and the company's people without their last-active times, #1429) call each part's own use case with the
+caller's principal, so every part keeps its own access check; neither reads a table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
 agents' questions are `null` while the space's AI is off (AG-10), as their own route refuses them.
 
 **Someone saw your messages (#862).** The first sight of messages in a space (`POST .../observations` that stores new

@@ -1,4 +1,4 @@
-import { searchRows, sealedSearchRows, type QueryVectors, type SearchExecutor, type SQL, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
+import { searchRows, sealedSearchRows, type QueryVectors, type SearchExecutor, type SQL, visibleFilterOf, memberFilterOf, accessReader, loadActor, type AccessActor, type Database } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -17,16 +17,17 @@ import {
 /**
  * The policy side of the audience registry: the list condition (`visibleFilter`) for each
  * audience type in one workspace, or whether the principal may read it at all. A new audience
- * type adds one entry here and one in `@flux/db`'s search rows.
+ * type adds one entry here and one in `@flux/db`'s search rows. Each is decided from the actor's standing, read once per workspace for
+ * all of them (#1429: four reads of the same standing before).
  */
-const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, workspaceId: string, db: Database) => Promise<SQL | null | false>> = {
+const POLICY_AUDIENCES: Record<SearchAudienceType, (actor: AccessActor, db: Database) => Promise<SQL | null | false>> = {
   // F-037 (coordinator default): a company admin finds only what is in the spaces they were added to.
-  project: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'project', db),
-  dm: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'dm', db),
-  sketch: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'sketch', db),
-  // People are found by whoever may read the workspace's members.
-  members: async (principal, workspaceId, db) =>
-    (await authorize(principal, 'workspace.read_members', { type: 'workspace', id: workspaceId }, accessReader(db))).allowed ? null : false,
+  project: async (actor) => memberFilterOf(actor, 'project'),
+  dm: async (actor) => visibleFilterOf(actor, 'dm'),
+  sketch: async (actor) => memberFilterOf(actor, 'sketch'),
+  // People are found by whoever may read the workspace's members: the policy's own decision, from the same standing.
+  members: async (actor, db) => (await authorize(actor.principal as Principal, 'workspace.read_members', { type: 'workspace', id: actor.workspaceId },
+    { ...accessReader(db), loadActor: async () => actor })).allowed ? null : false,
 };
 
 /** Audiences through `visibleFilter` and `authorize`, read fresh for every search. */
@@ -38,8 +39,9 @@ export function policySearchAccess(db: Database): SearchAccess<SQL> {
         : principal.kind === 'agent' ? await rows.agentWorkspaces(principal.id) : [];
       const audiences: SearchAudience<SQL>[] = [];
       for (const workspaceId of workspaces) {
+        const actor = await loadActor(principal, workspaceId, db);
         for (const type of Object.keys(POLICY_AUDIENCES) as SearchAudienceType[]) {
-          const condition = await POLICY_AUDIENCES[type](principal, workspaceId, db);
+          const condition = await POLICY_AUDIENCES[type](actor, db);
           if (condition !== false) audiences.push({ type, workspaceId, condition });
         }
       }
