@@ -1,1 +1,0 @@
-- A call someone starts in a space shows Join (or the live dot on More) in the space's other open tabs at once, and so does someone joining or leaving it and its end: the server tells the space over the live stream instead of the tabs looking every 30 seconds ([#1175](https://github.com/ColdPhase/flux/issues/1175)).

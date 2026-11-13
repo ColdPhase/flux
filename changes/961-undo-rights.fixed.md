@@ -1,1 +1,0 @@
-- An owner who was removed from a space can no longer undo a removal there (a task-thread line, a map, a result), as intended in #961, but the check no longer reaches the other changes: a hand-off or an edit is refused in the domain's own words ("Changed since. Open it") again, one by one and in the whole-message Undo ([#961](https://github.com/ColdPhase/flux/issues/961)).

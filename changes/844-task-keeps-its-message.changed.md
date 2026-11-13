@@ -1,1 +1,0 @@
-- A task an agent makes from a message keeps that message as its source, as a task made by a person does: the task opens the message in context and the message shows the task ([#844](https://github.com/ColdPhase/flux/issues/844)).

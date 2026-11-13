@@ -1,1 +1,0 @@
-- A space stores no views any more: every space shows Conversation, Tasks, Map and Wiki, so the `views` field, `POST /projects/:id/views` and the `project.view_added.v1` event are gone ([#1043](https://github.com/ColdPhase/flux/issues/1043)).

@@ -1,1 +1,0 @@
-- Production dependencies no longer carry a known HIGH or CRITICAL advisory: Better Auth 1.7.18, Fastify 5.12.8, `@fastify/static` 10, the MCP SDK 2.4 (one MCP request is limited to 1 MiB and 10,000 argument elements), `markdown-it`, `zod`, `pg-boss` 12.38 and the other pinned packages are current ([#877](https://github.com/ColdPhase/flux/issues/877)).
