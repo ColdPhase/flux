@@ -236,18 +236,12 @@ class LiveBase(unittest.TestCase):
         return f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}"
 
     def call(self, page: Page) -> None:
-        """Start a call from the header once the open view has said where it is (until then Call only says why it cannot start)."""
+        """Start a call with ONE click on the header's Call, once the open view has said where it is (until then Call only says why it
+        cannot start, and the real button is not there). The strip is there at once; it reads Live when the connection is made (#1304)."""
         header = page.locator("header.top, header.phead")
-        expect(header.locator(".lv-entry__btn--why")).to_have_count(0)
-        for attempt in range(3):
-            header.get_by_role("button", name="Call", exact=True).click()
-            try:
-                expect(self.bar(page)).to_be_visible(timeout=6000)
-                return
-            except AssertionError:
-                # Say why in the log (the toast the person would read), then try again as they would.
-                print(f"Call did not start (attempt {attempt + 1}): {page.locator('.ui-toast__msg').all_inner_texts()}", flush=True)
-        expect(self.bar(page)).to_be_visible()
+        header.get_by_role("button", name="Call", exact=True).and_(header.locator(".lv-entry__btn:not(.lv-entry__btn--why)")).click()
+        expect(self.bar(page)).to_be_visible(timeout=10000)
+        expect(self.bar(page).get_by_role("status").first).to_contain_text("Live", timeout=30000)
 
     def bar(self, page: Page):
         return page.get_by_role("region", name="Live session")
@@ -545,6 +539,45 @@ class LiveJourney(LiveBase):
         for leaver in (tabs["Tasks"], nia):
             self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
             expect(self.bar(leaver)).to_have_count(0)
+
+    def test_00g_one_click_on_call_right_after_being_added_shows_the_call_at_once(self) -> None:
+        """#1304: right after Ada adds Kai to a new space, Kai's one click on Call shows the strip, "Connecting…", at once, though joining is
+        held for 4 s; nothing starts twice; then the call reads Live. No second click is needed."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Quick start", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE["kai"]["id"]}, "role": "contributor"}, status=201)
+        kai = self.page("kai")
+        # Joining is slow on this page: the page's own request for the join waits 4 s (no route is stubbed; the service worker stays allowed).
+        kai.context.add_init_script(r"""(() => {
+          const real = window.fetch.bind(window);
+          window.fetch = async (input, init) => {
+            const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);
+            if (/\/api\/v1\/live-sessions\/[^/]+\/join/.test(url)) await new Promise((resolve) => setTimeout(resolve, 4000));
+            return real(input, init);
+          };
+        })();""")
+        kai.goto(f"/projects/{pid}")
+        header = kai.locator("header.top")
+        header.get_by_role("button", name="Call", exact=True).and_(header.locator(".lv-entry__btn:not(.lv-entry__btn--why)")).click()
+        clicked = time.monotonic()
+        bar = self.bar(kai)
+        expect(bar).to_be_visible(timeout=3000)
+        self.assertLess(time.monotonic() - clicked, 3.5, "the strip is there at once, not after the connection")
+        expect(bar.get_by_role("status").first).to_contain_text("Connecting")
+        expect(bar.locator(".lv-where")).to_have_text("Call in Quick start")
+        expect(bar.get_by_role("button", name="Leave", exact=True)).to_have_count(0)
+        shot(kai, "live-desktop-1440-connecting")
+        # While it connects, Call does not start a second call: it says it is connecting.
+        header.get_by_role("button", name="Call", exact=True).click()
+        expect(kai.locator(".lv-pop__text")).to_have_text("Connecting to the call.")
+        kai.keyboard.press("Escape")
+        expect(bar.get_by_role("status").first).to_contain_text("Live", timeout=30000)
+        calls = [item for item in self.api(kai, "GET", f"/api/v1/projects/{pid}/live-sessions", status=200)["items"] if item["context"]["id"] == pid]
+        self.assertEqual(len(calls), 1, "one call, not one per click")
+        bar.get_by_role("button", name="Leave", exact=True).click()
+        expect(bar).to_have_count(0)
 
     def test_00d_a_call_is_noticed_in_the_inbox_and_sidebar_and_invitations_reach_people(self) -> None:
         """#1223 points 2 to 6 (F-041): Lee starts a call; Ada's open tab on Home shows the space's call glyph and her Inbox the call with

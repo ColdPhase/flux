@@ -119,7 +119,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   }
 
   if (inSession) {
-    if (variant === 'header' || variant === 'more') return dimmed('You are in a live session.');
+    if (variant === 'header' || variant === 'more') return dimmed(busy ? 'Connecting to the call.' : 'You are in a live session.');
     if (anchor && live.session && sameContext(live.session.context, anchor.context))
       return <p className="lv-inline-note lv-inline-note--on"><span className="lv-dot" aria-hidden="true" />You are in the live session for this {KIND_WORD[anchor.context.type]}.</p>;
     return null;

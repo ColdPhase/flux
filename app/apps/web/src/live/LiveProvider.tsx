@@ -320,12 +320,15 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
         if (label === null) throw new ApiError(404, 'LIVE_CONTEXT_NOT_FOUND', 'Not found');
         resolved = { projectId: target.projectId, context: target.context, label };
       }
+      // The strip is there from the click, saying it is connecting (#1304): a slow connection never looks like nothing happened.
+      setAnchor(resolved);
       loadPeople(target.projectId);
       const joined = await connect(target, resolved, 'joining');
       await catchUp(joined.id, joined.projectId, true).catch(() => undefined);
     } catch (error) {
       setPhase('idle');
       setSession(null);
+      setAnchor(null);
       await connectionRef.current?.disconnect().catch(() => undefined);
       toast({ message: readable(error), tone: 'danger' });
     }
@@ -333,7 +336,10 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
 
   const start = useCallback(async (target: LiveAnchor) => {
     if (phaseRef.current !== 'idle' && phaseRef.current !== 'ended') return;
+    // At once, before the next render: a second click while this one starts must not start another (#1304).
+    phaseRef.current = 'starting';
     setPhase('starting');
+    setAnchor(target);
     try {
       // Someone may have started one here a moment ago: join it instead of opening a second.
       const running = await discoverSessions(target.projectId).then((page) => page.items, () => [] as LiveSession[]);
@@ -342,6 +348,7 @@ export function LiveProvider({ meId, children }: { meId: string; children: React
       await join(created, target);
     } catch (error) {
       setPhase('idle');
+      setAnchor(null);
       toast({ message: readable(error), tone: 'danger' });
     }
   }, [join, toast]);
