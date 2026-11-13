@@ -24,15 +24,22 @@ export function credentialValues(fileText: string): string[] {
   return [...values];
 }
 
-/** The CLI's credential file, read as the person (it can reach only what is theirs, whatever a link there says). Empty when there is none. */
-export async function readCredentialValues(dir: string, client: RuntimeClient, person: Person): Promise<string[]> {
-  const path = join(dir, CLIENT_DIRS[client], CREDENTIAL_FILES[client]);
-  const read = await runFixed('/bin/sh', ['-c', '[ -f "$1" ] && exec cat -- "$1"', 'sh', path], { env: { PATH: '/usr/bin:/bin' }, cwd: '/',
+const credentialPath = (dir: string, client: RuntimeClient) => join(dir, CLIENT_DIRS[client], CREDENTIAL_FILES[client]);
+
+/** The CLI's credential file as text, read as the person (it can reach only what is theirs, whatever a link there says); null when there is none. */
+async function readCredentialFile(dir: string, client: RuntimeClient, person: Person): Promise<string | null> {
+  const read = await runFixed('/bin/sh', ['-c', '[ -f "$1" ] && exec cat -- "$1"', 'sh', credentialPath(dir, client)], { env: { PATH: '/usr/bin:/bin' }, cwd: '/',
     timeoutMs: 5_000, maxOutputBytes: 256 * 1024, person });
-  return read.code === 0 ? credentialValues(read.stdout) : [];
+  return read.code === 0 ? read.stdout : null;
 }
 
-interface Watched { bindingId: string; client: RuntimeClient; dir: string; person: Person; atStart: string[] }
+/** The values of the CLI's credential file. Empty when there is none. */
+export async function readCredentialValues(dir: string, client: RuntimeClient, person: Person): Promise<string[]> {
+  const text = await readCredentialFile(dir, client, person);
+  return text === null ? [] : credentialValues(text);
+}
+
+interface Watched { bindingId: string; client: RuntimeClient; dir: string; person: Person; atStart: string[]; fileAtStart: string | null }
 const watched = new WeakMap<SupervisorConfig, Map<string, Watched>>();
 const watchedOf = (config: SupervisorConfig) => {
   let runs = watched.get(config);
@@ -42,7 +49,20 @@ const watchedOf = (config: SupervisorConfig) => {
 
 /** At a run's start, before its CLI does anything: what its login holds now (a change of the run that moves it away cannot hide it). */
 export async function watchCredentials(config: SupervisorConfig, runId: string, bindingId: string, client: RuntimeClient, dir: string, person: Person) {
-  watchedOf(config).set(runId, { bindingId, client, dir, person, atStart: await readCredentialValues(dir, client, person) });
+  const fileAtStart = await readCredentialFile(dir, client, person);
+  watchedOf(config).set(runId, { bindingId, client, dir, person, atStart: fileAtStart === null ? [] : credentialValues(fileAtStart), fileAtStart });
+}
+
+/**
+ * Puts back the login a run started with when the run changed it, as the person (#1437 review): for a run stopped because its own tools
+ * wrote outside the scratch. A login that was not there at the start is removed.
+ */
+export async function restoreCredentials(config: SupervisorConfig, runId: string): Promise<void> {
+  const run = watchedOf(config).get(runId);
+  if (!run || await readCredentialFile(run.dir, run.client, run.person) === run.fileAtStart) return;
+  const path = credentialPath(run.dir, run.client);
+  await runFixed('/bin/sh', ['-c', run.fileAtStart === null ? 'rm -f -- "$1"' : 'umask 077; rm -f -- "$1" && cat > "$1"', 'sh', path],
+    { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: run.person, ...(run.fileAtStart === null ? {} : { stdin: run.fileAtStart }) });
 }
 export function forgetCredentials(config: SupervisorConfig, runId: string) { watchedOf(config).delete(runId); }
 

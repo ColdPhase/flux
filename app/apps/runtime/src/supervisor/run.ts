@@ -7,7 +7,7 @@ import { readCodexModels } from './models.js';
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, type Person } from './process.js';
-import { forgetCredentials, watchCredentials } from './credentials.js';
+import { forgetCredentials, restoreCredentials, watchCredentials } from './credentials.js';
 import { createScratch, removeScratch, resetCodexHome, watchRun, type SandboxSetup } from './sandbox.js';
 import { catalogForAccount, CLAUDE_OWN_TOOLS, CLAUDE_WEB_SEARCH_TOOL, CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES, sandboxEnvironment } from './templates.js';
 
@@ -663,8 +663,11 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     result.usage = read.usage;
   }
   runs.delete(request.runId);
-  forgetCredentials(config, request.runId);
   finishedOf(config).set(request.runId, Date.now());
   await cleanUp(config, runDir, dir, person, request.client, scratch);
+  // A run its own tools took outside the sandbox (#1437 review) may have changed the CLI's login (Codex's `apply_patch` writes its home): an
+  // attacker's own login put there would carry the person's next runs to the attacker's account. The login the run started with comes back.
+  if (ownTools && result.outcome === 'local_tool') await restoreCredentials(config, request.runId);
+  forgetCredentials(config, request.runId);
   return { result };
 }

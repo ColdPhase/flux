@@ -240,6 +240,12 @@ record('a command in a shell the model named stops the run at once, and nothing 
   escaped.ok && escaped.result.outcome === 'local_tool' && escaped.result.answer === null && !(await lstat(`/data/${ada}/codex/escaped`).catch(() => null)),
   `${escapeMs} ms ${JSON.stringify(escaped).slice(0, 300)}`);
 console.log(`MEASURE escaped shell run ended after ${escapeMs} ms`);
+// An attacker's own login written over Codex's (its next runs would go to the attacker's account): the one the run started with comes back.
+const loginBefore = await readFile(`/data/${ada}/codex/auth.json`, 'utf8');
+await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/auth.json`, content: '{"tokens":{"refresh_token":"attacker-refresh-token-0123456789"}}' } }] }));
+const swapped = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
+record('a login Codex wrote over its own is replaced by the one the run started with', swapped.ok && swapped.result.outcome === 'local_tool'
+  && (await readFile(`/data/${ada}/codex/auth.json`, 'utf8')) === loginBefore, JSON.stringify(swapped).slice(0, 200));
 record('its login stays', (await readFile(`/data/${ada}/codex/auth.json`, 'utf8').catch(() => '')).includes('codex-login-'));
 record('every scratch is gone', (await readdir('/scratch')).length === 0, (await readdir('/scratch')).join());
 
