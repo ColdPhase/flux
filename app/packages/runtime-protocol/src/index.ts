@@ -12,4 +12,5 @@ export * from './redact.js';
 export * from './manager-port.js';
 export * from './console.js';
 export * from './model-gateway.js';
+export * from './files.js';
 export * from './scan.js';

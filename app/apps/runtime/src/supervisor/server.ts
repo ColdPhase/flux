@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { CONSOLE_UPGRADE_ANSWER, encodeFrame, isConsoleUpgrade, parseSupervisorRequest, refuseUpgrade, REQUEST_LIMITS, RUN_SCAN_LIMITS, RUN_SCAN_STATUS, isRunScanRequest, supervisorScanPath, type RunScanError, type SupervisorError, type SupervisorFrame } from '@flux/runtime-protocol';
+import { CONSOLE_UPGRADE_ANSWER, encodeFrame, isConsoleUpgrade, isRunFileRequest, isRunScanRequest, parseSupervisorRequest, refuseUpgrade, REQUEST_LIMITS, RUN_SCAN_LIMITS, RUN_SCAN_STATUS, supervisorFilePath, supervisorScanPath, type RunScanError, type SupervisorError, type SupervisorFrame } from '@flux/runtime-protocol';
+import { serveRunFile } from './files.js';
 import { authorized } from '../shared/auth.js';
 import { serveConsole } from './console.js';
 import { holdsCredential } from './credentials.js';
@@ -110,6 +111,13 @@ export function createSupervisorServer(config: SupervisorConfig): SupervisorServ
     if (!body) { refuse(400, 'invalid_request'); return; }
     let value: unknown;
     try { value = JSON.parse(body.toString('utf8')); } catch { refuse(400, 'invalid_request'); return; }
+    // A file of a run's scratch (#1437): bytes, not frames, outside the person's lane (their run holds it while it asks).
+    if (req.url === supervisorFilePath) {
+      if (!isRunFileRequest(value)) { refuse(400, 'invalid_request'); return; }
+      if (closing.has(value.bindingId)) { refuse(409, 'busy'); return; }
+      await serveRunFile(config, value, res).catch(() => { if (!res.headersSent) refuse(502, 'internal'); else res.destroy(); });
+      return;
+    }
     const parsed = parseSupervisorRequest(route[1], value);
     if (!parsed.ok) { refuse(parsed.code === 'unknown_request' ? 404 : 400, parsed.code); return; }
     const request = parsed.request;

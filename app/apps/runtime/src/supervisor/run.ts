@@ -71,6 +71,9 @@ const runsOf = (config: SupervisorConfig) => {
   return runs;
 };
 
+/** Whether this person's run is in progress here (#1437: only then can a file of its scratch be read). */
+export const runInProgress = (config: SupervisorConfig, runId: string, bindingId: string) => runsOf(config).get(runId)?.bindingId === bindingId;
+
 /** Stop for one run of this person: SIGINT, then SIGTERM, then kill. */
 export function stopRun(config: SupervisorConfig, runId: string, bindingId: string): 'stopping' | 'not_running' | 'binding_mismatch' {
   const run = runsOf(config).get(runId);

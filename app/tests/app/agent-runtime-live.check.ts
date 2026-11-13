@@ -348,6 +348,13 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       (value) => !['queued', 'reading', 'dispatching'].includes(value.status), 180);
     assert.equal(run.status, 'completed', JSON.stringify(run));
     console.log(`RUN=${run.id}`);
+    // #1437: what its flux_attach_file attached, read back as the asker downloads it: the bytes the run made in its scratch.
+    const attached = await pool.query<{ id: string; name: string; size: number }>(`SELECT f.id, f.name, f.size FROM assistant_changes c JOIN project_files f ON f.id = c.object_id
+      WHERE c.run_id = $1 AND c.operation = 'answer.file.attach' AND c.state = 'applied' ORDER BY c.created_at`, [run.id]);
+    for (const file of attached.rows) {
+      const bytes = Buffer.from(await (await fetch(new URL(`/api/v1/files/${file.id}`, apiUrl), { headers: { cookie: someone.browser.cookieHeader() } })).arrayBuffer());
+      console.log(`ATTACHED=${file.name} ${file.size} ${bytes.subarray(0, 5).toString('latin1')}`);
+    }
   },
   /**
    * T6 (#281): ChatGPT's device sign-in through the API's console: the card gets the URL and the code the fake

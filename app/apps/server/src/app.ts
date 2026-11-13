@@ -50,6 +50,7 @@ import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { configureRunCredentialScan } from './agent-connection/run-credentials.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
 import { configureAgentPictures } from './agent-connection/picture-actions.js';
+import { configureAgentFiles } from './agent-connection/file-actions.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
 import { returnRoutes } from './returns/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
@@ -329,6 +330,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
   // An agent's picture (#1217): the same reader, and the files volume a person's upload goes to.
   configureAgentPictures({ reader: webReader, storage: fileStorage });
+  // #1437: an agent's file goes through the asker's own upload path (pictures written again, videos' own limit), read from its run's scratch.
+  configureAgentFiles({ storage: fileStorage, options: { videoBytes: config.files.videoBytes, pictures, poster: (bytes) => pictures.poster(bytes) },
+    manager: config.agentRuntime.manager });
   // #1437: a run's change is looked through for its CLI's own login by the run's supervisor (through runtime-manager).
   configureRunCredentialScan(config.agentRuntime.manager);
   // The optional embedding container's query hook (F-042, #1294), one for the process: undefined while it is off.

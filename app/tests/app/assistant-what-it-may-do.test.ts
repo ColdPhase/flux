@@ -443,6 +443,7 @@ describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)',
       ['flux_create_map', { ...elsewhere, title: 'Outside the place' }],
       ['flux_propose_decision', { ...elsewhere, decision: { title: 'Outside the place' } }],
       ['flux_attach_image', { ...elsewhere, url: 'http://public.test/pic/raised-bed.png' }],
+      ['flux_attach_file', { ...elsewhere, name: 'outside.txt', content: 'Outside the place' }],
     ];
     assert.deepEqual([...new Set(changes.map(([name]) => name))].sort(), [...ASSISTANT_RUN_EFFECT_TOOLS].sort(), 'every change kind is covered');
     for (const mode of ['act', 'ask'] as const) {
