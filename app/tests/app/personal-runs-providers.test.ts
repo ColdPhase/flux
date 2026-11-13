@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { apiKeySpendToday, createDatabase } from '@flux/db';
-import { createPersonalRunProcessor, type Principal } from '@flux/core';
-import { type AssistantRun, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { createPersonalRunProcessor, shippedPriceList, type Principal } from '@flux/core';
+import { providerPriceList, type AssistantRun, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -197,7 +197,8 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
       listed: [listed('claude-sonnet-5', 'Sonnet', '2026-06-01T00:00:00Z'), listed('claude-sonnet-5-5', 'Sonnet', '2026-09-28T00:00:00Z'),
         listed('claude-opus-5-5', 'Opus', '2026-09-21T00:00:00Z'), listed('claude-haiku-5-5', 'Haiku', '2026-10-07T00:00:00Z'),
         listed('claude-fable-5-2', 'Fable', '2026-11-05T00:00:00Z')],
-      listedAt: new Date(), checkedAt: new Date(), status: 'listed', prices: {}, retired: [] } });
+      // Priced by Flux's price list as the release ships it (#1465), as the repository passes it with the key.
+      listedAt: new Date(), checkedAt: new Date(), status: 'listed', prices: {}, retired: [], list: providerPriceList(shippedPriceList(), 'anthropic') } });
   });
 
   test('AST-11.1/AST-11.5: the grouped list, a choice at turn-on, the request at the chosen model; a change reaches the next request only', async () => {

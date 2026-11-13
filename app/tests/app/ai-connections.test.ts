@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
 import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection } from '@flux/contracts';
+import { shippedPriceList } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
 import { expectStatus, person, workspace, type Person } from './support/people.js';
@@ -56,7 +57,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
     const cases: { body: Record<string, unknown>; key: string; expect: Partial<BackgroundComputeConnection> }[] = [
       { body: { provider: 'anthropic', model: 'claude-sonnet-5' }, key: keys.anthropic,
         expect: { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null,
-          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list', checkedOn: '2026-11-12' } } },
+          price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'list', checkedOn: shippedPriceList().fetchedOn } } },
       { body: { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000 } }, key: keys.openai,
         expect: { provider: 'openai', model: 'gpt-model', baseUrl: null, price: { inputMicrosPerMTok: 400_000, outputMicrosPerMTok: 1_600_000, source: 'owner', checkedOn: null } } },
       { body: { provider: 'gemini', model: 'gemini-model' }, key: keys.gemini, expect: { provider: 'gemini', model: 'gemini-model', price: null } },

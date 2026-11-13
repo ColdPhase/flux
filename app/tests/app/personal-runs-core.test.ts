@@ -33,7 +33,7 @@ describe('personal run output rules', () => {
 
   test('cost uses the connection price, and a run reserves its largest request (F-020 PROV-3)', () => {
     const sonnet = FAKE_PRICE;
-    assert.deepEqual([sonnet.inputMicrosPerMTok, sonnet.outputMicrosPerMTok, sonnet.checkedOn], [2_000_000, 10_000_000, '2026-11-12']);
+    assert.deepEqual([sonnet.inputMicrosPerMTok, sonnet.outputMicrosPerMTok, sonnet.checkedOn], [2_000_000, 10_000_000, '2026-11-13']);
     assert.equal(costMicros({ inputTokens: 32_000, outputTokens: 4_000 }, sonnet), 104_000);
     assert.equal(runReservationMicros(sonnet), 104_000, 'max input × input price + max output × output price');
     // Rounded up, never down; a provider-reported cost replaces the token estimate when present.
