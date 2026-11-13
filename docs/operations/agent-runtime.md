@@ -258,8 +258,11 @@ Measured 2026-11-05 in Docker with the runtime's own settings (2560 MiB, one CPU
 | One more person | about 44 KiB of supervisor memory, 5 ms to connect, no process |
 | Claude Code 2.1.285, one start as a person's user id, not signed in, no network | 195 MiB at its peak, 0.44 s of CPU |
 | Codex 0.160.1 `app-server`, idle for 8 s as a person's user id, not signed in, no network | 87 MiB, 0.07 s of CPU |
+| The runtime image with the toolbox (#1437, `agent-runtime`, amd64; 2026-11-13) | 1,000 MB, against 438 MB without it (`main` at the same day): the toolbox adds about 560 MB, once per server |
+| pandoc with typst, a one-page HTML file to PDF, in a run's sandbox on one CPU | 124 MiB at its peak |
+| Python with pandas and matplotlib, one chart to PNG, in a run's sandbox on one CPU | 108 MiB at its peak, 0.9 s |
 
-The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
+The toolbox rows come from `docker image inspect` and the `MEASURE toolbox` lines of `scripts/check_runtime_sandbox.sh` (a container with one CPU, as a 2 vCPU server gives the runtime); both fit well inside a run's 512 MiB for its tools. The first three rows come from `scripts/check_runtime_people.sh`, which uses fake CLIs and works on any Linux engine. The last two
 are the real binaries, so they show what a CLI costs before it does any work.
 
 **Not measured:** a real run, with a signed-in CLI talking to its vendor. It needs a vendor sign-in, and the machine these numbers
