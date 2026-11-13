@@ -204,12 +204,12 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
       await open.query('UPDATE sketches SET title = $1 WHERE id = $2', [sealed.title, sketch.id]);
       assert.ok((await open.query('SELECT count(*)::int AS n FROM search_changes WHERE xid = pg_current_xact_id()')).rows[0].n >= 1, 'the open transaction logged its change');
       await post(ada, `/api/v1/projects/${ids.A.project}/conversations`, { body: `${later} message`, clientMessageId: randomUUID() }, 201);
-      await search(ben, { q: later }); // reads while the lower transaction is still open
+      await search(ben, { q: exactly(later) }); // reads while the lower transaction is still open
       await open.query('COMMIT');
     } finally { open.release(); }
     for (let round = 0; round < 3; round += 1) {
       assert.equal((await search(ben, { q: exactly(renamed) })).items.length, 1, `the renamed map is found (search ${round + 1})`);
-      assert.equal((await search(ben, { q: later })).items.length, 1, `the later message is found, once (search ${round + 1})`);
+      assert.equal((await search(ben, { q: exactly(later) })).items.length, 1, `the later message is found, once (search ${round + 1})`);
     }
   });
 
