@@ -141,8 +141,7 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       // Sealed first: a server that cannot keep the key (no instance key) refuses it before a request is sent for it.
       const encryptedKey = sealer.seal(input.apiKey, ownerUserId, id);
       // RT-1 rule 2 (#1441): only a model that calls tools can be an agent, decided by one small request on this model with the new key. It needs
-      // the model's price to be charged (CA-3), so a model without one is checked the first time an agent is put on it (it cannot be before: an
-      // agent's model must be priced). A model that does not call `ping`, or a request that failed, refuses the key and nothing is saved. That
+      // the model's price to be charged (CA-3), which every saved key has (#1424: a key without one is refused above). A model that does not call `ping`, or a request that failed, refuses the key and nothing is saved. That
       // request has no connection to be charged to, so a refused key costs its check without it counting on any key's day; one that passes is
       // recorded with the key in one transaction, and so is counted from its first moment.
       let check: { model: string; chargedMicros: number } | undefined;

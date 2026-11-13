@@ -18,7 +18,7 @@ const on: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreed
 
 describe('operator configuration', () => {
   test('off by default; on needs the manager secret and, for Claude Code, the Commercial Terms date', () => {
-    assert.deepEqual(loadAgentRuntimeConfig({}), { clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null, offReason: null });
+    assert.deepEqual(loadAgentRuntimeConfig({}), { clients: [], commercialTermsAgreedOn: null, idleDays: null, manager: null, keys: false, offReason: null });
     // #1438: the launcher's one line about a host that cannot run it, only while it is off, in one bounded line.
     assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_OFF_REASON: '  the Docker engine\n is not a Linux engine ' }).offReason, 'the Docker engine is not a Linux engine');
     assert.equal(loadAgentRuntimeConfig({ FLUX_AGENT_RUNTIME_OFF_REASON: 'x'.repeat(400) }).offReason?.length, 300);

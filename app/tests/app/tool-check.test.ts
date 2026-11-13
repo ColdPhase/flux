@@ -192,13 +192,12 @@ describe('Connect AI checks the key\'s model before it saves the key (#1441)', (
     });
   }
 
-  test('a model without a known price cannot be charged a check: it is saved unchecked and checked the first time an agent is put on it', async () => {
+  test('a model without a known price is not saved (#1424), so no check is sent for it', async () => {
     const wire = WIRES[3]!;
-    const unpriced = expectStatus(await owner.browser.request('POST', path, { body: { dailyBudgetCents: 50, provider: 'gemini', model: 'gemini-tc-unpriced', apiKey: wire.key } }), 201) as BackgroundComputeConnection;
-    assert.equal(unpriced.price, null);
-    assert.equal(unpriced.today.spentMicros, 0);
+    const unpriced = await owner.browser.request('POST', path, { body: { dailyBudgetCents: 50, provider: 'gemini', model: 'gemini-tc-unpriced', apiKey: wire.key } });
+    assert.equal(unpriced.status, 422, unpriced.text);
+    assert.equal(codeOf(unpriced), 'AI_PRICE_REQUIRED');
     assert.deepEqual((await checksWith(wire.key)).filter((item) => item.model === 'gemini-tc-unpriced'), [], 'no request');
-    assert.equal(Number((await pool.query('SELECT count(*) AS n FROM api_key_checks WHERE connection_id = $1', [unpriced.id])).rows[0].n), 0);
   });
 
   test('a key its provider refuses is refused before any check is sent', async () => {

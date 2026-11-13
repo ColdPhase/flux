@@ -42,7 +42,7 @@ export interface NewApiKeyConnection {
   modelList?: AiModelList | null;
   /**
    * The check that the key's model called tools (#1441, RT-1 rule 2), recorded in the same transaction as the key, so it is charged to the key's
-   * day from the start. Absent when the model's price was not known to check it with: it is checked the first time an agent is put on it.
+   * day from the start. Absent only for a caller without the check; a key whose model has no price is not saved (#1424).
    */
   check?: { model: string; chargedMicros: number };
 }

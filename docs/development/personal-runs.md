@@ -147,8 +147,8 @@ connect-time tool check of RT-1 (one request with one `ping` tool) will use them
 - **A model that cannot call tools** (RT-1 rule 2, #1441; AST-8.3's answer-only mode and its owner's switch are gone). There is no table
   of such models and no switch: `checkToolCalling` (`@flux/agent-runtime`, `tool-check.ts`) sends one request on the model with the one tool
   `ping` (`maxTokens` 256, low effort, "Call the ping tool now") through the provider's own adapter, and the model is accepted when the answer
-  holds a call of `ping`. Connect AI sends it with the key being added (`connect`, after the listing, the price and the budget checks; a model
-  without a known price waits for the first agent put on it), and `pick` sends it when an agent is put on a model of a key that has no passing
+  holds a call of `ping`. Connect AI sends it with the key being added (`connect`, after the listing, the price and the budget checks; a key whose
+  model has no price is not saved, #1424; another model of the key without a price waits for the first agent put on it), and `pick` sends it when an agent is put on a model of a key that has no passing
   row in `api_key_checks`. Not called, or the request refused or failed: `AI_TOOLS_REQUIRED` (422), "This model can't use tools. Choose
   another." The request's cost is the provider's usage at the model's price (the request's largest cost when the usage is unknown, nothing
   when the provider documents no charge) and counts on the key's day through `apiKeySpendToday`.
