@@ -5,6 +5,7 @@ import { readFileBytes } from '../api/files';
 import { Icon, trapTab, type IconName } from '../ui';
 import { detailLine, extensionOf, fileKind, fileLabel, fileSize, fileWord, looksLikePhoto, playTime, previewFormat, type FileKind } from './fileKind';
 import { FileViewer } from './FileViewer';
+import { useFileLink } from './fileLink';
 import { MessageReferences } from './References';
 import './attachments.css';
 
@@ -53,7 +54,11 @@ export function FileRow({ file }: { file: MessageFile }) {
   // A video is one because the server read its bytes (C-61), not because of its name; its poster, when the sender's browser drew one,
   // stands in for the page icon.
   const format = file.video ? 'video' : previewFormat(file.name);
-  const [open, setOpen] = useState(false);
+  const [clicked, setClicked] = useState(false);
+  // A search result for this file (C-63) opens its preview too, at the page that matched.
+  const link = useFileLink(file.id);
+  const open = clicked || link !== null;
+  const setOpen = (on: boolean) => { setClicked(on); if (!on) link?.close(); };
   const poster = useFileBytes(file.video && file.poster ? file.poster : null, 'image');
   if (format) return (
     <div className="file-row file-row--preview" data-file-kind={fileKind(file.name)} data-video={file.video || undefined}>
@@ -64,7 +69,7 @@ export function FileRow({ file }: { file: MessageFile }) {
         <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file))}</small></span>
       </button>
       <a className="file-row__act" href={filePath(file.id)} download={file.name} data-tip="Download" aria-label={`Download ${file.name}`}><Icon name="download" size={16} /></a>
-      {open ? <FileViewer file={file} format={format} poster={poster.status === 'ready' ? poster.url : undefined} onClose={() => setOpen(false)} /> : null}
+      {open ? <FileViewer file={file} format={format} page={link?.page ?? null} poster={poster.status === 'ready' ? poster.url : undefined} onClose={() => setOpen(false)} /> : null}
     </div>
   );
   return (

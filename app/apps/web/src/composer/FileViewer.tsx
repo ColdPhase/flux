@@ -99,8 +99,9 @@ const PDF_FRAME_WAIT = 15_000;
  * ready, and says back only that it drew, that it failed, or which http(s) address the person pressed. Nothing opens until they
  * press Open under the sheet.
  */
-function PdfPage({ file, bytes, drawn, onDrawn, onFailed, onLink }: {
-  file: MessageFile; bytes: Uint8Array; drawn: boolean;
+function PdfPage({ file, bytes, page, drawn, onDrawn, onFailed, onLink }: {
+  /** `page`: the page to open at, from a search result (C-63). */
+  file: MessageFile; bytes: Uint8Array; page: number | null; drawn: boolean;
   /** Stable functions: the effect below must not start over when the viewer re-renders. */
   onDrawn: () => void; onFailed: (reason: 'password' | 'damaged') => void; onLink: (url: string) => void;
 }) {
@@ -119,14 +120,14 @@ function PdfPage({ file, bytes, drawn, onDrawn, onFailed, onLink }: {
         sent.current = true;
         window.clearTimeout(timer);
         const buffer = bytes.buffer as ArrayBuffer;
-        target.postMessage({ frame: PDF_FRAME, type: 'open', bytes: buffer }, '*', [buffer]);
+        target.postMessage({ frame: PDF_FRAME, type: 'open', bytes: buffer, ...(page ? { page } : {}) }, '*', [buffer]);
       } else if (message.type === 'drawn') onDrawn();
       else if (message.type === 'link') onLink(message.url);
       else onFailed(message.reason);
     };
     window.addEventListener('message', listen);
     return () => { window.removeEventListener('message', listen); window.clearTimeout(timer); };
-  }, [bytes, onDrawn, onFailed, onLink]);
+  }, [bytes, page, onDrawn, onFailed, onLink]);
   return <>
     {drawn ? null : <p className="file-viewer__state file-viewer__cover"><Spinner label={`Opening ${file.name}`} />{file.name}</p>}
     <iframe ref={frame} className="file-viewer__frame file-viewer__frame--pdf" title={`Preview of ${file.name}`} src={PDF_VIEWER_URL}
@@ -165,8 +166,8 @@ function VideoStage({ file, poster }: { file: MessageFile; poster?: string }) {
 
 const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv' };
 
-/** `poster`: for a video, the picture its message row already read, shown until Play. */
-export function FileViewer({ file, format, poster, onClose }: { file: MessageFile; format: PreviewFormat; poster?: string; onClose: () => void }) {
+/** `poster`: for a video, the picture its message row already read, shown until Play. `page`: the page of a PDF to open at, from a search result (C-63); the other formats open from the top. */
+export function FileViewer({ file, format, poster, page = null, onClose }: { file: MessageFile; format: PreviewFormat; poster?: string; page?: number | null; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const returnTo = useRef<Element | null>(null);
@@ -187,7 +188,13 @@ export function FileViewer({ file, format, poster, onClose }: { file: MessageFil
     root.current?.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
+    // A modal keeps focus: a preview opened by a search result (C-63) opens while the message it belongs to is being shown and focused, and
+    // that focus must not leave Esc and Tab outside the dialog.
+    const keep = (event: FocusEvent) => {
+      if (root.current && event.target instanceof Node && !root.current.contains(event.target)) root.current.querySelector<HTMLElement>('.photo-viewer__close')?.focus();
+    };
+    document.addEventListener('focusin', keep);
+    return () => { document.removeEventListener('focusin', keep); document.body.style.overflow = previous; (returnTo.current as HTMLElement | null)?.focus?.(); };
   }, []);
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(); return; }
@@ -207,7 +214,7 @@ export function FileViewer({ file, format, poster, onClose }: { file: MessageFil
     notes.push(scripts ? 'Scripts are on for this preview. A script may contact the internet.'
       : <>External images and scripts are blocked. {quiet('Run scripts', () => setScripts(true))}</>);
   } else if (format === 'pdf' && pdf.status === 'ready') {
-    body = <PdfPage file={file} bytes={pdf.bytes} drawn={drawn} onDrawn={onDrawn} onFailed={setPdfFailed} onLink={onLink} />;
+    body = <PdfPage file={file} bytes={pdf.bytes} page={page} drawn={drawn} onDrawn={onDrawn} onFailed={setPdfFailed} onLink={onLink} />;
     // A link in the file only shows where it goes: it opens in a new tab, without this page as its opener, when the person presses Open.
     if (link) notes.push(<>This PDF links to {link}</>, <a className="ui-btn ui-btn--link" href={link} target="_blank" rel="noopener noreferrer">Open link</a>,
       quiet('Dismiss', () => setLink(null)));
