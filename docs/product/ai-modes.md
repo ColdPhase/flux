@@ -576,8 +576,12 @@ operator decides for their server through the operator step (RT-9).
    or attachment that holds a value of the login, and removes what Codex wrote into its home; a command that does its harm in
    the milliseconds before that kill, or a value the model rewrites before sending, is not caught (#1437 review). pi's own `read`, `write` and `edit` (#1441) run inside
    pi's process under the same outer domain: they can read the system's files, the runtime's code under `/opt` and pi's own agent
-   directory and write only that directory and the scratch; nothing they reach holds a secret (the run's tokens are set after pi starts,
-   so pi's `/proc/self/environ` does not have them), and the agent directory is made fresh for each run and removed after it. What the run attaches is
+   directory (also its `HOME`) and write only that directory and the scratch, never the person's shared home where Claude Code keeps
+   its `.claude*` and which Codex reads (#1452 review); nothing they reach holds a secret (the run's tokens are set after pi starts,
+   so pi's `/proc/self/environ` does not have them), and the agent directory is made fresh for each run and removed after it. A residual:
+   pi hands its environment, tokens included, to the sandbox shell it starts, which drops it before the command runs; in that instant
+   the starting shell's `/proc/<pid>/environ` is readable by pi's own `read` (same user, same domain). Hitting it means guessing the pid
+   within about a millisecond, and the tokens end with the run and reach only this run's own tools and model. What the run attaches is
    checked as a person's upload is, and only its asker sees it until they show it to everyone.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract

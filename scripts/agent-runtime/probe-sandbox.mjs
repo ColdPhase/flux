@@ -301,6 +301,7 @@ const piProbes = [
   ['pi\'s read: another person\'s login', { tool: 'read', args: { path: `/data/${bo}/claude/.credentials.json` } }],
   ['pi\'s write: outside the scratch', { tool: 'write', args: { path: '/tmp/pi-left.txt', content: 'x' } }],
   ['pi\'s write: a file in the scratch', { tool: 'write', args: { path: 'report.html', content: '<h1>Report</h1>' } }],
+  ['pi\'s write: the person\'s shared home, which Claude Code and Codex read', { tool: 'write', args: { path: `/data/${ada}/home/.claude.json`, content: '{}' } }],
   ['the Flux tool', { tool: 'mcp__flux__flux_list_contexts', args: {} }],
 ];
 modelSteps.push(...piProbes.map(([, step]) => step), { text: 'Done with pi.' });
@@ -316,7 +317,9 @@ record(`${piProbes[4][0]} holds neither token (the launcher sets them after the 
 record(`refused: ${piProbes[5][0]}`, !/login-/.test(piOut(5)) && /EACCES|permission denied/i.test(piOut(5)), piOut(5));
 record(`refused: ${piProbes[6][0]}`, /EACCES|permission denied|read-only/i.test(piOut(6)) && !(await lstat('/tmp/pi-left.txt').catch(() => null)), piOut(6));
 record(piProbes[7][0], /Successfully wrote|wrote/i.test(piOut(7)), piOut(7));
-record('pi reached Flux\'s tool', /one space: Reports/.test(piOut(8)), piOut(8));
+record(`refused: ${piProbes[8][0]}`, /EACCES|permission denied|read-only/i.test(piOut(8))
+  && (await readFile(`/data/${ada}/home/.claude.json`, 'utf8').catch(() => '')) !== '{}', piOut(8));
+record('pi reached Flux\'s tool', /one space: Reports/.test(piOut(9)), piOut(9));
 record('pi\'s scratch and its home are gone after the run', !(await readdir('/scratch')).includes(piRun) && !(await lstat(`/data/${ada}/pi`).catch(() => null)));
 model.close();
 
