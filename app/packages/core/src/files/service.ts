@@ -303,6 +303,28 @@ export interface FileUseCaseOptions {
   pictures?: PictureCanonicalizer;
 }
 
+/**
+ * A file an agent attaches to its answer in its private chat (#1437, coordinator decision 2026-11-13): no space's file, so no staging row,
+ * but the same checks on its bytes as a person's upload (a name a person could give it, at most 5 MiB, never a video, a picture decoded and
+ * written again, #1343). The caller commits the received bytes under the run's own row (`personal_run_pictures`) or discards them.
+ */
+export async function receiveRunOwnFile(storage: FileStorage, options: Pick<FileUseCaseOptions, 'pictures'>, name: unknown, bytes: AsyncIterable<Uint8Array>) {
+  const display = displayName(name);
+  if (videoNameContainer(display)) throw new InvalidInputError('A video cannot be attached in this chat; attach it in a space', 'VIDEO_NOT_HERE');
+  const limits = { maxBytes: FILE_LIMITS.fileBytes, deadline: Date.now() + FILE_LIMITS.receiveSeconds * 1000 };
+  let received;
+  try {
+    const arriving = options.pictures ? await canonicalUpload(bounded(bytes, limits), options.pictures) : bytes;
+    received = await storage.receive(arriving, limits);
+  } catch (error) {
+    if (error instanceof FileTooLargeError) throw tooLarge(FILE_LIMITS.fileBytes, false);
+    if (error instanceof FileReceiveTimeoutError) throw new InvalidInputError('The file did not arrive in time', 'UPLOAD_TIMEOUT');
+    throw error;
+  }
+  if (received.size === 0) { await received.discard(); throw new InvalidInputError('A file needs at least one byte', 'EMPTY_FILE'); }
+  return { name: display, received };
+}
+
 export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, clock: () => Date = () => new Date(), options: FileUseCaseOptions = {}) {
   const videoCap = options.videoBytes ?? FILE_LIMITS.videoBytes;
   const pictures = options.pictures;

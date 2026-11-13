@@ -6,6 +6,7 @@ import type { FluxMcpClaims, VerifiedFluxMcpClaims } from './context.js';
 import type { McpManifest } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 import { refusedPrivateAddress } from './run-private-text.js';
+import { refusedCredential } from './run-credentials.js';
 import { boundRunResult } from './run-token.js';
 import { convertedOnce } from './tool-schema.js';
 
@@ -156,7 +157,11 @@ export function agentToolRegistry(manifest: McpManifest, db: Database, run: bool
           config: { title: config.title, description: config.description, inputSchema: convertedOnce(config.inputSchema),
             ...(config.annotations ? { annotations: config.annotations } : {}) },
           invoke(input, claims) {
-            const output = claims.dispatch.run('tool', name, () => handler(input as Record<string, unknown>, { claims }));
+            // A run on the owner's Claude Code or Codex never sends its CLI's own login out through Flux (coordinator decision on #1437, RT-7):
+            // not as a change, and not in a read either (a web address `flux_read_web` would fetch, a search).
+            const output = claims.dispatch.run('tool', name, run
+              ? async () => (await refusedCredential(db, claims.run!.id, input as Record<string, unknown>)) ?? handler(input as Record<string, unknown>, { claims })
+              : () => handler(input as Record<string, unknown>, { claims }));
             return run ? Promise.resolve(output).then((result) => boundRunResult(db, claims.run!.id, result as { content?: unknown }, name)) : output;
           },
         });

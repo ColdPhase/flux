@@ -16,6 +16,8 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
   'flux_attach_image',
+  // #1437: a file the run made or wrote, attached to its answer like its asker's own upload.
+  'flux_attach_file',
 ] as const;
 
 /**
@@ -63,7 +65,7 @@ export type AssistantChangeState = 'applied' | 'waiting' | 'applied_after_wait' 
  * that waits for them, a decision or result about their task, #1089). Nothing else waits, and nothing waiting expires.
  */
 export type AssistantWaitReason = 'ask' | 'removal' | 'others' | 'tells';
-export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture';
+export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 'message' | 'decision' | 'picture' | 'file';
 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
 export interface AssistantChange {
@@ -164,6 +166,7 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
   'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
   'answer.picture.attach': { phrase: 'attach', verb: 'Attach', noun: 'picture' },
+  'answer.file.attach': { phrase: 'attach', verb: 'Attach', noun: 'file' },
 };
 
 /** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
@@ -214,7 +217,7 @@ export function assistantPastPhrase(phrase: string): string {
 
 const STATUS_WORDS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done' };
 const DONE_NOUNS: Record<string, string> = { work: 'task', doc: 'the Wiki page', map: 'the map', thought: 'the thought', link: 'a link', message: 'a message',
-  decision: 'the decision', picture: 'the picture' };
+  decision: 'the decision', picture: 'the picture', file: 'the file' };
 /**
  * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to Doing",
  * "added task #7 Order sensors". `status` is a task change's new status, when it changed one.
@@ -229,6 +232,7 @@ export function assistantDoneWords(change: { operation: string; objectType: Assi
   if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.delete') return `deleted ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'answer.picture.attach') return `attached ${DONE_NOUNS.picture} ${title}`.trim();
+  if (change.operation === 'answer.file.attach') return `attached ${title || 'a file'}`.trim();
   const past = assistantPastPhrase(change.phrase);
   return title ? `${past} ${change.objectType === 'work' ? title : `${title}`}` : past;
 }

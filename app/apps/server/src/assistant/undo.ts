@@ -181,7 +181,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           removal = taken;
           break;
         }
-        case 'answer.picture.attach': {
+        case 'answer.picture.attach': case 'answer.file.attach': {
           // A picture on an answer (#1217, C-59): the asker's staged file, removed while the answer is still theirs alone. Shown, it is an
           // attachment of the asker's own message, which they edit or delete; nobody else ever saw the private answer to take it back.
           if (by.id !== row.ownerUserId) throw new Since(NOT_UNDOABLE);

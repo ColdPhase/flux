@@ -165,12 +165,14 @@ Docker's local volumes have no size quota, so the supervisor refuses a run while
   keep their shell and file tools. Each run gets an empty scratch `/scratch/<run id>`, the only place its tools can write, deleted
   when the run ends. Every command starts in Flux's sandbox shell (`/opt/flux-runtime/sandbox/bin/bash`), which uses Linux
   **Landlock** to keep it, and all it starts, to the scratch and the system's own programs: not the person's CLI homes (their
-  login), `/data`, `/tmp`, the tools volume or anyone else's scratch, and no other process's environment. On Linux 6.7 or later
-  it has no TCP at all. Landlock needs Linux 5.13 or later with Landlock enabled (the default on Ubuntu 22.04+, Debian 12+, Fedora
-  and RHEL 9.3+) and Docker's default seccomp profile (Docker Engine 25 allows its system calls). **On a host without Landlock the
-  runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools and the CLI's own
-  web search only, and cannot attach files they made. Check with
-  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (0: none; 4 or more: no TCP for tools).
+  login), `/data`, `/tmp`, the tools volume or anyone else's scratch, and no other process's environment. It has no TCP (Landlock's
+  network rules) and no socket of any kind (a seccomp filter: no UDP or DNS, no Unix socket by path, no io_uring). **The tools need
+  Linux 6.7 or later** (Landlock ABI 4, with Landlock enabled: the default on Ubuntu 24.04+, Debian 13+, Fedora 40+ and RHEL 10)
+  and Docker's default seccomp profile (Docker Engine 25 allows its system calls); on an older kernel a shell could reach the
+  egress, and through it an allowed vendor host under someone else's account (coordinator decision on #1437). **On a host without
+  Landlock ABI 4 the runtime still starts and logs `{"event":"tools_off"}` once**; its agents then work as before, with Flux's tools
+  and the CLI's own web search only, and cannot attach files they made. Check with
+  `docker compose … exec runtime-1 /opt/flux-runtime/sandbox/flux-sandbox abi` (4 or more: the tools are on).
 
 ### The toolbox
 

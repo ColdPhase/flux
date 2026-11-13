@@ -6,7 +6,9 @@ export const AGENT_OPERATIONS = ['work.create', 'work.update', 'work.creation.re
   'cowork.claim', 'cowork.renew', 'cowork.release',
   'cowork.unit.create', 'cowork.unit.complete', 'cowork.unit.transfer', 'cowork.unit.decline',
   // #1217: a picture the server downloads and attaches to the run's answer (AG-8, C-59).
-  'answer.picture.attach'] as const;
+  'answer.picture.attach',
+  // #1437: a file the run made (its CLI's scratch) or wrote (its content), attached to the run's answer like the asker's own upload (RT-5).
+  'answer.file.attach'] as const;
 export type AgentOperation = typeof AGENT_OPERATIONS[number];
 export const AGENT_PEER_REQUEST_CLASSES = ['execute', 'review', 'plan'] as const;
 export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
@@ -29,6 +31,7 @@ export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerR
   'cowork.unit.complete': ['execute', 'review', 'plan'], 'cowork.unit.transfer': ['execute', 'review', 'plan'],
   'cowork.unit.decline': ['execute', 'review', 'plan'],
   'answer.picture.attach': ['execute', 'plan'],
+  'answer.file.attach': ['execute', 'plan'],
 };
 export type AgentJsonValue = null | boolean | number | string | AgentJsonValue[] | { [key: string]: AgentJsonValue };
 

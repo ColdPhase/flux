@@ -81,7 +81,7 @@ class WorkflowShape(unittest.TestCase):
     def test_inputs_are_the_documented_ones(self):
         names = {m.group(1) for m in re.finditer(r"^      (\w+):$", "\n".join(top_level_block("on")), re.M)}
         self.assertTrue({"ref", "suite", "modules", "browser", "shards"} <= names, names)
-        self.assertEqual(re.findall(r"^          - (\w+)$", WORKFLOW, re.M), ["ui", "live", "api", "chromium", "webkit"])
+        self.assertEqual(re.findall(r"^          - (\w+)$", WORKFLOW, re.M), ["ui", "live", "api", "runtime", "chromium", "webkit"])
 
     def test_token_is_read_only_everywhere(self):
         self.assertEqual([line.strip() for line in top_level_block("permissions") if line.strip()], ["contents: read"])
@@ -182,7 +182,8 @@ class PlanSteps(unittest.TestCase):
             result, outputs = self.validate(ref=ref)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertEqual(outputs["ref"], ref)
-        for suite, modules in (("ui", "test_a test_b.Class.test_x"), ("live", "test_live_sessions"), ("api", "tests/app/search.test.ts")):
+        for suite, modules in (("ui", "test_a test_b.Class.test_x"), ("live", "test_live_sessions"), ("api", "tests/app/search.test.ts"),
+                              ("runtime", "check_agent_runtime check_cli_runtime check_runtime_sandbox")):
             result, _ = self.validate(suite=suite, modules=modules)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
@@ -196,6 +197,7 @@ class PlanSteps(unittest.TestCase):
             {"suite": "ui", "modules": "tests/app/search.test.ts"}, {"suite": "live", "modules": "test_a.Class"},
             {"suite": "api", "modules": "test_a"}, {"suite": "api", "modules": "tests/app/../x.test.ts"},
             {"suite": "api", "modules": "tests/app/a/b.test.ts"},
+            {"suite": "runtime", "modules": "check_application"}, {"suite": "runtime", "modules": "check_agent_runtime.sh"},
         ]
         for inputs in refused:
             result, outputs = self.validate(**inputs)
@@ -296,7 +298,7 @@ class RunStep(unittest.TestCase):
             subprocess.run(["git", "-C", str(checkout), "-c", "user.name=t", "-c", "user.email=t@example.test", "commit", "-q", "--allow-empty",
                             "-m", "x"], check=True)
             sha = subprocess.run(["git", "-C", str(checkout), "rev-parse", "HEAD"], check=True, capture_output=True, text=True).stdout.strip()
-            for name in ("check_ui.sh", "check_live_ui.sh", "check_application.sh"):
+            for name in ("check_ui.sh", "check_live_ui.sh", "check_application.sh", "check_agent_runtime.sh", "check_runtime_sandbox.sh"):
                 stub = checkout / "scripts" / name
                 stub.write_text(
                     '#!/bin/sh\necho "$0 $* browser=${FLUX_UI_BROWSER:-} pattern=${FLUX_LIVE_UI_PATTERN:-} vapid=[${FLUX_VAPID_PUBLIC_KEY-unset}]"\n'
@@ -329,6 +331,13 @@ class RunStep(unittest.TestCase):
             self.assertIn(f"pattern={module}.py", log)
         result, log, _ = self.run_suite("live", "test_live_a test_live_c")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_runtime_runs_each_named_check_and_says_the_kernel(self):
+        result, log, command = self.run_suite("runtime", "check_runtime_sandbox check_agent_runtime")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ptrace_scope=", log)
+        self.assertLess(log.index("check_runtime_sandbox.sh"), log.index("check_agent_runtime.sh"))
+        self.assertIn("for each check", command)
 
     def test_a_failing_ui_script_fails_the_step(self):
         result, _, _ = self.run_suite("ui", "test_bad")

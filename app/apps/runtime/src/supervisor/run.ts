@@ -7,6 +7,7 @@ import { readCodexModels } from './models.js';
 import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, type Person } from './process.js';
+import { forgetCredentials, restoreCredentials, watchCredentials } from './credentials.js';
 import { createScratch, removeScratch, resetCodexHome, watchRun, type SandboxSetup } from './sandbox.js';
 import { catalogForAccount, CLAUDE_OWN_TOOLS, CLAUDE_WEB_SEARCH_TOOL, CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, CODEX_MODEL_CATALOG, codexRunOverrides, RUN_TEMPLATES, sandboxEnvironment } from './templates.js';
 
@@ -69,6 +70,9 @@ export const runsOf = (config: SupervisorConfig) => {
   if (!runs) { runs = new Map(); active.set(config, runs); }
   return runs;
 };
+
+/** Whether this person's run is in progress here (#1437: only then can a file of its scratch be read). */
+export const runInProgress = (config: SupervisorConfig, runId: string, bindingId: string) => runsOf(config).get(runId)?.bindingId === bindingId;
 
 /** Stop for one run of this person: SIGINT, then SIGTERM, then kill. */
 export function stopRun(config: SupervisorConfig, runId: string, bindingId: string): 'stopping' | 'not_running' | 'binding_mismatch' {
@@ -330,6 +334,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     }
   }
   const ownTools = scratch !== null;
+  // What the CLI's login holds as the run starts (coordinator decision on #1437): nothing of it may leave through Flux while the run lasts.
+  await watchCredentials(config, request.runId, request.bindingId, request.client, dir, person);
   const brief = ownTools ? RUN_BRIEF_OWN_TOOLS : RUN_BRIEF;
   // The template by name, never by indexing with the request's value (CodeQL js/unvalidated-dynamic-method-call; the protocol checked it already).
   // Codex's model catalog for this run (#1332): written below, before the preflight, from the account's own list.
@@ -346,6 +352,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     const early = stopAsked ? 'stopped' : preflight;
     if (early !== 'ok') {
       runs.delete(request.runId);
+      forgetCredentials(config, request.runId);
       finishedOf(config).set(request.runId, Date.now());
       await cleanUp(config, runDir, dir, person, request.client, scratch);
       return { result: { kind: 'run', runId: request.runId, outcome: early, answer: null, resetsAt: null, turns: 0 } };
@@ -367,6 +374,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   const started = new Set<string>();
   let searches = 0;
 
+  /** The person's processes being ended at once (killNow): the clean-up waits for it, so two ends never kill each other's helper. */
+  let killing: Promise<boolean> | null = null;
   const result = await new Promise<Extract<SupervisorResult, { kind: 'run' }>>((resolve) => {
     let outcome: RunOutcome | null = null;
     let answer: string | null = null;
@@ -388,6 +397,14 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       killGroup('SIGTERM');
       later(STOP_GRACE_MS, () => killGroup('SIGKILL'));
     };
+    /**
+     * A run whose own tools stepped outside their sandbox (#1437 review: Codex's `apply_patch` outside the scratch, a command outside the sandbox
+     * shell) ends at once, with no grace: the change is made already, and in a grace of seconds its model could still read what the change
+     * moved and send it through a Flux tool. Every process of the person goes, not only the CLI's group: Codex starts a command in a terminal
+     * of its own session, outside that group, and a command Codex started outside the sandbox (its `exec_command` takes the shell the model
+     * names) runs under the CLI's outer domain only, so it must not live on until the clean-up.
+     */
+    const killNow = (reason: RunOutcome) => { outcome ??= reason; killGroup('SIGKILL'); killing ??= endProcesses(person); };
     runs.set(request.runId, { bindingId: request.bindingId, stop: () => {
       if (stopping || done) return;
       stopping = true;
@@ -487,6 +504,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         if (ownTools && kind === 'command_execution' && typeof item!.command === 'string' && item!.command.startsWith(`${sandbox!.shell} `)) return;
         if (ownTools && kind === 'file_change' && Array.isArray(item!.changes) && item!.changes.length > 0
           && item!.changes.every((change) => isObject(change) && inScratch(change.path) && (change.move_path === undefined || change.move_path === null || inScratch(change.move_path)))) return;
+        // A change or command of the run's own tools outside the sandbox: killed at once (killNow).
+        if (ownTools && (kind === 'file_change' || kind === 'command_execution')) { killNow('local_tool'); return; }
         // command_execution, file_change (without the run's own tools, or outside its scratch), web_search (with the web off), todo_list,
         // collab_tool_call, error or anything new.
         terminate('local_tool');
@@ -650,6 +669,11 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   }
   runs.delete(request.runId);
   finishedOf(config).set(request.runId, Date.now());
+  if (killing) await killing;
   await cleanUp(config, runDir, dir, person, request.client, scratch);
+  // A run its own tools took outside the sandbox (#1437 review) may have changed the CLI's login (Codex's `apply_patch` writes its home): an
+  // attacker's own login put there would carry the person's next runs to the attacker's account. The login the run started with comes back.
+  if (ownTools && result.outcome === 'local_tool') await restoreCredentials(config, request.runId);
+  forgetCredentials(config, request.runId);
   return { result };
 }

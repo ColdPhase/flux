@@ -126,7 +126,7 @@ check claude-check
 step "5. Claude Code /ai: read the conversation, create a task, read a page (Flux MCP through runtime-egress)"
 check ai claude
 
-step "5b. Claude Code's own Bash, Read and Write (#1437): in Flux's per-run sandbox, in the run's scratch; no login, /data or TCP from the shell"
+step "5b. Claude Code's own Bash, Read and Write (#1437): in Flux's per-run sandbox, in the run's scratch; no login, /data or TCP from the shell; HTML to PDF with pandoc and typst, attached with flux_attach_file"
 check own-tools claude
 
 step "6. Claude Code's own WebSearch: recorded before its results are read; flux_read_web reads a result"
@@ -151,7 +151,7 @@ check codex-sign-in
 step "11. Codex /ai with Flux's tools, plain tools from Flux's model catalog (#1127); the access token refreshed"
 check ai codex
 
-step "11a. Codex's own exec_command (#1437): in Flux's sandbox shell, found as bash on its PATH; no login, /data or TCP"
+step "11a. Codex's own exec_command (#1437): in Flux's sandbox shell, found as bash on its PATH; no login, /data or TCP; HTML to PDF with pandoc and typst, attached with flux_attach_file"
 check own-tools codex
 
 step "11b. Codex's own MCP resource readers (#1165): they reach only Flux, which has none; the run goes on to a Flux tool and answers. Control: a reader of another server still stops the run"

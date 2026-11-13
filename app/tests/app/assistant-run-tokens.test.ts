@@ -43,8 +43,9 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
  * #1382 (C-63) adds flux_read_file, the excerpt of a file's text, and the word "file" in flux_search's description and kind: 38 tools, 27,512 UTF-8 bytes
  * (2026-11-13, merge train 11 with #1426, local run; the bound was 27,000 and is 27,600, 88 bytes above).
+ * #1437 adds the tool that attaches a file the run made or wrote to its answer (founder decision 2026-11-13): its definition is the difference below.
  */
-const TOOL_DEFINITION_BYTES = 27_600;
+const TOOL_DEFINITION_BYTES = 28_600;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -376,9 +377,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 23, 'the 22 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382) and a picture for its answer (flux_attach_image, #1217)');
-    assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
+    assert.equal(names.length, 24, 'the 22 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290; flux_summarize, #1292; flux_read_file, #1382), a picture and a file for its answer (flux_attach_image, #1217; flux_attach_file, #1437)');
+    assert.ok(names.includes('flux_attach_image') && names.includes('flux_attach_file'), 'its answer in the chat can carry a picture (founder decision on #1217) and a file (coordinator decision on #1437)');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image' && tool !== 'flux_attach_file').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
     assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
     // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).

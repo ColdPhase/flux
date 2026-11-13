@@ -235,8 +235,10 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   and run the system's programs and libraries (`/bin`, `/usr`, `/lib`, `/etc`) and read `/proc`; it cannot read the person's
   CLI homes (their vendor login), `/data`, `/tmp`, the tools volume or another run's scratch, cannot read another process's
   environment or memory (Landlock scopes ptrace to the sandbox, so the CLI's own environment with its run token is out of reach
-  too), cannot make links or devices, and starts with a clean environment (no run token, vendor setting or proxy). Where the
-  kernel supports it (Landlock ABI 4, Linux 6.7), it also has **no TCP at all**, and (ABI 6, Linux 6.12) cannot signal or reach
+  too), cannot make links or devices, and starts with a clean environment (no run token, vendor setting or proxy). It has
+  **no TCP at all** (Landlock ABI 4, Linux 6.7, which the tools require: coordinator decision on #1437) and **no socket of any
+  kind** (a seccomp filter: Landlock does not cover UDP, so no DNS or datagram leaves, nor a connection to a Unix socket by its
+  path, such as Claude Code's own messaging socket in its `TMPDIR`; no io_uring), and (ABI 6, Linux 6.12) cannot signal or reach
   an abstract socket outside the sandbox. The CLI itself runs under an outer domain: it writes only its own home and the run's
   scratch and reads only those, the system and the run's settings, never the other CLI's home. Claude Code's own file tools
   are confined to its working directory by `--restricted` as well.
@@ -251,12 +253,35 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   fails). The run's own wall clock (RT-3, one hour) bounds everything; at its end the supervisor ends every process of the
   person and deletes the scratch.
 - **The network is unchanged** (RT-4): the runtime reaches only its egress, and the egress only the vendors' hosts and Flux's
-  `/mcp`; no Flux database, Redis, Docker API, metadata address or LAN. A shell has no route beyond that, and none at all where
-  Landlock can forbid TCP.
+  `/mcp`; no Flux database, Redis, Docker API, metadata address or LAN. A shell has no network at all.
 - **No new credential is readable.** The run token stays in the CLI's own environment and the vendor login in the CLI's home;
   neither reaches the tools. The supervisor's secret is in a non-dumpable root process.
-- **Without Landlock** (a kernel before 5.13, or one where it is not enabled), the runtime keeps its CLIs as before: Flux's
-  tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs it once at start.
+- **The CLI's own login never leaves through Flux** (coordinator decision on #1437). Codex applies an `apply_patch` itself, outside
+  the shell sandbox, and its `exec_command` starts the shell the model names, so a steered Codex can reach its own home. So the
+  supervisor reads the run's login file as the person when the run starts and keeps its values (every run of 20 or more token
+  characters, and each long piece of a dotted one) in memory while the run lasts; every Flux tool call of the run (`flux_attach_file`,
+  every change, and every read, such as an address `flux_read_web` would fetch) is refused when what it would send holds one (the server asks the run's supervisor through runtime-manager, and only "found"
+  or "not found" comes back; a file is looked through as it is read). A change of files outside the scratch, or a command outside
+  the sandbox shell, kills every process of the person at once, with no grace (RT-7 still holds: nothing of the login is persisted,
+  logged or sent). What this cannot catch: a value the model rewrites (encoded, split) before sending it; accepted risk 10. What Codex reads from
+  its home at start (instructions, settings, skills, hooks, its `.env`) is removed before and after every run with its own tools, and a login the run wrote over its own (an attacker's account, which would
+  carry the person's next runs there) is replaced by the one the run started with.
+- **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled), the runtime keeps its
+  CLIs as before: Flux's tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs
+  `tools_off` once at start.
+- **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex names a file of its scratch by its path; the Flux
+  server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
+  while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
+  out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login (the
+  supervisor looks through the bytes as they pass). The bytes are streamed through and never kept by the runtime. Any run, an
+  API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's own upload
+  (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61, the same
+  preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes with the
+  run, and joins the answer only on Approve (it goes after 7 days otherwise). Its change has its own object type, `file`
+  (migration 0077). On the agent's answer in its private chat the file is the run's own and its owner's alone, made at once like a
+  picture there (`personal_run_pictures`; no video). A local client gives the file's content (text, or base64 for any file) and
+  posts it: the server stages it as its owner's upload and the client names the returned id in `attachmentIds` of the message it
+  posts next (coordinator decisions on #1437, 2026-11-13). Never in an encrypted space.
 - **Prompt injection** ([accepted risk 10](#accepted-risks)): a run that reads hostile content can now run commands, in its
   own sandbox. What that reaches is what the sandbox and the egress allow, nothing more.
 - **Pictures go only through two Flux tools** ([#1217](https://github.com/ColdPhase/flux/issues/1217), founder
@@ -447,7 +472,8 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 
 ## RT-7 — Secrets, sign-out and backups
 
-- Flux never persists, logs or parses a vendor credential. The login exists only in the person's
+- Flux never persists, logs or sends a vendor credential. (The supervisor reads a run's login file in memory, as the person, only
+  to refuse a Flux change or attachment that holds one of its values: RT-5, #1437.) The login exists only in the person's
   runtime directory, written by the CLI's own flow, never in the database, queue payloads, API
   responses, stream frames, logs, exports or admin screens. A schema test refuses a runtime column
   that could hold a token, and a seeded-secret absence test covers the database, logs and frames.
@@ -539,14 +565,16 @@ operator decides for their server through the operator step (RT-9).
    file) can be steered to run commands in its own sandbox and to attach what it made. The boundary is the container, the
    egress and the per-run sandbox (RT-5), not the tool list: no command reaches the vendor login, the run token, another
    person, another run, `/data`, the database or the LAN, and nothing it writes outside the scratch outlives the run. What a
-   shell can still do: use the run's CPU, memory and scratch up to the run's limits; on a kernel without Landlock's network
-   rules, open a tunnel through the egress to an allowed vendor host (and so, with an attacker's own key at that vendor, send
-   what the run read there, as the CLI itself always could); read the system's own files and other people's command lines
-   (RT-3). Codex applies an `apply_patch` found in a shell command itself, outside the shell sandbox: it is bounded by the outer
-   domain (its own home and the scratch) and the run stops at the first change outside the scratch. pi's own `read`, `write` and `edit` (#1441) run inside
+   shell can still do: use the run's CPU, memory and scratch up to the run's limits; read the system's own files and other
+   people's command lines (RT-3). It has no network (the tools are off on a kernel without Landlock's network rules). Codex is
+   the weaker side: it applies an `apply_patch` itself, outside the shell sandbox, and its `exec_command` (0.160.1) starts the
+   shell the model names, which then runs under Codex's outer domain only (its own home, its login included, the scratch and
+   the egress). Flux kills every process of the person the moment Codex reports such a change or command, refuses a Flux change
+   or attachment that holds a value of the login, and removes what Codex wrote into its home; a command that does its harm in
+   the milliseconds before that kill, or a value the model rewrites before sending, is not caught (#1437 review). pi's own `read`, `write` and `edit` (#1441) run inside
    pi's process under the same outer domain: they can read the system's files, the runtime's code under `/opt` and pi's own agent
-   directory and write only that directory and the scratch; nothing they reach holds a secret (the run token was set after pi started,
-   so pi's `/proc/self/environ` does not have it), and the agent directory is made fresh for each run and removed after it. What the run attaches is
+   directory and write only that directory and the scratch; nothing they reach holds a secret (the run's tokens are set after pi starts,
+   so pi's `/proc/self/environ` does not have them), and the agent directory is made fresh for each run and removed after it. What the run attaches is
    checked as a person's upload is, and only its asker sees it until they show it to everyone.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract

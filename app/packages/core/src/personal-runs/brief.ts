@@ -297,7 +297,7 @@ function toolRules(input: Placed): string[] {
     return ['Flux tools', `${lead} ${web.join(' ')} ${REFUSED}`.trim(), ...find, ...searchLine];
   }
   if (place.kind === 'chat') return ['Flux tools', `You may call the Flux tools to read what ${owner} can see in their spaces. None of them changes anything. ${REFUSED}`, ...find, ...web,
-    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
+    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...(tools.includes('flux_attach_file') ? [input.engine === 'runtime' ? FILE_LINE : FILE_CONTENT_LINE] : []), ...searchLine];
   const changes = tools.some((name) => EFFECTS.has(name));
   const onTask = input.kind === 'task' || input.kind === 'task_answer';
   const ids = [`space id ${place.spaceId}`, ...(input.task ? [`task id ${input.task.id}`] : []),
@@ -313,8 +313,15 @@ function toolRules(input: Placed): string[] {
     : changes ? `${input.kind === 'task' ? 'Make the changes the task needs, and no others.' : `Make a change only when the request asks for it.`} Some changes wait for ${owner}'s OK; the tool then says so: do not try again.`
       : `You can only read here: ${owner} set what you may do to Only read. If you are asked for a change, say so instead.`;
   return ['Flux tools', `${reach}${thought} ${change} ${REFUSED}`, ...find, ...(changes && input.kind !== 'task_answer' ? [NO_POSTING_LINE] : []), ...web,
-    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...searchLine];
+    ...(tools.includes('flux_attach_image') ? [PICTURE_LINE] : []), ...(tools.includes('flux_attach_file') ? [input.engine === 'runtime' ? FILE_LINE : FILE_CONTENT_LINE] : []), ...searchLine];
 }
+
+/**
+ * Attaching a file (#1437, RT-5): a run on the owner's Claude Code or Codex makes it with its own tools in its working directory and names its
+ * path; an API-key run gives a text file's content.
+ */
+export const FILE_LINE = 'To give your asker a file (a PDF, an HTML page, a CSV or spreadsheet, a document, a chart), make it in your working directory with your own tools and attach it to your answer with flux_attach_file and its path; it is checked as their own upload would be. Say in your answer what it is.';
+export const FILE_CONTENT_LINE = 'To give your asker a text file (HTML, CSV, Markdown, JSON or plain text), attach it to your answer with flux_attach_file: its name with the extension and its content. Say in your answer what it is.';
 
 /**
  * Attaching a picture (#1217, AG-8, C-59): the tool, and that an answer's Markdown has no images (FORMAT), so a picture written in it would never show (and

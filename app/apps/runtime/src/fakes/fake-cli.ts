@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path';
@@ -218,9 +218,10 @@ function flagValues(argv: string[], flag: string): string[] {
  * `bash` on its `PATH` and `-lc <command>` (codex-rs `shell_detect.rs`, `derive_exec_args`), in the working directory and the CLI's own
  * environment. The output (stdout and stderr together, as both CLIs give the model) is bounded. No shell: an error, as the real CLI's.
  */
-function ownShell(client: FakeClient, command: string): { shell: string | null; exit: number | null; output: string } {
-  const shell = client === 'claude_code' ? process.env.CLAUDE_CODE_SHELL ?? null
-    : (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? null;
+function ownShell(client: FakeClient, command: string, chosen?: string): { shell: string | null; exit: number | null; output: string } {
+  // Codex 0.160.1's `exec_command` takes the shell the model names (`shell`, "Shell binary to launch"), as a hostile prompt could have it do.
+  const shell = chosen ?? (client === 'claude_code' ? process.env.CLAUDE_CODE_SHELL ?? null
+    : (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? null);
   if (!shell) return { shell: null, exit: null, output: 'No suitable shell found.' };
   const ran = spawnSync(shell, client === 'claude_code' ? ['-c', '-l', command] : ['-lc', command], { cwd: process.cwd(), env: process.env, encoding: 'utf8',
     timeout: 120_000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -230,6 +231,15 @@ function ownShell(client: FakeClient, command: string): { shell: string | null; 
 
 /** Whether a file tool's path lies in the working directory (Claude Code's `--restricted`, observed with 2.1.285 on 2026-11-13). */
 const inWorkingDirectory = (path: string) => { const rel = relative(process.cwd(), resolve(process.cwd(), path)); return !rel.startsWith('..') && !isAbsolute(rel); };
+
+/**
+ * A script's arguments as the model would write them from its request (#1437): `{{spaceId}}` is the space id the request names (`space id
+ * <uuid>`), `{{uuid}}` a new UUID each time.
+ */
+function fillArgs(args: Record<string, unknown>, prompt: string): Record<string, unknown> {
+  const space = /space id ([0-9a-f-]{36})/.exec(prompt)?.[1] ?? '';
+  return Object.fromEntries(Object.entries(args).map(([key, value]) => [key, value === '{{spaceId}}' ? space : value === '{{uuid}}' ? randomUUID() : value]));
+}
 
 /** `${VAR}` in an MCP header, from the CLI's own environment (as Claude Code expands it). */
 const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => process.env[name] ?? '');
@@ -391,10 +401,11 @@ async function claudeRun(argv: string[]): Promise<number> {
     return { name: 'WebSearch', isError: planned.error === true, text };
   };
   for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
-  for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
+  for (const [index, scripted] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     const useId = `toolu_${index + 1}`;
+    const planned = { ...scripted, ...(scripted.args ? { args: fillArgs(scripted.args, prompt) } : {}) };
     if (planned.name === 'WebSearch') {
       emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', ...(planned.noId ? {} : { id: useId }), name: 'WebSearch', input: planned.args ?? {} }] } });
       await pause(50);
@@ -663,9 +674,12 @@ async function codexRun(argv: string[]): Promise<number> {
     if (features.shell_tool !== true) { results.push({ name: planned.name, isError: true, text: `unsupported call: ${planned.name}` }); return; }
     if (planned.name === 'exec_command') {
       const cmd = String(args.cmd ?? '');
-      const ran = ownShell('codex', cmd);
-      const command = `${ran.shell ?? 'bash'} -lc ${JSON.stringify(cmd)}`;
+      const chosen = typeof args.shell === 'string' ? args.shell : undefined;
+      const shellOf = chosen ?? (process.env.PATH ?? '').split(delimiter).map((dir) => join(dir, 'bash')).find((path) => existsSync(path)) ?? 'bash';
+      const command = `${shellOf} -lc ${JSON.stringify(cmd)}`;
+      // As the pinned Codex: the item starts before the command runs.
       emit({ type: 'item.started', item: { id, type: 'command_execution', command, aggregated_output: '', exit_code: null, status: 'in_progress' } });
+      const ran = ownShell('codex', cmd, chosen);
       record('codex', argv, { event: 'own_tool', tool: 'exec_command', command: cmd, shell: ran.shell, exit: ran.exit, output: ran.output });
       results.push({ name: 'exec_command', isError: ran.exit !== 0, text: ran.output });
       emit({ type: 'item.completed', item: { id, type: 'command_execution', command, aggregated_output: ran.output, exit_code: ran.exit, status: ran.exit === 0 ? 'completed' : 'failed' } });
