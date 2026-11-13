@@ -5,6 +5,7 @@ import {
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
+import { markSearchWords, type SearchMarks } from './marks.js';
 import type { SearchPlan, SearchPorts, SearchRow } from './ports.js';
 import { SEARCH_SOURCES, searchKindsOf, searchPlaceOf } from './sources.js';
 
@@ -13,6 +14,10 @@ import { SEARCH_SOURCES, searchKindsOf, searchPlaceOf } from './sources.js';
 // highlighting, so no result, snippet or `next` cursor ever reflects a hidden object.
 // The cursor is sealed to the reader and to the exact query, and carries only the position of
 // the last visible result.
+//
+// Two ways to match (F-042, #1293). A query of plain words is answered by the BM25 index: any of the words, Polish and English stems,
+// accents folded, the word being typed also as a prefix, a title also with a typo, ranked by how rare the words are. A query that uses
+// the web search syntax (quotes, `or`, `-word`) asks for exactly what it says and is answered by the exact index, every word required.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const WORD = /[\p{L}\p{N}]+/gu;
@@ -140,16 +145,17 @@ function taskOf(row: SearchRow): SearchResult['task'] {
   return row.kind === 'work' && row.workNumber !== null && status ? { number: row.workNumber, status } : undefined;
 }
 
-function toResult(row: SearchRow): SearchResult {
+function toResult(row: SearchRow, marks: SearchMarks | null): SearchResult {
   const source = SEARCH_SOURCES[row.kind];
   const task = taskOf(row);
-  const main = source.textIsTitle && row.snippet ? row.snippet : row.title;
+  const marked = (text: SearchRow['title']) => (marks ? markSearchWords(text, marks) : text);
+  const main = marked(source.textIsTitle && row.snippet ? row.snippet : row.title);
   return {
     id: `${row.kind}:${row.objectId}${row.version !== null && (row.kind === 'material' || row.kind === 'doc') ? `:${row.version}` : ''}`,
     kind: row.kind,
     label: source.label(row),
     title: main.length ? main : [{ text: 'Untitled', match: false }],
-    snippet: source.textIsTitle ? null : row.snippet,
+    snippet: source.textIsTitle || !row.snippet ? null : marked(row.snippet),
     ...(task ? { task } : {}),
     place: searchPlaceOf(row),
     author: row.author?.kind === 'agent' ? `${row.authorName ?? 'Agent'} (agent)` : row.via && row.authorName ? `${row.authorName} · via ${row.via}` : row.authorName,
@@ -209,19 +215,24 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       after,
       limit: search.limit,
       reader: me,
+      anyWord: !usesSearchSyntax(search.text),
     };
     // Access is decided now, on every request: a revocation applies to the very next search.
     const audiences = await ports.access.audiences(principal);
     const searchable = /[\p{L}\p{N}]/u.test(search.text);
-    return { plan, scope, audiences, searchable };
+    // Plain words go to the BM25 index; the web search syntax stays exact. The result text is marked by the words the index matched by.
+    const ranked = !usesSearchSyntax(search.text);
+    const words = plan.words ? plan.words.split(' ') : [];
+    const marks: SearchMarks | null = ranked ? { words, typing: plan.prefix !== null ? words[words.length - 1] ?? null : null } : null;
+    return { plan, scope, audiences, searchable, ranked, marks };
   }
 
   return {
     async search(principal: Principal, query: Partial<SearchQuery>): Promise<SearchResponse> {
-      const { plan, scope, audiences, searchable } = await prepare(principal, query);
+      const { plan, scope, audiences, searchable, ranked, marks } = await prepare(principal, query);
       if (!searchable || !audiences.length) return EMPTY;
       const [sqlRows, sealed] = await Promise.all([
-        ports.rows.page(audiences, plan),
+        ranked ? ports.rows.ranked(audiences, plan) : ports.rows.page(audiences, plan),
         ports.sealed ? ports.sealed.search(audiences, plan) : Promise.resolve(NO_SEALED),
       ]);
       // Encrypted workspaces answer from their in-memory index; both sources are already past the cursor, so the merge resumes after it.
@@ -229,7 +240,7 @@ export function createSearchUseCases<C>(ports: SearchPorts<C>) {
       const page = rows.slice(0, plan.limit);
       const more = rows.length > plan.limit;
       return {
-        items: page.map(toResult),
+        items: page.map((row) => toResult(row, marks)),
         next: more ? ports.cursors.seal(principal, scope, page[page.length - 1]!.position) : null,
         ...(sealed.unavailable.length ? { sealedUnavailable: sealed.unavailable } : {}),
       };

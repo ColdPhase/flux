@@ -161,6 +161,7 @@ export * from './background-compute.js';
 export * from './notifications.js';
 export * from './needs-you.js';
 export * from './search.js';
+export * from './search-words.js';
 export * from './personal-runs.js';
 export * from './export.js';
 
