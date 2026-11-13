@@ -358,7 +358,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 route.fulfill(status=200, content_type="application/json", body=body)
             page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$"), capabilities)
             page.goto(f"/projects/{self.ids['project']}")
-            open_details(page)
+            # The answer is in before "nothing shown" is judged.
+            with page.expect_response(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$")):
+                open_details(page)
             link = self.details(page).get_by_role("link", name=re.compile("^GitHub repositories"))
             if shown:
                 expect(link).to_have_attribute("href", f"/projects/{self.ids['project']}/github")

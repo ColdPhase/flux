@@ -275,6 +275,12 @@ class ProjectHeader(unittest.TestCase):
         page.reload()
         expect(self.header(page).get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
         expect(pill.locator(".kreska")).to_have_count(0)
+        # One that works in another space has no face in this one.
+        working[0].update({"working": True, "task": {**working[0]["task"], "projectId": "00000000-0000-4000-a000-0000000000ff", "projectName": "Elsewhere"}})
+        page.reload()
+        expect(self.header(page).get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
+        expect(page.locator(".side").get_by_text("Agent 1", exact=True).first).to_be_visible()  # the read is in
+        expect(pill.locator(".kreska")).to_have_count(0)
 
     def test_05_more_is_there_only_where_it_has_rows(self) -> None:
         """#1424: My tasks and My map have nothing in ⋯, so no empty menu opens; a space's header keeps it with its rows."""
