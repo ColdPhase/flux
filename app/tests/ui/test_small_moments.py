@@ -405,7 +405,9 @@ class SmallMomentsJourney(unittest.TestCase):
         # A face that stays when the moments are off (an agent's state beside its name) answers to the same switch: a copy of the
         # Settings row's face is given a state, so the switch is the real one and the rules are the built ones.
         page.goto("/settings")
-        probe = """expression => { document.querySelector('[data-probe]')?.remove(); const face = document.querySelector('.kreska').cloneNode(true);
+        expect(page.get_by_role("switch", name=SWITCH)).to_be_visible()
+        expect(page.locator(".kreska").first).to_be_attached()
+        probe = """expression => { document.querySelector('[data-probe]')?.remove(); const face = document.querySelector('.kreska:not([data-probe])').cloneNode(true);
           face.dataset.probe = ''; face.dataset.expression = expression; face.setAttribute('data-moves', ''); document.body.append(face);
           return [...face.querySelectorAll('*')].map((part) => getComputedStyle(part)).filter((style) => style.animationName !== 'none')
             .map((style) => `${style.animationName} ${style.animationIterationCount}`).sort(); }"""
@@ -425,6 +427,7 @@ class SmallMomentsJourney(unittest.TestCase):
         reduced = self.page(reduced=True)
         reduced.goto("/settings")
         expect(reduced.get_by_role("switch", name=SWITCH)).to_be_visible()
+        expect(reduced.locator(".kreska").first).to_be_attached()
         self.assertEqual(reduced.evaluate(probe, "thinking"), [], "the system's reduced motion")
 
 
