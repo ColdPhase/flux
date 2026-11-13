@@ -65,13 +65,15 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
     await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
     config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, capacity) VALUES ($1, 'ready', 8) ON CONFLICT (slot) DO UPDATE SET state = 'ready', capacity = 8`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
     owner = await person('rt-pi-search');
     ws = await createWorkspace(owner, 'Pi search');
     place = await createProject(owner, ws.id, 'Research', 'workspace');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'What changed in the runtime?', clientMessageId: randomUUID() } }), 201) as Conversation;
+    // The owner's place is made on this file's own runtime (others' runtimes may be in this database).
+    await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'binding')`, [randomUUID(), owner.id, slot.config.slot]);
     runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, runtime: personalRuntimeAvailability(config, db) });
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute: workerCompute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, base), stopPollMs: 50, runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
@@ -80,6 +82,7 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
   });
   after(async () => {
+    await pool.query(`UPDATE agent_runtime_slots SET state = 'out_of_pool', out_of_pool_reason = 'missing' WHERE slot = $1`, [slot.config.slot]).catch(() => undefined);
     await new Promise<void>((done) => manager.close(() => done()));
     await slot.close();
     await gateway.close();
