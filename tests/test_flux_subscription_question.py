@@ -145,7 +145,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if not k.startswith("FLUX_")}
         env.update(PATH=f"{self.bin_dir}:{os.environ['PATH']}", FLUX_AI_TEST_LOG=str(self.log),
                    FLUX_AI_TEST_HOST=host, FLUX_AI_TEST_INFO=INFO_SCENARIOS.get(host, INFO_OK),
-                   FLUX_WAIT_TIMEOUT="5")
+                   FLUX_WAIT_TIMEOUT="5", XDG_STATE_HOME=str(self.base / "state"))  # the AI key file of `up` (#1438) stays in the test
         env.update(extra)
         return env
 
@@ -303,7 +303,11 @@ class SubscriptionQuestionTest(unittest.TestCase):
         term = self.terminal("up")
         self.assertEqual(term.finish(), 0, term.output)
         self.assertNotIn(Q1, term.output)
-        self.assertEqual(self.env_file.read_bytes(), before)
+        # Only the AI key file's two lines are added (#1438): agents on API keys need no question.
+        after = self.env_file.read_text().splitlines(keepends=True)
+        self.assertEqual([line for line in after if not line.startswith(("FLUX_BACKGROUND_KEY_HOST_FILE=", "FLUX_PERSONAL_RUNS="))],
+                         before.decode().splitlines(keepends=True))
+        self.assertIn("FLUX_PERSONAL_RUNS=on\n", after)
 
     def test_a_choice_made_in_the_environment_skips_the_question(self) -> None:
         for value in ("", "codex"):

@@ -1400,6 +1400,10 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   section list a portrait tablet's page is about 440 px wide). When a row is too narrow, its control drops under its label (Connect another,
   New agent, the task-taking Select), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
   cut, and under 37.5 rem an agent's row is its face, name, line and arrow (the "What it may do" tag and the model are on its page).
+- **AI works right after install** (founder decision, Hubert, 2026-11-13, #1438): `./flux up` turns agents on API keys on with
+  their key file, so an owner's first step is Connect AI in the app (Home's first-steps row leads there), never a settings file.
+  Only an operator who chose `FLUX_PERSONAL_RUNS=off` makes Settings › AI the person's own Claude Code or Codex and one line,
+  "Off on this Flux server. Your agents wait until it is on." Nobody, owner or member, is told to ask an admin.
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on

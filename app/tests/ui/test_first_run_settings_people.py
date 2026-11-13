@@ -256,11 +256,13 @@ class FirstRunSettingsPeople(unittest.TestCase):
             calm = page.locator("[data-ai-settings='server-off']")
             expect(calm).to_be_visible()
             expect(calm.get_by_role("link", name=re.compile("^Claude Code or Codex on your computer"))).to_have_attribute("href", "/settings/agents/connect")
-            card = calm.get_by_text("Off on this Flux server · ask your admin to turn it on")
+            card = calm.get_by_text("Off on this Flux server. Your agents wait until it is on.")
             expect(card).to_be_visible()
             expect(page.get_by_role("region", name="Your agents")).to_have_count(0)
             expect(page.get_by_role("link", name=re.compile("^Use an API key"))).to_have_count(0)
             expect(page.get_by_text("Which account should I use?")).to_have_count(0)
+            # #1438: AI is off only by the operator's choice, so nobody is told to ask someone.
+            expect(page.get_by_text(re.compile("ask your admin", re.I))).to_have_count(0)
             # E04 order: the person's own Claude Code or Codex, then the one status line.
             rows = [page.get_by_text("Claude Code or Codex on your computer"), card]
             tops = [row.bounding_box()["y"] for row in rows]

@@ -195,10 +195,48 @@ set_env_line() {
   cat "$file.flux-tmp" > "$file" && rm -f "$file.flux-tmp"
 }
 
+# Where `./flux up` keeps this project's AI key file (#1438): outside the checkout and the backups, per user.
+background_key_dir() { printf '%s/flux/%s' "${XDG_STATE_HOME:-${HOME:?Set HOME or XDG_STATE_HOME}/.local/state}" "$PROJECT"; }
+
+# Whether the Docker engine runs rootless: there the containers' user 1000 is not this host user.
+docker_rootless() { docker info --format '{{json .SecurityOptions}}' 2>/dev/null | grep -q rootless; }
+
+# AI works right after install (founder decision, 2026-11-13, #1438). While the settings name no key file and the operator has not
+# set FLUX_PERSONAL_RUNS, this makes the 32-byte file that seals people's API keys, once, records its path and turns agents on
+# API keys on (FLUX_PERSONAL_RUNS=on); people then connect AI in the app. `off`, or a key file of the operator's own, is left as
+# it is, and an existing file is never replaced. The directory is private to this user (0700). The file is readable only by the
+# user the containers run as (1000) where that is this user or root makes it theirs; otherwise (another host uid, a rootless
+# engine) it is readable inside that private directory, so the container can open it. Its bytes are never printed.
+ensure_background_key() {
+  [ -z "$(env_value FLUX_BACKGROUND_KEY_HOST_FILE)" ] || return 0
+  [ -z "$(env_value FLUX_PERSONAL_RUNS | tr -d '[:space:]')" ] || return 0
+  dir=$(background_key_dir)
+  key="$dir/background.key"
+  [ ! -L "$dir" ] && [ ! -L "$key" ] || die "$dir or its background.key is a symlink; remove it, or set FLUX_BACKGROUND_KEY_HOST_FILE yourself."
+  old_umask=$(umask); umask 077
+  mkdir -p "$dir" || die "Could not create $dir for the AI key file."
+  chmod 700 "$dir"
+  if [ ! -e "$key" ]; then
+    { head -c 32 /dev/urandom > "$key.flux-new" && mv "$key.flux-new" "$key"; } || { rm -f "$key.flux-new"; die "Could not write the AI key file in $dir."; }
+    say "Created the AI key file $key. It seals people's API keys: back it up with ${ENV_FILE#"$FLUX_ROOT"/}, not with the database."
+  fi
+  umask "$old_umask"
+  [ -f "$key" ] && [ "$(wc -c < "$key" | tr -d ' ')" = 32 ] || die "$key is not a 32-byte key file; move it aside, or set FLUX_BACKGROUND_KEY_HOST_FILE to the right one."
+  uid=$(id -u)
+  if [ "$uid" = 0 ]; then chown 1000:1000 "$key" && chmod 400 "$key"
+  elif [ "$uid" = 1000 ] && ! docker_rootless; then chmod 400 "$key"
+  else chmod 444 "$key"
+  fi
+  set_env_line "$ENV_FILE" FLUX_BACKGROUND_KEY_HOST_FILE "$key"
+  set_env_line "$ENV_FILE" FLUX_PERSONAL_RUNS on
+  say "Agents can run on people's own API keys: each person connects AI in Settings > AI. Set FLUX_PERSONAL_RUNS=off in ${ENV_FILE#"$FLUX_ROOT"/} to turn that off."
+}
+
 # Creates the env file once, from the example, with fresh secrets. Never overwrites it.
 ensure_env() {
   if [ -f "$ENV_FILE" ]; then
     say "Using existing ${ENV_FILE#"$FLUX_ROOT"/} (never overwritten)."
+    ensure_background_key
     return 0
   fi
   [ -f "$ENV_EXAMPLE" ] || die "Missing $ENV_EXAMPLE"
@@ -250,6 +288,7 @@ ensure_env() {
   trap - EXIT HUP INT TERM
   BUILT=1
   say "Wrote ${ENV_FILE#"$FLUX_ROOT"/}. Keep it private; it holds the database password and signing secret."
+  ensure_background_key
 }
 
 build_main() {

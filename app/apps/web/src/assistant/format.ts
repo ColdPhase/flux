@@ -200,5 +200,8 @@ export function askError(error: unknown): string {
   }
 }
 
-/** One status line for in-app AI this server does not run (Spokój E04 ③, #763 SG-2). */
-export const SERVER_AI_OFF_LINE = 'Off on this Flux server · ask your admin to turn it on';
+/**
+ * One status line for in-app AI this server does not run (Spokój E04 ③, #763 SG-2). AI is on after install (#1438), so this is an operator's
+ * deliberate off: nobody, an owner or a member, is sent to ask someone.
+ */
+export const SERVER_AI_OFF_LINE = 'Off on this Flux server';
