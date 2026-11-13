@@ -81,7 +81,14 @@ async function scopeOf(ctx: FluxAgentReadContext, claims: FluxMcpClaims, asked: 
   return { kind: 'thread', projectId: conversation.projectId, spaceName: conversation.spaceName, conversationId: id };
 }
 
-interface Stored { id: string; at: string; createdAt: Date; body: string; files: number; contribution: string; humanId: string | null; agentId: string | null; agentName: string | null; via: string | null;
+/**
+ * How much of a message is read from the database: its beginning, enough for the 500 characters the digest shows once its spaces and line
+ * breaks are folded, and its length. A message may be 100,000 characters, and a page reads up to 401 of them.
+ */
+const READ = sql.raw(String(AGENT_SUMMARY_LIMITS.messageChars * 4));
+const beginning = (column: typeof schema.projectMessages.body | typeof schema.dmMessages.body, chars: SQL = READ) => sql<string>`left(${column}, ${chars})`;
+
+interface Stored { id: string; at: string; createdAt: Date; body: string; length: number; files: number; contribution: string; humanId: string | null; agentId: string | null; agentName: string | null; via: string | null;
   conversationId: string | null }
 
 const m = schema.projectMessages;
@@ -104,7 +111,7 @@ const projectFrom = (tx: Transaction) => tx.select({ n: sql<number>`count(*)::in
   .leftJoin(schema.projectTaskDiscussions, eq(schema.projectTaskDiscussions.conversationId, m.conversationId));
 
 async function readProject(tx: Transaction, scope: Extract<Scope, { projectId: string }>, conversationId: string | null, range: SummaryRange, limit: number): Promise<Stored[]> {
-  const rows = await tx.select({ id: m.id, at: sql<string>`${m.createdAt}::text`, createdAt: m.createdAt, body: m.body, files: m.attachmentCount, contribution: m.contributionKind, humanId: m.authorId,
+  const rows = await tx.select({ id: m.id, at: sql<string>`${m.createdAt}::text`, createdAt: m.createdAt, body: beginning(m.body), length: sql<number>`char_length(${m.body})`, files: m.attachmentCount, contribution: m.contributionKind, humanId: m.authorId,
     agentId: m.authorAgentId, agentName: schema.agents.name, via: m.via, conversationId: m.conversationId }).from(m)
     .leftJoin(schema.projectTaskDiscussions, eq(schema.projectTaskDiscussions.conversationId, m.conversationId))
     .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
@@ -113,7 +120,7 @@ async function readProject(tx: Transaction, scope: Extract<Scope, { projectId: s
 }
 
 async function readDm(tx: Transaction, dmId: string, range: SummaryRange, limit: number) {
-  return tx.select({ id: d.id, at: sql<string>`${d.createdAt}::text`, createdAt: d.createdAt, body: d.body, humanId: d.authorId, name: schema.authUsers.name, via: d.via })
+  return tx.select({ id: d.id, at: sql<string>`${d.createdAt}::text`, createdAt: d.createdAt, body: beginning(d.body), length: sql<number>`char_length(${d.body})`, humanId: d.authorId, name: schema.authUsers.name, via: d.via })
     .from(d).innerJoin(schema.authUsers, eq(schema.authUsers.id, d.authorId))
     .where(dmCondition(dmId, range, range.cursor)).orderBy(asc(d.createdAt), asc(d.id)).limit(limit);
 }
@@ -127,11 +134,11 @@ async function projectDigest(ctx: FluxAgentReadContext, scope: Extract<Scope, { 
   const labelled = new Map((await withAgentLabels(tx, scope.projectId, ctx.workspaceId, agents)).map((agent) => [agent.id, agent.name]));
   const openings = new Map<string, string | null>();
   if (scope.kind === 'space' && rows.length) {
-    const found = await tx.select({ conversationId: m.conversationId, body: m.body }).from(m)
+    const found = await tx.select({ conversationId: m.conversationId, body: beginning(m.body, sql.raw('400')) }).from(m)
       .where(and(inArray(m.conversationId, [...new Set(rows.map((row) => row.conversationId!))]), eq(m.sequence, 1), isNull(m.removedAt)));
     for (const row of found) openings.set(row.conversationId, row.body);
   }
-  return rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, files: row.files,
+  return rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, length: row.length, files: row.files,
     ...(row.contribution !== 'text' ? { contribution: row.contribution as 'blocker' | 'handoff' | 'came_of_it' } : {}),
     author: row.humanId !== null ? authorLabel({ kind: 'human', name: names.get(row.humanId) ?? null, via: row.via }) : labelled.get(row.agentId!) ?? 'Agent',
     ...(scope.kind === 'space' ? { thread: { id: row.conversationId!, opening: openings.get(row.conversationId!) ?? null } } : {}) }));
@@ -147,7 +154,7 @@ async function summarize(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input
   if (scope.kind === 'dm') {
     // Everyone in a direct message sees each other's names, and the owner is one of them (checked above, and again as the bytes go out).
     const rows = await readDm(tx, scope.dmId, range, limit);
-    page = digestPage(rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, files: 0, author: authorLabel({ kind: 'human', name: row.name, via: row.via }) })));
+    page = digestPage(rows.map((row) => ({ id: row.id, at: row.createdAt, atKey: row.at, text: row.body, length: row.length, files: 0, author: authorLabel({ kind: 'human', name: row.name, via: row.via }) })));
     if (rows.length > page.count) {
       const [left] = await tx.select({ n: sql<number>`count(*)::int` }).from(d).where(dmCondition(scope.dmId, range, { at: page.last!.atKey, id: page.last!.id }));
       remaining = Number(left?.n ?? 0);

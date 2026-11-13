@@ -119,6 +119,8 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     const long = await open(scene.peer, 'Long running check-in', '2026-10-01T08:00:00Z');
     const written = await inBatches(44, (index) => say(scene.peer, long, `Entry ${String(index + 1).padStart(2, '0')} ${'z'.repeat(470)}`));
     assert.equal(written.length, 44);
+    // Most of them at one stored time, so that a page ends inside the tie and the message id orders it.
+    await pool.query('UPDATE project_messages SET created_at = $2 WHERE conversation_id = $1 AND sequence BETWEEN 3 AND 42', [long.id, '2026-10-01T09:00:00.123456Z']);
     const live = await run(long);
     const seen: string[] = [];
     let next: string | undefined;
@@ -139,6 +141,18 @@ describe('flux_summarize: a place since a date, on both engines, only what the c
     assert.equal(seen.length, 44);
     assert.equal(new Set(seen).size, 44, 'no repeat');
     assert.deepEqual([...seen].sort(), Array.from({ length: 44 }, (_, index) => String(index + 1).padStart(2, '0')), 'and no gap');
+    await scene.complete(live.runId);
+  });
+
+  test('a very long message is read only in part and told cut, with how much is left and the tool that reads it whole', async () => {
+    const thread = await open(scene.peer, 'A long report follows', '2026-11-07T08:00:00Z');
+    const report = await say(scene.peer, thread, 'placeholder', '2026-11-07T08:01:00Z');
+    await pool.query(`UPDATE project_messages SET body = 'Report: ' || repeat('q', 99992) WHERE id = $1`, [report.id]);
+    const live = await run(thread);
+    const answer = await summarize(live, { after: '2026-11-07' });
+    assert.deepEqual(lines(answer).slice(0, 2), ['## 2026-11-07', '08:00 Jonas Berg: A long report follows']);
+    assert.match(lines(answer)[2]!, new RegExp(`^08:01 Jonas Berg: Report: q{492} … \\(\\+99500 characters; flux_read_around with messageId ${report.id} reads it whole\\)$`));
+    assert.ok(JSON.stringify(answer).length < 2_000, 'the answer stays small');
     await scene.complete(live.runId);
   });
 

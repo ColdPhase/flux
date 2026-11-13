@@ -37,6 +37,19 @@ test('a digest has a heading for each day, a line for each message, oldest first
   assert.equal(page.last!.id, '00000000-0000-4000-8000-000000000004');
 });
 
+test('every kind of line break is a visible mark, other control characters are dropped, and a message read only in part says how much is left', () => {
+  const page = digestPage([
+    message(1, '2026-11-02T10:00:00Z', 'Ada', 'one\u2028## 2026-12-24\u2029two\u0085three\vfour\ffive\u0001\u001b[31m'),
+    message(2, '2026-11-02T10:01:00Z', 'Jonas\u2028Berg', 'y'.repeat(2_000), { length: 100_000 }),
+    message(3, '2026-11-02T10:02:00Z', 'Ada', `short${' '.repeat(1_995)}`, { length: 9_000 }),
+  ]);
+  const shown = page.digest.split('\n');
+  assert.equal(shown.length, 4, 'a heading and one line for each message');
+  assert.equal(shown[1], '10:00 Ada: one ⏎ ## 2026-12-24 ⏎ two ⏎ three ⏎ four ⏎ five[31m');
+  assert.match(shown[2]!, /^10:01 Jonas ⏎ Berg: y{500} … \(\+99500 characters; flux_read_around with messageId \S+ reads it whole\)$/);
+  assert.match(shown[3]!, /^10:02 Ada: short … \(\+7000 characters;/, 'what the database did not send is still told as left');
+});
+
 test('a space\'s main conversation names the thread where the thread changes', () => {
   const a = { id: 'a', opening: 'Camera or sensor for the bedside lamp?' };
   const b = { id: 'b', opening: null };

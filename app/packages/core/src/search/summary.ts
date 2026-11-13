@@ -48,6 +48,8 @@ export interface DigestMessage {
   /** Who wrote it, as people see them in this place (#1160): never the stored name. */
   author: string;
   text: string;
+  /** The stored text's length in characters, when `text` is only its beginning (a message may be 100,000 characters; the digest shows 500). */
+  length?: number;
   files: number;
   /** What a task's contribution is, when it is more than text: a blocker, a handoff or what came of it. */
   contribution?: 'blocker' | 'handoff' | 'came_of_it';
@@ -62,9 +64,16 @@ export interface DigestPage {
   last: DigestMessage | null;
 }
 
-/** A message on one line: a line break in it would let its text pass as another message of the digest, so it is a visible mark. */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000E-\u001F\u007F-\u0084\u0086-\u009F]/g;
+
+/**
+ * A message on one line: a line break in it (also a vertical tab, a form feed, NEL or a Unicode line or paragraph separator) would let
+ * its text pass as another message of the digest, so it is a visible mark. Other control characters are dropped: they say nothing, and
+ * each would take six characters (`\u0001`) in the JSON of the answer.
+ */
 function oneLine(text: string): string {
-  return text.replace(/\s*[\r\n]+\s*/g, ' ⏎ ').replace(/[^\S\n]{2,}/g, ' ').trim();
+  return text.replace(/\s*[\r\n\v\f\u0085\u2028\u2029]+\s*/g, ' ⏎ ').replace(CONTROL, '').replace(/[^\S\n]{2,}/g, ' ').trim();
 }
 
 const cut = (text: string, chars: number) => {
@@ -86,6 +95,8 @@ export function digestPage(messages: readonly DigestMessage[], limits: { pageCha
     if (date !== day) block.push(`## ${date}`);
     if (message.thread && message.thread.id !== thread) block.push(`# thread ${message.thread.opening ? `“${cut(oneLine(message.thread.opening), 80).text}”` : '(its opening message was deleted)'}`);
     const body = cut(oneLine(message.text), limits.messageChars);
+    // What the database did not send (only the beginning of a long message is read) is part of what is left.
+    body.more += message.length === undefined ? 0 : Math.max(0, message.length - [...message.text].length);
     const text = [...(message.contribution ? [`[${message.contribution.replace(/_/g, ' ')}]`] : []), body.text, ...(message.files ? [`[${message.files === 1 ? '1 file' : `${message.files} files`}]`] : []),
       ...(body.more ? [`… (+${body.more} characters; flux_read_around with messageId ${message.id} reads it whole)`] : [])].filter(Boolean).join(' ');
     block.push(`${message.at.toISOString().slice(11, 16)} ${oneLine(message.author) || 'Unknown'}: ${text}`);
