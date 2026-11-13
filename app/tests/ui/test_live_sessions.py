@@ -597,8 +597,13 @@ class LiveJourney(LiveBase):
         """#1424: while you are in a call the header's slot reads "In call" with the live dot and goes to the call, never "You are in a live
         session" and a click that does nothing."""
         self.seed()
+        # A space of its own: a call stays joinable for a while after everyone left it, and the journeys after this one start theirs in the seeded space.
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Header call", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE["nia"]["id"]}, "role": "contributor"}, status=201)
         nia = self.page("nia")
-        nia.goto(f"/projects/{self.ids['project']}")
+        nia.goto(f"/projects/{pid}")
         self.call(nia)
         header = nia.locator("header.top")
         in_call = header.get_by_role("button", name="In call", exact=True)
@@ -608,7 +613,7 @@ class LiveJourney(LiveBase):
         project_view(nia, "Tasks")
         expect(nia).to_have_url(re.compile(r"/tasks"))
         in_call.click()
-        expect(nia).to_have_url(re.compile(rf"/projects/{self.ids['project']}$"))
+        expect(nia).to_have_url(re.compile(rf"/projects/{pid}$"))
         expect(self.bar(nia)).to_be_visible()
         # At its own place with nothing shown, the call is already in view: the strip's place button takes the focus.
         in_call.click()
