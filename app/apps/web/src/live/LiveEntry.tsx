@@ -97,6 +97,9 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
       </Popover>
     </span>
   ) : null;
+  // A server that cannot run live sessions draws no Call row in a menu, and neither does one still being asked (#1419): the header's Call keeps its
+  // slot and says why in its popover.
+  if (variant === 'more' && live.capability !== 'configured') return null;
   if (live.capability === 'loading') return dimmed('Checking whether live sessions are available.');
   // Nothing open to start at (Tasks, Map or Wiki without an object open) and no call of the space to join: Call says why, also on a server
   // without a media server (the order of #763: the place first).
@@ -107,7 +110,6 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   if (!configured) {
     // Explained once, behind the header's "Call" (#189): a task does not repeat it.
     if (variant === 'inline') return null;
-    if (variant === 'more') return dimmed('Live sessions are not available on this Flux server.');
     return (
       <span className="lv-entry">
         <Button ref={buttonRef} variant="quiet" icon="call" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Call" onClick={() => setOpen((v) => !v)}>

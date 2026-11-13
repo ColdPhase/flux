@@ -405,9 +405,9 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
   where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
   too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
-  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
-  **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
-  [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
+  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings and
+  **Mute space** / **Unmute space**; there is no Space details panel (founder decision, Hubert, 2026-11-13, #1419): who is in the space, its
+  AI switch and its **GitHub** row are all in the space's settings ([Spaces](#spaces)). It has no row for the sidebar:
   the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
@@ -450,7 +450,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     first word of the tabs, as the page's own padding.
   - There are no chip rows.
   - **There is no tab bar in a conversation;** the composer sits at the bottom.
-  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, Join between the name and ⋯ while a call is live, and ⋯, with **Search** and **Call** as its first rows, then Mute conversation and "Message info". Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
+  - **A direct message's title row is a space's** (founder decision on [#1374](https://github.com/ColdPhase/flux/issues/1374), 2026-11-13): Back, the name with the line "Messages" (a group names its people) under it, and ⋯, with **Search** as its first row, then Mute conversation and "Message info". A direct message has no calls (a call belongs to a space's conversation, a task, a map or a page), so it has no Join and no Call row, never a greyed one. Back and ⋯ are the same plain 44 px icons; there are no Call and Search icons in the row and the name is not a menu (a direct message has one view). A long name wraps to two lines as a space's does. The tablet and the computer keep their own header.
 - **Sheets.** They have a grabber and two heights: half (the conversation stays visible) and full
   (dragged up). **A choice on the phone opens as a bottom sheet** with the field's name as its title: the Select, and a
   task's Status and Owner (#1359), whose pop-over ran out of a 320 px window. The rows are 48 px.
@@ -958,7 +958,7 @@ screen, setting or mode, and Settings › Notifications stays the overview. Ever
 menu's rows, the sidebar's end slot, the panel head's quiet actions and the existing icons and tokens.
 
 - **Mute and Unmute** are one row of ⋯ in a space's header (the computer's and the phone's) and in a direct message's header menu (the
-  computer's ⋯; on the phone the direct message's ⋯, after Search and Call and one row above "Message info"). A space reads **Mute space** /
+  computer's ⋯; on the phone the direct message's ⋯, after Search and one row above "Message info"). A space reads **Mute space** /
   **Unmute space**, a direct message **Mute conversation** / **Unmute conversation**. The row has no key, no switch and no
   confirmation: it acts and the menu closes. Under the label, one line of the menu's small muted text says what it does, so the
   person need not guess: "Quiet for ordinary messages. What needs you still arrives." while it is on, and "Muted. What needs you still
@@ -1170,6 +1170,10 @@ Live strip, someone shares a screen
   ("You are in a live session." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
   the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
+- **A server without live sessions draws no Call row.** Choices a server cannot do are not shown greyed (founder decision, Hubert,
+  2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): a space's ⋯ (the computer's and the phone's) has no "Call" row
+  where there is no media server, so no sentence about "live sessions" reaches a menu. The computer header's Call keeps its slot and says
+  why in its popover. A direct message never has a Call row (it has no calls).
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
   and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
@@ -1476,6 +1480,11 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     shows up here".
   - There is no Schedules section: schedules live only in the agent's chat (below).
   - "Delete Planner. Its tasks go back to you."
+- **Connect AI lists only what this server offers** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)):
+  a Claude plan or a ChatGPT plan the server cannot run is not a greyed row saying "Not offered on this Flux server"; it is not there. A
+  choice that is only late (the sign-in place is still starting, or Flux could not check just now) keeps its row with that one line, since
+  it will work. **New agent** appears once an AI is connected: an agent without a connection can do nothing, and Assistant comes with the
+  first connection.
 - **Connect AI** is one window in steps: choose a Claude plan, a ChatGPT plan or an API key; sign
   in on claude.ai and paste the code, or enter the device code for ChatGPT; "Couldn't connect"
   with Use an API key and Try again; an API key with its one daily budget. The API key offers
@@ -1684,10 +1693,14 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
     "No AI in encrypted spaces" as its line. The scrim covers the sidebar as in Create.
 - **Space settings** (⋯ › Settings) use direction A, a 640 px column centred in the space's pane
   under the header at every computer width (the tablet and phone keep their own padding):
-  - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the details panel and the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
+  - "Only people added here, and the company's owners and admins, can open this space." (The drawn line said only the first part, which the rules contradict: owners and admins reach every space but an encrypted one, #1116.)
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - The AI switch.
+  - **GitHub**, for the space's admins: one row, "GitHub repositories · Connect" ("Manage" once their own GitHub account is authorized), that
+    leads to the GitHub page, which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
+    settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,
+    [#1419](https://github.com/ColdPhase/flux/issues/1419)).
   - Leave space, and Delete space… for admins.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
     people.
@@ -1835,6 +1848,7 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   and "quiet".
 - **Places:** projects become Spaces. No workspace switching, no sidebar group headers, no
   workspace-wide Wiki, no templates and no goal (or its "goal reached" moment).
+  - the Space details panel (#1419).
 - **Ideas:** the Sketchbook (now My map), "Sketch", the DM "Sketches" tab, "Drafts" and "Notes".
 - **Agents:**
   - the space's Agents view and the Agents section, and agent project grants, policy and

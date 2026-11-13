@@ -262,8 +262,6 @@ SCREENS = [
     Screen("decision-panel", "/projects/{p}?open=decision:{decision}", needs=("decision",)),
     Screen("propose-decision", "/projects/{p}?open=propose-decision"),
     Screen("project-people", "/projects/{p}/settings"),
-    Screen("new-space", "/", steps=[("click", "button[aria-label='More']"), ("click", "[role='menuitem']:has-text('Details')"),
-                                    ("click", "button.ov-row:has-text('New space')")]),
     Screen("map", "/projects/{p}/map/{sketch}", needs=("sketch",)),
     Screen("wiki-index", "/projects/{p}/docs"),
     Screen("wiki-page", "/projects/{p}/docs/{doc}", needs=("doc",)),

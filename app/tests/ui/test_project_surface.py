@@ -20,11 +20,10 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from create_window import dialog, open_from_tasks, submit_button, title_field
 from message_gestures import open_message_menu
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder, view_tab
 
 PASSWORD = "a lamp that reads the room"
 # The place's panel is headed by the label that opened it, and its close control follows (#1058).
-PLACE_CLOSE = re.compile(r"^Close (space details|message info)$")
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Kowalska", "email": f"ada.k+{STAMP}@example.test"}
 JONAS = {"name": "Jonas Berg", "email": f"jonas.b+{STAMP}@example.test"}
@@ -262,22 +261,31 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- current state
 
-    def test_03_details_open_the_projects_objects(self) -> None:
+    def test_03_objects_open_where_they_live_and_a_space_has_no_details_panel(self) -> None:
         """The computer's header is one row (F-026 §4, #340) and carries no "N needs you" (#865: the Inbox is the one list
-        of what needs the person); the rule, the work and the proposal open from Details."""
+        of what needs the person); the work opens from Tasks and a decision from its address, in the one panel. A space has no
+        panel of its own and no "Space details" row in More (#1419)."""
         page = self.open_project("ada")
         header = page.locator("header.top")
         expect(header.get_by_label("Current state")).to_have_count(0)
         expect(header.get_by_role("button", name=re.compile(r"needs you$"))).to_have_count(0)
+        header.get_by_role("button", name="More", exact=True).click()
+        menu = page.get_by_role("menu", name="More")
+        expect(menu.get_by_role("menuitem", name="Settings")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name=re.compile("details", re.I))).to_have_count(0)
+        page.keyboard.press("Escape")
         panel = self.details(page)
-        open_details(page)
-        linked = panel.get_by_role("region", name="Linked in this conversation")
-        for heading in ("Use a ToF sensor, not the camera, for gestures", "Test the camera in low light",
-                        "Keep a manual off switch on the base"):
-            linked.get_by_role("button", name=re.compile(re.escape(heading))).click()
-            expect(panel.get_by_role("heading", name=heading)).to_be_visible()
-            open_details(page)
-        panel.get_by_role("button", name=PLACE_CLOSE).click()
+        work = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"]
+        decisions = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/decisions?limit=100", status=200)["items"]
+        for title in ("Test the camera in low light", "Order two VL53L5CX boards"):
+            item = next(entry for entry in work if entry["title"] == title)
+            page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{item['id']}")
+            expect(panel.get_by_role("heading", name=title)).to_be_visible()
+        for title in ("Use a ToF sensor, not the camera, for gestures", "Keep a manual off switch on the base"):
+            item = next(entry for entry in decisions if entry["title"] == title)
+            page.goto(f"/projects/{self.ids['project']}?open=decision:{item['id']}")
+            expect(panel.get_by_role("heading", name=title)).to_be_visible()
+        panel.get_by_role("button", name="Close details").click()
         expect(panel).to_be_hidden()
 
     # ---------------------------------------------------------------- tabs
@@ -348,125 +356,28 @@ class ProjectSurfaceJourney(unittest.TestCase):
         for technical in ("verified pull requests", "server operator", "webhook", "is not configured"):
             expect(page.locator("main, #content").first.get_by_text(re.compile(technical, re.I))).to_have_count(0)
 
-    def test_05_details_overview_links_everything_one_step_away(self) -> None:
-        page = self.open_project("ada")
-        open_details(page)
-        panel = self.details(page)
-        expect(panel.get_by_role("heading", name=OPENING)).to_be_visible()
-        linked = panel.get_by_role("region", name="Linked in this conversation")
-        for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures", "Keep a manual off switch on the base"):
-            expect(linked.get_by_role("button", name=re.compile(re.escape(title)))).to_be_visible()
-        expect(panel.get_by_role("navigation", name="Overview object pages"), "one page of objects has no pager (#512)").to_have_count(0)
-        expect(panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes"))).to_be_visible()
-        expect(panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
-        expect(panel.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
-        # Who is in the space is on its settings page (F-037): Details holds one row that leads there.
-        expect(panel.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
-        expect(panel.get_by_role("region", name="People", exact=True)).to_have_count(0)
-        shot(page, "project-details-desktop-1440")
-        # One step to an object, and back.
-        linked.get_by_role("button", name=re.compile("Order two VL53L5CX boards")).click()
-        expect(panel.get_by_role("heading", name="Order two VL53L5CX boards")).to_be_visible()
-        open_details(page)
-        expect(panel.get_by_role("region", name="Sources")).to_be_visible()
-        panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes")).click()
-        expect(page).to_have_url(re.compile(rf"/materials/{self.ids['material']}/versions/1$"))
-        page.go_back()
-        # A message has no Details in its menu (#867): the space's own Details are the one look, and they link the Wiki and the maps.
-        open_details(page)
-        expect(panel.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
-        panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options")).click()
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
-        expect(page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map"))).to_have_attribute("aria-current", "page")
-
-    def panel_shell(self, panel) -> dict:
-        """What makes a panel the one shell: its card, its head's height and where its close button sits."""
-        return panel.evaluate("""el => {
-            const box = el.getBoundingClientRect(), head = el.querySelector('.ui-panel__head').getBoundingClientRect();
-            const close = el.querySelector('.ui-panel__close').getBoundingClientRect(), style = getComputedStyle(el);
-            return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, head: head.height,
-                closeFromRight: box.right - close.right, closeFromTop: close.top - box.top, radius: style.borderTopLeftRadius, shadow: style.boxShadow };
-        }""")
-
-    def test_05b_project_details_are_one_look_at_the_project(self) -> None:
-        """#512: the project's own Details, in the one panel shell: its head, In this project, People, Connected (no "Now" or
-        "What matters", #865)."""
-        page = self.page("ada")
-        page.goto(f"/projects/{self.ids['project']}")
-        open_details(page)
-        panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
-        expect(panel.get_by_role("region", name="Now", exact=True)).to_have_count(0)
-        expect(panel.get_by_role("button", name="What matters")).to_have_count(0)
-
-        # AC-2: the space's tile and name, then who is in it; the company is never named (F-037).
-        head = panel.locator(".ov-head")
-        expect(head.locator(".ov-tile")).to_have_text("G")
-        expect(head).to_contain_text("Jonas")
-        expect(head).not_to_contain_text("Riverside Makers")
-        # #1110: the head names the people it was added to (no "only you two"), and one line says who else can open it.
-        expect(head.locator(".ov-audience")).to_have_text("Jonas, Nia and you")
-        expect(panel.get_by_role("region", name="Space settings", exact=True)).to_contain_text("The company’s owners and admins can open it too.")
-        self.assertEqual(panel.inner_text().lower().count("can open it"), 1, "who can open it is said once")
-
-        # AC-3 (#865): the space's current tasks and decision are not repeated here; Tasks and the Inbox hold them.
-        text = panel.inner_text()
-        for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures"):
-            self.assertNotIn(title, text, f"{title!r} is not in the space's Details")
-        self.assertNotIn("Task in progress", text)
-
-        # AC-4 (#873): the views are in the header; the panel does not repeat Map, Wiki and Tasks as rows.
-        expect(panel.get_by_role("region", name="In this space", exact=True)).to_have_count(0)
-        expect(panel.get_by_role("region", name="Maps", exact=True)).to_have_count(0)
-        expect(panel.get_by_role("region", name="Wiki", exact=True)).to_have_count(0)
-        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
-
-        # AC-5 (F-037): the space's people and settings are one row that leads to its settings page; GitHub under Connected.
-        settings = panel.get_by_role("region", name="Space settings", exact=True)
-        expect(settings.get_by_role("link", name="People and settings")).to_have_attribute("href", f"/projects/{self.ids['project']}/settings")
-        connected = panel.get_by_role("region", name="Connected", exact=True)
-        expect(connected.get_by_role("link", name=re.compile("^GitHub repositories"))).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
-
-        # AC-6: no "Esc closes this panel" footer (Esc is in the close button's tooltip); one page of anything has no pager.
-        expect(panel).not_to_contain_text("closes this panel")
-        expect(panel.get_by_role("button", name=PLACE_CLOSE)).to_have_attribute("data-tip", "Close · Esc")
-        expect(panel.get_by_role("navigation", name=re.compile("pages$"))).to_have_count(0)
-        shot(page, "project-details-one-look-desktop-1440-light")
-
-        # AC-1: the same shell as a task: the card, the head's height and the close button's place do not change.
-        details_shell = self.panel_shell(panel)
-        first = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"]
-        started = next(item for item in first if item["title"] == "Test the camera in low light")
-        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{started['id']}")
-        expect(panel.get_by_role("heading", name="Test the camera in low light")).to_be_visible()
-        task_shell = self.panel_shell(panel)
-        for key, value in details_shell.items():
-            if isinstance(value, float):
-                self.assertAlmostEqual(value, task_shell[key], delta=0.6, msg=f"{key}: Details {details_shell} vs task {task_shell}")
-            else:
-                self.assertEqual(value, task_shell[key], key)
-        shot(page, "project-task-panel-desktop-1440-light")
-        page.goto(f"/projects/{self.ids['project']}")
-        open_details(page)
-
-        page.emulate_media(color_scheme="dark")
-        page.reload()
-        open_details(page)
-        expect(panel.locator(".ov-head")).to_be_visible()
-        shot(page, "project-details-one-look-desktop-1440-dark")
-
-        # The phone shows the same look in its sheet, in one column.
-        for scheme in ("light", "dark"):
-            phone = self.page("ada", phone=True)
-            phone.emulate_media(color_scheme=scheme)
-            phone.goto(f"/projects/{self.ids['project']}")
-            open_details(phone, tap=True)
-            sheet = phone.get_by_role("dialog", name="Details")
-            expect(sheet.locator(".ov-head").get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
-            expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
-            expect(sheet.get_by_role("region", name="In this space", exact=True)).to_have_count(0)
-            self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
-            shot(phone, f"project-details-one-look-phone-390-{scheme}")
+    def test_05b_a_space_has_one_place_for_its_people_ai_and_github_its_settings(self) -> None:
+        """#1419: no Space details panel. Who is in the space and its AI switch are in its settings; GitHub is one more row there for its
+        admins, and only where this server has GitHub (the check stack has none, so there is no row at all, not one that says so)."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ada", phone=phone)
+                page.goto(f"/projects/{self.ids['project']}")
+                header = page.locator("header.phead" if phone else "header.top")
+                header.get_by_role("button", name="More", exact=True).click()
+                menu = page.get_by_role("menu", name="More")
+                expect(menu.get_by_role("menuitem", name=re.compile("details", re.I))).to_have_count(0)
+                menu.get_by_role("menuitem", name="Settings").click()
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.ids['project']}/settings")
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                expect(page.get_by_role("heading", name="AI", exact=True)).to_be_visible()
+                expect(page.locator("[data-github-row]")).to_have_count(0)
+                # The GitHub page keeps its place and leads back to the settings, the one way in (not to a panel).
+                page.goto(f"/projects/{self.ids['project']}/github")
+                expect(page.get_by_role("heading", level=2, name="GitHub repositories")).to_be_visible()
+                page.get_by_role("link", name="‹ Space settings").click()
+                expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                shot(page, f"project-settings-{'phone-390' if phone else 'desktop-1440'}")
 
     # ---------------------------------------------------------------- Map tab
 
@@ -510,13 +421,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("header").get_by_label("Current state")).to_have_count(0)
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), PHONE["width"])
         shot(page, "project-conversation-phone-390")
-        open_details(page, tap=True)
-        sheet = page.get_by_role("dialog", name="Details")
-        # The project's Details do not list its decisions under a "Now" (#865); the people and settings are one row.
-        expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch"))).to_have_count(0)
-        expect(sheet.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
-        shot(page, "project-details-phone-390")
-        sheet.get_by_role("button", name=PLACE_CLOSE).tap()
         view_tab(page, "Map", tap=True)
         # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/[0-9a-f-]+$"))
@@ -524,7 +428,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("list", name="Maps in Gesture lamp")).to_be_visible()
         shot(page, "project-map-phone-390")
 
-        # A title too long for the phone wraps to two lines and then ends in an ellipsis (#1239); the people stay in the line under it, and Details lists them.
+        # A title too long for the phone wraps to two lines and then ends in an ellipsis (#1239); the people stay in the line under it.
         page.goto(f"/projects/{self.ids['long_project']}")
         title = page.locator("header h1")
         expect(title).to_have_text(LONG_NAME)
@@ -532,8 +436,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
         self.assertEqual(title.evaluate("el => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight))"), 2, "at two lines")
         expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
-        open_details(page, tap=True)
-        expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
 
 
     # ---------------------------------------------------------------- sidebar: current place and touch targets

@@ -314,15 +314,12 @@ class PhoneFinal(unittest.TestCase):
                 shot(page, f"341-views-{size['width']}-{'dark' if dark else 'light'}")
                 views.get_by_role("tab", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
-                # Search, Call, Settings and the space's details are in More: the title row holds Back, the name and More only (#1239).
+                # Search, Settings and Mute are in More: the title row holds Back, the name and More only (#1239). This server has no media
+                # server, so there is no Call row, and a space has no details panel of its own (#1419).
                 page.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                # (Mute space, #1249, sits between Settings and the details.)
-                self.assertEqual([*items[:3], items[-1]], ["Search", "Call", "Settings", "Space details"])
-                menu.get_by_role("menuitem", name="Space details").click()
-                expect(page.get_by_role("dialog", name="Details")).to_be_visible()
-                expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
+                self.assertEqual(items, ["Search", "Settings", "Mute space"])
                 page.keyboard.press("Escape")
 
     def test_06_the_views_work_from_the_keyboard(self):
@@ -398,7 +395,7 @@ class PhoneFinal(unittest.TestCase):
         header = page.locator("header.phead")
         title = header.get_by_role("heading", level=1, name=re.compile("Kai Tanaka"))
         expect(title).to_be_visible()
-        # A direct message's title row is a space's (#1374): Back, the name and ⋯, with Search and Call as its first rows; the name is not a menu.
+        # A direct message's title row is a space's (#1374): Back, the name and ⋯, with Search as its first row; the name is not a menu. It has no calls (#1419).
         expect(title.get_by_role("button")).to_have_count(0)
         expect(header.get_by_role("button", name="Back")).to_be_visible()
         self.assertEqual(header.locator("button:visible").evaluate_all("els => els.map((el) => el.getAttribute('aria-label')).filter(Boolean)"), ["Back", "More"],
@@ -406,8 +403,7 @@ class PhoneFinal(unittest.TestCase):
         header.get_by_role("button", name="More").click()
         menu = page.get_by_role("menu", name="More")
         labels = [text.strip().split("\n")[0] for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(labels[:2], ["Search", "Call"])
-        self.assertEqual(labels[-1], "Message info")
+        self.assertEqual(labels, ["Search", "Mute conversation", "Message info"], "no Call row: a direct message has no calls")
         # A direct message has the one view, Messages; its sketches are gone (#866).
         self.assertNotIn("Sketches", labels)
         expect(page.locator(".views")).to_have_count(0)
@@ -583,11 +579,8 @@ class PhoneFinal(unittest.TestCase):
         expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
         expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
         page.get_by_role("button", name="More", exact=True).click()
-        # A Call that cannot start (this test server has no media server) says why in its row, as its popover did (#1239).
-        call = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))
-        expect(call).to_have_attribute("aria-disabled", "true")
-        expect(call.locator(".ui-vh")).to_be_visible()
-        expect(call.locator(".ui-vh")).to_have_text(re.compile(r"\S{8,}"))
+        # A Call that cannot start because this test server has no media server is not a greyed row: it is not there (#1419).
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("^Call"))).to_have_count(0)
         page.get_by_role("menuitem", name="Search", exact=True).click()
         expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
         page.keyboard.press("Escape")

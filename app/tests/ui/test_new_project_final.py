@@ -246,6 +246,24 @@ class NewProject(unittest.TestCase):
         expect(encrypted).to_have_attribute("aria-checked", "false")
         return card, encrypted
 
+    def test_08a_the_encrypted_form_on_a_phone_keeps_every_control_whole_inside_its_card(self) -> None:
+        """#1419: the card with AI, Encrypted and the password clips what overflows it; in the form's scrolling grid it was squeezed to the room left
+        on a short phone, with "Suggest six random words" cut off. It is never shorter than its content, and the form scrolls instead."""
+        self.ensure_account()
+        page = self.page("light", PHONE)
+        card, encrypted = self.encrypted_card(page, phone=True)
+        encrypted.tap()
+        expect(card.get_by_label("Your unlock password", exact=True)).to_be_visible()
+        switches = card.locator(".newspace__switches")
+        measured = switches.evaluate("el => ({client: el.clientHeight, scroll: el.scrollHeight})")
+        self.assertLessEqual(measured["scroll"], measured["client"] + 1, f"the card holds all of its content: {measured}")
+        suggest = card.get_by_role("button", name="Suggest six random words")
+        suggest.scroll_into_view_if_needed()
+        expect(suggest).to_be_in_viewport(ratio=1)
+        inside = suggest.evaluate("(button) => { const box = button.getBoundingClientRect(), card = button.closest('.newspace__switches').getBoundingClientRect(); return box.top >= card.top - 1 && box.bottom <= card.bottom + 1; }")
+        self.assertTrue(inside, "the button is whole inside its card")
+        shot(page, "1419-newspace-encrypted-phone-390")
+
     def test_08_encrypted_starts_off_and_turned_on_drops_ai_and_asks_for_a_password_and_the_recovery_code(self) -> None:
         self.ensure_account()
         page = self.page()

@@ -141,10 +141,12 @@ class SpokojLayout(unittest.TestCase):
                 boxes[name] = self.box(header.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")))
         return boxes
 
-    def open_panel(self, page: Page) -> None:
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-        expect(page.locator(".ui-panel--docked")).to_be_visible()
+    def open_panel(self, page: Page, path: str = "") -> None:
+        """The one panel, on a task of the space: a space has no panel of its own (#1419), so the panel is a task's, opened from its address."""
+        made = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project_id}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
+        self.assertEqual(made.status, 201, made.text())
+        page.goto(f"/projects/{self.project_id}{path}?open=work:{made.json()['id']}")
+        expect(page.locator("#details")).to_be_visible()
         # The panel slides in from 24 px to the right; measure it once the animation has landed.
         page.wait_for_function(SETTLED)
 
@@ -196,8 +198,7 @@ class SpokojLayout(unittest.TestCase):
                 page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Wiki")).click()
                 expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
                 page.wait_for_function(SETTLED)
-                page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+                self.open_panel(page, "/docs")
                 expect(page.locator(".ui-panel--docked")).to_be_visible()
                 expect(page.locator(".ui-panel--overlay")).to_have_count(0)
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel beside the page")
@@ -218,13 +219,13 @@ class SpokojLayout(unittest.TestCase):
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                # Mute space (#1249) sits between Settings and the space's details, under its own one-line hint.
-                self.assertEqual(items[:5], ["People", "Call", "Settings", "Mute space", "Space details"], items)
-                # Live sessions are off on this test server: Call is dimmed in place, not removed.
-                expect(menu.get_by_role("menuitem", name="Call")).to_have_attribute("aria-disabled", "true")
-                menu.get_by_role("menuitem", name="Space details").click()
-                expect(page.locator("#details")).to_be_visible()
-                page.wait_for_function(SETTLED)
+                # Mute space (#1249) follows Settings, under its own one-line hint. Live sessions are off on this test server, so there is no Call
+                # row, not even a dimmed one (#1419), and a space has no details panel of its own.
+                self.assertEqual(items[:3], ["People", "Settings", "Mute space"], items)
+                self.assertNotIn("Call", items)
+                self.assertNotIn("Space details", items)
+                page.keyboard.press("Escape")
+                self.open_panel(page)
                 self.assert_one_row(page, f"{size['width']} panel open")
                 self.assert_same_place(views, self.header_boxes_views_only(page), f"{size['width']} panel opened")
                 if size is NARROW:
@@ -305,9 +306,9 @@ class SpokojLayout(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.wait_for_function(SETTLED)
         self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 Conversation to Tasks")
-        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365).
-        header.get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365). A space has no
+        # panel of its own (#1419): it is a task's.
+        self.open_panel(page, "/tasks")
         expect(page.locator(".ui-panel--float")).to_be_visible()
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         page.wait_for_function(SETTLED)
@@ -550,7 +551,7 @@ class SpokojLayout(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}")
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name="Space details")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="Space details")).to_have_count(0)
         expect(menu.get_by_role("menuitem", name="Details", exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
         page.goto(self.dm_path)

@@ -119,16 +119,17 @@ class ReturnFixes(unittest.TestCase):
 
     # ---------------------------------------------------------------- H11-8: a panel does not follow her to another page
 
-    def test_02_the_space_details_close_on_another_page(self) -> None:
+    def test_02_an_open_panel_closes_on_another_page(self) -> None:
+        # A space has no panel of its own (#1419), so the panel that must not follow her is a task's.
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
         open_details(page)
         panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="Volunteer sign-up")).to_be_visible()
+        expect(panel.get_by_role("heading", name="Check the panel")).to_be_visible()
         shot(page, "h11-space-details")
         # Another page: the panel does not follow her there.
         self.inbox(page)
-        expect(panel.get_by_role("heading", name="Volunteer sign-up")).to_have_count(0)
+        expect(panel.get_by_role("heading", name="Check the panel")).to_have_count(0)
         shot(page, "h11-inbox-no-stale-panel")
 
     # ---------------------------------------------------------------- H11-5, H11-9, H11-8: Home and the task panel

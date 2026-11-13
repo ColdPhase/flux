@@ -16,7 +16,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder, view_tab
 
 # Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
 LIVE = os.environ.get('FLUX_LIVE_EDITING', 'on') != 'off'
@@ -40,6 +40,7 @@ class RouteChunksJourney(unittest.TestCase):
     name = "Ari Route Chunks"
     project_id = ""
     conversation_id = ""
+    dm_id = ""
     email = ""
 
     @classmethod
@@ -69,6 +70,22 @@ class RouteChunksJourney(unittest.TestCase):
             cls.project_id = project["id"]
             conversation = create(f"/api/v1/projects/{project['id']}/conversations", {"body": "An eager conversation stays available before secondary routes", "clientMessageId": str(uuid.uuid4())})
             cls.conversation_id = conversation["id"]
+            # A direct message is the place with a panel of its own, "Message info" (a space has none, #1419).
+            peer_context = cls.browsers["chromium"].new_context(base_url=ORIGIN, service_workers="block")
+            try:
+                peer = peer_context.new_page()
+                peer.goto("/sign-up")
+                peer.get_by_label("Name").fill("Jonas Route")
+                peer_email = f"route.chunks.peer+{uuid.uuid4()}@example.test"
+                peer.get_by_label("Email").fill(peer_email)
+                peer.get_by_label("Password").fill("a quiet route loading passphrase")
+                peer.get_by_role("button", name="Create account").click()
+                expect(peer.get_by_role("heading", name="Home", exact=True)).to_be_visible()
+                peer_id = peer.request.get(f"{ORIGIN}/api/v1/me").json()["user"]["id"]
+            finally:
+                peer_context.close()
+            create(f"/api/v1/workspaces/{space['id']}/members", {"email": peer_email, "role": "member"})
+            cls.dm_id = create(f"/api/v1/workspaces/{space['id']}/dms", {"participantIds": [peer_id]})["id"]
             cls.state = context.storage_state()
         finally:
             context.close()
@@ -134,13 +151,13 @@ class RouteChunksJourney(unittest.TestCase):
             page.get_by_role("button", name=re.compile(self.name)).click()
             page.get_by_role("dialog", name="Account").get_by_role("link", name="Settings", exact=True).click()
 
-    def space_map(self, page: Page):
-        """A place whose header has Details in its More menu: a space's, as Space details (#871: Home and My map have none)."""
-        page.goto(f"/projects/{self.project_id}/map")
-        expect(page.get_by_role("heading", level=1, name="Chunk boundaries", exact=True)).to_be_visible()
+    def direct_message(self, page: Page):
+        """A place whose header has a panel of its own in its More menu: a direct message, as Message info (#871: Home and My map have none, and a space has none, #1419)."""
+        page.goto(f"/dm/{self.dm_id}")
+        expect(page.get_by_role("heading", level=1, name="Jonas Route", exact=True)).to_be_visible()
 
     def open_details_by_keyboard(self, page: Page):
-        """Tab to the header's More, open its menu and choose Details with the keyboard; More is the opener focus comes back to."""
+        """Tab to the header's More, open its menu and choose Message info with the keyboard; More is the opener focus comes back to."""
         opener = page.get_by_role("button", name="More", exact=True)
         for _ in range(50):
             if opener.evaluate("element => element === document.activeElement"):
@@ -148,7 +165,7 @@ class RouteChunksJourney(unittest.TestCase):
             page.keyboard.press("Tab")
         expect(opener).to_be_focused()
         page.keyboard.press("Enter")
-        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
+        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info", exact=True)
         expect(item).to_be_visible()
         item.focus()
         page.keyboard.press("Enter")
@@ -549,7 +566,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 held = self.hold(page, "Details")
-                self.space_map(page)
+                self.direct_message(page)
                 opener = self.open_details_by_keyboard(page)
                 # The panel's own layout in quiet bars, at its final heights, not a spinner (#863 rule 6).
                 expect(page.locator("#details .wd-skeleton")).to_be_visible()
@@ -559,7 +576,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
-                # The space's Map has no text field: the opener, where focus returned, keeps it.
+                # Focus returned to the opener when the held panel closed; the code arriving later does not take it away.
                 with page.expect_response(re.compile(r"/assets/Details-[^/]+\.js")):
                     held.pop().continue_()
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
@@ -608,7 +625,7 @@ class RouteChunksJourney(unittest.TestCase):
                         Path(evidence).mkdir(parents=True, exist_ok=True)
                         (Path(evidence) / f"route-code-reload-{engine}.json").write_text(json.dumps(diagnostic, indent=2))
 
-    def test_09_first_project_details_keep_readable_rows_before_any_map_download(self):
+    def test_09_first_message_info_keeps_readable_rows_before_any_map_download(self):
         for engine in self.browsers:
             with self.subTest(engine=engine):
                 page = self.page(engine, phone=True)
@@ -616,30 +633,25 @@ class RouteChunksJourney(unittest.TestCase):
                 # the first Details render must not depend on it, and it has to stand with the Map's code still on the way.
                 self.hold(page, "ProjectViews")
                 self.hold(page, "SketchView")
-                page.goto(f"/projects/{self.project_id}")
-                expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
-                open_details(page)
-                # The first Space details list their rows (#512): icon, name and the way in. The views are in the view
-                # switch and no longer repeated here (#873); a space's manager has its GitHub repositories.
-                row = page.locator("#details .ov-row", has_text="GitHub repositories")
+                page.goto(f"/dm/{self.dm_id}")
+                expect(page.get_by_role("heading", name="Jonas Route", exact=True)).to_be_visible()
+                page.get_by_role("button", name="More", exact=True).click()
+                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info", exact=True).click()
+                # The first Message info lists its people (a space has no panel of its own, #1419): a face and a name in separate columns inside the
+                # phone panel. Missing lazy surface CSS must not collapse them.
+                row = page.locator("#details .details__person", has_text="Jonas Route")
                 expect(row).to_be_visible()
-                # A first-open native row must keep its icon, readable text and chevron in separate
-                # columns inside the phone panel. Missing lazy surface CSS must not collapse them.
                 geometry = row.evaluate("""el => {
                     const box = el.getBoundingClientRect();
-                    const glyph = el.querySelector('.ov-row__ic').getBoundingClientRect();
-                    const body = el.querySelector('.ov-row__b').getBoundingClientRect();
-                    const number = el.querySelector('.ov-row__go').getBoundingClientRect();
-                    return { height: box.height, left: box.left, right: box.right,
-                        iconRight: glyph.right, textLeft: body.left, textRight: body.right, actionLeft: number.left };
+                    const face = el.querySelector('.ui-avatar').getBoundingClientRect();
+                    const name = el.querySelector('b').getBoundingClientRect();
+                    return { left: box.left, right: box.right, faceRight: face.right, nameLeft: name.left, nameRight: name.right };
                 }""")
-                self.assertGreaterEqual(geometry["height"], 44 - 0.001)
-                self.assertGreater(geometry["textLeft"], geometry["iconRight"])
-                self.assertLessEqual(geometry["textRight"], geometry["actionLeft"])
+                self.assertGreater(geometry["nameLeft"], geometry["faceRight"] - 0.001)
+                self.assertLessEqual(geometry["nameRight"], geometry["right"] + 0.001)
                 self.assertGreaterEqual(geometry["left"], 0)
                 self.assertLessEqual(geometry["right"], page.viewport_size["width"])
-                self.assertTrue(row.is_visible(), "The first project/Details render stands with the Map code still on the way")
-                shot(page, f"route-chunks-first-project-details-{engine}-phone")
+                shot(page, f"route-chunks-first-message-info-{engine}-phone")
 
     CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki"}
 

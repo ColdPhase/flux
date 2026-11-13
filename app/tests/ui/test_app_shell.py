@@ -160,23 +160,29 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 
 def open_details(page: Page, tap: bool = False) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); on the phone a space has the same More in
-    its header (#873) and a direct message has the same (#1374: "Message info" is its last row). Only a space and a direct message
-    have Details (Home has none, #964)."""
-    if page.viewport_size["width"] <= 640:
-        page.locator("header.phead button[aria-label='More']").first.wait_for()
-        more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
+    """The one detail panel (a sheet on the phone). A direct message has its own, "Message info", in More; a space has none (#1419), so
+    there the panel is a task's, opened from the task's address on a task made for the purpose."""
+    if re.search(r"/dm/[0-9a-f-]{36}", page.url):
+        if page.viewport_size["width"] <= 640:
+            page.locator("header.phead button[aria-label='More']").first.wait_for()
+            more = page.locator("header.phead").get_by_role("button", name="More", exact=True)
+            close_modal_thread(page, tap)
+            more.tap() if tap else more.click()
+            item = page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")
+            item.tap() if tap else item.click()
+            return
         close_modal_thread(page, tap)
-        more.tap() if tap else more.click()
-        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
-        item.tap() if tap else item.click()
+        header = page.locator("header.top")
+        page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
+        header.get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info").click()
         return
-    close_modal_thread(page, tap)
-    header = page.locator("header.top")
-    page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
-    header.get_by_role("button", name="More", exact=True).click()
-    # One meaning per word (#506 AC-4): "Space details" in a project, "Message info" in a direct message.
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$")).click()
+    project = re.search(r"/projects/([0-9a-f-]{36})", page.url)
+    assert project, page.url
+    made = page.request.post(f"{ORIGIN}/api/v1/projects/{project.group(1)}/work", data={"title": "Check the panel"}, headers={"origin": ORIGIN})
+    assert made.status == 201, made.text()
+    # The panel opens over the place the test is at (a map, a board, a thread), so the address keeps its path.
+    page.goto(f"{urllib.parse.urlsplit(page.url).path}?open=work:{made.json()['id']}")
 
 
 def shot(page: Page, name: str) -> None:
@@ -584,7 +590,7 @@ class AppShellJourney(unittest.TestCase):
                     expect(header.get_by_role("button", name="Call", exact=True)).to_have_count(0)
                     expect(header.get_by_role("button", name="Search", exact=True)).to_have_count(0)
                     expect(header.get_by_role("heading", level=1, name="Project header actions")).to_be_visible()
-                    # The phone's More holds Settings and Space details, the one place they open from (#873).
+                    # The phone's More holds Search, Call, Settings and Mute: a space has no panel of its own (#873, #1419).
                     expect(header.get_by_role("button", name="More", exact=True)).to_have_count(1)
                     geometry = page.evaluate("""() => ({header: document.querySelector('header.phead').getBoundingClientRect().height,
                       width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth})""")
@@ -622,7 +628,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and the sidebar are shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
                     # 44 px touch rows; WebKit lays a menu that starts on a fractional pixel out to 43.99998… while it settles (#1375 adds the People row at 820):
@@ -663,7 +669,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        # Home and My map have no Details (#871); a space has its own.
+        # Home and My map have no Details (#871); a task has the panel.
         page.goto(f"/projects/{self.first_space(page)}")
         expect(page.locator(".project-convo")).to_be_visible()
         open_details(page)
@@ -703,8 +709,8 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Details opens a full-screen sheet from a space's More (Home has the button only with an encrypted space, #865); Jo's space
-        # is the one test_04aa made, and the views row of projects is in test_phone_final.
+        # Details opens a full-screen sheet (a task's, in Jo's space: the one test_04aa made; a space has no panel of its own, #1419); the views
+        # row of projects is in test_phone_final.
         spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
                   for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
         self.assertTrue(spaces, "test_04aa made a space")
@@ -728,7 +734,7 @@ class AppShellJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
         open_details(page)
-        page.get_by_role("dialog", name=re.compile("Space details|Message info")).get_by_role("button", name=re.compile("^Close (space details|message info)$")).click()
+        page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
     def test_07_phone_dark_and_narrow(self) -> None:

@@ -28,12 +28,11 @@ export interface AddToDocView {
 }
 
 /**
- * The project's overview in Details (#117): linked work, decisions, sources and
- * sketches of the open conversation, or of one message when `messageId` is set.
+ * What one message is linked to, in Details (#117): the tasks and decisions made from it, and their sources, thoughts and Wiki pages.
  */
 export interface OverviewView {
   kind: 'overview';
-  messageId?: string;
+  messageId: string;
   /** One already loaded native message; never a project collection or an authority proof. */
   selection?: { accountId: string; projectId: string; message: ConversationMessage };
 }

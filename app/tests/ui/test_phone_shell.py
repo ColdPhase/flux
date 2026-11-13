@@ -106,9 +106,10 @@ class PhoneShellJourney(unittest.TestCase):
         return views
 
     def open_details(self, page):
-        """Space details open from one place: the header's More (#873)."""
-        page.locator("header").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menuitem", name="Space details").click()
+        """The one detail sheet, on a task of the open space: a space has no panel of its own, and More has no "Space details" (#873, #1419)."""
+        made = page.request.post(f"{ORIGIN}/api/v1/projects/{self.project['id']}/work", data={"title": "Check the sheet"}, headers={"origin": ORIGIN})
+        assert made.status == 201, made.text()
+        page.goto(f"/projects/{self.project['id']}/tasks?open=work:{made.json()['id']}")
 
     def test_01_main_places_sit_in_a_floating_capsule_and_views_are_in_a_row_under_the_title(self):
         for width, height in ((320, 568), (375, 667), (390, 844)):
@@ -193,12 +194,10 @@ class PhoneShellJourney(unittest.TestCase):
             size = self.box(button)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, name)
         expect(page.locator(".state-row, .views")).to_have_count(0)
-        self.open_details(page)
-        sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
-        expect(sheet.locator(".ov-head").get_by_role("heading", level=3)).to_be_visible()
-        # The panel does not repeat the views: no Map, Wiki or Tasks rows (#873).
-        expect(sheet.get_by_role("region", name="In this space")).to_have_count(0)
+        # A space has no details panel of its own (#1419): its More has Search, Settings and Mute, and no "Space details".
+        page.locator("header").get_by_role("button", name="More", exact=True).click()
+        expect(page.get_by_role("menuitem", name="Space details")).to_have_count(0)
+        expect(page.get_by_role("menuitem", name="Settings", exact=True)).to_be_visible()
         page.keyboard.press("Escape")
         # The other views start right under the header.
         self.views(page).get_by_role("tab", name="Map").click()
