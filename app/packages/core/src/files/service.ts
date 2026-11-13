@@ -199,7 +199,8 @@ const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(vid
  *
  * #1411: it runs inside the message's transaction, so it reads no byte of any file: the row's recorded size and SHA-256 (computed once,
  * from the bytes as the upload arrived) and the object's size on disk. Hashing a 200 MiB video here held a database connection per send,
- * and a few sends at once held them all. Bytes that changed after the upload are refused where they are read (C-61).
+ * and a few sends at once held them all. A file up to 5 MiB has had its bytes checked just before, by `verifyAttachmentBytes`; a larger
+ * video's changed bytes are refused where they are read (C-61).
  */
 export async function lockAttachments(files: FileRepository, storage: Pick<FileStorage, 'present'>, projectId: string,
   author: ActorRef, ids: readonly string[], clock: () => Date): Promise<StoredFileRow[]> {
@@ -224,6 +225,23 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
   }
   if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MiB together, not counting videos', 'ATTACHMENTS_TOO_LARGE');
   return ordered;
+}
+
+/**
+ * #154, #1411: checks the bytes of each file up to 5 MiB a new message will carry against the SHA-256 computed as its upload arrived (a
+ * sealed one opened by its tag too), so a file changed on disk since its upload still cannot be sent. Call it before the message's
+ * transaction opens: it holds no database connection while it reads (at most 10 files of 5 MiB). It reads only the author's own ready,
+ * unsent files and refuses with the same unknown-file answer as `lockAttachments`, which still makes every check of the rows inside the
+ * transaction. A larger video is not read here; its size is checked on every range and its digest in the export bundle (C-61).
+ */
+export async function verifyAttachmentBytes(files: Pick<FileRepository, 'findFiles'>, storage: Pick<FileStorage, 'has'>,
+  author: ActorRef, ids: readonly string[]): Promise<void> {
+  if (!ids.length || author.kind !== 'human') return;
+  for (const row of await files.findFiles(ids)) {
+    if (!same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.size > FILE_LIMITS.fileBytes || !row.sha256
+      || row.posterOf || isPublished(row)) continue;
+    if (!await storage.has(row.id, row.size, row.sha256)) throw attachmentUnavailable();
+  }
 }
 
 /**

@@ -174,9 +174,9 @@ test('files-only roots, ordinary replies and task replies retain exact order and
   assert.equal((await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand })).status, 404);
 });
 
-// #1411: a message's transaction reads no byte of its files, only each object's size on disk; bytes changed in place but kept their size are
-// refused where they are read (every read of a file up to 5 MiB), never served.
-test('foreign, revoked, missing and resized staged bytes cannot create a message; same-size corrupt bytes are never served', async () => {
+// #1411: a message's transaction reads no byte of its files, only each object's size on disk; a file up to 5 MiB has its bytes checked
+// against its upload's SHA-256 just before that transaction opens, so same-size corrupt bytes still cannot be sent by any route (#154).
+test('foreign, revoked, missing and same-size corrupt staged bytes cannot create a message', async () => {
   const f = await scene();
   const file = (await upload(f.writer, f.place.id, Buffer.from('data'))).body;
   const send = (who: Person, projectId = f.place.id) => who.browser.request('POST', `/api/v1/projects/${projectId}/conversations`, {
@@ -185,11 +185,17 @@ test('foreign, revoked, missing and resized staged bytes cannot create a message
   assert.equal((await send(f.owner)).status, 404);
   const elsewhere = await project(f.owner, f.ws.id, 'Other files', 'workspace');
   assert.equal((await send(f.writer, elsewhere.id)).status, 404);
+  const started = expectStatus(await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`,
+    { body: { body: 'Files follow', clientMessageId: randomUUID() } }), 201) as Conversation;
+  const task = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/work`, { body: { title: 'Corrupt file' } }), 201) as WorkItem;
   await writeFile(objectPath(file.id), 'oops');
+  assert.equal((await send(f.writer)).status, 404);
+  const command = { body: '', attachmentIds: [file.id], clientMessageId: randomUUID() };
+  assert.equal((await f.writer.browser.request('POST', `/api/v1/conversations/${started.id}/messages`, { body: command })).status, 404);
+  assert.equal((await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: command })).status, 404);
   assert.equal((await download(f.writer, file.id)).status, 404);
   await writeFile(objectPath(file.id), 'oops!');
   assert.equal((await send(f.writer)).status, 404);
-  assert.equal((await download(f.writer, file.id)).status, 404);
   await rm(objectPath(file.id));
   assert.equal((await send(f.writer)).status, 404);
   await writeFile(objectPath(file.id), 'data');

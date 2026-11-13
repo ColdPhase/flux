@@ -61,6 +61,10 @@ export function fileRows(db: DbExecutor) {
       const [row] = await open(await db.select().from(f).where(eq(f.id, id)));
       return row ? wire(row) : null;
     },
+    async findFiles(ids: readonly string[]) {
+      if (!ids.length) return [];
+      return (await open(await db.select().from(f).where(inArray(f.id, [...ids])))).map(wire);
+    },
     async markReady(id: string, input: { size: number; sha256: string; readyAt: Date; expiresAt: Date; detail?: FileDetail; keyVersion?: number | null }): Promise<boolean | 'key_changed'> {
       const { detail, keyVersion, ...plain } = input;
       const [located] = await db.select({ workspaceId: f.workspaceId }).from(f).where(eq(f.id, id));

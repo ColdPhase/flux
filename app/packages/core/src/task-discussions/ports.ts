@@ -120,4 +120,6 @@ export interface TaskDiscussionPorts {
 }
 export interface TaskDiscussionUnitOfWork {
   run<T>(action: (ports: TaskDiscussionPorts) => Promise<T>): Promise<T>;
+  /** #154, #1411: checks the staged files' bytes before `run` opens the transaction (`verifyAttachmentBytes`); absent where files are refused. */
+  verifyAttachments?(author: ActorRef, ids: readonly string[]): Promise<void>;
 }

@@ -51,6 +51,8 @@ export interface FileRepository {
   /** The posters (C-61) of this staged video, any state. */
   postersOf(videoId: string): Promise<StoredFileRow[]>;
   findFile(id: string): Promise<StoredFileRow | null>;
+  /** These rows, unlocked and in no particular order (outside any transaction: #1411's check of a message's file bytes before it opens). */
+  findFiles(ids: readonly string[]): Promise<StoredFileRow[]>;
   /** Marks a still-receiving reservation ready; false when it is gone or no longer receiving. */
   /**
    * Under the workspace's key share lock (F-030 S2c): `key_changed` when the object's key version is no longer live (a
