@@ -1,1 +1,0 @@
-- A NUL character in a name or other text, or in an address typed at sign-in, sign-up or password reset, answered "Internal Server Error"; it is now refused as invalid input ([#838](https://github.com/ColdPhase/flux/issues/838)).

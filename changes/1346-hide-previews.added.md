@@ -1,0 +1,1 @@
+- Settings › Notifications has a switch **Hide previews** (off by default): with it on, a push says only who and where, such as "Ada mentioned you in Tool library", and the payload carries no message text, file name, task title or link, for every kind of notice; the Inbox and the notices inside Flux are unchanged ([#1346](https://github.com/ColdPhase/flux/issues/1346)).

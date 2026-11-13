@@ -1,1 +1,0 @@
-- A task that a linked pull request's rule moves to Done lets the tasks that wait for it continue, in the same transaction, with the same line, activity entry, Inbox note and agent pick-up as when a person finishes it ([#1055](https://github.com/ColdPhase/flux/issues/1055)).

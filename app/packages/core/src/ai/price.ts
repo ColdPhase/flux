@@ -29,10 +29,29 @@ export function requestReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTo
  * Micro-dollars of one completed request, for reconciliation only: the provider-reported cost when
  * the response carries one, otherwise the reported tokens at the connection's price, rounded up.
  */
-export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number }): number {
+export function usageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>, usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: UsageCache }): number {
   if (typeof usage.reportedCostMicros === 'number' && Number.isSafeInteger(usage.reportedCostMicros) && usage.reportedCostMicros >= 0) return usage.reportedCostMicros;
-  // Each search of the provider's built-in web search is billed on top of its tokens (#954).
-  return maxRequestMicros(price, usage.inputTokens, usage.outputTokens, usage.webSearches ?? 0);
+  // Each search of the provider's built-in web search is billed on top of its tokens (#954). What the provider wrote to its cache and
+  // read from it (#1410) is charged at its rates of the input price, rounded up: the rest of the input at the full price.
+  return maxRequestMicros(price, billedInputTokens(usage), usage.outputTokens, usage.webSearches ?? 0);
+}
+
+/** What the provider wrote to its prompt cache and read from it (#1410), within the request's input tokens, and the rates they cost. */
+export interface UsageCache { readTokens: number; writeTokens: number; readRate: number; writeRate: number }
+
+/**
+ * The input tokens of a request in full-price tokens (#1410): the uncached part, the cache writes at their rate and the cache reads at
+ * theirs. Counts that cannot be right (more cached than the whole prompt, a rate outside 0–2) count the whole input at twice the
+ * full price, so a charge is never lowered by them.
+ */
+export function billedInputTokens(usage: { inputTokens: number; cache?: UsageCache }): number {
+  const cache = usage.cache;
+  if (!cache) return usage.inputTokens;
+  const whole = (value: number) => Number.isSafeInteger(value) && value >= 0;
+  const rate = (value: number) => Number.isFinite(value) && value >= 0 && value <= 2;
+  if (!whole(cache.readTokens) || !whole(cache.writeTokens) || !rate(cache.readRate) || !rate(cache.writeRate)
+    || cache.readTokens + cache.writeTokens > usage.inputTokens) return usage.inputTokens * 2;
+  return usage.inputTokens - cache.readTokens - cache.writeTokens + Math.ceil(cache.readTokens * cache.readRate) + Math.ceil(cache.writeTokens * cache.writeRate);
 }
 
 /**
@@ -53,7 +72,7 @@ export function usageTokensWithin(usage: { inputTokens: number; outputTokens: nu
  * keeps the reservation counted as `unknown` and withholds the result (PROV-3).
  */
 export function boundedUsageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>,
-  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number },
+  usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null; webSearches?: number; cache?: UsageCache },
   bounds: { maxInputTokens: number; maxOutputTokens: number; maxWebSearches?: number; reservedMicros: number }): number | null {
   if (!usageTokensWithin(usage, bounds)) return null;
   const charge = usageMicros(price, usage);

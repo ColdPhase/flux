@@ -1,1 +1,0 @@
-- Tasks: the cards' ⋯ ("Move to…"), the columns' "+", the narrow board's row of status tabs, the List's row of state views, the phone's separate "Mine | All" row, the cards' "came from" link and the task panel's Hand off button and window ([#868](https://github.com/ColdPhase/flux/issues/868)).

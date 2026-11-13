@@ -20,10 +20,9 @@ export interface SelectionTools {
   canUndo: boolean;
   helpOpen: boolean;
   onShape(): void;
-  /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
-  onCite: (() => void) | null;
-  /** My map only (#948): "Move to a space map" for the selection, and "Copy link" to the one selected thought. */
+  /** My map only (#948): "Move to a space map" for the selection. */
   onMove: (() => void) | null;
+  /** "Copy link" to the one selected thought, on My map and a space's map (#948, #1376). */
   onCopyLink: (() => void) | null;
   onUndo(): void;
   onHelp(): void;
@@ -1151,7 +1150,6 @@ export function SketchMap(props: SketchMapProps) {
             {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
             {sourceMessage ? <Link className="sk-options__action" to={sourceMessage} onClick={() => setPhoneMenuOpen(false)}><Icon name="chat" size={18} />Open message</Link> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
-            {props.bar.onCite ? <button type="button" className="sk-options__action" aria-label="Cite the selected thought in the conversation" onClick={() => phoneAction(props.bar.onCite!)}><Icon name="cite" size={18} />Cite in conversation</button> : null}
             {props.bar.onMove ? <button type="button" className="sk-options__action" onClick={() => phoneAction(props.bar.onMove!)}><Icon name="map" size={18} />Move to a space map</button> : null}
             {selection.length === 1 && props.bar.onCopyLink ? <button type="button" className="sk-options__action" onClick={() => phoneAction(props.bar.onCopyLink!)}><Icon name="link" size={18} />Copy link</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from map" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>

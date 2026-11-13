@@ -22,7 +22,7 @@ const annotations = { readOnlyHint: true };
 
 const summarizeInput = z.object({
   in: z.uuid().optional().describe('Space, conversation or task; a run may omit it.'),
-  after: z.string().min(8).max(40).describe('Start: 2026-09-01 or 2026-09-01T08:00:00Z.'),
+  after: z.string().min(8).max(40).describe('Start: 2026-09-01 or 2026-09-01T08:00:00Z. Last week: the calendar week before this one.'),
   before: z.string().min(8).max(40).optional().describe('End, not included.'),
   next: z.string().min(1).max(100).optional().describe('From an answer that stopped early.'),
 });

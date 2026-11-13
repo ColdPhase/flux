@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { PERSONAL_RUN_LIMITS, tablePrice, WEB_SEARCH_MICROS } from '@flux/contracts';
+import { conservativeTokenEstimate } from '../../packages/core/src/ai/estimate.js';
 import {
-  budgetedReservationMicros, connectionCallsTools, emptyAccount, nextRequestFits, notedPageResult, PAGE_NOTE_MIN_CHARS, reconcileRequest, runReservationMicros, runToolLoop,
+  ANSWER_NOW, boundedResult, budgetedReservationMicros, connectionCallsTools, emptyAccount, nextRequestFits, notedPageResult, PAGE_NOTE_MIN_CHARS, reconcileRequest, requestParts,
+  runReservationMicros, runToolLoop,
   type Gate, type LoopOptions, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type PersonalTool, type PersonalToolCall, type PersonalToolSession,
 } from '@flux/core';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
@@ -217,14 +219,89 @@ describe('the bounded loop', () => {
     assert.deepEqual(provider.sent[1]!.turns![0]!.results, [{ callId: 'c1', content: 'The call failed.', isError: true }]);
   });
 
-  test('a result that would take the next request over the input bound ends the run before it is sent', async () => {
-    const provider = new FakeProvider((turn) => toolUse(`c${turn}`));
-    const huge = 'x'.repeat(PERSONAL_RUN_LIMITS.maxToolInputTokens);
-    const session = new FakeSession(() => ({ content: huge, isError: false }));
+  test('a result longer than a request may carry is cut, says how much was left out and how to read on, and the run goes on (#1410)', async () => {
+    const provider = new FakeProvider((turn) => (turn === 1 ? toolUse('c1') : answer()));
+    const huge = `${'é'.repeat(10)}${'x'.repeat(PERSONAL_RUN_LIMITS.maxToolInputTokens)}`;
+    const result = await loop(provider, new FakeSession(() => ({ content: huge, isError: false })));
+    assert.equal(result.end.kind, 'answer');
+    const carried = provider.sent[1]!.turns![0]!.results[0]!.content;
+    assert.ok(carried.startsWith('éééééééééé'), 'cut on a character boundary, from the start');
+    assert.match(carried, /\[Flux: this result was cut here; 16384 of its 64020 bytes are shown\. Ask for less at a time/);
+    assert.ok(Buffer.byteLength(carried) < PERSONAL_RUN_LIMITS.toolResultBytes + 300);
+    assert.equal(boundedResult({ callId: 'a', content: 'short', isError: false }).content, 'short', 'an ordinary result is untouched');
+    // The bound falls inside a two-byte and a four-byte character: the character is left out whole, never half of it.
+    for (const [lead, char] of [['x', 'ł'], ['xx', '🙂']] as const) {
+      const cut = boundedResult({ callId: 'a', content: `${lead}${char.repeat(9_000)}`, isError: false }).content;
+      const kept = cut.slice(0, cut.indexOf('\n[Flux:'));
+      assert.ok(!kept.includes('�') && kept === `${lead}${char.repeat((kept.length - lead.length) / char.length)}`, char);
+      assert.ok(Buffer.byteLength(kept) <= PERSONAL_RUN_LIMITS.toolResultBytes && Buffer.byteLength(kept) > PERSONAL_RUN_LIMITS.toolResultBytes - 4, char);
+    }
+  });
+
+  test('a result that would take the next request over the input bound becomes the run\'s last request: no tool to call, the answer from what was found (#1410)', async () => {
+    // Each step reads 12 KB; the model would go on for ever, but answers when it is asked to.
+    const provider = new FakeProvider((turn, next) => (next.answerNow ? answer() : toolUse(`c${turn}`)));
+    const session = new FakeSession(() => ({ content: 'r'.repeat(12_000), isError: false }));
     const result = await loop(provider, session);
-    assert.deepEqual(result.end, { kind: 'limit', limit: 'input' });
-    assert.equal(provider.sent.length, 1);
-    assert.equal(session.calls.length, 1, 'the call was made; its result could not be sent');
+    assert.equal(result.end.kind, 'answer', JSON.stringify(result.end));
+    const last = provider.sent.at(-1)!;
+    assert.equal(last.answerNow, ANSWER_NOW);
+    assert.deepEqual(last.tools, FLUX_TOOLS, 'the tools stay on the request; the provider is told none may be called');
+    assert.ok(provider.sent.slice(0, -1).every((sent) => sent.answerNow === undefined), 'only the last request asks for the answer');
+    const sizes = provider.sent.map((sent) => conservativeTokenEstimate(requestParts(sent)));
+    assert.ok(sizes.every((size) => size <= PERSONAL_RUN_LIMITS.maxToolInputTokens), `every request fits: ${sizes.join(', ')}`);
+    assert.ok(sizes.at(-2)! <= PERSONAL_RUN_LIMITS.maxToolInputTokens - PERSONAL_RUN_LIMITS.answerRoomTokens, 'the step before had room for one more');
+    assert.ok(sizes.at(-1)! > PERSONAL_RUN_LIMITS.maxToolInputTokens - PERSONAL_RUN_LIMITS.answerRoomTokens, 'the last had no room for another step');
+    assert.equal(session.calls.length, provider.sent.length - 1, 'every call the model asked for before its last request was made');
+  });
+
+  test('a last request that would not fit even so has its longest results shortened until it does; one that asks for a tool anyway ends at the bound (#1410)', async () => {
+    const four = (n: number): PersonalComputeResult => ({ ...toolUse(`c${n}`) as Extract<PersonalComputeResult, { kind: 'completed' }>, toolCalls: [1, 2, 3, 4].map((k) => ({ id: `c${n}-${k}`, name: 'flux_update_work', input: { id: 'w1' } })) });
+    const provider = new FakeProvider((turn, next) => (next.answerNow ? answer() : four(turn)));
+    const result = await loop(provider, new FakeSession(() => ({ content: 's'.repeat(20_000), isError: false })));
+    assert.equal(result.end.kind, 'answer', JSON.stringify(result.end));
+    assert.equal(provider.sent.length, 2, '4 × 16 KB do not fit with the tools: the second request is the last');
+    const last = provider.sent[1]!;
+    assert.match(last.answerNow!, /shortened to fit/);
+    assert.ok(last.turns![0]!.results.every((item) => Buffer.byteLength(item.content) < 8_192 + 300), 'each result shortened to 8 KB');
+    assert.ok(conservativeTokenEstimate(requestParts(last)) <= PERSONAL_RUN_LIMITS.maxToolInputTokens);
+
+    const stubborn = new FakeProvider((turn) => four(turn));
+    const stopped = await loop(stubborn, new FakeSession(() => ({ content: 's'.repeat(20_000), isError: false })));
+    assert.deepEqual(stopped.end, { kind: 'limit', limit: 'input' }, 'a tool asked for in the last request is never run');
+    assert.equal(stubborn.sent.length, 2);
+  });
+
+  test('the step cap: the last request it allows asks for the answer from what was found (#1410)', async () => {
+    const provider = new FakeProvider((turn, next) => (next.answerNow ? answer() : toolUse(`c${turn}`)));
+    const session = new FakeSession();
+    const result = await loop(provider, session, { maxTurns: 3 });
+    assert.equal(result.end.kind, 'answer');
+    assert.deepEqual(provider.sent.map((sent) => sent.answerNow), [undefined, undefined, ANSWER_NOW]);
+    assert.equal(session.calls.length, 2);
+  });
+
+  test('prompt caching is asked for on Anthropic while the largest cached request fits what is left, never elsewhere; reads and writes are charged at their rates (#1410)', async () => {
+    const cached = async (first: PersonalComputeRequest, reservedMicros: number) => {
+      const provider = new FakeProvider((turn) => (turn === 1 ? toolUse('c1') : answer()));
+      await loop(provider, new FakeSession(), { first, reservedMicros });
+      return provider.sent.map((sent) => sent.cache);
+    };
+    assert.deepEqual(await cached(request, ONE * 10), [true, true]);
+    assert.deepEqual(await cached(request, ONE), [undefined], 'a run that can afford one request, but not one written whole to the cache, asks for none');
+    const fitsCached = Math.ceil((Math.ceil(PERSONAL_RUN_LIMITS.maxToolInputTokens * 1.25) * 2_000_000 + PERSONAL_RUN_LIMITS.maxOutputTokens * 10_000_000) / 1_000_000);
+    assert.equal(nextRequestFits(emptyAccount(), SONNET, fitsCached, false, 1.25), true);
+    assert.equal(nextRequestFits(emptyAccount(), SONNET, fitsCached - 1, false, 1.25), false);
+    const openai = { ...request, connection: { ...request.connection, provider: 'openai' as const }, model: 'gpt-5.4' };
+    assert.deepEqual(await cached(openai, ONE * 10), [undefined, undefined], 'OpenAI caches by itself; Flux asks nothing');
+
+    const account = emptyAccount();
+    assert.equal(reconcileRequest(account, { inputTokens: 12_500, outputTokens: 80, cache: { readTokens: 10_000, writeTokens: 2_000, readRate: 0.1, writeRate: 1.25 } }, SONNET, ONE), true);
+    assert.equal(account.micros, (500 + 2_500 + 1_000) * 2 + 80 * 10, '500 at the full price, 2,000 written at 1.25×, 10,000 read at 0.1×');
+    assert.equal(account.inputTokens, 12_500, 'the whole prompt is the run\'s input');
+    const odd = emptyAccount();
+    assert.equal(reconcileRequest(odd, { inputTokens: 100, outputTokens: 0, cache: { readTokens: 90, writeTokens: 20, readRate: 0.1, writeRate: 1.25 } }, SONNET, ONE), true);
+    assert.equal(odd.micros, 100 * 2 * 2, 'counts that cannot be right are charged at twice the full price, never less');
   });
 
   test('a provider token count may only raise the estimate: a count over the bound ends the run, a failed count ends it without a request', async () => {

@@ -1,1 +1,0 @@
-- Standing grants for local clients: the grant panel under each connection, `/api/v1/agent-connections/:id/action-grants`, `grantId` on every action tool and the grants in `flux_bootstrap` ([#859](https://github.com/ColdPhase/flux/issues/859), [#855](https://github.com/ColdPhase/flux/issues/855)).

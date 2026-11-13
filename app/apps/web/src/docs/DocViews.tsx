@@ -6,7 +6,7 @@ import { Icon, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';
-import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
+import { diffDocs, diffStats, readableRefs } from './diff';
 import { authorLabel, longDate, shortDate } from './format';
 import { DocProse } from './DocProse';
 import { NoPages, PageFrame, scrollPage, useReferenceClicks } from './WikiParts';
@@ -159,28 +159,8 @@ export async function docHistoryLoader({ params, request }: LoaderFunctionArgs):
   return { doc, versions, from, to };
 }
 
-function DiffView({ rows }: { rows: DiffRow[] }) {
-  if (!rows.some((row) => row.kind === 'added' || row.kind === 'removed')) return <p className="doc-muted">The text is the same in both versions.</p>;
-  return (
-    <ol className="doc-diff" aria-label="Changes in the text">
-      {rows.map((row, index) => row.kind === 'fold'
-        ? <li key={index} className="doc-diff__fold">{row.count} unchanged {row.count === 1 ? 'line' : 'lines'}</li>
-        : (
-          <li key={index} className={`doc-diff__row doc-diff__row--${row.kind}`}>
-            <span className="doc-diff__m" aria-hidden="true">{row.kind === 'added' ? '+' : row.kind === 'removed' ? '−' : ''}</span>
-            {row.kind !== 'same' ? <span className="ui-vh">{row.kind === 'added' ? 'Added: ' : 'Removed: '}</span> : null}
-            <span className="doc-diff__t">{row.parts.map((part, i) => part.changed && row.kind !== 'same'
-              ? (row.kind === 'added' ? <ins key={i}>{part.text}</ins> : <del key={i}>{part.text}</del>)
-              : <span key={i}>{part.text}</span>)}{row.parts.every((part) => !part.text) ? ' ' : null}</span>
-          </li>
-        ))}
-    </ol>
-  );
-}
-
-/** What changed between two versions: the page as it reads, or its exact Markdown text (#511, AC-1, AC-2). */
+/** What changed between two versions, as the page reads (#511 AC-1). There is no Markdown view: history shows the rendered version only (Hubert, 2026-11-13, #1376). */
 function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
-  const [view, setView] = useState<'rendered' | 'markdown'>('rendered');
   const onClick = useReferenceClicks();
   const rows = useMemo(() => {
     const titles = new Map([...(from?.mentions ?? []), ...to.mentions].filter((item) => item.title).map((item) => [`${item.type}:${item.id}`, item.title]));
@@ -195,14 +175,10 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
           {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
           <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
         </h3>
-        <div className="doc-seg" role="group" aria-label="Show the changes as">
-          <button type="button" className="doc-seg__b" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>Rendered</button>
-          <button type="button" className="doc-seg__b" aria-pressed={view === 'markdown'} onClick={() => setView('markdown')}>Markdown</button>
-        </div>
       </header>
       <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
       {from && from.title !== to.title ? <ul className="doc-changes__facts"><li>Title: <del>{from.title}</del> → <ins>{to.title}</ins></li></ul> : null}
-      {view === 'markdown' ? <DiffView rows={rows} /> : page.changed ? (
+      {page.changed ? (
         <>
           <section className="doc-changes__page" aria-label="Changes in the text">
             <DocProse html={page.html} onClick={onClick} />

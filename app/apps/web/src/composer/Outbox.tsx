@@ -6,7 +6,6 @@ import type { DraftFile, PendingSend } from './draft';
 import { MessageBubble, FileIcon, typeLine, useObjectUrl } from './Attachments';
 import { selectedFile, uploadLabel } from './draft';
 import { detailLine, looksLikePhoto } from './fileKind';
-import { CiteTile } from './References';
 import './composer.css';
 
 /**
@@ -102,7 +101,6 @@ export function PendingSource({ item, className = 'outbox-source' }: { item: Pen
   const ref = item.references[0];
   return <>
     {ref ? <span className={className}>Source: {ref.title} · v{ref.version}</span> : null}
-    {item.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} />)}
   </>;
 }
 

@@ -1,1 +1,0 @@
-- Search says when there are more than 20 results ("Showing 20 · type more words to narrow"), its hint lists files, and the search answer no longer carries per-kind counts that nothing read ([#944](https://github.com/ColdPhase/flux/issues/944)).

@@ -259,7 +259,7 @@ class MapOutlineJourney(unittest.TestCase):
         names = self.row(page, 2).locator(".sk-outline-actions button").evaluate_all("buttons => buttons.map(b => b.getAttribute('aria-label') || b.textContent.trim())")
         self.assertEqual(names, ["Edit", "Add a child thought", "More actions"])
         menu = self.more(page, 2)
-        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Cite in conversation", "Remove"])
+        expect(menu.get_by_role("button")).to_have_text(["IndentTab", "Outdent⇧Tab", "Move up⌥↑", "Move down⌥↓", "Connect…", "Connections", "Copy link", "Remove"])
         page.keyboard.press("Escape")
         shot(page, "map-outline-tree-1440-light")
         self.api(page, "PATCH", f"/api/v1/sketches/{self.sketch_id}/links/{link['id']}", {"label": None, "expectedLabel": "problem"}, headers={"idempotency-key": f"unlabel-{STAMP}"})

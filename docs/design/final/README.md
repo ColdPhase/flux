@@ -164,7 +164,7 @@ live panel and the connection's permissions (#1238).
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
 **Segmented controls** (#1238) are one style: the Map / List switch, Board / List, What it may do, Model, Text size,
-the live stage and screen mode, access and Rendered / Markdown. (The space views, Conversation | Tasks | Map | Wiki, become underline
+the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
 - The track is `--seg` and the selected option is a raised pill, `--seg-on`, with a 1 px `--line2` edge and `--sh-raise`. In light that is
@@ -391,8 +391,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings and
-  **Mute space** / **Unmute space**. There is no Agents view, no Focus, no goal and no "needs you" count.
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
+  **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
+  [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -1093,6 +1095,10 @@ information: it reads as part of the conversation, never as a log line, and it n
     (`--fs-xs`, `--t3`); scrolling it into view loads the next 20 and the line counts down, so the
     full list of a large space is read page by page and only after it was opened. A list of 3 or
     fewer is already known and loads nothing.
+- **The exact read time, always** (founder decision, Hubert, 2026-11-13, [#1346](https://github.com/ColdPhase/flux/issues/1346)).
+  A reader's row in the list shows the time they read the message, to the minute, even for a person who turned off "Show when I
+  was last active" ([Last active](#last-active), [C-58](../../product/decisions.md)). A receipt is about reading a message, not
+  about presence: it says nothing about where the person is or when they were last in Flux, and that switch does not touch it.
 - **The accessible name** of the faces button is "Seen by Maurycy" (first names: "Seen by Maurycy
   and Ada", "Seen by Maurycy, Ada, Jonas and 47 others"); the faces and the "+N" are decoration for
   the screen reader. The list is a dialog named "Seen by", its rows are plain list items, and Escape
@@ -1247,6 +1253,10 @@ the composer. The right-hand phone above shows the sheet.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
+- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks") and one action, **Go to
+  Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
+  no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
+  the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
 
 ### My map
 
@@ -1271,6 +1281,14 @@ the composer. The right-hand phone above shows the sheet.
   - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
     open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
+- A space's map has the same **Copy link** for one selected thought, `/projects/:p/map/:id#thought-:id`, and no Cite: Copy link
+  is the one way to point at a thought from a message (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376)).
+  A thought's address pasted into a message (a space's conversation, a thread, a task's discussion or a direct message) reads as a
+  chip on the text's baseline, the map glyph and the thought's first line, like `#4` and `[[Page]]`; it opens the map with the
+  thought selected. A reader who may not read that map sees "Thought not available" and nothing of it. It gets no link card.
+- **One recorded departure from the drawn tools** ([#1376](https://github.com/ColdPhase/flux/issues/1376)). **Select several** is on the toolbar of a
+  touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
+  Shift-click, and the phone selects one thought at a time (S15).
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
   follows S15: view and add a thought.
 
@@ -1293,8 +1311,8 @@ the composer. The right-hand phone above shows the sheet.
   - **Tell me about** is one level. Only what needs me covers decisions, questions, blocked tasks,
     mentions and agents waiting for you. Everything adds new messages and task updates. Nothing
     shows only the count on the Inbox.
-  - **Where:** Email me too, On this device and Quiet hours ("22:00–7:00 · no email or push then;
-    the Inbox keeps everything", Change), and #1243's two sound switches: **Sound for messages**
+  - **Where:** Email me too, On this device, **Hide previews** ([below](#hide-previews), #1346) and Quiet hours
+    ("22:00–7:00 · no email or push then; the Inbox keeps everything", Change), and #1243's two sound switches: **Sound for messages**
     (off by default) and **Sound when someone calls me** (on by default; the soft chime of a call
     invitation, F-041).
   - **Email addresses:** the sign-in address first, then the others, each ticked on or off.
@@ -1314,6 +1332,34 @@ the composer. The right-hand phone above shows the sheet.
     Invite. Without SSO, Invite makes a one-time link that the admin sends (F-035); Flux sends no
     invitation email.
   - There is no AI switch here; AI is per space.
+
+#### Hide previews
+
+Founder decision (Hubert, 2026-11-13, [#1346](https://github.com/ColdPhase/flux/issues/1346)); the push contract is in
+[mobile PWA](../../product/mobile-pwa.md#what-a-notification-shows). Nothing new is drawn as a control or a screen: it is one
+standard switch row in Settings › Notifications, and the rest of the page stays as it is.
+
+```
+ Where                                                       (the card, top to bottom)
+   Email me too                       To 1 address               [switch]
+   On this device                                                [Turn off]
+   Hide previews                                                 [switch]
+   Notifications show who and where, never the message
+   Quiet hours  22:00–7:00 · no email or push then              Change
+```
+
+- **One switch, in the Where card**, between On this device and Quiet hours, because it says what a push shows. It is the
+  standard switch row (36 × 22, `--t1` when on) like Email me too, with the label **Hide previews** and, under it in the
+  row's second line (`--t3`, `--fs-xs`), "Notifications show who and where, never the message". It is **off** by default and
+  saves at once like every row on the page.
+- **Plain words, no jargon.** Not "payload", "preview mode" or "privacy level". At the level Nothing the second line reads
+  "Not used while you hear about Nothing", like the two sound switches. A Flux server that cannot push shows no row at all
+  (as it shows no On this device).
+- **Calm.** Switching it changes nothing else on the page and shows no sample, warning or confirmation; the page's own "Saved"
+  is the only answer. It never moves another row: it has a place in the card whether it is on or off.
+- **What it does.** On, a notification on the phone or the computer says, for example, "Ada mentioned you in Tool library", and
+  nothing that was written: no message text, file name, task title or call topic. Off, it shows the first words as the Inbox
+  does. The notice inside Flux, the Inbox and the sound are the same either way.
 
 ### Agents and AI
 
@@ -1607,6 +1653,9 @@ screen, colour or control: it is one line in the rows that exist, and one switch
 - **Account.** Settings › Account has one more row in its own card, between the account card and Sign out: the switch **Show when
   I was last active**, on by default, with the line "People who can see you in Flux see when you were last active, never where.
   Turn it off and nobody does." It is the standard switch row (36 × 22, `--t1` when on), like the AI switch of a space.
+- **Receipts are not presence.** The switch does not hide when someone read a message: the list behind the faces under a message
+  ([Time and who has read it](#time-and-who-has-read-it)) keeps the exact time they read it, whatever this switch says (founder
+  decision, 2026-11-13, #1346).
 - **What it says about a person.** Only that they were active in Flux, rounded: minutes under an hour, hours under a day, then the day.
   It never says where, and Flux keeps no history of it.
 
@@ -1722,14 +1771,16 @@ The renders are the approved mockups as drawn; where a later decision differs, f
     people;
   - MCP scopes, capability switches and standing grants.
 - **Messages and creating:**
-  - Cite, Record a result, Details and Hand off on messages;
+  - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
+    composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;
   - the column "+", the ⌘K Create group, and the Map toolbar's Create task and Note.
 - **Tasks:** Not pursued, the Result object, Results and Activity sections, and "Came from". Also
   ⋯ on board cards and the phone's "+" in the Tasks header.
 - **Wiki:**
   - the pages column and the "On this page" column;
-  - Write / Preview / Both and raw Markdown editing;
+  - Write / Preview / Both and raw Markdown editing, and the History's Rendered / Markdown switch: History shows the changes
+    as the page reads, only (Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
   - version reasons and Draft / Published.
 - **Search:** filter chips, "All places" and the separate Search page.
 - **Settings:**

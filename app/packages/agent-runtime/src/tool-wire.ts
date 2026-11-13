@@ -39,7 +39,7 @@ export const anthropicTools = (tools: readonly PersonalTool[]): Wire[] =>
  * The conversation: the request, then for each turn the assistant's content blocks and one user
  * message whose `tool_result` blocks come first, one per `tool_use`, in call order. A paused turn (#1116) has the assistant's blocks only.
  */
-export function anthropicMessages(input: string, turns: readonly PersonalTurn[] = []): Wire[] {
+export function anthropicMessages(input: string, turns: readonly PersonalTurn[] = [], answerNow?: string): Wire[] {
   const messages: Wire[] = [{ role: 'user', content: input }];
   for (const turn of turns) {
     const rebuilt = [
@@ -56,6 +56,12 @@ export function anthropicMessages(input: string, turns: readonly PersonalTurn[] 
         : result.content,
       ...(result.isError ? { is_error: true } : {}),
     })) });
+  }
+  // Flux's words of a run's last request (#1410): a text block after the last results, in the same user message.
+  if (answerNow) {
+    const end = messages.at(-1)!;
+    if (end.role === 'user' && Array.isArray(end.content)) end.content = [...end.content as Wire[], { type: 'text', text: answerNow }];
+    else messages.push({ role: 'user', content: answerNow });
   }
   return messages;
 }
@@ -128,7 +134,7 @@ export const responsesTools = (tools: readonly PersonalTool[]): Wire[] =>
  * them) and one `function_call_output` per call, in call order. This wire format has no error flag, so a failed result starts with
  * "Error: ". Without a replay the turn is rebuilt from its text and calls.
  */
-export function responsesInput(input: string, turns: readonly PersonalTurn[] = []): Wire[] {
+export function responsesInput(input: string, turns: readonly PersonalTurn[] = [], answerNow?: string): Wire[] {
   const items: Wire[] = [{ role: 'user', content: input }];
   for (const turn of turns) {
     if (Array.isArray(turn.replay) && turn.replay.length) items.push(...(turn.replay as Wire[]));
@@ -143,6 +149,8 @@ export function responsesInput(input: string, turns: readonly PersonalTurn[] = [
         : result.images?.length ? [{ type: 'input_text', text: result.content }, ...result.images.map((image) => ({ type: 'input_image', image_url: `data:${image.mimeType};base64,${image.data}` }))]
           : result.content });
   }
+  // Flux's words of a run's last request (#1410), after the last outputs.
+  if (answerNow) items.push({ role: 'user', content: answerNow });
   return items;
 }
 
@@ -236,7 +244,7 @@ export const chatTools = (tools: readonly PersonalTool[]): Wire[] =>
  * `tool_calls` and one `role: 'tool'` message per call (`tool_call_id`, `content`). This wire format
  * has no error flag, so a failed result starts with "Error: ".
  */
-export function chatMessages(system: string, user: string, turns: readonly PersonalTurn[] = []): Wire[] {
+export function chatMessages(system: string, user: string, turns: readonly PersonalTurn[] = [], answerNow?: string): Wire[] {
   const messages: Wire[] = [{ role: 'system', content: system }, { role: 'user', content: user }];
   for (const turn of turns) {
     const rebuilt: Wire = {
@@ -251,6 +259,8 @@ export function chatMessages(system: string, user: string, turns: readonly Perso
     if (pictures.length) messages.push({ role: 'user', content: [{ type: 'text', text: 'The pictures flux_view_image returned:' },
       ...pictures.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mimeType};base64,${image.data}` } }))] });
   }
+  // Flux's words of a run's last request (#1410), after the last tool messages.
+  if (answerNow) messages.push({ role: 'user', content: answerNow });
   return messages;
 }
 

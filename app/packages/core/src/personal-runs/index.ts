@@ -10,7 +10,7 @@ export { readBriefFacts, type BriefFacts } from './brief-facts.js';
 export { CITE_LINE, WIKI_INDEX_LINE, type WikiIndex } from './brief.js';
 export { CITES_MAX, fluxMarks, resolveCites, type CitedObject, type CiteKind, type CiteRequest, type FluxMark } from './cites.js';
 export { readWikiIndex, WIKI_INDEX_LIMITS, wikiIndexOf } from './wiki-index.js';
-export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
+export { ANSWER_NOW, boundedResult, emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { notedPageResult, PAGE_NOTE_MIN_CHARS, READ_WEB_TOOL } from './page-notes.js';
 export { announce as announceRunProgress } from './progress.js';
 export { LIVE_TEXT_MS, liveText, type LiveText } from './live-text.js';

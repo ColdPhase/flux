@@ -217,6 +217,17 @@ export function tablePrice(provider: AiProviderKind, model: string): AiPriceTabl
 export const WEB_SEARCH_MICROS = 10_000;
 
 /**
+ * Prompt caching that Flux asks for (#1410): Anthropic caches what a request marks with `cache_control` (the tool definitions, the
+ * brief, and the conversation of a tool run as it grows) for five minutes. A cache write costs 1.25× the input price and a read 0.1×
+ * on every Claude model (0.05× on Claude Opus 5.5 and Sonnet 5.5, so 0.1× never charges less than the provider bills) (pricing page,
+ * platform.claude.com/docs/en/about-claude/pricing, read 2026-11-13). OpenAI and Gemini cache a repeated prefix by themselves; Flux
+ * asks nothing of them and charges their cached input at the full price, which it does not undercount.
+ */
+export const PROMPT_CACHE_RATES: Partial<Record<AiProviderKind, { write: number; read: number; checkedOn: string; source: string }>> = {
+  anthropic: { write: 1.25, read: 0.1, checkedOn: '2026-11-13', source: ANTHROPIC_PRICING },
+};
+
+/**
  * The most one request can cost at `price` (PROV-3): maximum input tokens × input price + maximum
  * output tokens × output price, in micro-dollars, rounded up, and `webSearches` searches at `WEB_SEARCH_MICROS` each. A reservation
  * counts none (the searches of a request are not bounded, #1113); a charge counts the ones the provider reported.

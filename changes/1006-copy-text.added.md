@@ -1,1 +1,0 @@
-- The ⋯ menu of a message has **Copy text** next to Copy link, on every message a person can read, on a computer and in the phone's long-press list. It copies the message's plain words (a mention as @name) and is not offered on a deleted message ([#1006](https://github.com/ColdPhase/flux/issues/1006)).

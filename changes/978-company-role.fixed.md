@@ -1,1 +1,0 @@
-- A guest of the company cannot make an agent or sign in a local client through a role in another workspace (an encrypted space they were added to), and a client they already had stops; a question to an agent that cannot work in the space no longer guesses why ([#978](https://github.com/ColdPhase/flux/issues/978)).
