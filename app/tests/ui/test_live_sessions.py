@@ -710,7 +710,8 @@ class LiveJourney(LiveBase):
         shot(nia, "live-desktop-1440-invite")
         for name in ("Jonas Berg", "Kai Moreau"):
             row = panel.locator(".lv-person--absent", has_text=name)
-            row.get_by_role("button", name="Invite").click()
+            # Each Invite names its person (a list of buttons all called "Invite" says nothing to a screen reader).
+            row.get_by_role("button", name=f"Invite {name}", exact=True).click()
             expect(row).to_contain_text("Invited")
         nia.keyboard.press("Escape")
         # Closed and opened again, the ones invited stay "Invited": they are not offered twice.

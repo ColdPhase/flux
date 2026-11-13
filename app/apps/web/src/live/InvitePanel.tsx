@@ -47,7 +47,7 @@ export function InvitePanel({ live, invited, onInvited, onClose }: {
                 <Avatar name={person.name} id={person.id} size="md" />
                 <span className="lv-person__b"><b>{person.name}</b><span>{invited[person.id] === 'sent' ? 'Invited · one quiet item in their inbox' : invited[person.id] === 'failed' ? 'Could not invite. They may no longer have access.' : 'Not in the call'}</span></span>
                 {invited[person.id] === 'sent' ? <Icon name="check" size={14} /> : (
-                  <Button variant="quiet" busy={invited[person.id] === 'sending'} {...(person.id === first?.id ? { 'data-autofocus': '' } : {})} onClick={() => void invite(person.id)}>Invite</Button>
+                  <Button variant="quiet" aria-label={`Invite ${person.name}`} busy={invited[person.id] === 'sending'} {...(person.id === first?.id ? { 'data-autofocus': '' } : {})} onClick={() => void invite(person.id)}>Invite</Button>
                 )}
               </li>
             ))}
