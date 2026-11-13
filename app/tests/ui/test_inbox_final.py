@@ -30,6 +30,7 @@ REASON = "Overwatering is the problem now; frost only matters in spring."
 # What the two messages to Ada say (setUpClass): the title of their Inbox rows, under "Question · Jonas Berg · Community garden sensors" (#1424).
 ASKED = "can you check the shed roof?"
 MENTIONED = "thanks, the dashboard is live now."
+GATE = "is the gate code still 1234?"  # the question test_12 adds for the phone
 
 
 def mark(page: Page, name: str) -> None:
@@ -853,7 +854,7 @@ class InboxFinal(unittest.TestCase):
         self.assertTrue(clear, "the unread dot does not cover the icon")
         shot(page, "inbox-final-phone-390")
         # A swipe left reveals Not now and Done; Done applies at once and offers Undo.
-        question = self.card(page, ASKED)
+        question = self.card(page, GATE)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
         tray = question.locator(".nyc__tray")
         self.assertGreaterEqual(box(page, tray.get_by_role("button", name="Done"))["height"], 44)
@@ -862,9 +863,9 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Marked done")).to_be_visible()
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
-        expect(self.card(page, ASKED)).to_have_count(1)
+        expect(self.card(page, GATE)).to_have_count(1)
         # Not now in the tray is one button with no menu: it puts the item off until tomorrow morning (S11).
-        question = self.card(page, ASKED)
+        question = self.card(page, GATE)
         question.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
         self.assertGreaterEqual(box(page, question.locator(".nyc__tray").get_by_role("button", name="Not now"))["height"], 44)
         question.locator(".nyc__tray").get_by_role("button", name="Not now").tap()
@@ -872,7 +873,7 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         expect(question).to_have_count(0)
         page.get_by_role("button", name="Undo").tap()
-        expect(self.card(page, ASKED)).to_have_count(1)
+        expect(self.card(page, GATE)).to_have_count(1)
         # One column on a phone, and no filters.
         expect(page.locator(".nyq--two")).to_have_count(0)
         expect(page.get_by_role("tablist", name="Show")).to_have_count(0)

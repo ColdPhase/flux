@@ -667,8 +667,11 @@ class NotificationJourney(unittest.TestCase):
         before = len(waiting())
         page.goto("/inbox")
         card = page.locator(f'.nyc[data-key="{item["key"]}"]')
-        expect(card).to_contain_text("Question · Kai Tanaka · Garden sensors")
+        # On a phone the one open card is the expanded one: the sender, then "Question · space" (a row of the list is "Question · Kai Tanaka · space").
+        expect(card).to_contain_text("Kai Tanaka")
+        expect(card).to_contain_text("Question · Garden sensors")
         expect(card).to_contain_text(asked)
+        expect(card).not_to_contain_text("asked you in")
         open_item(card).get_by_role("button", name="Reply").tap()
         expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/conversations/{conversation['id']}")))
         thread = page.get_by_role("dialog", name=re.compile("^Replies"))
