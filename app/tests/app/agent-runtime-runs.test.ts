@@ -621,7 +621,8 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
   test('AST-9.1 on the runtime: a DM, a private map and another project never reach the CLI\'s MCP results', async () => {
     await script({ calls: [
-      { name: 'flux_search_project', args: { projectId: place.id, q: 'canary', type: 'message' } },
+      { name: 'flux_search', args: { q: 'canary', kind: 'message' } },
+      { name: 'flux_search', args: { q: 'canary private elsewhere' } },
       { name: 'flux_list_maps', args: { projectId: place.id } },
       { name: 'flux_get_doc', args: { projectId: other.id, id: otherDocId } },
       { name: 'flux_list_contexts' },

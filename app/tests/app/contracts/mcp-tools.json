@@ -2169,6 +2169,41 @@
       }
     },
     {
+      "name": "flux_read_around",
+      "title": "Read the messages around a message",
+      "operation": null,
+      "classes": [],
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+          "messageId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
+          "before": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 25
+          },
+          "after": {
+            "default": 5,
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 25
+          }
+        },
+        "required": [
+          "messageId"
+        ]
+      }
+    },
+    {
       "name": "flux_read_material",
       "title": "Read a project material",
       "operation": null,
@@ -2788,51 +2823,61 @@
       }
     },
     {
-      "name": "flux_search_project",
-      "title": "Search a project",
+      "name": "flux_search",
+      "title": "Search everything you may read",
       "operation": null,
       "classes": [],
       "annotations": {
         "readOnlyHint": true
       },
       "inputSchema": {
-        "type": "object",
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
         "properties": {
-          "projectId": {
+          "q": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "in": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "q": {
+          "from": {
             "type": "string",
             "minLength": 1,
-            "maxLength": 200
+            "maxLength": 64
           },
-          "type": {
+          "after": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 40
+          },
+          "before": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 40
+          },
+          "kind": {
             "type": "string",
             "enum": [
               "message",
               "doc",
               "material",
-              "work",
+              "task",
               "decision",
-              "sketch"
+              "map"
             ]
           },
-          "cursor": {
-            "type": "string",
-            "maxLength": 500
-          },
           "limit": {
-            "default": 20,
+            "default": 10,
             "type": "integer",
             "minimum": 1,
-            "maximum": 50
+            "maximum": 25
           }
         },
         "required": [
-          "projectId",
           "q"
         ]
       }

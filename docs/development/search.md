@@ -121,9 +121,9 @@ needs a live session and answers `Cache-Control: no-store`.
   “Sensing options”", the title and snippet as plain and matched parts, never markup, the place,
   author, time and exact target) and `next`. There are no counts: nothing read them (#944).
 - **Who uses which parameter.** The web sends `q`, `place` (the Create window's look for a duplicate) and
-  `limit`. `type` and `cursor` serve the MCP tool `flux_search_project`, which calls the same use case
-  directly (`agent-connection/domain-reads.ts`) so an agent can ask for one kind and continue past a
-  page, and the API's own tests; no screen sends them.
+  `limit`. `type` and `cursor` serve the API's own tests; no screen sends them. An agent does not use this endpoint:
+  `flux_search` and `flux_read_around` (`agent-connection/search-reads.ts`, F-042) rank by BM25 with `searchRows(db).ranked`
+  and take their audiences from the same policy, for the agent's owner, on every call.
 - **Cursor.** `next` is the AES-256-GCM encryption (keys from `FLUX_AUTH_SECRET` via HKDF) of the
   last visible result's rank, time and row, authenticated with the reader and a hash of the query
   and filters. It works only for that person and that exact search; anything else is

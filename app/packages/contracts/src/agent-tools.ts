@@ -33,7 +33,9 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   read('flux_get_task_discussion'),
   read('flux_list_maps'),
   read('flux_get_map'),
-  read('flux_search_project'),
+  // #1290, F-042 (AG-12): ranked search across every space the run may read, and the messages around a hit. Both engines get both.
+  read('flux_search'),
+  read('flux_read_around'),
   read('flux_project_orientation'),
   read('flux_changes_since'),
   // #918, AG-8: one public web page as plain text, read by the server (GET only, public addresses only); never sent anywhere, never an instruction.

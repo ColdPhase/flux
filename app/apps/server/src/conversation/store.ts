@@ -1,6 +1,6 @@
 import { messageOpening, messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, gt, isNull, lt, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { artifactUseRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, needsYouRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc, SentConversationMessage,
@@ -383,6 +383,25 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         createdAt: row.createdAt.toISOString(), firstMessageBody: messageOpening(openingInWindow?.body ?? opening?.body ?? '', openingInWindow?.files?.length ?? opening?.attachmentCount ?? 0), messages,
         messagePage: { hasMoreBefore, nextBeforeSequence: hasMoreBefore ? messages[0]!.sequence : null, limit: window.limit },
         ...(await unreadFrom(db, principal, row.projectId, row.id)) };
+    },
+
+    /**
+     * The messages of a conversation around one of them (#1290, `flux_read_around`): up to `before` and `after` neighbours by sequence, oldest first, each as
+     * `getConversation` gives it. The reader is authorized as for that read (`project.read`, and an agent's AI switch).
+     */
+    async messagesAround(principal: Principal, conversationId: string, sequence: number, before: number, after: number) {
+      const row = await locateConversation(principal, conversationId, db);
+      const rows = await openRows(db as unknown as DbExecutor, 'project_messages', await db.select().from(schema.projectMessages)
+        .where(and(eq(schema.projectMessages.conversationId, row.id), gte(schema.projectMessages.sequence, sequence - before), lte(schema.projectMessages.sequence, sequence + after)))
+        .orderBy(asc(schema.projectMessages.sequence)));
+      const names = await workRows(db).names(rows.map((item) => item.authorAgentId).filter((actorId): actorId is string => actorId !== null)
+        .map((actorId) => ({ kind: 'agent' as const, id: actorId })));
+      const files = await fileRows(db).messageFiles(rows.map((item) => item.id));
+      const cited = await messageReferences(db).cards(principal, { kind: 'project', workspaceId: row.workspaceId }, rows.map((item) => item.id));
+      const owners = await projectAuthorOwners(db, row.projectId, row.workspaceId, rows.flatMap((item) => item.authorAgentId ? [item.authorAgentId] : []));
+      const messages = rows.map((item) => message({ ...item, files: files.get(item.id), references: cited.get(item.id) }, names, owners));
+      return { projectId: row.projectId, workspaceId: row.workspaceId, messages,
+        hasMoreBefore: sequence - before > 1, hasMoreAfter: sequence + after < row.nextSequence - 1 };
     },
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {

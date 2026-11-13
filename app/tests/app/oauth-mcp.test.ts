@@ -188,12 +188,12 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   const staleDoc = await mcp(bearer, 26, 'tools/call', { name: 'flux_get_doc', arguments: { projectId, id: doc.id, offset: 20_000, version: 1 } });
   assert.equal((staleDoc.message?.result as { isError?: boolean })?.isError, true);
   assert.ok(JSON.stringify(staleDoc.message).includes('SOURCE_VERSION_CONFLICT'));
-  const search = toolValue((await mcp(bearer, 27, 'tools/call', { name: 'flux_search_project', arguments: { projectId, q: 'Battery', limit: 2 } })).message);
-  assert.equal((search.items as Record<string, unknown>[]).length, 2);
-  assert.ok(search.next, 'search exposes its continuation');
+  const search = toolValue((await mcp(bearer, 27, 'tools/call', { name: 'flux_search', arguments: { q: 'Battery', limit: 2 } })).message);
+  assert.equal((search.results as Record<string, unknown>[]).length, 2);
+  assert.equal(search.more, true, 'search says there are more matches than it lists');
   assert.ok(!JSON.stringify(search).includes('Secret private'));
-  const mapSearch = toolValue((await mcp(bearer, 28, 'tools/call', { name: 'flux_search_project', arguments: { projectId, q: 'Battery', type: 'sketch' } })).message);
-  assert.ok((mapSearch.items as Record<string, unknown>[]).some((row) => row.kind === 'thought'));
+  const mapSearch = toolValue((await mcp(bearer, 28, 'tools/call', { name: 'flux_search', arguments: { q: 'Battery', kind: 'map' } })).message);
+  assert.ok((mapSearch.results as Record<string, unknown>[]).some((row) => row.kind === 'thought'));
   assert.ok(!JSON.stringify(mapSearch).includes('Secret private'));
   const mapPage = toolValue((await mcp(bearer, 29, 'tools/call', { name: 'flux_get_map', arguments: { projectId, id: map.id, limit: 1 } })).message);
   assert.equal((mapPage.thoughts as unknown[]).length, 1);

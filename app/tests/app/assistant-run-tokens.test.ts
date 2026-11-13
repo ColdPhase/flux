@@ -36,9 +36,10 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
 /**
  * The bytes of the tool definitions with every switch on (one token per byte, PROV-3): 18 read tools took 14,464
  * before #484 and 7,729 after (2026-10-16); #400 adds the agents' thread read tool (19 reads). A3 (#403) adds the 16 change tools in their run-private view (no
- * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17).
+ * runtime, grant, class or sources; compacted like the reads), measured 21,207 bytes for 34 tools (2026-10-17). #1290 replaces the one-space search by the two tools
+ * that find and read around a message: 36 tools, 25,672 bytes (2026-11-12, CI run 43296958864; the bound was 24,000).
  */
-const TOOL_DEFINITION_BYTES = 24_000;
+const TOOL_DEFINITION_BYTES = 26_000;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -320,7 +321,8 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
 
   test('AST-9.1: a DM, a private map and another project never reach the provider or the tool results', async () => {
     const calls: PersonalToolCall[] = [
-      { id: 's1', name: 'flux_search_project', input: { projectId: place.id, q: 'canary', type: 'message' } },
+      { id: 's1', name: 'flux_search', input: { q: 'canary', kind: 'message' } },
+      { id: 's1b', name: 'flux_search', input: { q: 'canary' } },
       { id: 's2', name: 'flux_list_maps', input: { projectId: place.id } },
       { id: 's3', name: 'flux_get_doc', input: { projectId: other.id, id: otherDocId } },
       { id: 's4', name: 'flux_list_contexts', input: {} },
@@ -350,22 +352,26 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const results = () => compute.dispatched.flatMap((request) => (request.turns ?? []).flatMap((turn) => turn.results));
     const doc = (project: string, id: string): PersonalToolCall => ({ id: `doc-${id}`, name: 'flux_get_doc', input: { projectId: project, id } });
 
-    // A direct message: the only tool reads a web page; the DM itself is given in the request, and no space is reachable.
-    compute.respond = calls(doc(place.id, docId), { id: 'ctx', name: 'flux_list_contexts', input: {} });
+    // A direct message: it reads a web page and finds and reads around the messages of that DM and of nothing else (F-042, #1290); the DM
+    // itself is given in the request, and no space is reachable.
+    compute.respond = calls(doc(place.id, docId), { id: 'ctx', name: 'flux_list_contexts', input: {} }, { id: 'dm-find', name: 'flux_search', input: { q: 'canary' } });
     const inDm = await asked({ kind: 'dm', dmId, threadRootId: null });
-    assert.deepEqual(compute.dispatched[0]!.tools?.map((tool) => tool.name), ['flux_read_web']);
+    assert.deepEqual(compute.dispatched[0]!.tools?.map((tool) => tool.name).sort(), ['flux_read_around', 'flux_read_web', 'flux_search']);
     assert.match(compute.dispatched[0]!.input, new RegExp(DM_CANARY), 'the DM is what the model reads');
-    assert.ok(results().every((result) => result.isError), 'a call of any other tool is refused');
+    const answered = results().filter((result) => !result.isError);
+    assert.deepEqual(answered.map((result) => result.callId), ['dm-find'], 'the search of its own DM answers; a call of any other tool is refused');
+    assert.ok(answered[0]!.content.includes(`/dm/${dmId}#message-`), 'it finds the message of its DM');
+    assert.ok(!answered[0]!.content.includes('/projects/'), 'and nothing of a space, though the Wiki says "canary" too');
     for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(compute.dispatched).includes(canary), `${canary} never reaches the provider`);
     const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
-    assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_web']);
+    assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_around', 'flux_read_web', 'flux_search']);
 
     // A chat: every read tool, in every space its owner reaches, a picture for its own answer, and no tool that changes anything.
     compute.respond = calls(doc(other.id, otherDocId), { id: 'make', name: 'flux_create_task', input: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } },
       { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
     const inChat = await asked({ kind: 'chat', agentId });
     const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
-    assert.equal(names.length, 20, 'the 19 read tools (flux_view_image, #1217) and a picture for its answer (flux_attach_image, #1217)');
+    assert.equal(names.length, 21, 'the 20 read tools (flux_view_image, #1217; flux_search and flux_read_around, #1290) and a picture for its answer (flux_attach_image, #1217)');
     assert.ok(names.includes('flux_attach_image'), 'its answer in the chat can carry a picture (founder decision on #1217)');
     assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.filter((tool) => tool !== 'flux_attach_image').every((tool) => !names.includes(tool)), 'no tool that changes anything');
     assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
@@ -392,7 +398,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   });
 
   test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {
-    // With every switch on the run lists 19 read tools. Their definitions travel with every request, so they
+    // With every switch on the run lists 20 read tools. Their definitions travel with every request, so they
     // are kept short (#484): measured below, bounded here, and over a hundred turns fit the tool-run input bound.
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
@@ -401,7 +407,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const fullTools = compute.dispatched[0]?.tools ?? [];
     const fullBytes = JSON.stringify(fullTools).length;
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 19 + ASSISTANT_RUN_EFFECT_TOOLS.length, '19 read tools (flux_read_web, #918; flux_view_image, #1217) and every change tool (A3)');
+    assert.equal(fullTools.length, 20 + ASSISTANT_RUN_EFFECT_TOOLS.length, '20 read tools (flux_read_web, #918; flux_view_image, #1217; flux_search and flux_read_around, #1290) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');

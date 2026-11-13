@@ -153,16 +153,16 @@ describe('/ai everywhere, answered privately (#842)', () => {
   test('the brief tells the time in the asker\'s own zone and says when older messages were left out (#1064)', async () => {
     // The asker's zone is their browser's, which the web app saves on them (#1168, C-57).
     expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'Asia/Tokyo' } }), 204);
-    const long = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Count to forty-one: 1', clientMessageId: randomUUID() });
-    for (let n = 2; n <= 41; n++) await post(kai, `/api/v1/conversations/${long.id}/messages`, { body: `Count to forty-one: ${n}`, clientMessageId: randomUUID() });
+    const long = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Count to twenty-one: 1', clientMessageId: randomUUID() });
+    for (let n = 2; n <= 21; n++) await post(kai, `/api/v1/conversations/${long.id}/messages`, { body: `Count to twenty-one: ${n}`, clientMessageId: randomUUID() });
     try {
       const started = await ask(long.id, 'Where did the count end?');
       await finish(started.run.id);
       assert.match(compute.dispatched.at(-1)!.system, /in pai-hubert's time zone, Asia\/Tokyo\. Every time below is in that zone\./);
       const input = sentToTheModel();
-      assert.match(input, /^The latest 40 messages of this thread, oldest first\. Older messages were left out\.$/m);
-      assert.equal(input.includes('>Count to forty-one: 1</message>'), false, 'the oldest is the one left out');
-      assert.ok(input.includes('>Count to forty-one: 41</message>'));
+      assert.match(input, /^The latest 20 messages of this thread, oldest first\. Older messages were left out\.$/m);
+      assert.equal(input.includes('>Count to twenty-one: 1</message>'), false, 'the oldest is the one left out');
+      assert.ok(input.includes('>Count to twenty-one: 21</message>'));
     } finally {
       expectStatus(await hubert.browser.request('PUT', ME_TIME_ZONE_PATH, { body: { timeZone: 'UTC' } }), 204);
     }

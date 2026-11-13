@@ -59,6 +59,8 @@ export interface SearchRow {
   version: number | null;
   currentVersion: number | null;
   status: string | null;
+  /** A message's place in its conversation (or direct message): what `flux_read_around` reads from (#1290). */
+  sequence?: number | null;
   title: SearchText;
   snippet: SearchText | null;
   hasBody: boolean;

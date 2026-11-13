@@ -63,6 +63,14 @@ export interface SearchPlanRows {
   limit: number;
   /** The reader's user id, to name a DM by the other people in it. */
   reader: string;
+  /**
+   * What an agent's search adds (F-042, #1290; BM25 only): by whoever wrote it, whatever kind of author (an id from an earlier result);
+   * in one conversation (a space's, a thread's or a task's discussion); and from this moment (inclusive) until that one (exclusive).
+   */
+  authorId?: string | null;
+  conversationId?: string | null;
+  since?: Date | null;
+  until?: Date | null;
 }
 
 export interface SearchRowRecord {
@@ -82,6 +90,8 @@ export interface SearchRowRecord {
   version: number | null;
   currentVersion: number | null;
   status: string | null;
+  /** A message's place in its conversation (or direct message), for reading around it (#1290). */
+  sequence?: number | null;
   title: SearchText;
   snippet: SearchText | null;
   hasBody: boolean;
@@ -199,6 +209,11 @@ function hitConditions(plan: SearchPlanRows, ranking: SearchRanking = 'prefix'):
   if (place?.type === 'dm') conditions.push(sql`sd.audience_key = ${`dm:${place.id}`}`);
   if (place?.type === 'private') conditions.push(sql`(sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL)`);
   if (plan.author) conditions.push(sql`sd.author_kind = ${plan.author.kind} AND sd.author_id = ${plan.author.id}`);
+  if (plan.authorId) conditions.push(sql`sd.author_id = ${plan.authorId}`);
+  // A conversation's messages carry it as their parent (a task's discussion is one).
+  if (plan.conversationId) conditions.push(sql`(sd.kind = 'message' AND sd.parent_id = ${plan.conversationId})`);
+  if (plan.since) conditions.push(sql`sd.at >= ${plan.since.toISOString()}::timestamptz`);
+  if (plan.until) conditions.push(sql`sd.at < ${plan.until.toISOString()}::timestamptz`);
   return sql.join(conditions, sql` AND `);
 }
 
@@ -251,7 +266,8 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, coalesce(pmv.via, dmv.via) AS via, length(h.body) > 0 AS has_body,
+      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
@@ -277,7 +293,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
 interface PageRow {
   id: string; score: string; at_key: string; at: Date | string; kind: SearchKind; workspace_id: string; workspace_name: string | null;
   object_id: string; parent_id: string | null; project_id: string | null; project_name: string | null; version: number | null;
-  current_version: number | null; status: string | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
+  current_version: number | null; status: string | null; sequence: number | null; sketch_title: string | null; author_name: string | null; has_body: boolean;
   author_kind: 'human' | 'agent' | null; author_id: string | null; via: string | null;
   title_headline: string | null; body_headline: string | null; dm_name: string | null; work_number: number | null;
 }
@@ -298,6 +314,7 @@ function toRecord(row: PageRow): SearchRowRecord {
     version: row.version,
     currentVersion: row.current_version,
     status: row.status,
+    sequence: row.sequence,
     title: highlightParts(row.title_headline ?? ''),
     snippet: row.body_headline ? highlightParts(row.body_headline) : null,
     hasBody: row.has_body,

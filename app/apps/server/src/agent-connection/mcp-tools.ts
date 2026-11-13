@@ -6,6 +6,7 @@ import { registerAgentPlaybook } from './playbook.js';
 import { agentToolRegistry, type AgentToolRegistry } from './tool-registry.js';
 import { registerAgentBootstrap } from './bootstrap.js';
 import { registerAgentDomainReads } from './domain-reads.js';
+import { registerAgentSearchReads } from './search-reads.js';
 import { registerAgentWorkActions } from './work-actions.js';
 import { registerAgentMapActions } from './map-actions.js';
 import { registerAgentDocActions } from './doc-actions.js';
@@ -68,14 +69,15 @@ function registerAgentProposal(tools: AgentToolRegistry, db: Database) {
 /**
  * The server of every request of one kind of caller, with the tool definitions built once (`run`: a personal run's token, otherwise a
  * local client's bearer). Building them is the cost this exists to pay once: every tool's zod schema, its JSON Schema, the playbook's
- * digest, the search cursor key and the check that the registrations are exactly the tool list. A request then gets a new server (the SDK
+ * digest and the check that the registrations are exactly the tool list. A request then gets a new server (the SDK
  * binds one to its transport and to nothing else) and the tools it may use, bound to its verified claims: see `AgentToolRegistry.bind`.
  */
-function serverFactory(db: Database, cursorSecret: string, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean) {
+function serverFactory(db: Database, github: GithubActionProvider | null, webReader: WebReader | null, run: boolean) {
   const manifest = createMcpManifest();
   const tools = agentToolRegistry(manifest, db, run);
   const playbook = registerAgentPlaybook(tools, db);
-  registerAgentDomainReads(tools.forAccess('read'), db, cursorSecret);
+  registerAgentDomainReads(tools.forAccess('read'), db);
+  registerAgentSearchReads(tools.forAccess('read'), db);
   registerAgentBootstrap(tools, db);
   registerAgentWorkActions(tools, db);
   registerAgentMapActions(tools, db);
@@ -120,12 +122,12 @@ export interface FluxMcpTools {
  * (#160 AC-3); `webReader` reads web pages for flux_read_web (#918), or null when the install has none. Each kind of caller's
  * definitions are built when the first request of that kind arrives, and then serve every request.
  */
-export function createFluxMcpTools(db: Database, cursorSecret: string, github: GithubActionProvider | null = null, webReader: WebReader | null = null): FluxMcpTools {
+export function createFluxMcpTools(db: Database, github: GithubActionProvider | null = null, webReader: WebReader | null = null): FluxMcpTools {
   let client: ReturnType<typeof serverFactory> | undefined;
   let run: ReturnType<typeof serverFactory> | undefined;
   return { server(claims) {
     // A fresh server is bound to one verified bearer; each tool rechecks inside its transaction.
-    if (claims.run) return (run ??= serverFactory(db, cursorSecret, github, webReader, true))(claims);
-    return (client ??= serverFactory(db, cursorSecret, github, webReader, false))(claims);
+    if (claims.run) return (run ??= serverFactory(db, github, webReader, true))(claims);
+    return (client ??= serverFactory(db, github, webReader, false))(claims);
   } };
 }

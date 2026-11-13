@@ -1,6 +1,6 @@
 import type { AgentToolRegistrar, ToolCall } from './tool-registry.js';
 import { z } from 'zod';
-import { conversationUseCases, createSearchUseCases, DomainError, getProject, NotFoundError } from '@flux/core';
+import { conversationUseCases, DomainError, getProject, NotFoundError } from '@flux/core';
 import { accessPorts, schema, type Database } from '@flux/db';
 import { eq } from 'drizzle-orm';
 import { conversationStore } from '../conversation/store.js';
@@ -8,10 +8,8 @@ import { docUseCases } from '../docs/adapters.js';
 import { workUseCases } from '../work/adapters.js';
 import { sketchUseCases } from '../sketches/adapters.js';
 import { taskDiscussionInTransaction } from '../work/task-discussions.js';
-import { policySearchAccess, searchRepository } from '../search/adapters.js';
-import { SearchCursorCodec } from '../search/cursor.js';
 import { withAgentConnection } from './context.js';
-import { messagesForAgents, withAgentLabels } from './authors.js';
+import { AUTHORS, messagesForAgents, withAgentLabels } from './authors.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
@@ -29,11 +27,6 @@ const RUN_TEXT_CHUNK = 12_000;
 const RUN_TEXT_ENCODED_BYTES = 12 * 1024;
 const RUN_PAGE_LIMIT = 10;
 const annotations = { readOnlyHint: true };
-/** How the two conversation reads name who wrote each message (#1160): as people see it, so a person's posted answer is never taken for the reader's own. */
-const AUTHORS = 'Each message names its author as people see them (author.name): a person by name ("Former member" once they can no longer read this space); '
-  + 'an agent with whose it is, "Assistant (Ada\'s agent)"; and "Ada Nowak · via Assistant" for an answer of Ada\'s agent that Ada posted, which is Ada\'s message, '
-  + 'not yours. author.id is the person\'s or the agent\'s id.';
-
 /** Chunking always reports coverage; a continuation cannot silently switch source versions. */
 function textChunk(body: string, version: number, offset: number, expected: number | undefined, run: boolean) {
   if (offset > 0 && expected === undefined)
@@ -54,8 +47,7 @@ function runChunkEnd(body: string, offset: number) {
 }
 
 /** Canonical readers under the owner's rights. No separate MCP object model. */
-export function registerAgentDomainReads(server: AgentToolRegistrar, db: Database, cursorSecret: string) {
-  const cursors = new SearchCursorCodec(cursorSecret);
+export function registerAgentDomainReads(server: AgentToolRegistrar, db: Database) {
   const isRun = ({ claims }: ToolCall) => claims.run !== undefined;
   const pageLimit = (call: ToolCall, limit: number) => isRun(call) ? Math.min(limit, RUN_PAGE_LIMIT) : limit;
   const capped = <T extends { limit: number }>(call: ToolCall, query: T): T => ({ ...query, limit: pageLimit(call, query.limit) });
@@ -159,18 +151,4 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     await requireObject(projectId, 'sketch', id);
     return sketchUseCases(tx).getWindow(principal, id, { limit: pageLimit(call, limit), offset, linkOffset, expectedUpdatedAt });
   }));
-
-  server.registerTool('flux_search_project', { title: 'Search a project',
-    description: 'Search project content: snippets and a cursor for more. Private, direct-message and person results are excluded.',
-    inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'sketch']).optional(),
-      cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
-  ({ projectId, ...query }, call) => {
-    return result(call, projectId, async ({ tx, principal, workspaceId }) => {
-    const access = policySearchAccess(tx);
-    const search = createSearchUseCases({ rows: searchRepository(tx), cursors,
-      access: { audiences: async (actor) => (await access.audiences(actor)).filter((audience) =>
-        (audience.type === 'project' || audience.type === 'sketch') && audience.workspaceId === workspaceId) } });
-    return search.search(principal, { ...capped(call, query), place: `project:${projectId}` });
-    });
-  });
 }
