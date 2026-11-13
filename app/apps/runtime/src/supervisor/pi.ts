@@ -10,7 +10,7 @@ import { asThem, clearLeftovers, removeAsThem } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, runFixed, type Person } from './process.js';
 import { finishedOf, MODEL_NOT_ACCEPTED, RUN_BRIEF_OWN_TOOLS, runsOf, STOP_GRACE_MS } from './run.js';
-import { createScratch, removeScratch, watchRun, type SandboxSetup } from './sandbox.js';
+import { createScratch, removeScratch, startBroker, watchRun, type Broker, type SandboxSetup } from './sandbox.js';
 
 // An API-key agent's run in pi (#1441, RT-1, RT-5): pi 1.5.2 (MIT, pinned with its lockfile in the runtime image), in JSON mode, under the
 // same contract as Claude Code and Codex. Flux is its only MCP server, with exactly the run's tools exposed directly; its own `read`, `bash`,
@@ -160,6 +160,11 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     await clearLeftovers(config.tmpDir, person);
   };
   if (!(await freshHome(person, dir, runDir))) { await cleanUp(); return crashed(); }
+  // The broker that starts every shell of the run outside pi's domain (#1437, #1461), as for the CLIs: pi's domain may execute nothing but
+  // node and the sandbox, so its `bash` (Flux's sandbox shell) hands each command to the broker. Without it pi would have no shell: the run
+  // does not start.
+  const broker: Broker | null = await startBroker(sandbox, scratch, runDir, person).catch(() => null);
+  if (!broker) { await cleanUp(); return crashed(); }
 
   const work = scratch;
   const env: Record<string, string> = {
@@ -172,11 +177,12 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     // Node's own compile cache would go to TMPDIR, the scratch: nothing but what the run makes belongs there.
     NODE_DISABLE_COMPILE_CACHE: '1',
     FLUX_SANDBOX_DIR: scratch,
+    FLUX_SANDBOX_BROKER: broker.socket,
   };
   const argv = [paths.launcher, paths.cli, ...piArgs(brief, request.model)];
   // pi runs inside the sandbox's outer domain: it writes only its own agent directory and the scratch, and reads those, the run's folder
   // and the system; never the person's shared home or a CLI's.
-  const [file, args] = [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, '--', paths.node, ...argv]] as const;
+  const [file, args] = [sandbox.binary, ['cli', scratch, '--home', home, '--read', runDir, ...(sandbox.testExec ?? []).flatMap((path) => ['--exec', path]), '--', paths.node, ...argv]] as const;
   // `flux_attach_file` reads a file of the scratch while the run lasts (#1437, files.ts): looked through for the run's own tokens as it passes.
   watchRunSecrets(config, request.runId, request.bindingId, dir, person, [request.runToken, request.modelToken]);
   const allowedFlux = new Set(request.tools.map((tool) => `${PI_MCP_PREFIX}${tool}`));
@@ -192,7 +198,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     let done = false;
     const timers: NodeJS.Timeout[] = [];
     const child = spawn(file, args, { env, cwd: work, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], ...asPerson(person) });
-    const stopWatching = person && child.pid ? watchRun({ person, cliPid: child.pid, scratch, scratchRoot: sandbox.scratchRoot }) : () => undefined;
+    const stopWatching = person && child.pid ? watchRun({ person, cliPid: child.pid, brokerPid: broker.pid, scratch, scratchRoot: sandbox.scratchRoot }) : () => undefined;
     const killGroup = (signal: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, signal); } catch { /* already gone */ } };
     const later = (ms: number, action: () => void) => { const timer = setTimeout(action, ms); timer.unref(); timers.push(timer); return timer; };
     const terminate = (reason: RunOutcome) => { outcome ??= reason; killGroup('SIGTERM'); later(STOP_GRACE_MS, () => killGroup('SIGKILL')); };
@@ -335,6 +341,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   runs.delete(request.runId);
   forgetCredentials(config, request.runId);
   finishedOf(config).set(request.runId, Date.now());
+  broker.stop();
   await cleanUp();
   return { result };
 }
