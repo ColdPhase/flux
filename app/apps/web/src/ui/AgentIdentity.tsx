@@ -20,7 +20,7 @@ export function AgentIdentity({ name, owner, icon = 20, expression, hue, classNa
   return (
     <span className={`agent-id${className ? ` ${className}` : ''}`}>
       {icon ? <Kreska size={icon} expression={expression} hue={hue} /> : null}
-      <span className="agent-id__label">
+      <span className="agent-id__label" title={owner ? `${name} · ${firstName(owner)}'s agent` : undefined}>
         <span className="agent-id__name">{name}</span>
         {owner ? <span className="agent-for">{` · ${firstName(owner)}'s agent`}</span> : null}
       </span>
