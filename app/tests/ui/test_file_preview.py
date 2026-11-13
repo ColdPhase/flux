@@ -8,12 +8,14 @@ route's headers, frame-only answer and access) is tests/app/file-preview.test.ts
 
 from __future__ import annotations
 
+import html as htmllib
 import os
 import re
 import socket
 import threading
 import time
 import unittest
+import urllib.parse
 import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
@@ -99,6 +101,28 @@ PAGE16 = (f'<link rel="preconnect" href="{TRAP_URL}"><LINK rel="preload" as="fet
           f'<link rel="dns-prefetch" href="{TRAP_URL}"><meta http-equiv="refresh" content="0;url={TRAP_URL}/meta16">'
           '<h1 id="title">Sixteen-bit report</h1><p>Zażółć gęślą jaźń</p>')
 UTF16 = {"le": b"\xff\xfe" + PAGE16.encode("utf-16-le"), "be": b"\xfe\xff" + PAGE16.encode("utf-16-be")}
+
+# A nested document needs no fetch (#1349): an iframe's `srcdoc` is entity-encoded text that the browser decodes into an about:srcdoc page
+# (a srcdoc inside a srcdoc too), and WebKit opens a connection for that page's <link rel=preconnect> without asking the policy.
+# Every page below, sent as it is, made WebKit connect to the listener.
+HINT = f'<link rel="preconnect" href="{TRAP_URL}"><LINK REL=dns-prefetch HREF={TRAP_URL}>'
+ATTR = htmllib.escape(HINT, quote=True)
+NESTED_ATTR = htmllib.escape(f'<iframe srcdoc="{ATTR}"></iframe>', quote=True)
+QUOTED = urllib.parse.quote(HINT)
+
+
+def quarterly(body: str) -> str:
+    return f'<!doctype html><html><body><h1 id="title">Quarterly report</h1><p>Nothing to see.</p>{body}</body></html>'
+
+
+SRCDOC = quarterly(f'<iframe hidden srcdoc="{ATTR}"></iframe>')
+NESTED = quarterly(f'<iframe hidden srcdoc="{NESTED_ATTR}"></iframe>')
+HIDING_PLACES = quarterly(
+    f"<IFRAME\nSRCDOC\t=\t'{ATTR}' hidden></IFRAME><iframe/srcDoc=\"{ATTR}\"></iframe><noscript><iframe srcdoc=\"{ATTR}\"></iframe></noscript>"
+    f'<object data="data:text/html,{QUOTED}" type="text/html"></object><embed src="data:text/html,{QUOTED}" type="text/html">'
+    f'<iframe src="data:text/html,{QUOTED}"></iframe><iframe src="javascript:document.write(1)"></iframe><portal src="{TRAP_URL}/portal"></portal>')
+NESTS = {"srcdoc": ("srcdoc.html", SRCDOC.encode()), "nested": ("nested.html", NESTED.encode()), "hiding": ("hiding-places.html", HIDING_PLACES.encode()),
+         "srcdoc16": ("srcdoc16.html", b"\xff\xfe" + NESTED.encode("utf-16-le")), "srcdoc16be": ("srcdoc16be.html", b"\xfe\xff" + SRCDOC.encode("utf-16-be"))}
 
 # With Run scripts: what the page's own script can reach, written into the page for the test to read.
 PROBE = f"""<!doctype html><html><head><meta charset="utf-8"><title>Probe</title></head><body>
@@ -233,6 +257,8 @@ class FilePreview(unittest.TestCase):
         root("probe", "A page with a script", "probe.html", PROBE)
         for order, data in UTF16.items():
             root(f"utf16{order}", f"A UTF-16{order.upper()} page", f"report-{order}.html", data)
+        for key, (name, data) in NESTS.items():
+            root(key, f"A page with a document inside it, {name}", name, data)
         for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
                                 ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", pdf_bytes()),
@@ -401,6 +427,22 @@ class FilePreview(unittest.TestCase):
                 page.wait_for_timeout(2000)
                 self.assertEqual(outside, [], "nothing left the browser")
                 self.assertEqual(TRAP.connections, before, "no connection was opened to a host the page names")
+                self.assertEqual(events["pages"], [])
+
+    def test_02c_a_document_inside_the_page_makes_no_connection_either(self) -> None:
+        """#1349: `srcdoc` (nested, hidden in a noscript, in a UTF-16 page) and the other elements that hold a document stay inert."""
+        for key, (name, _) in NESTS.items():
+            with self.subTest(file=name):
+                before = TRAP.connections
+                page, outside, events = self.open(key)
+                self.viewer(page, key, name)
+                inside = page.frame_locator(".file-viewer iframe")
+                expect(inside.locator("#title")).to_have_text("Quarterly report")
+                page.wait_for_timeout(2500)
+                self.assertEqual([frame.url for frame in page.frames if frame != page.main_frame], [f"{ORIGIN}/api/v1/files/{self.ids[f'file:{key}']}/preview"],
+                                 "the preview is the only frame: no document was made inside it")
+                self.assertEqual(outside, [], "nothing left the browser")
+                self.assertEqual(TRAP.connections, before, "no connection was opened to a host the nested page names")
                 self.assertEqual(events["pages"], [])
 
     def test_02b_the_connection_counter_sees_a_connection(self) -> None:
