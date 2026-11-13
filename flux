@@ -69,6 +69,12 @@ compose_main() {
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
+# `clean` and `reset`: with the embeddings overlay too, so that its container and model volume go even after FLUX_EMBEDDINGS went back
+# to off (Compose removes only what the files it is given define).
+compose_main_all() {
+  embeddings_on || set -- -f "$COMPOSE_EMBEDDINGS" "$@"
+  compose_main "$@"
+}
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
@@ -532,6 +538,20 @@ start_main() {
     stop_runtime
     remove_idle_runtime_networks
   fi
+  remove_embeddings_when_off
+}
+
+# FLUX_EMBEDDINGS=off after `on`: Compose no longer knows the embedding service, so `up` would leave its container running (and
+# holding about 3 GiB) as an orphan. Remove it; the downloaded model stays in its volume, and the worker has already deleted every vector.
+remove_embeddings_when_off() {
+  embeddings_on && return 0
+  ids=$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=embeddings")
+  [ -n "$ids" ] || return 0
+  # A service of that name that docker/compose.override.yaml defines is the operator's own: Compose knows it, so it is no orphan.
+  ! compose_main config --services 2>/dev/null | grep -qx embeddings || return 0
+  say "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
+  # shellcheck disable=SC2086 # one id per word
+  docker rm -f $ids >/dev/null || warn "Could not remove the local embeddings container; remove it with: docker rm -f $ids"
 }
 
 # Development demo only. True only for an origin that is exactly scheme://host[:port] with
@@ -737,7 +757,7 @@ cmd_reset() {
   runtime_sign_out
   remove_leftover_runs "$PROJECT"
   remove_leftover_runs "$DEV_PROJECT"
-  compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
+  compose_main_all --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   release_project "$PROJECT"
   release_project "$DEV_PROJECT"
@@ -771,7 +791,7 @@ cmd_clean() {
   runtime_sign_out
   remove_leftover_runs "$PROJECT"
   remove_leftover_runs "$DEV_PROJECT"
-  compose_main --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
+  compose_main_all --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans
   compose_dev down -v --remove-orphans
   remove_own_images
   release_project "$PROJECT"

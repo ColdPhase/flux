@@ -108,6 +108,11 @@ export interface PushSendJob {
   subscriptionId: string;
   /** The recipient at enqueue time; the worker rechecks ownership, session and source access. */
   userId: string;
+  /**
+   * What "Hide previews" sends (#1346): who and where in fixed words ("Ada mentioned you in Tool library"), written by the generator
+   * from facts it already read, never content. Absent for a notification made without a reason or person: it then sends the fixed text.
+   */
+  hiddenTitle?: string;
 }
 
 /**

@@ -1,7 +1,7 @@
 import https from 'node:https';
 import { WebPushError, getVapidHeaders, sendNotification } from 'web-push';
 import { assignmentDeliveryAdmission, pushDeliveryRepository, accessReader, type Database } from '@flux/db';
-import { pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
+import { pushHidePreviewsCheck, pushPreferenceCheck, pushQuietCheck } from '../notifications/adapters.js';
 import { createPublicOnlyLookup, type PublicLookupResolver } from './public-lookup.js';
 import {
   deliverPushJob,
@@ -98,6 +98,7 @@ export async function deliverPush(deps: DeliveryDependencies, job: PushSendJob):
     sender: config.status === 'available' ? webPushSender(config, deps.agent, deps.vapid) : unavailable,
     stillWanted: pushPreferenceCheck(db),
     quiet: pushQuietCheck(db),
+    hidePreviews: pushHidePreviewsCheck(db),
     log: deps.log,
   }, job);
 }

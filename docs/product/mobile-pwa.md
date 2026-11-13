@@ -172,8 +172,9 @@ inbox usable when push is unavailable, denied or disabled by the operating syste
 
 Persist subscriptions per user/device with authorization, revocation and expiry.
 Authorize the event recipient at delivery time and the target again when opened.
-Use privacy-preserving lock-screen content by default. Never send private project
-text to a user whose access was removed. Protect subscription endpoints against
+The person chooses what the lock screen shows: the text by default, or only who and
+where with **Hide previews** ([Lock-screen privacy](#lock-screen-privacy)). Never send
+private project text to a user whose access was removed. Protect subscription endpoints against
 cross-account changes and forged requests; bound retries and remove dead endpoints.
 Treat subscription endpoint URLs/keys as sensitive configuration.
 
@@ -484,6 +485,7 @@ not implemented or not tested. Each row keeps the labels of its source.
 | Offline: an understandable offline page; API responses never cached (contract, MOB-5) | `sw.js:32-54`, `sw.js:38` (`/api` bypass) | `pwa.e2e.ts` offline test | emulated |
 | Update: the new worker waits, the app asks, one reload on confirmation, and an unsent draft survives it (contract, MOB-5) | `app/apps/web/src/pwa/register.ts`; `app/apps/web/src/pwa/UpdatePrompt.tsx`; drafts in `composer/draft.ts` | `pwa.e2e.ts` update test; `pwa-update.e2e.ts`; `test_update_prompt.py` (placement, reach, dismissal) and test_10: a draft typed on a phone is still in the composer after **Reload** hands the page to the new worker; a negative control on the same page shows the draft is gone when its saved copy is removed | emulated (Chromium and WebKit) |
 | Lock-screen privacy: generic title unless the server sent a full preview; tap-time recheck through `GET /api/v1/inbox/:id` (contract, #41) | `sw.js:72`, `sw.js:96-107`, `sw.js:112` | `push.test.ts:222` and `:246` (recheck and expiry, API level); `push-browser.e2e.ts` closed-app test runs the worker's own `notificationTarget()` in Chromium: the authorized item's address, which then opens the message, and the start page after the reader is removed from the workspace | emulated (tap logic; a real notification click is **device** only) |
+| Hide previews: the payload says only who and where, for every kind of notice (contract, [#1346](https://github.com/ColdPhase/flux/issues/1346), [what a notification shows](#what-a-notification-shows)) | `packages/core/src/push/delivery.ts` (`buildPushPayload`); `packages/core/src/notifications/generate.ts` (`hiddenNotificationTitle`); the switch in `NotificationSettings.tsx`; `sw.js` shows a hidden title and no body | `notification-hide-previews-core.test.ts` runs the real generator and delivery for each kind (direct message, mention, question, reply, task, decision, agent waiting, invitation, call) and searches the payload for the content; `hide-previews.test.ts` decrypts what the push service receives for a direct message, a mention, a task and a call, on and off, and checks the switch persists; `sw-push-preview.test.ts` runs the service worker's push handler on a full, hidden, generic and broken payload; `test_notifications.py` test_13 toggles it in Settings and reloads | emulated (the push service is a mock; what a phone's lock screen then draws is **device** only) |
 | Denied or revoked permission keeps the inbox usable (contract, MOB-4) | `NotificationsButton.tsx` `MESSAGES.denied` and `unsupported` | `push-browser.e2e.ts` denied test: the browser's real `denied` state, Settings says notifications are blocked and offers no button, and the new message's in-app notification (`/inbox/:id`) opens it; `push.test.ts:315` (push unavailable) | emulated (Chromium) |
 
 **Status at the #20 closing pass (2026-10-30).** The map's earlier open rows now have
@@ -525,6 +527,7 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
   recipient who can no longer see the source receives nothing. The title and body
   are included only while the recipient can read the source; otherwise the device
   shows the fixed text "New activity in Flux" with an opaque notification id.
+- What is shown is the person's choice, [below](#what-a-notification-shows).
 - Tapping a notification never trusts the payload: the service worker asks
   `GET /api/v1/inbox/:id`, which rechecks access and the session, and opens the app at
   its start page when the answer is `404`.
@@ -536,6 +539,56 @@ the same audience as the thing it is about ([#41](https://github.com/ColdPhase/f
   the lock screen) still apply on top. The tap-time fetch and generic preview are
   part of MOB-4/MOB-7 evidence in #20, verified as described in
   [Acceptance evidence](#acceptance-evidence).
+
+#### What a notification shows
+
+Founder decision (Hubert, 2026-11-13, [#1346](https://github.com/ColdPhase/flux/issues/1346),
+from security audit C, [#1270](https://github.com/ColdPhase/flux/issues/1270)). Like
+Slack and WhatsApp, Flux shows the text of a message on the lock screen **by default**,
+and one switch removes it. The switch is **Hide previews** in Settings › Notifications
+([drawn](../design/final/README.md#hide-previews)); it is off by default, belongs to the
+person, and holds on every device they receive push on.
+
+- **Off (the default).** The notification shows what the Inbox row shows: its title ("Ada
+  mentioned you in Tool library") and a line of its content, which is the first words of the
+  message, the task's title, the decision's title, the call's place or what the agent wants
+  your OK for. The payload is `preview: "full"` with `notificationId`, `title`, `body` and
+  `url`.
+- **On.** The notification says only **who** and **where**, in fixed words, and carries no
+  content: no message text, no file name, no task or decision title, no call topic and no
+  link. The payload is `preview: "hidden"` with `notificationId` and `title` and nothing
+  else, so what is withheld is not in the payload at all (encrypted or not), and the
+  service worker has nothing to hide by itself. The title is `<who> <what happened> in
+  <where>`, from the same fixed words an encrypted space's notices use (F-030), for every
+  kind of notice:
+
+  | Notice | Reason | With Hide previews on |
+  | --- | --- | --- |
+  | A direct message | `dm` | "Ada sent you a message" (in a group: "Ada sent you a message in “Lunch crew”", or "in a group" when it has no name) |
+  | A mention of you | `mention` | "Ada mentioned you in Tool library" |
+  | A question to you | `question` | "Ada asked you in Tool library" |
+  | A reply in a conversation you are part of | `reply` | "Ada replied in Tool library" |
+  | A task for you, waiting for you, or able to continue | `assigned` | "Ada assigned you a task in Tool library" |
+  | A decision about your work | `review` | "Ada asked for your review in Tool library" |
+  | An agent waiting for your OK | `approval` | "Scout is waiting for your OK in Tool library" |
+  | An invitation to a call or to work together | `invitation` | "Ada invited you to work together in Tool library" |
+  | A call started in your space | `call` | "Ada started a call in Tool library" |
+
+  *Who* is the person's or agent's name, or "Someone" or "An agent" when it is not known;
+  *where* is the space's name or the direct message's. A notification that was made without a
+  known reason or person (not one of the above) shows the fixed text "New activity in Flux".
+  Hide previews applies the moment the push is sent, not when the notice was written, so
+  switching it on also covers a notification already waiting to be sent.
+- **What does not change.** The in-app notice, the Inbox row, the sound and the badge show
+  the same as before; they are inside Flux, behind the person's session. Email never carries
+  content either way: its subject and body are fixed. Tapping a notification works the same:
+  the service worker asks `GET /api/v1/inbox/:id`, which rechecks access, so a hidden
+  notification still opens the right message. An encrypted space's notices are already
+  content-free, so the switch changes nothing for them. Operating-system lock-screen settings
+  apply on top of both.
+- **Offered only where it matters.** The switch is not shown on a Flux server that cannot
+  push (no VAPID keys), like the push button. At the level **Nothing** it says "Not used
+  while you hear about Nothing".
 
 ### Sign-out and this device's push subscription (#461)
 

@@ -53,6 +53,11 @@ export interface Candidate {
   who: string;
   /** The conversation this notice is about, for a mention or a question in it: the person follows that thread from now on (#1249). */
   thread?: string;
+  /**
+   * Where it happened, as a push says it under "Hide previews" (#1346): the space's name, a group message's name (or "a group"), and
+   * nothing for a message between two people. A name, never content.
+   */
+  where: string;
 }
 
 /**
@@ -64,7 +69,16 @@ export const SEALED_NOTIFICATION_PHRASES: Readonly<Record<Exclude<NotificationRe
   review: 'asked for your review', invitation: 'invited you to work together', approval: 'is waiting for your OK', call: 'started a call',
 };
 export function sealedNotificationTitle(reason: NotificationReason, who: string, workspaceName: string): string {
-  return `${who} ${SEALED_NOTIFICATION_PHRASES[reason as Exclude<NotificationReason, 'security'>]} in ${workspaceName}`;
+  return hiddenNotificationTitle(reason, who, workspaceName);
+}
+
+/**
+ * "Hide previews" (#1346): a push says only who and where, in the same fixed words an encrypted workspace's notices use: "Ada mentioned you
+ * in Tool library". `where` is empty for a message between two people ("Ada sent you a message").
+ */
+export function hiddenNotificationTitle(reason: NotificationReason, who: string, where: string): string {
+  const phrase = SEALED_NOTIFICATION_PHRASES[reason as Exclude<NotificationReason, 'security'>];
+  return `${who} ${phrase}${where ? ` in ${where}` : ''}`;
 }
 
 /** The event a run's (or a local client's) first change that waits for its owner records, to the owner alone (#1186). */
@@ -137,7 +151,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
             : `${author} replied in ${quote(excerpt(message.opening, 60))}`;
         result.push({ userId, reason, source: { type: 'project', id: message.projectId }, title,
           body: askedThis ? excerpt(message.asked!.question) : excerpt(messagePreview(message.body, message.attachmentCount)), url,
-          aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent',
+          aiOrigin: message.author.kind === 'agent' || !!message.via, who: authorId ? names.get(authorId) ?? 'Someone' : 'An agent', where: message.projectName,
           ...(reason === 'question' || reason === 'mention' ? { thread: message.conversationId } : {}) });
       }
       return result;
@@ -159,7 +173,8 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         const title = reason === 'question' ? `${marked} asked you${place}` : reason === 'mention' ? `${marked} mentioned you${place}`
           : message.kind === 'pair' ? `${marked} sent you a message` : `${marked}${place}`;
         return { userId, reason, source: { type: 'dm' as const, id: message.dmId }, title, body: excerpt(message.body),
-          url: `/dm/${message.dmId}#message-${message.id}`, who: author, ...(message.via ? { aiOrigin: true } : {}) };
+          url: `/dm/${message.dmId}#message-${message.id}`, who: author, where: message.kind === 'pair' ? '' : message.title ? quote(message.title) : 'a group',
+          ...(message.via ? { aiOrigin: true } : {}) };
       });
     }
     case 'project.work_created.v1':
@@ -179,13 +194,14 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         // An agent that changes who owns an existing task can only be handing it back to its owner (#856, AG-7): it is ready to check.
         title: event.kind === 'project.work_updated.v1' && isAgentActor(event.actorId)
           ? `${quote(excerpt(work.title, 80))} is ready for you to check` : `${who} assigned you ${quote(excerpt(work.title, 80))}`,
-        body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
+        body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who, where: work.projectName,
       });
       // Someone named you as the one a blocked task waits for (#550); not if it was unblocked or re-pointed since.
       if (waiting && reachable(waiting) && work.waitingForUserId === waiting && work.status === 'blocked') result.push({
         userId: waiting, reason: 'assigned', source: { type: 'project', id: work.projectId },
         title: `${who} is waiting for you: #${work.number} ${excerpt(work.title, 80)}`,
         body: work.blocker ? excerpt(work.blocker) : `Blocked in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
+        where: work.projectName,
       });
       // What a blocked task waited for is resolved (#868): its owner is told once, "#4 can continue: the decision was accepted".
       if (resumedFor && reachable(resumedFor) && work.ownerUserId === resumedFor && work.status !== 'blocked') {
@@ -196,6 +212,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         result.push({
           userId: resumedFor, reason: 'assigned', source: { type: 'project', id: work.projectId },
           title: `#${work.number} can continue: ${because}`, body: excerpt(work.title, 80), url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
+          where: work.projectName,
         });
       }
       return result;
@@ -214,7 +231,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         body: `${why} · ${by} proposed it in ${item.projectName}`,
         url: `/projects/${item.projectId}/tasks?open=decision:${item.id}`,
         // An agent produced the item, whoever the event's actor is on its behalf.
-        aiOrigin: item.by.kind === 'agent', who: by,
+        aiOrigin: item.by.kind === 'agent', who: by, where: item.projectName,
       }));
     }
     case WAITING_CHANGE_EVENT: {
@@ -227,7 +244,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       return [{
         userId: change.ownerUserId, reason: 'approval', source: { type: 'project', id: change.projectId },
         title: excerpt(`${change.agentName} is waiting for your OK`, 200), body: `${excerpt(change.words, 120)} · ${change.projectName}`,
-        url: waitingChangeUrl(change.group), aiOrigin: true, who: change.agentName,
+        url: waitingChangeUrl(change.group), aiOrigin: true, who: change.agentName, where: change.projectName,
       }];
     }
     case 'project.live_invited.v1': {
@@ -246,6 +263,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         title: invitation.anchor.type === 'space' ? `${inviter} invited you to a call` : `${inviter} invited you to work together`,
         body: invitation.anchor.type === 'space' ? `Call in ${invitation.projectName}` : `On ${quote(excerpt(invitation.anchor.label, 80))} in ${invitation.projectName}`,
         url: `/projects/${invitation.projectId}/live/${invitation.sessionId}?invitation=${invitation.id}`, who: inviter,
+        where: invitation.projectName,
       }];
     }
     case LIVE_STARTED_EVENT: {
@@ -259,7 +277,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         userId, reason: 'call' as const, source: { type: 'project' as const, id: session.projectId },
         title: `${starter} started a call in ${session.projectName}`,
         body: session.anchor.type === 'space' ? `Call in ${session.projectName}` : `At ${quote(excerpt(session.anchor.label, 80))}`,
-        url: liveCallUrl(session.projectId, session.id), who: starter,
+        url: liveCallUrl(session.projectId, session.id), who: starter, where: session.projectName,
       }));
     }
     default:
@@ -293,9 +311,11 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   const notificationId = randomUUID();
   // F-030: content was read in RAM to decide the reason; what is stored for a sealed workspace says only who and why.
   const sealed = (await ports.facts.sealedWorkspace?.(event.workspaceId)) ?? null;
+  // Who and where, in fixed words: what a push says under "Hide previews" (#1346), and what a sealed workspace stores as its title.
+  const hiddenTitle = hiddenNotificationTitle(candidate.reason, candidate.who, sealed ? sealed.name : candidate.where);
   const inserted = await ports.insertNotification({
     id: notificationId, userId: candidate.userId, source, reason: candidate.reason, eventId: event.id,
-    title: sealed ? sealedNotificationTitle(candidate.reason, candidate.who, sealed.name) : candidate.title, body: sealed ? '' : candidate.body,
+    title: sealed ? hiddenTitle : candidate.title, body: sealed ? '' : candidate.body,
     url: candidate.url, inInbox: channels.inApp,
     // AI origin is persisted at write time (F-029): an agent actor or an agent-authored source.
     aiOrigin: candidate.aiOrigin === true || isAgentActor(event.actorId),
@@ -309,7 +329,7 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   if (channels.push) notices.push({ notificationId, userId: candidate.userId, workspaceId: event.workspaceId, source: candidate.source, actorId: event.actorId });
   if (channels.push) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
-      await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId });
+      await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId, hiddenTitle });
     }
   }
   if (channels.email && options.emailAvailable

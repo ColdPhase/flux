@@ -196,8 +196,13 @@ const tooLarge = (limit: number, video: boolean) => new PayloadTooLargeError(vid
  * in this project, ready, unexpired, not attached elsewhere and present with its exact size. Call it after the
  * message's command identity and before any task or conversation lock (#154 correction 4); nothing it reads
  * comes after the message insert. Returns the files in the message's order.
+ *
+ * #1411: it runs inside the message's transaction, so it reads no byte of any file: the row's recorded size and SHA-256 (computed once,
+ * from the bytes as the upload arrived) and the object's size on disk. Hashing a 200 MiB video here held a database connection per send,
+ * and a few sends at once held them all. A file up to 5 MiB has had its bytes checked just before, by `verifyAttachmentBytes`; a larger
+ * video's changed bytes are refused where they are read (C-61).
  */
-export async function lockAttachments(files: FileRepository, storage: Pick<FileStorage, 'has'>, projectId: string,
+export async function lockAttachments(files: FileRepository, storage: Pick<FileStorage, 'present'>, projectId: string,
   author: ActorRef, ids: readonly string[], clock: () => Date): Promise<StoredFileRow[]> {
   if (!ids.length) return [];
   if (author.kind !== 'human') throw new ForbiddenError('Agents cannot stage or attach files yet', 'AGENT_FILES_UNAVAILABLE');
@@ -213,13 +218,30 @@ export async function lockAttachments(files: FileRepository, storage: Pick<FileS
       throw attachmentUnavailable();
     if (isPublished(row)) throw new ConflictError(row.messageId !== null ? 'A file is already attached to another message'
       : 'A file is already the image of a map thought', 'ATTACHMENT_ALREADY_PUBLISHED');
-    if (!row.expiresAt || row.expiresAt <= now || !row.sha256 || !await storage.has(row.id, row.size, row.sha256)) throw attachmentUnavailable();
+    if (!row.expiresAt || row.expiresAt <= now || !row.sha256 || !await storage.present(row.id, row.size, row.keyVersion != null)) throw attachmentUnavailable();
     // A video (C-61) has its own cap and staging allowance, which already keep a message's videos within one cap.
     if (!row.videoContainer) total += row.size;
     ordered.push(row);
   }
   if (total > FILE_LIMITS.messageBytes) throw new InvalidInputError('The files of one message are at most 20 MiB together, not counting videos', 'ATTACHMENTS_TOO_LARGE');
   return ordered;
+}
+
+/**
+ * #154, #1411: checks the bytes of each file up to 5 MiB a new message will carry against the SHA-256 computed as its upload arrived (a
+ * sealed one opened by its tag too), so a file changed on disk since its upload still cannot be sent. Call it before the message's
+ * transaction opens: it holds no database connection while it reads (at most 10 files of 5 MiB). It reads only the author's own ready,
+ * unsent files and refuses with the same unknown-file answer as `lockAttachments`, which still makes every check of the rows inside the
+ * transaction. A larger video is not read here; its size is checked on every range and its digest in the export bundle (C-61).
+ */
+export async function verifyAttachmentBytes(files: Pick<FileRepository, 'findFiles'>, storage: Pick<FileStorage, 'has'>,
+  author: ActorRef, ids: readonly string[]): Promise<void> {
+  if (!ids.length || author.kind !== 'human') return;
+  for (const row of await files.findFiles(ids)) {
+    if (!same(row.uploader, author) || row.state !== 'ready' || row.size === null || row.size > FILE_LIMITS.fileBytes || !row.sha256
+      || row.posterOf || isPublished(row)) continue;
+    if (!await storage.has(row.id, row.size, row.sha256)) throw attachmentUnavailable();
+  }
 }
 
 /**
@@ -411,7 +433,7 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
           const current = await ports.files.findUpload(projectId, uploader, uploadId);
           if (!current || current.id !== original.id || current.state !== 'ready'
             || (!isPublished(current) && (!current.expiresAt || current.expiresAt <= clock()))
-            || !await storage.has(current.id, current.size!, current.sha256!)) throw unavailable();
+            || !await storage.present(current.id, current.size!, current.keyVersion != null)) throw unavailable();
           if (original.size !== received.size || original.sha256 !== received.sha256 || original.name !== name)
             throw new ConflictError('This uploadId was used for another file', 'UPLOAD_CONFLICT');
           return staged({ ...current, expiresAt: current.expiresAt ?? new Date(current.readyAt!.getTime() + FILE_LIMITS.unpublishedDays * DAY) });
@@ -519,8 +541,8 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
      * A file as a stream, whole or one byte range of it (C-61), after the same current access check as `download`, made on every call
      * (every range of a playing video included). A file of the ordinary size (up to 5 MiB, a small video too) is read whole and its SHA-256
      * verified on every read, as every file always was (a sealed one has its tag verified), and a range is cut from those bytes. A video
-     * over that size is read from disk a chunk at a time with its size checked (its digest is verified when a message attaches it and in
-     * the export), so no request holds it in memory. `head` checks and returns no body; `video` insists the file is one a browser may
+     * over that size is read from disk a chunk at a time with its size checked (its digest, computed as it arrived, is verified in the
+     * export bundle; #1411), so no request holds it in memory. `head` checks and returns no body; `video` insists the file is one a browser may
      * play (else it is not found); a range past the end gives status 416.
      */
     async open(principal: Principal, fileIdInput: string, request: { range?: string; video?: boolean; head?: boolean } = {}): Promise<OpenedFile> {

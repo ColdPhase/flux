@@ -196,7 +196,13 @@ function AccountNotificationSettings() {
             onChange={(emailMe) => change({ emailMe }, (current) => ({ ...current, emailMe }))} />
         ) : null}
         {pushServerOff ? null : (
-          <div className="sset-row sset-row--stack"><span className="sset-row__t">On this device</span><NotificationsButton installStepsBelow={phone} /></div>
+          <>
+            <div className="sset-row sset-row--stack"><span className="sset-row__t">On this device</span><NotificationsButton installStepsBelow={phone} /></div>
+            {/* One switch (founder decision, 2026-11-13, #1346): what a push says. It is about push, so a server that cannot push does not offer it. */}
+            <SwitchRow label="Hide previews" checked={prefs.hidePreviews}
+              detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'Notifications show who and where, never the message'}
+              onChange={(hidePreviews) => change({ hidePreviews }, (current) => ({ ...current, hidePreviews }))} />
+          </>
         )}
         <QuietHours prefs={prefs} open={quietOpen} panelId={ids.quiet} onToggle={() => setQuietOpen((open) => !open)} onChange={change} />
       </div>

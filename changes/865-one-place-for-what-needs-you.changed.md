@@ -1,2 +1,0 @@
-- The Inbox is the one list of what needs you, and Home shows its top three under "Waiting for you" with the same count: every decision is one row ("2 decisions waiting"), each row opens the Inbox on its item, and nothing on Home acts. Home keeps only that and "Continue where you left off"; on the phone "My tasks (N)" and "My map" are rows under the waiting items ([#865](https://github.com/ColdPhase/flux/issues/865)).
-- "Mine" and My tasks include the tasks your own agents own ([#865](https://github.com/ColdPhase/flux/issues/865)).

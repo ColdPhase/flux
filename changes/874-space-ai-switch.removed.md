@@ -1,1 +1,0 @@
-- The AI switch of the whole company (F-029), its People row and the "AI is off" lists in Settings. ([#874](https://github.com/ColdPhase/flux/issues/874))

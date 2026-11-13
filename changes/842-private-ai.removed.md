@@ -1,1 +1,0 @@
-- The answer to `/ai` is no longer a message everyone in the conversation reads, and nobody sees "Ada's assistant is working…" any more; the ask bar's model chip and the public "@Ada's assistant …" line are gone ([#842](https://github.com/ColdPhase/flux/issues/842)).

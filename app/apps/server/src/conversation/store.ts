@@ -8,7 +8,7 @@ import type {
 } from '@flux/contracts';
 import {
   appendMessage, ConflictError, conversationUseCases, enforce, evaluateProject, ForbiddenError, InvalidInputError, NotFoundError,
-  lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
+  lockAttachments, verifyAttachmentBytes, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, type Principal,
 } from '@flux/core';
 import type { ConversationPort } from '@flux/core';
@@ -255,6 +255,10 @@ export function conversationStore(db: Database, options: ConversationStoreOption
     return (await lockAttachments(fileRows(tx), options.storage, projectId.toLowerCase(), author, ids, () => new Date()))
       .map((row) => ({ id: row.id, name: row.name, size: row.size!, ...storedDetail(row) }));
   };
+  // #154, #1411: the bytes of each file up to 5 MiB are checked before the message's transaction opens, holding no connection while read.
+  const verifyBytes = async (author: Actor, ids: readonly string[] | undefined) => {
+    if (ids?.length && options.storage) await verifyAttachmentBytes(fileRows(db as unknown as DbExecutor), options.storage, author, ids);
+  };
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
   } };
@@ -406,6 +410,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
 
     async createConversation(principal: Principal, projectId: string, input: Parameters<ConversationPort['createConversation']>[2]): Promise<Conversation> {
       const author = authorOf(principal, agentAuthors);
+      await verifyBytes(author, input.attachmentIds);
       return db.transaction(async (tx) => {
         const project = await requireProject(principal, projectId, tx, true, true);
         await lockIdempotency(tx, projectId, author, input.clientMessageId);
@@ -438,6 +443,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
 
     async sendMessage(principal: Principal, conversationId: string, input: Parameters<ConversationPort['sendMessage']>[2]): Promise<SentConversationMessage> {
       const author = authorOf(principal, agentAuthors);
+      await verifyBytes(author, input.attachmentIds);
       return db.transaction(async (tx) => {
         const row = await locateConversation(principal, conversationId, tx, true, true);
         await lockIdempotency(tx, row.projectId, author, input.clientMessageId);

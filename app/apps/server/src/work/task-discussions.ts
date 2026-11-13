@@ -1,5 +1,5 @@
 import { fileRows, needsYouRows, taskDiscussionRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
-import { lockAttachments, storedDetail, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
+import { lockAttachments, verifyAttachmentBytes, storedDetail, createTaskDiscussionUseCases, type FileStorage, type TaskDiscussionEventIntent, type TaskDiscussionPorts, type TaskDiscussionUnitOfWork } from '@flux/core';
 import { policyWorkAccess } from './access.js';
 import { transactionEventSession, type TransactionEventSession } from './transaction-events.js';
 import { projectAuthorOwners } from '../conversation/author-owners.js';
@@ -38,6 +38,7 @@ export function taskDiscussionUnitOfWork(db: Database, storage?: FileStorage): T
     const result = await session.run(() => action(taskDiscussionPorts(tx, session, storage)));
     await session.flushEvents();
     return result;
-  }) };
+  }), ...(storage ? { verifyAttachments: (author: { kind: 'human' | 'agent'; id: string }, ids: readonly string[]) =>
+    verifyAttachmentBytes(fileRows(db as unknown as DbExecutor), storage, author, ids) } : {}) };
 }
 export const taskDiscussionUseCases = (db: Database, storage?: FileStorage) => createTaskDiscussionUseCases(taskDiscussionUnitOfWork(db, storage));

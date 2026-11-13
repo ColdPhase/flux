@@ -47,6 +47,8 @@ export FLUX_VAPID_PUBLIC_KEY="" FLUX_VAPID_PRIVATE_KEY="" FLUX_VAPID_SUBJECT=""
 export FLUX_TEST_FAILURE_INJECTION=true
 export FLUX_TEST_PERSONAL_RUNS=anthropic-mock
 export FLUX_TEST_ANTHROPIC_URL=http://anthropic-mock:8090
+# An API key is checked against the mock's model lists (media_scene.py connects Ada's AI with one), as in scripts/check_ui.sh.
+export FLUX_TEST_PROVIDER_LISTS=http://anthropic-mock:8090
 export FLUX_AI_PRIVATE_TARGETS=openai-mock
 # The key-custody secret an API key connection needs, throwaway like the rest.
 background_secret_dir=$(mktemp -d)

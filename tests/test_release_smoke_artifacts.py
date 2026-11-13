@@ -186,7 +186,7 @@ class EncryptedSpaceTest(unittest.TestCase):
 def recorded_more() -> dict:
     return {
         "ben": {"id": "u-ben", "name": "Ben", "role": "member"}, "gina": {"id": "u-gina", "name": "Gina", "role": "guest"},
-        "garden_id": "g1", "garden_file_hex": "0900", "garden_messages": [[1, "u-ada", "root"], [2, "u-ben", "hi"]],
+        "garden_id": "g1", "garden_file_hex": "0900", "garden_video_sha256": "c1ip", "garden_messages": [[1, "u-ada", "root"], [2, "u-ben", "hi"]],
         "dm_bodies": ["hello", "reply"], "group_bodies": ["all"], "group_title": "Crew",
         "wiki_title": "Wiki", "wiki_versions": [[2, "Edited the text"], [1, "Started the page"]],
         "map_thoughts": [["Soil", 10, 10]], "map_links": [["Soil", "Water", "needs"]],
@@ -205,7 +205,7 @@ def recorded_more() -> dict:
 def observed_more(**changes: object) -> dict:
     value: dict = {
         "people": {"u-ben": "member", "u-gina": "guest"}, "guest_spaces": ["g1"], "guest_denied": True,
-        "garden_messages": [[1, "u-ada", "root"], [2, "u-ben", "hi"], [3, "u-gina", "written later"]], "garden_file_hex": "0900",
+        "garden_messages": [[1, "u-ada", "root"], [2, "u-ben", "hi"], [3, "u-gina", "written later"]], "garden_file_hex": "0900", "garden_video_sha256": "c1ip",
         "dm_bodies": ["hello", "reply", "later"], "group_bodies": ["all"], "group_title": "Crew",
         "wiki_versions": [[3, "Edited the text"], [2, "Edited the text"], [1, "Started the page"]],
         "wiki_bodies": {1: "Wiki-v1", 2: "Wiki-v2", 3: "Wiki-v3"},
@@ -235,12 +235,12 @@ class MoreContentCheckTest(unittest.TestCase):
 
     def test_each_lost_kind_of_content_is_named(self) -> None:
         problems = check_more(recorded_more(), observed_more(
-            people={"u-ben": "guest"}, guest_spaces=[], guest_denied=False, garden_messages=[[1, "u-ada", "root"]], garden_file_hex="",
+            people={"u-ben": "guest"}, guest_spaces=[], guest_denied=False, garden_messages=[[1, "u-ada", "root"]], garden_file_hex="", garden_video_sha256="",
             dm_bodies=[], group_title="x", wiki_versions=[[1, "Started the page"]], wiki_bodies={1: "other"}, map_thoughts=[], map_links=[],
             tasks={}, task_prerequisites=[], notifications={"level": "nothing", "emailMe": False, "quiet": [], "muted": []},
             device_session=False, vault_messages=[],
         ), NOW)
-        for part in ("Ben is", "Gina is", "lost the space", "not in", "garden message 2", "garden file", "direct conversation", "group title",
+        for part in ("Ben is", "Gina is", "lost the space", "not in", "garden message 2", "garden file", "garden video", "direct conversation", "group title",
                      "wiki version [2", "wiki version 1 reads", "map thoughts", "map links", "task 'Calibrate' missing", "prerequisites",
                      "notification settings", "quiet hours", "second device", "encrypted space"):
             self.assertTrue(any(part in problem for problem in problems), f"{part!r} not named in {problems}")

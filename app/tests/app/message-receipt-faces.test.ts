@@ -101,6 +101,21 @@ describe('read receipts of a large space (#1231)', () => {
     assert.deepEqual(after.runs[1]!.readers.map((reader) => reader.name), ['Reader 499', 'Reader 498', 'Reader 497']);
   });
 
+  test('a receipt keeps the exact read time of a reader who turned off "Show when I was last active" (#1346, C-58)', async () => {
+    const quiet = await person('face-quiet');
+    await addMember(ada, wsId, quiet, 'member');
+    // The newest observation of the run, at a known instant to the millisecond.
+    const readAt = new Date(Date.now() + 60_000);
+    readAt.setMilliseconds(123);
+    await pool.query(`INSERT INTO project_message_observations (workspace_id, project_id, message_id, viewer_id, observed_at) VALUES ($1, $2, $3, $4, $5)`, [wsId, space, newer, quiet.id, readAt]);
+    const listed = async () => (expectStatus(await readers(ada, [[newer]], 0), 200) as MessageReadersResult).readers.find((reader) => reader.name === 'face-quiet');
+    assert.equal(new Date((await listed())!.at).getTime(), readAt.getTime(), 'shown on: the exact time they read it');
+    expectStatus(await quiet.browser.request('PUT', '/api/v1/me/last-active', { body: { show: false } }), 204);
+    assert.equal(new Date((await listed())!.at).getTime(), readAt.getTime(), 'turned off: still the exact time they read it, the switch is about presence');
+    const faces = expectStatus(await receipts(ada, [[newer]]), 200) as MessageReceiptsResult;
+    assert.equal(faces.runs[0]!.readers[0]!.name, 'face-quiet', 'and still the newest face');
+  });
+
   test('only the author of the runs asks, only people who can read the space, and the cursor and the index are checked', async () => {
     const runs = [[newer]];
     expectStatus(await readers(kai, runs, 0), 422, 'Kai did not write that run');

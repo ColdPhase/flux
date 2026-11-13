@@ -1,1 +1,0 @@
-- The API writes a structured security event for each failed or limited sign-in, password reset or change, session or client revocation, consent decision, refused origin, refused request and encrypted-space lock or unlock, with no password, token, address or content in it; the events are listed in the monitoring guide ([#997](https://github.com/ColdPhase/flux/issues/997)).

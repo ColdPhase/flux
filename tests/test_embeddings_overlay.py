@@ -37,6 +37,8 @@ class EmbeddingsOverlay(unittest.TestCase):
         self.assertNotIn("docker.sock", text)
         self.assertRegex(text, r"mem_limit:\s*\$\{FLUX_EMBEDDINGS_MEMORY:-6g\}")
         self.assertRegex(text, r"memswap_limit:\s*\$\{FLUX_EMBEDDINGS_MEMORY:-6g\}")
+        # One CPU by default: on a 2-core server a backfill leaves the other core to Flux (audit of #1270).
+        self.assertRegex(text, r"cpus:\s*\$\{FLUX_EMBEDDINGS_CPUS:-1\}")
         self.assertRegex(text, r"cap_drop:\s*\[ALL\]")
         self.assertIn("BAAI/bge-m3", text)
         # The server listens on the port the URL names, not the privileged port 80.
@@ -62,6 +64,16 @@ class EmbeddingsOverlay(unittest.TestCase):
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
         self.assertIn("embeddings_on() { [ \"$(env_value FLUX_EMBEDDINGS)\" = on ]; }", launcher)
         self.assertIn('if embeddings_on; then set -- -f "$COMPOSE_EMBEDDINGS" "$@"; fi', launcher)
+
+    def test_turning_it_off_removes_the_running_container(self) -> None:
+        # Without the overlay Compose no longer knows the service, so `up` alone would leave it running as an orphan.
+        launcher = (ROOT / "flux").read_text(encoding="utf-8")
+        start = launcher[launcher.index("start_main() {"):]
+        self.assertIn("  remove_embeddings_when_off\n}", start[:start.index("\n}\n") + 3])
+        self.assertIn('--filter "label=com.docker.compose.service=embeddings"', launcher)
+        # clean and reset know the overlay whatever the switch says, so the model volume goes with the rest.
+        self.assertEqual(launcher.count("compose_main_all --profile dev --profile test --profile ui --profile runtime down -v --remove-orphans"), 2)
+        self.assertIn('embeddings_on || set -- -f "$COMPOSE_EMBEDDINGS" "$@"', launcher)
 
 
 if __name__ == "__main__":

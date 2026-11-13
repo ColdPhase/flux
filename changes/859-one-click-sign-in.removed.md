@@ -1,1 +1,0 @@
-- The three permissions a local client asked for (read, suggest, run actions), the 38 capability switches under **Permissions**, the choice of projects and the connection form with its **Continue to consent** step: a client has your rights and the one "What it may do" row, so there is nothing to tick or choose ([#859](https://github.com/ColdPhase/flux/issues/859)).

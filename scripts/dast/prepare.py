@@ -6,8 +6,10 @@
 
 Writes into DIR: `cookie-<name>` (the session cookie, one `name=value` line, for ZAP's replacer rule), `openapi.json` (every route
 the test deployment lists, with its body and query schemas, and the ids of the seeded data as examples) and `routes.json`. The first
-person also sets a profile photo and sends an HTML file in the first space, so the picture, file, preview, message and receipt routes
-are scanned with ids that exist; the preview carries the frame headers it needs, and the photo, space icon and file uploads raw bytes.
+person also sets a profile photo and sends an HTML file and a video in the first space, so the picture, file, preview, video, message
+and receipt routes are scanned with ids that exist, and keeps a second video staged (unsent) so the poster route has its own video. The
+preview carries the frame headers it needs, a file and a video read a byte range, and the photo, space icon, file and poster uploads raw
+bytes.
 Standard library only. The route listing exists only in a test deployment (`GET /api/v1/test/routes` with the fixture bearer).
 """
 import argparse
@@ -20,6 +22,7 @@ import urllib.error
 import urllib.request
 import uuid
 import zlib
+from pathlib import Path
 
 # Never scanned: ending the scan's own session, the test deployment's own routes, and the long-lived streams.
 SKIP = (
@@ -50,12 +53,18 @@ UUID = "00000000-0000-4000-8000-000000000000"
 # Routes whose body is raw bytes, not JSON, described as such so the scan sends bytes there: a profile photo (F-039), a space's icon
 # picture (F-040; the same route also takes JSON `{ emoji }`) and a file upload.
 RAW_BODY_ROUTES = {("PUT", "/api/v1/me/photo"): "image/png", ("PUT", "/api/v1/projects/:projectId/icon"): "image/png",
-                   ("POST", "/api/v1/projects/:projectId/files"): "application/octet-stream"}
+                   ("POST", "/api/v1/projects/:projectId/files"): "application/octet-stream",
+                   ("POST", "/api/v1/projects/:projectId/files/:fileId/poster"): "application/octet-stream"}
 # Request headers a route needs before its handler runs, with the value a browser sends: a file preview answers only a frame of a Flux
 # page (C-60), so without them every request of the scan would stop at the same 403.
-HEADER_PARAMETERS = {("GET", "/api/v1/files/:fileId/preview"): {"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin"}}
+# A stored file and a video are read whole or by one byte range (C-61, #1352): the scan sends a range, so the range parser is attacked too.
+HEADER_PARAMETERS = {("GET", "/api/v1/files/:fileId/preview"): {"Sec-Fetch-Dest": "iframe", "Sec-Fetch-Site": "same-origin"},
+                     ("GET", "/api/v1/files/:fileId"): {"Range": "bytes=0-99"},
+                     ("GET", "/api/v1/files/:fileId/video"): {"Range": "bytes=0-99"}}
 # A previewable page, sent in the first space so the file, preview, message and receipt routes are scanned with ids that exist.
 PREVIEW_PAGE = b"<!doctype html><title>DAST</title><h1>Gateway range report</h1><p>Signal at the far east bed.</p>"
+# A real MP4 (the browser tests' fixture): a file is a video only by its container (C-61), so the video and poster routes need one.
+VIDEO_CLIP = Path(__file__).resolve().parents[2] / "app/tests/ui/fixtures/video/clip.mp4"
 
 
 def small_png():
@@ -77,6 +86,26 @@ def seeded_file(person, project_id):
     if status not in (200, 201) or not isinstance(started, dict):
         sys.exit(f"dast: the message with the preview file could not be sent (answered {status})")
     return {"fileId": staged["id"], "messageId": started["messages"][0]["id"], "conversationId": started["id"]}
+
+
+def seeded_videos(person, project_id):
+    """A video sent in the space (for `/files/:fileId/video`) and one left staged (for `/files/:fileId/poster`, which takes only the
+    caller's own unsent video), as per-route examples by url. Empty when there is no space."""
+    if not project_id:
+        return {}
+    clip = VIDEO_CLIP.read_bytes()
+    ids = []
+    for name in ("night-round.mp4", "staged-round.mp4"):
+        status, staged = person.call("POST", f"/api/v1/projects/{project_id}/files?uploadId={uuid.uuid4()}&name={name}", clip)
+        if status != 201 or not isinstance(staged, dict) or not staged.get("video"):
+            sys.exit(f"dast: the video could not be uploaded (answered {status})")
+        ids.append(staged["id"])
+    status, _ = person.call("POST", f"/api/v1/projects/{project_id}/conversations",
+                            {"body": "Night round", "attachmentIds": [ids[0]], "clientMessageId": str(uuid.uuid4())})
+    if status not in (200, 201):
+        sys.exit(f"dast: the message with the video could not be sent (answered {status})")
+    return {"/api/v1/files/:fileId/video": {"fileId": ids[0]},
+            "/api/v1/projects/:projectId/files/:fileId/poster": {"projectId": project_id, "fileId": ids[1]}}
 
 
 class Person:
@@ -230,7 +259,7 @@ def main():
     ids.update(seeded_file(first, ids.get("projectId")))
     ids["userId"] = (people[1] if len(people) > 1 else first).call("GET", "/api/v1/me")[1].get("user", {}).get("id", UUID)
     # A real photo, so the picture route is scanned with an id that exists (F-039); the second person can see the first's.
-    examples = {}
+    examples = seeded_videos(first, ids.get("projectId"))
     status, photo = first.call("PUT", "/api/v1/me/photo", small_png())
     if status == 200 and isinstance(photo, dict):
         examples["/api/v1/pictures/:pictureId/:size"] = {"pictureId": photo["photo"], "size": "128"}

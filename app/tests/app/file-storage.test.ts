@@ -21,6 +21,12 @@ test('disk storage measures streamed limits, timeout, immutable objects and leaf
     assert.deepEqual(await storage.read(id), Buffer.from('hello'));
     assert.equal(await storage.has(id, 5, received.sha256), true);
     assert.equal(await storage.has(id, 5, '0'.repeat(64)), false);
+    // #1411: what a message's transaction checks is the object's size on disk alone (a sealed object's 36 bytes of header and tag on top).
+    assert.equal(await storage.present(id, 5, false), true);
+    assert.equal(await storage.present(id, 4, false), false);
+    assert.equal(await storage.present(id, 5 - 36, true), true);
+    assert.equal(await storage.present(id, 5, true), false);
+    assert.equal(await storage.present(randomUUID(), 5, false), false);
     const collision = await storage.receive(chunks(Buffer.from('other')), { maxBytes: 5, deadline: Date.now() + 1000 });
     await assert.rejects(collision.commit(id), /already exists/);
     await collision.discard();
@@ -31,6 +37,7 @@ test('disk storage measures streamed limits, timeout, immutable objects and leaf
     await writeFile(secret, 'other');
     await symlink(secret, leaf);
     assert.equal(await storage.read(id), null);
+    assert.equal(await storage.present(id, 5, false), false, 'a symlink is not followed for its size either');
     await storage.remove(id);
     assert.equal(await readFile(secret, 'utf8'), 'other');
   } finally { await rm(root, { recursive: true, force: true }); }

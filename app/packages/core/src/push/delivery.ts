@@ -21,11 +21,16 @@ export class RetryableDeliveryError extends Error {
  * can read its source right now. Otherwise the device gets a fixed title and an opaque id, and
  * the service worker asks the server (which rechecks) for details when the person taps it.
  */
-export function buildPushPayload(notification: NotificationRecord, decision: SourceReadDecision): PushPayload {
-  if (readsSource(decision, notification.source)) {
-    return { preview: 'full', notificationId: notification.id, title: notification.title, body: notification.body, url: notification.url ?? '/' };
+export function buildPushPayload(notification: NotificationRecord, decision: SourceReadDecision, hide: { hidePreviews?: boolean; hiddenTitle?: string } = {}): PushPayload {
+  const generic: PushPayload = { preview: 'generic', notificationId: notification.id, title: GENERIC_PUSH_TITLE };
+  if (!readsSource(decision, notification.source)) return generic;
+  // "Hide previews" (#1346): only who and where, in the one title the generator wrote from facts, and nothing else: no body, no link, and
+  // nothing taken from the notification's own text. Without such a title there is no who and where to say, so the fixed text goes.
+  if (hide.hidePreviews) {
+    const title = typeof hide.hiddenTitle === 'string' ? hide.hiddenTitle.trim().slice(0, 200) : '';
+    return title ? { preview: 'hidden', notificationId: notification.id, title } : generic;
   }
-  return { preview: 'generic', notificationId: notification.id, title: GENERIC_PUSH_TITLE };
+  return { preview: 'full', notificationId: notification.id, title: notification.title, body: notification.body, url: notification.url ?? '/' };
 }
 
 export interface DeliveryPorts {
@@ -43,6 +48,8 @@ export interface DeliveryPorts {
   stillWanted?: (userId: string, notification: NotificationRecord) => Promise<boolean>;
   /** Whether the recipient's current quiet hours cover now: nothing is sent then, and nothing later (C-31). */
   quiet?: (userId: string) => Promise<boolean>;
+  /** The recipient's "Hide previews" (#1346) right now: true sends only who and where. Absent for callers without preferences: previews show. */
+  hidePreviews?: (userId: string) => Promise<boolean>;
   log?: (message: string, details?: Record<string, unknown>) => void;
 }
 
@@ -77,7 +84,7 @@ export async function deliverPushJob(ports: DeliveryPorts, job: PushSendJob): Pr
     return { outcome: 'rejected', status: null, reason: violation };
   }
 
-  const payload = buildPushPayload(notification, decision);
+  const payload = buildPushPayload(notification, decision, { hidePreviews: await ports.hidePreviews?.(job.userId), hiddenTitle: job.hiddenTitle });
   const admission = await ports.admitSend(notification.id, () => ports.sender.send(subscription, payload));
   if (admission.status === 'suppressed') return { outcome: 'skipped', reason: 'task creation was undone before delivery' };
   if (admission.status === 'unknown') return { outcome: 'skipped', reason: 'delivery outcome unknown after provider admission' };

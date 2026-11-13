@@ -1,1 +1,0 @@
-- Someone removed from a space or from the company, or who leaves either in another tab, sees it leave their sidebar at once, and a page of it that is open, or Back into it, lands on the list of spaces with one line saying it is no longer available instead of showing what the page had loaded or an error page ([#862](https://github.com/ColdPhase/flux/issues/862)).
