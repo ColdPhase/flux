@@ -294,7 +294,7 @@ class SpaceSettings(unittest.TestCase):
     }"""
 
     def test_02c_the_settings_column_is_centred_in_the_pane_on_the_computer_and_as_before_on_tablet_and_phone(self) -> None:
-        """#1214: drawn centred under the header (final design, Space settings); account Settings keeps its flush-left page beside its list."""
+        """#1214: drawn centred under the header (final design, Space settings); account Settings centres its column beside its list too (#1362)."""
         self.ensure_world()
         ada = self.page("ada")
         made = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Centred room", "visibility": "restricted", "people": [self.ids["kai"]]}, status=201)
@@ -313,7 +313,14 @@ class SpaceSettings(unittest.TestCase):
         page = self.page("ada")
         page.goto("/settings/appearance")
         expect(page.locator(".sset__nav")).to_be_visible()
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('.pane-in.sset-in')).marginLeft"), "0px", "account Settings stays flush left")
+        # Account Settings centres its one column in the page's area beside the section list, as every page inside Settings does (#1362, F-015).
+        gaps = page.evaluate("""() => {
+          const column = document.querySelector('.pane-in.sset-in'), pane = column.closest('.pane-scroll'), frame = pane.getBoundingClientRect();
+          const box = column.getBoundingClientRect();
+          return { left: box.left - frame.left, right: frame.left + pane.clientWidth - box.right };
+        }""")
+        self.assertGreater(gaps["left"], 0, f"account Settings is not flush left: {gaps}")
+        self.assertAlmostEqual(gaps["left"], gaps["right"], delta=2, msg=f"account Settings centres its column: {gaps}")
         # Tablet and phone keep their own padding: no centring margin.
         for label, viewport in (("820", {"width": 820, "height": 1180}), ("390", PHONE)):
             page = self.page("ada", viewport)
