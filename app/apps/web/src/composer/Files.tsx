@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, type DragEvent } from 'react';
 import { Button, Icon, useMediaQuery } from '../ui';
 import { FileIcon, typeLine, useObjectUrl, warmPreview } from './Attachments';
 import { selectedFile, uploadLabel, type ComposerState, type DraftFile } from './draft';
+import { isVideoName } from '@flux/contracts';
+import { useFileLimits } from '../api/files';
 import { detailLine, looksLikePhoto } from './fileKind';
+import { useVideoPoster } from './videoPoster';
 import { CiteTile } from './References';
 import { PhotoPicker } from './PhotoPicker';
 import './composer.css';
@@ -53,6 +56,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const blocked = disabled || state.sending;
   const touch = useMediaQuery('(pointer: coarse)');
   const picked = usePickedFiles(state);
+  const limits = useFileLimits();
   const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && !state.draft.cites.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>
@@ -62,7 +66,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
       onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!blocked && file && recoverId.current) state.retryFile(recoverId.current, file); event.currentTarget.value = ''; }} />
     {attach === 'row' ? <button type="button" className="composer-files__add" disabled={blocked} onClick={() => input.current?.click()} aria-label="Attach files"><Icon name="clip" size={14} />Attach files</button> : null}
     {state.draft.files.length ? <>
-      <span className="composer-files__privacy">Private until sent · 5 MiB each · 10 files / 20 MiB per message</span>
+      <span className="composer-files__privacy">Private until sent · 5 MiB each, videos {Math.round(limits.videoBytes / (1024 * 1024))} MiB · 10 files / 20 MiB per message</span>
       <ol className="composer-files__list" aria-label="Files in your draft">{state.draft.files.map((file, index) => <DraftThumb key={file.uploadId} file={file} order={touch && state.draft.files.length > 1 ? index + 1 : 0}
         status={fileStatus(file, state.draft.unconfirmed)} blocked={blocked}
         onRetry={() => { if (!state.retryFile(file.uploadId)) { recoverId.current = file.uploadId; recovery.current?.click(); } }}
@@ -89,9 +93,12 @@ function DraftThumb({ file, order, status, blocked, onRetry, onRemove }: { file:
   // While the person can still read the file, a small copy of the photo is kept for its place in the queue if the message has to wait (#469).
   useEffect(() => { void warmPreview(local); }, [local]);
   const [broken, setBroken] = useState(false);
-  const photo = !!url && !broken;
+  // A video's poster (C-61) is its thumbnail once the browser has drawn it, as a photo's is.
+  const poster = useVideoPoster(isVideoName(file.name) ? selectedFile(file.uploadId) : undefined);
+  const shown = poster || (!broken ? url : '');
+  const photo = !!shown;
   return <li className={`composer-thumb${photo ? ' is-photo' : ''}`} data-file-state={file.state}>
-    <span className="composer-thumb__face">{photo ? <img src={url} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
+    <span className="composer-thumb__face">{photo ? <img src={shown} alt="" onError={() => setBroken(true)} /> : <FileIcon name={file.name} size={30} />}
       {order ? <span className="composer-thumb__order"><span className="ui-vh">Sends </span>{order}<span className="ui-vh">.</span></span> : null}</span>
     <span className="composer-files__name">{file.name}<small>{typeLine(file, detailLine(file.staged))} · {status}</small></span>
     {file.state === 'failed' ? <Button variant="outline" size="sm" className="composer-thumb__retry" disabled={blocked} onClick={onRetry}>Retry upload</Button> : null}

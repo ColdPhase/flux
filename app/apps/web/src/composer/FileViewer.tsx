@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { filePath, filePreviewPath, type MessageFile } from '@flux/contracts';
+import { filePath, filePreviewPath, fileVideoPath, type MessageFile } from '@flux/contracts';
 import { send } from '../api/client';
 import { readFileBytes } from '../api/files';
 import { Button, Icon, Spinner, trapTab } from '../ui';
@@ -84,16 +84,46 @@ function PdfPage({ file }: { file: MessageFile }) {
   return <iframe className="file-viewer__frame" title={`Preview of ${file.name}`} src={filePreviewPath(file.id)} allow={NOTHING_ALLOWED} referrerPolicy="no-referrer" />;
 }
 
+/**
+ * A video the browser plays itself (C-61, #1352): its own controls, the poster until the person presses Play (never on its own, so no sound
+ * starts unasked), and the bytes in ranges from the video route, so it
+ * starts at once and seeks without loading the file. Closing stops it and its download. A browser that cannot play the file (a codec it
+ * lacks) says so and offers Download; the route's own access check answers the person who lost the file.
+ */
+function VideoStage({ file, poster }: { file: MessageFile; poster?: string }) {
+  const player = useRef<HTMLVideoElement>(null);
+  const [failed, setFailed] = useState<'unsupported' | 'denied' | null>(null);
+  useEffect(() => () => {
+    const video = player.current;
+    if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+  }, []);
+  // The player's error does not say why: the download route tells a lost file from one this browser cannot play.
+  const onError = () => {
+    send(filePath(file.id), { method: 'HEAD', leavesReads: true, cache: 'no-store' })
+      .then((response) => setFailed(response.ok ? 'unsupported' : 'denied')).catch(() => setFailed('unsupported'));
+  };
+  if (failed === 'denied') return <p className="file-viewer__state" role="alert">You no longer have access to this file.</p>;
+  if (failed === 'unsupported') return (
+    <div className="file-viewer__state file-viewer__state--column">
+      <p>This browser can't play this video.</p>
+      <a className="ui-btn ui-btn--primary" href={filePath(file.id)} download={file.name}><Icon name="download" />Download</a>
+    </div>
+  );
+  return <video ref={player} className="file-viewer__video" src={fileVideoPath(file.id)} poster={poster}
+    controls playsInline preload="metadata" aria-label={file.name} onError={onError} />;
+}
+
 const PARSED: Partial<Record<PreviewFormat, ParsedFormat>> = { text: 'text', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv' };
 
-export function FileViewer({ file, format, onClose }: { file: MessageFile; format: PreviewFormat; onClose: () => void }) {
+/** `poster`: for a video, the picture its message row already read, shown until Play. */
+export function FileViewer({ file, format, poster, onClose }: { file: MessageFile; format: PreviewFormat; poster?: string; onClose: () => void }) {
   const root = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const returnTo = useRef<Element | null>(null);
   const [scripts, setScripts] = useState(false);
   const [source, setSource] = useState(false);
   const [numbers, setNumbers] = useState(false);
-  const framed = (format === 'html' && !source) || format === 'pdf';
+  const framed = (format === 'html' && !source) || format === 'pdf' || format === 'video';
   const access = useAccess(file.id, framed);
   const parsed = useParsed(file.id, framed ? null : source ? 'text' : PARSED[format] ?? null);
   useEffect(() => {
@@ -119,6 +149,7 @@ export function FileViewer({ file, format, onClose }: { file: MessageFile; forma
     notes.push(scripts ? 'Scripts are on for this preview. A script may contact the internet.'
       : <>External images and scripts are blocked. {quiet('Run scripts', () => setScripts(true))}</>);
   } else if (format === 'pdf') body = <PdfPage file={file} />;
+  else if (format === 'video') body = <VideoStage file={file} poster={poster} />;
   else if (parsed.status === 'ready') {
     const model = parsed.model;
     const label = `Contents of ${file.name}`;

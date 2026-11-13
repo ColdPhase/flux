@@ -50,16 +50,21 @@ export const typeLine = (file: { name: string; size: number }, detail?: string) 
  * Download as its own button; any other file's whole row downloads under its name.
  */
 export function FileRow({ file }: { file: MessageFile }) {
-  const format = previewFormat(file.name);
+  // A video is one because the server read its bytes (C-61), not because of its name; its poster, when the sender's browser drew one,
+  // stands in for the page icon.
+  const format = file.video ? 'video' : previewFormat(file.name);
   const [open, setOpen] = useState(false);
+  const poster = useFileBytes(file.video && file.poster ? file.poster : null, 'image');
   if (format) return (
-    <div className="file-row file-row--preview" data-file-kind={fileKind(file.name)}>
-      <button type="button" className="file-row__open" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={`Preview ${file.name}`}>
-        <FileIcon name={file.name} />
+    <div className="file-row file-row--preview" data-file-kind={fileKind(file.name)} data-video={file.video || undefined}>
+      <button type="button" className="file-row__open" onClick={() => setOpen(true)} aria-haspopup="dialog" aria-label={`${file.video ? 'Play' : 'Preview'} ${file.name}`}>
+        {file.video && poster.status === 'ready'
+          ? <span className="file-row__poster"><img src={poster.url} alt="" draggable={false} /><span className="file-row__play"><Icon name="play" size={14} /></span></span>
+          : <FileIcon name={file.name} />}
         <span className="file-row__text"><span className="file-row__name">{file.name}</span><small>{typeLine(file, detailLine(file))}</small></span>
       </button>
       <a className="file-row__act" href={filePath(file.id)} download={file.name} data-tip="Download" aria-label={`Download ${file.name}`}><Icon name="download" size={16} /></a>
-      {open ? <FileViewer file={file} format={format} onClose={() => setOpen(false)} /> : null}
+      {open ? <FileViewer file={file} format={format} poster={poster.status === 'ready' ? poster.url : undefined} onClose={() => setOpen(false)} /> : null}
     </div>
   );
   return (

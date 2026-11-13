@@ -269,3 +269,11 @@ span.photo-grid__open { cursor: default; }
 .message-day.project-convo__day::before, .message-day.project-convo__day::after { content: ""; height: 1px; background: var(--line); flex: 1; }
 
 .photo-grid { min-width: min(100%, 300px); }
+/* A video (C-61): the poster the sender's browser drew takes the page icon's place in its file row, with the play glyph over the photo grid's "+N" scrim. */
+.file-row__poster { position: relative; flex: none; display: block; width: 72px; height: 40px; border-radius: var(--r-sm); overflow: hidden; background: var(--el); }
+.file-row__poster img { display: block; width: 100%; height: 100%; object-fit: cover; }
+@media (max-width: 480px) { .file-row__poster { width: 56px; height: 32px; } }
+.file-row__play { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0, 0, 0, .42); color: #fff; }
+/* The viewer's stage for a video is the black of the viewer itself: no sheet, the player as large as the stage allows. */
+.file-viewer__sheet--video { width: 100%; border-radius: 0; background: none; }
+.file-viewer__video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
