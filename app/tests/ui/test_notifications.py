@@ -412,6 +412,7 @@ class NotificationJourney(unittest.TestCase):
         expect(capsule).to_have_attribute("aria-current", "page")
         assert_touch_target(self, page, capsule)
         # #1424: Settings' row says what the person hears about as it is now, and names quiet hours only while they are on.
+        kept = self.api(page, "GET", "/api/v1/notification-preferences")
         self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": "needsYou", "quietHours": {"enabled": False}})
         page.get_by_role("link", name="Settings and account").tap()
         row = page.get_by_role("link", name=re.compile("^Notifications"))
@@ -421,7 +422,8 @@ class NotificationJourney(unittest.TestCase):
         self.api(page, "PATCH", "/api/v1/notification-preferences", {"quietHours": {"enabled": True, "start": "22:00", "end": "07:00"}})
         page.reload()
         expect(page.get_by_role("link", name=re.compile("^Notifications"))).to_contain_text("Only what needs me · quiet 22:00–7:00")
-        self.api(page, "PATCH", "/api/v1/notification-preferences", {"quietHours": {"enabled": False}})
+        self.api(page, "PATCH", "/api/v1/notification-preferences", {"level": kept["level"], "quietHours": kept["quietHours"]})
+        page.reload()
         page.get_by_role("link", name=re.compile("^Notifications")).tap()
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")

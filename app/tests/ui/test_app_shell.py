@@ -614,6 +614,7 @@ class AppShellJourney(unittest.TestCase):
                     button: {left: button.left, right: button.right, top: button.top, bottom: button.bottom},
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
                     rowHeights: rows.filter(el => !el.querySelector('small')).map(el => el.getBoundingClientRect().height), hintedHeights: hinted,
+                    rowTexts: rows.map(el => el.textContent.trim()),
                     viewport: document.documentElement.clientWidth};
                 }""")
                 after = header.bounding_box()

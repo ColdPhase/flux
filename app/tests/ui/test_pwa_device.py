@@ -239,6 +239,7 @@ class InstallAndLaunch(unittest.TestCase):
         # This run's server has no push keys: the page is told it has them (its own request is answered, so no route is stubbed and the service
         # worker stays allowed).
         context.add_init_script("""(() => {
+          try { delete window.PushManager; } catch { /* Safari in a tab has no push API until Flux is on the Home Screen */ }
           const real = window.fetch.bind(window);
           window.fetch = (input, init) => {
             const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input);

@@ -63,6 +63,9 @@ class InviteLinksJourney(unittest.TestCase):
         created = context.request.post("/api/v1/workspaces", data={"name": "Riverside Makers"}, headers={"origin": ORIGIN})
         assert created.status == 201, created.text()
         cls.riverside = created.json()["id"]
+        # The company's Everyone space, which a member lands in when they join (#1424).
+        everyone = context.request.post(f"/api/v1/workspaces/{cls.riverside}/projects", data={"name": "Everyone", "visibility": "workspace"}, headers={"origin": ORIGIN})
+        assert everyone.status == 201, everyone.text()
         context.close()
 
     @classmethod
