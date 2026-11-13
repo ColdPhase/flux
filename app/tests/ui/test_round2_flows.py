@@ -24,6 +24,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from inbox_items import open_item
 
 PASSWORD = "round two keeps the first minutes calm"
 STAMP = int(time.time() * 1000)
@@ -148,6 +149,9 @@ class Round2Flows(unittest.TestCase):
                 count = cards.count()
                 self.assertGreaterEqual(count, 4)
                 expect(page.locator(".nyq__list > .nyc.is-selected")).to_have_count(1)
+                # The Inbox is one list newest first (#1367): choose a decision, whose card carries the one dark primary.
+                open_item(page.locator(".nyq__list > .nyc--decision").first)
+                expect(page.locator(".nyq__list > .nyc.is-selected")).to_have_count(1)
                 # No "Needs you" pill and no filters, on any device (#1367).
                 expect(page.locator(".nyc__chip")).to_have_count(0)
                 expect(page.locator(".nyq__filters")).to_have_count(0)
@@ -158,9 +162,9 @@ class Round2Flows(unittest.TestCase):
                     expect(page.locator(".nyq__list > .nyc--compact")).to_have_count(count - 1)
                     # One inverted primary: Accept on the selected decision only.
                     expect(page.locator(".nyq__list .nyc__card .ui-btn--primary:visible")).to_have_count(1)
-                    for index in range(1, count):
-                        self.assertEqual(cards.nth(index).locator(".nyc__rowactions .ui-btn").count(), 1, "a compact card has one action")
-                        expect(cards.nth(index).locator(".nyc__reason, .nyc__based, .nyc__foot")).to_have_count(0)
+                    for compact in page.locator(".nyq__list > .nyc--compact").all():
+                        self.assertEqual(compact.locator(".nyc__rowactions .ui-btn").count(), 1, "a compact card has one action")
+                        expect(compact.locator(".nyc__reason, .nyc__based, .nyc__foot")).to_have_count(0)
                 else:
                     # Two columns: every item is one row of the list, the open item is in the right column with the one primary.
                     expect(page.locator(".nyq--two")).to_have_count(1)
@@ -173,9 +177,9 @@ class Round2Flows(unittest.TestCase):
                 self.assertNotIn("0px 0px 0px 2px", ring)
                 shot(page, f"r2-inbox-{'390' if phone else '1440'}-{'dark' if dark else 'light'}-{UI_BROWSER}")
                 if phone:
-                    self.assertLess(cards.nth(1).bounding_box()["height"], 120, "a compact card is about one line on a phone")
+                    self.assertLess(page.locator(".nyq__list > .nyc--compact").first.bounding_box()["height"], 120, "a compact card is about one line on a phone")
                 # A click on a row's free space opens it, and the one before closes.
-                second = cards.nth(1)
+                second = page.locator(".nyq__list > .nyc:not(.is-selected)").first
                 key = second.get_attribute("data-key")
                 box = second.locator(".nyc__card").bounding_box()
                 if phone:

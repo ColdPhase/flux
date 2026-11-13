@@ -133,7 +133,12 @@ class InboxFinal(unittest.TestCase):
         return page
 
     def kinds(self) -> list[str]:
-        return [item["kind"] for item in self.queue(None)["items"]]
+        """The kinds that wait, in a steady order: the Inbox is one list newest first (#1367), so the order is not what these tests are about."""
+        return sorted(item["kind"] for item in self.queue(None)["items"])
+
+    def newest_first(self) -> bool:
+        times = [item["at"] for item in self.queue(None)["items"]]
+        return times == sorted(times, reverse=True)
 
     def wait_for(self, check, what: str, seconds: float = 20):
         end = time.time() + seconds
@@ -291,7 +296,8 @@ class InboxFinal(unittest.TestCase):
     # ---------------------------------------------------------------- the queue (AC-1, AC-3)
 
     def test_01_one_queue_in_two_columns_and_the_decision_card(self) -> None:
-        self.assertEqual(self.kinds(), ["decision", "question", "blocked", "mention"])
+        self.assertEqual(self.kinds(), sorted(["decision", "question", "blocked", "mention"]))
+        self.assertTrue(self.newest_first(), "one list, newest first, whatever the kind")
         page = self.page()
         page.goto("/inbox")
         expect(page.get_by_role("heading", level=1, name="Inbox")).to_be_visible()
@@ -373,25 +379,27 @@ class InboxFinal(unittest.TestCase):
         expect(cards.nth(1)).to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
         expect(cards.nth(0)).to_have_attribute("aria-current", "true")
-        for _ in range(3):
-            page.keyboard.press("j")
         mention = self.card(page, "mentioned you")
+        for _ in range(4):
+            if mention.get_attribute("aria-current") == "true":
+                break
+            page.keyboard.press("j")
         expect(mention).to_have_attribute("aria-current", "true")
         page.keyboard.press("e")
         toast = page.get_by_role("status").filter(has_text="Marked done")
         expect(toast).to_be_visible()
         expect(cards).to_have_count(3)
-        self.wait_for(lambda: self.kinds() == ["decision", "question", "blocked"], "Done to be stored")
+        self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked"]), "Done to be stored")
         page.keyboard.press("z")
         expect(cards).to_have_count(4)
         # An answered toast offers no Undo while it leaves, so the next toast's Undo is the only one (#393 review).
         expect(page.get_by_role("button", name="Undo")).to_have_count(0)
-        self.wait_for(lambda: self.kinds() == ["decision", "question", "blocked", "mention"], "Undo to restore it for good")
+        self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked", "mention"]), "Undo to restore it for good")
         # The Undo button does the same as Z.
         page.keyboard.press("e")
         page.get_by_role("button", name="Undo").click()
         expect(cards).to_have_count(4)
-        self.wait_for(lambda: self.kinds() == ["decision", "question", "blocked", "mention"], "the restored queue")
+        self.wait_for(lambda: self.kinds() == sorted(["decision", "question", "blocked", "mention"]), "the restored queue")
 
     def test_04_not_now_is_one_button_until_tomorrow_morning(self) -> None:
         page = self.page()
@@ -423,9 +431,8 @@ class InboxFinal(unittest.TestCase):
         # The restored first card is current again. Move to its neighbour and back before using S;
         # this proves the keyboard handler sees the restored queue, not its previous item list.
         expect(decision).to_have_attribute("aria-current", "true")
-        question = self.card(page, "asked you")
         page.keyboard.press("j")
-        expect(question).to_have_attribute("aria-current", "true")
+        expect(decision).not_to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
         expect(decision).to_have_attribute("aria-current", "true")
         # S is Not now for the selected card, at once and with no menu; Undo returns it.
@@ -470,7 +477,7 @@ class InboxFinal(unittest.TestCase):
         expect(decision).to_have_attribute("aria-current", "true")
         # Selection while Undo waits: down to the neighbour and back lands on the restored decision.
         page.keyboard.press("j")
-        expect(self.card(page, "asked you")).to_have_attribute("aria-current", "true")
+        expect(decision).not_to_have_attribute("aria-current", "true")
         page.keyboard.press("k")
         expect(decision).to_have_attribute("aria-current", "true")
         expect(page.locator('.nyc[aria-current="true"]')).to_have_count(1)

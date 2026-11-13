@@ -1122,8 +1122,10 @@ class LightMotionJourney(unittest.TestCase):
         page = self.page()
         self.open(page, "/inbox")
         cards = page.locator(".nyc")
-        expect(cards.nth(1)).to_be_visible()
-        first, below = cards.nth(0), cards.nth(1)
+        # The Inbox is one list newest first (#1367): take a decision that has a card below it.
+        first = page.locator(".nyc.nyc--decision:has(~ .nyc)").first
+        below = first.locator("xpath=following-sibling::li[1]")
+        expect(below).to_be_visible()
         gone, stays = first.get_attribute("data-key"), below.get_attribute("data-key")
         settled(page)
         clear(page)

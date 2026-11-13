@@ -446,7 +446,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 
 Founder direction, Hubert, 2026-11-12 (#1239), replacing the segmented views of #873. **One style on
 every device:** the phone, the tablet and the computer. The segmented control stays for choices
-inside a screen (the Create window), not for the views of a space. The Inbox has no filter ([Inbox](#inbox)).
+inside a screen (the Create window), not for the views of a space.
 
 - **Left-aligned, each tab as wide as its word.** The words are 22 px apart: 11 px of padding on each
   side of a word, which also makes every tab at least 44 px wide. The row is `--fs-md`.
@@ -769,10 +769,10 @@ Community garden sensors, Rain barrel monitor and Tool library.
 - The list on the left, the open item on the right, with no filters. Each item names its kind,
   who it is from and its space: "Decision · Maja · Community garden sensors", "Question · Jonas",
   "Blocked · waits for you".
-- **No filters, and no pill** (v0.2.1, #1367). The Inbox is one list of what needs you (S1), so there is no
-  "All · Decisions · Questions" row and no "6 need you · all spaces" line: the count is the quiet mono number
-  after the title ("Inbox 5", never a pill) and the sidebar's. §4's earlier mention of an "Inbox filter" as a segmented
-  control is withdrawn. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
+- **No filters, and no pill** (founder decision, Hubert, 2026-11-13, #1367). The Inbox is one list of what needs you (S1), **newest first**,
+  so there is no "All · Decisions · Questions" row and no "6 need you · all spaces" line, and nothing is grouped by kind: the count is the quiet mono number
+  after the title ("Inbox 5", never a pill) and the sidebar's. How much reaches a person is the notification level, which is set in Settings and not
+  in the Inbox. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
 - **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
   being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
   item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; the open row is

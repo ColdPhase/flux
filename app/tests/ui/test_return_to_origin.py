@@ -532,7 +532,7 @@ class ReturnToOrigin(unittest.TestCase):
                 self.jump_to_search(page)
                 places["search result"] = self.box(self.origin_back(page, "Conversation"))
                 page.goto("/inbox")
-                open_item(page.locator(".nyc").first).get_by_role("button", name="Discuss").click()
+                open_item(page.locator(".nyc--decision").first).get_by_role("button", name="Discuss").click()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
                 places["inbox item"] = self.box(self.origin_back(page, "Inbox"))
                 self.assertEqual(len(set(places.values())), 1, f"the control never changes place: {places}")

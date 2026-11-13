@@ -402,7 +402,7 @@ class NotificationJourney(unittest.TestCase):
         cards = page.locator(".nyc")
         expect(cards).to_have_count(3)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
-        first = open_item(cards.first).get_by_role("button", name=re.compile("^Accept"))
+        first = open_item(page.locator(".nyc--decision").first).get_by_role("button", name=re.compile("^Accept"))
         assert_touch_target(self, page, first)
         shot(page, "notifications-phone-390-inbox")
         # The capsule marks the Inbox; Settings are one tap on the avatar away (#341).

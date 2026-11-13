@@ -30,7 +30,7 @@ The queue is what waits; it does not interrupt. What interrupts a person while F
 the tab and the badge, and by push is one table, by reason and level, in
 [mobile and PWA](../product/mobile-pwa.md#while-flux-is-open-1243) (#1243).
 
-Order: decisions, questions, blocked tasks, mentions; newest first within a kind. At most 300 items, of which
+Order: newest first, one list for every kind (founder decision, 2026-11-13, #1367; an item's time is when it was proposed, asked, blocked or noticed). At most 300 items, of which
 at most 200 are decisions.
 
 ## One person accepts
