@@ -3,6 +3,7 @@ import { EVENTS_CHANNEL, listen, RUN_TEXT_CHANNEL, streamAudienceRepository, typ
 import { audienceKey, isUuid } from '@flux/core';
 import { RUN_TEXT_PIECE_CHARS, STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type ApiError, type StreamRunText } from '@flux/contracts';
 import type { SessionResolver } from '../identity/index.js';
+import { sessionCookieName, sessionCookieValue } from '../identity/session-cookie.js';
 import { StreamConnection } from './connection.js';
 import { CursorCodec } from './cursor.js';
 import { resolveCursor, type DeliverySources, type StreamWork, type Subscription } from './delivery.js';
@@ -23,6 +24,16 @@ export interface StreamOptions {
 }
 
 const STEP = /^[a-z][a-z0-9_]{0,63}$/;
+
+/**
+ * Why an upgrade had no session, for the log (#1313): a browser cannot read the status of a refused upgrade, and "no cookie was sent" and "the
+ * cookie's session is gone" look the same on the page. Only whether the session cookie came and the names of the cookies that did: never a
+ * value, and nothing the cookie names.
+ */
+export function upgradeCookies(cookieHeader: unknown, publicOrigin: string) {
+  const names = typeof cookieHeader === 'string' ? cookieHeader.split(';').map((part) => part.split('=')[0]!.trim()).filter(Boolean).slice(0, 12) : [];
+  return { cookieHeader: typeof cookieHeader === 'string', cookieNames: names, sessionCookie: sessionCookieValue(cookieHeader, sessionCookieName(publicOrigin.startsWith('https:'))) !== null };
+}
 
 /** A worker's notice of `RUN_TEXT_CHANNEL`, exactly in its shape, as the message its owner's connections get; null for anything else. */
 function runTextPiece(payload: string): { ownerUserId: string; message: StreamRunText } | null {
@@ -71,7 +82,10 @@ export async function streamRoutes(app: FastifyInstance, options: StreamOptions)
         return reply.code(403).send(forbidden('ORIGIN_REJECTED'));
       }
       const context = await sessions.resolveSession(request.headers);
-      if (!context) return reply.code(401).send(UNAUTHENTICATED);
+      if (!context) {
+        request.log.warn({ upgrade: upgradeCookies(request.headers.cookie, publicOrigin), userAgent: String(request.headers['user-agent'] ?? '').slice(0, 120) }, 'Refused stream upgrade: no session');
+        return reply.code(401).send(UNAUTHENTICATED);
+      }
       const cursor = await resolveCursor(sources, cursors, context.principal, typeof request.query.cursor === 'string' ? request.query.cursor : undefined);
       if ('status' in cursor) return reply.code(cursor.status).send({ error: cursor.error, code: cursor.code } satisfies ApiError);
       accepted.set(request, { headers: { cookie: request.headers.cookie }, principal: context.principal, sessionId: context.sessionId, ...cursor });

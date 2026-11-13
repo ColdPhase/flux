@@ -4,12 +4,14 @@ import { apiUrl, publicOrigin, type Browser } from './http.js';
 
 export interface StreamOptions {
   cursor?: string | number;
+  /** The API process to connect to (its http address); defaults to the API container. */
+  base?: string;
   /** Origin header; null omits it. Defaults to the public origin. */
   origin?: string | null;
 }
 
-function streamUrl(cursor?: string | number) {
-  const url = new URL('/api/v1/stream', apiUrl.replace(/^http/, 'ws'));
+function streamUrl(cursor?: string | number, base: string = apiUrl) {
+  const url = new URL('/api/v1/stream', base.replace(/^http/, 'ws'));
   if (cursor !== undefined) url.searchParams.set('cursor', String(cursor));
   return url;
 }
@@ -19,7 +21,7 @@ function open(browser: Browser | null, options: StreamOptions) {
   const origin = options.origin === undefined ? publicOrigin : options.origin;
   if (origin !== null) headers.origin = origin;
   if (browser?.cookies.size) headers.cookie = browser.cookieHeader();
-  return new WebSocket(streamUrl(options.cursor), { headers });
+  return new WebSocket(streamUrl(options.cursor, options.base), { headers });
 }
 
 /** A WebSocket subscriber that records every message, ping and the close frame. */
