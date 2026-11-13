@@ -5,7 +5,7 @@ import { useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
-import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
+import { ConnectionLine, OutboxStatus, PendingFiles, SendAnnouncer } from '../composer/Outbox';
 import { ContributionMark, clock, day, shownAnswer, shownLabel, when } from '../app/messageParts';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
@@ -258,7 +258,6 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
           <PendingFiles body={pending.body ? <div className="wd-pending__body"><MessageText body={pending.body} linked={false} /></div> : null} files={pending.files} send={{ state: pending.state, ...(writable ? { onRetry: () => composer.retry(pending.id) } : {}) }} />
-          <PendingSource item={pending} />
           {writable ? <OutboxStatus item={pending} onRetry={() => composer.retry(pending.id)} onRemove={() => composer.remove(pending.id)} />
             : <p className="wd-muted" role="status">{pending.state === 'failed' ? 'Unsent message kept.' : 'Send not confirmed. Your message is kept.'} You cannot send to this task.</p>}
         </li>

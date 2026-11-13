@@ -56,7 +56,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const touch = useMediaQuery('(pointer: coarse)');
   const picked = usePickedFiles(state);
   const limits = useFileLimits();
-  const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
+  const empty = attach === 'none' && !state.draft.files.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>
     <input ref={input} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true" disabled={blocked}
@@ -71,10 +71,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
         onRetry={() => { if (!state.retryFile(file.uploadId)) { recoverId.current = file.uploadId; recovery.current?.click(); } }}
         onRemove={() => state.removeFile(file.uploadId)} />)}</ol>
     </> : null}
-    {state.draft.references.map((ref) => <div key={`${ref.materialId}:${ref.version}`} className="composer-files__ref">
-      <span>Source: {ref.title} · v{ref.version}</span><button type="button" className="composer-files__x" disabled={blocked} aria-label="Remove material citation" onClick={() => state.setReference(null)}><Icon name="x" size={14} /></button>
-    </div>)}
-    {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text, files and sources stay during this visit; keep this tab open to recover them.</p> : null}
+    {state.storage === 'visit' ? <p className="composer-files__privacy">This browser refused draft storage. Your text and files stay during this visit; keep this tab open to recover them.</p> : null}
     {state.draft.unconfirmed && !state.sending && !state.error ? <p className="composer-files__privacy">This send is unconfirmed. Retry sends the same command once.</p> : null}
     {state.error ? <p className="composer-files__error" role="alert">{state.error}</p> : null}
     {picked.sheet}

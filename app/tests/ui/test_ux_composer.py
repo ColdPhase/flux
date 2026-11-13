@@ -143,8 +143,13 @@ class UxSimplicityPartAComposer(unittest.TestCase):
         expect(reply).to_have_value("/decide Order from the second supplier")
         reply.press("Enter")
         window = page.get_by_role("dialog", name="New decision")
+        # Replace an accepted decision… is a choice in the same window, and the keyboard goes on to it.
+        window.get_by_role("button", name="Replace an accepted decision…").click()
+        expect(window.get_by_label("Does it replace an earlier decision?")).to_be_focused()
         window.get_by_role("button", name=re.compile("^Propose decision")).click()
         expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
+        # Proposed: the words leave the composer at once, so they are not sent again while the proposal waits out its Undo.
+        expect(reply).to_have_value("")
         found = None
         for _ in range(80):
             found = next((item for item in self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/decisions?limit=100", None, 200)["items"]

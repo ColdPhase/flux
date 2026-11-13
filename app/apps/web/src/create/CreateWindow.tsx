@@ -536,11 +536,12 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     const target = project.id;
     const handle = startProposal((key, keepalive) => proposeDecision(target, command, key, keepalive), (outcome) => {
       revalidator.revalidate();
-      // A `/decide` keeps its words in the composer until the decision is proposed, as `/task` does until the task exists.
-      if (outcome === 'accepted') request.onCreated?.();
-      else toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+      if (outcome !== 'accepted') toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
     });
     carried.made(snapshot);
+    // A `/decide` keeps its words in the composer until Propose, as `/task` does until Create: closing the window loses nothing, and the
+    // words are not left behind to be sent again while the proposal waits out its Undo.
+    request.onCreated?.();
     // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
     onClose();
     toast({ message: 'Decision proposed', tone: 'neutral', timeout: ACCEPT_UNDO_MS, action: { label: 'Undo', key: 'Z', onClick: () => {
@@ -575,10 +576,14 @@ function ReplaceChoice({ projectId, value, onChange }: { projectId: string; valu
   const page = choices.page;
   const paged = !!page && (!!page.previousCursor || !!page.nextCursor || page.before > 0);
   const [kept, setKept] = useState<{ id: string; title: string } | null>(null);
+  // "Replace an accepted decision…" gave way to this choice: the keyboard goes on to it once its decisions are read.
+  const field = useRef<HTMLButtonElement>(null);
+  const ready = !!page;
+  useEffect(() => { if (ready) field.current?.focus(); }, [ready]);
   return (
     <div className="create__replace">
       <label htmlFor={id}>Does it replace an earlier decision?</label>
-      <Select id={id} value={value} disabled={!page} onChange={(next) => { const found = items.find((item) => item.id === next); const chosen = next ? { id: next, title: found?.title ?? kept?.title ?? '' } : null; setKept(chosen); onChange(chosen); }}>
+      <Select ref={field} id={id} value={value} disabled={!page} onChange={(next) => { const found = items.find((item) => item.id === next); const chosen = next ? { id: next, title: found?.title ?? kept?.title ?? '' } : null; setKept(chosen); onChange(chosen); }}>
         <Option value="">No, this is a new decision</Option>
         {value && !items.some((item) => item.id === value) ? <Option value={value}>{kept?.title || 'The chosen decision'}</Option> : null}
         {items.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}

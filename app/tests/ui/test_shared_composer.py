@@ -492,7 +492,6 @@ class SharedComposerJourney(unittest.TestCase):
         expect(writer.get_by_role("alert")).to_contain_text("Upload unavailable")
         kept = self.record(writer, project, a, "writer")
         self.assertEqual(kept["body"], before["body"])
-        self.assertEqual(kept["references"], before["references"])
         self.assertEqual(kept["files"][0], before["files"][0])
         writer.get_by_role("button", name="Remove revoked.bin").click()
         command_before = self.record(writer, project, a, "writer")
@@ -514,7 +513,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.open_agents(writer, project, a)
         expect(writer.get_by_text("This send is unconfirmed. Retry sends the same command once.", exact=True)).to_be_visible()
         kept = self.record(writer, project, a, "writer")
-        for field in ("body", "files", "references", "commandId"):
+        for field in ("body", "files", "commandId"):
             self.assertEqual(kept[field], command_before[field])
         self.assertTrue(kept["unconfirmed"])
         self.assertEqual(len(self.discussion(owner, a)["messages"]), 1)
@@ -621,7 +620,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_role("alert")).to_contain_text("expired file")
         kept = self.record(page, project, a)
-        for field in ("body", "references", "commandId"):
+        for field in ("body", "commandId"):
             self.assertEqual(kept[field], original[field])
         self.assertEqual(kept["files"][0]["staged"]["id"], original["files"][0]["staged"]["id"])
         page.unroute(f"**/api/v1/work/{a['id']}/discussion", expire)
@@ -636,7 +635,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_role("button", name="Send reply").click()
         expect(pane.get_by_role("alert")).to_contain_text("conflicts with an earlier command")
         conflicted = self.record(page, project, a)
-        for field in ("body", "files", "references", "commandId"):
+        for field in ("body", "files", "commandId"):
             self.assertEqual(conflicted[field], recovered[field])
         pane.get_by_label("Reply", exact=True).fill(recovered['body'] + " · confirmed revised intent")
         pane.get_by_role("button", name="Send reply").click()
@@ -702,7 +701,6 @@ class SharedComposerJourney(unittest.TestCase):
         edited_b = self.record(page, project, b)
         self.assertNotEqual(edited_b['commandId'], before_b['commandId'])
         self.assertEqual(edited_b['files'], before_b['files'])
-        self.assertEqual(edited_b['references'], before_b['references'])
         self.assertEqual(self.record(page, project, a), before_a)
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value(before_a['body'])

@@ -10,14 +10,11 @@
 .composer-files__name small { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .composer-files__list li > button { flex: none; }
 .composer-files__error { color: var(--t1); width: 100%; margin: 3px 0; line-height: 1.5; }
-.composer-files__ref { display: flex; align-items: center; gap: 6px; width: 100%; color: var(--t2); }
-.composer-files__ref span { min-width: 0; flex: 1; overflow-wrap: anywhere; }
 @media (hover: none), (max-width: 680px) {
   .composer-files button { min-height: 44px; }
   .composer-files__list li > button { min-width: 44px; }
 }
 /* Instant sending (#264): a sent message's state on the message itself, and the offline line. */
-.outbox-source { display: block; margin: 2px 0 0; color: var(--t2); font-size: var(--fs-sm); }
 .outbox-status { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin: 4px 0 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.4; }
 .outbox-status__dot { flex: none; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .7; }
 .outbox-status.is-waiting svg { flex: none; }

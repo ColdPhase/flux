@@ -33,8 +33,6 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__composer .composer__audience { display: flex; align-items: center; gap: 5px; min-width: 0; flex-wrap: wrap; }
 .project-convo__composer .composer__audience > span { min-width: 0; overflow-wrap: anywhere; }
 .project-convo__current-thread { display: none; }
-.project-convo__citation { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-xs); color: var(--t2); padding: 4px 4px 4px 8px; border: 1px solid var(--line); border-radius: var(--r-sm); margin-bottom: 6px; }
-.project-convo__citation button { min-width: 28px; min-height: 28px; }
 .project-convo__error { color: var(--t1); font-size: var(--fs-sm); margin-top: 6px; }
 .project-convo__hint { color: var(--t2); font-size: var(--fs-sm); margin-top: 6px; }
 .project-setup { max-width: 560px; }

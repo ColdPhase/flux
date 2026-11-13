@@ -2,7 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import type { AgentColour, ConversationMessage } from '@flux/contracts';
 import { AgentIdentity, Icon } from '../ui';
 import type { PendingSend } from '../composer/draft';
-import { OutboxStatus, PendingFiles, PendingSource } from '../composer/Outbox';
+import { OutboxStatus, PendingFiles } from '../composer/Outbox';
 import { getMaterialVersion } from '../materials/api';
 import { readerActive, watchReaderInput } from '../work/readerIntent';
 import { RefLink } from '../place/origin';
@@ -137,7 +137,6 @@ export function pendingMessageRow({ item, place, continued = false, keyed = true
 
       {inMeta ? status : null}
       <PendingFiles body={item.body ? <div className="message-body"><MessageText body={item.body} /></div> : null} files={item.files} send={{ state: item.state, onRetry }} />
-      <PendingSource item={item} className="project-convo__source" />
       {inMeta ? null : status}
     </li>
   );
