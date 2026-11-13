@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { taskDiscussionPath, taskPeoplePath, workItemPath, TASK_TAKING_PATH, type Project, type TaskDiscussion, type TaskPeople, type WorkItem, type Workspace } from '@flux/contracts';
+import { taskDiscussionPath, taskPeoplePath, workItemPath, type Project, type TaskDiscussion, type TaskPeople, type WorkItem, type Workspace } from '@flux/contracts';
 import type { Principal } from '@flux/core';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -105,39 +105,20 @@ describe('agents of a company admin who is not in the space (C-15, #955)', () =>
     assert.ok(talk.messages.some((message) => message.authorId === late.id), 'what they wrote stays');
   });
 
-  test('"Give it to": a task given to an admin who is not in the space stays with her, and the thread says why', async () => {
+  test('#1419: an admin not in the space cannot give a task there to her agent; in her space she can (C-15)', async () => {
     const second = await createProject(lee, ws.id, 'Second closed tides', 'restricted');
-    expectStatus(await mira.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: agents.mira } }), 200);
-    try {
-      const refused = expectStatus(await lee.browser.request('POST', `/api/v1/projects/${second.id}/work`, { body: { title: 'For Mira', owner: { kind: 'human', id: mira.id } } }), 201) as WorkItem;
-      await waitFor(async () => {
-        const rows = (await pool.query('SELECT handled_at FROM agent_task_events WHERE work_id = $1', [refused.id])).rows as { handled_at: Date | null }[];
-        return rows.length > 0 && rows.every((row) => row.handled_at) ? rows : null;
-      }, 'the event to be handled');
-      // Her own words, naming the agent she chose, and exactly once.
-      const hers = async () => (await thread(refused.id)).filter((message) => message.authorId === mira.id).map((message) => message.body);
-      const line = 'My agent Fieldbot can\'t work in this space, so it hasn\'t taken this task. It\'s still with me.';
-      assert.deepEqual(await hers(), [line]);
-      const now = expectStatus(await lee.browser.request('GET', workItemPath(refused.id)), 200) as WorkItem;
-      assert.deepEqual([now.owner?.kind, now.owner?.id], ['human', mira.id], 'the task stays with her');
-      // Giving it to her again, and again, is the same refusal and the same line: not one more each time.
-      for (const to of [lee, mira]) {
-        const current = await readTask(refused.id);
-        expectStatus(await lee.browser.request('PATCH', workItemPath(refused.id), { body: { owner: { kind: 'human', id: to.id } }, headers: { 'if-match': `"${current.version}"` } }), 200);
-      }
-      await waitFor(async () => {
-        const rows = (await pool.query(`SELECT handled_at FROM agent_task_events WHERE work_id = $1 AND kind = 'assigned' AND owner_user_id = $2`, [refused.id, mira.id])).rows as { handled_at: Date | null }[];
-        return rows.length === 2 && rows.every((row) => row.handled_at) ? rows : null;
-      }, 'the second assignment to be handled');
-      assert.deepEqual(await hers(), [line], 'still one line');
-      // Control: in a space she is in, the same setting gives the task to her agent (which cannot start in this composition and says so).
-      const taken = expectStatus(await lee.browser.request('POST', `/api/v1/projects/${closed.id}/work`, { body: { title: 'For Mira in her space', owner: { kind: 'human', id: mira.id } } }), 201) as WorkItem;
-      await waitFor(async () => {
-        const rows = await thread(taken.id);
-        return rows.some((message) => message.body === 'I can\'t start: AI is switched off on this Flux.') ? rows : null;
-      }, 'the agent to take it and say it cannot start');
-    } finally {
-      expectStatus(await mira.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200);
-    }
+    // There is no setting that gives a task to her agent by itself: she gives it with the Owner field, and the server says why it can't.
+    const task = expectStatus(await lee.browser.request('POST', `/api/v1/projects/${second.id}/work`, { body: { title: 'For Mira', owner: { kind: 'human', id: mira.id } } }), 201) as WorkItem;
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_task_events WHERE work_id = $1', [task.id])).rows[0].n, 0, 'a task given to a person starts nothing');
+    const refused = await mira.browser.request('PATCH', workItemPath(task.id), { body: { owner: { kind: 'agent', id: agents.mira } }, headers: { 'if-match': `"${task.version}"` } });
+    assert.equal((refused.json as { code: string }).code, 'OWNER_WITHOUT_ACCESS', refused.text);
+    const now = await readTask(task.id);
+    assert.deepEqual([now.owner?.kind, now.owner?.id], ['human', mira.id], 'the task stays with her');
+    // Control: in a space she is in, her agent takes it (and, in this composition, says it cannot start).
+    const taken = expectStatus(await mira.browser.request('POST', `/api/v1/projects/${closed.id}/work`, { body: { title: 'For Mira\'s agent in her space', owner: { kind: 'agent', id: agents.mira } } }), 201) as WorkItem;
+    await waitFor(async () => {
+      const rows = await thread(taken.id);
+      return rows.some((message) => message.body === 'I can\'t start: AI is switched off on this Flux.') ? rows : null;
+    }, 'the agent to take it and say it cannot start');
   });
 });

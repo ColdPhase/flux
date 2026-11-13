@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
@@ -55,17 +54,13 @@ type Mode = TaskMode;
 
 /**
  * The Tasks toolbar (S6, T2): Board | List, Mine and the search in the same places in both views, then the one
- * primary action, "+ Task". The search filters the board's loaded cards; the List is read in bounded pages from
+ * primary action, "+ Task", at the right end of the row. The search filters the board's loaded cards; the List is read in bounded pages from
  * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
 function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
   mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
 }) {
-  const { actionSlot } = useShellActions();
-  // The header holds it where the panel docks beside the board (a computer), in a slot of its own in every view, so it keeps its place when
-  // the panel docks (#763 C4) and nothing moves when Tasks opens (#873); a tablet's panel overlays, so it stays here.
-  const docks = !useMediaQuery(MEDIA.panelOverlay);
   const searchId = useId();
   const radios = useRef<HTMLDivElement>(null);
   // One radio group: arrows choose and focus the other view, as the Map's Map | List does.
@@ -98,12 +93,9 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
           onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.preventDefault(); event.stopPropagation(); onQuery(''); } }} />
         {mode === 'list' ? <span className="ui-vh" id={`${searchId}-note`}>Search works on the board</span> : null}
       </div>
-      {/* The one primary action sits at the right of the header row, as drawn, so it keeps its place when a panel docks and
-          the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
-      {(() => {
-        const add = <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
-        return !phone && docks && actionSlot ? createPortal(add, actionSlot) : add;
-      })()}
+      {/* "+ Task" is the right end of this row on every computer and tablet, in both views and every orientation (§7 Tasks, rule 7, #1366);
+          the space's header holds only its own slots. The phone's floating "+" is its one Create, so the row hides it there. */}
+      <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>
     </div>
   );
 }
@@ -287,7 +279,8 @@ export function ProjectTasks() {
             says so in one line with its way back. */}
         <div className="ws-task-controls">
           {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <Button variant="link" size="sm" onClick={() => setView({ status: null })}>Show all tasks</Button></p> : null}
-          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} stepsWhenPaged />
+          {/* No Refresh: the List updates live, and on focus (#1419). */}
+          <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} stepsWhenPaged />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}

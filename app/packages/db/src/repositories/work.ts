@@ -479,12 +479,12 @@ export function workRows(db: DbExecutor) {
         // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
         const was = toWorkRecord(previous).owner;
         if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
-        if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+        if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       }
       // A blocked task an agent holds goes back to Doing (#868): what it waited for is resolved, or a person resolves it by moving it to Doing.
       // The agent picks it up again, as when it was given the task. A change of owner has just queued its own event above.
       if (previous && previous.status === 'blocked' && next.owner?.kind === 'agent' && sameActor(toWorkRecord(previous).owner, next.owner)
-        && (via === 'wait_resolved' || (by.kind === 'human' && next.status === 'in_progress'))) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+        && (via === 'wait_resolved' || (by.kind === 'human' && next.status === 'in_progress'))) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */

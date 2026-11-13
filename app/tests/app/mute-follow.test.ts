@@ -83,10 +83,11 @@ describe('the one rule for a muted place (#1249)', () => {
   });
   const source = { type: 'project', id: randomUUID() };
 
-  test('a muted place keeps only a reply and a direct message quiet; everything that needs the person arrives; an unmuted place is quiet for none', async () => {
+  test('a muted place keeps only a reply, a direct message and the notice of an open call quiet; everything that needs the person arrives; an unmuted place is quiet for none', async () => {
     assert.deepEqual([...REACHES_MUTED_PLACE].sort(), ['approval', 'assigned', 'invitation', 'mention', 'question', 'review']);
     for (const reason of NOTIFICATION_REASONS) {
-      assert.equal(await store(true).quiet('u', source, reason), reason === 'reply' || reason === 'dm', `muted, ${reason}`);
+      // A muted space sends no notice of an open call there; an invitation to the call still arrives (live-collaboration.md, #1299).
+      assert.equal(await store(true).quiet('u', source, reason), reason === 'reply' || reason === 'dm' || reason === 'call', `muted, ${reason}`);
       assert.equal(await store(false).quiet('u', source, reason), false, `not muted, ${reason}`);
     }
     // A notice with no stored reason (written directly) is as quiet as an ordinary one.

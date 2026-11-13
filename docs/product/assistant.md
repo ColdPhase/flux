@@ -51,7 +51,8 @@ own.
 - **Assistant.** The person's first agent. It answers `/ai`.
 - **Owner.** The one person an agent belongs to, for the whole Flux. Agents never belong to a
   space or to the company.
-- **What it may do.** The agent's one permission row (AG-3).
+- **Ask me first.** The agent's one permission switch (AG-3). It replaced the three-way "What it
+  may do" row (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)).
 - **Yours and other people's.** Yours: a task you are responsible for, or one you or your agents
   created while nobody else is responsible for it; a Wiki page, map, thought or link you or your
   agents created and nobody else has edited. Everything else is other people's.
@@ -79,7 +80,7 @@ own.
     editing the list on the agent's page, where the owner also edits or deletes each item. An
     agent never adds to its memory by itself, and nothing it reads (other people's messages, web
     pages, task text) can add to or change it;
-  - its **What it may do** row (AG-3).
+  - its **Ask me first** switch (AG-3).
 - All of a person's agents share the person's connections and rights. Mixed agents are normal:
   Planner on a Claude plan, Reviewer on a ChatGPT plan.
 - An agent has one label everywhere, for example "Planner · Ada's agent".
@@ -109,7 +110,7 @@ own.
   nothing is written to their history or to their hidden chat meanwhile (no "Skipped" line): the next time after the role comes back
   is the next one on the clock. A one-time schedule that falls due while its owner is a guest comes back off, and stays off.
 
-## AG-3 — Rights, "What it may do", approvals and Undo
+## AG-3 — Rights, "Ask me first", approvals and Undo
 
 **Rights.** An agent reads and changes exactly what its owner can, now, and only in spaces where
 AI is on (AG-10). A DM between people is not in a space; AG-4 governs AI there. Every read and
@@ -121,13 +122,20 @@ the spaces the person was added to ([C-15](decisions.md#coordinator-defaults-and
 Hubert, 2026-11-07). After the person adds themselves to another space with Add me, their agents
 work there too.
 
-**What it may do.** One row on each agent's page:
+**Ask me first.** One switch on each agent's page and on each local app's card (founder decision,
+Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 10):
 
-| Choice | What the agent does |
+| Switch | What the agent does |
 | --- | --- |
-| Only read | Reads and answers. It changes nothing; on a task it reports and hands the task back ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). |
-| Do it and tell me (default) | Makes new things and changes yours at once, then reports them with Undo. |
-| Ask me first | Every change waits for the owner's OK. |
+| Off (default) | Makes new things and changes yours at once, then reports them with Undo. |
+| On | Every change waits for the owner's OK. |
+
+The switch replaced the three-way "What it may do" (Only read / Do it and tell me / Ask me first).
+"Only read" added little: deleting and other people's things always wait, and an agent that should
+only read can be told so in its instructions. **Mapping of stored values:** "Do it and tell me" is the
+switch off and "Ask me first" is the switch on; an agent or local app that was set to "Only read" is
+on (Ask me first), so nothing it does applies without the owner's OK. The stored value keeps the
+names `act` (off) and `ask` (on).
 
 **Always waits, whatever the choice:**
 
@@ -154,7 +162,7 @@ in words:
   grant has a tool for it, and an agent cannot approve its own waiting item. Proposing a decision
   is allowed;
 - changing access: people, spaces, roles, the AI switch, connections, and any agent's settings or
-  "What it may do". Its memory changes only on the owner's own "remember that …" message or when
+  its Ask me first switch. Its memory changes only on the owner's own "remember that …" message or when
   the owner edits the list (AG-1); an agent never adds to it by itself;
 - anything outside its owner's rights. The agent says so; nothing is prepared for or sent to
   another person;
@@ -263,21 +271,21 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 
 - **The Owner field.** A task's owner is a person or one of that person's own agents, listed
   under "Your agents". Nobody else's agent is offered.
-- **One setting per person:** "When someone assigns a task to me: Do nothing / Give it to
-  [agent]". The default is Do nothing. It names exactly one agent; there is no rule per space
-  and no automatic choice. To give one task to a different agent, the owner changes its Owner
-  field.
+- **No rule gives tasks away** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)
+  item 8). A task assigned to a person stays with that person. To give it to one of their agents,
+  the person changes its Owner field, where everyone sees it. The earlier setting "When someone
+  assigns a task to me: Do nothing / Give it to [agent]" is gone, with its server rule; nobody had it
+  set by default (Do nothing was the default).
 - An agent that gets a task starts within seconds and makes no model calls while idle.
 - **Where it works.** In the task's one discussion, in the task panel. The space conversation
   shows one line per task event.
 - **One state line** in the task panel: waiting for room on the server, working, waiting for
   your OK, paused by the provider's limit (with when it resumes), failed (with Try again or Take
   it back), stopped (by whom), done, or handed back.
-- **Finishing** follows the agent's "What it may do": with Do it and tell me it marks the task
-  Done and tells the owner, with Undo; with Ask me first it hands the task back,
-  "Ready for you to check", and so does Only read. **One exception:** a task that is Blocked when
+- **Finishing** follows the agent's Ask me first switch: off, it marks the task Done and tells
+  the owner, with Undo; on, it hands the task back, "Ready for you to check". **One exception:** a task that is Blocked when
   the run ends stays Blocked with the agent in every mode, neither Done nor handed back, because it
-  is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)) ([coordinator default C-1](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
+  is waiting for something (AG-6, [C-52](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). This is the whole
   review step: the owner checks the task; a separate reviewer is optional, for example a subtask
   for a Reviewer agent ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - **Stop.** The agent's owner or the space admin can Stop an agent working on a task at any time.
@@ -381,8 +389,8 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   dropped, a file with more than one image or sizes that disagree is refused, and a file whose structure does not parse is
   refused. It is stored like a file the asker attached and not yet sent, which only they can open, and shows in their private answer
   card; Show everyone posts it with the answer as an ordinary attachment of the asker's message, which every member then sees.
-  Attaching is a change of AG-3: under "Do it and tell me" it is made at once with "Attached a picture · Undo"; under "Ask me first"
-  it waits, and Approve downloads it then; "Only read" refuses it. Undo removes the picture while the answer is still the asker's
+  Attaching is a change of AG-3: with Ask me first off it is made at once with "Attached a picture · Undo"; with Ask me first on
+  it waits, and Approve downloads it then. Undo removes the picture while the answer is still the asker's
   alone; after Show everyone the message is the asker's own to edit or delete. A picture that is not shown within 7 days goes, like
   any file that was never sent. Never in an encrypted space, and not at all with `FLUX_WEB_READS=off`. A refusal reaches the agent
   as plain words ("That address is not a picture"), and the agent says so to its owner. The address is checked for private Flux text
@@ -408,8 +416,9 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   in a space, and not a run of a schedule.
 - Schedules are listed in that conversation: its header has one line ("Every weekday 9:00 ·
   Garden summary · 1 schedule"), on the computer and the phone, that opens the one list, where the
-  owner turns them on, pauses, changes, runs and deletes them (Undo for a day). The agent's page
-  in Settings shows the same list. Their results arrive in the conversation, as one message each
+  owner turns them on, pauses, changes, runs and deletes them (Undo for a day). That is the only
+  place they are listed (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)
+  item 9); the agent's page in Settings has no list. Their results arrive in the conversation, as one message each
   ([C-53, C-54](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   The Inbox is not used for schedules unless something needs the owner (AG-7).
 - A schedule reads web addresses only when its owner typed them: in the sentence that asked for it
@@ -417,9 +426,11 @@ inferences are [C-59](decisions.md#coordinator-defaults-and-inferences-not-found
   Change edits the wording only, and to give a schedule a new address the owner asks the agent again
   in the chat. Addresses the agent wrote in the schedule's text give none (C-30). A scheduled run
   may still search the web and read what the search returned.
-- The morning summary is one such schedule: a ready-made one on the agent's page, "Every weekday
-  at 9 summarise what needs me", off until the owner turns it on. It is the only morning summary
-  in Flux: the plain, non-AI summary in Notifications (#350) is removed (F-038).
+- The morning summary is one such schedule: a ready-made one, "Every weekday at 9 summarise what
+  needs me", offered once, by Assistant (the agent that answers `/ai`), in its chat while it has no
+  schedule; it is off until the owner turns it on there (#1419 item 9). No other agent and no page
+  offers it. It is the only morning summary in Flux: the plain, non-AI summary in Notifications
+  (#350) is removed (F-038).
 - A scheduled run acts like its agent in its chat: it reads what its owner can see and changes
   nothing, and it never makes or changes a schedule. Its result goes only to that chat: nothing
   posts it into a conversation, and the owner shares what they choose with their own message.
@@ -540,6 +551,25 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
   grant, a space whose AI is off, a removed message, an edited one (its new words only) and a person who left (a former member) are
   reflected at the next call; one answer for a place that is not there and one the caller may not read; a direct message only in
   a run in it, while its owner is one of its people; an encrypted space never.
+- **The Wiki is the space's knowledge base, reached with tools, and the agent cites what it uses**
+  ([C-62](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override), founder decision, Hubert, 2026-11-13, #1381). The brief says
+  nothing of the Wiki's pages; the descriptions of `flux_list_docs`, `flux_get_doc` and `flux_search` tell the agent that a how, what or why question about the
+  space is usually answered by a page, to look there before it says it does not know, and to read the page and not only its snippet. `flux_get_doc` also lists,
+  on its first page, the page's headings (levels 1 to 3, in order) so that a section can be cited. This is variant A of the decision: #1295's evaluation
+  (2026-11-13, two runs per arm) found A and B (an index of the space's pages in the brief) tied on correctness (A 0.790 and 0.847, B 0.831 and 0.806) and on
+  citations (the gold source linked in 0.75 to 0.78 of the questions with either, 0.055 before), A at main's cost and B 8% cheaper but with 3 of 124 runs ended
+  at the input bound; on a tie the decision takes A, and B was removed.
+- **Citations.** Every tool result that returns a page, task, decision or message carries the mark that cites it as `cite` (search hits of those kinds, the lists and reads of
+  pages, tasks and decisions, and every message a conversation, thread or discussion read returns). An answer that states a fact it read in Flux with a tool copies that mark after
+  the statement: `[doc:ID]`, `[doc:ID#2]` (a section: the heading's number in `flux_get_doc`'s `sections`), `[task:ID]`, `[decision:ID]`, `[message:ID]`; an answer with no Flux fact has none.
+  The brief's answer-format line says so on both engines, for every run that reads with tools except a run in a DM. The objects whose `cite` a run's tools returned are kept per
+  run while it is in flight (`personal_run_cites`, migration 0074); at the commit Flux resolves each mark of the answer that one of them returned (a mark someone wrote in a message, a page or the request is
+  words, and is taken out) to an object the run may cite (a run in a space: that space; a private chat or a schedule: any space its owner reads with AI on; never a DM's run,
+  never an encrypted space), and numbers it `[n]` with the supplied sources' `[S3]` in one list, in the order they stand, one number for an object however it was cited; a
+  mark that points at nothing the run may cite is taken out like an invented `[8]`. The chip opens exactly the page (a section opens the version it was numbered in, at its
+  heading), task, decision or message, and its label says which. Each time the answer is read, a source in another space than the answer's (a private chat's or schedule's)
+  is checked against its owner's access again: one they no longer read keeps its number, says only what kind of thing it was and opens nothing. Show everyone keeps the
+  words and drops the marks, as before. The access rules of the tools are unchanged.
 - **What may be found** is decided at the moment of the search, never stored in the index: a lost grant, a space whose AI was
   turned off, a removed or edited message is reflected by the very next search. Encrypted spaces are never indexed for AI.
 - **Embeddings** are an optional local container, off by default, for larger servers; with it on, ranking fuses BM25 and the
@@ -557,6 +587,9 @@ searching ([F-042](decisions.md#f-042--agents-find-what-they-need-with-bm25-sear
 - Reactions ("When something happens"), background suggestions (O-007) and the background note.
 - Drafts of messages to other people.
 - The space Agents tab, and "only in projects, no private chat".
+- In v0.2.1 (#1419): "Only read" and the three-way "What it may do" (one Ask me first switch), the
+  setting "When someone assigns a task to me" with its server rule, and the second list of
+  schedules and the morning summary on every agent's page.
 - The fixed pool of four runtime slots (#860).
 
 ## Delivery
@@ -582,7 +615,7 @@ it.
 
 ## Revisit when
 
-- Trials show that more than one run in ten needs Undo under "Do it and tell me" (then reconsider
+- Trials show that more than one run in ten needs Undo with Ask me first off (then reconsider
   the default).
 - A vendor text forbids an agent pattern used here ([where agents run](ai-modes.md#revisit-when)).
 - People need an agent shared by a team, or rules that send different tasks to different agents.

@@ -43,8 +43,11 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
  * #1382 (C-63) adds flux_read_file, the excerpt of a file's text, and the word "file" in flux_search's description and kind: 38 tools, 27,512 UTF-8 bytes
  * (2026-11-13, merge train 11 with #1426, local run; the bound was 27,000 and is 27,600, 88 bytes above).
+ * #1381 (C-62) tells the agent in three descriptions to look in the Wiki for how, what and why and how to cite a page, on top of #1410: 37 tools,
+ * 27,420 UTF-8 bytes (2026-11-13, local test.sh run of the #1431 review; the bound was 27,000).
+ * Both together (merge train 13, #1431 on #1382): 38 tools, 28,014 UTF-8 bytes (2026-11-13, local test.sh run; the bound was 27,600 and is 28,100).
  */
-const TOOL_DEFINITION_BYTES = 27_600;
+const TOOL_DEFINITION_BYTES = 28_100;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);

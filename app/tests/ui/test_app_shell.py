@@ -625,7 +625,8 @@ class AppShellJourney(unittest.TestCase):
                 self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
-                    # 44 px rows measure 43.99998… while the menu is still settling (WebKit): a rounding tolerance, not a smaller target.
+                    # 44 px touch rows; WebKit lays a menu that starts on a fractional pixel out to 43.99998… while it settles (#1375 adds the People row at 820):
+                    # a rounding tolerance, not a smaller target.
                     self.assertTrue(all(height >= 43.95 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
                     self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
@@ -1422,13 +1423,13 @@ class AppShellJourney(unittest.TestCase):
         saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
         expect(saved).to_have_count(1)
         expect(saved.get_by_text("Research laptop", exact=True)).to_be_visible()
-        # "What it may do" starts at "Do it and tell me"; the owner changes it here, and it is kept.
-        may_do = saved.get_by_role("radiogroup", name="What it may do")
-        expect(may_do.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
-        may_do.get_by_role("radio", name="Ask me first").click()
-        expect(may_do.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        # Ask me first (#1419) starts off ("Do it and tell me"); the owner turns it on here, and it is kept.
+        ask = saved.get_by_role("switch", name="Ask me first")
+        expect(ask).to_have_attribute("aria-checked", "false")
+        ask.click()
+        expect(ask).to_have_attribute("aria-checked", "true")
         page.reload()
-        expect(page.get_by_role("list", name="Connected clients").get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_role("list", name="Connected clients").get_by_role("switch", name="Ask me first")).to_have_attribute("aria-checked", "true")
         # The connection gave the agent no grant of its own: its access is its owner's.
         grants = page.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/grants")
         self.assertEqual(grants.status, 200, grants.text())

@@ -41,7 +41,7 @@ export function lockedWorkspaceId(error: unknown): string | null {
 /**
  * A cross-workspace read names the encrypted workspaces it left out because they are locked here (`lockedWorkspaces`). One the shell
  * still shows as open locked since it was read: the same signal as a `423` tells the shell to read the workspaces again, so its
- * "Waiting to be unlocked" row appears in the sidebar, Home, the Inbox and search. The shell ignores ids it already shows as locked.
+ * "Waiting to be unlocked" row appears in the sidebar and on Home (#1419). The shell ignores ids it already shows as locked.
  */
 export function noteLockedWorkspaces<T>(answer: T): T {
   const locked = (answer as { lockedWorkspaces?: LockedWorkspaceRef[] } | null)?.lockedWorkspaces;

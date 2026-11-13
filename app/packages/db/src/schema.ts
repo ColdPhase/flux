@@ -1811,7 +1811,10 @@ export const agentChatReads = pgTable('agent_chat_reads', {
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-/** 0008 (#856, F-036 AG-5): "When someone assigns a task to me: Give it to [agent]". No row is "Do nothing". */
+/**
+ * 0008 (#856, F-036 AG-5): the former setting "When someone assigns a task to me: Give it to [agent]". Nothing reads or writes it since
+ * #1419 (founder decision, 2026-11-13): a task reaches an agent only by its Owner field. The table stays, unused, so no migration drops it.
+ */
 export const agentTaskTaking = pgTable('agent_task_taking', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
@@ -1875,6 +1878,16 @@ export const personalRunPrivateTexts = pgTable('personal_run_private_texts', {
   addresses: text('addresses').array().notNull().default(sql`'{}'`),
   readAt: timestamp('read_at', { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
 }, (table) => [index('personal_run_private_texts_run_idx').on(table.runId)]);
+
+/**
+ * 0074 (#1381, C-62): the objects a run's own Flux tools returned to be cited (each result's `cite` fields), once each. Only a mark of one of them
+ * becomes a source of the answer. Kept only while the run is in flight, like the private text above: 0074's trigger deletes it when the run ends.
+ */
+export const personalRunCites = pgTable('personal_run_cites', {
+  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  kind: text('kind', { enum: ['doc', 'task', 'decision', 'message'] }).notNull(),
+  objectId: uuid('object_id').notNull(),
+}, (table) => [primaryKey({ name: 'personal_run_cites_pkey', columns: [table.runId, table.kind, table.objectId] })]);
 
 /** The agent change log (migration 0104, F-027 A3 #403; reasons and states of 0003, F-036 #855): one row per effect call of a run. */
 export const ASSISTANT_CHANGE_STATES = ['applied', 'waiting', 'applied_after_wait', 'skipped', 'undone', 'refused'] as const;

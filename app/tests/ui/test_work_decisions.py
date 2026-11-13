@@ -156,8 +156,8 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         # One change, one toast, and Undo puts the state back at once (S9).
         expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
-        # Details names the task by its number in the project (#276), in the head beside the Task chip.
-        expect(page.locator(".ui-panel__meta")).to_have_text("#1")
+        # Details names the task by its number in the project (#276), and the space it is in, above the title (#1364).
+        expect(page.locator("#details .wd__ref .ui-task-number")).to_have_text("#1")
         expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
         panel.get_by_role("button", name="Owner", exact=True).click()

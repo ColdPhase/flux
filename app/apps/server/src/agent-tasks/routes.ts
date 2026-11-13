@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import type { FastifyInstance } from 'fastify';
-import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath, type SetTaskTaking, type TaskPeople } from '@flux/contracts';
-import { agentLabel, createTaskTaking, enforce, evaluateProject, NotFoundError, ConflictError, ForbiddenError, stopRunBy, taskAgentState, type Principal } from '@flux/core';
+import { taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath, type TaskPeople } from '@flux/contracts';
+import { agentLabel, enforce, evaluateProject, NotFoundError, ConflictError, ForbiddenError, stopRunBy, taskAgentState, type Principal } from '@flux/core';
 import { agentTaskRows, accessReader, listen, sql, workRows, type Database, type Transaction } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -9,7 +9,7 @@ import { pgBossPersonalRunQueue, personalRunPorts, type PersonalRunComposition }
 import { policyWorkAccess } from '../work/access.js';
 import { createAgentTaskDrain } from './drain.js';
 
-// The routes and the listener of people's agents taking tasks (#856, F-036 AG-5). The setting and the state line are read and
+// The routes and the listener of people's agents taking tasks (#856, F-036 AG-5). The state line is read and Stop and Try again are
 // written here; the work itself is drained from `agent_task_events` (drain.ts) whenever the database says there is something.
 
 const CHANNEL = 'flux_agent_tasks';
@@ -26,16 +26,6 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
   const who = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   const queue = pgBossPersonalRunQueue(boss);
   const drain = createAgentTaskDrain(db, queue, composition, app.log);
-  const taking = createTaskTaking({ run: (work) => db.transaction((tx) => {
-    const rows = agentTaskRows(tx);
-    return work({ agents: (userId) => rows.ownServerAgents(userId), taking: (userId) => rows.taking(userId), setTaking: (userId, agentId) => rows.setTaking(userId, agentId) });
-  }) });
-
-  app.get(TASK_TAKING_PATH, async (request, reply) => reply.header('cache-control', 'no-store').send(await taking.get(await who(request))));
-  app.put<{ Body: SetTaskTaking }>(TASK_TAKING_PATH, { schema: { body: { type: 'object', required: ['agentId'], additionalProperties: false,
-    properties: { agentId: { type: ['string', 'null'] } } } } }, async (request, reply) =>
-    reply.header('cache-control', 'no-store').send(await taking.set(await who(request), request.body)));
-
   /** The task, its project and what this reader may do about its agent, read in one transaction. */
   async function read(tx: Transaction, principal: Principal, workId: string) {
     const work = await workRows(tx).findWork(workId);

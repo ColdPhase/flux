@@ -5,17 +5,18 @@ import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { SettingsBack } from '../app/SettingsBack';
 import { NotAvailable } from '../app/NotAvailable';
-import { MayDoChoice } from '../agent-connection/MayDoChoice';
+import { AskMeFirst } from '../agent-connection/AskMeFirst';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
 import { readKeyModelsAgain, setKeyModelPrice } from '../ai/api';
-import { AgentSchedules } from './AgentSchedules';
+import { modelLine } from './agentLabel';
 import { addAgentMemory, deleteAgentMemory, deleteMyAgent, editAgentMemory, getAgentMemory, updateMyAgent } from './api';
 import './my-agents.css';
 
-// One agent's page (F-036 AG-1, #857; mockup AiAgents), the same for Assistant: who it is, its name and saved instructions, its
-// model (one per agent, grouped by connection), "What it may do", what it remembers and Delete. Every field saves as it is left and
-// shows what the server kept. Only the owner reaches this page; another person's agent is not found.
+// One agent's page (F-036 AG-1, #857; mockup AiAgents), the same for Assistant: who it is, its name and saved instructions, its Ask me
+// first switch, its model behind More (it starts on its connection's default, #1419), what it remembers and Delete. Its schedules are
+// only in its chat (#1419). Every field saves as it is left and shows what the server kept. Only the owner reaches this page; another
+// person's agent is not found.
 
 const failure = (cause: unknown, fallback = 'Couldn’t save. Try again.') => (cause instanceof ApiError && cause.status < 500 && cause.message ? cause.message : fallback);
 const when = (iso: string) => {
@@ -191,12 +192,20 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
   const [deleting, setDeleting] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => () => window.clearTimeout(timer.current), []);
+  const [more, setMore] = useState(false);
 
   const group = choice?.groups.find((item) => item.connection === agent.model.connection);
   const uses = group ? `uses your ${group.label}` : 'has no connection now';
   const picked = group?.options.find((option) => option.id === agent.model.model);
   // Opus and the Claude limit are named only to someone whose Claude plan offers Opus (#1173); an API key spends its own budget.
   const opus = !!choice?.groups.some((item) => item.account === 'claude_plan' && item.options.some((option) => option.id === 'opus'));
+  // The model in words beside More ("Sonnet · Claude plan"). More opens by itself while the agent is paused on a model that is no longer offered,
+  // as the Model below reads it (a retired model, or a plan's model its list does not hold, #1332), so the line that says so is in view.
+  const model = modelLine(agent, choice);
+  const chosen = agent.model.model;
+  const paused = !!group && (picked ? !!picked.retired
+    : group.account !== 'api_key' && !!chosen && chosen !== 'claude-code' && chosen !== 'codex' && group.options.some((option) => !option.retired));
+  const showModel = more || paused;
 
   async function save(change: Parameters<typeof updateMyAgent>[1], message: string) {
     setError('');
@@ -246,7 +255,18 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
         <textarea id="agent-instructions" className="agp__input agp__text" rows={5} value={instructions} maxLength={AGENT_LIMITS.instructions} onChange={(event) => setInstructions(event.target.value)}
           onBlur={saveInstructions} placeholder="What it is for and how it should work. Plain words are enough." />
 
-        <p className="agp__label" id="agent-model">Model<span className="agp__hint"> · One per agent.{opus ? ' Opus thinks longest and uses your Claude limit fastest.' : ''}</span></p>
+        <div className="agp__ask"><AskMeFirst connectionId={agent.connectionId} initial={agent.mayDo} /></div>
+      </section>
+      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+
+      <div className="agp__more">
+        {/* Named apart from the header's ⋯ More, which a screen reader lists beside it; the visible word starts the name (WCAG 2.5.3). */}
+        <Button variant="quiet" size="sm" icon={showModel ? 'chevron-down' : 'chevron-right'} aria-label="More settings" aria-expanded={showModel} aria-controls="agent-more" onClick={() => setMore(!showModel)}>More</Button>
+        {showModel ? null : <span className="agp__hint" data-agent-model="">Model: {model.name}{model.connection ? ` · ${model.connection}` : ''}</span>}
+      </div>
+      {showModel ? (
+      <section className="sset-card agp__card" id="agent-more" aria-label="More">
+        <p className="agp__label" id="agent-model">Model{opus ? <span className="agp__hint"> · Opus thinks longest and uses your Claude limit fastest.</span> : null}</p>
         {choice?.groups.length ? (
           <div className="agp__models" role="group" aria-labelledby="agent-model">
             {choice.groups.map((item) => (
@@ -265,14 +285,10 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
             {picked && picked.seesPictures === false ? <p className="agp__hint" role="note">{picked.name}: can’t see pictures, so it sees attached files only by name.</p> : null}
           </div>
         ) : <p className="nset__note">Connect AI to choose a model. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p>}
-
-        <p className="agp__label" id="agent-may-do">What it may do</p>
-        <div className="agp__may"><MayDoChoice connectionId={agent.connectionId} initial={agent.mayDo} labelledBy="agent-may-do" /></div>
       </section>
-      {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+      ) : null}
 
       <Remembers agent={agent} />
-      <AgentSchedules agent={agent} />
 
       <div className="agp__delete">
         {confirming ? (

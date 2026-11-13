@@ -328,7 +328,7 @@ class LiveJourney(LiveBase):
 
     def test_00_a_call_that_can_be_joined_moves_nothing_in_the_computer_header(self) -> None:
         """#873: the people, Call (or Join) and More have fixed slots on the computer, so someone else's call appears without a shift,
-        and the tablet's row keeps the people and Join. A space of its own: a call is joinable there for a while after everyone has left,
+        and the tablet's row keeps Join (its people are in More, where the name keeps its slot, #1375). A space of its own: a call is joinable there for a while after everyone has left,
         and one elsewhere in the space adds a "Live now" button to the row."""
         self.seed()
         ada = self.page("ada")
@@ -354,12 +354,12 @@ class LiveJourney(LiveBase):
             self.assertAlmostEqual(before[name]["x"], after[name]["x"], delta=1, msg=f"{name} did not move when the call became joinable")
         self.assertAlmostEqual(before["Call"]["x"] + before["Call"]["width"] / 2, after["Join"]["x"] + after["Join"]["width"] / 2, delta=1, msg="Join sits where Call was")
         shot(watcher, "live-desktop-1440-join-in-header")
-        # The tablet's row has room for the people and Join too: they stay in the header at 820 px (they are not only in More).
+        # The tablet's row keeps Join at 820 px; the people are in More there, so the name keeps its 220 px slot (#1375).
         tablet = self.page("ada", viewport=TABLET)
         self.open_conversation(tablet, url)
         row = tablet.locator("header.top")
         expect(row.get_by_role("button", name="Join", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name=re.compile("who can see this space$"))).to_be_visible()
+        expect(row.get_by_role("button", name=re.compile("who can see this space$"))).to_be_hidden()
         self.assertLessEqual(tablet.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no sideways scroll at 820")
         shot(tablet, "live-tablet-820-join-in-header")
         # Under 360 px Call is in More: a call that can be joined is a dot on More, and the row reads Join the moment More opens.
@@ -398,7 +398,7 @@ class LiveJourney(LiveBase):
         for width, height in ((820, 1180), (1024, 768), (1180, 820), (1440, 900)):
             page = self.page("ada", viewport={"width": width, "height": height})
             if width == 1024:
-                # A 1024 px window has "+ Task"'s slot in the header and no room for the people and Call: they are in More (no Call to wait for).
+                # A 1024 px window has no room for the people and Call beside a 220 px name: they are in More (no Call to wait for).
                 page.goto(conversation_url)
                 if page.locator(".ui-panel__close").first.is_visible():
                     page.locator(".ui-panel__close").first.click()

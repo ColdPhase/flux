@@ -507,7 +507,7 @@ class TypingJourney(unittest.TestCase):
         expect(phone.locator("#details .typing-notice")).not_to_contain_text("Alice Rivera", timeout=750)
         # A task with no first message has no thread: the line is an empty, aria-hidden spacer and no socket is opened.
         quiet = self.panel("alice", bare_id)
-        label = quiet.locator("#details").get_by_label("First message about this task")
+        label = quiet.locator("#details").get_by_label("Write to this task")
         expect(label).to_be_visible()
         label.fill("PRIVATE-DRAFT before any thread exists")
         quiet.wait_for_timeout(1800)

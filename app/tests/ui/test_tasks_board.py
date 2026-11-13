@@ -223,9 +223,9 @@ class TasksBoardJourney(unittest.TestCase):
         expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text("You")
         expect(self.card(doing, CALIBRATE).locator(".tb-av")).to_have_css("width", "20px")
         owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
-        expect(owner.locator(".tb-card__name")).to_have_text("Codex")
-        expect(owner.locator(":scope > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
-        expect(owner.locator(".agent-tag")).to_have_text("Agent")
+        expect(owner.locator(".agent-id__name")).to_have_text("Codex")
+        expect(owner.locator(".agent-id > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
+        expect(owner.locator(".agent-tag, .agent-for")).to_have_count(1)  # one label: "Codex · Ada's agent", or the tag while the owner is unknown (#1364)
         # A due day shows on its card (#868).
         expect(self.card(open_, MOUNT).locator(".tb-card__due")).to_have_text(re.compile(r"^Due "))
         # A dropped task is Done with a "dropped" note (#868).
@@ -515,7 +515,9 @@ class TasksBoardJourney(unittest.TestCase):
         # The Decisions view's list and archive are gone, and so are its old links: an address with one is just the board.
         for old in ("needs", "rules"):
             page.goto(f"/projects/{self.ids['project']}/tasks?status={old}")
-            expect(page).to_have_url(re.compile(rf"/tasks\?status={old}$"))
+            # The board mirrors its view into the address (replaceState), so the unknown status leaves it once the board is drawn:
+            # either address is the board, never another list.
+            expect(page).to_have_url(re.compile(rf"/tasks(\?status={old})?$"))
             expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
         expect(page.get_by_role("region", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)

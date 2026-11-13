@@ -3,11 +3,12 @@ import { Button } from '../ui';
 
 /**
  * `compactComplete`: a complete single page shows no actions. `stepsWhenPaged`: Previous and Next show only when
- * there is another page (single-page pagination is not shown, Spokój rule 4); Refresh stays.
+ * there is another page (single-page pagination is not shown, Spokój rule 4). Refresh shows only with `onRefresh`: a list that updates live
+ * (the Tasks List, #1419) has none.
  */
 export function WorkPagination({ page, busy, onCursor, onRefresh, label = 'Work pages', noun = 'objects', caption, compactComplete = false, stepsWhenPaged = false }: {
   page: WorkPage<unknown> | null; busy: boolean;
-  onCursor: (cursor: string) => void; onRefresh: () => void;
+  onCursor: (cursor: string) => void; onRefresh?: () => void;
   label?: string; noun?: string; caption?: string; compactComplete?: boolean; stepsWhenPaged?: boolean;
 }) {
   // Plain words (#1372): a whole list says how many it holds ("9 tasks"), a page of a longer one says where it is ("1–50 of 123 tasks"), and an empty one says nothing.
@@ -26,7 +27,7 @@ export function WorkPagination({ page, busy, onCursor, onRefresh, label = 'Work 
         <Button variant="secondary" size="sm" disabled={!busy && !page?.previousCursor} aria-disabled={busy || !page?.previousCursor} onClick={() => { if (!busy && page?.previousCursor) onCursor(page.previousCursor); }}>Previous</Button>
         <Button variant="secondary" size="sm" disabled={!busy && !page?.nextCursor} aria-disabled={busy || !page?.nextCursor} onClick={() => { if (!busy && page?.nextCursor) onCursor(page.nextCursor); }}>Next</Button>
       </> : null}
-      <Button variant="secondary" size="sm" onClick={onRefresh}>Refresh</Button>
+      {onRefresh ? <Button variant="secondary" size="sm" onClick={onRefresh}>Refresh</Button> : null}
     </div> : null}
   </nav>;
 }

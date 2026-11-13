@@ -146,6 +146,24 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
     // content-free for an encrypted workspace); live media (/media/*) is not configured on the test server.
   });
 
+  test('the preview of a file of a locked workspace: as a frame the lock answers 423; any other request is refused by its headers alone, as for a file that does not exist', async () => {
+    const frame = { 'sec-fetch-dest': 'iframe', 'sec-fetch-site': 'same-origin', 'sec-fetch-mode': 'navigate' };
+    const framed = await ada.browser.request('GET', `/api/v1/files/${objects.fileId}/preview`, { headers: frame });
+    assert.equal(framed.status, 423, framed.text);
+    assert.equal(codeOf(framed.text ?? ''), 'WORKSPACE_LOCKED');
+    assert.doesNotMatch(framed.text ?? '', new RegExp(canary));
+    // The frame-only refusal reads nothing: the same answer for A's file, a file that is nowhere and a person who is not signed in,
+    // so it tells nothing about a locked workspace (the check of the lock still comes before any file is read).
+    const asked = async (path: string, signedIn: boolean) => {
+      const response = await fetch(new URL(path, ada.browser.base), { headers: signedIn ? { cookie: ada.browser.cookieHeader() } : {} });
+      return [response.status, await response.text()];
+    };
+    const expected = [403, JSON.stringify({ error: 'A preview opens only inside Flux', code: 'PREVIEW_FRAME_ONLY' })];
+    assert.deepEqual(await asked(`/api/v1/files/${objects.fileId}/preview`, true), expected, 'A\'s file, signed in');
+    assert.deepEqual(await asked(`/api/v1/files/${randomUUID()}/preview`, true), expected, 'no such file, signed in');
+    assert.deepEqual(await asked(`/api/v1/files/${objects.fileId}/preview`, false), expected, 'A\'s file, not signed in');
+  });
+
   test('answers 423 or is a listed metadata route or a cross-workspace read; never 500, a canary or an envelope', async () => {
     const listing = await fetch(new URL('/api/v1/test/routes', ada.browser.base), { headers: { authorization: `Bearer ${process.env.FLUX_FIXTURE_TOKEN}` } });
     assert.equal(listing.status, 200);

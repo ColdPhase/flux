@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Link, redirect, useLoaderData, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Link, redirect, useLoaderData, useLocation, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { Icon, Select, Option } from '../ui';
@@ -113,14 +113,17 @@ function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice:
   const landing = useRef<() => void>(() => undefined);
   useEffect(() => () => landing.current(), []);
   const missing = shown.mentions.filter((item) => !item.path).length;
-  const go = (id: string) => {
+  const go = useCallback((id: string) => {
     const node = prose?.querySelector<HTMLElement>(`#${id}`);
     const scroller = prose?.closest<HTMLElement>('.wiki-main');
     if (!node || !scroller) return;
     landing.current();
     landing.current = scrollPage(scroller, () => (node.isConnected ? scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 24 : null));
     node.focus({ preventScroll: true });
-  };
+  }, [prose]);
+  // A section an answer cited (C-62) opens at its heading: `#section-3`, once the page's headings have their ids (`useProse` sets them first).
+  const { hash } = useLocation();
+  useEffect(() => { if (prose && /^#section-\d{1,3}$/.test(hash)) go(hash.slice(1)); }, [prose, hash, go]);
   return (
     <PageFrame docId={doc.id} title={shown.title} headings={headings} onHeading={go}
       meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author)}</>}

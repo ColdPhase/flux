@@ -146,7 +146,6 @@ class PhoneTextFit(unittest.TestCase):
                 page = self.page(width, height, kind=kind)
                 page.goto("/settings/agents")
                 expect(page.get_by_role("list", name="Your agents").get_by_role("link", name=re.compile("^Assistant"))).to_be_visible()
-                expect(page.get_by_text("When someone assigns a task to me")).to_be_visible()
                 self.assertEqual(page.evaluate(BROKEN_WORDS_JS, "main"), [], f"Settings › AI at {width}: no word is broken across lines")
                 self.no_sideways_scroll(page, f"Settings › AI at {width}")
                 # The connection card reads as one line of words: its name, then "Connected".
@@ -155,10 +154,6 @@ class PhoneTextFit(unittest.TestCase):
                 # A tag stays whole, inside its pill.
                 tag = page.locator(".agl__tag").first
                 self.assertEqual(tag.evaluate("(el) => el.getBoundingClientRect().height"), 20, "the tag is one line high")
-                # The task-taking row: the control is not squeezed into a column beside a word-per-line label.
-                label = page.get_by_text("When someone assigns a task to me")
-                lines = label.evaluate("(el) => Math.round(el.getBoundingClientRect().height / parseFloat(getComputedStyle(el).lineHeight))")
-                self.assertLessEqual(lines, 2, f"the task-taking label takes at most two lines at {width}")
 
     def test_02_the_agent_page_head_keeps_its_words(self) -> None:
         page = self.page(320, 640)

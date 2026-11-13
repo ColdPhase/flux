@@ -9,7 +9,7 @@
  * - `use_case`: the space is not in the request; the use case checks or filters it.
  * - `exempt`: no AI read or action, belongs to a person rather than a space, or only reduces or shows one's own history.
  */
-import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath } from './agent-tasks.js';
+import { taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath } from './agent-tasks.js';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_CONSOLE_RESUME_PATH,
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
@@ -53,9 +53,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/background-compute-connections/:connectionId/model-list': exempt(ACCOUNT),
   'POST /api/v1/ai-model-lists': exempt(ACCOUNT),
   'DELETE /api/v1/background-compute-connections/:connectionId': exempt(REDUCES),
-  // People's agents take tasks (#856, AG-5): the setting is a person's; the state shows what an agent did; Retry starts AI work again.
-  [`GET ${TASK_TAKING_PATH}`]: exempt(PERSON),
-  [`PUT ${TASK_TAKING_PATH}`]: exempt(PERSON),
+  // People's agents take tasks (#856, AG-5): the state shows what an agent did; Retry starts AI work again.
   [`GET ${taskAgentPath(':workId')}`]: exempt('Shows what an agent did on a task; no AI read or action'),
   [`GET ${taskPeoplePath(':workId')}`]: exempt('Names the people of a task and their agents; no AI read or action'),
   [`POST ${taskAgentStopPath(':workId')}`]: exempt(REDUCES),

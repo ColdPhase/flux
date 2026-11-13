@@ -126,12 +126,14 @@ class SpokojLayout(unittest.TestCase):
         expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
         page.wait_for_function(SETTLED)
 
-    def header_boxes(self, page: Page, views: bool = True, narrow: bool = False) -> dict:
-        """The header's controls by accessible name: the views, then people · Call · More. Where the row has no room for them (under 704 px) the people and Call are in More."""
+    def header_boxes(self, page: Page, views: bool = True, narrow: bool = False, faces: bool = True) -> dict:
+        """The header's controls by accessible name: the views, then people · Call · More. Where the row has no room for them (under 704 px) the people
+        and Call are in More; where the name would be cut under its 220 px slot (under 780 px, `faces=False`) the people alone are (#1375)."""
         header = page.locator("header.top")
         boxes = {"More": self.box(header.get_by_role("button", name="More", exact=True))}
-        if not narrow:
+        if not narrow and faces:
             boxes["people"] = self.box(header.get_by_role("button", name=PEOPLE))
+        if not narrow:
             boxes["Call"] = self.box(header.get_by_role("button", name="Call", exact=True))
         if views:
             for name in VIEW_NAMES:
@@ -180,11 +182,9 @@ class SpokojLayout(unittest.TestCase):
                 self.assertLessEqual(head["x"], panel["x"] + 1)
                 self.assertGreaterEqual(head["x"] + head["width"], panel["x"] + panel["width"] - 1)
                 self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, "the panel opens under the header")
-                # Moving between the views with the panel open moves nothing in the header. The Wiki keeps two columns, so a
-                # panel opens over its page there instead (#869), checked below.
+                # Moving between the views with the panel open moves nothing in the header. The Wiki is one of them: its panel is the same
+                # one beside the page (#1365).
                 for path, name in zip(VIEWS[1:], VIEW_NAMES[1:]):
-                    if path == "/docs":
-                        continue
                     page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
                     page.wait_for_function(SETTLED)
@@ -198,11 +198,11 @@ class SpokojLayout(unittest.TestCase):
                 page.wait_for_function(SETTLED)
                 page.locator("header.top").get_by_role("button", name="More", exact=True).click()
                 page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-                expect(page.locator(".ui-panel--overlay")).to_be_visible()
-                expect(page.locator(".ui-panel--docked")).to_have_count(0)
-                self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel over the page")
-                page.keyboard.press("Escape")
+                expect(page.locator(".ui-panel--docked")).to_be_visible()
                 expect(page.locator(".ui-panel--overlay")).to_have_count(0)
+                self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel beside the page")
+                page.keyboard.press("Escape")
+                expect(page.locator(".ui-panel--docked")).to_have_count(0)
 
     def test_02_a_narrow_header_moves_the_people_and_together_into_more_and_keeps_the_views(self) -> None:
         for size in (NARROW, {"width": 901, "height": 800}):
@@ -286,26 +286,37 @@ class SpokojLayout(unittest.TestCase):
         self.assertAlmostEqual(self.box(page.locator(".app__side"))["width"], 64, delta=1)
         header = page.locator("header.top")
         self.assertLessEqual(self.box(header)["height"], 72)
-        # The views are the same segmented control as the computer's (#873) and the people and Call keep their place beside it: the row has
-        # room for them at 820 (the header is 748 px wide), so they leave it for More only when it has not.
+        # The views are the same tabs as the computer's (#873) and Call keeps its place beside them. The header is 748 px wide at 820, under the
+        # 780 px where the name keeps its 220 px slot with the people in the row, so the people are in More and the name has its slot (#1375).
         views = header.get_by_role("navigation", name="Space views")
         expect(views).to_be_visible()
         expect(header.get_by_role("heading", level=1).get_by_role("button")).to_have_count(0)
-        boxes = self.header_boxes(page, views=True)
-        # The name takes the room that is left: more than the least a name keeps, and the row ends inside the screen.
-        self.assertGreaterEqual(self.box(header.get_by_role("heading", level=1))["width"], 100, "the name keeps a readable start")
+        expect(header.get_by_role("button", name=PEOPLE)).to_be_hidden()
+        expect(header.get_by_role("button", name="Call", exact=True)).to_be_visible()
+        boxes = self.header_boxes(page, views=True, faces=False)
+        self.assertAlmostEqual(self.box(header.locator(".top__title"))["width"], 220, delta=1, msg="the name keeps its 220 px slot")
+        header.get_by_role("button", name="More", exact=True).click()
+        menu = page.get_by_role("menu", name="More")
+        expect(menu.get_by_role("menuitem", name="People")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="Call")).to_be_hidden()
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         views.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.wait_for_function(SETTLED)
-        self.assert_same_place(boxes, self.header_boxes(page, views=True), "820 Conversation to Tasks")
-        # The panel (380 px) slides over the conversation, which stays visible beside it.
+        self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 Conversation to Tasks")
+        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365).
         header.get_by_role("button", name="More", exact=True).click()
         page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-        expect(page.locator(".ui-panel--overlay")).to_be_visible()
+        expect(page.locator(".ui-panel--float")).to_be_visible()
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         page.wait_for_function(SETTLED)
-        panel = self.box(page.locator(".ui-panel--overlay"))
+        panel = self.box(page.locator(".ui-panel--float"))
         self.assertAlmostEqual(panel["width"], 380, delta=1)
         self.assertGreater(panel["x"], 300, "the conversation stays visible to the left of the panel")
+        bar = self.box(header)
+        self.assertGreaterEqual(panel["y"], bar["y"] + bar["height"] - 1, "the panel never covers the header")
+        self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 with the panel open")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), TABLET["width"], "no sideways page scroll")
         shot(page, "505-tablet-820-panel")
         # The rail's expand control opens the sidebar as a drawer.
@@ -364,7 +375,7 @@ class SpokojLayout(unittest.TestCase):
                 for path in VIEWS:
                     self.goto_view(page, path)
                     header = page.locator("header.top")
-                    boxes = self.header_boxes(page, views=True)
+                    boxes = self.header_boxes(page, views=True, faces=size is not TABLET)
                     # Call is in every view; where nothing is open to work on together it stays and says why on a click.
                     if path in ("/map", "/tasks"):
                         together = header.get_by_role("button", name="Call", exact=True)
@@ -389,8 +400,8 @@ class SpokojLayout(unittest.TestCase):
                 toolbar = page.locator(".tb-bar")
                 names = {"Board": toolbar.get_by_role("radio", name="Board"), "List": toolbar.get_by_role("radio", name="List"),
                          "Mine": toolbar.get_by_role("button", name="Mine", exact=True), "Search": toolbar.get_by_label("Search tasks"),
-                         # The primary action: the header row's right where a panel docks (#763 C4), the toolbar's end on a tablet.
-                         "New": page.get_by_role("button", name="New Task", exact=True)}
+                         # The primary action: the right end of this row on every device (#1366).
+                         "New": toolbar.get_by_role("button", name="New Task", exact=True)}
                 controls = lambda: {name: self.box(locator) for name, locator in names.items()}  # noqa: E731
                 board = controls()
                 # [Board | List] [Mine] [Search tasks] … [+ Task], in reading and focus order.
@@ -411,13 +422,13 @@ class SpokojLayout(unittest.TestCase):
                 expect(page.get_by_label("Only mine")).to_have_count(0)
                 expect(page.get_by_role("textbox", name=re.compile("Add a task", re.I))).to_have_count(0)
                 self.assert_same_place(board, controls(), f"{size['width']} list with Mine")
-                # One page of tasks has no Previous and Next (Spokój rule 4) and says "3 tasks"; Refresh stays.
+                # One page of tasks has no Previous and Next (Spokój rule 4) and says "3 tasks"; no Refresh, the List updates live (#1419).
                 names["Mine"].click()
                 pages = page.get_by_role("navigation", name="Work pages")
                 expect(pages).to_contain_text("3 tasks")
                 expect(pages.get_by_role("button", name="Previous", exact=True)).to_have_count(0)
                 expect(pages.get_by_role("button", name="Next", exact=True)).to_have_count(0)
-                expect(pages.get_by_role("button", name="Refresh", exact=True)).to_be_visible()
+                expect(pages.get_by_role("button", name="Refresh", exact=True)).to_have_count(0)
                 if size is COMPUTER:
                     shot(page, "506-tasks-list-1440")
                 names["Board"].click()
@@ -425,41 +436,114 @@ class SpokojLayout(unittest.TestCase):
                 self.assert_same_place(board, controls(), f"{size['width']} back to the board")
                 if size is COMPUTER:
                     shot(page, "506-tasks-board-1440")
-                    # Opening a task docks the panel and narrows the board; "+ Task" keeps its place (#763 C4, rule 7).
+                    # Opening a task docks the panel and narrows the board; "+ Task" stays the right end of the row (#1366).
                     page.locator(".tb-card .tb-card__open").first.click()
                     expect(page.locator(".ui-panel--docked")).to_be_visible()
                     page.wait_for_function(SETTLED)
-                    self.assert_same_place({"New": board["New"]}, {"New": self.box(names["New"])}, "+ Task with a task open")
+                    row, new = self.box(toolbar), self.box(names["New"])
+                    self.assertAlmostEqual(new["x"] + new["width"], row["x"] + row["width"] - 36, delta=40, msg="+ Task ends the row")
 
-    def test_14_new_task_keeps_its_place_when_a_task_opens_and_the_sidebar_folds(self) -> None:
-        """#763 C4 and rule 7 from where the panel docks (1001 px up): "+ Task" has its slot in the header in every view, so it is in the same
-        place before and after a task opens beside the board, with the sidebar open or folded, and the panel's Close does not land on it."""
-        for width in (1010, 1024, 1100, 1180, 1280):
+    def test_14_new_task_is_in_the_control_row_and_the_header_holds_only_its_slots(self) -> None:
+        """#1366, rule 7: "+ Task" is the right end of the Tasks control row at every width, in both views, with a task open or not, and the
+        space's header holds only the name, the views, the people, Call and More (nothing is added to it in Tasks)."""
+        for width in (820, 1010, 1180, 1280, 1440):
             for folded in (False, True):
+                if folded and width < 1010:
+                    continue
                 with self.subTest(width=width, sidebar="folded" if folded else "open"):
-                    page = self.page({"width": width, "height": 800})
+                    page = self.page({"width": width, "height": 820 if width != 820 else 1180}, touch=width <= 1024)
                     page.goto(f"/projects/{self.project_id}/tasks?view=board")
                     if folded:
                         page.get_by_role("button", name="Collapse sidebar").click()
                         expect(page.locator(".side--rail")).to_be_visible()
                     page.wait_for_function(SETTLED)
-                    new = page.get_by_role("button", name="New Task", exact=True)
-                    header = page.locator("header.top")
-                    before, bar = self.box(new), self.box(header)
-                    self.assertLessEqual(before["y"] + before["height"], bar["y"] + bar["height"] + 1, f"{width}: + Task is in the header's row")
+                    row = page.locator(".tb-bar")
+                    new = row.get_by_role("button", name="New Task", exact=True)
+                    expect(new).to_be_visible()
+                    expect(page.locator("header.top").get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+                    self.assertEqual(page.locator("header.top .top__actions").evaluate("el => el.childElementCount"), 0, "nothing is put in the header's slot in Tasks")
                     places = self.header_places(page)
-                    page.locator(".tb-card .tb-card__open").first.click()
-                    expect(page.locator(".ui-panel--docked")).to_be_visible()
-                    page.wait_for_function(SETTLED)
-                    self.assert_same_place({"New": before}, {"New": self.box(new)}, f"{width}: + Task with a task open")
-                    self.assert_same_place(places, self.header_places(page), f"{width}: the header with a task open")
-                    close = self.box(page.locator(".ui-panel--docked").get_by_role("button", name=re.compile("^Close")))
-                    apart = close["x"] + close["width"] <= before["x"] or before["x"] + before["width"] <= close["x"] or close["y"] + close["height"] <= before["y"] or before["y"] + before["height"] <= close["y"]
-                    self.assertTrue(apart, f"{width}: the panel's Close is not where + Task was: {close} {before}")
-                    # The slot is there in the other views too, empty: the views start where they did.
-                    page.get_by_role("navigation", name="Space views").get_by_role("tab", name=re.compile("^Map")).click()
-                    page.wait_for_function(SETTLED)
-                    self.assert_same_place({k: v for k, v in places.items() if k in VIEW_NAMES}, {k: v for k, v in self.header_places(page).items() if k in VIEW_NAMES}, f"{width}: views in Map")
+                    for mode in ("board", "list"):
+                        row_box, new_box, search = self.box(row), self.box(new), self.box(row.get_by_label("Search tasks"))
+                        self.assertGreaterEqual(new_box["x"], search["x"] + search["width"], f"{width} {mode}: + Task is after the search")
+                        self.assertLessEqual(new_box["x"] + new_box["width"], row_box["x"] + row_box["width"] + 1, f"{width} {mode}: + Task is inside the row")
+                        self.assertGreater(new_box["x"] + new_box["width"], row_box["x"] + row_box["width"] - 60, f"{width} {mode}: + Task is the row's right end")
+                        self.assertLess(row_box["height"], 80, f"{width} {mode}: the control row is one line, with the panel open or not")
+                        if mode == "board":
+                            if width > 1000:  # the panel docks beside the work above 1000 px; below, it is the overlay from the right
+                                page.locator(".tb-card .tb-card__open").first.click()
+                                expect(page.locator(".ui-panel--docked")).to_be_visible()
+                                page.wait_for_function(SETTLED)
+                                self.assert_same_place(places, self.header_places(page), f"{width}: the header with a task open")
+                                page.keyboard.press("Escape")
+                                expect(page.locator(".ui-panel--docked")).to_have_count(0)
+                            row.get_by_role("radio", name="List").click()
+                            expect(row.get_by_role("radio", name="List")).to_have_attribute("aria-checked", "true")
+                            page.wait_for_function(SETTLED)
+
+    def test_15_the_list_and_its_control_row_share_a_column_on_a_wide_window(self) -> None:
+        """#1366: at 3440 the List is a centred column; the row that controls it is the same column, with + Task at its right edge, and the
+        Board | List switch is where it was in the board (rule 7)."""
+        page = self.page({"width": 3440, "height": 1440})
+        page.goto(f"/projects/{self.project_id}/tasks?view=board")
+        page.wait_for_function(SETTLED)
+        switch = page.locator(".tb-bar").get_by_role("radio", name="Board")
+        in_board = self.box(switch)
+        page.locator(".tb-bar").get_by_role("radio", name="List").click()
+        expect(page.locator(".ws-tasks .ws-list").first).to_be_visible()
+        page.wait_for_function(SETTLED)
+        self.assert_same_place({"switch": in_board}, {"switch": self.box(switch)}, "the Board | List switch between the views at 3440")
+        row, first = self.box(page.locator(".tb-bar")), self.box(page.locator(".ws-tasks .ws-list").first)
+        new = self.box(page.locator(".tb-bar").get_by_role("button", name="New Task", exact=True))
+        self.assertAlmostEqual(row["x"] + 24, first["x"], delta=24, msg="the row starts where the list starts")
+        self.assertAlmostEqual(new["x"] + new["width"], first["x"] + first["width"], delta=30, msg="+ Task ends where the list ends")
+
+    def test_16_the_one_panel_is_the_same_card_on_every_view_and_never_covers_the_header(self) -> None:
+        """#1365, README §4: a task, a decision or a thread opens in the same right-hand panel over Conversation, Tasks and Wiki, under a header
+        that stays visible and live, at 1440 and 1180x820 (beside the work). Below 1001 px it is still the overlay from the right (open question
+        in #1365)."""
+        for size in (COMPUTER, {"width": 1180, "height": 820}):
+            with self.subTest(width=size["width"]):
+                page = self.page(size)
+                boxes, headers = {}, {}
+                for path, name in (("", "Conversation"), ("/tasks", "Tasks"), ("/docs", "Wiki")):
+                    self.goto_view(page, path)
+                    self.open_panel(page)
+                    head = self.box(page.locator("header.top"))
+                    panel = self.box(page.locator(".ui-panel--docked"))
+                    boxes[name], headers[name] = panel, head
+                    self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, f"{name}: the panel is under the header")
+                    # The header's own controls are what is at their centres: not the panel and not a scrim.
+                    for control in ("More", "Call"):
+                        button = page.locator("header.top").get_by_role("button", name=control, exact=True)
+                        if not button.count() or not button.is_visible():
+                            continue
+                        at = button.evaluate("el => { const r = el.getBoundingClientRect(); const hit = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return !!hit && el.contains(hit); }")
+                        self.assertTrue(at, f"{name}: {control} is not covered")
+                    self.assertEqual(page.locator(".ui-scrim:visible").count(), 0, f"{name}: no scrim dims the header")
+                    self.close_panel(page)
+                first = boxes["Conversation"]
+                for name, box in boxes.items():
+                    for key in ("x", "y", "width", "height"):
+                        self.assertAlmostEqual(box[key], first[key], delta=1, msg=f"{size['width']} {name}: the panel's {key} is the same as in the Conversation")
+                    self.assertAlmostEqual(headers[name]["height"], headers["Conversation"]["height"], delta=1)
+
+    def test_17_the_board_stays_reachable_beside_the_panel(self) -> None:
+        """#1365: at 1180x820 the board beside the panel is about 530 px wide: its four columns are reached by sideways scroll, shown by a bar."""
+        page = self.page({"width": 1180, "height": 820})
+        page.goto(f"/projects/{self.project_id}/tasks?view=board")
+        page.locator(".tb-card .tb-card__open").first.click()
+        expect(page.locator(".ui-panel--docked")).to_be_visible()
+        page.wait_for_function(SETTLED)
+        board = page.locator(".tb-board")
+        reach = board.evaluate("el => ({ scroll: el.scrollWidth, client: el.clientWidth, bar: el.offsetHeight - el.clientHeight, thin: getComputedStyle(el).scrollbarWidth })")
+        self.assertGreater(reach["scroll"], reach["client"], "the columns are wider than the board beside the panel")
+        self.assertEqual(reach["thin"], "thin", "the bar that shows where it scrolls")
+        board.evaluate("el => { el.scrollLeft = el.scrollWidth; }")
+        done = self.box(page.locator('.tb-col[data-column="done"]'))
+        pane, panel = self.box(page.locator("#content")), self.box(page.locator(".ui-panel--docked"))
+        self.assertLessEqual(done["x"] + done["width"], min(pane["x"] + pane["width"], panel["x"]) + 1, "the last column ends beside the panel, not under it")
+        self.assertGreaterEqual(done["x"], pane["x"], "and starts inside the board")
 
     def test_10_labels_have_one_meaning(self) -> None:
         page = self.page(COMPUTER)

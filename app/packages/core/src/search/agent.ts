@@ -1,4 +1,4 @@
-import { AGENT_SEARCH_LIMITS, searchTargetPath, type SearchKind, type SearchText, WORK_STATUSES } from '@flux/contracts';
+import { AGENT_SEARCH_LIMITS, citeMark, type CiteKind, searchTargetPath, type SearchKind, type SearchText, WORK_STATUSES } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 import type { SearchAudience, SearchPlan, SearchRow } from './ports.js';
 import { searchPlaceOf, SEARCH_SOURCES } from './sources.js';
@@ -162,11 +162,16 @@ const KIND_WORD: Record<SearchKind, string> = {
   project: 'space', message: 'message', dm_message: 'message', material: 'material', doc: 'doc', file: 'file', work: 'task', decision: 'decision', sketch: 'map', thought: 'thought', person: 'person',
 };
 
+/** The kinds of hit an answer may cite (C-62): a message of a space, a Wiki page, a task, a decision. A direct message, a material, a map and a thought carry none. */
+const CITE_OF: Partial<Record<SearchKind, CiteKind>> = { message: 'message', doc: 'doc', work: 'task', decision: 'decision' };
+
 export interface AgentHit {
   kind: string;
   /** The object's id: a message's id is what `flux_read_around` takes. */
   id: string;
   link: string;
+  /** The mark that cites this hit in an answer, `[doc:ID]` (C-62): copy it after the statement the hit supports. Absent for what an answer cannot cite. */
+  cite?: string;
   /** The space or the direct message it is in. */
   place: { type: 'space' | 'dm'; id: string; name: string } | null;
   /** A message's conversation and its place in it, for reading around it. */
@@ -201,6 +206,7 @@ export function agentHit(row: SearchRow, author: AgentHitAuthor | null): AgentHi
     kind: KIND_WORD[row.kind],
     id: row.objectId,
     link: searchTargetPath(source.target(row)),
+    ...(CITE_OF[row.kind] ? { cite: citeMark(CITE_OF[row.kind]!, row.objectId) } : {}),
     place: place.type === 'project' ? { type: 'space', id: place.id, name: place.name } : place.type === 'dm' ? { type: 'dm', id: place.id, name: place.name } : null,
     ...(row.kind === 'message' && row.parentId ? { conversationId: row.parentId } : {}),
     ...((row.kind === 'message' || row.kind === 'dm_message') && row.sequence != null ? { sequence: row.sequence } : {}),
