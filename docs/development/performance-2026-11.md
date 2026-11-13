@@ -571,7 +571,7 @@ does. The measuring scripts are the same for both refs. Dispatched as `scripts/c
   (#1316). The concurrent @1.0 cpu phase still has 0 to 5 requests over 50 ms (the Tasks work views, root work associations).
 - The first screen grew by 27 KB over many changes, most from the date and time fields (#1287, +5 KB), the Spaces order (#1301, +5 KB),
   the encrypted-space lock and Settings › AI (#1397/#1398, +3 KB), formatted messages (#1266), the notice card (#1268) and smaller ones;
-  #1287 took it over 250 KB. Measured per commit of `main` by building the web app in a `flux-dev` image.
+  #1287 took it over 250 KB. Measured per commit of `main` by building the web app in the development image of `./flux dev`.
 - On the perf seed, entering a space reads more than the small scene of `test_navigation_requests` (7): the next pages of task notices
   (two more at 300 tasks), the members and, once per page load, the file limits.
 - The database takes about 70 MiB more under the load, likely pg_search, which F-042 preloads into every backend.
