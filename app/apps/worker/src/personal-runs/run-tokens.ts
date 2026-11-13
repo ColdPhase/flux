@@ -18,14 +18,14 @@ export function apiInternalUrl(env: NodeJS.ProcessEnv): string {
 
 export function runTokenIssuer(db: Database, apiUrl: string, fetchImpl: typeof fetch = fetch): PersonalRunTokenIssuer {
   return {
-    async issue(runId) {
+    async issue(runId, options = {}) {
       const nonce = randomBytes(32).toString('hex');
       const armed = await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, createHash('sha256').update(nonce).digest('hex')));
       if (!armed) return null;
       let response: Response;
       try {
         response = await fetchImpl(`${apiUrl}${personalRunTokenPath(runId)}`, {
-          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }), signal: AbortSignal.timeout(15_000),
+          method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce, ...(options.pi ? { engine: 'pi' } : {}) }), signal: AbortSignal.timeout(15_000),
         });
       } catch {
         return null;

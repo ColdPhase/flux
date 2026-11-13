@@ -1,6 +1,7 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { aiModelSeesPictures, ATTACH_PICTURE_TOOL, assistantRunTools, PICTURE_RUN_KINDS, VIEW_PICTURE_TOOL, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { aiModelSearchesWeb, aiModelSeesPictures, ATTACH_PICTURE_TOOL, assistantRunTools, PICTURE_RUN_KINDS, VIEW_PICTURE_TOOL, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { WEB_SEARCH_TOOL } from '@flux/core';
 import { personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -24,9 +25,12 @@ const DM_RUN_TOOLS = ['flux_read_around', 'flux_read_web', 'flux_search', 'flux_
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
-  app.post<{ Params: { runId: string }; Body: { nonce: string } }>(personalRunTokenPath(':runId'), {
-    schema: { body: { type: 'object', required: ['nonce'], additionalProperties: false, properties: { nonce: { type: 'string', pattern: '^[0-9a-f]{64}$' } } } },
+/** `keySearch`: this API registers `flux_web_search` (the web on, and a searcher that can open keys), so a run in pi may be given it. */
+export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, keySearch = false) {
+  app.post<{ Params: { runId: string }; Body: { nonce: string; engine?: 'pi' } }>(personalRunTokenPath(':runId'), {
+    schema: { body: { type: 'object', required: ['nonce'], additionalProperties: false, properties: { nonce: { type: 'string', pattern: '^[0-9a-f]{64}$' },
+      // The worker runs this API-key run in pi (#1441): it gets pi's web search where its provider has a hosted one.
+      engine: { type: 'string', enum: ['pi'] } } } },
   }, async (request, reply) => {
     const runId = request.params.runId.toLowerCase();
     // One answer for every refusal: nothing tells a caller which run exists or why it was refused.
@@ -55,7 +59,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // with the two tools that find and read around a message, which reach that DM alone (F-042, #1290).
       const readOnly = run.kind === 'task_answer' || run.projectId === null;
       // A picture goes only on an answer to `/ai` in a space (#1217, C-59): its asker's card, its change line and Undo, and their Show everyone.
-      const tools = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
+      const base = run.dmId !== null ? DM_RUN_TOOLS : assistantRunTools(readOnly)
         .filter((tool) => tool !== ATTACH_PICTURE_TOOL || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
         // A file the run made or wrote (#1437) goes on the same answers…
         .filter((tool) => tool !== 'flux_attach_file' || (run.projectId !== null && PICTURE_RUN_KINDS.has(run.kind)))
@@ -64,6 +68,8 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
         .concat(run.projectId === null && run.dmId === null && run.kind === 'ask' ? [ATTACH_PICTURE_TOOL, 'flux_attach_file'] : [])
         // A picture goes to the model only when it sees pictures (#1217): otherwise it is told it sees only the names of attached files.
         .filter((tool) => tool !== VIEW_PICTURE_TOOL || aiModelSeesPictures(run.provider, run.model, run.engine));
+      // pi has no web search of its own (#1441, RT-5): Flux's, through the key's provider's hosted search, wherever the run may read the web.
+      const tools = keySearch && request.body.engine === 'pi' && run.engine === 'server' && aiModelSearchesWeb(run.provider, run.model) ? [...base, WEB_SEARCH_TOOL] : base;
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });
