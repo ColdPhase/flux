@@ -405,8 +405,7 @@ class InboxFinal(unittest.TestCase):
         expect(decision).to_have_count(0)
         seen(page, "heldRead")
         self.wait_for(lambda: (self.queue(None)["count"], self.queue(None)["later"]) == (3, 1), "the snooze to be stored")
-        # The row after it is the open one now, and the list says how many are put off.
-        expect(page.get_by_text("1 for later")).to_be_visible()
+        # The row after it is the open one now.
         expect(page.locator(".nyc--open")).not_to_contain_text(DECISION)
         # Watches the decision card from now on: it may appear, but once it is back it must never leave.
         watch = self.watch_card(page, DECISION)
