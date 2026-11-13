@@ -1,6 +1,6 @@
-import { and, desc, eq, isNull, lt, or } from 'drizzle-orm';
+import { and, desc, eq, isNull, lt, or, type SQL } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
-import { LIVE_SPACES_PATH, type LiveContextRef, type LiveSession, type LiveSpacesResponse } from '@flux/contracts';
+import { LIVE_SPACES_PATH, projectCallsPath, type LiveCallLine, type LiveCallLinesResponse, type LiveContextRef, type LiveSession, type LiveSpacesResponse } from '@flux/contracts';
 import { schema, type Database } from '@flux/db';
 import { DomainError, InvalidInputError, NotFoundError, type LiveMedia, type Principal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
@@ -135,12 +135,49 @@ export async function liveSpaces(db: Database, principal: Principal): Promise<Li
   return { projectIds: [...projectIds].sort() };
 }
 
+const CALL_LINES = 50;
+
+/**
+ * The newest calls of a space's conversation (calls of the space itself), or of one task's discussion (F-041 point 6), for a reader who
+ * can read the space (and the task) now. A call at a map or a page has no line.
+ */
+export async function listCallLines(db: Database, media: Pick<LiveMedia, 'participants'>, principal: Principal, projectId: string,
+  taskId: string | null): Promise<LiveCallLinesResponse> {
+  if (!UUID.test(projectId)) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
+  await liveAccess(db).requireProject(principal, projectId);
+  if (taskId !== null) {
+    if (!UUID.test(taskId)) throw new InvalidInputError('task must be a task UUID');
+    await requireLiveContext(principal, { type: 'work', id: taskId }, projectId, db);
+  }
+  const sessions = schema.liveSessions;
+  const place: SQL = taskId !== null ? eq(sessions.workId, taskId)
+    : and(isNull(sessions.conversationId), isNull(sessions.workId), isNull(sessions.sketchId), isNull(sessions.docId))!;
+  const rows = await db.select().from(sessions).where(and(eq(sessions.projectId, projectId), place))
+    .orderBy(desc(sessions.createdAt), desc(sessions.id)).limit(CALL_LINES);
+  const items = await Promise.all(rows.map(async (row): Promise<LiveCallLine> => {
+    const on = row.state === 'available' || row.state === 'rotating';
+    let inCall: string[] | null = null;
+    if (on) {
+      try { inCall = (await media.participants(row.roomId)).map((person) => person.userId); }
+      catch { inCall = null; }
+    }
+    return {
+      id: row.id, context: anchor(row), startedBy: row.createdBy, startedAt: row.createdAt.toISOString(),
+      endedAt: on ? null : (row.endedAt ?? row.updatedAt).toISOString(), joinedBy: row.joinedBy, inCall,
+    };
+  }));
+  return { items: items.reverse() };
+}
+
 interface Options { db: Database; media: Pick<LiveMedia, 'participants'>; sessions: SessionResolver }
 
 /** Register after the existing live routes with the same configured media adapter. */
 export async function liveDiscoveryRoutes(app: FastifyInstance, { db, media, sessions }: Options) {
   useDomainErrors(app);
   app.get(LIVE_SPACES_PATH, async (request) => liveSpaces(db, (await sessions.requirePrincipal(request)).principal));
+  app.get<{ Params: { projectId: string }; Querystring: { task?: string } }>(projectCallsPath(':projectId'),
+    { schema: { querystring: { type: 'object', additionalProperties: false, properties: { task: { type: 'string', maxLength: 64 } } } } },
+    async (request) => listCallLines(db, media, (await sessions.requirePrincipal(request)).principal, request.params.projectId, request.query.task ?? null));
   app.get<{ Params: { projectId: string }; Querystring: { limit?: number; before?: string } }>(
     '/api/v1/projects/:projectId/live-sessions',
     { schema: { querystring: { type: 'object', additionalProperties: false,

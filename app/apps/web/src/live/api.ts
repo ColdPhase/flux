@@ -1,5 +1,5 @@
 import {
-  LIVE_CAPABILITIES_PATH, LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, LIVE_SPACES_PATH, projectLiveSessionsPath, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
+  LIVE_CAPABILITIES_PATH, LIVE_INVITATIONS_PATH, LIVE_SESSIONS_PATH, LIVE_SPACES_PATH, projectCallsPath, type LiveCallLinesResponse, projectLiveSessionsPath, liveInvitationReplyPath, liveInvitePath, liveJoinPath, liveLeavePath,
   livePresentPath, livePresentationsPath, liveSessionPath,
   type LiveContextRef, type LiveJoinGrant, type LiveSpacesResponse, type LivePresentationPage, type LivePresentationRef, type LiveSession,
 } from '@flux/contracts';
@@ -60,3 +60,7 @@ export const pendingInvitations = (signal?: AbortSignal) =>
 
 /** The spaces where a call is on with someone in it (F-041): the call glyph in the sidebar and the Spaces list. */
 export const liveSpaces = (signal?: AbortSignal) => request<LiveSpacesResponse>(LIVE_SPACES_PATH, { signal, share: true });
+
+/** A space conversation's call lines, or a task discussion's with `taskId` (F-041 point 6). */
+export const callLines = (projectId: string, taskId: string | null, signal?: AbortSignal) =>
+  request<LiveCallLinesResponse>(`${projectCallsPath(projectId)}${taskId ? `?task=${taskId}` : ''}`, { signal, share: true });

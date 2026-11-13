@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
-import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
+import type { Conversation, LiveCallLine, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -24,6 +24,7 @@ import { onSent, outboxView, useComposerDraft, type PendingSend } from '../compo
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
+import { CallLineItem } from '../live/callLines';
 import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
 import { NewBelow, UnreadDivider, countBelow, openAtUnread, useNewBelow } from './unreadReading';
 import { ObjectNoticeItem } from './ObjectNotices';
@@ -59,18 +60,20 @@ function mergeNotices<T extends { id: string; createdAt: string }>(current: T[],
 export type StreamEntry =
   | { kind: 'root'; key: string; at: string; root: ConversationRoot }
   | { kind: 'notice'; key: string; at: string; notice: TaskCreationNotice }
-  | { kind: 'object'; key: string; at: string; object: ObjectNotice };
+  | { kind: 'object'; key: string; at: string; object: ObjectNotice }
+  /** A call of the space as one line (F-041 point 6): an event, not a message. */
+  | { kind: 'call'; key: string; at: string; call: LiveCallLine };
 
 /** The decision an entry announces, for the line that follows it. */
 const previousObject = (entry: { kind: string } | undefined) => entry?.kind === 'object' ? (entry as Extract<StreamEntry, { kind: 'object' }>).object : null;
 
-const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, root: 1 };
+const ORDER: Record<StreamEntry['kind'], number> = { notice: 0, object: 0, call: 0, root: 1 };
 
 /**
  * Roots and announcements by time; at the same instant the announcement comes first. While earlier roots are still
  * unloaded, announcements older than the first loaded root wait with them, so the stream never shows one out of its place.
  */
-export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, objects: ObjectNotice[] = []): StreamEntry[] {
+export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNotice[] = [], hasOlder = false, objects: ObjectNotice[] = [], calls: LiveCallLine[] = []): StreamEntry[] {
   const from = hasOlder ? roots[0]?.message.createdAt ?? null : null;
   const shownObjects = objects.filter((object) => from === null || object.createdAt >= from);
   // A task's discussion is not a root of the stream (#868): a task event is one line here, and the discussion is in the task.
@@ -79,6 +82,7 @@ export function streamEntries(roots: ConversationRoot[], notices: TaskCreationNo
     ...notices.filter((notice) => from === null || notice.createdAt >= from)
       .map((notice) => ({ kind: 'notice' as const, key: `notice-${notice.id}`, at: notice.createdAt, notice })),
     ...shownObjects.map((object) => ({ kind: 'object' as const, key: `object-${object.id}`, at: object.createdAt, object })),
+    ...calls.filter((call) => from === null || call.startedAt >= from).map((call) => ({ kind: 'call' as const, key: `call-${call.id}`, at: call.startedAt, call })),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at) || ORDER[a.kind] - ORDER[b.kind]);
 }
@@ -287,6 +291,9 @@ export interface StreamProps {
   roots: ConversationRoots;
   /** The loaded task announcements (UI116-3), oldest first. */
   notices: TaskCreationNotice[];
+  /** The space's calls, each one line (F-041), and the names of the people they mention. */
+  calls?: LiveCallLine[];
+  personName?: (userId: string) => string;
   /** The decisions the stream announces (#694). */
   objects?: ObjectNotice[];
   author: (message: ConversationMessage) => string;
@@ -308,7 +315,7 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied, end = null }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], calls = [], personName = () => 'Someone', author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied, end = null }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -318,10 +325,10 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const outbox = outboxView(roots.map((root) => root.message), composer.pending, composer.sent, meId);
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
-  const entries = streamEntries(roots, notices, stream.hasOlder, objects);
+  const entries = streamEntries(roots, notices, stream.hasOlder, objects, calls);
   const { summary: since, settled: sinceSettled } = useUnreadStart(project.id);
   const unread = since?.point.savedAt && since.items.length ? firstUnread(since, roots) : null;
-  const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
+  const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' | 'call' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
   const feedRef = useRef<HTMLDivElement>(null);
@@ -653,6 +660,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const noticeItem = (notice: TaskCreationNotice) => <NoticeItem key={`notice-${notice.id}`} notice={notice} meId={meId} owners={owners} row={referenceWork.rows.get(`work:${notice.workId}`) ?? null}
                   authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)} onOpenTask={(id) => openDetails({ kind: 'work', id })} />;
                 if (entry.kind === 'notice') return [divider, noticeItem(entry.notice)];
+                if (entry.kind === 'call') return [divider, <CallLineItem key={entry.key} line={entry.call} projectId={project.id} nameOf={personName} meId={meId} clock={clock} title={when} />];
                 if (entry.kind === 'object') return [divider, <ObjectNoticeItem key={entry.key} notice={entry.object} meId={meId} owners={owners} authorOf={authorOf} hasMessage={(id) => rootMessageIds.has(id)}
                   follows={!divider && followsProposal(entry.object, previousObject(display[index - 1]))}
                   onOpen={(target) => openDetails(target)} onOpenThread={(conversationId) => { const root = roots.find((item) => item.conversationId === conversationId); if (root) openRoot(root, false); }} />];

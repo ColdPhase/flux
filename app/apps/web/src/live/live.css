@@ -279,3 +279,7 @@
 .lv-cam__big { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
 .lv-stage__view--camera .lv-stage__video { object-fit: contain; }
 .lv-stage__video.is-mirror { transform: scaleX(-1); }
+
+/* A call's line in the conversation (F-041): the faces of who is in it sit in the line, Join after them. */
+.convo-call__faces { align-self: center; }
+.convo-call__join { margin-left: 4px; }

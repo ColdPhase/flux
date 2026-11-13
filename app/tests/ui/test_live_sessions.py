@@ -575,6 +575,42 @@ class LiveJourney(LiveBase):
         ada.goto("/inbox")
         expect(ada.locator(".nyc", has_text="started a call in Repair cafe")).to_have_count(0)
 
+    def test_00f_a_call_is_one_line_in_the_conversation(self) -> None:
+        """#1223 point 6 (F-041): a call started in the conversation shows one line on another member's open tab within 2 s, with Join;
+        Join from the line joins the call; when it ends the line reads "Call · N min · Lee, Ada"; it survives a reload. A call nobody
+        joined reads "Nia called · nobody joined"."""
+        self.seed()
+        ada = self.page("ada")
+        project = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Sewing circle", "visibility": "restricted"}, status=201)
+        pid = project["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": PEOPLE["lee"]["id"]}, "role": "contributor"}, status=201)
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Who has the overlocker this week?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        ada.goto(f"/projects/{pid}")
+        expect(ada.get_by_text("Who has the overlocker this week?")).to_be_visible()
+        nia = self.page("lee")
+        nia.goto(f"/projects/{pid}")
+        self.call(nia)
+        expect(self.bar(nia)).to_be_visible()
+        line = ada.locator("li.convo-call")
+        started = time.monotonic()
+        expect(line).to_contain_text("Lee", timeout=2500)
+        expect(line).not_to_contain_text("Lee Park")  # first names, as a task line has them
+        expect(line).to_contain_text("started a call")
+        self.assertLess(time.monotonic() - started, 3, "the line shows within about 2 s")
+        expect(line.get_by_role("button", name="Join")).to_be_visible()
+        shot(ada, "live-desktop-1440-call-line-running")
+        line.get_by_role("button", name="Join").click()
+        expect(self.bar(ada).locator(".lv-where")).to_have_text("Call in Sewing circle")
+        expect(line.get_by_role("button", name="Join")).to_have_count(0)
+        for leaver in (ada, nia):
+            self.bar(leaver).get_by_role("button", name="Leave", exact=True).click()
+            expect(self.bar(leaver)).to_have_count(0)
+        # Everyone left: the call ends after its short grace, and the same line says how long and who.
+        expect(line).to_contain_text(re.compile(r"Call · \d+ min · Lee, Ada"), timeout=150000)
+        ada.reload()
+        expect(ada.locator("li.convo-call")).to_contain_text(re.compile(r"Call · \d+ min · Lee, Ada"))
+        shot(ada, "live-desktop-1440-call-line-ended")
+
     def test_01_two_people_blocker_join_show_screen_result_leave(self) -> None:
         self.seed()
         nia = self.page("nia")

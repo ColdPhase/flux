@@ -7,6 +7,7 @@ import { PanelMeta } from '../ui';
 import { ThreadFollow } from '../notifications/ThreadFollow';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { useRegisterLiveHere } from '../live/LiveProvider';
+import { useCallLines } from '../live/callLines';
 import { audienceLine, useProjectShell } from '../project/data';
 import { useShellData } from './data';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
@@ -142,8 +143,13 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   }, [thread]);
 
   const audience = audienceLine(people, me.user.id);
+  // The space's calls as lines of its conversation (F-041 point 6), with the names of who was in them.
+  const calls = useCallLines(project.id);
+  const personName = useCallback((userId: string) => userId === me.user.id ? me.user.name
+    : members.find((member) => member.userId === userId)?.name ?? people?.find((person) => person.kind === 'human' && person.id === userId)?.name ?? FORMER_MEMBER,
+  [me.user.id, me.user.name, members, people]);
   const stream = (end: ReactNode) => (
-    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} author={author}
+    <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} calls={calls} personName={personName} author={author}
       audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} end={end} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.

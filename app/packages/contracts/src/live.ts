@@ -5,6 +5,27 @@ export const LIVE_CAPABILITIES_PATH = `${LIVE_SESSIONS_PATH}/capabilities`;
 /** The spaces you can open where a call is on with someone in it (F-041): the call glyph in the sidebar and the Spaces list. */
 export const LIVE_SPACES_PATH = `${LIVE_SESSIONS_PATH}/spaces`;
 export interface LiveSpacesResponse { projectIds: string[] }
+
+/** The calls of a space's conversation, or of one task's discussion with `?task=<id>` (F-041 point 6): the conversation's call lines. */
+export const projectCallsPath = (projectId: string) => `/api/v1/projects/${projectId}/calls`;
+
+/**
+ * One call as its line in the conversation (F-041): who started it and when, who has been in it, and while it is on who is in it now.
+ * Identifiers and times only: never a recap of what was said, also in an encrypted space. It is an event, not a message.
+ */
+export interface LiveCallLine {
+  id: string;
+  context: LiveContextRef;
+  startedBy: string;
+  startedAt: string;
+  /** Null while the call is on. */
+  endedAt: string | null;
+  /** Who has been in it, first join first (the starter among them once connected). */
+  joinedBy: string[];
+  /** While it is on: who is in it now, as the media server says; null when that cannot be read or once it ended. */
+  inCall: string[] | null;
+}
+export interface LiveCallLinesResponse { items: LiveCallLine[] }
 export const projectLiveSessionsPath = (projectId: string) => `/api/v1/projects/${projectId}/live-sessions`;
 export const liveJoinPath = (id: string) => `${liveSessionPath(id)}/join`;
 export const liveLeavePath = (id: string) => `${liveSessionPath(id)}/leave`;
