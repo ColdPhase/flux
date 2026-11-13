@@ -47,8 +47,11 @@ background when it may take longer than your tool's timeout, and cite the run UR
 - **Same scripts as locally.** `ui` runs `scripts/check_ui.sh <modules>` (a module or `Module.Class.test_name`; `FLUX_UI_BROWSER` is the
   `browser` input), `api` runs `scripts/check_application.sh <files>` (the named `tests/app/*.test.ts` files only, as locally: browser,
   restart and unavailable-configuration checks are skipped), and `live` runs `scripts/check_live_ui.sh` once per module with
-  `FLUX_LIVE_UI_PATTERN=<module>.py` (that script selects its module by file pattern; it runs Chromium only). The runner has no
-  operator `.env`, and `FLUX_VAPID_*` are blank.
+  `FLUX_LIVE_UI_PATTERN=<module>.py` (that script selects its module by file pattern; it runs Chromium only). `runtime` (#1437) runs
+  the named agent-runtime checks, `scripts/<module>.sh` for `check_agent_runtime`, `check_cli_runtime` or `check_runtime_sandbox`,
+  one after another: they need a host with `kernel.yama.ptrace_scope` 1 or more and Landlock ABI 4, which a runner has and many
+  developer hosts do not (dispatch it with `gh workflow run test-modules.yml --ref <branch>` until `scripts/ci_test.sh` names the
+  suite; its log first prints the runner's kernel and ptrace scope). The runner has no operator `.env`, and `FLUX_VAPID_*` are blank.
 - **Shards.** With several modules, `--shards N` (1 to 8, never more than there are modules) splits them round-robin over N matrix
   jobs, each building the images and running its modules on its own runner. A plan job fixes the commit, refuses a module the commit
   does not have before any image is built, and writes the matrix. `fail-fast` is off, so every shard reports.
