@@ -522,7 +522,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
         const shown = tools.filter((tool) => INIT_NAME.test(tool)).slice(0, 64);
         const shownServers = servers.filter((server) => INIT_NAME.test(server.name)).slice(0, 16)
           .map((server) => ({ name: server.name, status: /^[a-z_-]{1,32}$/.test(server.status) ? server.status : 'other' }));
-        send({ t: 'run', e: 'init', tools: shown, servers: shownServers });
+        send({ t: 'run', e: 'init', tools: shown, servers: shownServers, ...(ownTools ? { own: true as const } : {}) });
         const extraTool = tools.length !== (Array.isArray(event.tools) ? event.tools.length : 0) || tools.some((tool) => !allowed.has(tool));
         const otherServer = servers.length !== 1 || servers[0]!.name !== 'flux' || servers[0]!.status !== 'connected'
           || (Array.isArray(event.mcp_servers) && event.mcp_servers.length !== 1);

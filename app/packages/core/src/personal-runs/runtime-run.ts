@@ -53,12 +53,17 @@ export interface RuntimeRunDeps {
   live?: RunLiveText;
 }
 
+/** Claude Code's own shell and file tools, which a run keeps in Flux's per-run sandbox (#1437, RT-5; the supervisor's `CLAUDE_OWN_TOOLS`). */
+export const RUNTIME_OWN_TOOLS = ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'] as const;
+
 /**
- * The CLI's start-up tool list may name only the run's exact Flux tools (and `EndConversation`, and on Claude Code with the web on its own
- * `WebSearch`, #1065), and only a connected Flux server.
+ * The CLI's start-up tool list may name only the run's exact Flux tools (and `EndConversation`, on Claude Code with the web on its own
+ * `WebSearch`, #1065, and where the slot says the run has them in its sandbox, its own shell and file tools, #1437), and only a connected
+ * Flux server.
  */
 export function localToolInInit(event: Extract<PersonalRuntimeEvent, { kind: 'init' }>, tools: readonly string[], webSearch = false): boolean {
-  const allowed = new Set([...tools.map((tool) => `mcp__flux__${tool}`), 'EndConversation', ...(webSearch ? ['WebSearch'] : [])]);
+  const allowed = new Set([...tools.map((tool) => `mcp__flux__${tool}`), 'EndConversation', ...(webSearch ? ['WebSearch'] : []),
+    ...(event.own ? RUNTIME_OWN_TOOLS : [])]);
   if (event.tools.some((tool) => !allowed.has(tool))) return true;
   return event.mcpServers.length !== 1 || event.mcpServers[0]!.name !== 'flux' || event.mcpServers[0]!.status !== 'connected';
 }

@@ -27,7 +27,7 @@ function endOf(outcome: ManagerRunOutcome): PersonalRuntimeEnd {
 
 function eventOf(frame: RunFrame): PersonalRuntimeEvent {
   switch (frame.e) {
-    case 'init': return { kind: 'init', tools: [...frame.tools], mcpServers: frame.servers.map((server) => ({ ...server })) };
+    case 'init': return { kind: 'init', tools: [...frame.tools], mcpServers: frame.servers.map((server) => ({ ...server })), ...(frame.own ? { own: true as const } : {}) };
     case 'tool': return { kind: 'tool', name: frame.name };
     case 'search': return { kind: 'search', n: frame.n, query: frame.query };
     case 'found': return { kind: 'found', n: frame.n, results: [...frame.results], queries: [...(frame.queries ?? [])] };

@@ -120,7 +120,8 @@ export const TEXT_FRAME_LIMITS = { chars: 4096, frames: 1024, total: 512 * 1024 
  * the queries. The worker records them in this order. With them, `text`: the words the CLI writes, batched (#1248).
  */
 export type RunFrame =
-  | { t: 'run'; e: 'init'; tools: string[]; servers: { name: string; status: string }[] }
+  /** `own`: the run has the CLI's own shell and file tools, in Flux's per-run sandbox (#1437); the worker lets exactly those through then. */
+  | { t: 'run'; e: 'init'; tools: string[]; servers: { name: string; status: string }[]; own?: true }
   | { t: 'run'; e: 'tool'; name: string }
   | { t: 'run'; e: 'search'; n: number; query: string }
   | { t: 'run'; e: 'found'; n: number; results: string[]; queries?: string[] }
@@ -224,7 +225,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('signin'), e: literal('url'), url: str(CLAUDE_SIGN_IN_URL, 1600) }),
   object({ t: literal('signin'), e: literal('problem'), problem: oneOf(SIGN_IN_PROBLEMS) }),
   object({ t: literal('run'), e: literal('init'), tools: arrayOf(str(INIT_NAME, 128), 64),
-    servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }),
+    servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }, { own: literal(true) }),
   object({ t: literal('run'), e: literal('tool'), name: str(FLUX_TOOL_NAME, 67) }),
   object({ t: literal('run'), e: literal('search'), n: int(1, Number.MAX_SAFE_INTEGER), query: text(SEARCH_FRAME_LIMITS.query) }),
   object({ t: literal('run'), e: literal('found'), n: int(1, Number.MAX_SAFE_INTEGER), results: arrayOf(str(WEB_ADDRESS, 2048), SEARCH_FRAME_LIMITS.results) },
