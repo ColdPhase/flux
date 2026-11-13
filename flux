@@ -345,7 +345,7 @@ runtime_probe_image() { sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/
 
 # Prints one line saying why the Docker engine cannot run the agent runtime, or nothing when it can
 # (AIM-3: Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
-# the engine, not this machine: the runtime runs in the engine's kernel, which on Docker Desktop is a VM.
+# the engine, not this machine: the runtime runs in the engine's kernel. Flux AI needs it (#1441, RT-1): a Linux host.
 runtime_host_problem() {
   info=$(docker info --format '{{json .}}' 2>/dev/null) || { say "the Docker engine did not report its settings"; return 0; }
   case "$info" in *'"OSType":"linux"'*) ;; *) say "the Docker engine is not a Linux engine"; return 0 ;; esac
@@ -365,7 +365,8 @@ runtime_host_problem() {
   if [ "$code" -ge 125 ]; then say "a check container could not be run on the Docker engine (is Docker Hub reachable?)"; return 0; fi
   case "$scope" in
     1|2|3) ;;
-    *) say "the engine's kernel has no Yama ptrace_scope of 1 or higher (Docker Desktop has none); use a Linux host with kernel.yama.ptrace_scope=1"; return 0 ;;
+    '') say "the engine's kernel has no Yama ptrace_scope of 1 or higher: run Flux on a Linux host whose kernel has Yama."; return 0 ;;
+    *) say "the host has no Yama ptrace_scope of 1 or higher (kernel.yama.ptrace_scope=$scope). Fix it now: \`sudo sysctl -w kernel.yama.ptrace_scope=1\`. Keep it after a restart: \`echo 'kernel.yama.ptrace_scope = 1' | sudo tee /etc/sysctl.d/90-flux.conf\`."; return 0 ;;
   esac
   return 0
 }
@@ -407,14 +408,22 @@ plan_clients() { printf '%s' ",$1," | sed -e 's/,pi,/,/g' -e 's/^,*//' -e 's/,*$
 ask_runtime_questions() {
   AI_RUNTIME=$1 AI_TERMS=''
   if [ -z "$(plan_clients "$AI_RUNTIME")" ]; then
-    ask_subscriptions || return 1
-    AI_RUNTIME=${AI_RUNTIME:+$AI_RUNTIME,}codex
-    say ""
+    if ask_subscriptions; then
+      AI_RUNTIME=${AI_RUNTIME:+$AI_RUNTIME,}codex
+      say ""
+      case ",$AI_RUNTIME," in
+        *,claude_code,*) ;;
+        *) if ask_commercial_terms; then AI_RUNTIME="$AI_RUNTIME,claude_code" AI_TERMS=$(date +%Y-%m-%d); fi ;;
+      esac
+    fi
+  else
+    case ",$AI_RUNTIME," in
+      *,claude_code,*) ;;
+      *) if ask_commercial_terms; then AI_RUNTIME="$AI_RUNTIME,claude_code" AI_TERMS=$(date +%Y-%m-%d); fi ;;
+    esac
   fi
-  case ",$AI_RUNTIME," in
-    *,claude_code,*) ;;
-    *) if ask_commercial_terms; then AI_RUNTIME="$AI_RUNTIME,claude_code" AI_TERMS=$(date +%Y-%m-%d); fi ;;
-  esac
+  # Every agent runs in the runtime (#1441, RT-1): API keys in pi, whatever the answers about subscriptions.
+  case ",$AI_RUNTIME," in *,pi,*) ;; *) AI_RUNTIME="${AI_RUNTIME:+$AI_RUNTIME,}pi" ;; esac
   [ "$AI_RUNTIME" != "$1" ]
 }
 # Writes the answer (AI_RUNTIME, AI_TERMS) into the env file $1 and says what it means. The runtime that runs a plan also runs
@@ -425,6 +434,10 @@ write_runtime_answer() {
   ! grep -q '^FLUX_AGENT_RUNTIME_OFF_REASON=.' "$1" || set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON ""
   [ -z "$AI_TERMS" ] || set_env_line "$1" FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS "$AI_TERMS"
   say ""
+  if [ -z "$(plan_clients "$AI_RUNTIME")" ]; then
+    say "Subscription sign-in stays off; agents on API keys run in pi in the agent runtime. ./flux ai on turns sign-in on later."
+    return 0
+  fi
   say "Subscription sign-in is on for: $(plan_clients "$AI_RUNTIME"). Agents on API keys run in pi in the same runtime."
   case ",$AI_RUNTIME," in
     *,claude_code,*) [ -z "$AI_TERMS" ] || say "Your statement that you accepted Anthropic's Commercial Terms on $AI_TERMS is saved in ${ENV_FILE#"$FLUX_ROOT"/}; Flux records it when it starts and does not check it." ;;
@@ -440,7 +453,7 @@ first_run_runtime_question() {
   [ -z "${FLUX_AGENT_RUNTIME+x}" ] || return 0
   problem=$(runtime_host_problem)
   if [ -n "$problem" ]; then
-    say "Subscription sign-in stays off: $problem. See docs/operations/agent-runtime.md."
+    say "AI agents stay off, as the agent runtime cannot run here: $problem. See docs/operations/agent-runtime.md."
     set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON "$problem"
     return 0
   fi
@@ -449,11 +462,7 @@ first_run_runtime_question() {
     write_runtime_answer "$1"
     return 0
   fi
-  if ask_runtime_questions ''; then
-    write_runtime_answer "$1"
-  else
-    say "Subscription sign-in stays off. ./flux ai on turns it on later."
-  fi
+  ask_runtime_questions '' && write_runtime_answer "$1"
 }
 
 runtime_services() { printf 'runtime-manager runtime-egress runtime-install runtime-1'; }
@@ -1518,7 +1527,7 @@ cmd_ai() {
   esac
   [ -z "$(plan_clients "$current")" ] || say "Subscription sign-in is on for: $(plan_clients "$current")."
   problem=$(runtime_host_problem)
-  [ -z "$problem" ] || die "subscription sign-in cannot be turned on here: $problem. See docs/operations/agent-runtime.md."
+  [ -z "$problem" ] || die "AI agents cannot be turned on here, as the agent runtime cannot run here: $problem. See docs/operations/agent-runtime.md."
   if ! ask_runtime_questions "$current"; then
     say "Nothing changed."
     return 0

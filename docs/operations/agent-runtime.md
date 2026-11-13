@@ -61,26 +61,28 @@ organization). Have you accepted them?  [y/N]
   Commercial Terms question; if Claude Code is on too, it says so and changes nothing. It never removes a
   client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
   [Switching off](#switching-off-purging-reset-and-clean)).
-- **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
+- **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex,pi`.
   Codex is available: owners sign in with ChatGPT on Settings → AI (Connect AI).
-  `n` writes nothing and does not ask the second question.
+  `n` does not ask the second question and writes `FLUX_AGENT_RUNTIME=pi`: every agent runs in the runtime
+  ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server), #1441), so agents on API keys run there in pi whatever the answer
+  about subscriptions. `pi` comes with every answer.
 - **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
   Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
   or any other answer does not make it. `y` writes `FLUX_AGENT_RUNTIME=codex,claude_code` and
   `FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS=<today>`; the API records that statement, with the date, in
   `agent_runtime_operator_statements` when it starts. Flux does not check it. An unclear answer to the
-  first question is asked again, and three of them count as `n`; Ctrl-D decides nothing.
+  first question is asked again, and three of them count as `n`; Ctrl-D decides nothing about subscriptions (`pi` is written).
 - **Hosts that fail the checks are not asked.** Before it asks, the launcher checks the Docker engine (not
-  the machine you type on: the runtime runs in the engine's kernel, which on Docker Desktop is a VM) and
-  prints one line saying why when a check fails; `./flux up` then carries on with the runtime off and
-  `./flux ai on` stops with that line:
+  the machine you type on: the runtime runs in the engine's kernel; Flux AI needs a Linux host, RT-1) and
+  prints one line saying why when a check fails ("AI agents stay off, as the agent runtime cannot run here: …"); `./flux up` then
+  carries on with the runtime, and so Flux AI, off, and `./flux ai on` stops with that line:
 
   | Check | How the launcher asks | Reason line says |
   | --- | --- | --- |
   | Linux engine | `docker info`, `OSType` | the engine is not a Linux engine |
   | Memory, CPU and process limits | `docker info`: `MemoryLimit`, `CpuCfsQuota`, `PidsLimit` | the engine cannot set the limits the runtime has |
   | `internal` networks | `docker network create --internal`, removed at once | the engine cannot create an internal network |
-  | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama policy or it is 0 (Docker Desktop has none) |
+  | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama (use a Linux host whose kernel has it), or it is 0: then the line gives the fix now (`sudo sysctl -w kernel.yama.ptrace_scope=1`) and how to keep it after a restart (`/etc/sysctl.d/90-flux.conf`) |
 
   If the engine cannot answer (for example it cannot pull the base image), the line says the check could
   not be run. The check image is the one the build pulls anyway.
@@ -417,7 +419,7 @@ None of them is hidden by the checks.
 - **Reconciliation decides from sightings that can be a moment old (m8, low, accepted).** A binding missing from the
   sightings is looked for once more before the owner is told to sign in again. What is not serialized is the gap between
   those two reads.
-- **Docker Desktop is unsupported** (see *What the runtime gets*).
+- **Flux AI needs a Linux host** with the agent runtime ([RT-1](../product/ai-modes.md#rt-1--engines-on-the-server)): self-hosting is on Linux, and Docker Desktop on macOS or Windows is not a target.
 
 ## Installing from a release
 
@@ -506,7 +508,7 @@ changes. It proves the flags exist, not how the CLIs behave in a run; the automa
 | `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; many owners in one runtime, no cross-owner reach; escape attempts from inside the runtime; the supervisor's closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a runtime or a binding; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
-| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
+| `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex,pi` and no statement; Enter, `y` writes `codex,claude_code,pi` and today's date; `n` and Ctrl-D write `pi`; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
 | `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, no runs a day, a plan limit that pauses and resumes the request by itself, and the DM/private/other-project canaries. |
 | `./scripts/check_mcp_clients.sh` (last step, `runtime-run-claude.e2e.ts`) | Opt-in, needs the internet: the pinned real `claude` with the run template's exact argv against the scripted local model (no account): its `system/init` field names, a start-up tool list equal to the run's switch-derived list, a connected Flux server and a call answered through `/mcp` with `FLUX_RUN_TOKEN`. |
 | `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags and the sign-in, status and sign-out assertion table (golden `--help`, status JSON keys, exit codes, streams; `--network none`, no account) against the pinned real CLIs. |

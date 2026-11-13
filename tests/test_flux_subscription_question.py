@@ -65,7 +65,7 @@ esac
 # Words that only the questions print. Their absence proves nothing was asked.
 Q1 = "Let people on this Flux sign in with their own ChatGPT and Claude"
 Q2 = "Anthropic's Commercial Terms (for example by creating a Console"
-STAYS_OFF = "Subscription sign-in stays off:"
+STAYS_OFF = "AI agents stay off, as the agent runtime cannot run here:"
 
 
 class Terminal:
@@ -210,14 +210,15 @@ class SubscriptionQuestionTest(unittest.TestCase):
         self.assertEqual(term.output.count(Q2), 1)
         self.assertTrue(self.applied())
 
-    def test_n_writes_nothing_and_does_not_ask_about_claude_code(self) -> None:
+    def test_n_keeps_the_runtime_for_api_keys_and_does_not_ask_about_claude_code(self) -> None:
+        # Every agent runs in the runtime (#1441, RT-1): declining subscriptions still runs agents on API keys in pi.
         term = self.first_up("n\n")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi")
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "")
         self.assertNotIn(Q2, term.output)
-        self.assertIn("./flux ai on turns it on later", term.output)
-        self.assertFalse(self.applied(), "an off instance starts without the runtime profile")
+        self.assertIn("agents on API keys run in pi in the agent runtime. ./flux ai on turns sign-in on later", term.output)
+        self.assertTrue(self.applied(), "the runtime profile starts for API keys")
 
     def test_only_a_typed_yes_makes_the_commercial_terms_statement(self) -> None:
         for answer, statement in (("\n", False), ("n\n", False), ("maybe\n", False), ("Y\n", True), ("yes\n", True)):
@@ -237,20 +238,21 @@ class SubscriptionQuestionTest(unittest.TestCase):
         term.send("n\n")
         self.assertEqual(term.finish(), 0, term.output)
         self.assertEqual(term.output.count("Please answer y or n."), 1)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi", "no subscriptions; API keys still run in pi (#1441)")
         self.env_file.unlink()
         term = self.terminal("up")
         for _ in range(3):
             term.expect("[Y/n]")
             term.send("what\n")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi")
         self.assertNotIn(Q2, term.output)
 
-    def test_end_of_input_decides_nothing(self) -> None:
+    def test_end_of_input_decides_nothing_about_subscriptions(self) -> None:
+        # The runtime itself is not a question (#1441, RT-1: every agent runs in it): API keys run in pi whatever is answered.
         term = self.first_up("\x04")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi")
         self.assertNotIn(Q2, term.output)
         self.env_file.unlink()
         term = self.first_up("\n", "\x04")
@@ -336,7 +338,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
         "no-internal": "cannot create an internal network",
         "probe-failed": "check container could not be run",
         "no-yama": "no Yama ptrace_scope of 1 or higher",
-        "yama0": "no Yama ptrace_scope of 1 or higher",
+        "yama0": "Fix it now: `sudo sysctl -w kernel.yama.ptrace_scope=1`. Keep it after a restart: `echo 'kernel.yama.ptrace_scope = 1' | sudo tee /etc/sysctl.d/90-flux.conf`.",
     }
 
     def test_a_failed_host_check_shows_no_question_and_says_why_in_one_line(self) -> None:
@@ -394,13 +396,21 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.assertIn("Flux is running:", term.output)
 
     def test_ai_on_with_no_changes_writes_and_starts_nothing(self) -> None:
-        self.existing_env()
+        self.existing_env(runtime="pi")
         before = self.env_file.read_bytes()
         term = self.ai_on("n\n")
         self.assertEqual(term.finish(), 0, term.output)
         self.assertIn("Nothing changed.", term.output)
         self.assertEqual(self.env_file.read_bytes(), before)
         self.assertFalse(self.applied())
+
+    def test_ai_on_without_pi_adds_it_even_when_subscriptions_stay_off(self) -> None:
+        # Every agent runs in the runtime (#1441, RT-1): an instance written before pi gets it from `./flux ai on`.
+        self.existing_env()
+        term = self.ai_on("n\n")
+        self.assertEqual(term.finish(), 0, term.output)
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi")
+        self.assertTrue(self.applied())
 
     def test_ai_on_without_a_terminal_refuses_and_writes_nothing(self) -> None:
         self.existing_env()
@@ -432,9 +442,9 @@ class SubscriptionQuestionTest(unittest.TestCase):
         self.assertFalse(self.env_file.exists())
 
     def test_ai_on_can_add_claude_code_but_never_removes_a_client(self) -> None:
-        for answer, runtime, terms in (("\n", "codex", ""), ("y\n", "codex,claude_code,pi", TODAY)):
+        for answer, runtime, terms in (("\n", "codex,pi", ""), ("y\n", "codex,pi,claude_code", TODAY)):
             with self.subTest(answer=answer):
-                self.existing_env(runtime="codex")
+                self.existing_env(runtime="codex,pi")
                 self.log.unlink(missing_ok=True)
                 term = self.terminal("ai", "on")
                 term.expect("[y/N]")  # the first and only question: Codex is already on
