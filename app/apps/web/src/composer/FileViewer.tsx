@@ -136,17 +136,20 @@ function PdfPage({ file, bytes, page, drawn, onDrawn, onFailed, onLink }: {
 }
 
 /**
- * A video the browser plays itself (C-61, #1352): its own controls, the poster until the person presses Play (never on its own, so no sound
- * starts unasked), and the bytes in ranges from the video route, so it
- * starts at once and seeks without loading the file. Closing stops it and its download. A browser that cannot play the file (a codec it
- * lacks) says so and offers Download; the route's own access check answers the person who lost the file.
+ * A video the browser plays itself (C-61, #1352): its own controls, the poster until the first frame, and the bytes in ranges from the video
+ * route, so it starts at once and seeks without loading the file. Pressing the row's ▶ is the press that plays it: the viewer opens playing
+ * (one click, #1424), and a browser that wants a press on the player itself (it refuses sound before one) leaves it paused with its controls.
+ * Closing stops it and its download. A browser that cannot play the file (a codec it lacks) says so and offers Download; the route's own access
+ * check answers the person who lost the file.
  */
 function VideoStage({ file, poster }: { file: MessageFile; poster?: string }) {
   const player = useRef<HTMLVideoElement>(null);
   const [failed, setFailed] = useState<'unsupported' | 'denied' | null>(null);
-  useEffect(() => () => {
+  useEffect(() => {
     const video = player.current;
-    if (video) { video.pause(); video.removeAttribute('src'); video.load(); }
+    // The press that opened the viewer asked to play; a refusal (no sound before a press on the player) leaves the controls to the person.
+    void video?.play().catch(() => undefined);
+    return () => { if (video) { video.pause(); video.removeAttribute('src'); video.load(); } };
   }, []);
   // The player's error does not say why: the download route tells a lost file from one this browser cannot play.
   const onError = () => {

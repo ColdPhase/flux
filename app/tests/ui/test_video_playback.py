@@ -167,8 +167,9 @@ class VideoPlayback(unittest.TestCase):
             self.assertTrue(video.evaluate(f"v => v.hasAttribute('{attribute}')"), attribute)
         page.wait_for_function("() => { const v = document.querySelector('video.file-viewer__video'); return v && v.readyState >= 1; }")
         self.assertAlmostEqual(video.evaluate("v => v.duration"), 2.0, delta=0.3)
-        # It waits for Play (the drawing: the poster until Play), so opening it never starts sound by itself.
-        self.assertTrue(video.evaluate("v => v.paused && !v.autoplay && v.currentTime === 0"), "the video waits for Play")
+        # The row's ▶ is the press that plays it: one click opens the viewer playing, not paused on a poster that wants a second click (#1424).
+        page.wait_for_function("() => { const v = document.querySelector('video.file-viewer__video'); return v && (!v.paused || v.currentTime > 0); }", timeout=15000)
+        self.assertTrue(video.evaluate("v => v.hasAttribute('controls') && !v.error"), "the browser's controls are there and the file plays")
         self.shot(page, "video-viewer-1440")
         # It seeks: the browser asked the server for byte ranges, and the server answered 206 with the exact Content-Range.
         video.evaluate("v => { v.currentTime = 1.5; }")
@@ -187,7 +188,7 @@ class VideoPlayback(unittest.TestCase):
         self.assertEqual(first.headers["content-type"], "video/webm")
         self.assertEqual(first.headers["accept-ranges"], "bytes")
         self.assertEqual(first.body(), WEBM[:2])
-        # And it plays.
+        # And it plays on: the clip is two seconds long, so it runs past the seek (and may end, which is fine).
         video.evaluate("v => { v.muted = true; v.currentTime = 0.2; return v.play(); }")
         page.wait_for_function("() => document.querySelector('video.file-viewer__video').currentTime > 0.7", timeout=15000)
         # Escape closes it, stops it and its download, and focus goes back to the row.

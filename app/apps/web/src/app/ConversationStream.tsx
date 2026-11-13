@@ -461,7 +461,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     const element = document.getElementById(`message-${revealRoot.message.id}`);
     if (!element) return;
     stickRef.current = false;
-    element.scrollIntoView({ block: 'start' });
+    // A link to the message itself (a search result) brings it to the middle of the stream, never to its top edge under the header.
+    element.scrollIntoView({ block: arrived === revealRoot.message.id ? 'center' : 'start' });
     // This is now the reader's place: entries that join the stream later keep it, and when the link opened
     // this root's thread it keeps its place while panels dock, as if the person had opened it here.
     const feed = feedRef.current;
@@ -676,7 +677,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
                 const groupLast = (!!next && startsUnread(next)) || !sameMessageAuthor(root.message, nextMessage);
                 // A root confirmed from its queued message keeps that list item: it does not move or arrive twice (#264).
                 return [divider, <RootItem key={key} continued={continued} groupLast={groupLast} owners={owners} root={root} project={project} meId={meId} author={author} messageWork={messageWork}
-                  open={root.conversationId === openId} arrived={arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
+                  open={root.conversationId === openId} arrived={revealed && arrived === root.message.id} makeWork={makeWork} onOpen={openRoot}
                   observed={root.message.authorId !== meId} receipt={seen.get(root.message.id)}
                   onDenied={onDenied} />];
               }), ...outbox.pending.flatMap((item, index) => {

@@ -201,19 +201,6 @@ a.ref-chip--thought:focus-visible { outline: 2px solid var(--t1); outline-offset
 .link-preview small { color: var(--t2); font-size: var(--fs-xs); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 @media (pointer: coarse) { .file-row, .link-preview { min-height: 56px; } .voice-note__play { width: 44px; height: 44px; } .photo-grid__retry { min-height: 44px; min-width: 44px; } }
 
-/* The phone picker for several files (#348 AC-4): numbered in tap order, every colour a token. */
-.photo-pick__head { padding: 18px 20px 4px; }
-.photo-pick__head h2 { margin: 0; color: var(--t1); font-size: var(--fs-lg); font-weight: 600; }
-.photo-pick__head p { margin: 4px 0 0; color: var(--t3); font-size: var(--fs-xs); }
-.photo-pick__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0; padding: 10px 16px; list-style: none; overflow-y: auto; }
-.photo-pick__tile { position: relative; display: block; width: 100%; aspect-ratio: 1; min-height: 44px; padding: 0; border: 0; border-radius: 16px; overflow: hidden; background: var(--sub); color: var(--t3); cursor: pointer; }
-.photo-pick__face { position: absolute; inset: 0; display: grid; place-items: center; }
-.photo-pick__face img { width: 100%; height: 100%; object-fit: cover; }
-.photo-pick__tile.is-on::after { content: ''; position: absolute; inset: 0; border-radius: 16px; box-shadow: inset 0 0 0 3px var(--inv); pointer-events: none; }
-.photo-pick__num { position: absolute; top: 6px; right: 6px; display: grid; place-items: center; min-width: 26px; height: 26px; box-sizing: border-box; padding: 0 6px; border-radius: var(--r-pill); background: var(--el); box-shadow: inset 0 0 0 1.5px var(--line2); color: var(--t1); font-size: var(--fs-md); font-weight: 600; }
-.photo-pick__tile.is-on .photo-pick__num { background: var(--inv); color: var(--oninv); box-shadow: 0 0 0 2px var(--el); }
-.photo-pick__foot { display: flex; justify-content: space-between; gap: 8px; padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px)); }
-
 /* A Wiki page cited by a message: a compact card with its kind glyph, title and one line of context (#348 AC-2).
    It is the message's own reference, so it sits inside the message's one bubble (a tint, not a second card). */
 .wiki-card { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
