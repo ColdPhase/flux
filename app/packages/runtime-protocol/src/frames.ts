@@ -225,7 +225,7 @@ const FRAMES: Check<SupervisorFrame>[] = [
   object({ t: literal('signin'), e: literal('url'), url: str(CLAUDE_SIGN_IN_URL, 1600) }),
   object({ t: literal('signin'), e: literal('problem'), problem: oneOf(SIGN_IN_PROBLEMS) }),
   object({ t: literal('run'), e: literal('init'), tools: arrayOf(str(INIT_NAME, 128), 64),
-    servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }, { own: literal(true) }),
+    servers: arrayOf(object({ name: str(INIT_NAME, 128), status: str(/^[a-z_-]{1,32}$/, 32) }), 16) }, { own: (value: unknown): value is true => value === true }),
   object({ t: literal('run'), e: literal('tool'), name: str(FLUX_TOOL_NAME, 67) }),
   object({ t: literal('run'), e: literal('search'), n: int(1, Number.MAX_SAFE_INTEGER), query: text(SEARCH_FRAME_LIMITS.query) }),
   object({ t: literal('run'), e: literal('found'), n: int(1, Number.MAX_SAFE_INTEGER), results: arrayOf(str(WEB_ADDRESS, 2048), SEARCH_FRAME_LIMITS.results) },
