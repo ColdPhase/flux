@@ -656,7 +656,8 @@ function AppLayoutContent() {
     : activeAgent
     ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject
-    ? { crumb: null, title: activeProject.name }
+    // A space has no panel of its own (#1419): a place panel left open from a direct message closes here, never an empty "Message info".
+    ? { crumb: null, title: activeProject.name, noDetails: true }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     : /^\/map(\/|$)/.test(location.pathname)
     ? { crumb: null, title: 'My map', noDetails: true }

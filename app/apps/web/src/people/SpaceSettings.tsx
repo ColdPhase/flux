@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
-import type { GithubCapabilities, Project, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
+import type { Project, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
-import { getGithubCapabilities } from '../github/api';
+import { useGithubSetUp } from '../github/useGithubSetUp';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { leaveProject, renameProject, setSpaceAi } from '../project/api';
@@ -347,17 +347,11 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
 }
 
 /**
- * The space's GitHub, for its admins (#1419): one row to the GitHub page. A server without GitHub has no row at all, not one that says so;
- * "Connect" until the person's own GitHub account is authorized, then "Manage".
+ * The space's GitHub, for its admins (#1419): one row to the GitHub page, where repositories are connected. A server without GitHub has no
+ * row at all, not one that says so (`useGithubSetUp`, the same answer every place asks, #1424).
  */
 function GithubRow({ projectId }: { projectId: string }) {
-  const [capabilities, setCapabilities] = useState<GithubCapabilities | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    getGithubCapabilities(projectId, controller.signal).then(setCapabilities, () => undefined);
-    return () => controller.abort();
-  }, [projectId]);
-  if (capabilities?.status !== 'configured') return null;
+  if (!useGithubSetUp(projectId, true)) return null;
   return (
     <>
       <h3 className="sset-sec">GitHub</h3>
@@ -366,7 +360,7 @@ function GithubRow({ projectId }: { projectId: string }) {
           <Link to={`/projects/${projectId}/github`} className="sset-row sset-row--link">
             <span className="sset-row__ic" aria-hidden="true"><Icon name="link" size={16} /></span>
             <span className="sset-row__b"><span className="sset-row__t">GitHub repositories</span><span className="sset-row__s">See their pull requests beside your tasks.</span></span>
-            <span className="sset-row__go"><span className="sset-row__go-label">{capabilities.authorization === 'connected' ? 'Manage' : 'Connect'}</span><Icon name="chevron-right" size={12} /></span>
+            <span className="sset-row__go"><Icon name="chevron-right" size={12} /></span>
           </Link>
         </li>
       </ul>

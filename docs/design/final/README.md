@@ -1697,8 +1697,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - Name with Change.
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - The AI switch.
-  - **GitHub**, for the space's admins: one row, "GitHub repositories · Connect" ("Manage" once their own GitHub account is authorized), that
-    leads to the GitHub page, which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
+  - **GitHub**, for the space's admins: one row, **GitHub repositories**, that leads to the GitHub page (where repositories are connected and
+    managed), which leads back with "‹ Space settings". A server without GitHub has no such row, as it has no greyed one. It was the only content of the Space details panel besides a link to these
     settings, so the panel is gone and GitHub is a setting of the space like the others (founder decision, Hubert, 2026-11-13,
     [#1419](https://github.com/ColdPhase/flux/issues/1419)).
   - Leave space, and Delete space… for admins.

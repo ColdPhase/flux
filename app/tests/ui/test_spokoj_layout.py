@@ -314,7 +314,7 @@ class SpokojLayout(unittest.TestCase):
         self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 Conversation to Tasks")
         # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365). A space has no
         # panel of its own (#1419): it is a task's.
-        self.open_panel(page, "/tasks")
+        self.open_panel(page)
         expect(page.locator(".ui-panel--float")).to_be_visible()
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         page.wait_for_function(SETTLED)
