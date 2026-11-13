@@ -34,7 +34,7 @@ test('the people of the company\'s Everyone space read cleanly for its admins wi
   await removeMember(owner, company!.id, removed!);
   expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${company!.id}/invites`, { body: { role: 'member' }, headers: { 'idempotency-key': randomUUID() } }), 201);
   for (const who of [owner, members[0]!, members[1]!]) {
-    const response = await fetch(new URL(ME_PHOTO_PATH, who.browser.base), { method: 'PUT', headers: { 'content-type': 'image/png', cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin }, body: png(64, 64) });
+    const response = await fetch(new URL(ME_PHOTO_PATH, who.browser.base), { method: 'PUT', headers: { 'content-type': 'image/png', cookie: who.browser.cookieHeader(), origin: who.browser.defaultOrigin }, body: Buffer.from(png(64, 64)) });
     assert.equal(response.status, 200, `${who.email} sets a photo`);
   }
   for (const who of [owner, members[2]!]) expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${company!.id}/agents`, { body: { name: `Agent of ${who.email.slice(0, 12)}`, owner: 'self' } }), 201);
