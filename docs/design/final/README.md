@@ -411,7 +411,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424): My tasks, My map, an
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424, #1460): Home, My tasks, My map, an
   agent's chat on the computer and a page of Settings have none, so they show no ⋯ and no empty menu.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".

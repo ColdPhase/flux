@@ -37,8 +37,22 @@ export const currentEntry = (): Entry => entry;
 
 export const isBooted = () => booted;
 
-/** Called once the first screen of this document is on show: a reload is not a return, and never restores. */
-export function markBooted() { booted = true; }
+/** The entry of the document's first screen, and whether another entry has been shown since (#592). */
+let firstKey: string | null = null;
+let moved = false;
+
+/** Called once the first screen of this document is on show (its entry's key): a reload is not a return, and never restores. */
+export function markBooted(key: string) {
+  if (booted) return;
+  booted = true;
+  firstKey = key;
+}
+
+/**
+ * The root calls it with every location it shows. The router keeps the first screen's navigation type (a pop) until the next move, so a
+ * place that renders again on that first screen after boot is not a return: only once another entry was shown is a pop to the first one a return.
+ */
+export function noteShown(key: string) { if (booted && key !== firstKey) moved = true; }
 
 function load(key: string): PlaceRecord | null {
   const held = memory.get(key);
@@ -135,7 +149,7 @@ export interface ReturnState { restore?: { key: string; path: string } }
 export function arrivalEntry(location: Location, type: NavigationType): Entry | null {
   const restore = (location.state as ReturnState | null)?.restore;
   if (restore && typeof restore.key === 'string' && typeof restore.path === 'string' && type !== 'POP') return restore;
-  return booted && type === 'POP' ? entryOf(location) : null;
+  return booted && type === 'POP' && (moved || location.key !== firstKey) ? entryOf(location) : null;
 }
 
 /** The entry this screen opened at when that was a return, fixed for the life of the screen; null for any other way of arriving. */
