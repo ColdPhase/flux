@@ -4,15 +4,87 @@ One proxy serves the entire Flux origin: the web app, authentication, OAuth disc
 `/mcp`, `/api/v1/stream` and, when enabled, `/media/*`. Keep Flux's API port on loopback.
 Set `FLUX_PUBLIC_ORIGIN` to the exact HTTPS URL people open, including a nonstandard port.
 Do not strip paths, authorization or cookies, or replace Host with the upstream address.
-The Caddy example below is the most complete; [nginx](#nginx) and [Traefik](#traefik) follow,
-and any proxy that passes WebSocket upgrades and request bodies of at least 5 MiB works the same way.
+
+In a source checkout the proxy is built in: [an `https` origin is all](#built-in-https). A proxy of
+your own is the same single setting with its address added ([your own proxy](#your-own-proxy-instead)).
+A release install has no launcher and always brings its own proxy: the Caddy example below is the most
+complete; [nginx](#nginx) and [Traefik](#traefik) follow, and any proxy that passes WebSocket upgrades
+and request bodies of at least 5 MiB works the same way.
+
+## Built-in HTTPS
+
+Founder decision 3 of [#1471](https://github.com/ColdPhase/flux/issues/1471) (2026-11-13). Point the
+DNS name at the server, then set the origin in `docker/.env` and apply it:
+
+```dotenv
+FLUX_PUBLIC_ORIGIN=https://flux.example.org
+FLUX_TRUSTED_PROXIES=
+```
+
+```sh
+./flux up
+```
+
+With an `https` origin and `FLUX_TRUSTED_PROXIES` empty, `./flux` adds
+[`docker/compose.https.yaml`](../../docker/compose.https.yaml) to every command: Caddy 2.11.7, pinned by
+digest, as the `proxy` service. It listens on port 80 and on the origin's port (443 unless the origin
+names another; TCP, and UDP for HTTP/3), obtains and renews the certificate for the origin's host
+itself (ACME, Let's Encrypt or ZeroSSL), redirects plain `http` to `https`, and passes everything to
+the API over a network that only the two of them join. The API's own port stays on `127.0.0.1`.
+The owner's only steps are the DNS record (A, and AAAA if the server has IPv6) and opening 80/tcp and
+443/tcp to the server; ACME needs both to reach it.
+
+The API trusts exactly Caddy's address. Each time it starts, it looks up the `proxy` service and runs
+with `FLUX_TRUSTED_PROXIES=<Caddy's address>/32`; `./flux up` prints the value. `docker/.env` keeps
+`FLUX_TRUSTED_PROXIES` empty: that empty line is what says "the bundled proxy". Caddy replaces any
+`X-Forwarded-For` a client sends with the address it sees, so sign-in limits and session lists see real
+client addresses, and no other process can speak from Caddy's address.
+
+- **Certificates persist** in the `proxy-data` volume (certificates, the ACME account key and Caddy's own
+  CA); `proxy-config` holds Caddy's saved configuration. `./flux down`, `up` and `upgrade` keep them;
+  `./flux clean` and `reset` remove them. `./flux backup` does not include them: on a new server Caddy
+  gets new certificates by itself once the DNS points there.
+- **Upgrades** keep the same volumes; a new Caddy digest arrives with the Flux version that pins it, and
+  Compose restarts the API with Caddy so the trusted address follows it.
+- **Private network or home lab:** a name Caddy treats as internal (`localhost`, `*.localhost`, `*.local`,
+  `*.internal`, `*.home.arpa`, or an IP address) gets a certificate from Caddy's own CA instead of ACME,
+  with no other change. Every device then has to trust that CA's root once:
+  `docker cp <project>-proxy-1:/data/caddy/pki/authorities/local/root.crt flux-root.crt`, and install it
+  as a trusted root on each computer, phone and tablet (phones need it for the installed app and push).
+- **Switching back:** an `http` (loopback) origin, or a `FLUX_TRUSTED_PROXIES` value, makes the next
+  `./flux up` remove the `proxy` container; its volumes stay until `./flux clean`.
+
+**Tested** on 2026-11-13 with an isolated `./flux up` of this checkout on a Linux Docker Engine 29.4.2 host,
+origin `https://127.0.0.1:23443` (an IP address, so Caddy's own CA; no public ACME was attempted from
+this host): see [the evidence](#built-in-https-evidence) below.
+
+## Your own proxy instead
+
+Already running nginx, Traefik or another Caddy on 80/443? Give its address in the same file, before or
+together with the `https` origin, and `./flux` bundles nothing:
+
+```dotenv
+FLUX_PUBLIC_ORIGIN=https://flux.example.org
+FLUX_TRUSTED_PROXIES=172.27.0.1/32
+```
+
+The address is where your proxy's connections to Flux come from. For a proxy on the same host that
+connects to `127.0.0.1:<FLUX_PORT>`, it is the gateway of Flux's Compose network:
+
+```sh
+docker network inspect "$(sed -n 's/^FLUX_PROJECT=//p' docker/.env)_default" --format '{{range .IPAM.Config}}{{.Gateway}}{{end}}'
+```
+
+Write it with `/32` (`/128` for IPv6), run `./flux up`, then [check it](#trust-only-the-measured-proxy-peer)
+with one sign-in. The rest of this page is your proxy's configuration: whole origin, WebSocket upgrades,
+`Host` kept, `X-Forwarded-For` replaced.
 
 ## Caddy
 
 ### Local HTTPS example
 
-Start Flux using the existing [source launcher](README.md) or [release installation](install-release.md).
-Edit only these settings in **source `docker/.env`**, or **release `.env`**:
+This is a proxy of your own, for a [release installation](install-release.md); a source checkout has
+it [built in](#built-in-https). Edit only these settings in the release `.env`:
 
 ```dotenv
 FLUX_PORT=19373
@@ -20,9 +92,8 @@ FLUX_PUBLIC_ORIGIN=https://localhost:19443
 FLUX_TRUSTED_PROXIES=
 ```
 
-Apply the settings with `./flux up` for the source checkout. In a release directory use
-`docker compose --env-file .env -f compose.yaml up -d --wait`. The release does not ship
-the source launcher. Keep the other settings and secrets from that installation.
+Apply the settings with `docker compose --env-file .env -f compose.yaml up -d --wait`. Keep the other
+settings and secrets from that installation.
 
 Save this as `Caddyfile` in a separate proxy directory:
 
@@ -63,7 +134,9 @@ not obtain a public ACME certificate.
 
 ### Trust only the measured proxy peer
 
-Initially leave `FLUX_TRUSTED_PROXIES` empty. Create an identifiable account through Caddy,
+For a release install, initially leave `FLUX_TRUSTED_PROXIES` empty (in a source checkout an empty
+value with an `https` origin starts the [built-in proxy](#built-in-https), so set the
+[gateway address](#your-own-proxy-instead) first and use the query below to confirm it). Create an identifiable account through Caddy,
 for example `proxy-probe@example.org`, and inspect **only** its session address. For the
 default database name and user, the release command is:
 
@@ -293,3 +366,23 @@ page's inline scripts and the page's own origin for sockets (`FLUX_PUBLIC_ORIGIN
 add, replace or strip `Content-Security-Policy`, `X-Frame-Options` or `Content-Security-Policy-Report-Only` for Flux's
 host. A second policy added at the proxy is combined with Flux's by the browser (every policy must allow a request) and
 can only break the app. Serve Flux on the origin `FLUX_PUBLIC_ORIGIN` names: the policy is written for it.
+
+## Built-in HTTPS evidence
+
+Observed on 2026-11-13 (#1471) with an isolated copy of the checkout on a Linux Docker Engine 29.4.2 host: a first `./flux up`
+(loopback origin), then `FLUX_PUBLIC_ORIGIN=https://127.0.0.1:23443` and `FLUX_CALLS=on` in its `docker/.env` and `./flux up` again.
+An IP address gets a certificate from Caddy's own CA, so no public ACME was attempted; public DNS and ACME stay unexercised here.
+
+- `./flux up` printed `The API trusts only Caddy's address: FLUX_TRUSTED_PROXIES=172.19.64.2/32`, and `docker inspect` gave the `proxy`
+  container exactly `172.19.64.2` on the `edge` network; the API's own process environment had the same value.
+- With Caddy's root certificate: `/api/v1/health` answered `ok` on `https://127.0.0.1:23443`; `http://127.0.0.1/x` answered
+  `308` to `https://127.0.0.1:23443/x`; the MCP metadata named `https://127.0.0.1:23443/mcp` and `POST /mcp` answered `401` (HTTP/2) with
+  the matching `WWW-Authenticate`; a WebSocket upgrade of `/api/v1/stream` with the session cookie answered `101`.
+- A sign-up and a sign-in through Caddy with a forged `X-Forwarded-For: 203.0.113.199` recorded `172.19.64.1`, the address Caddy saw
+  (Docker's port forwarding on the same host), neither the forged one nor Caddy's own; a sign-in straight to the loopback API port with the
+  same forged header recorded the API's socket peer `172.19.32.1`.
+- With the origin back on `http://127.0.0.1:23081` and `FLUX_CALLS=off`, the next `./flux up` removed the `proxy` and `livekit`
+  containers and their `edge` and `livekit-*` networks, and kept the `proxy-data` and `proxy-config` volumes.
+- The first run found a defect this page's design fixes: the image's `caddy` binary has a file capability, so `cap_drop: [ALL]` alone
+  makes it fail to start (`operation not permitted`); the overlay keeps `NET_BIND_SERVICE`, and Caddy's health check now makes `up` fail
+  instead of reporting Flux running behind a proxy that is not.

@@ -701,3 +701,26 @@ messages; a write costs about a quarter of a millisecond more (research). No new
 
 **Revisit when** a local model that fits the 4 GB target beats BM25 on the bench, or `pg_search` changes its licence or stops
 publishing Debian packages for Flux's PostgreSQL major.
+
+## HTTPS and calls by the launcher (#1471, decisions 3 and 4)
+
+Founder decisions (Hubert, 2026-11-13) on [#1471](https://github.com/ColdPhase/flux/issues/1471), from the fresh-install friction audit
+(items 4, 8, 10 and 13). Decision record id: to be assigned by the coordinator. Founder rule for both: one path, no fallback modes, existing
+maintained tools.
+
+- **3. HTTPS is built in.** In a source checkout an `https` `FLUX_PUBLIC_ORIGIN` makes `./flux` layer
+  [`docker/compose.https.yaml`](../../docker/compose.https.yaml) on every command: Caddy (pinned by digest) on port 80 and the origin's port
+  with automatic certificates (ACME; Caddy's own CA for internal names and IP addresses), proxying the whole origin to the API over an
+  `edge` network that only the two join. The API's port stays on loopback. The API trusts exactly Caddy's address: it resolves the `proxy`
+  service at each start and runs with `FLUX_TRUSTED_PROXIES=<address>/32` (Compose restarts it when Caddy is recreated). The owner's only
+  step is DNS (and opening 80/443). A proxy of the owner's own is not a second mode but the same setting with its address:
+  `FLUX_TRUSTED_PROXIES` non-empty means "my proxy", and nothing is bundled. Certificates persist in the `proxy-data` volume, which backups
+  leave out (re-issued on a new server). Guide: [reverse proxy](../operations/reverse-proxy.md#built-in-https).
+- **4. Calls with one switch.** `FLUX_CALLS=on` (like `FLUX_EMBEDDINGS`) makes `./flux` layer `docker/compose.live.yaml` on every command.
+  The launcher writes the LiveKit key and secret once, uses the origin's host as the media name, and keeps `FLUX_LIVEKIT_PUBLIC_IP` at the
+  IPv4 address that host resolves to on the server (refreshed and printed by every `up`; a loopback answer for a public name stops `up`).
+  It prints the ports to open (7881/tcp, 7882/udp, 3478/udp). TURN stays what the overlay serves on one address: TURN/UDP, no TURN/TLS,
+  because 443 is the HTTPS proxy's; a network that allows only 443 cannot join a call (documented limit). Without calls the app hides Call
+  and "Sound when someone calls me". Guide: [calls](../operations/calls.md).
+- **Not changed:** a release install (no launcher) keeps its own proxy and layers the media overlay with `-f`, until the launcher ships
+  for both install paths (friction report, "later").

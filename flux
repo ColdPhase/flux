@@ -13,6 +13,10 @@ COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
 COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
 # The optional local embedding container (F-042, #1294); added only while FLUX_EMBEDDINGS=on.
 COMPOSE_EMBEDDINGS="$FLUX_ROOT/docker/compose.embeddings.yaml"
+# Built-in HTTPS (#1471): the bundled Caddy; added only while the origin is https and FLUX_TRUSTED_PROXIES is empty.
+COMPOSE_HTTPS="$FLUX_ROOT/docker/compose.https.yaml"
+# Calls and screen sharing (#1471): the LiveKit media server; added only while FLUX_CALLS=on.
+COMPOSE_LIVE="$FLUX_ROOT/docker/compose.live.yaml"
 # The operator's own override; used when it exists.
 COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
@@ -66,15 +70,26 @@ compose_main() {
   if [ -f "$COMPOSE_OVERRIDE" ]; then set -- -f "$COMPOSE_OVERRIDE" "$@"; fi
   if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi
   if embeddings_on; then set -- -f "$COMPOSE_EMBEDDINGS" "$@"; fi
+  if https_on; then
+    FLUX_HTTPS_HOST=$(origin_host) FLUX_HTTPS_PORT=$(origin_port); export FLUX_HTTPS_HOST FLUX_HTTPS_PORT
+    set -- -f "$COMPOSE_HTTPS" "$@"
+  fi
+  if calls_on; then calls_env; set -- -f "$COMPOSE_LIVE" "$@"; fi
   FLUX_IMAGE_TAG="$PROJECT" docker --log-level error compose --project-directory "$FLUX_ROOT/docker" \
     --env-file "$ENV_FILE" -p "$PROJECT" -f "$COMPOSE_MAIN" "$@"
 }
-# `clean` and `reset`: with the embeddings overlay too, so that its container and model volume go even after FLUX_EMBEDDINGS went back
-# to off (Compose removes only what the files it is given define).
-compose_main_all() {
+# `clean` and `reset`: with every optional overlay too, so that their containers, networks and volumes (the embedding model, the
+# proxy's certificates) go even after their switch went back to off (Compose removes only what the files it is given define). The
+# media overlay needs its four values to load at all; while calls are off, placeholders do, since nothing is started.
+compose_main_all() (
   embeddings_on || set -- -f "$COMPOSE_EMBEDDINGS" "$@"
+  https_on || set -- -f "$COMPOSE_HTTPS" "$@"
+  if ! calls_on; then
+    export FLUX_LIVEKIT_API_KEY=unused FLUX_LIVEKIT_API_SECRET=unused FLUX_LIVEKIT_PUBLIC_IP=127.0.0.1 FLUX_LIVEKIT_DOMAIN=localhost
+    set -- -f "$COMPOSE_LIVE" "$@"
+  fi
   compose_main "$@"
-}
+)
 compose_dev() {
   FLUX_IMAGE_TAG="$DEV_PROJECT" FLUX_PUBLIC_ORIGIN="$(dev_origin)" \
     FLUX_SMTP_URL="${FLUX_SMTP_URL:-smtp://mailpit:1025}" FLUX_MAIL_FROM="${FLUX_MAIL_FROM:-Flux dev <flux-dev@localhost>}" \
@@ -92,6 +107,82 @@ env_value() {
 }
 env_file_has() { [ -f "$ENV_FILE" ] && grep -q "^$1=." "$ENV_FILE"; }
 embeddings_on() { [ "$(env_value FLUX_EMBEDDINGS)" = on ]; }
+
+# --- The origin's parts (#1471). FLUX_PUBLIC_ORIGIN is scheme://host[:port], without a path; an IPv6 host is in brackets.
+origin_hostport() { o=$(public_origin); o=${o#*://}; printf '%s' "${o%%/*}"; }
+origin_host() {
+  o=$(origin_hostport)
+  case "$o" in \[*) o=${o%%]*}; printf '%s' "${o#\[}" ;; *) printf '%s' "${o%%:*}" ;; esac
+}
+origin_port() {
+  o=$(origin_hostport)
+  case "$o" in \[*\]:*) o=${o##*]:} ;; \[*) o='' ;; *:*) o=${o##*:} ;; *) o='' ;; esac
+  if [ -n "$o" ]; then printf '%s' "$o"; else case "$(public_origin)" in https://*) printf 443 ;; *) printf 80 ;; esac; fi
+}
+
+# --- Built-in HTTPS (#1471, founder decision 3; docs/operations/reverse-proxy.md). An https origin starts the bundled Caddy
+# (docker/compose.https.yaml) on 80 and the origin's port, with automatic certificates, and the API trusts exactly Caddy's address.
+# FLUX_TRUSTED_PROXIES names the owner's own proxy instead: then nothing is bundled, and that proxy owns 80/443.
+https_on() {
+  case "$(public_origin)" in https://*) [ -z "$(env_value FLUX_TRUSTED_PROXIES | tr -d '[:space:]')" ] ;; *) return 1 ;; esac
+}
+# Names Caddy certifies from its own CA instead of ACME (checked with Caddy 2.11.7): local names and IP addresses.
+https_internal_name() {
+  case "$1" in localhost|*.localhost|*.local|*.internal|*.home.arpa|*:*) return 0 ;; esac
+  is_ipv4 "$1"
+}
+# What the running API trusts, read from its own process: with the bundled Caddy, that is Caddy's address.
+api_trusted_proxies() {
+  compose_main exec -T api sh -c 'tr "\000" "\n" < /proc/1/environ | sed -n "s/^FLUX_TRUSTED_PROXIES=//p"' 2>/dev/null || true
+}
+
+# --- Calls (#1471, founder decision 4; docs/operations/calls.md). FLUX_CALLS=on layers docker/compose.live.yaml. The launcher makes the
+# LiveKit key and secret once, and takes the media name and public IPv4 address from the origin: the name is the origin's host, the
+# address is what that name resolves to (refreshed by every `up`, kept in docker/.env so that every command renders the same media
+# server). The owner only opens the media ports.
+calls_on() { [ "$(env_value FLUX_CALLS)" = on ]; }
+is_ipv4() {
+  case "$1" in *[!0-9.]*|.*|*.|*..*|'') return 1 ;; esac
+  [ "$(printf '%s' "$1" | tr -cd . | wc -c | tr -d ' ')" = 3 ]
+}
+# The IPv4 address the origin's host names: the host itself when it is an address, 127.0.0.1 for localhost, else its A record.
+calls_resolve() {
+  if is_ipv4 "$1"; then printf '%s' "$1"; return 0; fi
+  [ "$1" != localhost ] || { printf 127.0.0.1; return 0; }
+  if command -v getent >/dev/null 2>&1; then
+    getent ahostsv4 "$1" 2>/dev/null | awk 'NR == 1 { print $1 }'
+  elif command -v dscacheutil >/dev/null 2>&1; then
+    dscacheutil -q host -a name "$1" 2>/dev/null | awk '/^ip_address:/ { print $2; exit }'
+  fi
+}
+calls_private() {
+  case "$1" in 10.*|192.168.*|172.1[6-9].*|172.2[0-9].*|172.3[01].*|100.6[4-9].*|100.[7-9][0-9].*|100.1[01][0-9].*|100.12[0-7].*|169.254.*) return 0 ;; esac
+  return 1
+}
+# Writes the key, the secret and the current address into docker/.env when they are missing or the address changed. CALLS_IP is the address.
+calls_settings() {
+  [ -n "$(env_value FLUX_LIVEKIT_API_KEY)" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_API_KEY "flux$(random_hex 8)"
+  [ -n "$(env_value FLUX_LIVEKIT_API_SECRET)" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_API_SECRET "$(random_hex 32)"
+  calls_host=$(origin_host)
+  CALLS_IP=$(calls_resolve "$calls_host")
+  is_ipv4 "$CALLS_IP" || die "FLUX_CALLS=on: $calls_host (the host of FLUX_PUBLIC_ORIGIN) has no IPv4 address. Point its DNS A record at this server, then run ./flux up again."
+  case "$CALLS_IP" in
+    127.*) is_loopback_origin "$(public_origin)" ||
+      die "FLUX_CALLS=on: $calls_host resolves to $CALLS_IP on this server (often a line in /etc/hosts), not to its public address. Calls need the address browsers reach: make $calls_host resolve to this server's public IPv4 address here too, then run ./flux up again." ;;
+  esac
+  [ "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" = "$CALLS_IP" ] || set_env_line "$ENV_FILE" FLUX_LIVEKIT_PUBLIC_IP "$CALLS_IP"
+}
+# Every Compose command with calls on: the media name follows the origin, and the settings exist (the first command makes them).
+calls_env() {
+  FLUX_LIVEKIT_DOMAIN=$(origin_host); export FLUX_LIVEKIT_DOMAIN
+  if [ -z "$(env_value FLUX_LIVEKIT_PUBLIC_IP)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_KEY)" ] || [ -z "$(env_value FLUX_LIVEKIT_API_SECRET)" ]; then
+    calls_settings
+  fi
+}
+calls_ports() {
+  printf '%s/tcp, %s/udp and %s/udp' "$(env_value FLUX_LIVEKIT_ICE_TCP_PORT | sed 's/^$/7881/')" \
+    "$(env_value FLUX_LIVEKIT_ICE_UDP_PORT | sed 's/^$/7882/')" "$(env_value FLUX_LIVEKIT_TURN_UDP_PORT | sed 's/^$/3478/')"
+}
 
 # --- Compose project names. Each checkout gets its own stable default, derived from its
 # absolute path and stored in the env file as FLUX_PROJECT on first use, so two clones never
@@ -514,6 +605,7 @@ die_if_v01_refused() {
 
 start_main() {
   check_runtime_switch
+  if calls_on; then calls_settings; fi
   if runtime_on; then ensure_runtime_secrets; runtime_limits; fi
   [ "${BUILT:-0}" = 1 ] || build_main
   if runtime_on; then
@@ -538,20 +630,25 @@ start_main() {
     stop_runtime
     remove_idle_runtime_networks
   fi
-  remove_embeddings_when_off
+  embeddings_on || remove_when_off embeddings "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
+  https_on || remove_when_off proxy "The bundled HTTPS proxy is off (the origin is not https, or FLUX_TRUSTED_PROXIES names your own proxy): removing it (its certificates stay in its volume)."
+  calls_on || remove_when_off livekit "Calls are off: removing the media server."
 }
 
-# FLUX_EMBEDDINGS=off after `on`: Compose no longer knows the embedding service, so `up` would leave its container running (and
-# holding about 3 GiB) as an orphan. Remove it; the downloaded model stays in its volume, and the worker has already deleted every vector.
-remove_embeddings_when_off() {
-  embeddings_on && return 0
-  ids=$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=embeddings")
+# A switch back to off (FLUX_EMBEDDINGS, an https origin, FLUX_CALLS): Compose no longer knows the overlay's service, so `up` would leave
+# its container running as an orphan (the embedding server holding about 3 GiB, Caddy holding ports 80 and 443, LiveKit its media
+# ports). Remove it, and the overlay's networks once nothing uses them; volumes stay until ./flux clean.
+remove_when_off() { # service message
+  ids=$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=$1")
   [ -n "$ids" ] || return 0
   # A service of that name that docker/compose.override.yaml defines is the operator's own: Compose knows it, so it is no orphan.
-  ! compose_main config --services 2>/dev/null | grep -qx embeddings || return 0
-  say "Local embeddings are off: removing their container (the downloaded model stays in its volume)."
+  ! compose_main config --services 2>/dev/null | grep -qx "$1" || return 0
+  say "$2"
   # shellcheck disable=SC2086 # one id per word
-  docker rm -f $ids >/dev/null || warn "Could not remove the local embeddings container; remove it with: docker rm -f $ids"
+  docker rm -f $ids >/dev/null || warn "Could not remove the $1 container; remove it with: docker rm -f $ids"
+  for network in $(docker network ls --filter "label=com.docker.compose.project=$PROJECT" --format '{{.Name}}' | grep -E "^${PROJECT}_(edge|livekit-signal|livekit-media)\$" || true); do
+    docker network rm "$network" >/dev/null 2>&1 || true   # Docker refuses a network that is in use: an overlay that is on keeps its own.
+  done
 }
 
 # Development demo only. True only for an origin that is exactly scheme://host[:port] with
@@ -620,6 +717,7 @@ cmd_up() {
   start_main
   say ""
   say "Flux is running:  $(public_origin)"
+  say_https_and_calls
   if [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ]; then
     say "Sign-up is closed (FLUX_SIGNUP=off): see \"Decide who can sign up\" in docs/operations/install.md to add people."
     say "Or run ./flux demo for sample data and two logins."
@@ -627,6 +725,26 @@ cmd_up() {
     say "Create an account there, or run ./flux demo for sample data and two logins."
   fi
   warn_unclaimed_company
+}
+
+# What the owner still does for HTTPS and calls (#1471): the DNS name and the ports to open, and what the launcher found.
+say_https_and_calls() {
+  if https_on; then
+    if https_internal_name "$(origin_host)"; then
+      say "HTTPS: the bundled Caddy answers on ports 80 and $(origin_port) with a certificate for $(origin_host) from its own CA; trust that CA's root on each device (docs/operations/reverse-proxy.md#built-in-https)."
+    else
+      say "HTTPS: the bundled Caddy answers on ports 80 and $(origin_port) and gets the certificate for $(origin_host) itself once its DNS points at this server; open 80/tcp and $(origin_port)/tcp."
+    fi
+    say "       The API trusts only Caddy's address: FLUX_TRUSTED_PROXIES=$(api_trusted_proxies)."
+  else
+    case "$(public_origin)" in https://*) say "HTTPS: your own proxy, trusted at FLUX_TRUSTED_PROXIES=$(env_value FLUX_TRUSTED_PROXIES)." ;; esac
+  fi
+  if calls_on; then
+    if is_ipv4 "$(origin_host)"; then calls_found=''; else calls_found=" (what $(origin_host) resolves to)"; fi
+    say "Calls: on. Media server $(origin_host) at $CALLS_IP$calls_found; open $(calls_ports) to this server."
+    calls_private "$CALLS_IP" && say "       $CALLS_IP is a private address: calls reach only devices on the same network."
+  fi
+  return 0
 }
 
 # The first account to sign up becomes the company's owner (F-037). On a public address that must be you: say so while nobody has

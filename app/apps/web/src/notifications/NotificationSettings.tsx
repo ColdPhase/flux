@@ -4,6 +4,7 @@ import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, 
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
+import { useLiveCapability } from '../live/LiveProvider';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
@@ -48,6 +49,7 @@ function AccountNotificationSettings() {
   const ownerId = me.user.id;
   const mounted = useRef(false);
   const phone = useMediaQuery(MEDIA.phone);
+  const callsOn = useLiveCapability() === 'configured';
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
   const [failed, setFailed] = useState(false);
@@ -213,9 +215,12 @@ function AccountNotificationSettings() {
         <SwitchRow label="Sound for messages" checked={prefs.sound.messages}
           detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'A soft sound for messages to you and mentions while Flux is open'}
           onChange={(messages) => change({ sound: { messages } }, (current) => ({ ...current, sound: { ...current.sound, messages } }))} />
-        <SwitchRow label="Sound when someone calls me" checked={prefs.sound.calls}
-          detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'One soft chime when someone invites you to a call'}
-          onChange={(calls) => change({ sound: { calls } }, (current) => ({ ...current, sound: { ...current.sound, calls } }))} />
+        {/* Only on a server with calls (#1471): without a media server nobody can call, so the switch would do nothing. */}
+        {callsOn ? (
+          <SwitchRow label="Sound when someone calls me" checked={prefs.sound.calls}
+            detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : 'One soft chime when someone invites you to a call'}
+            onChange={(calls) => change({ sound: { calls } }, (current) => ({ ...current, sound: { ...current.sound, calls } }))} />
+        ) : null}
       </div>
 
       {email.available ? (

@@ -68,8 +68,9 @@ it off again deletes every vector.
 
 | Direction | What | When |
 | --- | --- | --- |
-| Inbound TCP 443 (and 80 for ACME) | Your [reverse proxy](reverse-proxy.md) | Always, for anyone not on the server itself |
-| Inbound UDP 3478, UDP 7882, TCP 7881, TCP 443 on a second address | LiveKit media and TURN | Only with [live media](../development/live-media.md) |
+| Inbound TCP 443 (and 80 for ACME) | The [built-in HTTPS](reverse-proxy.md#built-in-https) proxy, or your own | Always, for anyone not on the server itself |
+| Inbound UDP 3478, UDP 7882, TCP 7881 | LiveKit media and TURN/UDP | Only with [calls](calls.md) (`FLUX_CALLS=on`) |
+| Inbound TCP 443 on a second address | TURN/TLS | Only with `compose.live.turn.yaml`, which the launcher does not set up ([the limit](calls.md#the-limit-no-turn-over-tls)) |
 | Outbound TCP 587 or 465 | Your mail server | When [email](configuration.md#email) is set |
 | Outbound HTTPS | Web Push services of browser vendors | When [push](mobile-and-push.md#3-allow-outbound-https-to-the-push-services) is on |
 | Outbound HTTPS | AI providers people connect, public web pages and search for agents (`FLUX_WEB_READS`, on by default), MCP client metadata documents, GitHub | When those features are used |

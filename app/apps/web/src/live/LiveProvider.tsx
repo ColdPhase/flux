@@ -100,6 +100,11 @@ export function useLive(): LiveValue {
   return value;
 }
 
+/** Whether this server has a media server ('loading' until it is known, and outside the provider). */
+export function useLiveCapability(): LiveCapability | 'loading' {
+  return useContext(LiveContext)?.capability ?? 'loading';
+}
+
 /** The anchor and fragment of whatever the person is looking at now (the Details panel wins). */
 export function useLiveHere(): Here {
   return useContext(HereContext).here;

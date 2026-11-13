@@ -1,7 +1,7 @@
 # Self-hosting Flux
 
 Flux runs on your own server as one Docker Compose project: PostgreSQL, the API, a worker and a
-small keyring, behind your HTTPS reverse proxy. These pages are for the person who runs it, and describe Flux v0.2:
+small keyring, behind HTTPS (built in for a source checkout, or your own reverse proxy). These pages are for the person who runs it, and describe Flux v0.2:
 one Flux is one company, with spaces, and AI is simple (everything is an agent, and people connect AI once).
 **v0.2 is installed fresh: it does not upgrade a v0.1 installation** ([why](upgrade.md#from-v01-install-v02-fresh)).
 
@@ -10,7 +10,7 @@ one Flux is one company, with spaces, and AI is simple (everything is an agent, 
 | [Requirements](requirements.md) | Host, Docker, memory, disk and network |
 | [Install from a release](install-release.md) | A production server on your domain from the published image of the latest release, without the source |
 | [Installation](install.md) | A production server on your domain, from a source checkout |
-| [HTTPS and reverse proxies](reverse-proxy.md) | Caddy, nginx and Traefik, each tested |
+| [HTTPS and reverse proxies](reverse-proxy.md) | Built-in HTTPS (an `https` origin and DNS), or your own Caddy, nginx or Traefik |
 | [Configuration reference](configuration.md) | Every setting, generated from the code |
 | [Administration in the app](administration.md) | The company and its spaces, people and roles, invite links, AI in a space, agents and connections, encrypted spaces |
 | [Architecture](architecture.md) | What runs where, data and secrets |
@@ -28,6 +28,7 @@ one Flux is one company, with spaces, and AI is simple (everything is an agent, 
 | --- | --- |
 | [Single sign-on](single-sign-on.md) | People sign in with your OpenID Connect provider |
 | [Phones, tablets and push](mobile-and-push.md) | Installing the app and Web Push |
+| [Calls and screen sharing](calls.md) | `FLUX_CALLS=on`: the media server, its address and the ports to open |
 | [Agent runtime](agent-runtime.md) | People connect their own Claude or ChatGPT subscription in Connect AI, and Flux runs the CLI for their agents |
 
 ## Commands
@@ -45,7 +46,8 @@ that is not this checkout's.
 | Move to a newer version (v0.2 to later; v0.1 is refused) | `./flux upgrade [--pull] [-y]` | [Upgrade](upgrade.md) |
 | Run encrypted spaces: restarts, backups, upgrades, swap and hibernation | Nothing to switch on; owners and admins unlock after a restart | [Encrypted spaces](encrypted-spaces.md) |
 | Let people sign in with your identity provider (OpenID Connect) | `FLUX_OIDC_*` in `docker/.env` | [Single sign-on](single-sign-on.md) |
-| Serve Flux through HTTPS, including MCP and WebSocket upgrades | Set the public origin and narrowly trusted proxy peer | [HTTPS and reverse proxies](reverse-proxy.md) |
+| Serve Flux through HTTPS, including MCP and WebSocket upgrades | An `https` `FLUX_PUBLIC_ORIGIN` and its DNS (built-in Caddy); or your own proxy's address in `FLUX_TRUSTED_PROXIES` | [HTTPS and reverse proxies](reverse-proxy.md) |
+| Turn on calls and screen sharing | `FLUX_CALLS=on` in `docker/.env`, then `./flux up`; open the ports it prints | [Calls and screen sharing](calls.md) |
 | Install Flux on phones and tablets and send push notifications | HTTPS at the origin root, `FLUX_VAPID_*`, outbound HTTPS to the push services | [Phones, tablets and push](mobile-and-push.md) |
 | Let people connect their own ChatGPT and Claude subscriptions (off by default) | The first interactive `./flux up` asks once; later `./flux ai on` (or `FLUX_AGENT_RUNTIME` in `docker/.env`, then `./flux up`); `./flux runtime status \| release runtime-<n> \| purge` | [Agent runtime](agent-runtime.md) |
 | Run a published release without the source (operators) | `docker compose --env-file .env -f compose.yaml up -d --wait` | [Install from a release](install-release.md), [the release's `INSTALL.md`](release-guide.md) |
