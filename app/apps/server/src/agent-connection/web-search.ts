@@ -1,7 +1,10 @@
 import { sql } from 'drizzle-orm';
-import { aiEndpointPolicyFromEnv, providerPersonalCompute } from '@flux/agent-runtime';
+import { aiEndpointPolicyFromEnv, parsePrivateTargets, providerPersonalCompute } from '@flux/agent-runtime';
 import { z } from 'zod';
-import { connectionOnModel, DomainError, searchWithKey, WEB_SEARCH_TOOL, type KeySearchMeter, type PersonalCompute, type PersonalConnectionLookup } from '@flux/core';
+import {
+  connectionOnModel, DomainError, searchWithKey, TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnections, WEB_SEARCH_TOOL, type KeySearchMeter,
+  type PersonalCompute, type PersonalConnectionLookup,
+} from '@flux/core';
 import { apiKeySpendToday, personalConnectionLookup, personalKeyResolver, personalRunWebReadRows, type Database } from '@flux/db';
 import { withAgentConnection } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
@@ -23,7 +26,15 @@ export interface KeyWebSearcher { compute: PersonalCompute; connections: Persona
  * lets API keys run (`FLUX_PERSONAL_RUNS=on`) and the instance key is there, as for the worker's runs (CA-4).
  */
 export function keyWebSearcher(env: NodeJS.ProcessEnv, db: Database, masterKey: Buffer | null, providerEnabled: boolean): KeyWebSearcher | null {
-  if (!providerEnabled || !masterKey) return null;
+  if (!providerEnabled) return null;
+  // TEST ONLY (FLUX_TEST_PERSONAL_RUNS=anthropic-mock, which the API's composition accepts only with FLUX_TEST_FAILURE_INJECTION=true): the
+  // fixture key and connections, and the mock provider, as the worker's runs have them, so a browser stack's agents search too.
+  const mock = env.FLUX_TEST_PERSONAL_RUNS === 'anthropic-mock' && env.FLUX_TEST_FAILURE_INJECTION === 'true'
+    ? /^http:\/\/([a-z0-9.-]+)(:\d+)?$/.exec(env.FLUX_TEST_ANTHROPIC_URL ?? '') : null;
+  if (mock) return { compute: providerPersonalCompute({ enabled: true, resolveKey: async (ref) => (ref === TEST_FIXTURE_KEY_REF ? TEST_FIXTURE_API_KEY : null),
+    policy: parsePrivateTargets([env.FLUX_AI_PRIVATE_TARGETS ?? '', mock[1]].join(',')), baseUrls: { anthropic: mock[0] }, webSearch: true }),
+  connections: testFixturePersonalConnections };
+  if (!masterKey) return null;
   return { compute: providerPersonalCompute({ enabled: true, resolveKey: personalKeyResolver(db, masterKey), policy: aiEndpointPolicyFromEnv(env), webSearch: true }),
     connections: personalConnectionLookup(db) };
 }

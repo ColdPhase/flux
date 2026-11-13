@@ -6,22 +6,23 @@ import {
   type AssistantJob, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
-import { assistantTick, createPersonalRunProcessor, nothingToReport, PERSONAL_RUN_JOB, resultOf, settleOne, type BackgroundStart, type PersonalComputeResult, type Principal } from '@flux/core';
+import { assistantTick, nothingToReport, PERSONAL_RUN_JOB, resultOf, settleOne, type BackgroundStart, type Principal } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
-import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
-import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import type { GatewayStep } from './support/fake-gateway.js';
+import { FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { waitFor } from './support/wait.js';
 
 // An agent's schedules (F-036 AG-9, #858): the owner's sentence, told to one of their agents in its private chat, run by that agent at a time in
 // the owner's zone, with its results in that chat. The real API for the owner's routes, the real worker tick against the same database with a
-// CONTROLLED clock (the tick takes `now`), a second tick instance standing for a second worker, and a FAKE provider. Every schedule here first
-// fires in the future of the real clock, so the Compose worker's own per-minute tick never meets one. No model, vendor account or key is used.
+// CONTROLLED clock (the tick takes `now`), a second tick instance standing for a second worker, and the runs themselves: every agent runs in the
+// agent runtime (#1441, RT-1), so each run here is pi in it on a scripted model gateway. Every schedule here first fires in the future of the
+// real clock, so the Compose worker's own per-minute tick never meets one. No model, vendor account or key is used.
 
 const connections = new FakeConnections();
-const compute = new FakeCompute();
 const queue = new FakeQueue();
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 const DAY = 86_400_000;
@@ -34,7 +35,9 @@ const dispatched = () => sent.filter((job) => job.name === PERSONAL_RUN_JOB).map
 
 const composition = { connections, providerEnabled: true };
 const startBackground = startBackgroundOf(composition, db, boss);
-const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
+/** The agent runtime of the file (pi, the scripted model gateway) and the worker's processor with it, made in `before`. */
+let pi: PiRuntime;
+let processor: ReturnType<PiRuntime['processor']>;
 const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground }, now);
 
 /** 09:00 UTC `days` from today: well ahead of the real clock, so only the test's own tick fires it. */
@@ -42,9 +45,10 @@ function tomorrowAt(hours: number, minutes = 0, days = 1) {
   const base = new Date(Date.now() + days * DAY);
   return new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate(), hours, minutes));
 }
-const answer = (text: string): ((request: unknown) => Promise<PersonalComputeResult>) => async () =>
-  ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 20 }, text });
-const failing = async (): Promise<PersonalComputeResult> => ({ kind: 'failed', reason: 'provider_error', billed: 'none' });
+/** What the run's model says: one answer per run, in the order the runs are processed. */
+const answer = (...words: string[]): GatewayStep[] => words.map((text) => ({ text }));
+/** The provider refuses the run's request (a 400, which pi does not retry): the run ends as one that stopped answering. */
+const failing: GatewayStep[] = [{ status: 400, body: { type: 'error', error: { type: 'invalid_request_error', message: 'The request was not valid' } } }];
 
 interface Row { id: string; status: string; kind: string; prompt: string; project_id: string | null; conversation_id: string | null; dm_id: string | null; agent_id: string }
 const runsOf = async (jobId: string) => (await pool.query(`SELECT r.id, r.status, r.kind, r.prompt, r.project_id, r.conversation_id, r.dm_id, r.agent_id FROM personal_runs r
@@ -71,8 +75,8 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
   const daily = (hours = 9) => ({ kind: 'daily', at: `${String(hours).padStart(2, '0')}:00` });
   const processAll = async () => { for (const id of dispatched().splice(0)) await processor.process(id); };
   /** A job's firing on `day` (days ahead of today) at 09:00 UTC: tick, process what was started, tick again to close it. */
-  async function cycle(day: number, respond?: typeof compute.respond) {
-    if (respond) compute.respond = respond;
+  async function cycle(day: number, steps?: GatewayStep[]) {
+    if (steps) pi.gateway.script(steps);
     const fire = tomorrowAt(9, 0, day);
     await tick(new Date(fire.getTime() + 30_000));
     await processAll();
@@ -80,6 +84,8 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
   }
 
   before(async () => {
+    pi = await startPiRuntime();
+    processor = pi.processor(connections);
     owner = await person('sj-ada'); peer = await person('sj-jonas'); guest = await person('sj-gus');
     ws = await createWorkspace(owner, 'Schedules');
     for (const [who, role] of [[peer, 'member'], [guest, 'guest']] as const) await addMember(owner, ws.id, who, role);
@@ -94,11 +100,12 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
       const connectionId = randomUUID();
       connections.connect(who.id, connectionId);
       await runs.enable(human(who), { agentId: agent, connection: connectionId, model: 'claude-sonnet-5' });
+      await pi.place(who.id);
     }
   });
-  after(async () => { await pool.query(`DELETE FROM assistant_jobs WHERE owner_user_id = ANY($1)`, [[owner.id, peer.id]]); });
+  after(async () => { await pool.query(`DELETE FROM assistant_jobs WHERE owner_user_id = ANY($1)`, [[owner.id, peer.id]]); await pi.close(); });
   beforeEach(async () => {
-    compute.dispatched = []; compute.respond = answer('Nothing to report');
+    pi.gateway.script([]);
     sent.length = 0;
     await pool.query(`DELETE FROM assistant_jobs WHERE owner_user_id = ANY($1)`, [[owner.id, peer.id]]);
     await pool.query(`DELETE FROM agent_chat_messages WHERE agent_id = $1`, [agentId]);
@@ -165,10 +172,11 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
       ['scheduled', 'Look at the sensor tasks', null, null, null, agentId], 'a run of the agent\'s chat: no space, no conversation');
     assert.equal((await tick(at)).fired, 0);
     assert.equal(new Date((await jobRow(job.id)).next_run_at as string).getTime(), fire.getTime() + DAY);
-    compute.respond = answer('Fact: two sensor tasks are due on Friday.');
+    pi.gateway.script(answer('Fact: two sensor tasks are due on Friday.'));
     await processAll();
-    assert.match(compute.dispatched[0]!.system, /Your owner scheduled this task for you/, 'told it is a scheduled task');
-    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.every((tool) => !(compute.dispatched[0]!.tools ?? []).some((item) => item.name === tool)), 'it reads and changes nothing');
+    const [first] = pi.gateway.requests;
+    assert.match(first!.prompt, /Your owner scheduled this task for you/, 'told it is a scheduled task');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.every((tool) => !first!.tools.includes(`mcp__flux__${tool}`)), 'it reads and changes nothing');
     await tick(new Date(fire.getTime() + 2 * MINUTE));
     const [history] = await firings(job.id);
     assert.deepEqual([history!.state, history!.result_line], ['done', 'Done: Fact: two sensor tasks are due on Friday.']);
@@ -249,7 +257,7 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     assert.deepEqual([started.run.firedBy, started.run.state, started.job.running], ['now', 'running', true]);
     await assert.rejects(jobs.runNow(human(owner), agentId, job.id), { code: 'ASSISTANT_JOB_RUNNING' }, 'one run at a time per schedule');
     assert.equal((await runsOf(job.id)).length, 1);
-    compute.respond = answer('Fact: three tasks are open.');
+    pi.gateway.script(answer('Fact: three tasks are open.'));
     for (const id of queue.runIds.splice(0)) await processor.process(id);
     const [shown] = await jobs.list(human(owner), agentId);
     assert.deepEqual([shown!.running, shown!.last?.state], [false, 'done']);
@@ -300,7 +308,7 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     await tick(new Date(tomorrowAt(9).getTime() + 30_000));
     const [own] = await runsOf(mine.id); const [other] = await runsOf(theirs.id);
     assert.deepEqual([own!.agent_id, other!.agent_id], [agentId, peerAgentId], 'each schedule runs as its own agent');
-    compute.respond = answer('Fact: ok.');
+    pi.gateway.script(answer('Fact: ok.', 'Fact: ok.'));
     await processAll();
     await tick(new Date(tomorrowAt(9).getTime() + 2 * MINUTE));
     assert.equal((await chatLines(agentId)).length, 1);
@@ -312,10 +320,10 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
   test('AG-9 "Set up by asking": what the owner says to the agent in its chat prepares a schedule that stays off; `/ai` in a space and a scheduled run prepare none', async () => {
     const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
     const block = '<schedule>{"title": "Weekday summary", "text": "Summarise what changed in Lamp sensor", "when": {"kind": "weekdays", "at": "09:00"}}</schedule>';
-    compute.respond = answer(`I prepared a weekday summary at 9. ${block}`);
+    pi.gateway.script(answer(`I prepared a weekday summary at 9. ${block}`));
     const said = await runs.invoke(human(owner), { kind: 'chat', agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Every weekday at 9, summarise what changed in Lamp sensor' });
-    assert.equal(await processor.process(said.run.id), 'completed');
-    assert.match(compute.dispatched.at(-1)!.system, /<schedule>/, 'the chat\'s brief tells how to prepare one');
+    assert.equal(await processor.process(said.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.match(pi.gateway.requests.at(-1)!.prompt, /<schedule>/, 'the chat\'s brief tells how to prepare one');
     const [prepared] = await list();
     assert.deepEqual([prepared!.title, prepared!.words, prepared!.enabled, prepared!.prepared, prepared!.preparedRunId], ['Weekday summary', 'Weekdays at 9:00', false, true, said.run.id]);
     assert.equal(prepared!.next.length, 0, 'off until the owner turns it on');
@@ -328,21 +336,21 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
 
     // `/ai` in a space's conversation drops the block and prepares nothing; so does a run of a schedule.
     const before = (await list()).length;
-    compute.respond = answer(`Done. ${block}`);
+    pi.gateway.script(answer(`Done. ${block}`));
     const inSpace = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Every weekday at 9, summarise this' });
-    assert.equal(await processor.process(inSpace.run.id), 'completed');
-    assert.doesNotMatch(compute.dispatched.at(-1)!.system, /<schedule>/, 'a space\'s brief does not offer it');
+    assert.equal(await processor.process(inSpace.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.doesNotMatch(pi.gateway.requests.at(-1)!.prompt, /<schedule>/, 'a space\'s brief does not offer it');
     const job = await created({ title: 'Loop', schedule: daily(9) });
     await cycle(1, answer(`Fact: x. ${block}`));
     assert.equal((await list()).length, before + 1, 'only the schedule made through the API was added');
     assert.equal((await runsOf(job.id)).length, 1);
   });
-  /** The chat's own run of the owner's sentence: the model answers with `answerText`; the run is processed; the schedule it prepared is returned. */
+  /** The chat's own run of the owner's sentence: the model (pi's, scripted) answers with `answerText`; the run is processed; the schedule it prepared is returned. */
   async function prepareBy(prompt: string, answerText: string) {
     const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-    compute.respond = answer(answerText);
+    pi.gateway.script(answer(answerText));
     const said = await runs.invoke(human(owner), { kind: 'chat', agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt });
-    assert.equal(await processor.process(said.run.id), 'completed');
+    assert.equal(await processor.process(said.run.id), 'completed', JSON.stringify(pi.lastPi()));
     const prepared = (await list()).find((item) => item.preparedRunId === said.run.id)!;
     assert.ok(prepared, 'the sentence prepared a schedule');
     return prepared;
@@ -410,9 +418,9 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
       // The agent's clock is the person's: their zone, and the time their screen shows.
       const started = Date.now();
       await processAll();
-      const system = compute.dispatched.at(-1)!.system;
-      const stamp = /It is now \w+, (\d{4}-\d\d-\d\d \d\d:\d\d) in .+'s time zone, ([^ ]+)\. Every time below is in that zone\./.exec(system);
-      assert.ok(stamp, system.slice(0, 600));
+      const brief = pi.gateway.requests.at(-1)!.prompt;
+      const stamp = /It is now \w+, (\d{4}-\d\d-\d\d \d\d:\d\d) in .+'s time zone, ([^ ]+)\. Every time below is in that zone\./.exec(brief);
+      assert.ok(stamp, brief.slice(0, 600));
       assert.equal(stamp[2], zone);
       const wall = (at: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(at));
       const shown = new Set<string>();
@@ -474,7 +482,7 @@ describe('an agent\'s schedules and the per-minute tick (F-036 AG-9, #858)', () 
     const prepared = await prepareBy('Every weekday at 9, summarise my tasks', block('Summarise my tasks'));
     await turnOn(prepared);
     assert.ok(await fireOnce(prepared));
-    compute.respond = failing;
+    pi.gateway.script(failing);
     await processAll();
     const [fired] = await runsOf(prepared.id);
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [fired!.id])).rows[0].status, 'provider_failed', 'a failed scheduled run, the case a retry is offered for');

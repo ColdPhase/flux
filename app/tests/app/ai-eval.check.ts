@@ -409,7 +409,7 @@ async function report(seed: Seed) {
   const judgeUsd = all.reduce((sum, row) => sum + (row.judge?.costUsd ?? 0), 0);
   const meta = {
     issue: 1295, label: process.env.FLUX_EVAL_LABEL ?? null, sha: process.env.FLUX_EVAL_SHA ?? null, productSha: process.env.FLUX_EVAL_PRODUCT_SHA ?? null, date: new Date().toISOString(), seedToday: seed.today, shiftDays: seed.shiftDays,
-    model: MODEL, judgeModel: JUDGE_MODEL, engine: process.env.FLUX_EVAL_ENGINE === 'pi' ? 'pi in the agent runtime (API key, #1441)' : 'server (API key)', variant: process.env.FLUX_EVAL_VARIANT || 'main', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
+    model: MODEL, judgeModel: JUDGE_MODEL, engine: 'pi in the agent runtime (API key, #1441)', variant: process.env.FLUX_EVAL_VARIANT || 'main', webSearch: process.env.FLUX_WEB_READS ?? 'off', window: seed.window,
     connectDefault: (await load()).connectDefault ?? null,
     spend: { agentUsd: round(all.reduce((sum, row) => sum + row.usage.costUsd, 0), 4), judgeUsd: round(judgeUsd, 4) },
   };

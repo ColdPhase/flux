@@ -193,16 +193,16 @@ describe('what a run may cite', () => {
 
 describe('what the brief says of the Wiki', () => {
   const base: BriefInput = {
-    engine: 'server', kind: 'ask', tools: ['flux_search', 'flux_get_doc', 'flux_list_docs'], agentName: 'Assistant', agentId: 'a-1', ownerName: 'Ada Nowak',
+    kind: 'ask', tools: ['flux_search', 'flux_get_doc', 'flux_list_docs'], agentName: 'Assistant', agentId: 'a-1', ownerName: 'Ada Nowak',
     now: new Date('2026-11-13T09:00:00Z'), timeZone: 'Europe/Warsaw', place: { kind: 'space', spaceId: SPACE, spaceName: 'Field sensors', conversationId: null, task: null },
-    task: null, scheduleTitle: null, agent: null, prompt: 'Why do we keep the lamp on?', requestedAt: new Date('2026-11-13T09:00:00Z'), sources: [], leftOut: false, turns: [],
+    task: null, scheduleTitle: null, agent: null, prompt: 'Why do we keep the lamp on?', requestedAt: new Date('2026-11-13T09:00:00Z'), messages: [], leftOut: false, turns: [],
     earlier: null, thought: null,
   };
   const both = (input: BriefInput) => { const { system, request } = buildBrief(input); return `${system}\n${request}`; };
 
   test('the answer-format line about citing is in the brief of a run that reads with tools, and in no direct message', () => {
     assert.ok(both(base).includes(CITE_LINE));
-    assert.ok(!both({ ...base, tools: [] }).includes(CITE_LINE));
+    assert.ok(!both({ ...base, tools: ['flux_update_task'] }).includes(CITE_LINE), 'a run whose tools return nothing to cite has none');
     assert.ok(!both({ ...base, place: { kind: 'dm', others: ['Kai'], thread: false }, tools: ['flux_search', 'flux_read_around'] }).includes(CITE_LINE));
     assert.ok(both({ ...base, place: { kind: 'chat' } }).includes(CITE_LINE));
     assert.ok(both({ ...base, kind: 'scheduled', place: { kind: 'chat' } }).includes(CITE_LINE));

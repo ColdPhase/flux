@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, beforeEach, describe, test } from 'node:test';
+import { after, before, beforeEach, describe, test } from 'node:test';
 import {
   assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath,
   conversationAssistantChangesPath, NEEDS_YOU_PATH, type AssistantChange,
@@ -11,16 +11,19 @@ import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { expectStatus, grant, removeFromSpace, type Person } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { StreamClient } from './support/stream.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
 
 // F-027 A3/A4 (#403, #404), F-036 AG-3 (#855): who may decide a waiting change (only its owner, in their own session; never an agent or a
 // run token) and who may undo what was done; what an Approve repeats and what it may not do (held races against Skip, Stop and the owner
 // losing the project); Undo of done-when, prerequisites, waiting-for and a map's name; Undo by anyone who may edit; the owner's lane with a
-// background run; and the working line everyone sees. Fake engines stand in for every vendor; no model, CLI or account is used.
+// background run; and the working line everyone sees. A fake clock and fake CLI stand in for every vendor, and the one run that is worked is pi in the
+// agent runtime (#1441, RT-1) on a scripted model gateway; no model, CLI or account is used.
 
 const human_ = human;
 let scene: AssistantScene;
+let pi: PiRuntime;
 const run = (method: string, path: string, who: Person, body: unknown = {}) => who.browser.request(method, path, { body });
 const apply = (who: Person, id: string, body: unknown = {}) => run('POST', assistantChangeActionPath(id, 'apply'), who, body);
 const code = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
@@ -32,7 +35,8 @@ async function keepOwnerOut() {
 }
 
 describe('the assistant\'s waiting changes and Undo: who may, and what may not happen (F-027 A3/A4, #403/#404)', () => {
-  before(async () => { scene = await assistantScene('aa'); });
+  before(async () => { pi = await startPiRuntime(); scene = await assistantScene('aa', { pi }); });
+  after(async () => { await pi.close(); });
   beforeEach(async () => { await scene.reset(); });
 
   /** One change waiting for the owner: Jonas's task, which the owner's assistant may not change without her OK. */
@@ -317,7 +321,8 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     const peerStream = await StreamClient.connect(scene.peer.browser);
     try {
       const started = await scene.runs.invoke(human_(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy up' });
-      assert.equal(await scene.processor.process(started.run.id), 'completed');
+      pi.gateway.script([{ text: 'Nothing to tidy up.' }]);
+      assert.equal(await scene.processor!.process(started.run.id), 'completed', JSON.stringify(pi.lastPi()));
       await new Promise((resolve) => setTimeout(resolve, 400));
       assert.deepEqual(peerStream.events.filter((event) => event.kind.startsWith('project.assistant_')), []);
       const stored = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind LIKE 'project.assistant_%' AND object_id = $1`, [scene.place.id]);

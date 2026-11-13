@@ -46,11 +46,23 @@ export async function startPiRuntime(options: { apiUrl?: string; ownTools?: bool
   const managerUrl = `http://127.0.0.1:${(manager.address() as AddressInfo).port}`;
   const api = options.apiUrl ?? stackApiUrl;
   let last: { stderr: string; mcpLog: string; events: string[] } | null = null;
-  const slot = await startTestSlot({ slot: `runtime-p${randomUUID().slice(0, 8)}`, enabled: [], mcpUrl: `${api}/mcp`, ownTools: options.ownTools ?? true,
-    pi: { modelOrigin: gateway.url, diagnostics: (what) => { last = what; } } });
+  // A slot name is `runtime-<1..999>` (SLOT_NAME); 800–999 are this harness's, so a file's own slot is rarely another file's.
+  let started: TestSlot | null = null;
+  try {
+    started = await startTestSlot({ slot: `runtime-${800 + Math.floor(Math.random() * 200)}`, enabled: [], mcpUrl: `${api}/mcp`, ownTools: options.ownTools ?? true,
+      pi: { modelOrigin: gateway.url, diagnostics: (what) => { last = what; } } });
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state, capacity) VALUES ($1, 'ready', 16) ON CONFLICT (slot) DO UPDATE SET state = 'ready', capacity = 16,
+      out_of_pool_reason = NULL`, [started.config.slot]);
+  } catch (error) {
+    // Nothing of a half-started runtime may keep the test process alive.
+    await started?.close();
+    await new Promise<void>((done) => manager.close(() => done()));
+    await gateway.close();
+    throw error;
+  }
+  const slot = started;
   slots.set(slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
   const config: AgentRuntimeConfig = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: managerUrl, secret } };
-  await pool.query(`INSERT INTO agent_runtime_slots(slot, state, capacity) VALUES ($1, 'ready', 16) ON CONFLICT (slot) DO UPDATE SET state = 'ready', capacity = 16`, [slot.config.slot]);
   const uow = personalRunWorkerUnitOfWork(db);
   return {
     gateway,

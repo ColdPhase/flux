@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { before, describe, test } from 'node:test';
-import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalRunHooks, type Principal } from '@flux/core';
+import { after, before, describe, test } from 'node:test';
+import { recoverPersonalRuns, runReservationMicros, type PersonalRunHooks, type Principal } from '@flux/core';
 import {
   type AssistantRun, type Conversation, type Decision, type Page, type PersonalAssistantStatus,
   type Project, type WorkItem, type Workspace,
@@ -11,23 +11,23 @@ import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
-import { chooseModel, echo, FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { chooseModel, FAKE_PRICE, FakeConnections, FakeQueue } from './support/personal-runs.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
 
-// Owner-invoked personal assistant runs (#68, decision O-008), first slice. HTTP routes run
-// against the API container's production composition, where nobody has a key connection yet
-// (#124) and the provider is off, so every route fails closed there. Runs that reach dispatch are
-// driven in this process through the same core use cases and worker processor with the test-only
-// fakes of `support/personal-runs.ts`: a fake connection lookup, a fake queue and a FAKE COMPUTE.
-// No model is called; none of these tests is a provider, billing or compatibility pass.
+// Owner-invoked personal assistant runs (#68, decision O-008). HTTP routes run against the API container's production composition, where
+// nobody has a key connection yet (#124) and the provider is off, so every route fails closed there. Runs that reach dispatch are driven in
+// this process through the same core use cases and worker processor, with the test-only fakes of `support/personal-runs.ts` (a fake connection
+// lookup and a fake queue) and, since every agent runs in pi in the agent runtime (#1441, RT-1), a runtime of its own (support/pi-runtime.ts):
+// the real supervisor and the real pinned pi, whose model is a script of the fake model gateway. No model is called; none of these tests is a
+// provider, billing or compatibility pass. Flux's model gateway charges each request on the run's row; the fake gateway charges nothing, so a
+// test that needs a charge writes it there, as the gateway does.
 
 const connections = new FakeConnections();
-const compute = new FakeCompute();
 const queue = new FakeQueue();
 const hooks: PersonalRunHooks = {};
 const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20, hooks });
 
 const TOKENS = {
   dm: `DM-SECRET-${randomUUID()}`,
@@ -42,22 +42,26 @@ async function post<T>(someone: Person, path: string, body: unknown, status = 20
 }
 
 async function row(runId: string) {
-  const result = await pool.query('SELECT status, cost_state, charged_micros, reserved_micros, answer_body, stopped_at_stage FROM personal_runs WHERE id = $1', [runId]);
-  return result.rows[0] as { status: string; cost_state: string; charged_micros: number; reserved_micros: number; answer_body: string | null; stopped_at_stage: string | null };
+  const result = await pool.query('SELECT status, end_reason, cost_state, charged_micros, reserved_micros, answer_body, stopped_at_stage FROM personal_runs WHERE id = $1', [runId]);
+  return result.rows[0] as { status: string; end_reason: string | null; cost_state: string; charged_micros: number; reserved_micros: number; answer_body: string | null; stopped_at_stage: string | null };
 }
 
 async function runCount(ownerId: string) {
   return (await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id = $1', [ownerId])).rows[0].n as number;
 }
 
-describe('personal assistant runs (#68, fake compute: no provider pass is claimed)', () => {
+describe('personal assistant runs (#68, pi in the runtime on a scripted model: no provider pass is claimed)', () => {
   let ada: Person; let hubert: Person; let maurycy: Person; let kai: Person; let viewer: Person; let lee: Person; let outsider: Person;
   let ws: Workspace; let lamp: Project; let other: Project;
-  let thread: Conversation;
+  let thread: Conversation; let work: WorkItem;
   const agents: Record<string, string> = {};
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
   let answeredRunId = '';
+  /** Everything pi's model was sent on the run AC-1 answers: the brief, the tools offered and what they returned. */
+  let answeredInput = '';
+  let pi: PiRuntime;
+  let processor: ReturnType<PiRuntime['processor']>;
   const hubertConnection = randomUUID();
   const maurycyConnection = randomUUID();
 
@@ -73,10 +77,14 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   }
   async function enable(someone: Person, name: string, connectionId: string) {
     connections.connect(someone.id, connectionId);
-    return runs.enable(human(someone), { agentId: agents[name]!, connection: connectionId, model: 'claude-sonnet-5' });
+    const enabled = await runs.enable(human(someone), { agentId: agents[name]!, connection: connectionId, model: 'claude-sonnet-5' });
+    await pi.place(someone.id);
+    return enabled;
   }
 
   before(async () => {
+    pi = await startPiRuntime();
+    processor = pi.processor(connections, { hooks, stopPollMs: 20 });
     [ada, hubert, maurycy, kai, viewer, lee, outsider] = await Promise.all(['pr-ada', 'pr-hubert', 'pr-maurycy', 'pr-kai', 'pr-viewer', 'pr-lee', 'pr-outsider'].map(person));
     ws = await createWorkspace(ada, 'Gesture lamp');
     for (const member of [hubert, maurycy, kai, viewer, lee]) await addMember(ada, ws.id, member, 'member');
@@ -90,7 +98,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     thread = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() });
     await post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: 'The ToF sensor kept working with swipe + hold', clientMessageId: randomUUID() });
-    await post<WorkItem>(kai, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera in low light', owner: { kind: 'human', id: kai.id } });
+    work = await post<WorkItem>(kai, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera in low light', owner: { kind: 'human', id: kai.id } });
 
     // Material the owner can open but a project run must never read.
     const payroll = await post<Conversation>(ada, `/api/v1/projects/${other.id}/conversations`, { body: `Salaries ${TOKENS.otherProject}`, clientMessageId: randomUUID() });
@@ -104,6 +112,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     await enable(hubert, 'hubert', hubertConnection);
   });
+  after(async () => { await pi.close(); });
 
   test('AC-4: the production composition fails closed with an explicit state and human work continues', async () => {
     const status = expectStatus(await hubert.browser.request('GET', '/api/v1/personal-assistant'), 200) as PersonalAssistantStatus;
@@ -133,7 +142,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     connections.connect(hubert.id, hubertConnection);
     assert.equal((await runs.status(human(hubert))).state, 'ready');
     assert.equal(await runCount(hubert.id), 0);
-    assert.equal(compute.dispatched.length, 0);
+    assert.equal(pi.gateway.requests.length, 0);
     await post(kai, `/api/v1/conversations/${thread.id}/messages`, { body: 'Let us compare the ToF sensor next', clientMessageId: randomUUID() });
   });
 
@@ -153,6 +162,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
 
     const live = await StreamClient.connect(kai.browser);
     await live.ready();
+    // pi reads the thread and the space's tasks with Flux tools, then answers citing what it read.
+    pi.gateway.script([{ tool: 'mcp__flux__flux_get_conversation', args: { projectId: lamp.id, id: thread.id } }, { tool: 'mcp__flux__flux_list_work', args: { projectId: lamp.id } },
+      { text: `The camera fails below 5 lux [message:${thread.messages[0]!.id}], and the task is open [task:${work.id}].` }]);
     const mine = await ask(hubert);
     assert.equal(mine.created, true);
     assert.equal(mine.run.status, 'queued');
@@ -179,15 +191,17 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     // A queued job can only name a run id; unknown or malformed ids are skipped without a call.
     assert.equal(await processor.process(randomUUID()), 'skipped');
     assert.equal(await processor.process('not-a-run'), 'skipped');
-    assert.equal(compute.dispatched.length, 0);
+    assert.equal(pi.gateway.requests.length, 0);
     assert.equal(await runCount(maurycy.id), 0, 'no run was written for the other person');
     assert.equal(await runCount(hubert.id), 1, 'only the owner\'s own invocation exists');
     assert.equal((await row(mine.run.id)).status, 'queued', 'the WebSocket stop was ignored');
 
-    assert.equal(await processor.process(mine.run.id), 'completed');
-    assert.equal(await processor.process(mine.run.id), 'skipped', 'a repeated job never dispatches twice');
-    assert.equal(compute.dispatched.length, 1);
-    assert.equal(compute.dispatched[0]!.connection.id, hubertConnection);
+    assert.equal(await processor.process(mine.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    answeredInput = JSON.stringify(pi.gateway.requests);
+    assert.equal(await processor.process(mine.run.id), 'skipped', 'a repeated job never starts pi twice');
+    assert.equal(pi.gateway.requests.length, 3, 'two tool calls and the answer, once');
+    assert.equal(pi.gateway.requests[0]!.model, 'claude-sonnet-5');
+    assert.equal((await pool.query('SELECT connection_id FROM personal_runs WHERE id = $1', [mine.run.id])).rows[0].connection_id, hubertConnection);
     assert.deepEqual(new Set(connections.resolved), new Set([hubert.id]), 'only the owner\'s connection was ever looked up');
     // The answer to `/ai` is its asker's alone (#842): the project's audience is told nothing, not even that it exists.
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -198,10 +212,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     answeredRunId = mine.run.id;
   });
 
-  test('AC-5: DMs, private captures and other projects never reach the input or the output; sources are openable by the audience', async () => {
-    const dispatched = compute.dispatched.map((request) => request.input).join('\n');
-    assert.match(dispatched, /Camera fails below 5 lux/);
-    for (const token of Object.values(TOKENS)) assert.equal(dispatched.includes(token), false, `input contains ${token}`);
+  test('AC-5: DMs, private captures and other projects never reach pi or the answer; sources are openable by the audience', async () => {
+    assert.match(answeredInput, /Camera fails below 5 lux/);
+    for (const token of Object.values(TOKENS)) assert.equal(answeredInput.includes(token), false, `pi was given ${token}`);
 
     // The answer is the asker's alone: their own view of it names the agent and the provenance, and nobody else lists it.
     const answer = (await runs.get(human(hubert), answeredRunId)).answer!;
@@ -212,7 +225,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const text = JSON.stringify(answer);
     for (const hidden of ['Micros', 'reserved', 'test-key-ref', hubertConnection]) assert.equal(text.includes(hidden), false, `the answer shows ${hidden}`);
 
-    assert.ok(answer.sources.length >= 2);
+    assert.deepEqual(answer.sources.map((source) => source.type), ['message', 'work'], 'what pi read and cited, in the order it cited it');
     const conversation = expectStatus(await viewer.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
     for (const source of answer.sources) {
       if (source.type === 'message') assert.ok(conversation.messages.some((message) => message.id === source.id), 'viewer can open the cited message');
@@ -220,21 +233,28 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       if (source.type === 'thought') expectStatus(await viewer.browser.request('GET', `/api/v1/sketches/${source.sketchId}`), 200, 'viewer opens the cited map');
     }
 
-    // A thought on the owner's private map: the owner may open it, the assistant never reads it.
+    // A thought on the owner's private map: the owner may open it, the agent never reads it. pi is told the thought by its ids and asks for the
+    // map with a Flux tool, which refuses it; the thought's words are never in what pi was given.
     const privateRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'Expand this', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } });
-    const before = compute.dispatched.length;
-    assert.equal(await processor.process(privateRun.run.id), 'denied');
-    assert.deepEqual(await row(privateRun.run.id), { status: 'denied', cost_state: 'released', charged_micros: 0, reserved_micros: 104_000, answer_body: null, stopped_at_stage: 'before_read' });
-    assert.equal(compute.dispatched.length, before);
-    assert.equal(compute.counted.some((request) => request.input.includes(TOKENS.sketch)), false);
+    pi.gateway.script([{ tool: 'mcp__flux__flux_get_map', args: { projectId: lamp.id, id: privateSketch.id } }, { text: 'I could not read that map.' }]);
+    assert.equal(await processor.process(privateRun.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests[0]!.prompt.includes(`thought ${privateSketch.thoughtId} on map ${privateSketch.id}`), 'the brief names the thought');
+    assert.equal(pi.gateway.requests[1]!.results.length, 1, 'the tool answered');
+    assert.equal(JSON.stringify(pi.gateway.requests).includes(TOKENS.sketch), false, 'the private map\'s words never reached pi');
+    assert.equal((await row(privateRun.run.id)).answer_body?.includes(TOKENS.sketch) ?? false, false);
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'x', target: { type: 'thought', sketchId: privateSketch.id, thoughtId: privateSketch.thoughtId } }), { code: 'THOUGHT_NOT_FOUND' });
 
+    // The thought on a map of the space is the same, and pi reads its words.
     const mapRun = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'map_thought', prompt: 'What next?', target: { type: 'thought', sketchId: projectSketch.id, thoughtId: projectSketch.thoughtId } });
-    assert.equal(await processor.process(mapRun.run.id), 'completed');
-    assert.match(compute.dispatched.at(-1)!.input, /<selected_thought ref="S1">ToF sensor: swipe \+ hold<\/selected_thought>/);
+    pi.gateway.script([{ tool: 'mcp__flux__flux_get_map', args: { projectId: lamp.id, id: projectSketch.id } }, { text: 'Next, compare the ToF sensor.' }]);
+    assert.equal(await processor.process(mapRun.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests[0]!.prompt.includes(`thought ${projectSketch.thoughtId} on map ${projectSketch.id}`), 'the brief names the thought');
+    assert.match(pi.gateway.requests[1]!.results[0] ?? '', /ToF sensor: swipe \+ hold/);
   });
 
-  test('AC-2: denied, stopped-before-read, capped and revoked runs cost zero; a retry key never charges twice', async () => {
+  test('AC-2: denied, stopped-before-read, refused-by-the-gateway and revoked runs cost zero; a retry key never charges twice; the key\'s daily budget pauses a request', async () => {
+    pi.gateway.script([]);
+    const requested = () => pi.gateway.requests.length;
     const clientRunId = randomUUID();
     const first = await runs.invoke(human(hubert), thread.id, { clientRunId, kind: 'summarize', prompt: 'Summarize' });
     const again = await runs.invoke(human(hubert), thread.id, { clientRunId, kind: 'summarize', prompt: 'Summarize' });
@@ -249,18 +269,18 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     // Stopped before read, through the API.
     const stopped = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${first.run.id}/stop`), 200) as AssistantRun;
     assert.deepEqual([stopped.status, stopped.cost.state, stopped.cost.chargedMicros], ['stopped', 'released', 0]);
-    const dispatchedBefore = compute.dispatched.length;
+    const requestedBefore = requested();
     assert.equal(await processor.process(first.run.id), 'skipped');
-    assert.equal(compute.dispatched.length, dispatchedBefore);
+    assert.equal(requested(), requestedBefore);
 
     // Retrying the stopped run twice with the same key creates and charges one run.
     const retryKey = randomUUID();
     const retried = await runs.retry(human(hubert), first.run.id, { clientRunId: retryKey });
     const retriedAgain = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${first.run.id}/retry`, { body: { clientRunId: retryKey } }), 200) as AssistantRun;
     assert.equal(retriedAgain.id, retried.run.id);
-    assert.equal(await processor.process(retried.run.id), 'completed');
+    assert.equal(await processor.process(retried.run.id), 'completed', JSON.stringify(pi.lastPi()));
     assert.equal((await runs.retry(human(hubert), first.run.id, { clientRunId: retryKey })).created, false);
-    assert.equal(compute.dispatched.length, dispatchedBefore + 1);
+    assert.equal(requested(), requestedBefore + 1);
     const charged = await pool.query(`SELECT count(*)::int AS n, sum(charged_micros)::int AS micros FROM personal_runs WHERE retry_of_run_id = $1`, [first.run.id]);
     assert.equal(charged.rows[0].n, 1);
     assert.equal(charged.rows[0].micros, (await row(retried.run.id)).charged_micros);
@@ -286,26 +306,21 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       assert.deepEqual([stored.cost_state, stored.charged_micros, stored.answer_body], ['released', 0, null], `${stored.status} costs nothing`);
     }
     assert.equal((await row(revoked.run.id)).status, 'revoked');
-    assert.equal(compute.dispatched.length, dispatchedBefore + 1, 'none of them reached the provider');
+    assert.equal(requested(), requestedBefore + 1, 'none of them reached the model');
 
-    // A run reserves, when it starts, its largest possible cost at the key's price (F-020 PROV-3): one request of
-    // 32,000 input and 4,000 output tokens (#843 bounds) at the table price of the fake key's model.
-    compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', text: 'Fact: long answer [S1]', usage: { inputTokens: 32_000, outputTokens: 4_000 } });
-    const nominal = await ask(hubert);
-    assert.equal(await processor.process(nominal.run.id), 'completed');
-    assert.deepEqual([(await row(nominal.run.id)).reserved_micros, (await row(nominal.run.id)).charged_micros], [104_000, 104_000],
-      'the largest request is both the reservation and the largest charge');
-
-    // The key's one daily budget (#854): a request that finds it used waits for the key's next day; one admitted while
-    // budget was left but that finds it used when its turn comes waits too. Nothing is refused and nothing switches.
+    // The key's one daily budget (#854): a request that finds it used waits for the key's next day; one admitted while budget was left but
+    // that finds it used when its turn comes waits too. Nothing is refused and nothing switches. A run in pi needs room for one request with
+    // tools to start, at the table price of the fake key's model. Flux's model gateway charges what the run's requests cost on its row; the
+    // fake gateway charges nothing, so the cost of the heavy run is written as the gateway writes it.
+    const oneRequest = runReservationMicros(FAKE_PRICE, true)!;
     const spend = (await runs.status(human(hubert))).today!;
     const used = spend.chargedMicros + spend.reservedMicros;
-    const budget = Math.ceil((used + 104_000) / 10_000);
+    const budget = Math.ceil((used + oneRequest) / 10_000);
     connections.connect(hubert.id, hubertConnection, { dailyBudgetCents: budget });
     const heavy = await ask(hubert);
-    assert.equal(await processor.process(heavy.run.id), 'completed');
-    assert.equal((await row(heavy.run.id)).charged_micros, 104_000);
-    compute.respond = echo;
+    assert.equal(heavy.run.resumesAt, null, 'admitted while budget was left');
+    assert.equal(await processor.process(heavy.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    await pool.query(`UPDATE personal_runs SET cost_state = 'observed', charged_micros = $2 WHERE id = $1`, [heavy.run.id, oneRequest]);
     const waiting = await ask(hubert);
     assert.deepEqual([waiting.run.status, waiting.run.endReason, !!waiting.run.resumesAt], ['queued', 'budget', true], 'it waits for the key\'s next day');
     assert.equal((await runs.status(human(hubert))).state, 'capped');
@@ -315,44 +330,44 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const late = await ask(hubert);
     assert.equal(late.run.resumesAt, null, 'admitted while budget was left');
     connections.connect(hubert.id, hubertConnection, { dailyBudgetCents: budget });
+    const lateRequests = requested();
     assert.equal(await processor.process(late.run.id), 'skipped', 'paused again when its turn comes');
-    const latePaused = (await pool.query('SELECT status, end_reason, resume_at, reserved_micros FROM personal_runs WHERE id = $1', [late.run.id])).rows[0];
-    assert.deepEqual([latePaused.status, latePaused.end_reason, latePaused.resume_at !== null, latePaused.reserved_micros], ['queued', 'budget', true, 0]);
+    const latePaused = await row(late.run.id);
+    assert.deepEqual([latePaused.status, latePaused.end_reason, latePaused.reserved_micros], ['queued', 'budget', 0]);
+    assert.ok((await pool.query('SELECT resume_at FROM personal_runs WHERE id = $1', [late.run.id])).rows[0].resume_at, 'it resumes by itself');
+    assert.equal(requested(), lateRequests, 'nothing was sent');
     await runs.stop(human(hubert), late.run.id);
     connections.connect(hubert.id, hubertConnection);
 
-    // Stopped during dispatch: the request is aborted, the charge is kept, nothing is committed.
-    compute.respond = (_request, signal) => new Promise((resolve) => signal.addEventListener('abort', () =>
-      resolve({ kind: 'completed', stopReason: 'end_turn', text: 'Late answer [S1]', usage: { inputTokens: 900, outputTokens: 40 } })));
+    // Stopped while pi works: pi is stopped, nothing is committed, and what the gateway charged on the run's row so far is kept.
+    pi.gateway.script([{ tool: 'bash', args: { command: 'sleep 30' } }, { text: 'Late answer.' }]);
     const long = await ask(hubert);
     const processing = processor.process(long.run.id);
-    await waitFor(async () => (await row(long.run.id)).status === 'dispatching', 'dispatch', 8000);
+    await waitFor(async () => pi.gateway.requests.length > 0, 'pi\'s first model request', 20_000);
+    await pool.query(`UPDATE personal_runs SET charged_micros = $2 WHERE id = $1`, [long.run.id, 900 * 2 + 40 * 10]);
     expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${long.run.id}/stop`), 200);
-    assert.equal(await processing, 'stopped');
-    compute.respond = echo;
+    assert.equal(await processing, 'stopped', JSON.stringify(pi.lastPi()));
     const stoppedLate = await row(long.run.id);
     assert.deepEqual([stoppedLate.cost_state, stoppedLate.charged_micros, stoppedLate.answer_body], ['observed', 900 * 2 + 40 * 10, null]);
 
-    // A provider rejection after the request was sent (a scripted 429) is not assumed free: the run
-    // ends provider_failed, the reservation stays counted as unknown, nothing is posted, and Retry
-    // is a new capped run.
-    compute.respond = async () => ({ kind: 'failed', reason: 'rate_limited', billed: 'unknown' });
+    // The gateway refuses a request for the key's day (402): the run ends at once, calmly, with nothing posted and nothing charged; Retry is a new run.
+    pi.gateway.script([{ status: 402, body: { type: 'error', error: { type: 'flux_budget_exhausted', code: 'flux_budget_exhausted', message: 'The key\'s daily budget cannot hold this request; stop' } } }]);
     const limited = await ask(hubert);
-    assert.equal(await processor.process(limited.run.id), 'provider_failed');
+    assert.equal(await processor.process(limited.run.id), 'cap_reached', JSON.stringify(pi.lastPi()));
     const limitedRow = await row(limited.run.id);
-    assert.deepEqual([limitedRow.status, limitedRow.cost_state, limitedRow.charged_micros, limitedRow.answer_body], ['provider_failed', 'unknown', 0, null]);
-    assert.ok(limitedRow.reserved_micros > 0, 'the reservation is kept, not released');
-    compute.respond = echo;
+    assert.deepEqual([limitedRow.status, limitedRow.end_reason, limitedRow.cost_state, limitedRow.charged_micros, limitedRow.answer_body], ['cap_reached', 'budget', 'released', 0, null]);
+    assert.equal(pi.gateway.requests.length, 1, 'pi does not retry a refusal');
+    pi.gateway.script([]);
     const retryAfterLimit = await runs.retry(human(hubert), limited.run.id, { clientRunId: randomUUID() });
     assert.notEqual(retryAfterLimit.run.id, limited.run.id, 'Retry is a new run');
-    assert.equal(await processor.process(retryAfterLimit.run.id), 'completed');
+    assert.equal(await processor.process(retryAfterLimit.run.id), 'completed', JSON.stringify(pi.lastPi()));
 
-    // A run a crashed worker left dispatching does not block the owner forever; its reservation stays counted.
+    // A run a crashed worker left dispatching does not block the owner forever; its cost stays unknown.
     const stuck = await ask(hubert);
     await pool.query(`UPDATE personal_runs SET status = 'dispatching', updated_at = now() - interval '2 hours' WHERE id = $1`, [stuck.run.id]);
     const next = await ask(hubert);
     assert.deepEqual([(await row(stuck.run.id)).status, (await row(stuck.run.id)).cost_state], ['provider_failed', 'unknown']);
-    assert.equal(await processor.process(next.run.id), 'completed');
+    assert.equal(await processor.process(next.run.id), 'completed', JSON.stringify(pi.lastPi()));
   });
 
   test('AC-3: once Maurycy connects, his run uses only his connection and cap; Hubert\'s usage does not change', async () => {
@@ -361,127 +376,77 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     const status = expectStatus(await maurycy.browser.request('GET', '/api/v1/personal-assistant'), 200) as PersonalAssistantStatus;
     assert.equal(status.enablement?.ownerUserId, maurycy.id);
     const mine = await ask(maurycy, 'What did the ToF test show?');
-    assert.equal(await processor.process(mine.run.id), 'completed');
-    const request = compute.dispatched.at(-1)!;
-    assert.deepEqual(request.connection, { id: maurycyConnection, keyRef: `test-key-ref-${maurycyConnection}`, provider: 'anthropic', baseUrl: null });
+    pi.gateway.script([{ text: 'The ToF sensor kept working.' }]);
+    assert.equal(await processor.process(mine.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.equal(pi.gateway.requests.length, 1);
     const stored = await pool.query('SELECT owner_user_id, agent_id, connection_id FROM personal_runs WHERE id = $1', [mine.run.id]);
     assert.deepEqual(stored.rows[0], { owner_user_id: maurycy.id, agent_id: agents.maurycy, connection_id: maurycyConnection });
+    // What the run's requests cost is charged on its row, and so on his key's day; the fake gateway charges nothing, so it is written here.
+    await pool.query(`UPDATE personal_runs SET cost_state = 'observed', charged_micros = 1840 WHERE id = $1`, [mine.run.id]);
     assert.deepEqual((await runs.status(human(hubert))).today, hubertBefore);
-    assert.ok((await runs.status(human(maurycy))).today!.chargedMicros > 0);
+    assert.equal((await runs.status(human(maurycy))).today!.chargedMicros, 1840);
   });
 
-  test('F-024: provider suspension stops server compute before read, dispatch and commit; retained consent recovers', async () => {
+  test('F-024: provider suspension stops the agent before read and before commit; retained consent recovers', async () => {
     const suspend = () => pool.query(`INSERT INTO auth_idp_standing (user_id, provider_id, state, reason)
       VALUES ($1, 'oidc-standing-fixture', 'sign_in_required', 'invalid_grant')
       ON CONFLICT (user_id, provider_id) DO UPDATE SET state = 'sign_in_required'`, [hubert.id]);
     const recover = () => pool.query(`DELETE FROM auth_idp_standing WHERE user_id = $1 AND provider_id = 'oidc-standing-fixture'`, [hubert.id]);
     try {
-      for (const stage of ['before_read', 'before_dispatch', 'before_commit'] as const) {
+      for (const stage of ['before_read', 'before_commit'] as const) {
         await recover();
+        pi.gateway.script([{ text: 'Looked at it.' }]);
         const started = await ask(hubert);
-        const dispatched = compute.dispatched.length;
-        hooks.afterRead = stage === 'before_dispatch' ? async () => { await suspend(); } : undefined;
         hooks.afterDispatch = stage === 'before_commit' ? async () => { await suspend(); } : undefined;
         if (stage === 'before_read') await suspend();
         assert.equal(await processor.process(started.run.id), 'revoked', stage);
         const stored = await row(started.run.id);
         assert.equal(stored.stopped_at_stage, stage);
         assert.equal(stored.answer_body, null);
-        assert.equal(compute.dispatched.length - dispatched, stage === 'before_commit' ? 1 : 0);
+        assert.equal(pi.gateway.requests.length, stage === 'before_commit' ? 1 : 0, `${stage}: model requests`);
       }
-    } finally { hooks.afterRead = undefined; hooks.afterDispatch = undefined; await recover(); }
+    } finally { hooks.afterDispatch = undefined; await recover(); }
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const resumed = await ask(hubert);
     assert.equal(await processor.process(resumed.run.id), 'completed', 'same owner, consent, connection and grants');
   });
 
-  test('AC-6: revoking the grant or removing the member between read and commit commits nothing', async () => {
-    hooks.afterRead = async () => { await keepHubertOut(); };
-    const beforeDispatch = await ask(hubert);
-    const dispatched = compute.dispatched.length;
-    assert.equal(await processor.process(beforeDispatch.run.id), 'denied');
-    assert.deepEqual([(await row(beforeDispatch.run.id)).stopped_at_stage, (await row(beforeDispatch.run.id)).charged_micros], ['before_dispatch', 0]);
-    assert.equal(compute.dispatched.length, dispatched);
-    await letHubertBack();
-
-    hooks.afterRead = undefined;
-    hooks.afterDispatch = async () => { await keepHubertOut(); };
+  test('AC-6: revoking the grant or removing the member after pi ends, before the commit, commits nothing', async () => {
+    // The gateway charges each request on the run's row as it is made; the fake gateway charges nothing, so the hook writes that charge.
+    hooks.afterDispatch = async (run) => {
+      await pool.query(`UPDATE personal_runs SET charged_micros = 1840 WHERE id = $1`, [run.id]);
+      await keepHubertOut();
+    };
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const beforeCommit = await ask(hubert);
-    assert.equal(await processor.process(beforeCommit.run.id), 'denied');
+    assert.equal(await processor.process(beforeCommit.run.id), 'denied', JSON.stringify(pi.lastPi()));
     const withheld = await row(beforeCommit.run.id);
     assert.deepEqual([withheld.stopped_at_stage, withheld.cost_state, withheld.answer_body], ['before_commit', 'observed', null]);
-    assert.ok(withheld.charged_micros > 0, 'a dispatched request keeps its observed charge');
+    assert.equal(withheld.charged_micros, 1840, 'a request that was made keeps its observed charge');
     await letHubertBack();
 
     await enable(lee, 'lee', randomUUID());
     hooks.afterDispatch = async () => { await removeMember(ada, ws.id, lee); };
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const leeRun = await ask(lee);
     assert.ok(['denied', 'revoked'].includes(await processor.process(leeRun.run.id)));
     hooks.afterDispatch = undefined;
     assert.equal((await row(leeRun.run.id)).answer_body, null);
 
-    // A withheld answer is nobody's: no run of the three has one, and the space hears nothing of them.
-    for (const withheldRun of [beforeDispatch, beforeCommit, leeRun]) assert.equal((await row(withheldRun.run.id)).answer_body, null);
+    // A withheld answer is nobody's: neither run has one, and the space hears nothing of them.
+    for (const withheldRun of [beforeCommit, leeRun]) assert.equal((await row(withheldRun.run.id)).answer_body, null);
     const events = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind LIKE 'project.assistant_%' AND data->>'runId' = ANY($1)`,
-      [[beforeDispatch.run.id, beforeCommit.run.id, leeRun.run.id]]);
+      [[beforeCommit.run.id, leeRun.run.id]]);
     assert.equal(events.rows[0].n, 0);
-  });
-
-  test('AC-6: nothing leaves for preflight counting once the grant, a Stop or a deletion of the agent arrives after the read', async () => {
-    const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`>${prompt}</request>`)).length;
-    const dispatched = compute.dispatched.length;
-    const cases: [string, (runId: string) => Promise<unknown>, string, () => Promise<unknown>][] = [
-      ['grant revoked', () => keepHubertOut(), 'denied', () => letHubertBack()],
-      ['stopped', (runId) => runs.stop(human(hubert), runId), 'stopped', async () => undefined],
-      ['deleted', () => pool.query('UPDATE agents SET revoked_at = now() WHERE id = $1', [agents.hubert]), 'revoked', () => pool.query('UPDATE agents SET revoked_at = NULL WHERE id = $1', [agents.hubert])],
-    ];
-    for (const [label, change, status, undo] of cases) {
-      const prompt = `Preflight ${label} ${randomUUID()}`;
-      const run = await ask(hubert, prompt);
-      hooks.afterRead = async () => { await change(run.run.id); };
-      await processor.process(run.run.id);
-      hooks.afterRead = undefined;
-      await undo();
-      const stored = await row(run.run.id);
-      assert.deepEqual([stored.status, stored.cost_state, stored.charged_micros, stored.answer_body], [status, 'released', 0, null], label);
-      assert.equal(countsFor(prompt), 0, `${label}: no count request was sent`);
-    }
-    assert.equal(compute.dispatched.length, dispatched);
-
-    // Trimming sends one count per attempt: a change between two counts stops the next one.
-    const prompt = `Preflight trimming ${randomUUID()}`;
-    compute.count = () => 20_000;
-    compute.onCount = async (request) => { if (request.input.includes(prompt)) await keepHubertOut(); };
-    const trimmed = await ask(hubert, prompt);
-    assert.equal(await processor.process(trimmed.run.id), 'denied');
-    compute.count = (request) => Math.ceil(request.input.length / 4);
-    compute.onCount = null;
-    await letHubertBack();
-    assert.equal(countsFor(prompt), 1, 'the second count request was never sent');
-    const stored = await row(trimmed.run.id);
-    assert.deepEqual([stored.cost_state, stored.charged_micros, stored.answer_body], ['released', 0, null]);
-    assert.equal(compute.dispatched.length, dispatched);
-  });
-
-  test('a truncated answer is shown as truncated, and continuing it is a new, separately charged run', async () => {
-    compute.respond = async () => ({ kind: 'completed', stopReason: 'max_tokens', usage: { inputTokens: 700, outputTokens: 1_500 },
-      text: 'Fact: cut off [S1]' });
-    const truncated = await ask(hubert, 'Record it again');
-    assert.equal(await processor.process(truncated.run.id), 'truncated');
-    const view = await runs.get(human(hubert), truncated.run.id);
-    assert.equal(view.answer?.truncated, true);
-    compute.respond = echo;
-    // Continuing it is the owner's new, separately charged run with the earlier answer as input.
-    const continued = await runs.invoke(human(hubert), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Continue', continuesRunId: truncated.run.id });
-    assert.equal(await processor.process(continued.run.id), 'completed');
-    assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer to this request was cut off\. Continue it from where it stopped, without repeating it:\n<earlier_answer>/);
   });
 
   test('progress: every state change of a run reaches only its owner; the others hear nothing, not even that an assistant worked (#842)', async () => {
     const [own, peer, admin] = await Promise.all([hubert, kai, ada].map((someone) => StreamClient.connect(someone.browser)));
+    pi.gateway.script([{ text: 'The sensor test is under way.' }]);
     const run = await ask(hubert, 'Where are we on the sensor?');
     const progressOf = (client: StreamClient) => client.events.filter((event) => event.objectType === 'assistant_run');
     await own.until(() => progressOf(own).find((event) => event.objectId === run.run.id), 8000, 'the owner hears the queued run');
-    assert.equal(await processor.process(run.run.id), 'completed');
+    assert.equal(await processor.process(run.run.id), 'completed', JSON.stringify(pi.lastPi()));
     await own.until(() => progressOf(own).filter((event) => event.objectId === run.run.id).length >= 4, 8000, 'queued, reading, dispatching and completed');
     await new Promise((resolve) => setTimeout(resolve, 300));
     for (const other of [peer, admin]) assert.deepEqual(other.events.filter((event) => event.kind.startsWith('project.assistant_')), [], 'they hear nothing about the run');
@@ -503,30 +468,20 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.deepEqual(stops.rows.map((item: { status: string; recipients: string[] }) => [item.status, item.recipients]), [['queued', [`human:${hubert.id}`]], ['stopped', [`human:${hubert.id}`]]]);
   });
 
-  test('a failed preflight count ends the run at zero cost with nothing dispatched', async () => {
-    const dispatched = compute.dispatched.length;
-    const count = compute.count;
-    compute.count = () => { throw new Error('count endpoint down'); };
-    try {
-      const run = await ask(hubert, 'Count fails');
-      assert.equal(await processor.process(run.run.id), 'provider_failed');
-      assert.deepEqual(await row(run.run.id), { status: 'provider_failed', cost_state: 'released', charged_micros: 0, reserved_micros: 104_000, answer_body: null, stopped_at_stage: 'before_dispatch' });
-      assert.equal(compute.dispatched.length, dispatched);
-    } finally { compute.count = count; }
-  });
-  test('crash recovery prevents a late provider answer or a repeated queue delivery from publishing', async () => {
+  test('crash recovery prevents a late answer or a repeated queue delivery from publishing', async () => {
     const previous = hooks.afterDispatch;
     hooks.afterDispatch = async (run) => {
       await pool.query("UPDATE personal_runs SET updated_at=now()-interval '2 hours' WHERE id=$1", [run.id]);
       await recoverPersonalRuns(personalRunWorkerUnitOfWork(db));
     };
     try {
+      pi.gateway.script([{ text: 'Looked at it.' }]);
       const pending = await ask(hubert);
-      assert.equal(await processor.process(pending.run.id), 'skipped', 'late completed provider result cannot commit');
-      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 104_000, answer_body: null, stopped_at_stage: null });
-      const dispatched = compute.dispatched.length;
+      assert.equal(await processor.process(pending.run.id), 'skipped', 'a late answer cannot commit');
+      assert.deepEqual(await row(pending.run.id), { status: 'provider_failed', end_reason: null, cost_state: 'unknown', charged_micros: 0, reserved_micros: 0, answer_body: null, stopped_at_stage: null });
+      const requested = pi.gateway.requests.length;
       assert.equal(await processor.process(pending.run.id), 'skipped');
-      assert.equal(compute.dispatched.length, dispatched, 'queue redelivery cannot call the provider again');
+      assert.equal(pi.gateway.requests.length, requested, 'queue redelivery cannot start pi again');
     } finally { hooks.afterDispatch = previous; }
   });
 
@@ -540,12 +495,13 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       assert.equal((await runs.status(human(hubert))).state, 'ready', 'a newer connection changes nothing for the assistant');
       const run = await ask(hubert, `On the consented connection ${randomUUID()}`);
-      const dispatched = compute.dispatched.length;
+      pi.gateway.script([{ text: 'Answered on the consented connection.' }]);
       hooks.afterDispatch = async () => { connections.connect(hubert.id, latest, { provider: 'openai', model: 'gpt-latest' }); };
-      assert.equal(await processor.process(run.run.id), 'completed', 'a connection added mid-run does not withhold the paid answer');
-      assert.equal(compute.dispatched.length, dispatched + 1);
-      const sent = compute.dispatched.at(-1)!;
-      assert.deepEqual([sent.connection.id, sent.connection.provider, sent.model], [hubertConnection, 'anthropic', 'claude-sonnet-5']);
+      assert.equal(await processor.process(run.run.id), 'completed', `a connection added mid-run does not withhold the paid answer: ${JSON.stringify(pi.lastPi())}`);
+      assert.equal(pi.gateway.requests.length, 1);
+      const sent = (await pool.query('SELECT connection_id, provider, model FROM personal_runs WHERE id = $1', [run.run.id])).rows[0];
+      assert.deepEqual([sent.connection_id, sent.provider, sent.model], [hubertConnection, 'anthropic', 'claude-sonnet-5']);
+      assert.deepEqual([pi.gateway.requests[0]!.path, pi.gateway.requests[0]!.model], ['/anthropic/v1/messages', 'claude-sonnet-5'], 'pi asked the model the run was sent with, through Anthropic\'s wire');
       assert.ok((await row(run.run.id)).answer_body, 'the answer was posted');
       // Removing the assistant's key stops it, and says that another connection exists: nothing switches to it by itself.
       connections.disconnect(hubert.id, hubertConnection);
@@ -610,26 +566,21 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       (SELECT count(*)::int FROM project_decisions WHERE project_id = $1 AND status <> 'proposed') AS decided`, [lamp.id])).rows[0] as { decisions: number; decided: number };
     const before = await counts();
     const claim = { type: 'decision', decisionId: pending.id, status: 'accepted', decidedBy: hubert.id, title: 'Use the ToF sensor', rationale: 'Accepted for the team' };
-    const previous = compute.respond;
-    try {
-      compute.respond = async () => ({ kind: 'completed', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 90 },
-        text: `Fact: Kai proposed the ToF sensor [S1].\n<proposal>${JSON.stringify(claim)}</proposal>` });
-      const claimed = await ask(hubert, 'Accept the ToF decision for us');
-      assert.equal(await processor.process(claimed.run.id), 'completed');
-      assert.deepEqual(await decisionState(), untouched);
-      assert.deepEqual(await counts(), before, 'no decision or acceptance was written by the assistant');
+    pi.gateway.script([{ text: `Fact: Kai proposed the ToF sensor.\n<proposal>${JSON.stringify(claim)}</proposal>` }]);
+    const claimed = await ask(hubert, 'Accept the ToF decision for us');
+    assert.equal(await processor.process(claimed.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.deepEqual(await decisionState(), untouched);
+    assert.deepEqual(await counts(), before, 'no decision or acceptance was written by the assistant');
 
-      // Neither the assistant's agent identity nor a person outside the space decides the decision.
-      const assistant: Principal = { kind: 'agent', id: agents.hubert! };
-      await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, pending.version), { code: 'DECISION_NEEDS_PERSON' });
-      assert.equal((await outsider.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 404);
-      assert.deepEqual(await decisionState(), untouched);
-      assert.deepEqual(await counts(), before);
+    // Neither the assistant's agent identity nor a person outside the space decides the decision.
+    const assistant: Principal = { kind: 'agent', id: agents.hubert! };
+    await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, pending.version), { code: 'DECISION_NEEDS_PERSON' });
+    assert.equal((await outsider.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 404);
+    assert.deepEqual(await decisionState(), untouched);
+    assert.deepEqual(await counts(), before);
 
-      // Only a person's own explicit acceptance makes the decision current.
-      const decided = expectStatus(await kai.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } }), 200) as Decision;
-      assert.deepEqual([decided.status, decided.decidedBy?.id, decided.proposedBy.id], ['accepted', kai.id, kai.id]);
-    } finally { compute.respond = previous; }
+    // Only a person's own explicit acceptance makes the decision current.
+    const decided = expectStatus(await kai.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } }), 200) as Decision;
+    assert.deepEqual([decided.status, decided.decidedBy?.id, decided.proposedBy.id], ['accepted', kai.id, kai.id]);
   });
-
 });

@@ -446,7 +446,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const today = spend ? { chargedMicros: spend.chargedMicros, reservedMicros: spend.reservedMicros, budgetCents: spend.budgetCents, resetsAt: iso(spend.resetsAt) } : null;
     const usableNow = await usableConnection(connections, providerEnabled, enablement);
     if (usableNow.problem) return { state: 'unavailable', unavailableReason: usableNow.problem, enablement: view, setup, today };
-    const one = runReservationMicros(usableNow.connection.price, false) ?? 0;
+    // Every run is pi with the Flux tools (#1441): "capped" means one such request no longer fits, as the worker's claim decides.
+    const one = runReservationMicros(usableNow.connection.price, true) ?? 0;
     const capped = !!spend && spend.chargedMicros + one > centsToMicros(spend.budgetCents);
     return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today };
   }
@@ -479,7 +480,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const usableNow = await usableConnection(connections, providerEnabled, enablement);
     if (usableNow.problem) return { ok: false, problem: usableNow.problem, client: null };
     const { connection } = usableNow;
-    const held = await reserveOnKey(ports, connection, false, 1, undefined, true);
+    // One request with the Flux tools, as the worker's claim checks (#1441: every key run is pi with them).
+    const held = await reserveOnKey(ports, connection, true, 1, undefined, true);
     // Paused until the key's next day; otherwise it reserves when the worker starts it (its turn in the owner's lane).
     if ('paused' in held) return { ok: true, fields: { reservedMicros: 0, provider: connection.provider, model: connection.model, resumeAt: held.paused, endReason: 'budget' } };
     return { ok: true, fields: { reservedMicros: 0, provider: connection.provider, model: connection.model } };

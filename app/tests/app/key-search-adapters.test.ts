@@ -64,12 +64,16 @@ describe('flux_web_search through the real adapters (#1441, security review of #
     });
   }
 
-  test('a complete error answer of the provider is charged nothing', async () => {
-    await control('/__script', { wire: 'anthropic', mode: 'status', status: 400 });
-    const { seen, port } = meter();
-    const outcome = await searchWithKey(compute, port, randomUUID(), connection('anthropic', 'claude-sonnet-5'), 'lux sensors');
-    assert.equal(outcome.ok, false);
-    assert.equal(seen.settled[0]?.charged, 0);
+  test('an error answer the adapter cannot show was free keeps its hold; one out of credits is charged nothing', async () => {
+    await control('/__script', { wire: 'anthropic', mode: 'status', status: 500 });
+    const first = meter();
+    const key = connection('anthropic', 'claude-sonnet-5');
+    assert.equal((await searchWithKey(compute, first.port, randomUUID(), key, 'lux sensors')).ok, false);
+    assert.deepEqual(first.seen.settled, [{ held: keySearchHoldMicros(key.price)!, charged: keySearchHoldMicros(key.price)! }]);
+    await control('/__script', { wire: 'anthropic', mode: 'status', status: 400, errorMessage: 'Your credit balance is too low to access the Anthropic API.' });
+    const second = meter();
+    assert.equal((await searchWithKey(compute, second.port, randomUUID(), key, 'lux sensors')).ok, false);
+    assert.equal(second.seen.settled[0]?.charged, 0);
   });
 
   test('a request that is never sent (the key cannot be opened) is charged nothing', async () => {

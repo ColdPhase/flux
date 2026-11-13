@@ -77,7 +77,7 @@ describe('a file-only message in every consumer that quotes it', () => {
       assert.equal((await someone.browser.request('GET', '/api/v1/inbox')).text.includes(SECRET), false, 'no file bytes in the inbox');
   });
 
-  test('search titles a file-only message "Attached files" and never indexes file bytes', async () => {
+  test('search titles a file-only message "Attached files"; the file\'s own words are found as the file, never as the message', async () => {
     const found = expectStatus(await owner.browser.request('GET', '/api/v1/search?q=attached'), 200) as SearchResponse;
     for (const messageId of [reply.id, opened.messages[0]!.id]) {
       const item = found.items.find((entry) => entry.id === `message:${messageId}`);
@@ -86,8 +86,10 @@ describe('a file-only message in every consumer that quotes it', () => {
     }
     const { rows } = await pool.query('SELECT title, body FROM search_documents WHERE doc_key = $1', [`message:${reply.id}`]);
     assert.deepEqual(rows.map((row: { title: string; body: string }) => [row.title, row.body]), [['Attached files', '']]);
+    // Since C-63 (#1382) a text file's words are searchable: as the file, by its name, opening at the message it came with.
     const bytes = expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${SECRET}`), 200) as SearchResponse;
-    assert.deepEqual(bytes.items, []);
+    assert.ok(bytes.items.length > 0 && bytes.items.every((item) => item.kind === 'file'), JSON.stringify(bytes.items.map((item) => item.kind)));
+    assert.ok(bytes.items.some((item) => text(item.title) === 'findings.txt'));
   });
 
   test('the return list quotes a file-only message as "1 attached file"', async () => {
@@ -127,7 +129,7 @@ describe('a file-only message in every consumer that quotes it', () => {
       assert.equal(await processor.process(run.id), 'completed', JSON.stringify(pi.lastPi()));
       assert.equal(pi.gateway.requests.length, 2);
       const [first, second] = pi.gateway.requests;
-      assert.match(first!.prompt, /You cannot open attached files; you see only their names\./, 'the model is told it cannot open them (#1064)');
+      assert.match(first!.prompt, /you see other files only by their names\./, 'the model is told it sees a file that is not a picture only by its name (#1064, #1217)');
       const read = second!.results[0] ?? '';
       assert.ok(read.includes('findings.txt'), read);
       assert.equal(JSON.stringify(pi.gateway.requests).includes(SECRET), false, 'the file bytes never reach the provider');

@@ -8,14 +8,16 @@ import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 import { mcp } from './support/mcp.js';
 import { expectStatus } from './support/people.js';
+import { startPiRuntime, type PiRuntime } from './support/pi-runtime.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 
 // AG-10 (F-029 S1, #614; per space under F-037): already-issued tokens, existing connections and queued runs never override the
 // block. A request of an external MCP connection bound to the space and a personal run's token are refused before any tool list;
 // the connection itself, its sign-in and its refresh grant are not (it works in every other space); a queued run ends
-// `stopped`/`ai_off` with no provider request; work admitted before AI was turned off never runs after it is turned on again
-// (epoch). Every refusal has its control while AI is on.
+// `stopped`/`ai_off` with no model request; work admitted before AI was turned off never runs after it is turned on again
+// (epoch). Every refusal has its control while AI is on. The owner's runs here are API-key runs in pi in the agent runtime (#1441, RT-1,
+// support/pi-runtime.ts): a model request is one that reaches the fake model gateway, `pi.gateway.requests`.
 
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 /** The tool list really came back (a refusal is also HTTP 200, as a JSON-RPC error). */
@@ -23,13 +25,17 @@ const lists = (response: { message: Record<string, unknown> | null }) => (((resp
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 
 describe('space AI switch: tokens, connections and runs', () => {
-  let scene: AssistantScene;
+  let scene: AssistantScene; let pi: PiRuntime;
   let accessToken: string; let refreshToken: string; let clientId: string; let connectionId: string;
   /** A request bound to the scene's space, which is refused before any tool, resource or prompt while its AI is off. */
   const bound = () => ({ query: `flux_connection=${connectionId}&flux_project=${scene.place.id}` });
 
+  /** One run of the owner's, through the worker with pi in the runtime. */
+  const work = (runId: string) => scene.processor!.process(runId);
+
   before(async () => {
-    scene = await assistantScene('ai-runs');
+    pi = await startPiRuntime();
+    scene = await assistantScene('ai-runs', { pi });
     const connection = await createConnection(pool, scene.owner.browser, { agentId: scene.agentId });
     connectionId = String(connection.id);
     clientId = `flux-test-${randomUUID()}`;
@@ -42,7 +48,7 @@ describe('space AI switch: tokens, connections and runs', () => {
     accessToken = tokens.access_token; refreshToken = tokens.refresh_token;
   });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); });
-  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); await pi.close(); });
 
   const refresh = () => fetch(new URL('/api/auth/oauth2/token', apiUrl), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId }) });
@@ -116,8 +122,9 @@ describe('space AI switch: tokens, connections and runs', () => {
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [started.run.id]);
   });
 
-  test('asking while AI is off is refused and writes no run; a queued run ends ai_off with no provider request', async () => {
+  test('asking while AI is off is refused and writes no run; a queued run ends ai_off with no model request', async () => {
     await scene.reset();
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     await setSpaceAi(scene.place.id, 'blocked');
     const asked = await scene.owner.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/assistant-runs`,
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' } });
@@ -129,36 +136,36 @@ describe('space AI switch: tokens, connections and runs', () => {
     // Queued while AI was on, then AI turned off: the worker ends it before reading or dispatching.
     const queued = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' });
     await setSpaceAi(scene.place.id, 'blocked');
-    const dispatched = scene.compute.dispatched.length; const counted = scene.compute.counted.length;
-    await scene.processor.process(queued.run.id);
+    await work(queued.run.id);
     const ended = (await pool.query('SELECT status, end_reason, stopped_at_stage, cost_state FROM personal_runs WHERE id = $1', [queued.run.id])).rows[0];
     assert.deepEqual(ended, { status: 'stopped', end_reason: 'ai_off', stopped_at_stage: 'before_read', cost_state: 'released' });
-    assert.deepEqual([scene.compute.dispatched.length, scene.compute.counted.length], [dispatched, counted], 'no provider request');
+    assert.equal(pi.gateway.requests.length, 0, 'no model request');
 
     // Admitted before AI was turned off and on again (an older epoch): never runs.
     await setSpaceAi(scene.place.id, 'allowed');
     const earlier = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' });
     await setSpaceAi(scene.place.id, 'blocked');
     await setSpaceAi(scene.place.id, 'allowed');
-    await scene.processor.process(earlier.run.id);
+    await work(earlier.run.id);
     assert.equal((await pool.query('SELECT end_reason FROM personal_runs WHERE id = $1', [earlier.run.id])).rows[0].end_reason, 'ai_off');
-    assert.equal(scene.compute.dispatched.length, dispatched, 'still no provider request');
+    assert.equal(pi.gateway.requests.length, 0, 'still no model request');
 
-    // The control: a run admitted while AI is on reaches the provider.
+    // The control: a run admitted while AI is on reaches the model.
     const control = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' });
-    await scene.processor.process(control.run.id);
-    assert.ok(scene.compute.dispatched.length > dispatched, 'control: the provider is called while AI is on');
+    assert.equal(await work(control.run.id), 'completed', JSON.stringify(pi.lastPi()));
+    assert.ok(pi.gateway.requests.length > 0, 'control: the model is called while AI is on');
     expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs/${control.run.id}`), 200);
   });
 
   test('#68: Retry and Continue are refused while AI is off and write no run; Stop is not blocked; AI on again works again', async () => {
     await scene.reset();
     const invokePath = `/api/v1/conversations/${scene.thread.id}/assistant-runs`;
+    pi.gateway.script([{ text: 'Looked at it.' }]);
     const earlier = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look' });
-    assert.equal(await scene.processor.process(earlier.run.id), 'completed');
+    assert.equal(await work(earlier.run.id), 'completed', JSON.stringify(pi.lastPi()));
     const waiting = await scene.runs.invoke(human(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look again' });
     const runs = async () => Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [scene.owner.id])).rows[0].count);
-    const written = await runs(); const dispatched = scene.compute.dispatched.length;
+    const written = await runs(); const requested = pi.gateway.requests.length;
     await setSpaceAi(scene.place.id, 'blocked');
     const code = (response: { json: unknown }) => (response.json as { code?: string }).code;
     const retried = await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${earlier.run.id}/retry`, { body: { clientRunId: randomUUID() } });
@@ -169,9 +176,9 @@ describe('space AI switch: tokens, connections and runs', () => {
     // A person can always stop their own run; the queued one ended with the switch and costs nothing.
     const stopped = expectStatus(await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${waiting.run.id}/stop`), 200) as { status: string; cost: { state: string } };
     assert.deepEqual([stopped.status, stopped.cost.state], ['stopped', 'released']);
-    assert.equal(scene.compute.dispatched.length, dispatched, 'no provider request');
+    assert.equal(pi.gateway.requests.length, requested, 'no model request');
     await setSpaceAi(scene.place.id, 'allowed');
-    // The HTTP composition is the production one (provider off); the fake provider of the scene stands for it in the control.
+    // The HTTP composition is the production one (provider off); the scene's own use cases (provider on) stand for it in the control.
     const again = await scene.runs.retry(human(scene.owner), earlier.run.id, { clientRunId: randomUUID() });
     assert.deepEqual([again.created, again.run.id === earlier.run.id], [true, false], 'control: Retry starts a new run again once AI is on');
   });

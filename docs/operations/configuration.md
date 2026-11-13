@@ -436,7 +436,7 @@ File with 32 random bytes that seals owners' AI keys for work the worker does on
 
 **Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
 
-`on` lets people's agents run on their own API key. A Claude or ChatGPT plan needs the agent runtime instead. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
+`on` lets people's agents run on their own API key, in pi in the agent runtime (`pi` in `FLUX_AGENT_RUNTIME`, which every agent needs). Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
 
 ### `FLUX_AI_PRIVATE_TARGETS`
 
