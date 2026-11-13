@@ -20,7 +20,7 @@ test('each level names exactly the reasons that interrupt at that level', () => 
 test('the lines say it in words, every reason once', () => {
   const line = (id: string) => LEVELS.find((level) => level.id === id)!.detail;
   assert.deepEqual(LEVELS.map((level) => level.id), [...NOTIFICATION_LEVELS]);
-  assert.equal(line('needsYou'), 'Questions, mentions, direct messages, tasks that need you, decisions about your work, invitations to work together and agents waiting for you');
+  assert.equal(line('needsYou'), 'Questions, mentions, messages to you, tasks that need you, decisions about your work, invitations to work together and agents waiting for you');
   assert.equal(line('everything'), 'Also every reply in conversations you are part of and calls started in your spaces');
   assert.equal(line('nothing'), 'No push or email. Everything still waits in the Inbox');
   for (const reason of LEVEL_REASONS.needsYou) assert.ok(line('needsYou').toLowerCase().includes(REASON_WORDS[reason]), reason);
