@@ -232,13 +232,14 @@ class TasksReviewJourney(unittest.TestCase):
             row = self.row(page, title)
             expect(row, label).to_be_visible()
             meta = row.locator(".ws-item__s")
-            expect(meta.locator(".agent-tag"), f"{label}: {title} shows the Agent tag").to_have_count(1)
-            expect(meta, f"{label}: {title} names the owner").to_contain_text("for Ada Kowalska")
+            expect(meta.locator(".agent-id"), f"{label}: {title} shows the agent's one label").to_have_count(1)
+            expect(meta.locator(".agent-tag"), f"{label}: {title} has no separate tag").to_have_count(0)
+            expect(meta, f"{label}: {title} names the owner").to_contain_text("· Ada's agent")
             expect(meta, f"{label}: {title} names the agent").to_contain_text("Alex")
             word = meta.locator('.ws-task__word')
             expect(word).to_contain_text({'agent_open': 'To do', 'agent_doing': 'Doing', 'agent_blocked': 'Blocked'}[key])
             # Presence in textContent did not catch the phone's two-line clipping.
-            for part in (word, meta.locator('.agent-for'), meta.locator('.agent-tag')):
+            for part in (word, meta.locator('.agent-for'), meta.locator('.agent-id__name')):
                 self.assertTrue(part.evaluate("""el => {
                     const box = el.closest('.ws-item__s').getBoundingClientRect();
                     const range = document.createRange(); range.selectNodeContents(el);

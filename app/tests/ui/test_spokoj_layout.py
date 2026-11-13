@@ -197,7 +197,7 @@ class SpokojLayout(unittest.TestCase):
                 page.locator("header.top").get_by_role("button", name="More", exact=True).click()
                 page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
                 expect(page.locator(".ui-panel--docked")).to_be_visible()
-                expect(page.locator(".ui-panel--float")).to_have_count(0)
+                expect(page.locator(".ui-panel--overlay")).to_have_count(0)
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel beside the page")
                 page.keyboard.press("Escape")
                 expect(page.locator(".ui-panel--docked")).to_have_count(0)
@@ -299,13 +299,11 @@ class SpokojLayout(unittest.TestCase):
         # The panel (380 px) slides over the conversation, which stays visible beside it.
         header.get_by_role("button", name="More", exact=True).click()
         page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-        expect(page.locator(".ui-panel--float")).to_be_visible()
+        expect(page.locator(".ui-panel--overlay")).to_be_visible()
         page.wait_for_function(SETTLED)
-        panel = self.box(page.locator(".ui-panel--float"))
+        panel = self.box(page.locator(".ui-panel--overlay"))
         self.assertAlmostEqual(panel["width"], 380, delta=1)
         self.assertGreater(panel["x"], 300, "the conversation stays visible to the left of the panel")
-        head = self.box(page.locator("header.top"))
-        self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, "the panel lies under the header, which stays visible and live (#1365)")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), TABLET["width"], "no sideways page scroll")
         shot(page, "505-tablet-820-panel")
         # The rail's expand control opens the sidebar as a drawer.
@@ -457,6 +455,7 @@ class SpokojLayout(unittest.TestCase):
                         self.assertGreaterEqual(new_box["x"], search["x"] + search["width"], f"{width} {mode}: + Task is after the search")
                         self.assertLessEqual(new_box["x"] + new_box["width"], row_box["x"] + row_box["width"] + 1, f"{width} {mode}: + Task is inside the row")
                         self.assertGreater(new_box["x"] + new_box["width"], row_box["x"] + row_box["width"] - 60, f"{width} {mode}: + Task is the row's right end")
+                        self.assertLess(row_box["height"], 80, f"{width} {mode}: the control row is one line, with the panel open or not")
                         if mode == "board":
                             page.locator(".tb-card .tb-card__open").first.click()
                             expect(page.locator(".ui-panel--docked")).to_be_visible()
@@ -469,10 +468,17 @@ class SpokojLayout(unittest.TestCase):
                             page.wait_for_function(SETTLED)
 
     def test_15_the_list_and_its_control_row_share_a_column_on_a_wide_window(self) -> None:
-        """#1366: at 3440 the List is a centred column; the row that controls it is the same column, with + Task at its right edge."""
+        """#1366: at 3440 the List is a centred column; the row that controls it is the same column, with + Task at its right edge, and the
+        Board | List switch is where it was in the board (rule 7)."""
         page = self.page({"width": 3440, "height": 1440})
-        page.goto(f"/projects/{self.project_id}/tasks?view=list")
+        page.goto(f"/projects/{self.project_id}/tasks?view=board")
         page.wait_for_function(SETTLED)
+        switch = page.locator(".tb-bar").get_by_role("radio", name="Board")
+        in_board = self.box(switch)
+        page.locator(".tb-bar").get_by_role("radio", name="List").click()
+        expect(page.locator(".ws-tasks .ws-list").first).to_be_visible()
+        page.wait_for_function(SETTLED)
+        self.assert_same_place({"switch": in_board}, {"switch": self.box(switch)}, "the Board | List switch between the views at 3440")
         row, first = self.box(page.locator(".tb-bar")), self.box(page.locator(".ws-tasks .ws-list").first)
         new = self.box(page.locator(".tb-bar").get_by_role("button", name="New Task", exact=True))
         self.assertAlmostEqual(row["x"] + 24, first["x"], delta=24, msg="the row starts where the list starts")
@@ -480,10 +486,11 @@ class SpokojLayout(unittest.TestCase):
 
     def test_16_the_one_panel_is_the_same_card_on_every_view_and_never_covers_the_header(self) -> None:
         """#1365, README §4: a task, a decision or a thread opens in the same right-hand panel over Conversation, Tasks and Wiki, under a header
-        that stays visible and live, at 1440 and 1180x820 (beside the work) and at 820 (over its right edge)."""
-        for size in (COMPUTER, {"width": 1180, "height": 820}, TABLET):
+        that stays visible and live, at 1440 and 1180x820 (beside the work). Below 1001 px it is still the overlay from the right (open question
+        in #1365)."""
+        for size in (COMPUTER, {"width": 1180, "height": 820}):
             with self.subTest(width=size["width"]):
-                page = self.page(size, touch=size is TABLET)
+                page = self.page(size)
                 boxes, headers = {}, {}
                 for path, name in (("", "Conversation"), ("/tasks", "Tasks"), ("/docs", "Wiki")):
                     self.goto_view(page, path)

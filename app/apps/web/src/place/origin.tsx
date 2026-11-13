@@ -148,14 +148,14 @@ export function useGoToOrigin(origin: Origin) {
 const NO_ORIGIN: Origin = { key: '', path: '/', label: '' };
 
 /**
- * The panel's own "‹ back" to where the page was followed from, for a page whose panel is a sheet: that panel
- * covers the header, where the control sits, so the panel's one back pattern carries it. A docked or floating panel (#1365) leaves the header free.
+ * The panel's own "‹ back" to where the page was followed from, for a page whose panel is a sheet or an overlay: that panel
+ * covers the header, where the control sits, so the panel's one back pattern carries it. A docked panel leaves the header free.
  */
 export function useOriginPanelBack(): { label: string; run: () => void } | undefined {
   const origin = useRouteOrigin();
   const mode = useSidePanelMode();
   const go = useGoToOrigin(origin ?? NO_ORIGIN);
-  return origin && mode === 'sheet' ? { label: origin.label, run: go } : undefined;
+  return origin && mode !== 'docked' ? { label: origin.label, run: go } : undefined;
 }
 
 /** The one quiet "‹ <origin name>" control, wherever an opened reference shows its head: the header row, the panel's head, the phone's sheet. */

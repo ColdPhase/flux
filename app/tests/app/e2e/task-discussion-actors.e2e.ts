@@ -230,7 +230,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     await row.waitFor();
     assert.equal(await page.locator(`#message-${root.id}`).count(), 0, 'the discussion\'s root is not a row of the stream');
     await assertAuthorColumn(row, 1280);
-    assert.match(await row.innerText(), /Trial analyst\s*Agent/);
+    assert.match(await row.innerText(), /Trial analyst\s*· .+'s agent/);
     assert.equal(await row.locator('.kreska').count() > 0, true, 'an agent author is Kreska, never initials (#339)');
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.message-time time').getAttribute('datetime'), root.createdAt);
@@ -346,7 +346,7 @@ test('agent root renders without a human DM link, real human reply persists, and
       const workspaceEvent = workspaceView.locator(`.convo-notice[data-work-id="${workspaceTask.id}"]`);
       await assertAuthorColumn(workspaceEvent, 390);
       await workspaceEvent.locator('.agent-for').waitFor();
-      assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*Agent/);
+      assert.match(await workspaceEvent.innerText(), /Workspace analyst\s*· .+'s agent/);
       await captureVisibleAuthor(workspaceView, workspaceEvent, `workspace-agent-event-390-dark-text200${touch ? '-touch' : ''}`, evidence);
       assert.equal(await workspaceView.evaluate(() => document.documentElement.scrollWidth - innerWidth), 0);
       if (touch) {

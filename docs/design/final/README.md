@@ -394,12 +394,12 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   **Mute space** / **Unmute space**. There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it. It is **one card in one place on every computer and tablet view** (#1365): under the
-  header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
-  and it never covers the header, so the name, the views, the faces, Call and ⋯ stay in view and live.
-  Above 1000 px it docks beside the work, which narrows (the Tasks board then scrolls its columns
-  sideways inside itself, with a thin bar); from 641 to 1000 px it lies over the work's right edge, with
-  no scrim; on the phone it is the sheet below.
+  `Esc` closes it. It is **one card in one place on every computer view** (#1365): above 1000 px it docks under
+  the header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki
+  alike, and never covers the header, so the name, the views, the faces, Call and ⋯ stay in view and
+  live. The work beside it narrows (the Tasks board then scrolls its columns sideways inside itself,
+  with a thin bar). From 641 to 1000 px it is still the overlay from the right and on the phone the
+  sheet below; whether the tablet's overlay should also keep the header clear is open (#1365).
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.

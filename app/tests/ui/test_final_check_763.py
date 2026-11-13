@@ -330,7 +330,7 @@ class FinalCheck763(unittest.TestCase):
         details = page.locator("#details")
         expect(details.get_by_text(TASK).first).to_be_visible()
         expect(page.locator(".ui-panel--docked")).to_have_count(1)
-        expect(page.locator(".ui-panel--float")).to_have_count(0)
+        expect(page.locator(".ui-panel--overlay")).to_have_count(0)
         self.assertLess(page.locator(".wiki-page").bounding_box()["width"], width, "the page gives the panel its room")
         self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0)
         shot(page, f"final-763-wiki-task-beside-page-{UI_BROWSER}")

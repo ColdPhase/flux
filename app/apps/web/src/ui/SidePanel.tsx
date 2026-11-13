@@ -70,10 +70,7 @@ export const PanelGlyph = ({ children }: { children: ReactNode }) => <PanelPorta
 /** Puts the open object's ⋯ menu in the head, beside the close control. */
 export const PanelActions = ({ children }: { children: ReactNode }) => <PanelPortal id={PANEL_ACTIONS_ID}>{children}</PanelPortal>;
 
-/**
- * The one panel's three forms (#1365): docked beside the work above 1000 px, the same card laid over its right edge down to the phone
- * ('overlay'), under the header in both so the header stays live, and a full-screen sheet on the phone.
- */
+/** Docked beside the work above 980px, an overlay down to the phone, a full-screen sheet on the phone. */
 export function useSidePanelMode(): SidePanelMode {
   const overlay = useMediaQuery(MEDIA.panelOverlay);
   const phone = useMediaQuery(MEDIA.phone);
@@ -109,8 +106,8 @@ function PanelContent({ title, titleId, closeLabel, back, chip, context, onClose
   );
 }
 
-/** Non-modal panel at the right edge of the app frame, under the header. Esc inside it closes it. `float` lays it over the work instead of beside it. */
-function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, float, children }: SidePanelProps & { float?: boolean }) {
+/** Non-modal panel docked at the right edge of the app frame. Esc inside it closes it. */
+function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id, contentKey, children }: SidePanelProps) {
   const { mounted, unmount } = usePresence(open);
   const ref = useRef<HTMLElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -148,7 +145,7 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
     if (event.key === 'Escape' && !event.defaultPrevented && !event.nativeEvent.isComposing) { event.stopPropagation(); onClose(); }
   };
   return (
-    <aside ref={ref} id={id} className={`ui-panel ui-panel--docked${float ? ' ui-panel--float' : ''}`} aria-labelledby={titleId} onKeyDown={onKeyDown} inert={!open}>
+    <aside ref={ref} id={id} className="ui-panel ui-panel--docked" aria-labelledby={titleId} onKeyDown={onKeyDown} inert={!open}>
       <PanelContent title={title} titleId={titleId} closeLabel={closeLabel} back={back} chip={chip} context={context} onClose={onClose} bodyRef={bodyRef} contentKey={contentKey ?? `${chip ?? ''}|${title}`}>{children}</PanelContent>
     </aside>
   );
@@ -174,17 +171,20 @@ export function SidePanel(live: SidePanelProps) {
   const mode = useSidePanelMode();
   const titleId = useId();
   const bodyRef = useRef<HTMLDivElement>(null);
-  usePanelSwap(bodyRef, mode === 'sheet', props.open, props.contentKey ?? `${props.chip ?? ''}|${props.title}`);
-  if (mode !== 'sheet') return <DockedPanel {...props} float={mode === 'overlay'} />;
+  usePanelSwap(bodyRef, mode !== 'docked', props.open, props.contentKey ?? `${props.chip ?? ''}|${props.title}`);
+  if (mode === 'docked') return <DockedPanel {...props} />;
   const content = <PanelContent title={props.title} titleId={titleId} closeLabel={props.closeLabel} back={props.back} chip={props.chip} context={props.context} onClose={props.onClose} bodyRef={bodyRef}
     contentKey={props.contentKey ?? `${props.chip ?? ''}|${props.title}`}>{props.children}</PanelContent>;
-  // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
-  if (props.chip) {
-    return (
-      <Overlay placement="bottom" bare keepLiveStrip open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
-        <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
-      </Overlay>
-    );
+  if (mode === 'sheet') {
+    // A task, decision or result opens in the one two-height sheet; other Details stay a full sheet.
+    if (props.chip) {
+      return (
+        <Overlay placement="bottom" bare keepLiveStrip open={props.open} onClose={props.onClose} initialFocus={bodyRef}>
+          <DetentSheet id={props.id} role="dialog" aria-modal aria-labelledby={titleId} startFull={props.startFull} onHeight={props.onHeight} onClose={props.onClose} className="ui-panel">{content}</DetentSheet>
+        </Overlay>
+      );
+    }
+    return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} keepLiveStrip className="ui-panel">{content}</Sheet>;
   }
-  return <Sheet open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} keepLiveStrip className="ui-panel">{content}</Sheet>;
+  return <Overlay placement="right" keepLiveStrip open={props.open} onClose={props.onClose} labelledBy={titleId} id={props.id} initialFocus={bodyRef} className="ui-panel ui-panel--overlay">{content}</Overlay>;
 }

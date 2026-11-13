@@ -73,7 +73,7 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew }: {
   };
   // In reading order, as drawn: [Board | List] [Mine] [Search tasks] … [+ Task].
   return (
-    <div className={`tb-bar tb-bar--${mode}`}>
+    <div className="tb-bar">
       <div className="tb-mode" role="radiogroup" aria-label="Show tasks as" ref={radios} onKeyDown={onRadioKey}>
         {(['board', 'list'] as const).map((value) => (
           <button key={value} type="button" role="radio" className="tb-mode__b" data-mode={value} aria-checked={mode === value}
