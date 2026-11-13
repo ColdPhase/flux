@@ -1,6 +1,7 @@
 import { sql, type SQL } from 'drizzle-orm';
 import { foldSearchWord } from '@flux/contracts';
 import * as schema from '../schema.js';
+import { cleanName } from '../display-name.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 
 /** Search needs its own read-only transaction to pin the plan (see {@link planned}). */
@@ -429,15 +430,15 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, ra
     hits AS (SELECT * FROM matched WHERE newest = 1)
     SELECT h.id::text AS id, h.score::text AS score, h.at::text AS at_key, h.at, h.kind, h.workspace_id, w.name AS workspace_name,
       h.object_id, h.parent_id, h.project_id, p.name AS project_name, h.version, pm.current_version, h.status, sk.title AS sketch_title, wi.number AS work_number,
-      h.author_kind, h.author_id, coalesce(au.name, ag.name) AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.sequence, dmv.sequence) AS sequence,
+      h.author_kind, h.author_id, ${cleanName(sql`coalesce(au.name, ag.name)`)} AS author_name, coalesce(pmv.via, dmv.via) AS via, coalesce(pmv.sequence, dmv.sequence) AS sequence,
       length(h.body) > 0 AS has_body,
       ts_headline('simple', ${clean(sql`h.title`)}, ${q}, ${TITLE_OPTIONS}) AS title_headline,
       CASE WHEN length(h.body) = 0 THEN NULL
         WHEN length(h.body) <= ${WHOLE} THEN ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${TITLE_OPTIONS})
         ELSE ts_headline('simple', ${clean(sql`h.body`)}, ${q}, ${BODY_OPTIONS}) END AS body_headline,
       CASE WHEN d.id IS NULL THEN NULL WHEN d.title IS NOT NULL THEN d.title
-        WHEN d.kind = 'pair' THEN (SELECT u.name FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
-        ELSE (SELECT string_agg(u.name, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
+        WHEN d.kind = 'pair' THEN (SELECT ${cleanName(sql`u.name`)} FROM auth_users u WHERE u.id IN (split_part(d.pair_key, ':', 1), split_part(d.pair_key, ':', 2)) AND u.id <> ${plan.reader} LIMIT 1)
+        ELSE (SELECT string_agg(${cleanName(sql`u.name`)}, ', ' ORDER BY u.name) FROM dm_participants dp JOIN auth_users u ON u.id = dp.user_id WHERE dp.dm_id = d.id AND dp.user_id <> ${plan.reader})
       END AS dm_name
     FROM ${page} h
     LEFT JOIN projects p ON p.id = h.project_id AND ('project:' || p.id) = ANY ((SELECT keys FROM aud)::text[])

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { hasInvisibleFormat, myAgentPath, withoutInvisibleFormat, type Agent, type MyAgent } from '@flux/contracts';
+import { hasInvisibleFormat, myAgentPath, withoutInvisibleFormat, type Agent, type MyAgent, type SearchResponse } from '@flux/contracts';
 import { profileFromClaims } from '../../apps/server/src/identity/claim-profile.js';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { expectStatus, person, secondSession, workspace } from './support/people.js';
+import { addMember, expectStatus, person, secondSession, workspace } from './support/people.js';
 import { assistantScene } from './support/assistant-scene.js';
 
 // Names are drawn beside other text (#1347, the audits of #1270): a direction control or an invisible character in one would reorder what
@@ -58,6 +58,23 @@ test('an assistant renamed with a direction control is refused; a name stored wi
   // A new session reads the person afresh (the cached one of the old session would still hold the name it was given).
   const me = expectStatus(await (await secondSession(scene.owner)).browser.request('GET', '/api/v1/me'), 200) as { user: { name: string } };
   assert.equal(me.user.name, 'Hubert');
+});
+
+test('a name stored with a direction control is read clean where raw SQL reads it too: a search hit\'s author and its direct message (review of #1347)', async () => {
+  const owner = await person('Raw names owner');
+  const ws = await workspace(owner, 'Raw names');
+  const ada = await person('Ada Raw');
+  await addMember(owner, ws.id, ada, 'member');
+  const dm = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [owner.id] } }), 201) as { id: string };
+  const word = `quokka${randomUUID().slice(0, 8)}`;
+  expectStatus(await ada.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: `the ${word} plan`, clientMessageId: randomUUID() } }), 201);
+  // Stored before the rule, as v0.2.0 could: a direction control in the range and one after it, and an invisible one.
+  await pool.query(`UPDATE auth_users SET name = $2 WHERE id = $1`, [ada.id, 'Ada\u202e Raw\u2067\u200b']);
+  const found = expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${word}`), 200) as SearchResponse;
+  const hit = found.items.find((item) => item.kind === 'dm_message');
+  assert.ok(hit, JSON.stringify(found.items));
+  assert.equal(hit.author, 'Ada Raw');
+  assert.deepEqual(hit.place, { type: 'dm', id: dm.id, name: 'Ada Raw' });
 });
 
 test('a name from an identity provider is cleaned, never refused, so single sign-on still works', () => {

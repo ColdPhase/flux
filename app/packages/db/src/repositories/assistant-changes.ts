@@ -1,6 +1,7 @@
 import { AI_PROVIDERS } from '@flux/contracts';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { cleanName } from '../display-name.js';
 import { connectionReaches } from './agent-reach.js';
 import type { DbExecutor } from './push.js';
 
@@ -245,11 +246,11 @@ export function assistantChangeRows(db: DbExecutor) {
     },
     /** Who last changed an object: a page's current version author, otherwise the latest event about it (a day back at most). */
     async lastActor(objectId: string): Promise<{ id: string; name: string } | null> {
-      const author = await first<{ id: string; name: string }>(db, sql`SELECT COALESCE(u.id, a.id::text) AS id, COALESCE(u.name, a.name) AS name
+      const author = await first<{ id: string; name: string }>(db, sql`SELECT COALESCE(u.id, a.id::text) AS id, ${cleanName(sql`COALESCE(u.name, a.name)`)} AS name
         FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version
         LEFT JOIN auth_users u ON u.id = v.author_id LEFT JOIN agents a ON a.id = v.author_agent_id WHERE m.id = ${objectId}`);
       if (author?.name) return author;
-      return first<{ id: string; name: string }>(db, sql`SELECT split_part(e.actor_id, ':', 2) AS id, COALESCE(u.name, a.name) AS name FROM events e
+      return first<{ id: string; name: string }>(db, sql`SELECT split_part(e.actor_id, ':', 2) AS id, ${cleanName(sql`COALESCE(u.name, a.name)`)} AS name FROM events e
         LEFT JOIN auth_users u ON e.actor_id = 'human:' || u.id LEFT JOIN agents a ON e.actor_id = 'agent:' || a.id::text
         WHERE e.created_at > now() - interval '1 day' AND (e.object_id = ${objectId} OR e.data->>'workId' = ${objectId}::text OR e.data->>'docId' = ${objectId}::text
           OR e.data->>'thoughtId' = ${objectId}::text) AND COALESCE(u.name, a.name) IS NOT NULL ORDER BY e.seq DESC LIMIT 1`);

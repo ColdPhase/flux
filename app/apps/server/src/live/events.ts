@@ -31,8 +31,8 @@ export async function recordLiveStarted(tx: Executor, change: { workspaceId: str
     SELECT 1 FROM events e
       JOIN live_sessions earlier ON earlier.id = (e.data->>'sessionId')::uuid
       JOIN live_sessions now_ ON now_.id = ${change.sessionId}
-     WHERE e.kind = ${LIVE_STARTED_EVENT} AND e.object_id = ${change.projectId} AND e.actor_id = ${principalKey(change.actor)}
-       AND e.created_at > now() - ${`${CALL_NOTICE_PAUSE_MINUTES} minutes`}::interval AND earlier.id <> now_.id
+     WHERE e.workspace_id = ${change.workspaceId} AND e.created_at > now() - ${`${CALL_NOTICE_PAUSE_MINUTES} minutes`}::interval -- events_workspace_idx: the last minutes only
+       AND e.kind = ${LIVE_STARTED_EVENT} AND e.object_id = ${change.projectId} AND e.actor_id = ${principalKey(change.actor)} AND earlier.id <> now_.id
        AND earlier.conversation_id IS NOT DISTINCT FROM now_.conversation_id AND earlier.work_id IS NOT DISTINCT FROM now_.work_id
        AND earlier.sketch_id IS NOT DISTINCT FROM now_.sketch_id AND earlier.doc_id IS NOT DISTINCT FROM now_.doc_id
      LIMIT 1`)).rows;

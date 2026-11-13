@@ -1024,7 +1024,8 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   // The message a thought was started from (migration 0025, #96).
   sourceAuthorId: text('source_author_id').references(() => authUsers.id),
   sourceAuthorAgentId: uuid('source_author_agent_id').references(() => agents.id),
-  sourceAuthorName: text('source_author_name'),
+  /** A snapshot of the message author's name: cleaned when read, as every name is (#1347). */
+  sourceAuthorName: displayName('source_author_name'),
   sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
   sourceProjectMessageId: uuid('source_project_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),

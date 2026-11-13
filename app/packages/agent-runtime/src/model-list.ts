@@ -23,7 +23,7 @@ export interface ModelListOptions {
 const MAX_MODELS = 1_000;
 /**
  * The most a model list may weigh (#1347): a thousand models of a few hundred bytes each is well under 1 MB, so that is the bound for every
- * listing but OpenRouter's, whose list carries a description and a price per model (about half a megabyte today, 2 MB here). A server that
+ * listing but OpenRouter's, whose list carries a description and a price per model (852 KB on 2026-11-13, 2 MB here). A server that
  * answers more is refused ("unavailable"), not read: audit A held 240 listings of 4 MB at once and the API took 910 MiB.
  */
 export const MODEL_LIST_MAX_BYTES = 1_000_000;

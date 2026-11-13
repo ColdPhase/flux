@@ -8,8 +8,10 @@
  * A name that is typed or sent is refused with `INVALID_NAME`; a name that comes from outside (an identity provider's claim, an OAuth
  * client's) or was stored before is cleaned when it is read (`withoutInvisibleFormat`).
  */
-const INVISIBLE_FORMAT = /[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]/g;
-const ANY_INVISIBLE_FORMAT = new RegExp(INVISIBLE_FORMAT.source);
+/** The characters as one bracket expression, for a database's regular expression too (a raw SQL select of a name, `cleanName` in @flux/db). */
+export const INVISIBLE_FORMAT_CLASS = '[\u061c\u200b\u200e\u200f\u202a-\u202e\u2060\u2066-\u2069\ufeff]';
+const INVISIBLE_FORMAT = new RegExp(INVISIBLE_FORMAT_CLASS, 'g');
+const ANY_INVISIBLE_FORMAT = new RegExp(INVISIBLE_FORMAT_CLASS);
 
 export const hasInvisibleFormat = (text: string): boolean => ANY_INVISIBLE_FORMAT.test(text);
 
