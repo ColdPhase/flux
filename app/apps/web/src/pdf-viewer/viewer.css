@@ -3,7 +3,8 @@
 html, body { margin: 0; height: 100%; background: transparent; }
 #scroller { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; outline: none; }
 #pages { position: relative; padding: 12px 0; }
-.page { position: relative; margin: 0 auto 12px; background: #fff; overflow: hidden; }
+/* A hairline of the system text colour, so a white page shows its edge on a white sheet too. */
+.page { position: relative; margin: 0 auto 12px; background: #fff; overflow: hidden; box-shadow: 0 0 0 1px color-mix(in srgb, CanvasText 16%, transparent); }
 .page:last-child { margin-bottom: 0; }
 .page canvas { position: absolute; inset: 0; display: block; }
 /* The text, invisible over the drawing, so it can be selected and read aloud (the layout PDF.js's own viewer uses). */
