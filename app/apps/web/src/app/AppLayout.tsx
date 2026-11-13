@@ -63,7 +63,7 @@ const LOCKED_VIEWS = [{ id: 'conversation', label: 'Conversation' }, { id: 'task
 const SIDE_WIDTHS = { full: '--side-w', rail: '--rail-w' } as const;
 
 /** A view that takes the panel's whole content: opening another one over it leaves "‹ back" (Spokój rule 2). */
-const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision', 'propose-decision']);
+const REPLACING = new Set(['owned', 'thought-tasks', 'work', 'decision']);
 const replaces = (view: DetailsView) => typeof view === 'object' && REPLACING.has(view.kind);
 const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision', 'thought-tasks': 'Tasks' };
 /**
@@ -79,7 +79,6 @@ const panelHeading = (view: DetailsView, placeLabel: string): { title: string; c
   if (view === 'connect-ai') return asked('Connect your AI');
   switch (view.kind) {
     case 'add-to-doc': return asked('Add to a Wiki page');
-    case 'propose-decision': return asked('Propose a decision');
     case 'people': return named('People and encryption');
     case 'overview': return named(view.messageId ? 'Linked objects' : placeLabel);
     default: return named('Details');
@@ -97,8 +96,8 @@ const NO_ORIGIN = { key: '', path: '/', label: '' };
 interface DetailsPlace { open: boolean; view: DetailsView; trail: { label: string; view: DetailsView }[]; scroll: number; owned: boolean }
 const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-panel__body')?.scrollTop ?? 0;
 /**
- * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
- * Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
+ * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Add to docs,
+ * Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
  */
 const KEPT_VIEWS = new Set(['work', 'decision', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
@@ -440,17 +439,14 @@ function AppLayoutContent() {
     const open = params.get('open') ?? '';
     const match = /^(work|decision):([0-9a-f-]{36})$/i.exec(open);
     const people = open === 'people' && /^\/projects\/[^/]+/.test(location.pathname);
-    // The phone's "+" Create → Decision (F-026 S2) opens "Propose a decision" on its project.
-    const propose = open === 'propose-decision' && projectId ? projectId : null;
-    if (!match && !people && !propose) return;
+    if (!match && !people) return;
     openedAt.current = location.key;
     params.delete('open');
     const search = params.toString();
     // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
-    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() }
-      : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview' });
-  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell, projectId]);
+    shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision', id: match[2]!.toLowerCase() } : { kind: 'overview' });
+  }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
   useEffect(() => {

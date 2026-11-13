@@ -4,26 +4,26 @@ import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, StatusGlyph, useToast, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, StatusGlyph, useToast } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
-import { useShellActions, type ObjectView, type WorkFormView } from '../app/shellContext';
+import { useShellActions, type ObjectView } from '../app/shellContext';
 import { useNeedsYou, announceInboxChange } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
-import { acceptDecision, proposeDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
-import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
+import { acceptDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
+import { STATUS_LABEL, decisionLine, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
 import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
-import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
+import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
 import { ActivityTimeline, TaskComposer, useTaskActivity } from './TaskActivity';
 import { LinkThoughtButton, LinkedThoughts, useThoughtLinks } from './TaskThoughtLinks';
@@ -85,13 +85,13 @@ interface PanelCommands {
   isCurrent: () => boolean;
 }
 
-/** Object/form scope owns private state; versions and paging never remount it. */
-export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
+/** Object scope owns private state; versions and paging never remount it. */
+export function WorkDetails({ view }: { view: ObjectView }) {
   const { me } = useShellData();
   const shell = useProjectShell();
   const projectId = view.projectId ?? shell?.project.id ?? '';
   const accountId = me.user.id;
-  const key = JSON.stringify([accountId, projectId, view.kind, 'id' in view ? view.id : [view.source?.messageId, view.workId]]);
+  const key = JSON.stringify([accountId, projectId, view.kind, view.id]);
   // Returning to the same object starts a new ownership lifetime. An earlier A command
   // must stay retired after A → B → A, even though its serialized scope matches again.
   const owner = useMemo(() => ({ key }), [key]);
@@ -113,15 +113,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const load = useCallback((signal: AbortSignal) => loadContext(projectId, signal), [projectId]);
   const contextRead = useWorkRead(projectId ? { accountId, projectId, selector: 'detail-context' } : null, load, tick, revalidator.state === 'idle');
   const context = contextRead.phase === 'ready' || contextRead.phase === 'refreshing' ? contextRead.value : null;
-  const own = useNativeOwn(accountId, projectId, 'id' in view ? view.kind : 'work', 'id' in view ? view.id : undefined, !!context, tick);
+  const own = useNativeOwn(accountId, projectId, view.kind, view.id, !!context, tick);
   const detail = context ? own.value : null;
   const relations = useDetailRelations(accountId, projectId, detail);
   const [shownWith, setShownWith] = useState<string | null>(null);
   const unavailable = contextRead.phase === 'unavailable' || own.read.phase === 'unavailable';
-  const contextStatus = contextRead.phase === 'unavailable'
-    ? <p className="wd-error" role="alert">Space context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
-    : !context ? <p className="wd-muted" role="status">Loading space context…</p> : null;
-  if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
   if (!projectId || unavailable) {
     // A read that failed for now is said as every place says it, with Try again and no server words (#1369); one that is gone or closed is "Not available".
     const failure = contextRead.phase === 'unavailable' ? contextRead.error : own.read.phase === 'unavailable' ? own.read.error : null;
@@ -158,31 +154,6 @@ function RelationPages({ relations }: { relations: DetailRelations }) {
 function emptyLinks(relations: DetailRelations, empty: string) {
   return relations.complete ? empty : relations.page ? 'No matching links on this page.' : relations.busy ? 'Loading relationships…' : 'Relationships are unavailable.';
 }
-
-/** Whether a picker's choices need their pager: another page, or a read that is not ready (Spokój rule 4, #763 B6). */
-function choicesPaged(choices: DetailChoices) {
-  const page = choices.page;
-  return !page || !!page.previousCursor || !!page.nextCursor || page.before > 0;
-}
-
-/** `quiet`: a complete single page shows no pager at all (Spokój rule 4: no pagination for three items, #763 B6). */
-function ChoicePages({ choices, label, quiet = false }: { choices: DetailChoices; label: string; quiet?: boolean }) {
-  if (quiet && !choicesPaged(choices) && choices.read.phase !== 'unavailable') return null;
-  return <div><WorkPagination {...choices} label={label} noun="choices" />
-    {choices.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Choices could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={choices.onRefresh}>Refresh choices</button></p> : null}
-  </div>;
-}
-
-/** A form's primary action and its one line of help: a section like the others, so the button never crowds what is around it. */
-function SubmitSection({ help, children }: { help: ReactNode; children: ReactNode }) {
-  return (
-    <section className="details__sec wd-submit">
-      <div className="wd-actions">{children}</div>
-      <p className="wd-muted">{help}</p>
-    </section>
-  );
-}
-
 
 /** Buttons and links to the other ends of an object's links. */
 function Linked({ items, empty }: { items: { key: string; label: ReactNode; open: () => void; hint?: string }[]; empty?: string }) {
@@ -796,75 +767,5 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
       <IdsLine>Version {decision.version}</IdsLine>
     </div>
-  );
-}
-
-function SourcePreview({ view }: { view: WorkFormView }) {
-  if (!view.source) return null;
-  return <blockquote className="wd-source"><span>From the message</span>{firstLine(view.source.text, 280)}</blockquote>;
-}
-
-function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: { view: WorkFormView; context: Context | null; contextStatus: ReactNode; revision: number; isCurrent: () => boolean }) {
-  const { openDetails } = useShellActions();
-  const revalidator = useRevalidator();
-  const { me } = useShellData();
-  const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'accepted_decisions' }, !!context, revision);
-  const current = candidates.page?.items.filter((item) => item.kind === 'decision') ?? [];
-  // Words typed after /decide win over the source's own: the source then says where they came from.
-  // A short title from the message's first clause, not the whole message (#763 WF-3).
-  const [title, setTitle] = useState(view.title ?? (view.source ? firstClause(firstLine(view.source.text)) : ''));
-  const [rationale, setRationale] = useState('');
-  const [supersedes, setSupersedes] = useState('');
-  const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);
-  const chosen = selected.value?.object.kind === 'decision' ? selected.value.object : null;
-  const canSubmit = !!context && !!candidates.page && (!supersedes || chosen?.status === 'accepted');
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const rationaleId = useId();
-  const replacesId = useId();
-  const edit = <T,>(set: (value: T) => void) => (value: T) => { set(value); setAttempt(crypto.randomUUID()); setError(''); };
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || busy || !canSubmit) return;
-    setBusy(true); setError('');
-    try {
-      const decision = await proposeDecision(view.projectId, {
-        title: title.trim(), rationale, ...(supersedes ? { supersedes } : {}),
-        ...(view.source ? { sources: [{ type: 'message', id: view.source.messageId }] } : {}),
-        ...(view.workId ? { affects: [view.workId] } : {}),
-      }, attempt);
-      if (!isCurrent()) return;
-      revalidator.revalidate();
-      // The form took the place of what it was opened from; the new decision does too, so "‹ back" still leads there.
-      openDetails({ kind: 'decision', id: decision.id, projectId: view.projectId }, { back: 'keep' });
-    } catch (cause) { if (isCurrent()) setError(readable(cause)); }
-    finally { if (isCurrent()) setBusy(false); }
-  }
-
-  return (
-    <form className="details wd" onSubmit={(event) => void submit(event)}>
-      {/* The panel's heading is "Propose a decision" (#1058): one title (#763 B6). */}
-      {contextStatus}
-      {context ? <SourcePreview view={view} /> : null}
-      <fieldset className="wd-form" disabled={busy}>
-        <Input label="Decision" value={title} onChange={(event) => edit(setTitle)(event.target.value)} required maxLength={200} />
-        <label htmlFor={rationaleId}>Why</label>
-        <textarea id={rationaleId} value={rationale} onChange={(event) => edit(setRationale)(event.target.value)} maxLength={20000} rows={4} placeholder="What makes this the right call" />
-        <>
-          <label htmlFor={replacesId}>Does it replace an earlier one?</label>
-          <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
-            <Option value="">No, this is a new decision</Option>
-            {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected decision (not loaded)'}</Option> : null}
-            {current.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
-          </Select>
-        </>
-      </fieldset>
-      <ChoicePages choices={candidates} label="Choices it can replace" quiet />
-      {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected decision must be accepted before this one can replace it.</p> : null}
-      {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
-      <SubmitSection help={view.source ? 'A person with write access accepts it. The message stays where it is and links here.' : 'A person with write access accepts it.'}><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
-    </form>
   );
 }

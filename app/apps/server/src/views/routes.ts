@@ -89,15 +89,14 @@ export async function viewRoutes(app: FastifyInstance, { db, sessions, storage }
     const roots = await conversations.listRoots(principal, projectId, {});
     const messageIds = [...new Set(roots.roots.slice(-WORK_READ_LIMITS.sourceIds).map((root) => root.message.id))].sort();
     const reads = nativeWorkReadUseCases(db, sessions, session, request.headers);
-    const [taskNotices, objectNotices, materials, agentQuestions, workAssociations] = await Promise.all([
+    const [taskNotices, objectNotices, agentQuestions, workAssociations] = await Promise.all([
       announcements(request, 'task notices', () => work.listTaskNotices(principal, roots.projectId, { limit: CONVERSATION_VIEW_LIMITS.notices, offset: 0 })),
       announcements(request, 'object notices', () => work.listObjectNotices(principal, roots.projectId, { limit: CONVERSATION_VIEW_LIMITS.notices, offset: 0 })),
-      conversations.listMaterials(principal, roots.projectId, { limit: CONVERSATION_VIEW_LIMITS.materials, offset: 0 }),
       // AG-10: while the space's AI is off its questions route refuses; the view leaves them out.
       context(request, 'agent questions', async () => await aiAllowedInProject(db, roots.projectId) ? questions.list(principal, roots.projectId) : null),
       messageIds.length ? context(request, 'work associations', () => reads.associations(principal, roots.projectId,
         new URLSearchParams({ relation: 'source', limit: String(WORK_READ_LIMITS.defaultPage), messageIds: messageIds.join(',') }))) : null,
     ]);
-    return { projectId: roots.projectId, roots, taskNotices, objectNotices, materials, agentQuestions, workAssociations };
+    return { projectId: roots.projectId, roots, taskNotices, objectNotices, agentQuestions, workAssociations };
   });
 }

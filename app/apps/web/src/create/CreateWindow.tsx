@@ -19,6 +19,8 @@ import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery
 import { createDoc, docUrl } from '../docs/api';
 import { holdTyping } from '../docs/typeAhead';
 import { createWork, proposeDecision } from '../work/api';
+import { useWorkChoices } from '../work/useDetailReads';
+import { WorkPagination } from '../work/WorkPagination';
 import { STATUS_LABEL } from '../work/format';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
@@ -501,16 +503,19 @@ function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelP
 }
 
 /**
- * Decision: a proposal in the chosen project, as the composer's /decide makes it. One made from a message (its menu's
- * Propose a decision) starts from the message's first clause, selected, with the message quoted as its source (#763 WF-3).
- * "Decision proposed · Undo" follows, and the proposal reaches the people who can accept it only when that window ends.
+ * Decision: a proposal in the chosen project, the one form for New › Decision and for the composer's `/decide` (#1419). One made from a
+ * message or a thread starts from its words with the message quoted as its source (#763 WF-3). "Decision proposed · Undo" follows, and the
+ * proposal reaches the people who can accept it only when that window ends.
  */
 function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, request }: PanelProps & { request: CreateRequest }) {
   const { projects } = useShellData();
-  const { openDetails } = useShellActions();
   const revalidator = useRevalidator();
   const toast = useToast();
   const [why, setWhy] = useState('');
+  // "Replace an accepted decision…" shows its choice here, in the same window; the choice is of the space it was made in.
+  const [replacing, setReplacing] = useState(false);
+  const [replaces, setReplaces] = useState<{ projectId: string; id: string; title: string } | null>(null);
+  const supersedes = replacing && replaces?.projectId === projectId ? replaces : null;
   // Nothing is sent while the window is open: proposing is held for Undo, so the form never waits on the server.
   const busy = false;
   const inFlight = useRef(false);
@@ -527,11 +532,13 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
     if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
     const snapshot = carried.begin();
-    const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
+    const command = { title, ...(why.trim() ? { rationale: why.trim() } : {}), ...(supersedes ? { supersedes: supersedes.id } : {}), ...(source ? { sources: [{ type: 'message' as const, id: source.ref.id }] } : {}) };
     const target = project.id;
     const handle = startProposal((key, keepalive) => proposeDecision(target, command, key, keepalive), (outcome) => {
       revalidator.revalidate();
-      if (outcome !== 'accepted') toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
+      // A `/decide` keeps its words in the composer until the decision is proposed, as `/task` does until the task exists.
+      if (outcome === 'accepted') request.onCreated?.();
+      else toast({ tone: 'danger', message: `“${title}” wasn’t proposed. Nothing changed; propose it again.` });
     });
     carried.made(snapshot);
     // Stays set: the window closes, and a second submit in the same tick must not hold a second proposal.
@@ -552,13 +559,33 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
-        {/* Replacing an accepted decision lives in the full form in Details, with the same text and source. */}
-        <button type="button" className="create__more" onClick={() => {
-          onClose();
-          openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });
-        }}>Replace an accepted decision…</button>
+        {replacing ? <ReplaceChoice key={project.id} projectId={project.id} value={supersedes?.id ?? ''} onChange={(next) => setReplaces(next ? { projectId: project.id, ...next } : null)} />
+          : <button type="button" className="create__more" onClick={() => setReplacing(true)}>Replace an accepted decision…</button>}
       </> : <p className="create__note">There is no space yet. Make one with New space, then propose its decisions here.</p>}
     </Panel>
+  );
+}
+
+/** The accepted decisions a new one can replace: a choice in the decision form, read only when asked for, with Next and Previous past 50 (#1419). */
+function ReplaceChoice({ projectId, value, onChange }: { projectId: string; value: string; onChange: (next: { id: string; title: string } | null) => void }) {
+  const { me } = useShellData();
+  const choices = useWorkChoices(me.user.id, projectId, { purpose: 'choices', choice: 'accepted_decisions' });
+  const id = useId();
+  const items = choices.page?.items.filter((item) => item.kind === 'decision') ?? [];
+  const page = choices.page;
+  const paged = !!page && (!!page.previousCursor || !!page.nextCursor || page.before > 0);
+  const [kept, setKept] = useState<{ id: string; title: string } | null>(null);
+  return (
+    <div className="create__replace">
+      <label htmlFor={id}>Does it replace an earlier decision?</label>
+      <Select id={id} value={value} disabled={!page} onChange={(next) => { const found = items.find((item) => item.id === next); const chosen = next ? { id: next, title: found?.title ?? kept?.title ?? '' } : null; setKept(chosen); onChange(chosen); }}>
+        <Option value="">No, this is a new decision</Option>
+        {value && !items.some((item) => item.id === value) ? <Option value={value}>{kept?.title || 'The chosen decision'}</Option> : null}
+        {items.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
+      </Select>
+      {paged ? <WorkPagination {...choices} label="Decisions it can replace" noun="decisions" stepsWhenPaged /> : null}
+      {choices.read.phase === 'unavailable' ? <p className="create__error" role="alert">The decisions could not be loaded. <button type="button" className="create__more" onClick={choices.onRefresh}>Try again</button></p> : null}
+    </div>
   );
 }
 

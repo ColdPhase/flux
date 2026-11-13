@@ -531,7 +531,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S2 | The phone tab bar is Home · Spaces · Inbox plus Search. There is none in a conversation. My map is a row on Home, not a tab. |
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
-| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". The assistant's suggestions are in that menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
+| S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`: these four, no more), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". **`@` mentions people only** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): the assistant is not in it (asking it is `/ai`) and agents are not members of a space, so they are not listed (giving work to an agent is the task's Owner, S12). The assistant's suggestions are in the `/` menu, under `/ai`, and nowhere else (see [Agents and AI](#agents-and-ai)). |
 | S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
@@ -1221,6 +1221,14 @@ the composer. The right-hand phone above shows the sheet.
   nothing else: there is no "Create another" switch, on the computer or on the phone, and nothing is
   remembered between openings. After Create the window closes and the task opens in the panel as
   before. The toast reads "Task #12 created · Undo · Add another" (Undo first, as everywhere).
+- **A decision is one form** (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)). New ›
+  Decision and `/decide …` in a conversation open the same Create window on Decision, in the same words: "What is being decided?" with
+  what was typed after `/decide`, "Why this is the right call (optional)", the message it came from quoted as "From the message" (a
+  `/decide` typed in a thread keeps the thread's opening message as its source, as `/task` does), and a quiet **Replace an accepted
+  decision…** that shows a "Replaces" choice of the space's accepted decisions in the same window, with Next and Previous when there
+  are more than one page of them. The footer says "Goes to the Inbox of those who can accept it" and the one primary is **Propose
+  decision**; then the toast "Decision proposed · Undo". There is no second form in the side panel: the words "A person with write
+  access accepts it" are gone. The composer keeps what was typed until the decision is proposed, as `/task` does.
 - **Batch entry is one step, and the space is kept.** **Add another** in the toast, or `C` pressed
   next, opens the window again on Task with the same space chosen, an empty title and the default
   status and owner. `C` keeps the space the last task was created in until the person goes to another
@@ -1851,6 +1859,8 @@ The renders are the approved mockups as drawn; where a later decision differs, f
 - **Messages and creating:**
   - Cite, Record a result, Details and Hand off on messages, and Cite on a space's map with its held citation in the
     composer (Copy link replaces it; Hubert, 2026-11-13, [#1376](https://github.com/ColdPhase/flux/issues/1376));
+  - the `/map`, `/handoff` and `/source` commands (the composer's `/` has four: `/task`, `/decide`, `/ai`, `/file`) and the Sources tray
+    `/source` opened; **My assistant** and the agents in the `@` list (#1419);
   - the separate "Ask an agent" and "Cite" buttons in the composer (S5), and "+" for attaching;
   - the column "+", the ⌘K Create group, and the Map toolbar's Create task and Note.
 - **Tasks:** Not pursued, the Result object, Results and Activity sections, and "Came from". Also

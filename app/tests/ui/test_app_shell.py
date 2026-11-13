@@ -99,25 +99,6 @@ def start_forwarder(origin: str, upstream: str) -> None:
     threading.Thread(target=accept, daemon=True).start()
 
 
-def open_sources(page: Page, scope=None) -> None:
-    """Opens the project's sources above a composer (#117), where materials are saved and cited.
-
-    A writer types "/source" in the composer (F-026 S5: no Sources button); a reader has no composer, so
-    its Sources button stays. With a thread open (UI116-1) pass the thread as `scope` to use its composer."""
-    within = scope or page
-    region = within.get_by_role("region", name="Space materials")
-    if not region.is_visible():
-        button = within.get_by_role("button", name=re.compile("^Sources"))
-        if button.count():
-            if button.get_attribute("aria-expanded") != "true":
-                button.click()
-        else:
-            field = scope.get_by_role("textbox") if scope else page.locator("#project-composer")
-            field.fill("/source")
-            field.press("Enter")
-    expect(region).to_be_visible()
-
-
 def thread_of(page: Page):
     """The open root's thread in the one panel: beside the stream on a computer, a sheet or overlay on a phone or tablet (UI116-1, #488)."""
     return page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
@@ -1053,20 +1034,11 @@ class AppShellJourney(unittest.TestCase):
         opening.hover()
         opening.get_by_role("button", name="Reply in thread", exact=True).click()
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Add material").click()
-        owner.get_by_label("Title").fill("Privacy options")
-        owner.get_by_label("Text").fill("PIR avoids storing images")
-        owner.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
-        owner.go_back()
-        expect(owner.get_by_label("Title")).to_have_value("Privacy options")
-        expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
-        owner.get_by_role("button", name="Save for this space").press("Enter")
-        expect(owner.get_by_text("Privacy options")).to_be_visible()
-        owner.get_by_role("button", name="Discuss this version").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
-        owner.get_by_label("Reply", exact=True).fill("This is the version we should prototype")
-        owner.get_by_role("button", name="Send reply").click()
+        # There is no Sources tray in the composer (#1419): a source saved for the space is cited by the API alone, and a reply that carries one shows its card.
+        saved = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": "Privacy options", "body": "PIR avoids storing images", "clientMutationId": str(uuid.uuid4())}, headers={"Origin": ORIGIN})
+        self.assertEqual(saved.status, 201, saved.text())
+        cited = owner.context.request.post(f"{ORIGIN}/api/v1/conversations/{conversation_id}/messages", data={"body": "This is the version we should prototype", "clientMessageId": str(uuid.uuid4()), "source": {"materialId": saved.json()["materialId"], "version": 1}}, headers={"Origin": ORIGIN})
+        self.assertEqual(cited.status, 201, cited.text())
         expect(owner.get_by_text("This is the version we should prototype", exact=True)).to_be_visible()
         source = owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))
         expect(source).to_be_visible()
@@ -1158,24 +1130,6 @@ class AppShellJourney(unittest.TestCase):
         owner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(owner.get_by_role("link", name=re.compile("Privacy options.*Wiki page · v1"))).to_be_visible()
 
-        read_failures = {"count": 0}
-        def fail_first_citation(route) -> None:
-            read_failures["count"] += 1
-            if read_failures["count"] == 1:
-                route.abort("failed")
-            else:
-                route.continue_()
-        owner.route("**/api/v1/materials/*/versions/1", fail_first_citation)
-        owner.get_by_label("Reply", exact=True).fill("Do not send this draft on read retry")
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Discuss this version").click()
-        expect(owner.get_by_role("button", name="Retry read")).to_be_visible()
-        owner.get_by_role("button", name="Retry read").click()
-        expect(thread_of(owner).locator(".composer-files__ref")).to_contain_text("Source: Privacy options · v1")
-        self.assertEqual(owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()["messages"][-1]["body"], "Reload after lost reply")
-        owner.get_by_label("Reply", exact=True).fill("")
-        owner.get_by_role("button", name="Remove material citation").click()
-        owner.unroute("**/api/v1/materials/*/versions/1", fail_first_citation)
 
         partner_email = f"partner+{int(time.time() * 1000)}@example.test"
         partner = self.page(signed_in=False)
@@ -1285,25 +1239,18 @@ class AppShellJourney(unittest.TestCase):
             self.assertEqual(result.status, 201, result.text())
             if index == 0:
                 first_id = result.json()["id"]
-            material = request.post(f"{ORIGIN}/api/v1/projects/{project_id}/materials", data={"title": f"Material {index:03}", "body": "A saved project note", "clientMutationId": str(uuid.uuid4())}, headers=headers)
-            self.assertEqual(material.status, 201, material.text())
         self.assertTrue(first_id)
         owner.reload()
-        open_sources(owner)
         # One stream (UI116-1): the newest 50 roots, then earlier windows on request.
         stream = owner.get_by_role("region", name="Messages")
         roots = stream.locator(".project-convo__message")
         expect(roots).to_have_count(50)
-        expect(owner.get_by_role("button", name="Load more materials")).to_be_visible()
         for loaded_count in (100, 101):
             stream.get_by_role("button", name="Load earlier messages").click()
             expect(roots).to_have_count(loaded_count)
         expect(stream.get_by_role("button", name="Load earlier messages")).to_have_count(0)
-        owner.get_by_role("button", name="Load more materials").click()
         expect(roots.first).to_contain_text("Thread 000")
-        expect(owner.get_by_role("article").filter(has_text="Material 000")).to_be_visible()
         self.assertEqual(roots.count(), 101)
-        self.assertEqual(owner.locator(".project-convo__material").count(), 101)
 
         for index in range(1, 121):
             result = request.post(f"{ORIGIN}/api/v1/conversations/{first_id}/messages", data={"body": f"Reply {index:03}", "clientMessageId": str(uuid.uuid4())}, headers=headers)
@@ -1359,26 +1306,6 @@ class AppShellJourney(unittest.TestCase):
         expect(held).to_have_count(0)
         expect(owner.get_by_text("Held reply", exact=True)).to_have_count(1)
         expect(reply_box).to_have_value("")
-
-        open_sources(owner, thread_of(owner))
-        owner.get_by_role("button", name="Add material").click()
-        owner.get_by_label("Title").fill("Held material")
-        owner.get_by_label("Text").fill("Do not lose this text")
-        owner.evaluate("""() => {
-          const actual = window.fetch.bind(window);
-          window.fetch = (input, init) => {
-            const url = typeof input === 'string' ? input : input.url;
-            if (url.includes('/materials') && init?.method === 'POST') {
-              return new Promise((resolve) => { window.releaseMaterial = () => resolve(actual(input, init)); });
-            }
-            return actual(input, init);
-          };
-        }""")
-        owner.get_by_role("button", name="Save for this space").click()
-        expect(owner.get_by_label("Title")).to_be_disabled()
-        expect(owner.get_by_label("Text")).to_be_disabled()
-        owner.evaluate("() => { window.releaseMaterial(); }")
-        expect(owner.get_by_role("article").filter(has_text="Held material")).to_be_visible()
 
     def test_14_your_agent_app_shows_how_to_connect_what_it_may_do_and_disconnects(self) -> None:
         """A first-time owner sees how a client signs in (one click, no form), sets what a connected client may do, and disconnects it (#859)."""

@@ -87,3 +87,31 @@ def create_other(page: Page, name: str) -> None:
     # A pointer on a tab goes on to its text one frame later (CreateWindow pointerOnTab). A fill into another field of
     # the window must not start before that focus move, or WebKit types into the text (#491).
     page.evaluate("new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
+
+
+def open_decision(page: Page) -> Locator:
+    """The Create window on its Decision tab, whichever way the device opens it: `C` on a computer, the "+" sheet's Decision row on a phone (#867)."""
+    if (page.viewport_size or {"width": 1500})["width"] <= 640:
+        page.get_by_role("button", name="Create", exact=True).click()
+        page.get_by_role("button", name="Decision", exact=True).click()
+    else:
+        page.locator("body").press("c")
+        create_other(page, "Decision")
+    decision = page.get_by_role("dialog", name="New decision")
+    expect(decision).to_be_visible()
+    return decision
+
+
+def propose_decision(page: Page, title: str, *, why: str | None = None, replaces: str | None = None) -> None:
+    """Proposes a decision through the one form (#1419): the words, why, what it replaces (an accepted decision's title), then Propose decision.
+    The proposal is held for Undo and reaches the people who can accept it when that window ends, so callers wait for it by its record."""
+    decision = open_decision(page)
+    decision.get_by_role("textbox", name="Decision", exact=True).fill(title)
+    if why:
+        decision.get_by_role("textbox", name="Why", exact=True).fill(why)
+    if replaces:
+        from app_select import choose
+        decision.get_by_role("button", name="Replace an accepted decision…").click()
+        choose(decision.get_by_label("Does it replace an earlier decision?", exact=True), label=replaces)
+    decision.get_by_role("button", name=re.compile("^Propose decision")).click()
+    expect(decision).to_have_count(0)

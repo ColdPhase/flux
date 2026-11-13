@@ -1,13 +1,10 @@
-"""Browser tests for the decision form's spacing and the proposed decision's surfaces (issues #692, #693).
+"""Browser tests for the proposed decision's surfaces (issue #693; the decision form is the Create window's since #1419).
 
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by
 FLUX_UI_BROWSER. One person owns a project with a current rule, a plain proposal and a proposal that
 replaces the rule (it names the decision it replaces and moves no task). For 390 x 844 and 1440 x 900, in light and dark, it
 measures what a person sees:
 
-* #692: in "Propose a decision" the pagination row, the "Propose decision" button and its help text
-  keep the panel's rhythm: 28 px between sections (`.details__sec`), 8 px inside one (the heading's
-  gap), and the help text never touches the button.
 * #693: the proposal's title block and its "Accept" block paint no background of their own (the panel
   surface is the only one), and the title, the "Proposed" row, every section heading, the accept text
   and the button start on one left edge.
@@ -162,37 +159,6 @@ class DecisionSurfaces(unittest.TestCase):
         shot(page, f"{name}-top")
         scroller.evaluate("el => { el.scrollTop = el.scrollHeight; }")
         shot(page, f"{name}-end")
-
-    # ---------------------------------------------------------------- #692: the form's rhythm
-
-    def test_02_the_form_keeps_the_panels_rhythm_around_its_button(self) -> None:
-        for label, view, phone in VIEWS:
-            for scheme in SCHEMES:
-                with self.subTest(view=label, scheme=scheme):
-                    page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=propose-decision", phone=phone, scheme=scheme, view=view)
-                    # One page of rules shows no pager (Spokój rule 4, #763 B6).
-                    expect(panel.get_by_label("Does it replace an earlier one?", exact=True)).to_be_enabled()
-                    expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
-                    panel.get_by_label("Decision", exact=True).fill("Keep a manual off switch")
-                    expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
-                    m = self.measure(panel)
-                    self.shots(page, panel, f"form-{label}-{scheme}")
-                    print(f"FORM {label} {scheme}: form->actions {m['actions']['top'] - m['form']['bottom']:.1f}, "
-                          f"actions->help {m['help']['top'] - m['actions']['bottom']:.1f}, heading gap {m['headingGap']}", flush=True)
-                    above = m["actions"]["top"] - m["form"]["bottom"]
-                    between = m["help"]["top"] - m["actions"]["bottom"]
-                    self.assertAlmostEqual(above, 28, delta=1, msg="the button starts a section: the panel's 28 px below the fields")
-                    self.assertAlmostEqual(between, 8, delta=1, msg="the help text sits 8 px under the button, as under a heading")
-                    self.assertGreaterEqual(between, 8, "the help text never touches the button")
-                    # The form ends with its help text: the space's audience is the default and is not said below it (#871).
-                    self.assertNotIn("Who can see this", panel.inner_text())
-                    self.assertEqual(m["paints"], [], "no element paints a background other than the panel's surface")
-                    for part in m["lefts"]:
-                        if part["submit"]:
-                            # A panel form's primary sits at the right, under the fields it sends (#789 SP-5).
-                            self.assertAlmostEqual(part["right"], 0, delta=1, msg=f"{part['name']} ends on the panel's right edge")
-                        else:
-                            self.assertAlmostEqual(part["left"], 0, delta=1, msg=f"{part['name']} starts on the panel's left edge")
 
     # ---------------------------------------------------------------- #693: surfaces and one left edge
 

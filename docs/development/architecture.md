@@ -259,9 +259,8 @@ Resolved outside the allowlist: the web app has one transport and feature folder
 `fetch` (push, sign-out, the export bundle, file bytes, the handoff packet and the reachability probe use its `send`); every API
 path comes from a `@flux/contracts` helper; the web layer's rule is an allow-list. `conversation-api.ts` is split by resource into
 `project/api.ts`, `conversations/api.ts`, `materials/api.ts` and `drafts/api.ts`; the browser draft store, private notes and project
-creation moved to `drafts/`, `captures/` and `project/`; the project conversation's loader, feed model, thread reply and sources
-(`materials/useProjectMaterials.ts`, `MaterialTray.tsx`, whose form now keeps its text in the shared draft store) have their own
-modules. The pane itself is split into hooks that read and act (`paneCore.ts`, `useThreadReplies.ts` with the live refresh of #733,
+creation moved to `drafts/`, `captures/` and `project/`; the project conversation's loader, feed model and thread reply have their own
+modules (its Sources tray, `materials/useProjectMaterials.ts` and `MaterialTray.tsx`, went with `/source`, #1419). The pane itself is split into hooks that read and act (`paneCore.ts`, `useThreadReplies.ts` with the live refresh of #733,
 `useThreadReading.ts`, `useThreadPlace.ts`, `useComposerDrafts.ts`, `useComposerMenu.ts`, `useComposerSend.ts`, `useAssistantAsk.ts`,
 `useAskBar.ts`) and views that only render (`ThreadFeed.tsx`, `ThreadReply.tsx`, `PaneComposer.tsx`); the
 architecture test keeps every file of `conversations/` and `materials/` within 150 lines and their views free of API calls

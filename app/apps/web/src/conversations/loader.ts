@@ -1,5 +1,5 @@
 import type { LoaderFunctionArgs, ShouldRevalidateFunctionArgs } from 'react-router';
-import type { Conversation, ConversationRootWindow, Material, ObjectNotice, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
+import type { Conversation, ConversationRootWindow, ObjectNotice, Page, Project, TaskCreationNotice, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { listWorkspaceMembers } from '../project/api';
 import { spaceOf } from '../project/data';
@@ -7,7 +7,7 @@ import { getConversation, getConversationView } from './api';
 
 /** The project's one conversation (UI116-1): the newest roots and task announcements (UI116-3), and the thread a URL opens. */
 export interface ProjectData {
-  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; objectNotices: Page<ObjectNotice>; materials: Material[]; materialTotal: number; members: WorkspaceMember[]; conversation: Conversation | null;
+  project: Project; roots: ConversationRootWindow; notices: Page<TaskCreationNotice>; objectNotices: Page<ObjectNotice>; members: WorkspaceMember[]; conversation: Conversation | null;
 }
 export async function projectConversationLoader({ params, request }: LoaderFunctionArgs): Promise<ProjectData> {
   const projectId = params.projectId!;
@@ -21,7 +21,7 @@ export async function projectConversationLoader({ params, request }: LoaderFunct
     params.conversationId ? getConversation(params.conversationId, request.signal) : null,
   ]);
   if (conversation && conversation.projectId !== projectId) throw new Response('Not found', { status: 404 });
-  return { project, roots: view.roots, notices: view.taskNotices, objectNotices: view.objectNotices, materials: view.materials.items, materialTotal: view.materials.total, members, conversation };
+  return { project, roots: view.roots, notices: view.taskNotices, objectNotices: view.objectNotices, members, conversation };
 }
 /** The stream stays mounted while a thread opens or closes; its loader refreshes the open thread then. */
 export function shouldRevalidateProjectConversation({ currentParams, nextParams, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {

@@ -598,8 +598,6 @@ class ReturnToOrigin(unittest.TestCase):
                 page.goto(f"/projects/{project}")
                 self.wait_stream(page)
                 expect(page.locator("li.project-convo__message", has_text=secret)).to_be_visible()
-                page.goto(f"/projects/{project}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
-                expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
                 page.wait_for_timeout(800)
                 kept = page.evaluate("() => Object.keys(sessionStorage).filter((key) => key.startsWith('flux:place:') && key !== 'flux:place:index')")
                 self.assertTrue(kept, "the places are kept while someone reads")

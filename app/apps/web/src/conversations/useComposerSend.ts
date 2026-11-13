@@ -1,14 +1,11 @@
 import type { KeyboardEvent } from 'react';
-import { plainMessageText, type Conversation, type Material } from '@flux/contracts';
+import { plainMessageText, type Conversation } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
-import { getMaterialVersion } from '../materials/api';
 import { getProject } from '../project/api';
-import { useAddToMap } from '../project/addToMap';
 import type { useTyping } from '../typing/useTyping';
 import { sendsOnEnter } from '../ui';
 import { firstLine } from '../work/format';
-import { readableError } from './errors';
 import type { AssistantAsk } from './useAssistantAsk';
 import type { ComposerDrafts } from './useComposerDrafts';
 import type { ComposerMenuState } from './useComposerMenu';
@@ -18,27 +15,19 @@ import type { PaneCore } from './paneCore';
 interface Options {
   drafts: ComposerDrafts; menu: ComposerMenuState; ask: AssistantAsk; thread: ThreadReplies; typing: ReturnType<typeof useTyping>;
   touch: boolean; rootMessageId: string | null; newestRootAt?: string; scrollToEnd: () => void;
-  hideIfDenied: (cause: unknown) => void; closeSources: () => void;
+  hideIfDenied: (cause: unknown) => void;
   onPosted?: (conversation: Conversation) => void; onSending?: () => void;
 }
 
-// `/task …`, `/decide …`, `/map …` and `/handoff …` act when sent; the words after the command are the title.
-const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', map: 'Lockers in the hallway', handoff: 'Calibrate the probes' } as const;
+// `/task …` and `/decide …` act when sent; the words after the command are the title. Both open the one Create window.
+const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier' } as const;
 
 /** What Send does in a pane (#264): a message joins the end at once and the field empties; a command opens its window. */
 export function useComposerSend({ project, conversation, writable, aiOff, guest, composerId }: PaneCore, options: Options) {
-  const { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd, hideIfDenied, closeSources, onPosted, onSending } = options;
+  const { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd, hideIfDenied, onPosted, onSending } = options;
   const { asking, publicComposer, draft, captureScope } = drafts;
-  const { openDetails, openCreate } = useShellActions();
-  const addToMap = useAddToMap(project);
+  const { openCreate } = useShellActions();
   async function runCommand(name: keyof typeof COMMAND_EXAMPLE, text: string) {
-    // `/map` alone in a thread puts its opening message on the map (CW-1), with that message as the thought's source.
-    if (name === 'map' && (text || (conversation && rootMessageId))) {
-      const opening = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
-      addToMap({ body: text || opening!.text, ...(opening ? { messageId: opening.messageId } : {}) });
-      publicComposer.consumeBody(publicComposer.draft);
-      return;
-    }
     if (!text) { menu.setCommandHint(`Say what it is after the command, for example /${name} ${COMMAND_EXAMPLE[name]}.`); document.getElementById(composerId)?.focus(); return; }
     // Consume that exact stored revision under its original key. Changing panes does not leave a
     // successful command ready to send again; words typed later or in another conversation stay.
@@ -46,18 +35,17 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     const consume = () => publicComposer.consumeBody(submitted);
     // Typed in a thread, the words are about that thread (#694): its opening message is the source, so the thread shows what came of it.
     const fromThread = conversation && rootMessageId ? { messageId: rootMessageId, text: conversation.firstMessageBody } : null;
-    if (name === 'decide') { openDetails({ kind: 'propose-decision', projectId: project.id, title: text, ...(fromThread ? { source: { ...fromThread, text: plainMessageText(fromThread.text) } } : {}) }); consume(); return; }
-    // A task, or a hand-off (a task for an agent whose owner the window asks for), opens the one Create window with the words as its title.
-    // The composer keeps its words until the task exists: closing the window loses nothing (and a newer draft is never consumed).
-    openCreate({ kind: 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
+    // `/task` and `/decide` open the one Create window with the words as its title, the thread's opening message as its source.
+    // The composer keeps its words until the task or decision exists: closing the window loses nothing (and a newer draft is never consumed).
+    openCreate({ kind: name === 'decide' ? 'decision' : 'task', projectId: project.id, title: firstLine(text), onCreated: consume,
       ...(fromThread ? { sources: [{ ref: { type: 'message' as const, id: fromThread.messageId }, label: firstLine(plainMessageText(fromThread.text)) }] } : {}) });
   }
   async function send() {
     typing.stop();
     if (asking) { await ask.sendToAssistant(); return; }
-    // AG-10: `/ai` and `/handoff` in a space whose AI is off are not messages for the people here: the words stay in the field.
-    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? 'Guests don’t have AI.' : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
-    const command = writable ? /^\/(task|decide|map|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
+    // AG-10: `/ai` in a space whose AI is off is not a message for the people here: the words stay in the field.
+    if (aiOff && writable && /^\/ai(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? 'Guests don’t have AI.' : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
+    const command = writable ? /^\/(task|decide)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
     if (!writable) return;
@@ -84,16 +72,6 @@ export function useComposerSend({ project, conversation, writable, aiOff, guest,
     if (asking && (event.key === 'Escape' || (event.key === 'Backspace' && !draft))) { event.preventDefault(); event.stopPropagation(); ask.exitAsk(); return; }
     if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
-  /** "Discuss this version": the saved source joins the draft as its reference (#36). */
-  async function cite(material: Material) {
-    thread.setReadFailure(null);
-    try {
-      const snapshot = await getMaterialVersion(material.materialId, material.version);
-      const selected = { title: snapshot.title, materialId: material.materialId, version: snapshot.version };
-      publicComposer.setReference(selected); closeSources();
-      document.getElementById(composerId)?.focus();
-    } catch (cause) { hideIfDenied(cause); thread.setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
-  }
-  return { send, onKey, cite };
+  return { send, onKey };
 }
 export type ComposerSend = ReturnType<typeof useComposerSend>;
