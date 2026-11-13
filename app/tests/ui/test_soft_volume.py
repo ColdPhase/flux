@@ -76,7 +76,7 @@ class SoftVolume(unittest.TestCase):
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist Mono", family)
 
     def assert_sans(self, node) -> None:
-        # File names are text, not numbers or labels: Geist, served by Flux (F-026 §2).
+        # Names, and the time under a message (#1231), are text, not numbers or labels: Geist, served by Flux (F-026 §2).
         family = node.evaluate("e => getComputedStyle(e).fontFamily")
         self.assertEqual(family.split(",")[0].strip(" \"'"), "Geist", family)
 
@@ -180,10 +180,10 @@ class SoftVolume(unittest.TestCase):
                     expect(timestamp).to_be_visible()
                     expect(filename).to_have_text("calibration.csv")
                     expect(label).to_have_text("CSV")
-                    # The name is text (Geist); the timestamp and the file's type label are mono.
-                    self.assert_sans(filename)
-                    for node in (timestamp, label):
-                        self.assert_mono(node)
+                    # The name and, since #1231 ("Time and who has read it"), the time under a message are text (Geist); the file's type label is mono.
+                    for node in (filename, timestamp):
+                        self.assert_sans(node)
+                    self.assert_mono(label)
                     # Exercise the actual upload draft, not an injected font demonstration.
                     with page.expect_file_chooser() as chooser:
                         replies.get_by_role("button", name="Attach files", exact=True).click()
