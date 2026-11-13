@@ -156,6 +156,15 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   neither reaches the tools. The supervisor's secret is in a non-dumpable root process.
 - **Without Landlock** (a kernel before 5.13, or one where it is not enabled), the runtime keeps its CLIs as before: Flux's
   tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs it once at start.
+- **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex names a file of its scratch by its path; the Flux
+  server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
+  while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
+  out of it: the kernel refuses), at most the largest file Flux takes. The bytes are streamed through and never kept by the runtime.
+  Any run, an API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's
+  own upload (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61,
+  the same preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes
+  with the run, and joins the answer only on Approve (it goes after 7 days otherwise). Never in an encrypted space; not yet in the
+  agent's private chat. Its stored object type is `picture`, the answer's attachment type (no new type in v0.2.1).
 - **Prompt injection** ([accepted risk 10](#accepted-risks)): a run that reads hostile content can now run commands, in its
   own sandbox. What that reaches is what the sandbox and the egress allow, nothing more.
 - **Pictures go only through two Flux tools** ([#1217](https://github.com/ColdPhase/flux/issues/1217), founder

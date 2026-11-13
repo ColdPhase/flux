@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { delimiter, isAbsolute, join, relative, resolve } from 'node:path';
@@ -231,6 +231,15 @@ function ownShell(client: FakeClient, command: string): { shell: string | null; 
 /** Whether a file tool's path lies in the working directory (Claude Code's `--restricted`, observed with 2.1.285 on 2026-11-13). */
 const inWorkingDirectory = (path: string) => { const rel = relative(process.cwd(), resolve(process.cwd(), path)); return !rel.startsWith('..') && !isAbsolute(rel); };
 
+/**
+ * A script's arguments as the model would write them from its request (#1437): `{{spaceId}}` is the space id the request names (`space id
+ * <uuid>`), `{{uuid}}` a new UUID each time.
+ */
+function fillArgs(args: Record<string, unknown>, prompt: string): Record<string, unknown> {
+  const space = /space id ([0-9a-f-]{36})/.exec(prompt)?.[1] ?? '';
+  return Object.fromEntries(Object.entries(args).map(([key, value]) => [key, value === '{{spaceId}}' ? space : value === '{{uuid}}' ? randomUUID() : value]));
+}
+
 /** `${VAR}` in an MCP header, from the CLI's own environment (as Claude Code expands it). */
 const expand = (value: string) => value.replace(/\$\{([A-Z0-9_]+)\}/g, (_match, name: string) => process.env[name] ?? '');
 
@@ -391,10 +400,11 @@ async function claudeRun(argv: string[]): Promise<number> {
     return { name: 'WebSearch', isError: planned.error === true, text };
   };
   for (const probe of script.probes ?? []) await call(probe.name, probe.args ?? {});
-  for (const [index, planned] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
+  for (const [index, scripted] of (script.calls ?? [{ name: 'flux_list_contexts' }]).entries()) {
     if (stopping) return 130;
     if (index > 0 && script.delayMs) await new Promise((wait) => setTimeout(wait, Math.min(script.delayMs!, 30_000)));
     const useId = `toolu_${index + 1}`;
+    const planned = { ...scripted, ...(scripted.args ? { args: fillArgs(scripted.args, prompt) } : {}) };
     if (planned.name === 'WebSearch') {
       emit({ type: 'assistant', session_id: session, message: { id: `msg_${index + 1}`, role: 'assistant', content: [{ type: 'tool_use', ...(planned.noId ? {} : { id: useId }), name: 'WebSearch', input: planned.args ?? {} }] } });
       await pause(50);

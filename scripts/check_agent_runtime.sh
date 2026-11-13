@@ -251,7 +251,7 @@ print("the CLI got the run token only in FLUX_RUN_TOKEN, reached /mcp through ru
 if docker exec "$t_cid" test -e "/data/$t_binding/claude/projects"; then fail "a transcript remains in the binding directory"; fi
 docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl"
 
-step "9e. A run's own tools (#1437): from the sandbox shell, on the runtime's real networks, nothing but the egress (and with Landlock ABI 4 not even that)"
+step "9e. A run's own tools (#1437): from the sandbox shell, on the runtime's real networks, nothing but the egress (and with Landlock ABI 4 not even that); HTML to PDF with pandoc and typst, attached with flux_attach_file"
 abi=$(docker exec "$t_cid" /opt/flux-runtime/sandbox/flux-sandbox abi)
 [ "$abi" -ge 1 ] || fail "this host has no Landlock (ABI $abi): the runtime keeps the CLIs' tools off"
 tcp_rule=0; [ "$abi" -ge 4 ] && tcp_rule=1
@@ -265,7 +265,9 @@ env = " ".join(f"{k}={v}" for k, v in {
   "FLUX_PROBE_API_CONTROL": "$(ip_on "$(compose ps -q api)" runtime-control)", "FLUX_PROBE_WORKER": "$(ip_on "$(compose ps -q worker)" default)",
   "FLUX_PROBE_MANAGER_CONTROL": "$(ip_on "$(cid runtime-manager)" runtime-control)", "FLUX_PROBE_GATEWAY": "${gateway:-}"}.items())
 command = "cat > net.mjs <<'FLUXPROBE'\n" + probe + "FLUXPROBE\n" + env + " node net.mjs"
-print(json.dumps({"calls": [{"name": "Bash", "args": {"command": command}}, {"name": "flux_list_contexts"}]}))
+convert = "printf '<h1>Lamp sensor</h1><p>Fails below 5 lux.</p>' > report.html && pandoc report.html -o report.pdf --pdf-engine=typst && head -c 5 report.pdf"
+attach = {"name": "flux_attach_file", "args": {"projectId": "{{spaceId}}", "clientCommandId": "{{uuid}}", "path": "report.pdf"}}
+print(json.dumps({"calls": [{"name": "Bash", "args": {"command": command}}, {"name": "Bash", "args": {"command": convert}}, attach, {"name": "flux_list_contexts"}]}))
 PY
 docker exec -i -u "$(person_of "$t_binding")" "$t_cid" sh -c "cat > /data/$t_binding/claude/fake-run.json" < "$work/sandbox-run.json"
 out=$(live sandbox-run T); printf '%s\n' "$out"
@@ -273,10 +275,14 @@ docker exec "$t_cid" cat "/data/$t_binding/claude/fake-calls.jsonl" | python3 -c
 import json, sys
 calls = [json.loads(line) for line in sys.stdin if line.strip()]
 own = [c for c in calls if c.get("event") == "own_tool"]
-assert len(own) == 1 and own[0]["shell"] == "/opt/flux-runtime/sandbox/bin/bash", own
+assert len(own) == 2 and all(o["shell"] == "/opt/flux-runtime/sandbox/bin/bash" for o in own), own
 print(own[0]["output"])
 assert "NETPROBE=ok" in own[0]["output"], own[0]["output"]
-print("the run'"'"'s own shell reached nothing but what the sandbox and the egress allow")'
+assert own[1]["exit"] == 0 and "%PDF-" in own[1]["output"], own[1]
+attached = [c for c in calls if c.get("event") == "tool_result" and c.get("name") == "flux_attach_file"]
+assert attached and not attached[0]["isError"], attached
+print("the run'"'"'s own shell reached nothing but what the sandbox and the egress allow; pandoc and typst made a PDF it attached")'
+printf '%s\n' "$out" | grep -q '^ATTACHED=report.pdf [0-9]* %PDF-$' || fail "the PDF the run made in its scratch is not the file attached to its answer"
 [ -z "$(docker exec "$t_cid" ls -A /scratch)" ] || fail "the run left its scratch"
 docker exec -u "$(person_of "$t_binding")" "$t_cid" sh -c "rm -f /data/$t_binding/claude/fake-calls.jsonl /data/$t_binding/claude/fake-run.json"
 
