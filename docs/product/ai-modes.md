@@ -268,7 +268,8 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
   CLI's domain, under the tools' own confinement. The broker starts the real shell in the scratch, in a session of its own,
   passes on the signals the CLI sends, ends the shell's session when the CLI lets go of it, and returns its exit status. Its
   socket is in a directory of the run only the person can enter; the tools cannot reach it (no socket of any kind). The
-  supervisor still kills the whole run at once when Codex reports a command outside the sandbox shell (defence in depth).
+  supervisor still kills the whole run at once when Codex reports a command outside the sandbox shell (defence in depth). pi runs the
+  same way (#1441): its domain executes only `node` and the sandbox, its `bash` is the sandbox shell, and its run has a broker too.
 - **A fixed toolbox, nothing installed** (founder decision 2026-11-13, #1437). Agents never install tools from the internet (no
   PyPI, npm or apk through the egress; the sandbox has no network). The runtime image ships a pinned toolbox for every harness:
   Python 3 with pandas, openpyxl, python-docx and matplotlib, Node, pandoc with typst for PDF (no browser), jq, ripgrep and libvips's
