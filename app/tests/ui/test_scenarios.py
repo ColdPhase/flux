@@ -919,7 +919,7 @@ class ScenarioJourney:
         card = open_item(jonas.locator(".nyc", has_text=D2))
         expect(card.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
         expect(card.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
-        expect(card.locator(".agent-id").first).to_be_visible()
+        expect(card.locator(".agent-tag").first).to_be_visible()
         accept = card.get_by_role("button", name=re.compile("^Accept"))
         accept.scroll_into_view_if_needed()
         self.shot(jonas, "3-replaces")
