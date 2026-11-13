@@ -725,7 +725,8 @@ These functional rules from UI116-4 remain required:
     button follow as in any file row. Pressing the poster or the name opens the viewer; the download
     button downloads. A video without a poster (the sender's browser could not draw one, or an
     encrypted space) keeps the page icon with its video pictogram and the same row. The phone draws
-    the same row at the same size.
+    the same row; under 480 px the poster is 56 × 32 so that the name and "Video · 0:42 · 14.2 MiB"
+    keep their room.
   - **The viewer** is the file preview's frame (always dark, Close at the top left, the name with
     "Video · size" in the middle, Download in the bottom bar, Esc closes and focus returns to the
     row). The stage holds the player, `object-fit: contain` on black, up to the stage's size, with
