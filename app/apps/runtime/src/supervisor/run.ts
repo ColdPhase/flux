@@ -371,6 +371,8 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   const started = new Set<string>();
   let searches = 0;
 
+  /** The person's processes being ended at once (killNow): the clean-up waits for it, so two ends never kill each other's helper. */
+  let killing: Promise<boolean> | null = null;
   const result = await new Promise<Extract<SupervisorResult, { kind: 'run' }>>((resolve) => {
     let outcome: RunOutcome | null = null;
     let answer: string | null = null;
@@ -399,7 +401,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
      * of its own session, outside that group, and a command Codex started outside the sandbox (its `exec_command` takes the shell the model
      * names) runs under the CLI's outer domain only, so it must not live on until the clean-up.
      */
-    const killNow = (reason: RunOutcome) => { outcome ??= reason; killGroup('SIGKILL'); void endProcesses(person); };
+    const killNow = (reason: RunOutcome) => { outcome ??= reason; killGroup('SIGKILL'); killing ??= endProcesses(person); };
     runs.set(request.runId, { bindingId: request.bindingId, stop: () => {
       if (stopping || done) return;
       stopping = true;
@@ -664,6 +666,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   }
   runs.delete(request.runId);
   finishedOf(config).set(request.runId, Date.now());
+  if (killing) await killing;
   await cleanUp(config, runDir, dir, person, request.client, scratch);
   // A run its own tools took outside the sandbox (#1437 review) may have changed the CLI's login (Codex's `apply_patch` writes its home): an
   // attacker's own login put there would carry the person's next runs to the attacker's account. The login the run started with comes back.
