@@ -109,3 +109,17 @@ test('leaving does not wait behind a publication in progress: the captures stop 
   assert.equal(stopped.includes('screen_share'), true, 'the screen capture stopped too');
   assert.equal(events.some((event) => event.startsWith('publish screen_share')), false, 'nothing was published after leaving');
 });
+
+test('a microphone turned off while the screen is being published again stops sending at once; its unpublication waits its turn', async () => {
+  const { connected, events, stopped, overlaps } = await connection(80);
+  const switched = connected.setScreenMode('motion');
+  await wait(25);
+  assert.equal(events.includes('unpublish screen_share:start'), true, 'the screen is being published again');
+  const off = connected.stopDevice('mic', { state: 'off', note: null });
+  assert.deepEqual(stopped, ['microphone'], 'the microphone capture stopped on the press');
+  assert.equal(connected.devices.mic!.state, 'off');
+  assert.equal(events.includes('unpublish microphone:start'), false, 'its unpublication waits for the screen step');
+  await Promise.all([switched, off]);
+  assert.equal(events.includes('unpublish microphone:end'), true);
+  assert.equal(overlaps(), 0, events.join(', '));
+});

@@ -395,14 +395,20 @@ export class LiveMediaConnection {
       await track.mediaStreamTrack.applyConstraints({ width: { max: width }, height: { max: height }, frameRate: { max: frameRate } }).catch(() => undefined);
       await local.unpublishTrack(track, false);
       // Stopped (Stop sharing, Quiet, leave) while switching: nothing is published again.
-      if (request !== this.generation.screen || this.connection !== 'connected') { track.stop(); return; }
+      if (request !== this.generation.screen || this.connection !== 'connected') {
+        track.stop();
+        // The connection dropped mid-switch (not a stop): the screen no longer goes out, and the button says so.
+        if (request === this.generation.screen) this.set('screen', { state: 'off', note: 'The screen could not switch and stopped. Nothing is shared.' });
+        return;
+      }
       await local.publishTrack(track, { ...settings.publish });
       this.screenSent = mode;
       if (request !== this.generation.screen) await this.unpublishNow(track);
     } catch {
       track.stop();
       await this.unpublishNow(track).catch(() => undefined);
-      this.set('screen', { state: 'off', note: 'The screen could not switch and stopped. Nothing is shared.' });
+      // Stopped meanwhile (Stop sharing, Quiet, leave): that stop already says what happened.
+      if (request === this.generation.screen) this.set('screen', { state: 'off', note: 'The screen could not switch and stopped. Nothing is shared.' });
     }
   }
 
@@ -564,7 +570,9 @@ export class LiveMediaConnection {
   private async stopDevice(kind: DeviceKind, status: DeviceStatus): Promise<DeviceStatus> {
     this.generation[kind]++;
     this.stopPending(kind);
-    // The device shows as off at once; its publication is taken back when the steps ahead of it are over.
+    // Its capture stops at once, so nothing more is sent even while a step ahead of it is still with the media server, and the device
+    // shows as off; its publication is taken back when the steps ahead of it are over.
+    this.room.localParticipant.getTrackPublication(kind === 'mic' ? Track.Source.Microphone : kind === 'camera' ? Track.Source.Camera : Track.Source.ScreenShare)?.track?.stop();
     const stopped = this.set(kind, status);
     await this.release(kind);
     return stopped;
