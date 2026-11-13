@@ -164,6 +164,7 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
   'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
   'answer.picture.attach': { phrase: 'attach', verb: 'Attach', noun: 'picture' },
+  'answer.file.attach': { phrase: 'attach', verb: 'Attach', noun: 'file' },
 };
 
 /** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
@@ -229,6 +230,7 @@ export function assistantDoneWords(change: { operation: string; objectType: Assi
   if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.delete') return `deleted ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'answer.picture.attach') return `attached ${DONE_NOUNS.picture} ${title}`.trim();
+  if (change.operation === 'answer.file.attach') return `attached ${title || 'a file'}`.trim();
   const past = assistantPastPhrase(change.phrase);
   return title ? `${past} ${change.objectType === 'work' ? title : `${title}`}` : past;
 }

@@ -90,6 +90,8 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'cowork.unit.complete': ['cowork.unit_state'], 'cowork.unit.transfer': ['cowork.unit_state'], 'cowork.unit.decline': ['cowork.unit_state'],
   // #1217: a picture on the run's own answer is no object of the space; the change log alone names it.
   'answer.picture.attach': [],
+  // #1437: nor is a file on it.
+  'answer.file.attach': [],
 };
 function postconditionInvalid(): never {
   throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'A command needs its exact canonical produced post-state');

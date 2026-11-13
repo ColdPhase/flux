@@ -92,6 +92,8 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
   'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work', 'answer.picture.attach': 'picture',
+  // #1437: a file on the run's answer is kept as the answer's attachment, the object type a picture has (no new type is stored in v0.2.1).
+  'answer.file.attach': 'picture',
 };
 
 interface Target {
@@ -287,6 +289,11 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const clipped = from.length > 140 ? `${from.slice(0, 139)}…` : from;
       const title = (caption && clipped ? `${caption} from ${clipped}` : caption || (clipped ? `from ${clipped}` : '')).slice(0, 200);
       return { ...base, objectId: null, title, undo: removal(title) };
+    }
+    case 'answer.file.attach': {
+      // A file for the run's own answer (#1437, RT-5): the asker's staged upload until their Show everyone, so it is theirs; Undo removes it.
+      const name = text(payload.name).trim().slice(0, 200);
+      return { ...base, objectId: null, title: name, undo: removal(name) };
     }
     case 'work.creation.revert': {
       // Taking back its own unused task is a deletion (AG-3: deleting always waits). Nothing else about the task is read here.

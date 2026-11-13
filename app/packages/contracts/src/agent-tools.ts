@@ -76,6 +76,8 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   effect('flux_create_proposal', null),
   // #1217, AG-8: a public picture the server downloads and attaches to the run's answer to `/ai` in a space.
   effect('flux_attach_image', 'answer.picture.attach'),
+  // #1437, RT-5: a file the run made or wrote, attached to its answer like its asker's own upload.
+  effect('flux_attach_file', 'answer.file.attach'),
   alias('resource', 'flux_cowork_playbook'),
   alias('prompt', 'start_work'),
   alias('prompt', 'resume_work'),

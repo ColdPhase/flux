@@ -16,6 +16,7 @@ import { registerAgentQuestionActions } from './agent-questions.js';
 import { registerAgentCoworkActions } from './cowork-actions.js';
 import { registerAgentGithubActions } from './github-actions.js';
 import { registerAgentWebReads } from './web-reads.js';
+import { registerAgentFileActions } from './file-actions.js';
 import { registerAgentPictureActions } from './picture-actions.js';
 import { registerAgentPictureViews } from './picture-views.js';
 import type { WebReader } from '../web-reads/reader.js';
@@ -90,6 +91,7 @@ function serverFactory(db: Database, github: GithubActionProvider | null, webRea
   registerAgentGithubActions(tools, db, github);
   registerAgentWebReads(tools, db, webReader);
   registerAgentPictureActions(tools, db);
+  registerAgentFileActions(tools, db);
   registerAgentPictureViews(tools, db);
   registerAgentProposal(tools, db);
   tools.verifyManifest();
