@@ -207,10 +207,13 @@ class Handler(BaseHTTPRequestHandler):
         # Each request carries the results of the calls before it: the next call is the one after them.
         done = haystack.count('"tool_result"')
         tool = planned[done] if done < len(planned) else None
-        if tool and any(offered.get("name") == tool["name"] for offered in body.get("tools") or []):
+        # pi names a tool of Flux's MCP server `mcp__flux__<tool>` (#1441): a script names the Flux tool either way.
+        offered = next((name for name in (str(item.get("name", "")) for item in body.get("tools") or [])
+                        if tool and name in (tool["name"], f"mcp__flux__{tool['name']}")), None)
+        if tool and offered:
             called = {
                 "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
-                "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": tool["name"], "input": tool.get("input") or {}}],
+                "content": [{"type": "tool_use", "id": f"toolu_ui_mock_{uuid.uuid4().hex[:8]}", "name": offered, "input": tool.get("input") or {}}],
                 "stop_reason": "tool_use", "stop_sequence": None, "usage": {"input_tokens": max(1, len(text_in) // 4), "output_tokens": 30},
             }
             if body.get("stream"):

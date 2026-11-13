@@ -76,12 +76,17 @@ export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
 . scripts/csp_gate.sh
-compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
+# Every agent on an API key runs in pi in the agent runtime (#1441, RT-1): the stack has the runtime with `pi`, and the worker's model
+# gateway sends pi's requests to the mock provider with the fixture key. The runtime's supervisor needs kernel.yama.ptrace_scope >= 1.
+export FLUX_AGENT_RUNTIME=pi
+export FLUX_RUNTIME_MANAGER_SECRET="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+export FLUX_RUNTIME_SECRET_1="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
+compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml -f docker/compose.source.runtime.yaml --profile ui --profile runtime"
 
 cleanup() {
   status=$?
   if [ "$status" -ne 0 ]; then
-    $compose logs --no-color db migrate files-init api worker || true
+    $compose logs --no-color db migrate files-init api worker runtime-egress runtime-manager runtime-1 || true
   fi
   $compose down -v || true
   remove_project_images
@@ -91,13 +96,19 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-$compose build migrate ui-test
+$compose build migrate ui-test runtime-1 runtime-install
 $compose up -d db migrate
 # The API writes uploaded files to the shared volume; give it to the runtime user first.
 $compose --profile setup run --rm files-init
 # F-037: the first account on a server sets up its company and owns its Everyone space. One made here, before any test,
 # keeps every test's own people out of that role.
 $compose run --rm -w /work/tests/ui ui-test python3 company_setup.py
+# The agent runtime for API-key agents in pi: its supervisor marks itself ready only on a host that meets its requirements.
+$compose up -d --wait runtime-egress runtime-manager runtime-1
+attempt=0
+until $compose logs --no-color worker | grep -q '"event":"model_gateway","state":"listening"'; do
+  attempt=$((attempt + 1)); [ "$attempt" -lt 60 ] || { echo "the worker's model gateway did not listen" >&2; exit 1; }; sleep 1
+done
 status=0
 if [ "$#" -gt 0 ]; then
   $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT -w /work/tests/ui ui-test python3 -m unittest -v "$@" || status=$?
