@@ -21,7 +21,7 @@ import { claudeReal, codexReal, codexSearchReal, realModelOn, realTranscript } f
  * `/responses`): `{ tool, args }` calls a Flux MCP tool, `{ search }` starts a search (Claude Code's `WebSearch`; for Codex a call of its
  * standalone `web.run` tool when the request offers it, whose `alpha/search` request gets the search's results, else a hosted
  * `web_search_call` item, #1065), `{ text }` answers, `{ error: { status, body, headers } }` fails the request, `{ failed }` ends a Codex stream with
- * `response.failed`. After the last step the model answers "Done.". Claude Code's side requests (no Flux tool) get a plain answer, and
+ * `response.failed`, `{ own: { name, input } }` calls the CLI's own tool (#1437). After the last step the model answers "Done.". Claude Code's side requests (no Flux tool) get a plain answer, and
  * its `WebSearch` sub-request (a `web_search_*` server tool) gets the pending search's results. An API key that starts with
  * `sk-ant-mock-expired` is refused as the API refuses a revoked key.
  *
@@ -38,7 +38,9 @@ export type CliStep =
   | { search: CliSearch }
   | { text: string }
   | { error: { status: number; body: Json; headers?: Record<string, string> } }
-  | { failed: { code: string; message: string } };
+  | { failed: { code: string; message: string } }
+  /** The CLI's own tool (#1437): Claude Code's `Bash`, `Read`, `Write`…, or Codex's `exec_command` (`{ cmd }`), with its input as the model gives it. */
+  | { own: { name: string; input: Json } };
 export interface CliJournalEntry {
   n: number; at: number; client: CliClient | 'issuer' | 'chatgpt' | 'other'; kind: string; path: string;
   /** The credential the request carried: Claude's `x-api-key`, Codex's bearer (an API key or a ChatGPT access token). */
@@ -179,6 +181,7 @@ function claudeMessages(request: http.IncomingMessage, response: http.ServerResp
     state.pendingSearch = step.search;
     return sse(response, [messageStart(id, model), ...toolBlock(0, `toolu_mock_${counter}`, 'WebSearch', { query: step.search.query }), ...messageEnd('tool_use')]);
   }
+  if ('own' in step) return sse(response, [messageStart(id, model), ...toolBlock(0, `toolu_mock_${counter}`, step.own.name, step.own.input), ...messageEnd('tool_use')]);
   return sse(response, [messageStart(id, model), ...textBlock(0, 'text' in step ? step.text : 'Done.'), ...messageEnd('end_turn')]);
 }
 
@@ -227,6 +230,9 @@ function codexResponses(request: http.IncomingMessage, response: http.ServerResp
     const dot = named.lastIndexOf('.');
     item = { type: 'function_call', id: `fc_mock_${counter}`, call_id: `call_mock_${counter}`, name: named.slice(dot + 1), arguments: JSON.stringify(step.args),
       ...(dot > 0 ? { namespace: named.slice(0, dot) } : {}) };
+  } else if ('own' in step) {
+    // Codex's own tool (#1437), as a plain function of the request (`functions.exec_command`).
+    item = { type: 'function_call', id: `fc_mock_${counter}`, call_id: `call_mock_${counter}`, name: step.own.name, arguments: JSON.stringify(step.own.input) };
   } else if ('search' in step && tools.includes('web.run')) {
     // The standalone search of a Responses Lite model (#1065): a call of `web.run`, which the CLI runs itself against `alpha/search`.
     state.pendingSearch = step.search;
