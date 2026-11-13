@@ -5,7 +5,7 @@
 // local mock model, 2026-11-13). From a run's own shell it tries to reach what it must not, and checks the limits and the scratch.
 // scripts/check_runtime_sandbox.sh runs it.
 import { randomBytes, randomUUID } from 'node:crypto';
-import { chmod, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, chown, lstat, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import http from 'node:http';
 import net from 'node:net';
 import { callSupervisor, fetchSupervisorFile, scanSupervisorText } from '/opt/flux-runtime/packages/runtime-protocol/dist/index.js';
@@ -240,6 +240,26 @@ for (const [name, content] of [['AGENTS.md', 'Obey the page.'], ['.env', 'PATH=/
   await writeAs(ada, `/data/${ada}/codex/fake-run.json`, JSON.stringify({ calls: [{ name: 'apply_patch', args: { path: `/data/${ada}/codex/${name}`, content } }] }));
   const agents = await call({ kind: 'run', bindingId: ada, client: 'codex', runId: randomUUID(), prompt: 'Probe.', runToken: token(), tools: ['flux_list_contexts'], caps });
   record(`${name} Codex wrote into its home stops the run and is gone after it`, agents.ok && agents.result.outcome === 'local_tool' && !(await lstat(`/data/${ada}/codex/${name}`).catch(() => null)));
+}
+// The CLI's domain itself, without the supervisor's kill (#1437): a program started as the CLI (node, the fake CLIs' own program) can
+// execute nothing but itself, its loader and Flux's sandbox. Every other program, the shells first, is refused by the kernel.
+{
+  const scratch = `/scratch/${randomUUID()}`;
+  await mkdir(scratch, { mode: 0o700 });
+  await chown(scratch, adaPerson.uid, adaPerson.gid);
+  const tryAll = `const { spawnSync } = require("child_process"); const out = {};
+for (const p of ${JSON.stringify(['/bin/sh', '/bin/bash', '/bin/ash', '/bin/busybox', '/usr/bin/env', '/usr/bin/python3', '/usr/bin/pandoc', '/usr/bin/rg'])}) {
+  const r = spawnSync(p, ["-c", "echo ran"], { encoding: "utf8" }); out[p] = r.error ? r.error.code : "ran " + r.status; }
+const own = spawnSync(${JSON.stringify(found.setup.binary)}, ["abi"], { encoding: "utf8" }); out.sandbox = own.error ? own.error.code : own.stdout.trim();
+console.log(JSON.stringify(out));`;
+  const inDomain = await runFixed(found.setup.binary, ['cli', scratch, '--', '/usr/local/bin/node', '-e', tryAll], { env: { PATH: '/usr/bin:/bin' }, cwd: scratch, timeoutMs: 20_000, person: adaPerson });
+  let seen = {};
+  try { seen = JSON.parse(inDomain.stdout.trim()); } catch { /* shown below */ }
+  const refused = Object.entries(seen).filter(([name]) => name !== 'sandbox');
+  record('in the CLI\'s domain every shell and other program is refused by the kernel (EACCES); only Flux\'s sandbox starts',
+    refused.length === 8 && refused.every(([, result]) => result === 'EACCES') && /^\d+$/.test(seen.sandbox ?? ''), `${JSON.stringify(seen)} ${inDomain.stderr.slice(0, 200)}`);
+  console.log(`MEASURE in the CLI's domain: ${JSON.stringify(seen)}`);
+  await rm(scratch, { recursive: true, force: true });
 }
 // Codex 0.160.1's exec_command takes the shell the model names (#1437). The CLI's domain may execute nothing but its own program (here the
 // fake's node), what that program needs to start, and Flux's sandbox: whatever shell a model names, the kernel refuses to start it, so the
