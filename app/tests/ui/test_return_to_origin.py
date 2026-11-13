@@ -168,7 +168,8 @@ class ReturnToOrigin(unittest.TestCase):
         page.keyboard.press("Control+k")
         palette = page.get_by_role("dialog", name="Search", exact=True)
         palette.get_by_role("combobox", name="Search", exact=True).fill(query)
-        palette.locator("[role=option].sr").first.click()
+        # The conversation's message, not the first result of any kind: a task "Order the ToF boards" can rank above it.
+        palette.locator("[role=option].sr").filter(has_text="Which sensor do we order first").first.click()
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}#message-"))
 
     # ---- harness ----
