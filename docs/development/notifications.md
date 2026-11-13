@@ -87,6 +87,15 @@ defaults if missing), the given fields are merged and written in one transaction
 edits of different fields never overwrite each other; for the same field the later request wins.
 The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
+- **Hide previews** (#1346, migration `0070_hide_previews.sql`): `hidePreviews`, stored as `hide_previews` (default false), read by `GET` and
+  changed by `PATCH` (a boolean; anything else is `400`). With it on, the push says only who and where, for every reason
+  ([what a notification shows](../product/mobile-pwa.md#what-a-notification-shows)). The generator writes that title for each push job from
+  the facts it already read (`PushSendJob.hiddenTitle`, `hiddenNotificationTitle`: the fixed words of an encrypted workspace's notices,
+  `Ada mentioned you in Tool library`, with the place's name or none for a message between two people), and the push worker reads the
+  switch when it sends (`DeliveryPorts.hidePreviews`), so the payload is `{ preview: 'hidden', notificationId, title }` and nothing else: no
+  body, no link, nothing taken from the notification's own text. A job without a title (a notification made without a reason, or queued
+  before this change) sends the fixed text "New activity in Flux". The Inbox row, the notice and the sound are unchanged, and email is
+  always content-free.
 - **Sound** (#1243, migration `0064_notification_sounds.sql`): `sound: { messages, calls }`, stored as `sound_messages`
   (default false) and `sound_calls` (default true). The server only stores them; an open tab plays them with a notice.
 - **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
@@ -143,7 +152,7 @@ The settings page sends its saves one after another, numbered, and shows only th
 
 Push delivery (#41) rechecks the same preferences before each send (`stillWanted`): a level that no longer
 pushes the reason, a place that is muted for this reason (`quiet`) or quiet hours skip it. A thread's follow is decided when the notice is
-written, not again at send time: a reply notice queued before an Unfollow is still sent. The payload and its lock-screen rule are unchanged.
+written, not again at send time: a reply notice queued before an Unfollow is still sent. The payload follows the person's "Hide previews" read at send time (above); its other lock-screen rules are unchanged.
 
 ## Delivery addresses
 
