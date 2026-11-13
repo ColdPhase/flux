@@ -377,8 +377,8 @@ class MotionJourney(unittest.TestCase):
         page.keyboard.press("Escape")
 
     def test_09_a_reply_arriving_in_an_open_thread_rises_gently_and_history_does_not(self):
-        # #155 / UI116-5: a reply rises in when the reader sees it arrive. #436 #14 (#443): an open thread starts
-        # at its root, so a reader who has not scrolled stays there and a reply below the fold does not move them.
+        # #155 / UI116-5: a reply rises in when the reader sees it arrive. #436 #14 (#443) with S23 (#1246): a thread with nothing new opens
+        # at its end; a reader who reads back up to its root stays there, and a reply below the fold does not move them.
         page = self.page()
         page.goto(f"/projects/{self.projects[0]}/conversations/{self.thread['id']}")
         thread = page.locator("#thread")
@@ -387,8 +387,11 @@ class MotionJourney(unittest.TestCase):
         expect(thread.locator(".project-convo__message")).to_have_count(12)
         page.wait_for_timeout(600)
         self.assertEqual(thread.locator("[data-arrival]").count(), 0)
-        self.assertGreater(feed.evaluate("el => el.scrollHeight - el.clientHeight"), 1, "the thread overflows, so the root-opened reader is not at the end")
-        self.assertEqual(feed.evaluate("el => el.scrollTop"), 0, "the thread opens at its root")
+        self.assertGreater(feed.evaluate("el => el.scrollHeight - el.clientHeight"), 1, "the thread overflows, so a reader at its root is not at the end")
+        self.assertLessEqual(feed.evaluate("el => el.scrollHeight - el.clientHeight - el.scrollTop"), 1, "nothing is new, so the thread opens at its end")
+        feed.hover()
+        page.mouse.wheel(0, -100000)
+        page.wait_for_function("() => document.querySelector('#thread .thread__feed').scrollTop === 0")
         below = self.bob_replies("A new reply from Bob below the fold of the open thread.")
         page.evaluate("() => window.dispatchEvent(new Event('focus'))")
         late = page.locator(f"#message-{below['id']}")

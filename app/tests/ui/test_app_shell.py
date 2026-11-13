@@ -619,11 +619,14 @@ class AppShellJourney(unittest.TestCase):
                   const button = document.querySelector('header.top [aria-label="More"]').getBoundingClientRect();
                   const menu = document.querySelector('.top__more-menu').getBoundingClientRect();
                   // Rows a wide or tablet header keeps in its own row are in the menu but hidden (Spokój rule 3): measure the shown ones.
-                  const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].filter(el => el.getClientRects().length > 0).map(el => el.getBoundingClientRect());
+                  const rows = [...document.querySelectorAll('.top__more-menu [role^=menuitem]')].filter(el => el.getClientRects().length > 0);
+                  // Mute space (#1249) carries its hint under the label, so its row is taller than the single-line rows.
+                  const hinted = rows.filter(el => el.querySelector('small')).map(el => el.getBoundingClientRect().height);
                   return {header: {top: header.top, bottom: header.bottom, height: header.height},
                     button: {left: button.left, right: button.right, top: button.top, bottom: button.bottom},
                     menu: {left: menu.left, right: menu.right, top: menu.top, bottom: menu.bottom},
-                    rowHeights: rows.map(row => row.height), viewport: document.documentElement.clientWidth};
+                    rowHeights: rows.filter(el => !el.querySelector('small')).map(el => el.getBoundingClientRect().height), hintedHeights: hinted,
+                    viewport: document.documentElement.clientWidth};
                 }""")
                 after = header.bounding_box()
                 self.assertAlmostEqual(before["height"], after["height"], delta=1, msg=f"header does not grow when More opens: {geometry}")
@@ -632,10 +635,12 @@ class AppShellJourney(unittest.TestCase):
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
                 self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
+                self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
-                    self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
+                    self.assertTrue(all(height >= 44 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
                     self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
+                    self.assertTrue(all(height > 32 for height in geometry["hintedHeights"]), f"the hint line makes its row taller: {geometry}")
                 mode = "tablet-820x900-dpr1" if device == "tablet" else "desktop-1440x900-dpr1"
                 scheme = "dark" if dark else "light"
                 shot(page, f"app-shell-project-header-more-{mode}-{scheme}-z100-chromium")
@@ -1094,6 +1099,17 @@ class AppShellJourney(unittest.TestCase):
             else:
                 route.continue_()
         owner.route("**/api/v1/conversations/*/messages", drop_first_response)
+        # Flux does not answer until the person acts: the thread's read of its stored messages and the app's own check (GET /api/v1/me,
+        # three seconds after an answer was lost) wait too. Otherwise the refresh the lost answer starts brings the committed copy within a
+        # tenth of a second and replaces the waiting reply before Retry can be pressed, or the check sends it by itself.
+        held_reads: list = []
+        def flux_does_not_answer_reads(route) -> None:
+            if route.request.method == "GET":
+                held_reads.append(route)
+            else:
+                route.continue_()
+        unanswered = re.compile(rf"/api/v1/(me|conversations/{conversation_id})(\?.*)?$")
+        owner.route(unanswered, flux_does_not_answer_reads)
         owner.get_by_label("Reply", exact=True).fill("Retry this one reply")
         owner.get_by_role("button", name="Send reply").click()
         # Sending is instant (#264): the reply waits with its command and is sent again when Flux answers.
@@ -1101,6 +1117,9 @@ class AppShellJourney(unittest.TestCase):
         expect(queued).to_contain_text("Waiting to send")
         queued.get_by_role("button", name="Retry").click()
         expect(queued).to_have_count(0)
+        owner.unroute(unanswered, flux_does_not_answer_reads)
+        for route in held_reads:
+            route.continue_()
         expect(owner.get_by_text("Retry this one reply", exact=True)).to_be_visible()
         owner.unroute("**/api/v1/conversations/*/messages", drop_first_response)
         saved = owner.context.request.get(f"{ORIGIN}/api/v1/conversations/{conversation_id}").json()

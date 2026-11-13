@@ -534,6 +534,10 @@ class RouteChunksJourney(unittest.TestCase):
                 page = self.page(engine)
                 requested = []
                 page.on("request", lambda request: requested.append(request.url))
+                # This is what the conversation itself imports. The browser's idle fetch of the other views (rule 6, test_11) is a separate
+                # behaviour that starts a second after the shell is up (at once in WebKit, which has no requestIdleCallback), and a slow
+                # runner shows the first message after that: with the idle time never coming, the request list is the conversation's own.
+                page.add_init_script("window.requestIdleCallback = () => 0;")
                 page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 expect(page.get_by_label("Message from you", exact=True).get_by_text("An eager conversation stays available before secondary routes", exact=True)).to_be_visible()

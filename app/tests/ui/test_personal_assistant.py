@@ -405,8 +405,10 @@ class PersonalAssistantJourney(unittest.TestCase):
         if sidebar:
             self.assertEqual(side_pulse.evaluate("el => getComputedStyle(el).animationPlayState"), "running")
         # Off screen it pauses too: in a short window the reader scrolls (a real wheel; the thread keeps a
-        # reader's own position) to the top of the thread, then back down to the line.
-        jo.set_viewport_size({"width": 1440, "height": 640})
+        # reader's own position) to the top of the thread, then back down to the line. The window is short enough that the thread is
+        # taller than its visible part by more than the line itself: the assistant's suggestions no longer take room under the thread
+        # (they are in the / menu, #1279), so at 640 px the line was still partly in view at the top (the thread 448 px, its visible part 393).
+        jo.set_viewport_size({"width": 1440, "height": 520})
         feed = jo.locator(".thread__feed")
         feed.hover()
         jo.mouse.wheel(0, -100000)

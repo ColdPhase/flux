@@ -200,6 +200,16 @@ class DocsJourney(unittest.TestCase):
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == self.decision_id for link in doc["links"]))
         # Away from the caret the page reads as the page: the table is a table, the reference is its chip.
         text.evaluate("el => el.blur()")
+        if LIVE:
+            # Another person opening the page is news for its shared text; it never pulls the focus back from where this person left it (#1298).
+            partner = self.page("partner")
+            partner.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+            expect(partner.locator('[data-live-status="live"]')).to_be_visible()
+            existing_text(partner).focus()
+            partner.keyboard.press("ArrowRight")
+            expect(page.get_by_role("status").filter(has_text="Kai is here too")).to_be_visible()
+            page.wait_for_timeout(500)
+            expect(text).not_to_be_focused()
         expect(page.locator(".wiki-editor .doc-table td").nth(1)).to_have_text("38%")
         expect(page.locator(".wiki-editor .cm-md-h2").first).to_have_text("What we use")
         chip = page.locator('.wiki-editor a.doc-ref[data-ref-type="decision"]')

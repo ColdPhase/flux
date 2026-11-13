@@ -22,6 +22,7 @@ export { StatusGlyph, TASK_STATE_WORD } from './StatusGlyph';
 export { PanelActions, PanelGlyph, PanelMeta, SidePanel, useSidePanelMode, type SidePanelMode } from './SidePanel';
 export { BottomNav, Tabs, type BottomNavItem, type TabItem } from './Tabs';
 export { publishTopEdge } from './edgeInset';
+export { useFocusBack } from './focusBack';
 export { ToastProvider, useToast, useToastScope, useToastTop, type ToastAction, type ToastOptions } from './Toast';
 export { Mascot, Opening, OpeningRows, PullToRefresh } from './Moments';
 export { Slider } from './Slider';

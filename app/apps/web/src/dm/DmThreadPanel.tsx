@@ -60,6 +60,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   const attachFeed = useCallback((element: HTMLDivElement | null) => { feed.current = element; setFeedNode(element); }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const loading = useRef(false);
+  const loadAgain = useRef(false);
   const composer = useComposerDraft(meId, 'dm', `dm:${dmId}/${rootId}`);
   const captureScope = useComposerScope(composer.key);
   const draft = composer.draft.body;
@@ -81,17 +82,22 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writ
   const learn = useCallback((list: DmPerson[]) => setPeople((current) => { const next = new Map(current); for (const p of list) next.set(p.id, p); return next; }), []);
   const label = (id: string) => (people.get(id)?.name ?? nameOf(id));
   const load = useCallback(async () => {
-    if (loading.current) return;
+    // A change that is told while a read is on its way asks for one more when it ends: that read may have been made before it was stored.
+    if (loading.current) { loadAgain.current = true; return; }
     loading.current = true;
     try {
-      const next = await getDmThread(dmId, rootId);
-      setThread(next); learn(next.people);
-      setReplies((current) => merge(current, next.replies));
-      setOlder((current) => (current === undefined ? next.messagePage.nextBeforeSequence : current));
-      setUnreadFrom((current) => current === undefined ? next.unreadFrom ?? null : current);
-      onCount(rootId, next.root.replyCount);
-    } catch (cause) { onDenied(cause); }
-    finally { loading.current = false; }
+      do {
+        loadAgain.current = false;
+        try {
+          const next = await getDmThread(dmId, rootId);
+          setThread(next); learn(next.people);
+          setReplies((current) => merge(current, next.replies));
+          setOlder((current) => (current === undefined ? next.messagePage.nextBeforeSequence : current));
+          setUnreadFrom((current) => current === undefined ? next.unreadFrom ?? null : current);
+          onCount(rootId, next.root.replyCount);
+        } catch (cause) { onDenied(cause); }
+      } while (loadAgain.current);
+    } finally { loading.current = false; }
   }, [dmId, rootId, learn, onCount, onDenied]);
   // Reading the thread from the server is what this effect is for.
   // eslint-disable-next-line react-hooks/set-state-in-effect

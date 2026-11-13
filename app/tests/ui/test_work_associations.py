@@ -116,6 +116,10 @@ class MessageWorkJourney(unittest.TestCase):
                 expect(page.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Related only; not made from either message") + "$"))).to_have_count(0)
                 field = page.get_by_label("Reply", exact=True); field.fill("Keep this reply while checking the older measurement links")
                 first = self.chips(page); self.assertEqual(len(first), 50)
+                # Nothing in the thread is new, so it opens at its end (S23, #1246), after the 50 chips' own lines. The reader whose place is kept
+                # here is one who read back to the top: that is the place the next page of links must not move.
+                page.locator(".thread__feed").evaluate("el => { el.scrollTop = 0; }")
+                page.wait_for_function("() => document.querySelector('.thread__feed').scrollTop === 0")
                 anchor = self.anchor(page)
                 edges.get_by_role("button", name="Next", exact=True).click(); self.ready(page)
                 expect(edges).to_contain_text("51–100 of 100 links")

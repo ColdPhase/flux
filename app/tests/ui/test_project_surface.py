@@ -222,17 +222,30 @@ class ProjectSurfaceJourney(unittest.TestCase):
     def assert_whole_messages(self, page: Page, latest: bool = True) -> None:
         """The stream and the open thread (UI116-1) each open on whole messages: none starts above the
         top edge of its feed. The stream shows its latest message; a thread opens at its root (#436 #14,
-        #443), so its root starts at the top of the feed and the reader scrolls down."""
+        #443), so its root starts at the top of the feed and the reader scrolls down. A thread with something new opens on its New
+        divider instead (S23, #1246): what is new is whole below it, and the message above shows its end in the 12 px over the divider."""
         page.wait_for_timeout(600)
         for selector in (".project-convo__feed", ".thread__feed"):
             clipped = page.evaluate("""(selector) => {
               const feed = document.querySelector(selector);
               const top = feed.getBoundingClientRect().top;
-              return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+              const divider = feed.querySelector('[data-unread-start]');
+              // Only what stands below the divider is judged when the feed opened on it.
+              return [...feed.querySelectorAll('.project-convo__message')].filter((el) => !divider || (divider.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING))
+                .filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
             }""", selector)
             self.assertEqual(clipped, 0, f"{selector}: no message is cut off at the top of the opening screen")
             if not latest and selector == ".project-convo__feed":
                 continue  # a link opened this root at the top of the stream (F-026: notices are two rows now)
+            if selector == ".thread__feed" and page.locator(f"{selector} [data-unread-start]").count():
+                # A thread with something new opens on its New divider (S23, #1246): the divider is in view, with the root above it and what is
+                # new, whole, below it.
+                feed = page.locator(selector).bounding_box()
+                divider = page.locator(f"{selector} [data-unread-start]").bounding_box()
+                assert feed and divider
+                self.assertTrue(divider["y"] >= feed["y"] and divider["y"] + divider["height"] <= feed["y"] + feed["height"],
+                                f"{selector}: the New divider is whole in the feed: {divider} in {feed}")
+                continue
             if selector == ".thread__feed":
                 # An unanchored thread starts at its root, whole (#436), rather than its latest reply.
                 root = page.locator(f"{selector} .thread__root").bounding_box()

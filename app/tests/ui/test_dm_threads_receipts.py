@@ -219,8 +219,10 @@ class DmThreadsReceipts(unittest.TestCase):
 
     def test_02_a_private_reply_thread_with_a_visible_count_that_survives_reload(self) -> None:
         kai = self.page("kai")
-        kai.goto(f"/dm/{self.dm_id}")
-        expect(self.row(kai, self.run_y)).to_be_visible()
+        # Kai never opened this conversation, which would open at its first message (S23, #1246) and show him the earlier run: he comes by a
+        # link to the last run, as test_04 expects, and has read nothing before it.
+        kai.goto(f"/dm/{self.dm_id}#message-{self.run_y}")
+        expect(self.row(kai, self.run_y)).to_be_in_viewport()
         ada = self.page("ada")
         ada.goto(f"/dm/{self.dm_id}")
         row = self.row(ada, self.root)
@@ -284,7 +286,8 @@ class DmThreadsReceipts(unittest.TestCase):
         self.assertEqual(self.post_receipts(ada, [self.run_x]), [[]], "the server agrees: offscreen messages are not observed")
 
         lee = self.page("lee")
-        lee.goto(f"/dm/{self.dm_id}")
+        # Lee comes by a link to the last run too: opened plainly, a conversation he never read would begin at its first message (S23, #1246).
+        lee.goto(f"/dm/{self.dm_id}#message-{self.run_y}")
         expect(self.row(lee, self.run_y)).to_be_in_viewport()
         expect(self.run_footer(ada, self.run_y).locator(".seen")).to_have_attribute("aria-label", re.compile(r"^Seen by Lee and Kai$"), timeout=20000)
         expect(self.run_footer(ada, self.run_x[1]).locator(".seen")).to_have_count(0)

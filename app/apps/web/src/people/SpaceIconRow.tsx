@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { useRevalidator } from 'react-router';
 import { PICTURE_LIMITS, type Project, type SpaceIcon } from '@flux/contracts';
 import { removeSpaceIcon, setSpaceEmoji, setSpacePicture } from '../project/api';
-import { Button, Icon } from '../ui';
+import { Button, Icon, useFocusBack } from '../ui';
 import { SpaceFace } from '../ui/SpaceFace';
 import { photoProblem } from './photos';
 import { problemText } from './api';
@@ -36,7 +36,8 @@ export function SpaceIconRow({ project, manager, companyName, onChanged }: {
   const [problem, setProblem] = useState('');
   const pictureUrl = choice && 'url' in choice ? choice.url : null;
   useEffect(() => () => { if (pictureUrl) URL.revokeObjectURL(pictureUrl); }, [pictureUrl]);
-  const close = () => { setOpen(false); setChoice(null); setProblem(''); requestAnimationFrame(() => changeRef.current?.focus({ preventScroll: true })); };
+  const close = () => { setOpen(false); setChoice(null); setProblem(''); };
+  useFocusBack(changeRef, open);
   async function pick(file: File | undefined) {
     if (!file) return;
     const found = await photoProblem(file, { bytes: PICTURE_LIMITS.spaceIconBytes, words: 'A space icon is at most 2 MB.' });

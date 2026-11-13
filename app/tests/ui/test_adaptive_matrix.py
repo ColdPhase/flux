@@ -869,7 +869,8 @@ class AdaptiveMatrix(AdaptiveBase):
                 gaps["direct message"][size] = round(field["y"] - (last["y"] + last["height"]))
                 dm.goto(f"/dm/{world['dm']}?thread={world['dm_root']}")
                 panel = dm.locator("[data-dm-thread]")
-                expect(panel.locator(".thread__list > li")).to_have_count(1)
+                # The one reply; the first time it is read it has its day line and the New divider (#1246) before it, so the rows are counted by message.
+                expect(panel.locator(".thread__list > li[data-message-id]")).to_have_count(1)
                 self.at_rest(dm)
                 last = panel.locator(".thread__list > li").last.bounding_box()
                 field = panel.locator("#dm-thread-composer").bounding_box()

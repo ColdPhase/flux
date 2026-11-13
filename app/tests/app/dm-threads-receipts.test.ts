@@ -358,7 +358,10 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       const dm = await openDm(jo, ws.id, [kai]);
       const message = await say(kai, dm.id, 'Buy tulips. Water daily. Secret: the budget is 900.');
       const before = await tasks(ada, lamp.id);
-      const eventsBefore = (await pool.query('SELECT count(*)::int AS n FROM events')).rows[0].n;
+      // The events of this DM and this space, but not the notice cards (#1243): the worker adds the card of Kai's message a moment after it was
+      // sent, whenever it gets to it, and that is no part of what the preview does.
+      const eventsOf = async () => (await pool.query(`SELECT kind FROM events WHERE object_id = ANY($1::uuid[]) AND kind NOT LIKE '%.notice.v1' ORDER BY seq`, [[dm.id, lamp.id]])).rows.map((row) => row.kind as string);
+      const eventsBefore = await eventsOf();
 
       const shown = expectStatus(await preview(jo, dm.id, { messageId: message.id, excerpt: 'Buy tulips.', projectId: lamp.id }), 200) as DmTaskCopyPreview;
       assert.equal(shown.excerpt, 'Buy tulips.');
@@ -367,7 +370,7 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       assert.ok(names.includes('th-ada') && names.includes('th-jo') && names.includes('th-kai'), `the project's people are listed: ${names}`);
       assert.ok(shown.projects.some((p) => p.id === lamp.id));
       assert.equal((await tasks(ada, lamp.id)).length, before.length, 'preview writes no task');
-      assert.equal((await pool.query('SELECT count(*)::int AS n FROM events')).rows[0].n, eventsBefore, 'preview records no event');
+      assert.deepEqual(await eventsOf(), eventsBefore, 'preview records no event');
 
       const made = expectStatus(await commit(jo, dm.id, bodyOf(shown)), 201) as DmTaskCopyResult;
       assert.equal(made.task.title, 'Buy tulips.');
