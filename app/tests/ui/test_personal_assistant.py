@@ -23,7 +23,7 @@ import unittest
 import urllib.request
 import uuid
 
-from playwright.sync_api import Browser, BrowserContext, Page, Route, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, Route, TimeoutError as PlaywrightTimeout, expect, sync_playwright
 
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
@@ -143,6 +143,16 @@ class PersonalAssistantJourney(unittest.TestCase):
                 return
             page.keyboard.press("Shift+Tab" if back else "Tab")
         self.fail(f"{target} was not reached by keyboard in {presses} presses; focus is on {self.focus_state(page)}")
+
+    def stays_in_line(self, page: Page, why: str) -> None:
+        """Focus is in the working line, not on the page. A press that makes its button go away hands focus back to the line once the screen has
+        changed and the press's own request has settled (`useKeepFocus` watches for up to 1.5 s). With pi's runs the new line can be drawn, by the stream's
+        event, a moment before that request returns, so focus is read when it has settled and not in the frame the button went."""
+        try:
+            page.wait_for_function("() => { const el = document.activeElement; return !!el && !!el.closest('.assistant-working'); }", timeout=3000)
+        except PlaywrightTimeout:
+            pass  # the assertion below says where focus is
+        self.assertEqual(self.focus_state(page)["in"], "working", f"{why}: {self.focus_state(page)}")
 
     def trapped(self, page: Page, dialog) -> None:
         """Tab and Shift+Tab never leave the open dialog (it is modal: AC-8 modal focus)."""
@@ -497,34 +507,45 @@ class PersonalAssistantJourney(unittest.TestCase):
         mock("/__script", {"reset": True, "delay": 10})
         jo = self.conversation("jo")
         box = self.composer(jo)
-        box.focus()
-        jo.keyboard.type("/ai Compare the sensors")
-        # Enter sends once the bar knows the assistant is ready; while it says "Checking your assistant…" Enter is refused (#752).
-        expect(jo.locator("#project-ask")).to_contain_text("Only you see the answer")
-        jo.keyboard.press("Enter")
         working = jo.locator(".assistant-working")
-        expect(working).to_contain_text("Only you see this")
-        expect(box).to_be_focused()  # sending keeps the person in the box: they can write on
-        expect(box).to_have_value("")  # typing "/ai" key by key left no "/a" behind as the reply's draft
-        # Stop is reachable by Tab alone and works with Enter; the button goes away, focus does not fall to the page.
-        self.reach(jo, working.get_by_role("button", name="Stop"), back=True)
-        jo.keyboard.press("Enter")
-        self.assertEqual(self.focus_state(jo)["page"], False, "focus after Stop")
-        expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
-        self.assertEqual(self.focus_state(jo)["in"], "working", "focus stays where the answer will appear")
-        # Retry starts a new run and its own Stop takes the place of the button that was pressed.
-        self.reach(jo, working.get_by_role("button", name="Retry"))
-        jo.keyboard.press("Enter")
-        expect(working.get_by_role("button", name="Stop")).to_be_visible(timeout=15000)
-        self.assertEqual(self.focus_state(jo)["in"], "working", "focus after Retry")
-        self.reach(jo, working.get_by_role("button", name="Stop"))
-        jo.keyboard.press("Enter")
-        expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
-        # Dismiss removes the line; focus goes back to the box, where the next thing is written.
-        self.reach(jo, working.get_by_role("button", name="Dismiss"))
-        jo.keyboard.press("Enter")
-        expect(working).to_have_count(0)
-        expect(box).to_be_focused()
+        try:
+            box.focus()
+            jo.keyboard.type("/ai Compare the sensors")
+            # Enter sends once the bar knows the assistant is ready; while it says "Checking your assistant…" Enter is refused (#752).
+            expect(jo.locator("#project-ask")).to_contain_text("Only you see the answer")
+            jo.keyboard.press("Enter")
+            expect(working).to_contain_text("Only you see this")
+            expect(box).to_be_focused()  # sending keeps the person in the box: they can write on
+            expect(box).to_have_value("")  # typing "/ai" key by key left no "/a" behind as the reply's draft
+            # Stop is reachable by Tab alone and works with Enter; the button goes away, focus does not fall to the page.
+            self.reach(jo, working.get_by_role("button", name="Stop"), back=True)
+            jo.keyboard.press("Enter")
+            self.assertEqual(self.focus_state(jo)["page"], False, "focus after Stop")
+            expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+            self.stays_in_line(jo, "focus stays where the answer will appear")
+            # Retry starts a new run and its own Stop takes the place of the button that was pressed.
+            self.reach(jo, working.get_by_role("button", name="Retry"))
+            jo.keyboard.press("Enter")
+            expect(working.get_by_role("button", name="Stop")).to_be_visible(timeout=15000)
+            self.stays_in_line(jo, "focus after Retry")
+            self.reach(jo, working.get_by_role("button", name="Stop"))
+            jo.keyboard.press("Enter")
+            expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=15000)
+            # Dismiss removes the line; focus goes back to the box, where the next thing is written.
+            self.reach(jo, working.get_by_role("button", name="Dismiss"))
+            jo.keyboard.press("Enter")
+            expect(working).to_have_count(0)
+            expect(box).to_be_focused()
+        finally:
+            # Never leave a run executing for the next journey: it would answer the next script and hold its lane.
+            stop = working.get_by_role("button", name="Stop")
+            if stop.count():
+                stop.click()
+                expect(working).to_contain_text("Stopped. Nothing was posted.", timeout=20000)
+            dismiss = working.get_by_role("button", name="Dismiss")
+            if dismiss.count():
+                dismiss.click()
+            expect(working).to_have_count(0)
 
     def test_08c_an_answer_cites_what_it_used_from_flux_as_chips_that_open_exactly_it(self) -> None:
         # C-62 (#1381): a Wiki page and its section, a decision and an id that points at nothing; the marks the model wrote with the ids its tools gave
@@ -539,8 +560,10 @@ class PersonalAssistantJourney(unittest.TestCase):
                                                   f"We decided on it [decision:{decision['id']}], not on [doc:{unknown}].",
                            "tool": [{"name": "flux_get_doc", "input": {"projectId": project, "id": page["id"]}},
                                     {"name": "flux_get_decision", "input": {"projectId": project, "id": decision["id"]}}]})
-        self.ask(jo, "How do we calibrate the north barrel?")
-        card = jo.locator(".assistant-private").last
+        question = "How do we calibrate the north barrel?"
+        self.ask(jo, question)
+        # The card of this question and this run, and no other: a run still in flight from before would take the script above and show the same chips.
+        card = jo.locator(".assistant-private").filter(has_text=f"You asked: /ai {question}")
         expect(card).to_be_visible(timeout=20000)
         chips = card.locator(".assistant-cite")
         expect(chips).to_have_count(3)
@@ -550,8 +573,9 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(chips.nth(1)).to_have_attribute("aria-label", "Source 2: Wiki page “Calibration”, section “Readings”")
         expect(chips.nth(2)).to_have_attribute("aria-label", "Source 3: decision “Use the reference probe”")
         shot(jo, "assistant-1440-flux-citations")
-        answer = self.own_runs(jo)[0]["answer"]
-        self.assertEqual([source["type"] for source in answer["sources"]], ["doc", "doc", "decision"])
+        run = next(item for item in self.own_runs(jo) if item["prompt"] == question)
+        self.assertEqual(run["status"], "completed")
+        self.assertEqual([source["type"] for source in run["answer"]["sources"]], ["doc", "doc", "decision"])
         # The section opens the version it was numbered in, at its heading.
         chips.nth(0).click()
         jo.wait_for_url(re.compile(rf"/projects/{project}/docs/{page['id']}/versions/\d+#section-2$"))
@@ -560,7 +584,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(heading).to_be_in_viewport()
         # A decision opens in Details (the thread, which is the same one panel, makes room for it); the answer is still the owner's to read.
         again = self.conversation("jo")
-        card = again.locator(".assistant-private").last
+        card = again.locator(".assistant-private").filter(has_text=f"You asked: /ai {question}")
         expect(card).to_be_visible(timeout=20000)
         expect(card.locator(".assistant-cite")).to_have_count(3)
         card.locator(".assistant-cite").nth(2).click()

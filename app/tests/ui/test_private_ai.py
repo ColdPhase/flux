@@ -213,8 +213,13 @@ class PrivateAiJourney(unittest.TestCase):
         expect(self.private_card(kai)).to_have_count(0)
         self.assertNotIn("far beds will use LoRa because Wi-Fi drops when the hedge is wet [", kai.locator("body").inner_text(), "the others do not see the answer")
         # The cited source is one message of this space, the one the tool returned; nothing of the DM was sent.
-        expect(card.locator(".assistant-cite")).to_have_count(1)
-        expect(card.locator(".assistant-cite")).to_have_attribute("aria-label", re.compile(r"^Source 1: message #\d+ by Kai Lund$"))
+        # The chip opens exactly its source, Kai's reply, in the thread it was written in. The stream holds no thread's replies, so the chip cannot name
+        # the message's number and author as a thread's view does (test_personal_assistant test_06): its label says where it is.
+        reply = next(message for message in self.api(jo, "GET", f"/api/v1/conversations/{self.ids['conversation']}", status=200)["messages"] if message["body"] == KAI_REPLY)
+        chip = card.locator(".assistant-cite")
+        expect(chip).to_have_count(1)
+        expect(chip).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{reply['id']}")
+        expect(chip).to_have_attribute("aria-label", "Source 1: a message in this space")
         sent = self.messages_sent()
         self.assertEqual(len(sent), 2, "the tool call, then the answer")
         self.assertIn(OPENING, json.dumps(sent[1]["body"]), "the conversation the model read came back to it")
