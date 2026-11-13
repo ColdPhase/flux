@@ -11,7 +11,7 @@ function wire(row: typeof f.$inferSelect) {
     : { kind: 'agent' as const, id: row.uploaderAgentId! } };
 }
 const uploaderFilter = (actor: ActorRef) => actor.kind === 'human' ? eq(f.uploaderId, actor.id) : eq(f.uploaderAgentId, actor.id);
-/** The place a file belongs to is a space or a direct message (migration 0075): their ids are UUIDs of different tables, so one id names either. */
+/** The place a file belongs to is a space or a direct message (migration 0076): their ids are UUIDs of different tables, so one id names either. */
 const inPlace = (placeId: string) => or(eq(f.projectId, placeId), eq(f.dmId, placeId))!;
 /** The message of a space or of a direct message a file is attached to. */
 const messageOf = sql<string>`coalesce(${f.messageId}, ${f.dmMessageId})`;

@@ -772,7 +772,7 @@ export const fileGarbage = pgTable('file_garbage', {
 export const projectFiles = pgTable('project_files', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
-  /** Null for a direct message's file (migration 0075, #1438): exactly one of `projectId` and `dmId` is set. */
+  /** Null for a direct message's file (migration 0076, #1438): exactly one of `projectId` and `dmId` is set. */
   projectId: uuid('project_id'),
   /** The conversation a direct message's file belongs to, and the message of it once sent; null for a space's. */
   dmId: uuid('dm_id'),
@@ -1513,7 +1513,7 @@ export const dmMessages = pgTable('dm_messages', {
   viaColour: text('via_colour').$type<import('@flux/contracts').AgentColour>(),
   /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
   kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
-  /** 0075 (#1438): how many files the message carries; a message with files may have no words. */
+  /** 0076 (#1438): how many files the message carries; a message with files may have no words. */
   attachmentCount: smallint('attachment_count').notNull().default(0),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

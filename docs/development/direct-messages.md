@@ -35,7 +35,7 @@ Migration `0010_direct_messages.sql` adds three tables.
 - **Files** (founder direction, Hubert, 2026-11-13, [#1438](https://github.com/ColdPhase/flux/issues/1438) point 10). A direct message carries files,
   photos and videos like a space's message: `POST /api/v1/dms/:dmId/files` stages one (the same limits, names, picture decoding and video rules as
   `POST /api/v1/projects/:projectId/files`), `attachmentIds` on a send or a reply attaches up to ten, and a message may be files alone. A file is a row of
-  `project_files` that belongs to the conversation (`dm_id`, migration 0075) instead of a project, so no space's query, export or search sees it. Its
+  `project_files` that belongs to the conversation (`dm_id`, migration 0076) instead of a project, so no space's query, export or search sees it. Its
   bytes come from `GET /api/v1/files/:fileId` (`/video`, `/preview`) under `dm.read`, checked on every request: only the conversation's current people;
   a person who left, and anyone else in the company, get 404. A staged file is its sender's alone and goes after 7 days unsent; deleting a message
   deletes its files (C-48). A direct message's files are not read for search (C-63 reads a space's).
