@@ -200,6 +200,9 @@ class InviteLinksJourney(unittest.TestCase):
         ben.goto(link)
         expect(ben.get_by_text("You’ll be a guest: you see only the spaces you’re added to.")).to_be_visible()
         ben.get_by_role("link", name="Sign in to join").click()
+        # The invite page has its own Email and Password (#1438): fill the sign-in page's only once it is there.
+        expect(ben).to_have_url(re.compile(r"/sign-in"))
+        expect(ben.get_by_role("button", name="Sign in")).to_be_visible()
         ben.get_by_label("Email").fill(PEOPLE["ben"][1])
         ben.get_by_label("Password").fill(PASSWORD)
         ben.get_by_role("button", name="Sign in").click()
