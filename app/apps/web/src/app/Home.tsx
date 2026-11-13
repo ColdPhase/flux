@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
@@ -151,7 +151,7 @@ export function waitingRows(items: NeedsYouItem[], limit = 3): WaitingRow[] {
 }
 
 /** One line of a Home card: a face, two lines of words and the arrow every row ends in. */
-function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: () => void }) {
+function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: (event: MouseEvent<HTMLAnchorElement>) => void }) {
   return (
     <li>
       <Link className="home__row" to={to} state={state} onClick={onClick}>
@@ -239,14 +239,10 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
       </div>
       <ul className="home__rows" aria-label="First steps">
         {shown.map((row) => row.key === 'push' ? (
-          <li key={row.key}>
-            {/* A Home row whose target asks for notifications in the tap itself: a row target (tests/app/button-classes.json, "row"). */}
-            <button type="button" className="home__row" aria-busy={asking || undefined} onClick={() => { if (pushKey && !asking) turnOn(pushKey); }}>
-              <span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>
-              <span className="home__row-b"><span className="home__row-t">{row.title}</span><span className="home__row-k">{row.meta}</span></span>
-              <Icon name="chevron-right" size={16} className="home__row-go" />
-            </button>
-          </li>
+          // The same Home row as the others. Its tap asks for notifications in place (the browser asks only in a gesture); without a key to
+          // ask with, it opens Settings › Notifications, where the same switch is.
+          <HomeRow key={row.key} to="/settings/notifications" face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
+            title={row.title} meta={row.meta} onClick={(event) => { if (!pushKey) return; event.preventDefault(); if (!asking) turnOn(pushKey); }} />
         ) : (
           <HomeRow key={row.key} to={row.to!} state={row.state} face={<span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>}
             title={row.title} meta={row.meta} />
