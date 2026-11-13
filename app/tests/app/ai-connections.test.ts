@@ -81,7 +81,9 @@ describe('provider-neutral owner AI connections (#179)', () => {
       assert.ok(stored.startsWith('v1.') && !stored.includes(key));
       assert.equal(decrypt(stored, owner.id, saved.id), key, 'custody is the same AEAD for every provider');
     }
-    assert.equal((await mock('/__requests')).requests.length, 0, 'saving a connection calls no provider');
+    // Saving calls no provider; only OpenRouter's public model list is read, without a key, for what an OpenRouter key pays (#1465).
+    const asked = (await mock('/__requests')).requests;
+    assert.deepEqual(asked.map((item) => [item.method, item.path, item.key]), [['GET', '/openrouter/v1/models', null]], 'saving a connection calls no provider');
   });
 
   test('wrong key formats, models, URLs and prices are refused and nothing is stored', async () => {

@@ -239,7 +239,8 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.equal(await processor.process(first.run.id), 'completed');
     const sent = (await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages');
     assert.equal((sent[0]!.body as { model: string }).model, 'claude-haiku-5-5', 'the request sent before the change used Haiku');
-    assert.deepEqual([(await row(first.run.id)).reserved_micros, (await row(first.run.id)).charged_micros], [16_000 + 10_000, 500 + 250], 'reserved and charged at the Haiku table price');
+    assert.deepEqual([(await row(first.run.id)).reserved_micros, (await row(first.run.id)).charged_micros], [3_200 + 2_000, 100 + 50],
+      'reserved and charged at Haiku\'s list price below 100,000 tokens: a 32,000-token request never reaches its long-prompt price (#1465)');
     const second = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
     assert.equal(await processor.process(second.run.id), 'completed');
     assert.equal(((await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages').at(-1)!.body as { model: string }).model, 'claude-sonnet-5');
