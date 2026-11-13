@@ -31,8 +31,11 @@ digest, as the `proxy` service. It listens on port 80 and on the origin's port (
 names another; TCP, and UDP for HTTP/3), obtains and renews the certificate for the origin's host
 itself (ACME, Let's Encrypt or ZeroSSL), redirects plain `http` to `https`, and passes everything to
 the API over a network that only the two of them join. The API's own port stays on `127.0.0.1`.
-The owner's only steps are the DNS record (A, and AAAA if the server has IPv6) and opening 80/tcp and
-443/tcp to the server; ACME needs both to reach it.
+The owner's only steps are the DNS A record and opening 80/tcp and 443/tcp to the server; ACME needs
+both to reach it. **No AAAA record** unless Docker's IPv6 networking is enabled on the server: on Docker's
+default IPv4-only networks an IPv6 visitor reaches Caddy through Docker's userland proxy, from the
+network's gateway address, so Flux would see every IPv6 visitor as one client (one shared sign-in limit,
+the gateway in session lists).
 
 The API trusts exactly Caddy's address. Each time it starts, it looks up the `proxy` service and runs
 with `FLUX_TRUSTED_PROXIES=<Caddy's address>/32`; `./flux up` prints the value. `docker/.env` keeps

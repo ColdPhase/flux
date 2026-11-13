@@ -91,8 +91,9 @@ certificate for `flux.example.org` itself and passes everything to the API, whic
 `127.0.0.1:8081`. The API trusts exactly Caddy's address, so sign-in limits and session lists see real
 client addresses; `./flux up` prints that address.
 
-Your part is DNS: an A record (and AAAA if the server has IPv6) for `flux.example.org` pointing at the
-server, and inbound 80/tcp and 443/tcp open to it. Caddy retries until the name resolves, so the order
+Your part is DNS: an A record for `flux.example.org` pointing at the server, and inbound 80/tcp and
+443/tcp open to it. Add no AAAA record unless Docker on the server has IPv6 networking enabled (see the
+[guide](reverse-proxy.md#built-in-https)). Caddy retries until the name resolves, so the order
 does not matter. The details, and how to keep [a proxy of your own](reverse-proxy.md#your-own-proxy-instead)
 instead (the same file, with its address in `FLUX_TRUSTED_PROXIES`), are in the
 [reverse proxy guide](reverse-proxy.md#built-in-https).
