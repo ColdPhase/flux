@@ -22,6 +22,8 @@ export function DetailsSkeleton({ title }: { title?: string }) {
       <div className="details wd wd--task wd-skeleton wd-skeleton--task" aria-busy="true">
         <div className="wd__scroll">
           <span className="ui-vh" role="status">Loading…</span>
+          {/* The "#4 · Rain barrel monitor" line above the title (#1364), one line of the same text size, so the title does not move. */}
+          <p className="wd-skeleton__ref" aria-hidden="true"><i />&nbsp;</p>
           <h3 className="details__title wd-skeleton__name"><span>{title}</span></h3>
           <div className="wd-skeleton__rows">{[0, 1, 2, 3].map((row) => <div key={row} className="wd-skeleton__row"><i /><i /></div>)}</div>
           <div className="wd-skeleton__actions"><i /><i /><i /></div>
