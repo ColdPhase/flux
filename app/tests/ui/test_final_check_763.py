@@ -2,8 +2,8 @@
 
 Each test reproduces one finding at the device viewports of that check, on the engine FLUX_UI_BROWSER names
 (run the module once with chromium and once with webkit):
-- P2-1: a live strip that arrives while a task's Details sheet or overlay is open (a session started from
-  Details) stays above the panel's scrim and usable; phone 390x844 and tablet 820x1180.
+- P2-1: a live strip that arrives while a task's Details sheet is open (a session started from Details) stays above the
+  panel's scrim and usable on the phone (390x844); on the tablet (820x1180) the panel is the non-modal card under the header (#1365).
 - P2-2: the phone header's Back after opening a `?open=` link as the tab's first page stays in Flux.
 - P2-3: Home's "Open navigation" at 641-680 px (Galaxy Z Fold 5 unfolded, 673x841) is on screen and opens the
   drawer, which leads to Settings.
@@ -150,30 +150,59 @@ class FinalCheck763(unittest.TestCase):
     # ------------------------------------------------------------------ P2-1
 
     def test_p2_1_a_strip_that_arrives_under_open_details_stays_usable(self) -> None:
-        for name, viewport in (("phone", PHONE), ("tablet", TABLET)):
-            with self.subTest(name):
-                page = self.page(viewport)
-                self.tasks_with_details(page)
-                self.assertEqual(page.evaluate("document.getElementById('root').getAttribute('data-modal')"), "", "the panel alone makes the app modal")
-                page.evaluate(ADD_STRIP)
-                # The decision is taken again when the strip arrives: only the strip's path stays live.
-                page.wait_for_function("() => document.getElementById('root').getAttribute('data-modal') === 'strip'")
-                self.assertFalse(page.evaluate("document.getElementById('root').inert"))
-                # The overlay and its scrim start below the strip, so nothing paints over it.
-                page.wait_for_function("""() => { const frame = document.querySelector('.ui-overlay[data-state="open"]');
-                  const strip = document.querySelector('#root .lv-bar');
-                  return frame && strip && parseFloat(frame.style.top || '0') >= Math.round(strip.getBoundingClientRect().bottom) - 1; }""")
-                for label in ("Turn microphone on", "Leave"):
-                    button = page.locator(f"#root .lv-bar button[aria-label='{label}']")
-                    hit = page.evaluate("""(label) => { const button = document.querySelector(`#root .lv-bar button[aria-label="${label}"]`);
-                      const r = button.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === button; }""", label)
-                    self.assertTrue(hit, f"{name}: {label} is not covered by the panel or its scrim")
-                    button.tap()
-                self.assertEqual(page.evaluate("window.__stripTaps"), 2, f"{name}: Mute and Leave take taps with Details open")
-                expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)
-                # Leave takes the strip away: the panel is modal over the whole app again.
-                page.evaluate("document.querySelector('#root .lv-bar').remove()")
-                page.wait_for_function("() => document.getElementById('root').getAttribute('data-modal') === '' && document.getElementById('root').inert")
+        # The phone's Details is a modal sheet: the strip that arrives is the one other live path.
+        page = self.page(PHONE)
+        self.tasks_with_details(page)
+        self.assertEqual(page.evaluate("document.getElementById('root').getAttribute('data-modal')"), "", "the panel alone makes the app modal")
+        page.evaluate(ADD_STRIP)
+        # The decision is taken again when the strip arrives: only the strip's path stays live.
+        page.wait_for_function("() => document.getElementById('root').getAttribute('data-modal') === 'strip'")
+        self.assertFalse(page.evaluate("document.getElementById('root').inert"))
+        # The overlay and its scrim start below the strip, so nothing paints over it.
+        page.wait_for_function("""() => { const frame = document.querySelector('.ui-overlay[data-state="open"]');
+          const strip = document.querySelector('#root .lv-bar');
+          return frame && strip && parseFloat(frame.style.top || '0') >= Math.round(strip.getBoundingClientRect().bottom) - 1; }""")
+        self.assert_strip_takes_taps(page, "phone")
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(1)
+        # Leave takes the strip away: the panel is modal over the whole app again.
+        page.evaluate("document.querySelector('#root .lv-bar').remove()")
+        page.wait_for_function("() => document.getElementById('root').getAttribute('data-modal') === '' && document.getElementById('root').inert")
+
+    def test_p2_1_a_strip_that_arrives_beside_the_tablet_panel_stays_usable(self) -> None:
+        """#1365: from 641 to 1000 px the panel is the computer's non-modal card under the header, so a strip that arrives above the work
+        is never covered, the app is never made inert, Escape in the panel closes it and focus goes back to the card it was opened from."""
+        page = self.page(TABLET)
+        page.goto(f"/projects/{self.project_id}/tasks?view=board")
+        opener = page.locator(f"[data-card-id='{self.task['id']}'] .tb-card__open")
+        opener.click()
+        panel = page.locator("#details")
+        expect(panel.get_by_text(TASK).first).to_be_visible()
+        expect(page.locator(".ui-panel--float")).to_have_count(1)
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
+        self.assertFalse(page.evaluate("document.getElementById('root').inert"), "the panel does not make the app modal")
+        self.assertIsNone(page.evaluate("document.getElementById('root').getAttribute('data-modal')"))
+        header = page.locator("header.top").bounding_box()
+        self.assertGreaterEqual(panel.bounding_box()["y"], header["y"] + header["height"] - 1, "the panel lies under the header")
+        page.evaluate(ADD_STRIP)
+        strip = page.locator("#root .lv-bar")
+        page.wait_for_function("""() => document.querySelector('#details').getBoundingClientRect().top
+          >= document.querySelector('#root .lv-bar').getBoundingClientRect().bottom - 1""")
+        self.assert_strip_takes_taps(page, "tablet")
+        expect(strip).to_be_visible()
+        expect(panel).to_be_visible()
+        panel.locator(".ui-panel__body").focus()
+        page.keyboard.press("Escape")
+        expect(page.locator("#details")).to_have_count(0)
+        page.wait_for_function("(id) => document.activeElement?.closest(`[data-card-id='${id}']`) !== null", arg=self.task["id"])
+
+    def assert_strip_takes_taps(self, page: Page, name: str) -> None:
+        for label in ("Turn microphone on", "Leave"):
+            button = page.locator(f"#root .lv-bar button[aria-label='{label}']")
+            hit = page.evaluate("""(label) => { const button = document.querySelector(`#root .lv-bar button[aria-label="${label}"]`);
+              const r = button.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === button; }""", label)
+            self.assertTrue(hit, f"{name}: {label} is not covered by the panel or its scrim")
+            button.tap()
+        self.assertEqual(page.evaluate("window.__stripTaps"), 2, f"{name}: Mute and Leave take taps with Details open")
 
     # ------------------------------------------------------------------ P2-2
 

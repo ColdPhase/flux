@@ -380,13 +380,13 @@ function AppLayoutContent() {
     sidebarHidden: railed,
   }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
-  // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
+  // A link inside the phone's sheet (#117 overview) leads to its destination; the docked and the floating card stay (#1365).
   const [shownPath, setShownPath] = useState(location.pathname);
   if (shownPath !== location.pathname) {
     setShownPath(location.pathname);
     // A link in the panel that leads to a thread or back to a task keeps the panel (its state says so).
     const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
-    if (((panelMode !== 'docked' && !keep) || aiConnections) && detailsOpen) setDetailsOpen(false);
+    if (((panelMode === 'sheet' && !keep) || aiConnections) && detailsOpen) setDetailsOpen(false);
     // A docked panel that shows an object or a form of the place being left does not follow the person to another place
     // (#763 H11-8): it closes and its "‹ back" trail goes with it, so Details opened there is that place's. The place's
     // own Details ('place') reads the new place by itself; a view-owned thread or agent is closed by its view.
@@ -708,8 +708,9 @@ function AppLayoutContent() {
   const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox\/?$/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
-    // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
-    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
+    // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row. The people go first,
+    // where the name would otherwise be cut under its 220 px slot (#1375).
+    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: 'people' as const }] : []),
     ...(activeProject ? [{ label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),

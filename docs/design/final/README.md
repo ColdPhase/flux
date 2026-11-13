@@ -390,16 +390,19 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings and
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
+  too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
+  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings and
   **Mute space** / **Unmute space**. There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it. It is **one card in one place on every computer view** (#1365): above 1000 px it docks under
-  the header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki
-  alike, and never covers the header, so the name, the views, the faces, Call and ⋯ stay in view and
-  live. The work beside it narrows (the Tasks board then scrolls its columns sideways inside itself,
-  with a thin bar). From 641 to 1000 px it is still the overlay from the right and on the phone the
-  sheet below; whether the tablet's overlay should also keep the header clear is open (#1365).
+  `Esc` closes it. It is **one card in one place on every computer and tablet view** (#1365): under the
+  header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
+  and it never covers the header or a call's strip, so the name, the views, the faces, Call and ⋯ stay in
+  view and live. It is never modal: no scrim, the work beside it stays usable, `Esc` in it closes it and
+  focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
+  board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
+  card lies over the work's right edge; on the phone it is the sheet below.
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -1140,8 +1143,9 @@ the composer. The right-hand phone above shows the sheet.
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
   right, "+ Task". Mine includes tasks owned by your agents. "+ Task" is the right end of this row on
   every computer and tablet, in both views and in either orientation, and the space's header holds
-  only its own slots (#1366). Over the List, a centred column on a wide window, the row is that same
-  column, so "+ Task" ends where the list ends.
+  only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
+  that same 838 px column, so "+ Task" ends where the list ends; over the Board it stays that column, so
+  nothing in the row moves when the view changes (principle 7).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+".

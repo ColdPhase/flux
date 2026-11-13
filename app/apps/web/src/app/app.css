@@ -354,6 +354,9 @@ a.me__item { text-decoration: none; }
 .top--project.top--row { --name-rest: 35rem; }
 .top--project.top--row .top__title { flex: 0 0 clamp(5rem, 100cqw - var(--name-rest), 13.75rem); min-width: 0; }
 /* Below 44 rem the people and Call are in More (rule 3 below): the rest is the views, More and the gaps. */
+/* Below 48.75 rem (780 px: the name's 220 px slot and the 35 rem beside it) the people move into More first, so the name keeps its slot
+   (#1375): the rest is then the views, Call, More and the gaps. */
+@container main (max-width: 48.75rem) { .top--project.top--row { --name-rest: 28.125rem; } }
 @container main (max-width: 44rem) { .top--project.top--row { --name-rest: 24.25rem; } }
 @media (max-width: 680px) { @container main (max-width: 44rem) { .top--project.top--row { --name-rest: 27.875rem; } } }
 /* From 1001 px, where the details panel docks, the people and Call move into More under a 48.5 rem (776 px) header, so the name keeps its slot (#873). */
@@ -415,6 +418,12 @@ a.me__item { text-decoration: none; }
    sooner instead of pushing the header past its edge (#763). The 704 px is what the row needs: the name's least width (5 rem), the views
    at their label widths (269 px), the people (up to 93 px for six), Call (72 px), More (44 px on touch) and the gaps and padding. */
 .top__more-narrow { display: none; }
+/* Where the name would be cut under its 220 px slot (below 48.75 rem, an 820 px tablet in portrait), the people go into "⋯" first and Call
+   stays in the row (#1375). */
+@container main (max-width: 48.75rem) {
+  .top--row:has(> .top__views) .top__right > .top__faces-slot { display: none; }
+  .top--row:has(> .top__views) .top__more-people { display: flex; }
+}
 @container main (max-width: 44rem) {
   .top--row:has(> .top__views) .top__right > :is(.top__faces-slot, .lv-entry) { display: none; }
   .top--row:has(> .top__views) .top__more-narrow { display: flex; }

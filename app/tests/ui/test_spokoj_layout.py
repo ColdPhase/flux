@@ -126,12 +126,14 @@ class SpokojLayout(unittest.TestCase):
         expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
         page.wait_for_function(SETTLED)
 
-    def header_boxes(self, page: Page, views: bool = True, narrow: bool = False) -> dict:
-        """The header's controls by accessible name: the views, then people · Call · More. Where the row has no room for them (under 704 px) the people and Call are in More."""
+    def header_boxes(self, page: Page, views: bool = True, narrow: bool = False, faces: bool = True) -> dict:
+        """The header's controls by accessible name: the views, then people · Call · More. Where the row has no room for them (under 704 px) the people
+        and Call are in More; where the name would be cut under its 220 px slot (under 780 px, `faces=False`) the people alone are (#1375)."""
         header = page.locator("header.top")
         boxes = {"More": self.box(header.get_by_role("button", name="More", exact=True))}
-        if not narrow:
+        if not narrow and faces:
             boxes["people"] = self.box(header.get_by_role("button", name=PEOPLE))
+        if not narrow:
             boxes["Call"] = self.box(header.get_by_role("button", name="Call", exact=True))
         if views:
             for name in VIEW_NAMES:
@@ -284,26 +286,37 @@ class SpokojLayout(unittest.TestCase):
         self.assertAlmostEqual(self.box(page.locator(".app__side"))["width"], 64, delta=1)
         header = page.locator("header.top")
         self.assertLessEqual(self.box(header)["height"], 72)
-        # The views are the same segmented control as the computer's (#873) and the people and Call keep their place beside it: the row has
-        # room for them at 820 (the header is 748 px wide), so they leave it for More only when it has not.
+        # The views are the same tabs as the computer's (#873) and Call keeps its place beside them. The header is 748 px wide at 820, under the
+        # 780 px where the name keeps its 220 px slot with the people in the row, so the people are in More and the name has its slot (#1375).
         views = header.get_by_role("navigation", name="Space views")
         expect(views).to_be_visible()
         expect(header.get_by_role("heading", level=1).get_by_role("button")).to_have_count(0)
-        boxes = self.header_boxes(page, views=True)
-        # The name takes the room that is left: more than the least a name keeps, and the row ends inside the screen.
-        self.assertGreaterEqual(self.box(header.get_by_role("heading", level=1))["width"], 100, "the name keeps a readable start")
+        expect(header.get_by_role("button", name=PEOPLE)).to_be_hidden()
+        expect(header.get_by_role("button", name="Call", exact=True)).to_be_visible()
+        boxes = self.header_boxes(page, views=True, faces=False)
+        self.assertAlmostEqual(self.box(header.locator(".top__title"))["width"], 220, delta=1, msg="the name keeps its 220 px slot")
+        header.get_by_role("button", name="More", exact=True).click()
+        menu = page.get_by_role("menu", name="More")
+        expect(menu.get_by_role("menuitem", name="People")).to_be_visible()
+        expect(menu.get_by_role("menuitem", name="Call")).to_be_hidden()
+        page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         views.get_by_role("tab", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks"))
         page.wait_for_function(SETTLED)
-        self.assert_same_place(boxes, self.header_boxes(page, views=True), "820 Conversation to Tasks")
-        # The panel (380 px) slides over the conversation, which stays visible beside it.
+        self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 Conversation to Tasks")
+        # The panel (380 px) is the computer's card laid over the work's right edge, under the header and with no scrim (#1365).
         header.get_by_role("button", name="More", exact=True).click()
         page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
-        expect(page.locator(".ui-panel--overlay")).to_be_visible()
+        expect(page.locator(".ui-panel--float")).to_be_visible()
+        expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         page.wait_for_function(SETTLED)
-        panel = self.box(page.locator(".ui-panel--overlay"))
+        panel = self.box(page.locator(".ui-panel--float"))
         self.assertAlmostEqual(panel["width"], 380, delta=1)
         self.assertGreater(panel["x"], 300, "the conversation stays visible to the left of the panel")
+        bar = self.box(header)
+        self.assertGreaterEqual(panel["y"], bar["y"] + bar["height"] - 1, "the panel never covers the header")
+        self.assert_same_place(boxes, self.header_boxes(page, views=True, faces=False), "820 with the panel open")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), TABLET["width"], "no sideways page scroll")
         shot(page, "505-tablet-820-panel")
         # The rail's expand control opens the sidebar as a drawer.
@@ -362,7 +375,7 @@ class SpokojLayout(unittest.TestCase):
                 for path in VIEWS:
                     self.goto_view(page, path)
                     header = page.locator("header.top")
-                    boxes = self.header_boxes(page, views=True)
+                    boxes = self.header_boxes(page, views=True, faces=size is not TABLET)
                     # Call is in every view; where nothing is open to work on together it stays and says why on a click.
                     if path in ("/map", "/tasks"):
                         together = header.get_by_role("button", name="Call", exact=True)
