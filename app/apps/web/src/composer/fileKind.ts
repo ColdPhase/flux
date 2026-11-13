@@ -22,7 +22,7 @@ const WORD: Record<FileKind, string> = {
   archive: 'Archive', audio: 'Audio', video: 'Video', image: 'Image', other: 'File',
 };
 
-/** Images the viewer may show: their bytes are checked with `imageTypeOf`, never trusted by name. SVG is never one. */
+/** Images the viewer may show: their bytes are checked with `drawablePictureType`, never trusted by name. SVG is never one. */
 const PHOTO = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp']);
 
 export const extensionOf = (name: string) => {

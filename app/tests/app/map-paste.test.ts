@@ -11,6 +11,7 @@ import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
 import { sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
 import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { db, pool } from './support/db.js';
+import { assertSamePixels } from './support/picture-pixels.js';
 
 // #252: pasting on a map. Lines and links are ordinary thoughts saved only by the client's confirmation; an image is
 // staged privately through the #225 stored-files path and becomes the project's to read only when its thought is
@@ -93,12 +94,17 @@ test('a pasted image stays private staging until its thought is saved, then the 
   assert.deepEqual(await detail(f.owner, f.map.id), before);
   assert.equal(await sketchEvents(f.map.id), eventsBefore);
   for (const other of [f.owner, f.reader, f.outsider]) assert.equal((await download(other, staged.body.id)).status, 404, 'private staging');
-  assert.equal((await download(f.writer, staged.body.id)).status, 200, 'the uploader previews their own staged image');
+  const mine = await download(f.writer, staged.body.id);
+  assert.equal(mine.status, 200, 'the uploader previews their own staged image');
+  // The server decodes a picture and writes it again (#1343): the same pixels, and the size is that of the stored file.
+  const stored = Buffer.from(await mine.arrayBuffer());
+  await assertSamePixels(stored, PNG, 'the pasted image');
+  assert.equal(staged.body.size, stored.length);
 
   const key = randomUUID();
   const thoughtId = randomUUID();
   const created = expectStatus(await place(f.writer, f.map.id, { id: thoughtId, fileId: staged.body.id.toUpperCase() }, key), 201) as CreatedThought;
-  assert.deepEqual(created.thought.file, { id: staged.body.id, name: 'Pasted image.png', size: PNG.length });
+  assert.deepEqual(created.thought.file, { id: staged.body.id, name: 'Pasted image.png', size: stored.length });
   assert.equal(created.thought.text, 'Pasted image');
   assert.deepEqual([created.thought.width, created.thought.height], [240, 200]);
   const published = await row(staged.body.id);
@@ -114,7 +120,7 @@ test('a pasted image stays private staging until its thought is saved, then the 
   for (const other of [f.owner, f.reader]) {
     const response = await download(other, staged.body.id);
     assert.equal(response.status, 200, 'project read after confirmation');
-    assert.deepEqual(Buffer.from(await response.arrayBuffer()), PNG);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), stored);
   }
   assert.equal((await download(f.outsider, staged.body.id)).status, 404, 'still only the project');
   // Thoughts without an image carry no `file`; cleanup never touches a published image.

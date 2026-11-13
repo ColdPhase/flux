@@ -6,6 +6,7 @@ import { pool } from './support/db.js';
 import type { Person } from './support/people.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 import { png } from './support/pictures.js';
+import { assertSamePixels } from './support/picture-pixels.js';
 
 // Founder decision on #1217 (2026-11-12): pictures work in the agent's private chat too, at once and with no Undo (the chat changes nothing).
 // On the real /mcp route with a run's token; the closed world's `public.test` is the link mock.
@@ -14,7 +15,8 @@ const SITE = process.env.FLUX_LINK_MOCK_URL ?? 'http://linkmock:8098';
 const at = (path: string) => `http://public.test${path}`;
 const download = async (who: Person, id: string) => {
   const response = await fetch(new URL(filePath(id), who.browser.base), { headers: { cookie: who.browser.cookieHeader() } });
-  return { status: response.status, bytes: Buffer.from(await response.arrayBuffer()) };
+  const bytes = Buffer.from(await response.arrayBuffer());
+  return { status: response.status, bytes, text: bytes.toString('latin1') };
 };
 const pictures = async (runId: string) => (await pool.query(`SELECT id, name, position FROM personal_run_pictures WHERE run_id = $1 ORDER BY position`, [runId])).rows as
   { id: string; name: string; position: number }[];
@@ -43,7 +45,8 @@ describe('pictures in the agent\'s private chat (#1217)', () => {
     assert.deepEqual((await changesOf(run.runId)), [], 'no change log in a chat: it changes nothing');
     const own = await download(scene.owner, picture!.id);
     assert.equal(own.status, 200);
-    assert.deepEqual(own.bytes, png(96, 64), 'only the picture');
+    await assertSamePixels(own.bytes, png(96, 64), 'only the picture, decoded and written again');
+    for (const secret of ['Ada Nowak', 'GPS', 'tIME', 'PK\x03\x04', '<script>']) assert.ok(!own.text.includes(secret), `${secret} is gone`);
     assert.equal((await download(scene.peer, picture!.id)).status, 404, 'nobody else opens it');
     await scene.complete(run.runId);
     const view = await scene.runs.get(human(scene.owner), run.runId);

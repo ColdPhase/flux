@@ -294,7 +294,9 @@ class MapPasteJourney(unittest.TestCase):
         self.assertEqual([thought["width"], thought["height"]], [240, 200])
         download = self.owner.request.get(f"/api/v1/files/{file_id}")
         self.assertEqual(download.status, 200, "project read after confirmation")
-        self.assertEqual(download.body(), IMAGE)
+        # The server writes a picture again before it stores it (#1343): the same 48 x 32 picture, not the same bytes.
+        self.assertEqual(struct.unpack(">II", download.body()[16:24]), (48, 32), "the stored picture is the one that was pasted")
+        self.assertEqual(download.body()[:8], IMAGE[:8])
         node = page.locator(f'.sk-node[data-id="{thought["id"]}"]')
         expect(node.locator("img.sk-img")).to_be_visible()
         self.assertEqual(node.locator("img.sk-img").evaluate(NATURAL), 48)
