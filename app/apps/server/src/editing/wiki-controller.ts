@@ -7,7 +7,8 @@ import type { EditingContext } from './gate.js';
 import { editingContextCharge,editingWikiResultCharge } from './context-charge.js';
 import type { AdmissionLease } from './codec/admission-budget.mjs';
 import { Assemblies, type CompletedAssembly } from './codec/assembly.mjs';
-import { EditingOutput, EditingOutputBudget } from './output.js';
+import { EditingOutput, EditingOutputBudget, EditingOutputError } from './output.js';
+import { background, type EditingReport } from './background.js';
 import type { WikiAuthority } from './authority.js';
 import { EditingHTTPAdmission } from './http-admission.js';
 import { editingJSONSize } from './json-size.js';
@@ -45,17 +46,25 @@ const errorCode = (error: unknown) => error instanceof DomainError ? error.code
   : error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : 'EDITING_UNAVAILABLE';
 const busy = (error: unknown) => ['EXTERNAL_BUFFER_LIMIT', 'WORK_QUEUE_LIMIT', 'POOL_CLOSED', 'EDITING_OUTPUT_CAPACITY', 'EDITING_PRESENCE_CAPACITY'].includes(errorCode(error));
 /** Message listeners are installed synchronously by the one upgrade dispatcher; all protected send paths use SQL authority. */
-export function wikiController(authority: ControllerAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null) {
+export function wikiController(authority: ControllerAuthority, outputBudget: EditingOutputBudget,telemetry?:()=>EditingQueueTelemetry|null,report?:EditingReport) {
   const connections = new Map<string, Connection>(); const assemblies = new Assemblies(editingResourcesChanged);
   const preparation=new EditingHTTPAdmission(outputBudget,10_000,'wiki');
   const operations=new Set<Promise<void>>();let reading=0,writing=0,cursorActive=0;
   function operation(){let finish=()=>{};const done=new Promise<void>(resolve=>{finish=resolve;});operations.add(done);return()=>{operations.delete(done);finish();};}
   let closing = false;
   function close(c: Connection) { if (c.closed) return; c.closed = true; c.releaseBase(); c.cursor?.release(); c.cursor = null; for (const entry of c.presence.values()) entry.release(); c.presence.clear(); c.output.close(); assemblies.remove(c.context.connectionId); c.assembly = null; connections.delete(c.context.connectionId);editingResourcesChanged(); }
+  /**
+   * Never throws: its callers are a read, a commit, a cursor and the timer, none of which has anyone to throw to, and an error that
+   * leaves here stops the whole API process (v0.2.1 P1).
+   */
   function fail(c: Connection, error: unknown, commandId?: string) {
     if (c.closed) return;
     if (errorCode(error) === 'UNAUTHENTICATED' || error instanceof DomainError && (error.status === 403 || error.status === 404)) {
-      try { c.output.sendJSON({ type: 'revoked' }); } finally { c.socket.close(1008, 'Access ended'); close(c); } return;
+      // The notice is best effort and nothing protected follows it. A person who signed out while their editor was open has a socket that is
+      // already closing (the output is closed, or has no window left): it cannot be told, and the close below ends it either way.
+      try { c.output.sendJSON({ type: 'revoked' }); }
+      catch (sendError) { if (!(sendError instanceof EditingOutputError)) report?.(sendError, 'revoked notice'); }
+      finally { c.socket.close(1008, 'Access ended'); close(c); } return;
     }
     const unknown = error instanceof EditingTransactionError && error.outcome === 'unknown';
     try { c.output.sendJSON({ type: 'error', code: errorCode(error), ...(commandId ? { commandId } : {}), outcome: unknown ? 'unknown' : 'refused', retryable: unknown || busy(error) }); }
@@ -73,6 +82,8 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     catch { /* a closed or backpressured editor reads the page again when its connection ends */ }
     c.socket.close(1008, 'Snapshot required'); close(c);
   }
+  /** A read nobody awaits. */
+  function wake(c: Connection) { background(catchup(c), 'read', report); }
   async function catchup(c: Connection) {
     if (c.closed || !c.subscribed || !c.generation) return;
     if (c.reading) { c.pendingRead = true; return; }
@@ -127,7 +138,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
             updates.forEach((update, index) => {
               const deliveredSequence = update.sequence;
               c.output.send({ type: 'update', generation: head.generation, sequence: update.sequence, hash: update.hash,
-                commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; void catchup(c); }, index > 0);
+                commandId: update.commandId, actor: update.actor }, update.bytes, () => { c.sequence = deliveredSequence; wake(c); }, index > 0);
             });
             const atHead = !updates.length || updates.at(-1)!.sequence === head.sequence;
             if (atHead && result.preview && c.previewSequence < head.sequence) {
@@ -137,7 +148,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
               const text=JSON.stringify(result.preview);if(Buffer.byteLength(text)!==size.bytes||text.length*2!==size.textBytes)throw new ServiceUnavailableError('Invalid bounded preview','EDITING_OUTPUT_CAPACITY');
               const deliveredSequence = head.sequence;
               c.output.sendJSONPayload({ type: 'preview', generation: head.generation, sequence: head.sequence, hash: head.hash }, text,
-                () => { c.previewSequence = deliveredSequence; void catchup(c); }, updates.length > 0);
+                () => { c.previewSequence = deliveredSequence; wake(c); }, updates.length > 0);
               } finally {releaseText();}
             }
           }
@@ -160,8 +171,8 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
   function fanOut(docId: string) {
     const room = [...connections.values()].filter((other) => other.context.target.id === docId);
     for (const other of room) touch(other.cadence);
-    for (const other of room) if (!other.running) void catchup(other);
-    for (const other of room) if (other.running) void catchup(other);
+    for (const other of room) if (!other.running) wake(other);
+    for (const other of room) if (other.running) wake(other);
   }
   function pump(c: Connection) {
     if (c.closed || c.running || !c.assembly) return;
@@ -173,7 +184,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     try { turn = authority.queueInput(bytes); }
     catch (error) { if (!busy(error)) { fail(c, error, commandId); assemblies.remove(c.context.connectionId); c.assembly = null; c.assemblyCommand = null; } return; }
     c.running = true;writing++;editingResourcesChanged();const completed=operation();
-    void (async () => {
+    background((async () => {
       let admission: AdmissionLease;
       try {
         try { admission = await turn; }
@@ -193,7 +204,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
         fanOut(c.context.target.id);
       } catch (error) { fail(c, error, commandId); }
       finally { bytes=null;c.running = false;writing--;editingResourcesChanged();completed(); pump(c); }
-    })();
+    })(), 'text commit', report);
   }
   function cursor(c: Connection) {
     if (c.closed || c.cursorBusy || !c.cursor) return;
@@ -210,10 +221,10 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     c.cursorBusy = true; cursorActive++; editingResourcesChanged(); const completed = operation();
     // This cursor owns its complete parsed continuation until the actual authority
     // operation settles. The one replaceable waiting slot is independently charged.
-    void authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
+    background(authority.cursor(c.context.session, c.context.target.id, retained.generation, c.context.connectionId, retained.cursor)
       .then(() => { c.renewed = { key, at: started }; fanOut(c.context.target.id); })
       .catch((error) => { if (errorCode(error) === 'EDITING_GENERATION_CHANGED') resync(c); else fail(c, error); })
-      .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); });
+      .finally(() => { retained.release(); c.cursorBusy = false; cursorActive--; editingResourcesChanged(); completed(); cursor(c); }), 'cursor', report);
   }
   function retainCursor(c: Connection, generation: string, value: LiveCursor | null, rawBytes: number) {
     if (rawBytes > 2048 || value !== null && (!value || typeof value !== 'object' || Array.isArray(value)
@@ -232,7 +243,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     for (const c of connections.values()) {
       if (c.cursor && c.cursor.expiresAt <= Date.now()) { c.cursor.release(); c.cursor = null; editingResourcesChanged(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); }
       if (c.assemblyCommand && !assemblies.pending.has(c.context.connectionId)) { const uuid = c.assemblyCommand; c.assembly = null; c.assemblyCommand = null; fail(c, new ServiceUnavailableError('The finite assembly deadline ended', 'EDITING_ASSEMBLY_EXPIRED'), uuid); }
-      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.running || !!c.assembly || !!c.assemblyCommand || !!c.cursor)) void catchup(c);
+      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.running || !!c.assembly || !!c.assemblyCommand || !!c.cursor)) wake(c);
     }
   }, TICK_MS); timer.unref();
   return {
@@ -263,10 +274,10 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
           if (message.type === 'subscribe') {
             if (c.subscribed || typeof message.generation !== 'string' || !Number.isSafeInteger(message.afterSequence) || message.afterSequence < 0
               || Object.keys(message).some((key) => !['type','generation','afterSequence'].includes(key))) throw new DomainError(400, 'EDITING_SUBSCRIBE_INVALID', 'Invalid subscription');
-            c.generation = message.generation; c.sequence = message.afterSequence; c.subscribed = true; void catchup(c);
+            c.generation = message.generation; c.sequence = message.afterSequence; c.subscribed = true; wake(c);
           } else if (message.type === 'received') {
             if (Object.keys(message).some((key) => !['type','deliveryId','index'].includes(key))) throw new DomainError(400, 'EDITING_ACK_INVALID', 'Invalid delivery acknowledgment');
-            c.output.received(message.deliveryId, message.index); void catchup(c);
+            c.output.received(message.deliveryId, message.index); wake(c);
           } else if (message.type === 'cursor') {
             if (!c.subscribed || message.generation !== c.generation || Object.keys(message).some((key) => !['type','generation','cursor'].includes(key))) throw new DomainError(400, 'INVALID_CURSOR', 'Invalid cursor');
             retainCursor(c, message.generation, message.cursor, Buffer.byteLength(raw));
@@ -274,7 +285,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
         } catch (error) { fail(c, error, commandId); }
       });
     },
-    notifyAll() { for (const c of connections.values()) { touch(c.cadence); void catchup(c); } },
+    notifyAll() { for (const c of connections.values()) { touch(c.cadence); wake(c); } },
     notify(docId: string) { fanOut(docId); },
     async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },
