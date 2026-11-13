@@ -344,11 +344,18 @@ interactive() { [ -t 0 ] && [ -t 1 ]; }
 runtime_probe_image() { sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/p' "$FLUX_ROOT/docker/Dockerfile" 2>/dev/null | head -n 1; }
 
 # Prints one line saying why the Docker engine cannot run the agent runtime, or nothing when it can
-# (AIM-3: Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
+# (AIM-3: Linux 6.7 or later for Landlock ABI 4, Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
 # the engine, not this machine: the runtime runs in the engine's kernel. Flux AI needs it (#1441, RT-1): a Linux host.
 runtime_host_problem() {
   info=$(docker info --format '{{json .}}' 2>/dev/null) || { say "the Docker engine did not report its settings"; return 0; }
   case "$info" in *'"OSType":"linux"'*) ;; *) say "the Docker engine is not a Linux engine"; return 0 ;; esac
+  # The runtime needs Landlock ABI 4, which came with Linux 6.7 (founder decision 2026-11-13, #1441): on an older kernel it does not
+  # start, so Flux AI is off. The engine's kernel version stands for it here; the runtime's own start check probes Landlock itself.
+  kernel=$(printf '%s' "$info" | sed -n 's/.*"KernelVersion":"\([0-9][0-9]*\)\.\([0-9][0-9]*\)[^"]*".*/\1 \2/p')
+  major=${kernel% *} minor=${kernel#* }
+  if [ -z "$kernel" ] || [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 7 ]; }; then
+    say "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13)."; return 0
+  fi
   for limit in MemoryLimit CpuCfsQuota PidsLimit; do
     case "$info" in *"\"$limit\":true"*) ;; *) say "the Docker engine cannot set the memory, CPU and process limits the runtime has ($limit is off)"; return 0 ;; esac
   done
@@ -453,7 +460,7 @@ first_run_runtime_question() {
   [ -z "${FLUX_AGENT_RUNTIME+x}" ] || return 0
   problem=$(runtime_host_problem)
   if [ -n "$problem" ]; then
-    say "AI agents stay off, as the agent runtime cannot run here: $problem. See docs/operations/agent-runtime.md."
+    say "AI agents stay off, as the agent runtime cannot run here: ${problem%.}. See docs/operations/agent-runtime.md."
     set_env_line "$1" FLUX_AGENT_RUNTIME_OFF_REASON "$problem"
     return 0
   fi
@@ -1527,7 +1534,7 @@ cmd_ai() {
   esac
   [ -z "$(plan_clients "$current")" ] || say "Subscription sign-in is on for: $(plan_clients "$current")."
   problem=$(runtime_host_problem)
-  [ -z "$problem" ] || die "AI agents cannot be turned on here, as the agent runtime cannot run here: $problem. See docs/operations/agent-runtime.md."
+  [ -z "$problem" ] || die "AI agents cannot be turned on here, as the agent runtime cannot run here: ${problem%.}. See docs/operations/agent-runtime.md."
   if ! ask_runtime_questions "$current"; then
     say "Nothing changed."
     return 0

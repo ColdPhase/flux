@@ -80,6 +80,7 @@ organization). Have you accepted them?  [y/N]
   | Check | How the launcher asks | Reason line says |
   | --- | --- | --- |
   | Linux engine | `docker info`, `OSType` | the engine is not a Linux engine |
+  | Linux 6.7 or later (Landlock ABI 4; founder decision 2026-11-13, #1441) | `docker info`, `KernelVersion` (the runtime's own start check then probes Landlock itself and refuses to start without ABI 4) | Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13). |
   | Memory, CPU and process limits | `docker info`: `MemoryLimit`, `CpuCfsQuota`, `PidsLimit` | the engine cannot set the limits the runtime has |
   | `internal` networks | `docker network create --internal`, removed at once | the engine cannot create an internal network |
   | Yama `ptrace_scope` of 1 or higher | one throwaway container (read-only, no network, no capabilities) of the Dockerfile's pinned `node` base image runs `cat /proc/sys/kernel/yama/ptrace_scope`, the same file the supervisor reads | the kernel has no Yama (use a Linux host whose kernel has it), or it is 0: then the line gives the fix now (`sudo sysctl -w kernel.yama.ptrace_scope=1`) and how to keep it after a restart (`/etc/sysctl.d/90-flux.conf`) |

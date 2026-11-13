@@ -22,10 +22,14 @@ ROOT = Path(__file__).resolve().parents[1]
 TODAY = "2026-10-11"
 
 # The engine as `docker info --format '{{json .}}'` reports it, trimmed to what the launcher reads.
-INFO_OK = '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}'
+INFO_OK = '{"KernelVersion":"6.8.0-45-generic","OSType":"linux","OperatingSystem":"Ubuntu 24.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}'
 INFO_SCENARIOS = {
     "not-linux": '{"OSType":"windows","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
-    "pids-off": '{"OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":false}',
+    "pids-off": '{"KernelVersion":"6.8.0-45-generic","OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":false}',
+    # Landlock ABI 4 came with Linux 6.7 (founder decision 2026-11-13, #1441): Ubuntu 22.04's 6.5 and Debian 12's 6.1 are refused.
+    "kernel-6.6": '{"KernelVersion":"6.6.30-1","OSType":"linux","OperatingSystem":"Ubuntu 22.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
+    "kernel-5.15": '{"KernelVersion":"5.15.0-119-generic","OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
+    "kernel-unknown": '{"OSType":"linux","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}',
 }
 
 DOCKER_STUB = r"""#!/bin/sh
@@ -335,6 +339,9 @@ class SubscriptionQuestionTest(unittest.TestCase):
         "info-failed": "did not report its settings",
         "not-linux": "is not a Linux engine",
         "pids-off": "PidsLimit is off",
+        "kernel-6.6": "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13).",
+        "kernel-5.15": "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13).",
+        "kernel-unknown": "Flux AI needs a newer Linux (kernel 6.7 or later, e.g. Ubuntu 24.04 or Debian 13).",
         "no-internal": "cannot create an internal network",
         "probe-failed": "check container could not be run",
         "no-yama": "no Yama ptrace_scope of 1 or higher",
