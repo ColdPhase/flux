@@ -596,10 +596,41 @@ asked / bilingual; [research](research/2026-11-ai-context-retrieval.md#answer-ac
   not used: pg_search only **matches** (constant-score clauses that say which word a hit holds and where, under the caller's audiences; the
   caller's other filters apply after the scan, since pg_search scores a filter on one value by its rarity in the whole index) and the
   order is BM25 computed in SQL over the visible hits: a word's document frequency, the number of documents and their average length are
-  counted among them and nothing else, a document's own length is `length(tsv)`, and the term frequency of a word is one. The same
+  counted among them and nothing else; a document's own part comes from its own tsvector and nothing else: its length (`length(tsv)`)
+  and how often each query word the index found in it occurs there, in the title and in the body (#1387, below). The same
   statement serves the people's search and the agents' `flux_search`; `search-hidden-ranking.test.ts` pins it with writes in a restricted
-  space, another workspace and other people's direct messages. A word weighs 2 in a title and 1 in a body; a hit found only as the word
-  being typed or with a typo counts half the query words' average rarity; at most twelve words are looked up. The cost is a few more scans for each search and no index-wide statistic.
+  space, another workspace and other people's direct messages, and with hidden documents that repeat the words at every length. An
+  occurrence counts 2 in a title and 1 in a body (BM25F); a hit found only as the word being typed or with a typo counts half the query
+  words' average rarity; at most twelve words are looked up. The cost is a few more scans for each search and no index-wide statistic.
+- **Recall recovered inside that rule (#1387, coordinator call on the #1341 review, 2026-11-13).** Two causes of the drop to 0.467:
+  1. **A defect:** pg_search keeps a constant score (`pdb.const`) only up to 2048, and #1326's constants for a scan's fourth and fifth
+     words were larger, so every word after the third of a scan was read as the third, in the title. The constants are now 2^-12 to 2^10
+     (a score is a 32-bit float, exact over 24 binary digits, and the audience filter adds exactly 1), still five words a scan.
+  2. **Term frequency one and b 0.75:** a word's count now comes from the document's own tsvector (`ts_rank_cd` of a one-word query
+     without normalisation is that count, the word as typed or folded, at least once where the index found it), saturated by k1 1.2;
+     b is 0.1.
+  Tuned on a fixed half (odd question numbers), reported on the other half and on all 60 (seed 1242, 10,000 messages, bge-m3; tune / held
+  out / all). The choice on the tuning half: k1 changed nothing from 0.9 to 2; b 0 and 0.1 found one more answer than 0.2 to 0.75 (0.1
+  kept, the nearer to the usual 0.75); the twelve-word cap, longest-words-first, and the weight of a prefix hit (0.25 to 1, people's plan)
+  changed nothing; a title's weight and a typo's cannot be measured on this bench (messages have no title). The tuning half did not
+  separate the ways of counting a word (the same word only; stems of six letters or more; stems with a length bound), so the simplest is
+  kept: the same word, chosen without the held-out half. Seen on the held-out half, and not used to choose: counting by the stem of words
+  of four letters or more ("przez" as "prze*" counted "przesunięty") lost a BM25 answer (q56); stems of six letters or more found one
+  hybrid answer more (0.717 for all 60).
+
+  | Questions as asked | BM25 alone | Hybrid |
+  | --- | --- | --- |
+  | pg_search's own score (#1294, over the whole index) | 0.600 / 0.567 / 0.583 | 0.700 / 0.700 / 0.700 |
+  | #1326 as merged | 0.433 / 0.500 / 0.467 | 0.667 / 0.700 / 0.683 |
+  | #1326 with the constants fixed (term frequency one, b 0.75) | 0.633 / 0.567 / 0.600 | 0.700 / 0.667 / 0.683 |
+  | **#1387** | **0.633 / 0.600 / 0.617** | **0.700 / 0.700 / 0.700** |
+
+  Keywords: BM25 0.600 / 0.533 / 0.567, hybrid 0.633 / 0.600 / 0.617; bilingual: BM25 0.800 / 0.767 / 0.783, hybrid 0.767 / 0.800 / 0.783.
+  Measured live on the check stack with the real worker and container (`search-vectors-live.test.ts`, the #1341 reviewer's command;
+  raw JSON and the tuning bench in `research/evidence/1387/`); the offline model of the statement gave the same figures for every form.
+  The search request on the performance seed (`check_performance.sh`, 2,885 documents, "LoRa"): warm p50 / p95 12 / 17 ms, at 1 CPU
+  10 / 12 ms, concurrent at 1 CPU 15 / 28 ms. On the bench (10,000 visible messages, 180 searches of up to 15 words) the statement takes
+  16 / 39 ms (median / p95) against 15.5 / 33 ms before.
 - **The exact index is not dropped:** BM25's `|||` has no every-word or exclusion semantics, so removing the `keys` index would first
   need those carried over; the drop is left until then (a follow-up inside F-042, not a decision to keep it).
 - **Encrypted spaces** also match any of the plain words (founder decision, Hubert, 2026-11-12, on #1326), ranked more simply and without
