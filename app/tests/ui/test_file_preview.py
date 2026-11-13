@@ -163,6 +163,7 @@ BIG_CSV = (b"time,bed,rssi,snr,battery,note\n" + b"".join(f"2026-11-07T14:{(n //
 BIG_CSV = BIG_CSV[:BIG_CSV.rindex(b"\n", 0, LIMIT - 4096) + 1]
 BIG_CSV_ROWS = BIG_CSV.count(b"\n") - 1
 BIG_JSON = ("[" + ",".join(f'{{"id":{n},"bed":"bed {n % 40}","readings":{{"rssi":-{90 + n % 30},"snr":{n % 11 - 4}.5}},"tags":["lora","sf9"]}}' for n in range(60_000)) + "]").encode()
+ONE_LINE_MD = b"*a* `b` " * (4 * 1024 * 1024 // 8 - 64)  # 4 MiB of inline marks on one line, no line break
 COMMAS = b"," * (4 * 1024 * 1024)  # one row of 4,194,305 empty cells: any member can send it
 WIDE = ("\n".join(",".join(f"s{c}" if r == 0 else str((r * c) % 997) for c in range(2000)) for r in range(300)) + "\n").encode()
 assert len(BIG_JSON) < LIMIT and len(LOG) < LIMIT and len(BIG_CSV) < LIMIT and len(COMMAS) < LIMIT and len(WIDE) < LIMIT
@@ -172,6 +173,16 @@ JSON_OK = b'{"gateway": "gw-3", "beds": [{"name": "far east", "rssi": -112}, {"n
 JSON_BAD = b'{\n  "gateway": "gw-3",\n  "beds": [1, 2,, 3]\n}\n'
 CSV = b'bed,rssi,note\nfar east,-112,"behind the hedge, low"\nnorth,-98,"=HYPERLINK(""https://leak.invalid/x"",""click"")"\nshed,-87,@SUM(1+1)\nsouth,+5,-2+3\n'
 TSV = b"bed\trssi\nfar east\t-112\nnorth\t-98\n"
+MARKDOWN = b"""# Sensor notes
+
+Mount **sensor 3** on the *post*, not the fence. See https://example.org/garden-guide for the bracket.
+
+- far east: -112 dBm
+- north: -98 dBm
+
+<script>parent.postMessage('markdown', '*')</script>
+![pixel](https://leak.invalid/md.png)
+"""
 SOURCE = b"def rssi(beds):\n    return {b: -112 for b in beds}\n"
 
 
@@ -224,9 +235,10 @@ class FilePreview(unittest.TestCase):
             root(f"utf16{order}", f"A UTF-16{order.upper()} page", f"report-{order}.html", data)
         for key, name, data in (("log", "gateway.log", SMALL_LOG), ("latin", "notes.txt", LATIN), ("json", "beds.json", JSON_OK),
                                 ("bad", "broken.json", JSON_BAD), ("csv", "range.csv", CSV), ("tsv", "range.tsv", TSV),
-                                ("source", "rssi.py", SOURCE), ("pdf", "placement.pdf", pdf_bytes()),
+                                ("source", "rssi.py", SOURCE), ("markdown", "notes.md", MARKDOWN), ("pdf", "placement.pdf", pdf_bytes()),
                                 ("big-log", "uplinks.log", LOG), ("big-csv", "uplinks.csv", BIG_CSV), ("big-json", "uplinks.json", BIG_JSON),
-                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE)):
+                                ("commas", "commas.csv", COMMAS), ("wide", "matrix.csv", WIDE),
+                                ("one-line", "one-line.md", ONE_LINE_MD)):
             root(key, f"File {name}", name, data)
         for context in contexts.values():
             context.close()
@@ -612,6 +624,20 @@ class FilePreview(unittest.TestCase):
                 print(f"{name}: ready in {ready:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
                 self.shot(page, f"file-preview-{key}-1440-light")
+        # Markdown of 4 MiB on one line is cut into small chunks: only those in view are drawn.
+        with self.subTest(file="one-line.md"):
+            page, _, _ = self.open("one-line")
+            page.evaluate("() => { window.__long = []; new PerformanceObserver((list) => { for (const e of list.getEntries()) window.__long.push(Math.round(e.duration)); }).observe({ type: 'longtask' }); }")
+            started = time.time()
+            _, dialog = self.viewer(page, "one-line", "one-line.md")
+            doc = self.contents(dialog, "one-line.md")
+            expect(doc.locator("em").first).to_have_text("a", timeout=20000)
+            doc.evaluate("(el) => { el.scrollTop = el.scrollHeight / 2; }")
+            page.wait_for_timeout(800)
+            self.assertLess(doc.locator("em").count(), 20_000, "only the chunks near the view are drawn")
+            long = page.evaluate("window.__long")
+            print(f"one-line.md: ready in {time.time() - started:.2f} s, long tasks {long}")
+            self.assertTrue(all(duration <= 200 for duration in long), f"one-line.md: long tasks {long}")
         # A table as wide as a file allows draws its first 200 columns and says so: no column holds the page either.
         for key, name, columns in (("commas", "commas.csv", len(COMMAS) + 1), ("wide", "matrix.csv", 2000)):
             with self.subTest(file=name):
@@ -629,6 +655,33 @@ class FilePreview(unittest.TestCase):
                 long = page.evaluate("window.__long")
                 print(f"{name}: ready in {time.time() - started:.2f} s, long tasks {long}")
                 self.assertTrue(all(duration <= 200 for duration in long), f"{name}: long tasks {long}")
+
+    def test_12_markdown_is_drawn_by_the_message_renderer_and_loads_nothing(self) -> None:
+        for phone in (False, True):
+            for dark in (False, True):
+                with self.subTest(phone=phone, dark=dark):
+                    page, outside, _ = self.open("markdown", phone=phone, dark=dark)
+                    _, dialog = self.viewer(page, "markdown", "notes.md")
+                    doc = self.contents(dialog, "notes.md")
+                    expect(doc.locator("strong")).to_have_text("sensor 3")
+                    expect(doc.locator("em")).to_have_text("post")
+                    expect(doc.get_by_role("listitem")).to_have_text(["far east: -112 dBm", "north: -98 dBm"])
+                    link = doc.get_by_role("link", name="https://example.org/garden-guide")
+                    expect(link).to_have_attribute("target", "_blank")
+                    expect(link).to_have_attribute("rel", re.compile(r"\bnoopener\b"))
+                    # HTML and an image stay as typed: nothing runs and nothing loads.
+                    expect(doc).to_contain_text("<script>parent.postMessage('markdown', '*')</script>")
+                    expect(doc).to_contain_text("![pixel](https://leak.invalid/md.png)")
+                    expect(doc.locator("img, script, iframe")).to_have_count(0)
+                    self.shot(page, f"file-preview-markdown-{'390' if phone else '1440'}-{'dark' if dark else 'light'}")
+                    dialog.get_by_role("button", name="View source").click()
+                    expect(self.contents(dialog, "notes.md")).to_contain_text("Mount **sensor 3** on the *post*")
+                    expect(self.contents(dialog, "notes.md").locator("strong")).to_have_count(0)
+                    dialog.get_by_role("button", name="Preview", exact=True).click()
+                    expect(self.contents(dialog, "notes.md").locator("strong")).to_have_text("sensor 3")
+                    page.wait_for_timeout(300)
+                    self.assertEqual(page.evaluate("window.__messages"), [])
+                    self.assertEqual(outside, [])
 
     def test_99_a_reader_who_lost_access_sees_nothing(self) -> None:
         page, outside, _ = self.open("report", quiet_stream=True)

@@ -1,6 +1,7 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { Icon } from '../ui';
-import { TABLE_COLUMNS, cellText, type JsonErrorModel, type JsonModel, type TableModel, type TextModel } from './previewParse';
+import { MessageText } from '../app/MessageText';
+import { TABLE_COLUMNS, cellText, markdownChunk, type JsonErrorModel, type JsonModel, type MarkdownModel, type TableModel, type TextModel } from './previewParse';
 
 // The text views of a file preview (C-60, #1252): plain text and source, pretty JSON and CSV/TSV tables. Only the lines or rows in view
 // are in the DOM; everything is drawn as text by React, never as HTML.
@@ -173,3 +174,48 @@ export const hiddenColumns = (model: TableModel) => model.columns > TABLE_COLUMN
 
 /** The number of data rows, for the note under a table. */
 export const tableRows = (model: TableModel) => Math.max(0, model.rowStart.length - 2);
+
+/**
+ * Markdown drawn by the message renderer (#1247): bold, italic, code, lists and quotes; a web address is a link that opens a new tab with
+ * `noopener`; an image or HTML stays as typed, so nothing loads. Chunks out of view are empty boxes of their last height.
+ */
+/** A chunk's rows before it is drawn: its lines, or its characters over a reading line (a 4,000-character line is many rows). */
+const estimatedRows = (model: MarkdownModel, index: number) => Math.max(model.lines[index]!, Math.ceil((model.ends[index]! - model.starts[index]!) / 120));
+
+export function MarkdownView({ model, label }: { model: MarkdownModel; label: string }) {
+  const scroller = useRef<HTMLDivElement>(null);
+  const count = model.starts.length;
+  const [shown, setShown] = useState<ReadonlySet<number>>(() => new Set(Array.from({ length: Math.min(count, 3) }, (_, i) => i)));
+  const [heights, setHeights] = useState<ReadonlyMap<number, number>>(() => new Map());
+  useEffect(() => {
+    const root = scroller.current;
+    if (!root) return;
+    const sized = new ResizeObserver((entries) => setHeights((old) => {
+      let next: Map<number, number> | null = null;
+      for (const entry of entries) {
+        const chunk = entry.target as HTMLElement;
+        const index = Number(chunk.dataset.chunk);
+        if (chunk.dataset.drawn !== 'true' || old.get(index) === chunk.offsetHeight) continue;
+        next ??= new Map(old);
+        next.set(index, chunk.offsetHeight);
+      }
+      return next ?? old;
+    }));
+    const near = new IntersectionObserver((entries) => setShown((old) => {
+      const next = new Set(old);
+      for (const entry of entries) { const index = Number((entry.target as HTMLElement).dataset.chunk); if (entry.isIntersecting) next.add(index); else next.delete(index); }
+      return next;
+    }), { root, rootMargin: '1200px 0px' });
+    for (const chunk of root.querySelectorAll<HTMLElement>('[data-chunk]')) { near.observe(chunk); sized.observe(chunk); }
+    return () => { near.disconnect(); sized.disconnect(); };
+  }, [count]);
+  const chunks: ReactNode[] = [];
+  for (let i = 0; i < count; i++) {
+    const drawn = shown.has(i);
+    chunks.push(<div key={i} data-chunk={i} data-drawn={drawn} className="message-body file-viewer__chunk"
+      style={drawn ? undefined : { height: heights.get(i) ?? `calc(${estimatedRows(model, i)} * var(--fs-base) * var(--lh))` }}>
+      {drawn ? <MessageText body={markdownChunk(model, i)} /> : null}
+    </div>);
+  }
+  return <div ref={scroller} className="file-viewer__scroll file-viewer__markdown" tabIndex={0} role="region" aria-label={label}>{chunks}</div>;
+}

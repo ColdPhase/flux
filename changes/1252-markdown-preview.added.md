@@ -1,0 +1,1 @@
+- A Markdown file opens in the preview drawn like a message (bold, italic, code, lists, quotes; links open a new tab), with View source; its HTML and images stay as typed, so nothing runs or loads ([#1252](https://github.com/ColdPhase/flux/issues/1252)).

@@ -166,7 +166,10 @@ export function parseInline(text: string, depth = 0): MessageInline[] {
   return out;
 }
 
-const FENCE_OPEN = /^ {0,3}(`{3,})([^`]*)$/;
+/** A line that opens a fenced code block: up to three spaces, three or more backticks (group 1), then the info, no backtick (group 2). */
+export const FENCE_OPEN = /^ {0,3}(`{3,})([^`]*)$/;
+/** The line that closes a fence opened with `ticks` backticks: at least as many, alone on the line. */
+export const fenceClose = (ticks: number) => new RegExp(`^ {0,3}\`{${ticks},}[ \\t]*$`);
 const QUOTE = /^>\s?/;
 const BULLET = /^[ \t]*- +(\S.*)$/;
 const NUMBERED = /^[ \t]*(\d{1,3})\. +(\S.*)$/;
@@ -185,7 +188,7 @@ export function parseMessage(body: string): MessageBlock[] {
     const fence = FENCE_OPEN.exec(line);
     if (fence && i + 1 < lines.length) {
       // The block ends at a line of at least as many backticks, or with the message: a fence is never left open for the next one.
-      const close = new RegExp(`^ {0,3}\`{${fence[1]!.length},}[ \\t]*$`);
+      const close = fenceClose(fence[1]!.length);
       let end = i + 1;
       while (end < lines.length && !close.test(lines[end]!)) end++;
       endText();

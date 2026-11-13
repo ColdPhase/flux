@@ -43,13 +43,14 @@ export const fileSize = (size: number) => size < 1024 ? `${size} B` : size < 102
 
 /**
  * How a file is previewed in the viewer (C-60, #1252), by its name; null for a file that only downloads. HTML and PDF are framed from
- * the sandboxed preview route; text, source (an SVG too: as its text), JSON and CSV/TSV are drawn as text. Nothing is ever drawn as
+ * the sandboxed preview route; Markdown is drawn by the message renderer (#1247); text, source (an SVG too: as its text), JSON and
+ * CSV/TSV are drawn as text. Nothing is ever drawn as
  * HTML on Flux's page.
  */
-export type PreviewFormat = 'html' | 'pdf' | 'text' | 'json' | 'csv' | 'tsv';
+export type PreviewFormat = 'html' | 'pdf' | 'text' | 'markdown' | 'json' | 'csv' | 'tsv';
 const SOURCE = ['txt', 'log', 'py', 'ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'go', 'rs', 'rb', 'java', 'kt', 'swift', 'c', 'h', 'cpp', 'hpp', 'cs', 'php',
   'sh', 'bash', 'zsh', 'sql', 'yaml', 'yml', 'toml', 'ini', 'cfg', 'conf', 'env', 'css', 'scss', 'xml', 'ino', 'lua', 'r', 'pl', 'diff', 'patch', 'svg'];
-const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html', pdf: 'pdf', json: 'json', csv: 'csv', tsv: 'tsv',
+const PREVIEW: Record<string, PreviewFormat> = { html: 'html', htm: 'html', pdf: 'pdf', md: 'markdown', markdown: 'markdown', json: 'json', csv: 'csv', tsv: 'tsv',
   ...Object.fromEntries(SOURCE.map((extension) => [extension, 'text' as const])) };
 export const previewFormat = (name: string): PreviewFormat | null => PREVIEW[extensionOf(name)] ?? null;
 
