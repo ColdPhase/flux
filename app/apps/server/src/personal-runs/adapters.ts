@@ -11,6 +11,7 @@ import {
   type PersonalRunPorts,
   type PersonalRunQueue,
   type PersonalRunUnitOfWork,
+  type ToolChecking,
 } from '@flux/core';
 import { transactionEventSession } from '../work/transaction-events.js';
 import { assistantRows } from '../assistant/adapters.js';
@@ -18,7 +19,8 @@ import { eventPorts } from '../events.js';
 
 // Adapters that connect the personal-run use cases (#68, O-008) to the access policy, the
 // Drizzle rows, the event log and pg-boss. Core defines the ports (#46); the server assembles
-// them per transaction. The server never calls the provider; only the worker dispatches.
+// them per transaction. The server queues runs and the worker dispatches them; the API itself sends a provider only the one-request check
+// that a model calls tools (RT-1 rule 2, #1441).
 
 /** Queues a run's dispatch job inside the unit of work, so run, reservation and job commit together. */
 export type PersonalRunQueueFactory = (tx: DbExecutor) => PersonalRunQueue;
@@ -61,8 +63,11 @@ export interface PersonalRunComposition {
   providerEnabled?: boolean;
   /** The owner's own Claude Code in the agent runtime (F-022 AIM-3, #280); absent: no runtime assistant. */
   runtime?: PersonalRuntimeAvailability;
+  /** The check that a model of a key calls tools, for putting an agent on one (RT-1 rule 2, #1441); absent: no model is checked there. */
+  toolChecking?: ToolChecking;
 }
 
-export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime }: PersonalRunComposition) {
-  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(runtime ? { runtime } : {}) });
+export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime, toolChecking }: PersonalRunComposition) {
+  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(runtime ? { runtime } : {}),
+    ...(toolChecking ? { toolChecking } : {}) });
 }

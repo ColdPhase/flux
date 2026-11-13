@@ -132,7 +132,17 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   to another model.
 - Only a model that calls tools can be an agent ([RT-1](ai-modes.md#rt-1--engines-on-the-server), #1441): adding a key, or
   choosing another model of its list, sends one small request with a `ping` tool the model must call; otherwise the form says
-  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`).
+  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`). **The check, in detail.** One request in the provider's own wire
+  format (Anthropic Messages, OpenAI Responses, Chat Completions for OpenRouter, Gemini and a compatible endpoint), on the model chosen,
+  with the key's own address and the same endpoint guard as every request (CA-4): one tool, `ping`, with no arguments; the system line
+  "You are being checked by Flux. Call the ping tool now. Do not write anything else."; the input "ping"; at most 256 output tokens, low
+  effort. The model is accepted when the answer holds a call of `ping`. An answer in words only, a refusal by the provider or the
+  model, a failure or a timeout (30 s) is the same refusal; nothing is retried. **When it is sent:** when a key is added, after its
+  listing (the key's test), the price and the budget checks, and before it is saved, with the key being added, so a model that
+  cannot call tools saves nothing; and when an agent is put on a model of a key, with the key opened for that one request, unless
+  that key and model already passed (the pass is kept, so a model is never checked twice; choosing the model an agent already has
+  checks nothing). A model without a known price is checked the first time an agent is put on it, once its price is known: the check
+  needs a price to be charged. The same check, whatever the provider: no table of models and no owner's switch decides it.
 
 ## CA-3 — The provider's limits, not Flux's
 
@@ -165,6 +175,12 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
   response whose cost cannot be known counts what the run had spent and the most that one request
   could have cost.
+- **The check that a model calls tools (CA-2) is a request like any other.** Its cost is the provider's reported usage at the model's
+  price (a few hundred tokens: well under a cent on any model), the most one such request could cost when the usage is unknown, and
+  nothing when the provider documents no charge for the failure. It is kept with the key (`api_key_checks`: the model, the cost and
+  whether it called `ping`) and counted on the day it was made, with the runs, in "spent today" and against the budget. A check made
+  when the key is added is saved with the key in one transaction. The one request sent for a key that is then refused (its model did
+  not call `ping`) has no key to be counted on, so Flux counts it nowhere; only the provider's own bill has it.
 - **A run on an API key in the runtime is metered request by request** at the model gateway
   ([#1441](https://github.com/ColdPhase/flux/issues/1441), [RT-4](ai-modes.md#the-model-gateway-1441)), with the same prices and
   cache rules: each request holds the most it can cost against what is left of the key's day before it is sent, and is charged

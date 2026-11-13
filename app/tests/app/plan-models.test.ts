@@ -175,8 +175,8 @@ describe('what the owner may choose, and what pauses an agent, comes from the pl
   test('the choice is exactly what the CLI listed, in its order, under its names, with its own default; Fable and an unsafe id are never shown', async () => {
     state.models = listed(['sonnet', 'opus', 'claude-fable-5-1', 'haiku'], { listed: [SONNET, { ...OPUS, default: true }, entry('claude-fable-5-1'), HAIKU, entry('--bad'), entry('Opus')] });
     const choice = await runs().model(human(owner));
-    assert.deepEqual(choice.groups.map((group) => [group.connection, group.account, group.label, group.company, group.options.map((option) => [option.id, option.name, option.callsTools])]),
-      [['claude_plan', 'claude_plan', ASSISTANT_PLANS.claude_code.plan, 'Claude', [['sonnet', 'Sonnet 5.5', true], ['opus', 'Opus 5.5', true], ['haiku', 'Haiku 4.5', true]]]]);
+    assert.deepEqual(choice.groups.map((group) => [group.connection, group.account, group.label, group.company, group.options.map((option) => [option.id, option.name])]),
+      [['claude_plan', 'claude_plan', ASSISTANT_PLANS.claude_code.plan, 'Claude', [['sonnet', 'Sonnet 5.5'], ['opus', 'Opus 5.5'], ['haiku', 'Haiku 4.5']]]]);
     assert.deepEqual(choice.default, { connection: 'claude_plan', model: 'opus' }, 'the CLI\'s own default');
     state.models = listed(['sonnet', 'haiku'], { listed: [SONNET, HAIKU] });
     assert.deepEqual((await runs().model(human(owner))).default, { connection: 'claude_plan', model: 'sonnet' }, 'none marked: the first');

@@ -4,7 +4,6 @@ import { CITE_MARK_PATTERN, markKey, type CiteKind } from './cites.js';
 import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
-  aiModelCallsTools,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
   type AiConnectionRef,
@@ -20,7 +19,7 @@ import { InvalidInputError } from '../access/errors.js';
 import { invisibleFormatRefused } from '../access/validation.js';
 import { id } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
-import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
+import type { PersonalComputeUsage } from './ports.js';
 import type { SuppliedSource } from './brief.js';
 
 // Input and output rules of personal runs (#68, O-008). Pure functions shared by every entry
@@ -175,14 +174,6 @@ export function budgetedReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMT
   if (one === null) return null;
   if (one > leftMicros) return 'budget';
   return tools ? Math.min(one * Math.max(1, Math.floor(turns)), leftMicros) : one;
-}
-
-/**
- * Whether a run on this connection may be offered tools (F-027 AST-8.3). A model the owner marked,
- * or Flux's dated table lists, as unable to call tools answers in one request and cannot change anything.
- */
-export function connectionCallsTools(connection: Pick<PersonalConnection, 'provider' | 'model' | 'toolCalling'>): boolean {
-  return connection.toolCalling !== false && aiModelCallsTools(connection.provider, connection.model);
 }
 
 export const centsToMicros = (value: number) => value * 10_000;

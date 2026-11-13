@@ -231,12 +231,12 @@ class ApiKeyModels(unittest.TestCase):
         connection = (agent.get("model") or {}).get("connection") or "4c1f0a52-7d3e-4b8a-9f61-2e5d8c7b9a10"
         current = (agent.get("model") or {}).get("model") or "claude-sonnet-5"
         options = [
-            {"id": "claude-sonnet-5-7", "name": "Claude Sonnet 5.7", "note": "Price unknown, enter it", "callsTools": True, "family": "Sonnet", "priced": False},
-            {"id": "claude-sonnet-5-5", "name": "Sonnet 5.5", "note": "Input $2, output $10 per 1M tokens", "callsTools": True, "family": "Sonnet", "priced": True},
-            {"id": "claude-opus-5-5", "name": "Opus 5.5", "note": "Input $4, output $20 per 1M tokens", "callsTools": True, "family": "Opus", "priced": True},
-            {"id": "claude-opus-5", "name": "Opus 5", "note": "Input $5, output $25 per 1M tokens", "callsTools": True, "family": "Opus", "priced": True, "retired": True},
+            {"id": "claude-sonnet-5-7", "name": "Claude Sonnet 5.7", "note": "Price unknown, enter it", "family": "Sonnet", "priced": False},
+            {"id": "claude-sonnet-5-5", "name": "Sonnet 5.5", "note": "Input $2, output $10 per 1M tokens", "family": "Sonnet", "priced": True},
+            {"id": "claude-opus-5-5", "name": "Opus 5.5", "note": "Input $4, output $20 per 1M tokens", "family": "Opus", "priced": True},
+            {"id": "claude-opus-5", "name": "Opus 5", "note": "Input $5, output $25 per 1M tokens", "family": "Opus", "priced": True, "retired": True},
             # The agent's own model, which its provider stopped offering (CA-2): shown because the agent is on it.
-            {"id": current, "name": "Sonnet 5", "note": "Input $2, output $10 per 1M tokens", "callsTools": True, "family": "Sonnet", "priced": True, "retired": True},
+            {"id": current, "name": "Sonnet 5", "note": "Input $2, output $10 per 1M tokens", "family": "Sonnet", "priced": True, "retired": True},
         ]
         world = {"listing": {"state": "unavailable", "checkedOn": "2026-11-11"}, "puts": [], "patches": [], "refreshed": 0}
 

@@ -139,7 +139,7 @@ function PlanModelChoice({ group, chosen, agentName, onChoose }: { group: Assist
   const offered = group.options.filter((option) => !option.retired);
   const listed = chosen ? group.options.find((option) => option.id === chosen) : undefined;
   const unlisted = !listed && !!chosen && chosen !== 'claude-code' && chosen !== 'codex' && offered.length > 0;
-  const current = unlisted ? { id: chosen, name: assistantModelName(chosen), note: '', callsTools: true, retired: true } : listed;
+  const current = unlisted ? { id: chosen, name: assistantModelName(chosen), note: '', retired: true } : listed;
   const options = unlisted ? [...group.options, current!] : group.options;
   if (!group.options.length) return <p className="agp__hint" role="note">Flux hasn’t read this plan’s models yet. It reads them when you sign in and again every few hours.</p>;
   if (offered.length <= PLAN_SEGMENTS && !current?.retired) {
@@ -281,7 +281,6 @@ function AgentSettings({ agent }: { agent: MyAgent }) {
                 )}
               </div>
             ))}
-            {picked && !picked.callsTools ? <p className="agp__hint" role="note">{picked.name}: can answer but can’t make changes.</p> : null}
             {picked && picked.seesPictures === false ? <p className="agp__hint" role="note">{picked.name}: can’t see pictures, so it sees attached files only by name.</p> : null}
           </div>
         ) : <p className="nset__note">Connect AI to choose a model. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p>}

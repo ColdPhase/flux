@@ -23,8 +23,8 @@ NOW = base.NOW
 # The Claude plan's models, Connect AI's default first (#854): the ready card preselects Sonnet of the Claude plan.
 PLAN = {"connection": "claude_plan", "model": "sonnet"}
 CHOICE = {"current": None, "default": PLAN, "saved": False, "groups": [{"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan",
-          "company": "Claude", "options": [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True},
-                                           {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]}]}
+          "company": "Claude", "options": [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work"},
+                                           {"id": "opus", "name": "Opus", "note": "Harder requests"}]}]}
 
 
 def stub_plan_model(page, json_reply) -> None:

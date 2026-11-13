@@ -133,15 +133,16 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   starting "Error: ". `tool_choice` is never sent. The provider's own assistant message is sent
   back unchanged, so reasoning blocks and thought signatures survive. The Anthropic token count
   carries the tools and the turns. `checkRequestLimits` refuses a bad tool name, schema,
-  duplicate, more than 64 tools, a turn whose calls and results do not match one to one, more
-  turns than the cap, and tools offered to a model Flux knows cannot call them, all before a key
-  is resolved.
-- **No-tools model** (AST-8.3). `connectionCallsTools`: false when the owner marked the model
-  (`PersonalConnection.toolCalling === false`) or Flux's dated table `AI_MODELS_WITHOUT_TOOL_CALLING`
-  lists it. The table is empty since #954: OpenAI's function-calling guide (read 2026-10-11) says GPT-6
-  Astra and GPT-6.1 Sol need the Responses API for tool calling, which Flux now speaks to OpenAI.
-  Persisting the owner's mark and the account row's "This model can answer but can't make changes"
-  are not part of this change.
+  duplicate, more than 64 tools, a turn whose calls and results do not match one to one and more
+  turns than the cap, all before a key is resolved.
+- **A model that cannot call tools** (RT-1 rule 2, #1441; AST-8.3's answer-only mode and its owner's switch are gone). There is no table
+  of such models and no switch: `checkToolCalling` (`@flux/agent-runtime`, `tool-check.ts`) sends one request on the model with the one tool
+  `ping` (`maxTokens` 256, low effort, "Call the ping tool now") through the provider's own adapter, and the model is accepted when the answer
+  holds a call of `ping`. Connect AI sends it with the key being added (`connect`, after the listing, the price and the budget checks; a model
+  without a known price waits for the first agent put on it), and `pick` sends it when an agent is put on a model of a key that has no passing
+  row in `api_key_checks`. Not called, or the request refused or failed: `AI_TOOLS_REQUIRED` (422), "This model can't use tools. Choose
+  another." The request's cost is the provider's usage at the model's price (the request's largest cost when the usage is unknown, nothing
+  when the provider documents no charge) and counts on the key's day through `apiKeySpendToday`.
 - **Reservation** (#854). `budgetedReservationMicros`: when the worker claims the run, turns × the
   largest request of a tool run (64,000 × input price + 4,000 × output price;
   `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484, #843), never above what is left of the key's one daily
@@ -867,8 +868,7 @@ went with its company-wide switch (F-037, #874); the per-space AI switch brings 
 
 ## Not yet done
 
-- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, the
-  persisted owner mark and the account row's note for a model without tool calling, a "Limit reached"
+- The rest of #406/#484: AST-3.2's handoff, catalog and owner-Apply parity, a "Limit reached"
   status and copy, the Responses API for the OpenAI models that need it, and the Gemini
   thought-signature field name (unverified against Google's pages).
 - A provider pass against the real API (a real key, by its owner), including billing on cancellation and

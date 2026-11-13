@@ -283,7 +283,7 @@ class ConnectAiJourney(unittest.TestCase):
         ines.get_by_role("button", name="More settings").click()  # the Model is behind More (#1419)
         expect(ines.locator("#agent-model")).to_have_text("Model")
         plan = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude",
-                "options": [{"id": model, "name": name, "note": "", "callsTools": True} for model, name in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"))]}
+                "options": [{"id": model, "name": name, "note": ""} for model, name in (("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku"))]}
         with_plan = json.dumps({**choice, "groups": [plan, *choice["groups"]]})
         ines.route(re.compile(r".*/api/v1/personal-assistant/model$"), lambda route: route.fulfill(status=200, content_type="application/json", body=with_plan))
         ines.reload()

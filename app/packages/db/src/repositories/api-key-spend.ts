@@ -18,7 +18,8 @@ export interface ApiKeyBudget { dailyBudgetCents: number; timeZone: string }
 /**
  * The one daily budget of an API key (#854): everything that runs on the key counts against it, the owner's agents'
  * runs, in the worker or in the runtime through the model gateway (#1441; a plan's run has no key), on the day the money was held: a request that waited overnight counts when it
- * starts. A run whose cost is unknown keeps what its reservation still holds counted. Null when the key does not exist. `exceptRunId` leaves one run out (its own reservation, while it is being rechecked).
+ * starts. A run whose cost is unknown keeps what its reservation still holds counted. The checks that a model of the key calls tools (#1441, RT-1
+ * rule 2, `api_key_checks`) are requests like any other: each one's charge counts on the day it was made. Null when the key does not exist. `exceptRunId` leaves one run out (its own reservation, while it is being rechecked).
  */
 export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connectionId: string, exceptRunId?: string, budget?: ApiKeyBudget, at?: Date): Promise<ApiKeySpend | null> {
   const now = at ? sql`${at.toISOString()}::timestamptz` : sql`now()`;
@@ -38,7 +39,8 @@ export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connecti
       CASE WHEN ((at_next - interval '1 hour') AT TIME ZONE time_zone) = local_next THEN at_next - interval '1 hour' ELSE at_next END AS next_start FROM s)
     SELECT k.daily_budget_cents AS budget, k.time_zone AS zone, k.next_start AS resets_at,
       (SELECT COALESCE(sum(r.charged_micros) FILTER (WHERE r.cost_state = 'observed'), 0) + COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'unknown'), 0) FROM personal_runs r
-        WHERE r.connection_id = ${connectionId} AND r.reserved_at >= k.start ${except})::bigint AS run_charged,
+        WHERE r.connection_id = ${connectionId} AND r.reserved_at >= k.start ${except})::bigint
+      + (SELECT COALESCE(sum(c.charged_micros), 0) FROM api_key_checks c WHERE c.connection_id = ${connectionId} AND c.checked_at >= k.start)::bigint AS run_charged,
       (SELECT COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'reserved'), 0) FROM personal_runs r
         WHERE r.connection_id = ${connectionId} AND r.reserved_at >= k.start ${except})::bigint AS run_reserved
     FROM k`);

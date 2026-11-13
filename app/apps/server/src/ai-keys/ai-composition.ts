@@ -1,13 +1,14 @@
 import { createHmac, randomBytes } from 'node:crypto';
-import { aiEndpointPolicyFromEnv, endpointPolicyPort, keyListingOptions, listKeyModels, listProviderModels, listsWithKey, type AiEndpointPolicy } from '@flux/agent-runtime';
+import { aiEndpointPolicyFromEnv, endpointPolicyPort, keyListingOptions, listKeyModels, listProviderModels, listsWithKey, providerToolCheck, type AiEndpointPolicy } from '@flux/agent-runtime';
 import type { AiModelList, AiProviderKind } from '@flux/contracts';
 import type { BackgroundConnectionProviders } from '@flux/core';
 
 // What the API composes for owner AI connections (F-020, #179): the operator's endpoint policy
 // (`FLUX_AI_PRIVATE_TARGETS`; public HTTPS only when empty), the save-time endpoint check, and the
 // providers' model listings, shown to the owner only. OpenRouter and an OpenAI-compatible endpoint are listed without a key. The
-// API sends a key only while it is being added (CA-2, CA-4, #1218): to list the models that key can use, which is also its test,
-// before the key is sealed. A stored key is only ever opened by the worker.
+// API sends a key only while it is being added (CA-2, CA-4, #1218): to list the models that key can use, which is also its test, and to
+// check that its model calls tools (RT-1 rule 2, #1441), before the key is saved. A stored key is opened by the worker, and by the API only for the
+// one-request check when an agent is put on another of its models (`tool-checking.ts`) and for `flux_web_search`.
 
 export interface AiConnectionServerComposition {
   policy: AiEndpointPolicy;
@@ -49,7 +50,9 @@ export function aiConnectionServerComposition(env: NodeJS.ProcessEnv): AiConnect
   const keyModels = cachedKeyListing((provider, apiKey) => listKeyModels(provider, apiKey, keyed));
   return {
     policy,
-    providers: { endpoints: endpointPolicyPort(policy), keyModels: (provider, apiKey) => listsWithKey(provider) ? keyModels(provider, apiKey) : Promise.resolve({ provider, status: 'needs_key', models: [], checkedOn: new Date().toISOString().slice(0, 10) }) },
+    // The check that the key's model calls tools (RT-1 rule 2, #1441) goes where the listing goes: the same endpoint policy and, in a test
+    // deployment, the same mock. Only Connect AI sends it with a plaintext key; a stored key's check is composed with the rest of the runs.
+    providers: { endpoints: endpointPolicyPort(policy), toolCheck: providerToolCheck({ ...keyed }), keyModels: (provider, apiKey) => listsWithKey(provider) ? keyModels(provider, apiKey) : Promise.resolve({ provider, status: 'needs_key', models: [], checkedOn: new Date().toISOString().slice(0, 10) }) },
     listModels: (provider, baseUrl, apiKey) => (listsWithKey(provider)
       ? (apiKey ? keyModels(provider, apiKey) : listProviderModels(provider, baseUrl, { policy }))
       : listProviderModels(provider, baseUrl, { policy })),

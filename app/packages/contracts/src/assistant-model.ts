@@ -1,4 +1,4 @@
-import { AI_PROVIDERS, aiModelCallsTools, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
+import { AI_PROVIDERS, aiModelSeesPictures, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
 import { aiModelFamily, groupModelsByFamily } from './ai-model-families.js';
 import type { AiConnectionRef } from './personal-runs.js';
 
@@ -19,8 +19,6 @@ export interface AssistantModelOption {
   name: string;
   /** One short phrase, or the price of an API model. */
   note: string;
-  /** False: the model can answer but can't make changes (AST-8.3). */
-  callsTools: boolean;
   /** False: the model can't see pictures, so its agent sees attached files only by name (#1217, C-59). Absent: it sees them. */
   seesPictures?: boolean;
   /** An API key's model: the family the picker groups it under ("Opus", "Sol"), newest family first (#1218). */
@@ -116,11 +114,11 @@ export const isFableModel = (id: string) => /fable/i.test(id);
 export function assistantPlanModels(models: PlanModels | null | undefined): { options: AssistantModelOption[]; default: string } {
   const listed = (models?.listed ?? []).filter((entry) => ASSISTANT_PLAN_MODEL_PATTERN.test(entry.id) && !isFableModel(entry.id) && !isFableModel(entry.name));
   const options: AssistantModelOption[] = listed.map((entry) => ({
-    id: entry.id, name: entry.name, note: entry.note, callsTools: true, ...(entry.seesPictures ? {} : { seesPictures: false }),
+    id: entry.id, name: entry.name, note: entry.note, ...(entry.seesPictures ? {} : { seesPictures: false }),
   }));
   const shown = new Set(listed.map((entry) => entry.id));
   for (const { id, name } of models?.retired ?? []) {
-    if (!shown.has(id) && ASSISTANT_PLAN_MODEL_PATTERN.test(id) && !isFableModel(id)) options.push({ id, name: name || assistantModelName(id), note: '', callsTools: true, retired: true });
+    if (!shown.has(id) && ASSISTANT_PLAN_MODEL_PATTERN.test(id) && !isFableModel(id)) options.push({ id, name: name || assistantModelName(id), note: '', retired: true });
   }
   return { options, default: (listed.find((entry) => entry.default) ?? listed[0])?.id ?? '' };
 }
@@ -156,7 +154,7 @@ export const PRICE_UNKNOWN_NOTE = 'Price unknown, enter it';
  * A listed model is named as its provider names it ("Claude Opus 5.5"), on every surface; Flux's short names serve a model the
  * list does not name (the key's own, a retired one).
  */
-export function assistantApiModels(connection: { provider: AiProviderKind; model: string; toolCalling?: boolean | undefined; price?: AiPrice | null;
+export function assistantApiModels(connection: { provider: AiProviderKind; model: string; price?: AiPrice | null;
   models?: ApiKeyModels | null | undefined }): AssistantModelOption[] {
   const { provider } = connection;
   const prices = connection.models?.prices ?? {};
@@ -166,7 +164,6 @@ export function assistantApiModels(connection: { provider: AiProviderKind; model
     const price = own && connection.price !== undefined ? connection.price : assistantApiPrice(provider, id, prices);
     return {
       id, name: name ?? assistantModelName(id), note: price ? priceNote(price) : PRICE_UNKNOWN_NOTE,
-      callsTools: (!own || connection.toolCalling !== false) && aiModelCallsTools(provider, id),
       ...(aiModelSeesPictures(provider, id) ? {} : { seesPictures: false }),
       family, priced: !!price, ...(retired.has(id) ? { retired: true } : {}),
     };

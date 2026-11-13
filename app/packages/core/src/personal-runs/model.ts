@@ -62,7 +62,7 @@ export function keyListing(connection: Pick<PersonalConnection, 'provider' | 'mo
 }
 
 /** The list of the owner's API key connection (F-020 PROV-1, CA-2): the provider's models by family, or its priced ones before a list. */
-export function apiModelAccount(connection: Pick<PersonalConnection, 'provider' | 'model' | 'toolCalling' | 'price' | 'models'>): ModelAccount {
+export function apiModelAccount(connection: Pick<PersonalConnection, 'provider' | 'model' | 'price' | 'models'>): ModelAccount {
   const listing = keyListing(connection);
   return {
     engine: 'server', account: 'api_key', company: AI_PROVIDERS[connection.provider].label, plan: "API key's provider",
@@ -114,16 +114,13 @@ export const modelRetired = (connection: Pick<PersonalConnection, 'models'>, mod
 /**
  * The owner's connection on the model they chose (F-020 PROV-3): the connection's own model and price when the model is
  * its own, or another model of the same key at Flux's table price or the price its owner entered for it (#1218); null when
- * there is neither, so nothing can be reserved. A model the owner marked as unable to call tools applies to the connection's
- * own model only.
+ * there is neither, so nothing can be reserved.
  */
 export function connectionOnModel(connection: PersonalConnection, model: string | null): PersonalConnection | null {
   if (!model || model === connection.model) return connection;
   const price = assistantApiPrice(connection.provider, model, connection.models?.prices);
   if (!price) return null;
-  const other: PersonalConnection = { ...connection, model, price };
-  delete other.toolCalling;
-  return other;
+  return { ...connection, model, price };
 }
 
 /**
