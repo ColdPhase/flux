@@ -620,11 +620,11 @@ class ReturnToOrigin(unittest.TestCase):
     def test_19_a_direct_message_comes_back_to_the_message_that_was_in_view(self):
         """The New divider (S23, #1246) is a row of the feed that comes and goes with what is read; wherever it stands when the reader comes back, the message
         that was in view returns to where it was (nothing moves under the reader, #1271)."""
-        cases = ("never read", "read to its end", "first new above the place")
+        cases = ("never read", "read to its end", "first new above the place", "first new in view")
         for engine in self.browsers:
             for case in cases:
                 with self.subTest(engine=engine, case=case):
-                    dm = self.make_dm(f"roots{case.split()[0]}{case.split()[1]}{engine}", 60)
+                    dm = self.make_dm(f"roots{re.sub(r'[^a-z]', '', case)}{engine}", 60)
                     page = self.page(engine)
                     page.goto(f"/dm/{dm['id']}")
                     feed, target = ".dm__feed", f"#message-{dm['roots'][7]}"
@@ -653,13 +653,14 @@ class ReturnToOrigin(unittest.TestCase):
                     page.locator("#dm-composer").fill("Draft: ask Jonas about the shade")
                     before = self.offset(page, feed, target)
                     self.assertGreater(page.evaluate(AWAY, feed), 1000, "the reader is far from the end")
-                    if case == "first new above the place":
-                        # The returning read says the first message new to the person is an older one than the place they read (their viewing was not kept):
-                        # a New divider is drawn above the place, which stays where it was.
-                        older = dm["roots"][3]
+                    if case.startswith("first new"):
+                        # The returning read says the first message new to the person is one above the place they read, or one on the screen they read (their
+                        # viewing was not kept; it is kept a moment after a screen settles, and the person left sooner): above the screen the divider is
+                        # drawn and the place stays where it was; on the screen it is not drawn, as it would push down what they were reading (S23, #1335).
+                        first_new = dm["roots"][3] if case == "first new above the place" else dm["roots"][9]
                         def first_new_is_older(route):
                             response = route.fetch()
-                            route.fulfill(response=response, json={**response.json(), "unreadFrom": older})
+                            route.fulfill(response=response, json={**response.json(), "unreadFrom": first_new})
                         page.route(re.compile(rf"/api/v1/dms/{dm['id']}(\?.*)?$"), lambda route: first_new_is_older(route) if route.request.method == "GET" else route.fallback())
                     # Something arrives while the person is away.
                     api(self.contexts[dm["partner"]], "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": f"While you were away ({engine}).", "clientMessageId": str(uuid.uuid4())}, 201)
@@ -672,6 +673,8 @@ class ReturnToOrigin(unittest.TestCase):
                         divider = page.locator(f"{feed} [data-unread-start]")
                         expect(divider).to_have_count(1)
                         self.assertLess(divider.evaluate("(el) => el.getBoundingClientRect().bottom"), page.locator(target).evaluate("(el) => el.getBoundingClientRect().top"), "the New divider is above the place")
+                    if case == "first new in view":
+                        expect(page.locator(f"{feed} [data-unread-start]")).to_have_count(0)
                     expect(page.locator("#dm-composer")).to_have_value("Draft: ask Jonas about the shade")
                     self.assert_same(before, self.offset(page, feed, target), "the message stays where it was, with the newer ones below", tolerance=2)
                     self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
