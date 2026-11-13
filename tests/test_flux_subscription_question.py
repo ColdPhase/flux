@@ -193,7 +193,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
     def test_enter_enter_writes_codex_and_no_statement(self) -> None:
         term = self.first_up("\n", "\n")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,pi", "pi runs agents on API keys in the same runtime (#1441)")
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "")
         self.assertEqual(term.output.count(Q1), 1)
         self.assertEqual(term.output.count(Q2), 1)
@@ -203,7 +203,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
     def test_enter_then_typed_y_writes_both_clients_and_todays_statement(self) -> None:
         term = self.first_up("\n", "y\n")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code,pi")
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), TODAY)
         self.assertIn(f"that you accepted Anthropic's Commercial Terms on {TODAY}", term.output)
         self.assertEqual(term.output.count(Q1), 1)
@@ -225,7 +225,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.env_file.unlink(missing_ok=True)
                 term = self.first_up("\n", answer)
                 self.assertEqual(term.finish(), 0, term.output)
-                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code" if statement else "codex")
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code,pi" if statement else "codex,pi")
                 self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), TODAY if statement else "")
 
     def test_an_unclear_answer_is_asked_again_and_three_of_them_mean_no(self) -> None:
@@ -255,7 +255,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
         self.env_file.unlink()
         term = self.first_up("\n", "\x04")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,pi")
         self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "")
 
     def test_without_a_terminal_the_default_answer_turns_the_runtime_on(self) -> None:
@@ -269,7 +269,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertNotIn(Q1, result.stdout + result.stderr)
                 self.assertNotIn(STAYS_OFF, result.stdout + result.stderr)
-                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex")
+                self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,pi")
                 self.assertEqual(self.value("FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS"), "", "Claude Code needs a typed yes")
                 self.assertTrue(self.checked_the_host(), "the host is checked before the runtime is turned on")
                 self.assertTrue(self.applied())
@@ -283,7 +283,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
                                 stdin=slave, capture_output=True, text=True, timeout=30)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn(Q1, result.stdout)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex", "unseen, the default answer applies")
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,pi", "unseen, the default answer applies")
 
     def test_a_second_up_never_asks_again(self) -> None:
         for answers in (("n\n",), ("\n", "\n"), ("\n", "y\n")):
@@ -379,7 +379,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
         return term
 
     def test_ai_on_asks_the_same_questions_and_applies_the_answer(self) -> None:
-        for answers, runtime, terms in ((("\n", "\n"), "codex", ""), (("\n", "y\n"), "codex,claude_code", TODAY)):
+        for answers, runtime, terms in ((("\n", "\n"), "codex,pi", ""), (("\n", "y\n"), "codex,claude_code,pi", TODAY)):
             with self.subTest(answers=answers):
                 self.existing_env()
                 # A host that could not run it when Flux was installed, and now can: the reason Settings › AI gave goes (#1438).
@@ -432,7 +432,7 @@ class SubscriptionQuestionTest(unittest.TestCase):
         self.assertFalse(self.env_file.exists())
 
     def test_ai_on_can_add_claude_code_but_never_removes_a_client(self) -> None:
-        for answer, runtime, terms in (("\n", "codex", ""), ("y\n", "codex,claude_code", TODAY)):
+        for answer, runtime, terms in (("\n", "codex", ""), ("y\n", "codex,claude_code,pi", TODAY)):
             with self.subTest(answer=answer):
                 self.existing_env(runtime="codex")
                 self.log.unlink(missing_ok=True)
@@ -453,10 +453,27 @@ class SubscriptionQuestionTest(unittest.TestCase):
         term.expect("[y/N]")
         term.send("y\n")
         self.assertEqual(term.finish(), 0, term.output)
-        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code")
-        self.assertIn("Building the agent runtime (codex,claude_code)", term.output)
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "codex,claude_code,pi")
+        self.assertIn("Building the agent runtime (codex,claude_code,pi)", term.output)
         self.assertNotIn("Building the agent runtime (codex)...", term.output)
         self.assertTrue(self.applied())
+
+    def test_ai_on_with_only_pi_asks_about_subscriptions(self) -> None:
+        # pi alone runs agents on API keys (#1441); it is no plan, so the subscription question is still asked.
+        self.existing_env(runtime="pi")
+        term = self.ai_on("\n", "\n")
+        self.assertEqual(term.finish(), 0, term.output)
+        self.assertEqual(term.output.count(Q1), 1)
+        self.assertEqual(self.value("FLUX_AGENT_RUNTIME"), "pi,codex")
+        self.assertIn("Subscription sign-in is on for: codex.", term.output)
+        self.assertTrue(self.applied())
+
+    def test_the_switch_takes_pi_and_refuses_unknown_or_repeated_values(self) -> None:
+        for value, ok in (("pi", True), ("codex,pi", True), ("pi,claude_code,codex", True), ("codex,codex", False), ("gpt", False), ("codex,", False)):
+            with self.subTest(value=value):
+                self.existing_env(runtime=value, terms="2026-10-05")
+                result = self.plain("up")
+                self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
 
     def test_ai_on_when_claude_code_is_already_on_asks_nothing(self) -> None:
         self.existing_env(runtime="claude_code", terms="2026-10-05")

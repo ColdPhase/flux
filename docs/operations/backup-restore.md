@@ -188,6 +188,16 @@ everyone out of the browser as well, which is heavier; revoking the connections 
 step for agents. Revoke sessions that ended after the backup through
 `/api/v1/sessions` or ask people to sign out other sessions.
 
+### The AI key file
+
+The file that seals people's API keys (`FLUX_BACKGROUND_KEY_HOST_FILE`, O-007) is **not in the archive, on purpose**: a copy
+of the archive alone never opens anyone's key. `./flux up` keeps it at `~/.local/state/flux/<project>/background.key`
+(`$XDG_STATE_HOME` when set; #1438) and the archive's `flux.env` names that path. Back the file up yourself, apart from the
+archives. A restore on the same machine finds it there; on another machine, copy it to the same path (mode `0400`, in a
+`0700` directory) before `./flux restore`. Without it, the restore stops before replacing any data and says so; to start with
+a new key instead, empty `FLUX_BACKGROUND_KEY_HOST_FILE` and `FLUX_PERSONAL_RUNS` in `docker/.env`, and `./flux up` makes
+one: people then connect their API keys again.
+
 ### Agent runtime logins
 
 When the agent runtime is on ([operator guide](agent-runtime.md), F-022 T3), its volume holds people's

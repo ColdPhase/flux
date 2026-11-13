@@ -15,7 +15,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-FUNCTIONS = ("say", "warn", "die", "env_value", "set_env_line", "background_key_dir", "docker_rootless", "ensure_background_key")
+FUNCTIONS = ("say", "warn", "die", "env_value", "set_env_line", "background_key_dir", "docker_rootless", "check_background_key_file",
+             "ensure_background_key")
 
 
 def launcher_function(name: str) -> str:
@@ -88,9 +89,11 @@ class EnsureBackgroundKeyTest(unittest.TestCase):
             self.assertEqual(stat.S_IMODE(key.parent.stat().st_mode), 0o700)
 
     def test_the_operators_off_switch_and_own_key_file_are_left_alone(self) -> None:
-        for env_text in ("FLUX_PERSONAL_RUNS=off\nFLUX_BACKGROUND_KEY_HOST_FILE=\n", "FLUX_PERSONAL_RUNS=\nFLUX_BACKGROUND_KEY_HOST_FILE=/etc/flux/background.key\n"):
-            with self.subTest(env_text=env_text), tempfile.TemporaryDirectory(prefix="flux-ai-key-") as directory:
+        for own in (False, True):
+            with self.subTest(own_key_file=own), tempfile.TemporaryDirectory(prefix="flux-ai-key-") as directory:
                 base = Path(directory).resolve()
+                (base / "own.key").write_bytes(b"o" * 32)
+                env_text = f"FLUX_PERSONAL_RUNS=\nFLUX_BACKGROUND_KEY_HOST_FILE={base / 'own.key'}\n" if own else "FLUX_PERSONAL_RUNS=off\nFLUX_BACKGROUND_KEY_HOST_FILE=\n"
                 result = self.run_launcher(base, env_text)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual((base / "docker" / ".env").read_text(), env_text)
@@ -102,6 +105,32 @@ class EnsureBackgroundKeyTest(unittest.TestCase):
             result = self.run_launcher(base, "FLUX_PERSONAL_RUNS=\n", extra_env={"FLUX_PERSONAL_RUNS": "off"})
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse((base / "state").exists())
+
+    def test_a_named_key_file_missing_on_this_machine_stops_before_compose_makes_it_a_directory(self) -> None:
+        # A restore on another machine, or a copied docker/.env, names the original machine's file (#1438 review).
+        with tempfile.TemporaryDirectory(prefix="flux-ai-key-") as directory:
+            base = Path(directory).resolve()
+            missing = base / "state" / "flux" / "old-project" / "background.key"
+            env_text = f"FLUX_PERSONAL_RUNS=on\nFLUX_BACKGROUND_KEY_HOST_FILE={missing}\n"
+            result = self.run_launcher(base, env_text)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("not a file on this machine", result.stderr)
+            self.assertFalse(missing.exists(), "nothing is made in its place")
+            self.assertEqual((base / "docker" / ".env").read_text(), env_text)
+
+    def test_a_left_temporary_link_is_not_written_through(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="flux-ai-key-") as directory:
+            base = Path(directory).resolve()
+            target = base / "elsewhere"
+            target.write_bytes(b"")
+            key = base / "state" / "flux" / "flux-test" / "background.key"
+            key.parent.mkdir(parents=True)
+            Path(f"{key}.flux-new").symlink_to(target)
+            result = self.run_launcher(base, "FLUX_PERSONAL_RUNS=\n")
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(target.read_bytes(), b"", "the random bytes never go through a planted link")
+            self.assertEqual(key.stat().st_size, 32)
+            self.assertFalse(key.is_symlink())
 
     def test_a_symlinked_key_is_refused(self) -> None:
         with tempfile.TemporaryDirectory(prefix="flux-ai-key-") as directory:

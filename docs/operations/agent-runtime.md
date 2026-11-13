@@ -51,7 +51,7 @@ organization). Have you accepted them?  [y/N]
   build, and only when stdin and stdout are a terminal. An existing `docker/.env` is never asked about,
   and neither is a second `./flux up`, so a deployment that is already running stays as it is. Without a
   terminal (CI, a pipe, `./flux up > log`) nothing is asked: the host is checked and the default answer applies,
-  `FLUX_AGENT_RUNTIME=codex` (#1438). Claude Code is never on without a typed yes. A host that fails the check keeps the runtime
+  `FLUX_AGENT_RUNTIME=codex,pi` (#1438; pi runs agents on API keys, #1441, and comes with every answer that turns the runtime on). Claude Code is never on without a typed yes. A host that fails the check keeps the runtime
   off and `./flux up` writes the one line it found to `FLUX_AGENT_RUNTIME_OFF_REASON`, which Settings › AI shows the company's
   owners and admins; `./flux ai on` clears it. To skip the check and the question, set `FLUX_AGENT_RUNTIME` in the environment,
   even empty (`FLUX_AGENT_RUNTIME= ./flux up` keeps it off). `./flux dev` never asks.
