@@ -385,7 +385,7 @@ class ContainerIsolationTest(unittest.TestCase):
                                "      runtime-api:\n        aliases: [worker-gateway]\n")
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
         self.assertIn('COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"', launcher)
-        self.assertIn('if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi', launcher)
+        self.assertIn('if runtime_on || { from_release && runtime_profile_named "$@"; }; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi', launcher)
         self.assertIn("-f docker/compose.source.yaml -f docker/compose.source.runtime.yaml -f docker/compose.override.yaml",
                       (ROOT / "scripts" / "check_agent_runtime.sh").read_text(encoding="utf-8"))
 
