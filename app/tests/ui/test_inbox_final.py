@@ -410,10 +410,13 @@ class InboxFinal(unittest.TestCase):
         decision = self.card(page, DECISION)
         # One button, no menu (S11): it puts the item off until tomorrow morning. The reads that follow are answered only after Undo.
         held = self.hold_reads_after_snooze(page)
-        self.item(page, DECISION).get_by_role("button", name="Not now").click()
+        # By keyboard: the button leaves with its item, and focus goes to the next open item, not to the start of the page.
+        self.item(page, DECISION).get_by_role("button", name="Not now").focus()
+        page.keyboard.press("Enter")
         expect(page.get_by_role("menu")).to_have_count(0)
         expect(page.get_by_role("status").filter(has_text="Back tomorrow morning")).to_be_visible()
         expect(decision).to_have_count(0)
+        page.wait_for_function("() => !!document.querySelector('.nyq__col--open')?.contains(document.activeElement)")
         seen(page, "heldRead")
         self.wait_for(lambda: (self.queue(None)["count"], self.queue(None)["later"]) == (3, 1), "the snooze to be stored")
         # The row after it is the open one now.

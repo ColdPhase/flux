@@ -76,6 +76,16 @@ export function InboxView() {
     document.querySelector<HTMLElement>(`.nyc[data-key="${CSS.escape(key)}"]`)?.scrollIntoView({ block: 'nearest' });
   }, [setSelected]);
   useQueueKeys(shown, current?.key ?? null, select, handlers);
+  // The open column: when what had focus in it leaves with its item (Accept, Not now, Done), focus goes to the next open item, not to the start
+  // of the page, so a keyboard or screen reader user goes on from there.
+  const paneRef = useRef<HTMLElement>(null);
+  const paneFocused = useRef(false);
+  const openKey = current?.key ?? null;
+  useEffect(() => {
+    if (!paneFocused.current) return;
+    const active = document.activeElement;
+    if (!active || active === document.body) paneRef.current?.focus({ preventScroll: true });
+  }, [openKey]);
 
   // Put off for later: what Not now took out of the list, said under it (it returns tomorrow morning).
   const later = queue.later ? <p className="nyq__later">{queue.later} for later</p> : null;
@@ -123,7 +133,8 @@ export function InboxView() {
           {keys}
           <LockedSpacesNote />
         </div>
-        <section className="nyq__col nyq__col--open" aria-label="Open item">
+        <section className="nyq__col nyq__col--open" aria-label="Open item" ref={paneRef} tabIndex={-1}
+          onFocus={() => { paneFocused.current = true; }} onBlur={(event) => { if (event.relatedTarget) paneFocused.current = paneRef.current?.contains(event.relatedTarget as Node) ?? false; }}>
           <div className="nyq__sticky"><NeedsYouCard key={current.key} item={current} pane handlers={handlers} /></div>
         </section>
       </div></div>
