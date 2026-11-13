@@ -1624,6 +1624,8 @@ export const notificationPreferences = pgTable('notification_preferences', {
   /** Migration 0064 (#1243): "Sound for messages", off by default, and "Sound when someone calls me", on by default. */
   soundMessages: boolean('sound_messages').notNull().default(false),
   soundCalls: boolean('sound_calls').notNull().default(true),
+  /** Migration 0070 (#1346): "Hide previews", off by default: a push says only who and where, never what was written. */
+  hidePreviews: boolean('hide_previews').notNull().default(false),
   /** Migration 0109 (F-027 A8): the assistant writes the summary's text; the plain one is the fallback. */
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 });

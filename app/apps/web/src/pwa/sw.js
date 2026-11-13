@@ -76,10 +76,12 @@ self.addEventListener('push', (event) => {
   try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
   const notificationId = typeof data.notificationId === 'string' ? data.notificationId : undefined;
   // Lock-screen privacy: text is shown only when the server sent a full preview, which it does
-  // only while the recipient can read the source. Anything else shows the fixed generic title.
-  const full = data.preview === 'full' && typeof data.title === 'string' && data.title;
-  const title = full ? data.title : GENERIC_TITLE;
-  const body = full && typeof data.body === 'string' ? data.body : '';
+  // only while the recipient can read the source and has not chosen Hide previews. "Hidden" (#1346)
+  // carries one title that says who and where, and no body: nothing is held back here, because
+  // nothing else was sent. Anything else shows the fixed generic title.
+  const shown = (data.preview === 'full' || data.preview === 'hidden') && typeof data.title === 'string' && data.title;
+  const title = shown ? data.title : GENERIC_TITLE;
+  const body = shown && data.preview === 'full' && typeof data.body === 'string' ? data.body : '';
   // Every push shows a notification: browsers require user-visible pushes.
   event.waitUntil(self.registration.showNotification(title, {
     body,
