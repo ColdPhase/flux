@@ -1,0 +1,1 @@
+- Search (⌘K) lists the places last opened and Go to Inbox only (no assistant row or sidebar toggle, and the tasks place reads "My tasks"), a space's ⋯ has no sidebar row, My map says "Only you" beside its title, and the Inbox's ⋯ stays on every Inbox address ([#1376](https://github.com/ColdPhase/flux/issues/1376)).

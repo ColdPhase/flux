@@ -391,8 +391,10 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
   computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
   hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings and
-  **Mute space** / **Unmute space**. There is no Agents view, no Focus, no goal and no "needs you" count.
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
+  **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
+  [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
   `Esc` closes it.
@@ -1247,6 +1249,10 @@ the composer. The right-hand phone above shows the sheet.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
   thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
   to narrow". There are no filter chips and no Create group.
+- With the field empty it lists the places last opened (named as the sidebar names them: "My tasks", never "Home · Tasks") and one action, **Go to
+  Inbox** (`G` `I`). There is no assistant row (the assistant's suggestions are in the composer's `/` menu under `/ai`, S5, and nowhere else) and
+  no sidebar toggle. The field and **Close** (Cancel on the phone) are one height (32 px, 44 on touch), Close is at least 44 px wide on touch, and
+  the field's row carries the 2 px `--t1` focus ring ([#1376](https://github.com/ColdPhase/flux/issues/1376), [#1380](https://github.com/ColdPhase/flux/issues/1380)).
 
 ### My map
 
@@ -1271,6 +1277,11 @@ the composer. The right-hand phone above shows the sheet.
   - **Copy link** copies `/map/:id#thought-:id`. It opens My map with the thought selected, and only its owner can
     open it. On the phone both are in the Thought actions sheet.
 - A space's Map uses the same canvas and tools; its thoughts can link tasks (section 5).
+- **Two recorded departures from the drawn tools** ([#1376](https://github.com/ColdPhase/flux/issues/1376)). **Select several** is on the toolbar of a
+  touch screen only (a tablet), a toggle that makes each tap add to the selection, because touch has no Shift-click; a computer selects several with
+  Shift-click, and the phone selects one thought at a time (S15). **Cite** is on a space's map only (My map has no conversation):
+  the one way to quote a selected thought in the space's conversation ([#469](https://github.com/ColdPhase/flux/issues/469)); it is enabled with exactly one
+  thought selected. Section 8 removes Cite from messages and the composer, not from the map; whether the map keeps it is an open question on #1376.
 - On the phone, My map is a row on Home, next to "My tasks (N)", and not a tab. The phone map
   follows S15: view and add a thought.
 

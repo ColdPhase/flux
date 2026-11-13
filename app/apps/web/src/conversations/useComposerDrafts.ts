@@ -18,7 +18,7 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
   const composer = asking ? helperComposer : publicComposer;
   const location = useLocation();
   const navigate = useNavigate();
-  // ⌘K "Ask my assistant…" and the assistant panel's Message arrive as ?ask=1 in a thread: ask mode opens once.
+  // The assistant panel's Message arrives as ?ask=1 in a thread: ask mode opens once.
   const askParam = !aiOff && !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
   const [askHandled, setAskHandled] = useState(false);
   if (askParam !== askHandled) { setAskHandled(askParam); if (askParam) setAsking(true); }

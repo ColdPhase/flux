@@ -319,7 +319,8 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-head { flex-wrap: nowrap; justify-content: flex-start; gap: 4px 10px; padding: 4px 4px 4px 14px; border-radius: var(--r-pill);
   background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk--map .sk-lead { flex-wrap: nowrap; position: relative; }
-.sk--map .sk-aud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* "Only you" stays beside My map's title, as drawn (README §7, #1376); the pill's title gives way to it with an ellipsis, never the words. */
+.sk--map .sk-aud { flex: none; white-space: nowrap; }
 .sk--map .sk-mode .seg__b { min-width: 48px; }
 .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }

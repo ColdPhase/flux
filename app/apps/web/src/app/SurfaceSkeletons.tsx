@@ -42,10 +42,10 @@ export function DetailsSkeleton({ title }: { title?: string }) {
 /**
  * Search (⌘K) while its code arrives, in the final size by construction: it is the dialog's own markup and classes (`search/search.css` is
  * loaded with it) with bars where the labels are. What decides the dialog's height is known before the code is here: the number of recent
- * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the actions (Go to Inbox; on the computer the sidebar; and "Ask my assistant…" when it is ready), and on the computer the footer's sentence. The close control sits in the
+ * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the one action (Go to Inbox), and on the computer the footer's sentence. The close control sits in the
  * field row, as the real one does.
  */
-export function JumpSkeleton({ places, locked, phone, ask, onClose }: { places: number; locked: number; phone: boolean; ask: boolean; onClose: () => void }) {
+export function JumpSkeleton({ places, locked, phone, onClose }: { places: number; locked: number; phone: boolean; onClose: () => void }) {
   const bars = (count: number, offset: number) => Array.from({ length: count }, (_, index) => (
     <li key={index} className="jump__opt jump-skeleton__opt"><i /><b style={{ width: `${[46, 58, 38, 52, 44, 60, 40][(index + offset) % 7]}%` }} /></li>
   ));
@@ -63,7 +63,7 @@ export function JumpSkeleton({ places, locked, phone, ask, onClose }: { places: 
         <ul className="jump__list">
           {places ? <><li className="jump__sh">Recent</li>{bars(places, 0)}</> : null}
           {locked ? <><li className="jump__sh">Waiting to be unlocked</li>{bars(locked, 3)}</> : null}
-          <li className="jump__sh">Actions</li>{bars((phone ? 1 : 2) + (ask ? 1 : 0), 1)}
+          <li className="jump__sh">Actions</li>{bars(1, 1)}
         </ul>
       </div>
       {phone ? null : (

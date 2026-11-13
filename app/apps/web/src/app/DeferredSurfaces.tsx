@@ -8,7 +8,6 @@ import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
 import { useShellData } from './data';
 import { placeOfPath, useRecentPlaces } from '../search/recent';
-import { useAssistantReady } from '../search/useAssistantReady';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
 import { conversationPage, preloadProjectViews } from './viewChunks';
 
@@ -25,7 +24,7 @@ function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
 }
 type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
 const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
-const search = deferred<{ onClose: () => void; userId: string; assistantReady: boolean }>(async () => (await import('../search/JumpTo')).JumpToBody);
+const search = deferred<{ onClose: () => void; userId: string }>(async () => (await import('../search/JumpTo')).JumpToBody);
 // The live strip is not part of the first visit's code (#1178): it comes with the other surfaces.
 const liveBar = deferred<Record<string, never>>(async () => (await import('../live/LiveBar')).LiveBar);
 /**
@@ -139,18 +138,12 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const here = placeOfPath(useLocation().pathname)?.key;
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
-  // Whether "Ask my assistant…" has a row is read while the dialog is closed and kept for as long as it is open (#898).
-  const aiAnywhere = projects.some((project) => project.ai !== 'blocked');
-  const assistant = useAssistantReady(aiAnywhere, open);
-  const hereProject = projects.find((project) => project.id === projectId);
-  const aiHere = hereProject ? hereProject.ai !== 'blocked' : aiAnywhere;
-  const [asks, setAsks] = useState(assistant);
   // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
   // leaves at the size it had (it used to collapse to nothing on the first frame of its exit), and one that opens again before the exit
   // is over starts afresh.
   const [opens, setOpens] = useState(open ? 1 : 0);
   const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) { setWasOpen(open); if (open) { setOpens(opens + 1); setAsks(assistant); } }
+  if (open !== wasOpen) { setWasOpen(open); if (open) setOpens(opens + 1); }
   if (!requested) return null;
   const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
   // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
@@ -162,7 +155,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   return (
     <SurfaceBoundary label="Search" wrap={wrap}>
       <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Search" className="jump">
-        <Surface key={opens} of={search} props={{ onClose, userId, assistantReady: asks }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} ask={asks && aiHere} onClose={onClose} />} />
+        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} onClose={onClose} />} />
       </Overlay>
     </SurfaceBoundary>
   );

@@ -380,9 +380,7 @@ function AppLayoutContent() {
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot,
-    toggleSidebar: toggleRail,
-    sidebarHidden: railed,
-  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -716,8 +714,9 @@ function AppLayoutContent() {
   // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
   const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
   const heading = panelHeading(detailsView, placeDetailsLabel);
-  // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox.
-  const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox\/?$/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
+  // The Inbox's and the Spaces list's one bulk action (#1250): everything unread is read; what needs an action stays in the Inbox. It is on every Inbox address
+  // (an open item and a missing one too), so the header's ⋯ never comes and goes (#1376).
+  const bulkRead: MoreItem[] = (where === 'inbox' && /^\/inbox(\/|$)/.test(location.pathname)) || location.pathname === '/projects' ? [{ label: 'Mark all as read', run: markAllRead }] : [];
   const moreItems: MoreItem[] = [
     ...bulkRead,
     // A header with no room for them (Spokój rule 3) moves the people and Call here; the views stay in the row.
@@ -726,7 +725,7 @@ function AppLayoutContent() {
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...(placeMute ? [{ label: placeMute.label, hint: placeMute.hint, run: placeMute.run }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
-    tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
+    // No sidebar row: the sidebar folds with its own control and `[`, and the rail and the navigation button open it (README §4, #1376).
   ];
 
   // The phone's header (F-026 §4 Phone): inside a space the title row is Back, the space's plain title (two lines at most) with who is here
