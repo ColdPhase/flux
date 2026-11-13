@@ -29,6 +29,8 @@ const lastAdmin = (error: unknown) => (error instanceof ApiError && error.code =
  * or the server said it was busy or broke for a moment. A refusal (403, 404) is not one: asking again changes nothing.
  */
 const transient = (error: unknown) => error instanceof NetworkError
+  // The connection broke while the answer's body was read: `fetch` had resolved, so the body's own read throws a TypeError.
+  || error instanceof TypeError
   || (error instanceof ApiError && (error.status === 408 || error.status === 425 || error.status === 429 || error.status >= 500));
 /** How long the page waits before it asks again for who is in the space, by attempt; after the last one it says it could not. */
 export const ROSTER_RETRY_MS = [800, 2400];

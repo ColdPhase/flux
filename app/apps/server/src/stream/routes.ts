@@ -31,7 +31,9 @@ const STEP = /^[a-z][a-z0-9_]{0,63}$/;
  * value, and nothing the cookie names.
  */
 export function upgradeCookies(cookieHeader: unknown, publicOrigin: string) {
-  const names = typeof cookieHeader === 'string' ? cookieHeader.split(';').map((part) => part.split('=')[0]!.trim()).filter(Boolean).slice(0, 12) : [];
+  // A part without `=` is a cookie with no name: what it holds is its value, so it is counted, never written.
+  const names = typeof cookieHeader === 'string'
+    ? cookieHeader.split(';').filter((part) => part.trim()).map((part) => (part.includes('=') ? part.slice(0, part.indexOf('=')).trim().slice(0, 64) : '(no name)')).slice(0, 12) : [];
   return { cookieHeader: typeof cookieHeader === 'string', cookieNames: names, sessionCookie: sessionCookieValue(cookieHeader, sessionCookieName(publicOrigin.startsWith('https:'))) !== null };
 }
 

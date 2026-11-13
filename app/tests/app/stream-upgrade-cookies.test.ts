@@ -15,5 +15,8 @@ test('a refused upgrade is logged with the names of the cookies it carried and w
   assert.equal(upgradeCookies('__Secure-flux.session_token=v.s', 'https://flux.example').sessionCookie, true);
   assert.equal(upgradeCookies('flux.session_token=v.s', 'https://flux.example').sessionCookie, false);
   assert.equal(upgradeCookies('flux.session_token=', 'http://127.0.0.1:18591').sessionCookie, false, 'an empty cookie is no cookie');
+  const nameless = upgradeCookies('NAMELESSSECRET; theme=dark', 'http://127.0.0.1:18591');
+  assert.deepEqual(nameless.cookieNames, ['(no name)', 'theme'], 'a cookie with no name is counted, its value never written');
+  assert.ok(!JSON.stringify(nameless).includes('NAMELESSSECRET'));
   assert.equal(upgradeCookies(Array.from({ length: 30 }, (_, i) => `c${i}=1`).join('; '), 'http://x').cookieNames.length, 12, 'the list is bounded');
 });
