@@ -267,15 +267,16 @@ class SpokojLayout(unittest.TestCase):
         head = self.box(page.locator("header.top"))
         body = self.box(page.locator(".app__body"))
         leaving = page.evaluate("""async () => {
+          const panel = document.querySelector('.ui-panel--docked');
+          let seen = null;
+          // The class comes with the first frame of the exit and the panel may be gone a moment later: watch for it from before the click.
+          const note = () => { if (!seen && panel.classList.contains('is-leaving')) { const box = panel.getBoundingClientRect(); seen = {x: box.x, y: box.y, right: box.right, bottom: box.bottom, running: panel.getAnimations().length}; } };
+          const observer = new MutationObserver(note);
+          observer.observe(panel, {attributes: true, attributeFilter: ['class']});
           document.querySelector('.ui-panel--docked .ui-panel__close').click();
-          let panel = null;
-          for (let frame = 0; frame < 6 && !panel; frame++) {
-            await new Promise((done) => requestAnimationFrame(done));
-            panel = document.querySelector('.ui-panel--docked.is-leaving');
-          }
-          if (!panel) return null;
-          const box = panel.getBoundingClientRect();
-          return {x: box.x, y: box.y, right: box.right, bottom: box.bottom, running: panel.getAnimations().length};
+          for (let frame = 0; frame < 8 && !seen; frame++) await new Promise((done) => requestAnimationFrame(done));
+          observer.disconnect();
+          return seen;
         }""")
         self.assertIsNotNone(leaving, "the panel leaves with its fade")
         self.assertGreaterEqual(leaving["y"], head["y"] + head["height"] - 1, "it stays under the header")
