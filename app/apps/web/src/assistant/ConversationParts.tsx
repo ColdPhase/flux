@@ -220,17 +220,44 @@ export interface SourceLookups {
   people?: readonly NamedPerson[] | null;
 }
 
+/** A source of another space its reader can no longer open (C-62): the server sent it without what it names; the chip keeps its number and opens nothing. */
+function closedSource(source: AssistantSourceRef): string | null {
+  if (source.type === 'doc' && !source.title) return 'a Wiki page';
+  if (source.type === 'decision' && !source.title) return 'a decision';
+  if (source.type === 'work' && source.projectId && !source.title) return 'a task';
+  if (source.type === 'message' && source.projectId && !source.conversationId) return 'a message';
+  return null;
+}
+
 function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; index: number; lookups: SourceLookups }) {
   const { openDetails } = useShellActions();
+  const closed = closedSource(source);
+  if (closed) {
+    const label = `Source ${index}: ${closed} in a space you no longer read`;
+    return <span className="assistant-cite" role="note" aria-label={label} title={label}>{index}</span>;
+  }
   if (source.type === 'message') {
     const message = lookups.messages.find((item) => item.id === source.id);
-    const label = message ? `Source ${index}: message #${message.sequence} by ${(message.authorId !== null ? lookups.author(message.authorId) : agentAuthorLabel(message.author))}` : `Source ${index}: a message in this conversation`;
+    const label = message ? `Source ${index}: message #${message.sequence} by ${(message.authorId !== null ? lookups.author(message.authorId) : agentAuthorLabel(message.author))}`
+      : `Source ${index}: a message in ${source.conversationId ? 'this space' : 'this conversation'}`;
+    // A message the agent read with a tool may be in another conversation (C-62): it carries where it is.
+    if (source.conversationId && source.projectId) return <RefLink className="assistant-cite" to={`/projects/${source.projectId}/conversations/${source.conversationId}#message-${source.id}`} aria-label={label} title={label}>{index}</RefLink>;
     return <Link className="assistant-cite" to={{ hash: `message-${source.id}` }} aria-label={label} title={label}>{index}</Link>;
   }
   if (source.type === 'work') {
     const item = lookups.work.get(`work:${source.id}`);
-    const label = `Source ${index}: work “${item?.title ?? 'in this project'}”`;
-    return <button type="button" className="assistant-cite" data-native-ref={`work:${source.id}`} aria-label={label} title={label} onClick={() => openDetails({ kind: 'work', id: source.id })}>{index}</button>;
+    const label = `Source ${index}: work “${item?.title ?? source.title ?? 'in this project'}”`;
+    return <button type="button" className="assistant-cite" data-native-ref={`work:${source.id}`} aria-label={label} title={label} onClick={() => openDetails({ kind: 'work', id: source.id, ...(source.projectId ? { projectId: source.projectId } : {}) })}>{index}</button>;
+  }
+  if (source.type === 'decision') {
+    const label = `Source ${index}: decision “${source.title}”`;
+    return <button type="button" className="assistant-cite" data-native-ref={`decision:${source.id}`} aria-label={label} title={label} onClick={() => openDetails({ kind: 'decision', id: source.id, projectId: source.projectId })}>{index}</button>;
+  }
+  if (source.type === 'doc') {
+    // A section opens the version it was numbered in, at its heading (the page's Contents names headings `section-N`); a page opens as it is now.
+    const label = `Source ${index}: Wiki page “${source.title}”${source.section ? `, section “${source.section.text}”` : ''}`;
+    const to = source.section ? `/projects/${source.projectId}/docs/${source.id}/versions/${source.section.version}#section-${source.section.n}` : `/projects/${source.projectId}/docs/${source.id}`;
+    return <RefLink className="assistant-cite" to={to} data-native-ref={`doc:${source.id}`} aria-label={label} title={label}>{index}</RefLink>;
   }
   const label = `Source ${index}: a thought on the project map`;
   return <RefLink className="assistant-cite" to={`/projects/${lookups.projectId}/map/${source.sketchId}#thought-${source.id}`} aria-label={label} title={label}>{index}</RefLink>;

@@ -315,7 +315,7 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
         page.get_by_role("radio", name="Dark").click()
         self.assertEqual(page.evaluate("document.documentElement.dataset.theme"), "dark")
-        page.get_by_role("radio", name="System").click()
+        page.get_by_role("radio", name="Match system").click()
         page.locator("header").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         for title, url, heading in (("Notifications", "/settings/notifications", "Settings"),

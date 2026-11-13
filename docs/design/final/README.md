@@ -101,7 +101,7 @@ buttons above, which read as too strong:
 - Destructive actions keep a clear style: a 1 px `--t2` outline with `--t1` text, never the inverted fill.
 - No gradient and no drop shadow on any button; `--grad-btn`, `--sh-btn` and `--sh-pri` are retired.
 - Button radius 10 (`--r-btn`); `--r-pill` stays for chips, avatars and segmented tracks.
-- A segmented choice with options of different lengths (What it may do, Model) sizes each option to
+- A segmented choice with options of different lengths (Model) sizes each option to
   its label with 14 px each side and never gives the longest an equal share (`seg--fit`); where the
   group has no room for one row (a phone) its options wrap onto the next row and keep their label width (an
   option alone on a row is not a bar), and the track takes the large radius (`--r-lg`). Equal slots stay for the views, the map's
@@ -163,7 +163,7 @@ live panel and the connection's permissions (#1238).
   the old off switch (`--hov` track, white knob) was 1.3:1 in light.
 - High-contrast mode (`forced-colors`) draws the edge and knob in `ButtonText` and an on switch in `Highlight`.
 
-**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, What it may do, Model, Text size,
+**Segmented controls** (#1238) are one style: the Map / List switch, Board / List, Model, Text size,
 the live stage and screen mode, and access. (The space views, Conversation | Tasks | Map | Wiki, become underline
 tabs under #1239; until then they read the same three tokens.) A selected state never rests on a 1.1:1 difference
 (WCAG 2.2 1.4.11 asks for 3:1 for a state a person needs to see; the design asks for this much at least, and adds an edge):
@@ -238,7 +238,7 @@ the rail and its unfold keep their smooth width animation, and the content besid
 the fold (Hubert, 2026-11-03, #720). Reduced motion sets every duration and delay to zero. Nothing
 moves for its own sake.
 
-**Theme:** Light, Dark and Match system. There is no accent colour and no colour picker. The v0.2
+**Theme:** Light, Dark and Match system, with those words on every device (the phone does not say "System", #1424). There is no accent colour and no colour picker, and no line that says so. The v0.2
 renders are light; dark comes from the tokens.
 
 ![Visual system](screens/reference-system.webp)
@@ -349,7 +349,7 @@ Celebrate stays drawn (the sparkle, with the smiling eyes) for a moment that may
 sparkle turning in once while the eyes settle into the smile (600 ms).
 
 **Small moments.** These are the only places the mascot appears, and Settings → Appearance can
-turn them off:
+turn them off with one switch, **"Show the face on loading and empty screens"** on every device (the name Kreska is not in the words, #1424):
 - splash;
 - space loading;
 - an agent is thinking, with Stop;
@@ -386,8 +386,13 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
     you muted has a small muted mark there too ([Muting and following](#muting-a-place-and-following-a-thread)).
     You see only the spaces you were added to;
   - **Messages**: your agents and people. Assistant is pinned first, then your other agents, then
-    people. A dot marks an unread report or message;
+    people. A dot marks an unread report or message. With no agent and no message yet, the heading has the phone's "+" (**New message**),
+    so it is never a heading over nothing (#1424);
   - your name at the bottom. It opens the account menu: your name, Settings and Sign out.
+  - **The drawer (a narrow window) holds the sidebar's items in the same places** (#1375): no "+" beside
+    Spaces or Messages (New is the one way to create; only an empty Messages has its "+", as above), the ⋯ beside Spaces, no email under the name,
+    and no frame around the drawer; the rail's people are faces, not links. Where a list is longer than the window, the edge it can still
+    scroll towards fades softly, and it opens with the current place in view.
 - **Collapsed rail (64 px).** Icons only. Folding to the rail and unfolding animate the sidebar's
   width smoothly, and the content beside it adapts during the fold. This is the one named exception
   to "opacity and transform only" ([motion](../motion.md), Hubert, 2026-11-03, #720).
@@ -396,16 +401,27 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   Wiki** as [underline tabs](#underline-tabs-the-views-switch), the people's faces (people active now first, then the others, an agent last; with a working agent's
   face only while it works), **Call** (Join while a call of the space is on, [Calls](#calls)) and ⋯. The tabs are as tall as the row, so their underline sits on the
   header's hairline. The faces sit side by side and touch, as drawn, so two-letter initials stay whole:
-  at most three people and one agent (two people and one agent in a header pane narrower than 70 rem, a tablet or a
-  computer window of about 1001 to 1380 px), then one "+N" face of the same size (a circle for "+5", "99+" from a
-  hundred). The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
-  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. The ⋯ menu holds the space's settings,
+  at most three people (two in a header pane narrower than 70 rem, a tablet or a computer window of about 1001 to 1380 px) and,
+  while one of your own agents works on a task of the space, its Kreska after them, then one "+N" face of the same size (a circle for
+  "+5", "99+" from a hundred). **Agents are not members** (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419), #1424):
+  "+N", the button's accessible name ("Basia, Jonas, you and 2 others, who can see this space") and the phone's line count people only,
+  and an empty Everyone does not say "1 agent". The people's button is as wide as its faces and ends at the right edge of its slot, so no grey area shows
+  where there is no face; the slot keeps its width (100 px, 120 px from 70 rem) whatever the number of people. Where the row is
+  too short for the name's 220 px slot beside everything else (a header under 780 px, as on an 820 px tablet in portrait), the
+  people go into ⋯ first, as its People row, and Call stays in the row; under 44 rem Call follows them (#1375). The ⋯ menu holds the space's settings,
   **Mute space** / **Unmute space** and **Space details**, the one way into the space's own panel ([#871](https://github.com/ColdPhase/flux/issues/871),
   [#873](https://github.com/ColdPhase/flux/issues/873); the phone's ⋯ has it too, after Search, Call, Settings and Mute). It has no row for the sidebar:
-  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count.
+  the sidebar folds with its own control and `[`, and the rail and the navigation button open it ([#1376](https://github.com/ColdPhase/flux/issues/1376)). There is no Agents view, no Focus, no goal and no "needs you" count. **⋯ is there only where it has rows** (#1424): My tasks, My map, an
+  agent's chat on the computer and a page of Settings have none, so they show no ⋯ and no empty menu.
 - **One detail panel.** A task, a decision or a thread opens in the same right-hand panel, and the
   conversation stays visible. Opening another object replaces the panel's content, with "‹ back".
-  `Esc` closes it.
+  `Esc` closes it. It is **one card in one place on every computer and tablet view** (#1365): under the
+  header, 10 px from the right edge and the window's bottom, in Conversation, Tasks, Map and Wiki alike,
+  and it never covers the header or a call's strip, so the name, the views, the faces, Call and ⋯ stay in
+  view and live. It is never modal: no scrim, the work beside it stays usable, `Esc` in it closes it and
+  focus goes back to what opened it. Above 1000 px it docks beside the work, which narrows (the Tasks
+  board then scrolls its columns sideways inside itself, with a thin bar); from 641 to 1000 px the same
+  card lies over the work's right edge; on the phone it is the sheet below.
 - **Search.** ⌘K, the sidebar's Search and the phone's Search open the same tool (S16).
 - **Settings.** One list of sections on the left and the section on the right, under a header that
   never changes. No section is lost at 820 px.
@@ -428,7 +444,7 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
   - **A live call shows Join.** The one dark pill (#1230) sits between the name and ⋯ and never
     shrinks, as ⋯ never shrinks. It folds into ⋯ below 360 px, as before, with the live mark on ⋯.
   - **A long name wraps to at most two lines, then an ellipsis.** The full name is the heading's
-    text, so it is the accessible name, and its title. The line "3 people · 4 agents" stays one
+    text, so it is the accessible name, and its title. The line "3 people" (agents are not members, #1424) stays one
     line under it, in `--t3`.
   - **The views are the same [underline tabs](#underline-tabs-the-views-switch) as on the computer
     and the tablet,** in the row under the title, left-aligned; the title is not a view menu.
@@ -833,12 +849,15 @@ Community garden sensors, Rain barrel monitor and Tool library.
   in the Inbox. Every item needs you, so none is marked "Needs you" (§2 lists the pill as superseded).
 - **Two columns where there is room, one column on the phone.** From a 1001 px window (the width at which the detail panel stops
   being an overlay) the list is the left column, about 360 px, and the open item is the right column, as drawn. In the list each
-  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; the open row is
+  item is one row: kind · who · space, the title (two lines at most) and one line of what it says, with no button; every kind has the same shape
+  (a muted line that starts with the kind, no bold name before it and no time; a notification's own title already says who and where, so its line is
+  its kind, #1424); the open row is
   the raised `--el` row, and the first item is open until another is chosen. The right column is the open item as its card with no
   box around it: the face, who and where and when, the title (`--fs-xl`), its words, its actions, then who can accept it. Nothing in
   the list moves when another item opens. **In one column** (a tablet in portrait, the phone) the open item is the card that is
   expanded inside the list, and the others stay one row with their one quiet action, as the phone is drawn.
-  `J` and `K` move between items, and `A`, `E` and `S` act on the open one.
+  `J` and `K` move between items, and `A`, `E` and `S` act on the open one. The keys are shown in menus and on their buttons
+  (Accept's `A`), never as a legend under the list ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Not now is one button, with no menu** (S11, #1367). It puts the item off until tomorrow at 08:00 and offers Undo ("Not now.
   Back tomorrow morning"); the item returns then. There is no "Ask me again" menu, no "Next week", no "When #N is done" and no
   "Decline for good" on a decision: a decision waits until someone accepts it. A line under the list says how many are put off
@@ -1154,9 +1173,12 @@ Live strip, someone shares a screen
   is "Join · Nia". On the phone Join is the dark pill between the name and ⋯ (#1239); under 360 px it takes Call's row in ⋯, after Search, with the dot on ⋯.
 - **While you are in the call** the header's slot shows the call's state, not a Call button again ([#1378](https://github.com/ColdPhase/flux/issues/1378)):
   the live dot (a spinner while it connects) and **In call**, the same quiet button in the same slot, so nothing moves. It explains itself in its popover
-  ("You are in a live session." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
+  ("You are in a call." / "Connecting to the call.") and starts nothing; ⋯'s row reads **In call** the same way.
 - **The strip's row is centred** on every window: the live dot with its word (**Live**, from 360 px), the place's button, the faces, then the devices; every item shares
   the row's centre line, and a call line's faces sit side by side, 2 px apart, with no overlap (the receipts' rule).
+- **No media server, no Call** (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424). A server that has no media server shows
+  no Call anywhere: not in the header on any view (Tasks, Map and Wiki lists included), not as a greyed row in ⋯ or on the phone, not on a task, and no
+  popover that explains it. Its words "media server" and "live sessions" are not said to members: a call that fails says "Calls are not working right now."
 - **Connecting.** From the click on Call or Join the strip is there, in the place it will keep: the spinner and "Connecting…",
   and the call's place (the same button), with nothing else; its devices, Invite…, ⋯ and Leave come when the call is joined, in the
   same row, so the work below does not move twice. Until then the header's Call (or ⋯'s row) says "Connecting to the call." and
@@ -1221,7 +1243,12 @@ the composer. The right-hand phone above shows the sheet.
 
 - **One control row** for Board and List: the Board / List switch, Mine, Search tasks and, on the
   right, "+ Task". Mine includes tasks owned by your agents. Mine is the system's outline `Button` with the person icon, pressed
-  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle.
+  with the `--t1` edge; it is a 32 px control (44 on touch), never a circle. "+ Task" is the right end of this row on
+  every computer and tablet, in both views and in either orientation, and the space's header holds
+  only its own slots (#1366). Over the List, a centred column on a wide window (from 2000 px), the row is
+  that same 838 px column, so "+ Task" ends where the list ends; over the Board it stays that column, so
+  nothing in the row moves when the view changes (principle 7). The List updates live and has no Refresh; under it
+  are only Previous and Next when there is another page ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 13).
 - **Four columns**, the four states: To do, Doing, Blocked and Done, each with its glyph and count.
   A card holds its title, its number, a due date when it has one, and its owner's face, an agent
   tag ("Planner · Ada's agent") or "No owner". Cards have no ⋯, and columns have no "+". A column is one card wide and at most 420 px,
@@ -1229,9 +1256,14 @@ the composer. The right-hand phone above shows the sheet.
 - **Blocked** cards carry one line saying what they wait for: "Waiting for the decision Use LoRa
   for the far beds", "Waiting for Jonas" or "Waiting for #7". When that resolves, the task returns
   to Doing by itself.
+- **An agent's label** is one line, "Planner · Ada's agent", on a card, in a List row, in the panel's
+  Owner row and in its discussion (#1364). The word "agent" is in the label, so it has no separate "Agent"
+  tag and no "for <owner>"; only while the owner is not known does the name carry the "Agent" tag.
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
-  done"), the one discussion and "Write about this task…". At Done, an optional "What came of it"
+  done"), the one discussion and "Write about this task…". The discussion has no heading ("Activity" is
+  removed, §8) and is there from the first moment: a new task shows its own first line, "Ada created the
+  task", above the composer, and its Send is "Send to task" whether or not anyone has written yet (#1364). At Done, an optional "What came of it"
   row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
   dropped task reads "Done · dropped" in its panel, in the List and on its Board card, and the line is
   also written once in the task's discussion. A blocked task's "Waiting for" menu offers people, the
@@ -1244,7 +1276,9 @@ the composer. The right-hand phone above shows the sheet.
 ![Wiki with the page switcher open](screens/desktop-wiki.webp)
 
 - Two columns only: the sidebar and the page. There is no pages column and no "On this page"
-  column.
+  column. A task, a decision or a thread opens in the one detail panel beside the page, in the same
+  place as in every other view (#1365); the page gives it room and goes back to its width when the
+  panel closes.
 - **The title is the page switcher.** "Lending rules ▾" opens the space's pages with "Find a page"
   and "+ New page" at the bottom. It sits in the same place with 1 page or 50.
 - **The row above the title:** "Saved · just now · Jonas is here too", the faces of people editing,
@@ -1398,20 +1432,20 @@ standard switch row in Settings › Notifications, and the rest of the page stay
 
 - **Settings › AI rows keep whole words on every page width** (#1358): a row measures the page it is in, not the window (beside the
   section list a portrait tablet's page is about 440 px wide). When a row is too narrow, its control drops under its label (Connect another,
-  New agent, the task-taking Select), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
-  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (the "What it may do" tag and the model are on its page).
+  New agent), names end in an ellipsis, a tag ("Answers /ai", "Agent") is one line and never breaks, a word is never
+  cut, and under 37.5 rem an agent's row is its face, name, line and arrow (its tag and the model are on its page).
 - **Settings › AI** holds:
   - **Connect AI**, with Connect another. Each connection is a card with its name, "Connected" and
     the provider's usage line ("62% of your 5-hour limit left · resets at 14:00"). Change sits on
     the right, centred, and never overlaps the text.
   - The local client as one row, in the same card as the connections (#1363): the terminal mark in
     the same icon tile as the connections (as drawn), "Claude Code on Ada's laptop", "For code on your computer. Same rules as your agents.", its
-    "What it may do" tag (a link to the page where it is changed) and Disconnect, which asks in the
+    tag, "Do it and tell me" or, with the switch on, "Ask me first" (a link to the page where it is changed), and Disconnect, which asks in the
     row. A person may connect several, each with its own row. There is no section of its own for it and
     no word "agent app" or "co-work".
   - **Connecting one** is the fourth choice of the Connect AI window, "Claude Code or Codex on your
     computer · For code on your computer · same rules as your agents". It leads to the page of these
-    apps (reached with "‹ AI"): each connected app as a card with its What it may do and Disconnect, then
+    apps (reached with "‹ AI"): each connected app as a card with its **Ask me first** switch and Disconnect, then
     "Connect it to Flux" with a tab each for Claude Code, Codex and Another app. A tab says what to do in
     words (add Flux, sign in, start work in a space) and keeps the terminal text behind one quiet
     "Show the command". The words are "space" and "app", never "project", "MCP client", "HTTPS address"
@@ -1422,23 +1456,34 @@ standard switch row in Settings › Notifications, and the rest of the page stay
     in to ChatGPT", and where the server doesn't offer them, "Signing in with a Claude plan isn't offered
     on this Flux server."). "Claude Code" and "Codex" are only the apps on the person's own computer.
   - **Your agents**, with New agent. Each row has the agent's Kreska in its own colour (chosen when
-    the agent is created, or assigned automatically), its name, one line about its job, its "What
-    it may do" tag and its model with the connection ("Opus · Claude plan").
+    the agent is created, or assigned automatically), its name, one line about its job, its tag ("Do it
+    and tell me", or "Ask me first" with the switch on) and its model with the connection ("Opus · Claude plan").
     Assistant carries an "Answers /ai" tag. Under the list: "Agents never have more rights than
     you. Deleting and other people's things always wait for your OK."
-  - **How your AI works** is the heading before **When someone assigns a task to me:** Do nothing /
-    Give it to [agent ▾], one segmented choice with Do nothing as the default. With one agent the second
-    segment names it; with several it is the app's `Select` dressed as the segment.
+  - There is no rule that gives the tasks people assign to you to an agent (founder decision, Hubert,
+    2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 8): no "How your AI works"
+    card and no "When someone assigns a task to me". You give a task to one of your agents with the
+    task's **Owner**, where everyone sees it.
   - There is no list of spaces with AI off.
-- **An agent's page** (Assistant's is the same):
+- **An agent's page** (Assistant's is the same). It asks nothing expert before the agent is useful
+  (founder decision, Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 10):
   - "‹ AI", the agent, and "Your agent · uses your Claude plan · can do only what you can".
   - The only dark button, "Message Planner".
   - Name and Instructions.
-  - The Model, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
-    CLI itself lists, #1332).
-  - **What it may do:** Only read / Do it and tell me / Ask me first.
+  - **Ask me first**, one switch (the app's `SwitchRow`), off by default. Its line says what it does
+    now: off, "Makes new things and changes yours at once, then tells you, with Undo."; on, "Every
+    change waits for your OK." Deleting and other people's things wait either way (AG-3).
+  - **More**, a quiet disclosure button (`Button` quiet, `chevron-right` / `chevron-down`, `aria-expanded`;
+    a screen reader hears "More settings", apart from the header's ⋯ More) under the card, with the model in words beside it: "Model: Sonnet · Claude plan". A new agent
+    runs on its connection's default model, so most people never open it. Open, it shows the
+    **Model**, grouped by connection ("Claude plan: Opus · Sonnet · Haiku", the models the signed-in
+    CLI itself lists, #1332), as described below. It is open by itself while the agent is paused on a
+    model that is no longer offered, so that line is in view.
+  - Prices appear only in an API key's group, where the person pays per token; a plan's models have
+    none.
   - **Remembers:** each item shows its source and Edit, under "Tell Planner “remember that…” and it
     shows up here".
+  - There is no Schedules section: schedules live only in the agent's chat (below).
   - "Delete Planner. Its tasks go back to you."
 - **Connect AI** is one window in steps: choose a Claude plan, a ChatGPT plan or an API key; sign
   in on claude.ai and paste the code, or enter the device code for ChatGPT; "Couldn't connect"
@@ -1495,7 +1540,12 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - Reports arrive here: "Done: #4 Calibrate soil sensors · 3 changes · Undo", with a dot in the
     sidebar until read.
   - Schedules are listed in the conversation's header and confirmed in the agent's reply, with
-    Turned on and Change.
+    Turned on and Change. This is the only place they are listed and changed (founder decision,
+    Hubert, 2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419) item 9).
+  - **The morning summary is offered once, by Assistant.** While Assistant (the agent that answers
+    `/ai`) has no schedule, its chat shows, in the place of the schedule line, one row: the `clock`
+    icon, "Morning summary · Every weekday at 9:00" and an outline Turn on. Turned on, it is an ordinary
+    schedule in that line. No other agent offers it, and no page does.
 - **In a task** the agent writes in the one discussion, under its label.
   - An agent may ask another person's agent, and both owners must be in the task.
   - A message that changed something ends with its change line and Undo; after Undo the line is
@@ -1507,8 +1557,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - "Claude limit reached, resumes at 14:00", with no switch to another provider;
   - "Couldn't finish" with Try again / Take it back;
   - "Stopped by you · the task is back with you";
-  - "Marked done · you were told" with Undo (Do it and tell me), or "Back with you to check" with
-    Mark done (Ask me first and Only read).
+  - "Marked done · you were told" with Undo (Ask me first off), or "Back with you to check" with
+    Mark done (Ask me first on).
 - **Waiting for your OK:**
   - A deletion is a card, "Planner wants to delete the page Old notes", with Delete / Keep.
   - A task for another person is a proposal with Approve / Edit / Skip. Several from one run form
@@ -1553,6 +1603,8 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   - the task's composer had no `/` menu: typing `/` there now opens the same menu with `/ai` and its
     two suggestions only (the task has no other slash commands), once the task has its first message;
     choosing a row keeps the words written around the `/`, as in the conversation's composer.
+  - a direct message's composer opens the same menu on `/` with `/ai` alone (a direct message has no
+    suggestions and no other slash command), so the composer behaves the same in every place ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 11).
 - **An answer appears as it is written** ([#1248](https://github.com/ColdPhase/flux/issues/1248), founder pick
   2026-11-10). Not drawn as a screen; it is the `/ai` card and the agent's chat bubble above, in three moments, with no
   new screen, setting or button style:
@@ -1596,13 +1648,24 @@ standard switch row in Settings › Notifications, and the rest of the page stay
   the model that repeat it are not stored: a closing "Sources:" block whose lines are only addresses
   Flux lists, and citation marks that point at nothing Flux supplied (`[8]`, `[S2]`, `【3†source】`). A link
   card is drawn only for an address the list does not already hold, so each address shows once.
+- **An answer cites what it used from Flux as the same numbered chips** (#1381, [C-62](../../product/decisions.md), founder decision, Hubert, 2026-11-13). A Wiki page,
+  a section of a page, a task, a decision or a message the agent read with its tools is the small `[n]` chip of any other source, in the one list, in the order the answer
+  cites them, each object once; nothing new is drawn. The chip's label says what it opens ("Source 2: Wiki page “Calibration”, section “Install”"), and it opens exactly that:
+  the page, a section at its heading in the version it was numbered in (the Contents' `section-N`), the task or decision in Details, the message in its conversation. An answer
+  that used nothing from Flux has no chip, and Show everyone keeps the words and drops the chips, as for every source.
+  A chip of a private chat's answer whose space its owner no longer reads keeps its number, opens nothing and says only what it was ("Source 3: a Wiki page in a space you
+  no longer read"); it looks like every other chip.
 
 ![Assistant on the phone](screens/phone-assistant.webp)
 
 On the phone the Assistant conversation is a normal conversation. Its header lists the schedule
 ("Every weekday 9:00 · new tasks summary"), and the morning summary arrives in it.
 
-- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row (the computer's "Kreska, name, Your agent, Settings" bar is the computer's header and is not repeated), no lock line and no tab bar.
+- **The title row is the one of every conversation (#1356, v0.2.1):** Back, the agent's Kreska (32 px, in its colour), its name and, under it in `--t3`, "Your agent · only you talk to it", as the drawing has it. Under it come the schedule row, the conversation and the composer. There is no second name row, no lock line and no tab bar.
+- **The computer says the name once too** ([#1419](https://github.com/ColdPhase/flux/issues/1419) item 14): the window's header is the agent's
+  title row, with its Kreska (24 px, in its colour) before the name, and Settings is a row of the header's ⋯, as on the phone. There is no
+  second bar with the name, "Your agent" and Settings above the schedule line; the conversation's first line, "Only you talk to Planner.
+  Reports of its work arrive here.", stays.
   Back returns to where the person came from (the Spaces list, Home, the Inbox). The agent's Settings are the one row of a ⋯ at the right of the title row, the ⋯ a space has, so the function is the same on the phone as the computer's "Settings" link and the drawing stays as drawn.
 
 ### Spaces
@@ -1635,6 +1698,8 @@ On the phone the Assistant conversation is a normal conversation. Its header lis
   - People with Add people, an Admin / Member choice and Remove on each row, and under each name a quiet line with when they were last active ([Last active](#last-active)).
   - The AI switch.
   - Leave space, and Delete space… for admins.
+  - **GitHub repositories** is offered to a space's manager only on a server where GitHub is set up. A server without it shows no row, no link and no
+    "ask whoever runs Flux" (founder decision on [#1419](https://github.com/ColdPhase/flux/issues/1419) item 4, #1424): what a server cannot do is not shown.
   - An encrypted space shows its lock in place of the AI switch, and only its own admins change its
     people.
 - **A locked space** keeps its header, with the views inactive and no Call, and shows one calm card
@@ -1788,6 +1853,9 @@ The renders are the approved mockups as drawn; where a later decision differs, f
   - the two-step hand-off with dragging a task onto an agent, and `/handoff`;
   - the working-agent card in the sidebar;
   - one approval switch for all agents, and the Activity list;
+  - "Only read" and the three-way "What it may do" (one Ask me first switch instead), "When someone
+    assigns a task to me", the Schedules section and the "Morning summary" offer on an agent's page
+    (#1419);
   - Flux's own run limits, reactions and background suggestions, and drafts of messages to other
     people;
   - MCP scopes, capability switches and standing grants.

@@ -173,13 +173,13 @@ class TaskEntries(unittest.TestCase):
         cards.get_by_role("button", name=title, exact=True).click()
         details = page.locator("#details")
         expect(details.get_by_role("heading", name=title)).to_be_visible()
-        activity = details.get_by_role("region", name="Activity")
+        activity = details.get_by_role("region", name="Discussion")
         expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
         expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
         # The task's link (a notification's, a search result's) opens the same Details on its own.
         page.goto(f"/projects/{pid}/tasks?open=work:{work_id}")
-        activity = page.locator("#details").get_by_role("region", name="Activity")
+        activity = page.locator("#details").get_by_role("region", name="Discussion")
         expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
         expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
@@ -194,7 +194,7 @@ class TaskEntries(unittest.TestCase):
             chooser.get_by_role("link").click()
             details = page.locator("#details")
             expect(details.get_by_role("heading", name=title)).to_be_visible()
-            activity = details.get_by_role("region", name="Activity")
+            activity = details.get_by_role("region", name="Discussion")
             expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
             expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
         shot(page, f"task-entry-{on_map or 'views'}-{who}")
@@ -266,11 +266,11 @@ class TaskEntries(unittest.TestCase):
         page = self.page(who)
         page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
         page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True).click()
-        box = page.locator("#details").get_by_label("First message about this task")
+        box = page.locator("#details").get_by_label("Write to this task")
         draft = f"Shared draft for {title}"
         box.fill(draft)
         page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{work['id']}")
-        composer = page.locator("#details").get_by_label(re.compile("^(Write to this task|First message about this task)$"))
+        composer = page.locator("#details").get_by_label(re.compile("^Write to this task$"))
         expect(composer).to_have_value(draft)
         composer.fill("")
         first_word = f"First word from {other} about {entry}"

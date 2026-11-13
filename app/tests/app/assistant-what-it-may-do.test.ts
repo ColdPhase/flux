@@ -12,8 +12,8 @@ import { agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, removeFromSpace, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 
-// F-036 AG-3 and AG-7 (#855): an agent's rights are exactly its owner's, and its "What it may do" (Only read, Do it and tell me, Ask me
-// first) decides what happens within them. Deleting and other people's things always wait; only the owner decides, in their own session;
+// F-036 AG-3 and AG-7 (#855): an agent's rights are exactly its owner's, and its Ask me first switch (#1419; off is "Do it and tell me")
+// decides what happens within them. Deleting and other people's things always wait; only the owner decides, in their own session;
 // Undo sits on the agent's message and restores the earlier versions; the Inbox holds one item per run. Run changes go through the real
 // `/mcp` route with the run's own token, and every state is read back from the store. Fake engines stand in for every vendor.
 
@@ -53,7 +53,7 @@ async function keptOut(work: () => Promise<void>) {
   finally { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); }
 }
 
-describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
+describe('Ask me first, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
   before(async () => { scene = await assistantScene('wd'); });
   beforeEach(async () => { await scene.reset(); });
 
@@ -88,22 +88,16 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.deepEqual([made!.state, made!.authority, made!.decided_by], ['applied_after_wait', 'owner_approval', scene.owner.id]);
   });
 
-  test('Only read: the run has no change tool, a forced call changes nothing, and setting it stops a working run at its next change', async () => {
-    await scene.setMayDo('read');
-    const reading = await scene.liveRun();
-    assert.ok(reading.tools.includes('flux_get_conversation'));
-    assert.deepEqual(reading.tools.filter((name) => (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(name)), [], 'no change tool is offered');
-    await reading.call('flux_create_task', { task: { title: 'Forced by a read-only run' } });
-    assert.equal((await titled('Forced by a read-only run')).length, 0);
-    await scene.complete(reading.runId);
-
+  test('Ask me first turned on while a run works makes its next change wait; it hides no tool (#1419)', async () => {
     await scene.setMayDo('act');
     const working = await scene.liveRun();
-    await scene.setMayDo('read');
-    const refused = await working.call('flux_create_task', { task: { title: 'Made after Only read' } });
-    assert.equal(result(refused.message)?.isError, true);
-    assert.match(text(refused.message), /only reads?/i);
-    assert.equal((await titled('Made after Only read')).length, 0);
+    assert.ok((ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).every((name) => name === 'flux_attach_image' || working.tools.includes(name)), 'the change tools are listed');
+    await scene.setMayDo('ask');
+    const waited = await working.call('flux_create_task', { task: { title: 'Made after Ask me first' } });
+    assert.match(text(waited.message), /^Waiting for /);
+    assert.equal((await titled('Made after Ask me first')).length, 0, 'nothing is made before the owner\'s OK');
+    await scene.complete(working.runId);
+    await scene.setMayDo('act');
   });
 
   test('deleting always waits, in both modes that change anything; [Delete] removes it and [Keep] leaves it', async () => {
@@ -275,9 +269,9 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       }
     }
     assert.equal((await changesOf(live.runId))[0]!.state, 'waiting');
-    // Only the owner sets "What it may do": another member, or even the workspace's admin, finds no such connection.
+    // Only the owner turns Ask me first on or off: another member, or even the workspace's admin, finds no such connection.
     for (const who of [scene.peer, scene.admin])
-      assert.equal((await who.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'read' } })).status, 404);
+      assert.equal((await who.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'ask' } })).status, 404);
   });
 
   test('an agent has no more than its owner, at once: kept out mid-run, the assistant and a local client both lose the project, and a saved change stays closed', async () => {
@@ -299,7 +293,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.equal((await scene.taskRow(theirs.id)).title, 'Jonas keeps this');
   });
 
-  test('a local client waits like the assistant: Only read changes nothing; Ask me first, a deletion, others\' things and a task for someone else wait', async () => {
+  test('a local client waits like the assistant: Ask me first, a deletion, others\' things and a task for someone else wait', async () => {
     const other = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada review laptop', owner: 'self' } }), 201) as { id: string }).id;
     const client = await agentConnection(pool, scene.owner.browser, other, [scene.place.id]);
     const call = (name: string, args: Record<string, unknown>) => client.tool(name, { projectId: scene.place.id, clientCommandId: randomUUID(), sources: [], ...args });
@@ -316,11 +310,9 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.ok(waits(await call('flux_remove_thought', { mapId: sketch.id, thoughtId: item.id, expectedVersion: item.version })));
     assert.equal(await thoughtExists(item.id), true, 'deleting always waits, even what is yours');
 
-    expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'read' } }), 200);
-    assert.equal(refusal(await create({ title: 'Client in read' })), 'AGENT_ONLY_READS');
     expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'ask' } }), 200);
     assert.ok(waits(await create({ title: 'Client in ask' })));
-    assert.equal((await titled('Client in read')).length + (await titled('Client in ask')).length, 0);
+    assert.equal((await titled('Client in ask')).length, 0);
     expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'act' } }), 200);
     assert.ok(toolValue(await create({ title: 'Client acting' })).workId, 'what is new and its owner\'s own is still made at once');
   });

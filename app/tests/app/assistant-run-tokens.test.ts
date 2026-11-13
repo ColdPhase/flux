@@ -43,9 +43,13 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
  * 26,913 characters, 26,918 UTF-8 bytes as measured since (2026-11-13, CI run 43417197252 and the #1426 review; the bound was 26,600).
  * #1382 (C-63) adds flux_read_file, the excerpt of a file's text, and the word "file" in flux_search's description and kind: 38 tools, 27,512 UTF-8 bytes
  * (2026-11-13, merge train 11 with #1426, local run; the bound was 27,000 and is 27,600, 88 bytes above).
- * #1437 adds the tool that attaches a file the run made or wrote to its answer (founder decision 2026-11-13): its definition is the difference below.
+ * #1381 (C-62) tells the agent in three descriptions to look in the Wiki for how, what and why and how to cite a page, on top of #1410: 37 tools,
+ * 27,420 UTF-8 bytes (2026-11-13, local test.sh run of the #1431 review; the bound was 27,000).
+ * Both together (merge train 13, #1431 on #1382): 38 tools, 28,014 UTF-8 bytes (2026-11-13, local test.sh run; the bound was 27,600 and is 28,100).
+ * #1437 adds the tool that attaches a file the run made or wrote to its answer (founder decision 2026-11-13): with #1431 and #1382 (merge
+ * train 14, #1446 on #1442), 39 tools, 28,558 UTF-8 bytes (2026-11-13, local test.sh run; the bound was 28,100 and is 28,650).
  */
-const TOOL_DEFINITION_BYTES = 28_600;
+const TOOL_DEFINITION_BYTES = 28_650;
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const claims = (token: string) => JSON.parse(Buffer.from(token.split('.')[1]!, 'base64url').toString()) as Record<string, unknown>;
 const toolText = (message: Record<string, unknown> | null) => JSON.stringify(message);
@@ -69,7 +73,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   const PRIVATE_CANARY = `private-sketch-canary-${randomBytes(4).toString('hex')}`;
 
   const settings = () => agentSettings(owner, ws.id);
-  /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
+  /** Ask me first (F-036 AG-3), set by the owner in their own session. */
   async function setMayDo(mayDo: AgentMayDo) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings()).connectionId), { body: { mayDo } }), 200);
   }
@@ -170,7 +174,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(signed.azp, 'flux-personal-run', 'the MCP resource server requires an authorized party (Better Auth 1.7.18)');
     assert.equal(signed.scope, undefined, 'no scope ceiling: what a run may call is its tool list (A3) and its owner\'s rights');
     assert.ok((signed.exp as number) - (signed.iat as number) <= RUN_TOKEN_LIMITS.lifetimeSeconds, 'no longer than the run\'s clock');
-    assert.deepEqual(grant.tools, assistantRunTools('act'));
+    assert.deepEqual(grant.tools, assistantRunTools(false));
     const stored = await pool.query(`SELECT row_to_json(r)::text AS text FROM personal_runs r WHERE id = $1`, [runId]);
     assert.ok(!stored.rows[0].text.includes(grant.token) && !stored.rows[0].text.includes(grant.token.split('.')[2]!), 'the token is never stored');
     assert.ok(!stored.rows[0].text.includes(nonce), 'nor is the nonce');
@@ -240,11 +244,12 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal((await mcp(grant.token, 13, 'resources/list', {}, legacy)).status, 403, 'nothing, not even an empty list, once the run ended');
   });
 
-  test('Only read gets a read-only run token that reads the place and lists no change tool', async () => {
-    await setMayDo('read');
+  test('Ask me first gets the same tools, whose changes wait (#1419), and the token reads the place', async () => {
+    await setMayDo('ask');
     const runId = await inFlight();
     const grant = await token(runId);
-    assert.deepEqual(grant.tools.filter((name) => (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(name)), []);
+    assert.deepEqual(grant.tools, assistantRunTools(false), 'Ask me first makes a change wait; it hides no tool');
+    await setMayDo('act');
     const contexts = await mcp(grant.token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
     assert.equal(contexts.status, 200);
     assert.ok(toolText(contexts.message).includes(place.id));
@@ -420,27 +425,25 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(fullOutcome, 'input_too_large');
     // The request that would leave less than a step's room below the bound is the run's last (#1410): it asks for the answer, and a
     // provider that asks for a tool even then ends the run at the bound.
-    assert.ok(compute.dispatched.length > 80, 'over eighty turns fit within the tool-run input bound with every tool on, the room for an answer kept');
+    // Merge train 14: flux_attach_file (#1437) with #1431's Wiki words takes the definitions to 28,558 bytes, and 79 turns fit (82 at 28,056).
+    assert.ok(compute.dispatched.length > 75, `over seventy-five turns fit within the tool-run input bound with every tool on, the room for an answer kept (${compute.dispatched.length})`);
     assert.ok(compute.dispatched.at(-1)!.answerNow && compute.dispatched.slice(0, -1).every((request) => !request.answerNow), 'only the last request asks for the answer');
     compute.dispatched = [];
-    // Only read: a shorter list, and the bound on steps comes first. The brief of #1064 (who asks, where, when, how to answer) fills
-    // about 2 KB more of every request, so in this loop of empty calls 200 steps no longer fit the 64,000-byte input bound (about 195
-    // do); the steps are bounded here through the test seam, and the production bound of 200 is checked with fake tools in
+    // The bound on steps comes first when the steps are fewer than the turns that fit (over seventy-five, above). The brief of #1064 (who asks,
+    // where, when, how to answer) fills about 2 KB more of every request, so in this loop of empty calls 200 steps do not fit the 64,000-byte
+    // input bound; the steps are bounded here through the test seam, and the production bound of 200 is checked with fake tools in
     // personal-runs-tools.test.ts.
-    const STEPS = 120;
+    const STEPS = 70;
     const stepped = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
       tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens, maxTurns: STEPS });
-    await setMayDo('read');
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
     const started = await ask();
     const outcome = await stepped.process(started.run.id);
     const sizes = compute.dispatched.map((request) => JSON.stringify(request.tools ?? []).length);
-    await setMayDo('act');
     assert.ok(STEPS < PERSONAL_RUN_LIMITS.maxTurns);
     assert.equal(outcome, 'cap_reached');
     assert.equal(compute.dispatched.length, STEPS, `tool definitions on the wire: ${sizes.join(', ')} bytes`);
-    assert.ok(sizes.every((size) => size < fullBytes), 'Only read lists fewer tools');
     const last = compute.dispatched.at(-1)!;
     assert.equal(last.turns!.length, STEPS - 1);
     assert.ok(last.turns!.every((turn) => turn.results[0]!.isError === false && turn.results[0]!.content.includes(place.id)), 'each call was answered by the real route');

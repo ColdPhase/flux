@@ -11,7 +11,7 @@ import { assistantScene, changesOf, human, result, text, type AssistantScene } f
 
 // #1063, F-036 AG-3 ("Never possible: posting in a conversation with other people … only the owner's Show everyone does that"), AG-8
 // ("write only in task discussions and the private conversation") and C-39 (nobody else learns that a run exists). An agent's run posts
-// in no conversation by itself, whatever its "What it may do": its answer goes where Flux puts it, the asker's private card (which only
+// in no conversation by itself, whatever its Ask me first: its answer goes where Flux puts it, the asker's private card (which only
 // their Show everyone posts), the task's discussion for a run on a task, or the agent's private chat. So no run is offered a tool that
 // posts, and the change path refuses a run's post even if one reached it. Here the "model" OBEYS a message in the conversation that tells
 // it to post, through the real worker loop and the real /mcp route, and nothing is posted. A local client keeps its own tools (LC-2).
@@ -157,7 +157,7 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
       const brief = engine === 'runtime' ? runtimeBrief({ ...base, engine, kind }) : buildBrief({ ...base, kind }).system;
       assert.ok(brief.includes(NO_POSTING_LINE), `${engine} ${kind}`);
       assert.ok(!brief.includes('maps and conversations'), `${engine} ${kind}: a run is not told it works in conversations`);
-      assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: Only read changes nothing`);
+      assert.ok(!buildBrief({ ...base, engine, kind, tools: ['flux_get_work'] }).system.includes(NO_POSTING_LINE), `${engine} ${kind}: a run that only reads is told nothing about posting`);
     }
     assert.ok(runtimeBrief({ ...base, engine: 'runtime', kind: 'task' }).includes('its tasks, Wiki pages and maps, and read its conversations'));
     // A schedule's run is in its agent's private chat (#858): it reads and changes nothing, and its reply is a message of that chat, which Flux posts there.
@@ -173,6 +173,6 @@ describe('an agent\'s run posts in no conversation by itself (#1063)', () => {
     const writes = new Set(AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && (entry.operation === 'conversation.create' || entry.operation === 'conversation.reply'))
       .map((entry) => entry.name));
     assert.ok(['flux_start_conversation', 'flux_reply_in_conversation', 'flux_discuss_task', 'flux_ask_question'].every((name) => writes.has(name)), [...writes].join(', '));
-    for (const mayDo of ['act', 'ask', 'read'] as const) for (const name of assistantRunTools(mayDo)) assert.ok(!writes.has(name), `${mayDo}: ${name} writes in a conversation`);
+    for (const readOnly of [false, true]) for (const name of assistantRunTools(readOnly)) assert.ok(!writes.has(name), `${readOnly ? 'reads only' : 'changes'}: ${name} writes in a conversation`);
   });
 });

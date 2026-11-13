@@ -5,8 +5,8 @@ real worker sends runs through the real Anthropic adapter to `tests/ui/anthropic
 
 Jo tells her agent in its private chat "Every weekday at 9, summarise what changed in Garden sensors". The agent says in plain words what it
 prepared, and the chat shows what it will do with the one tap that turns it on and Change. The schedule is listed in the conversation's header
-("Weekdays at 9:00 · Garden summary · 1 schedule"), which opens the one list where it is paused, changed, run now and deleted with Undo; the agent's
-page shows the same list. The morning summary is a ready-made one, off until Jo turns it on. A result arrives in the chat as one message, with no
+("Weekdays at 9:00 · Garden summary · 1 schedule"), which opens the one list where it is paused, changed, run now and deleted with Undo; that is
+the only place (#1419). The morning summary is a ready-made one that Assistant offers once in its chat, off until Jo turns it on. A result arrives in the chat as one message, with no
 message of Jo's behind it. Computer and phone widths.
 """
 
@@ -103,10 +103,11 @@ class AgentSchedulesJourney(unittest.TestCase):
         expect(page.locator("#agent-composer")).to_be_visible()
         return page
 
-    def agent_page(self, **kwargs) -> Page:
-        page = self.page(**kwargs)
-        page.goto(f"/settings/agents/{self.ids['agent']}")
-        expect(page.get_by_role("heading", name="Schedules")).to_be_visible()
+    def schedules(self, **kwargs) -> Page:
+        """The one list of the agent's schedules, opened from the line in its chat's header: the only place they are listed (#1419)."""
+        page = self.chat(**kwargs)
+        page.locator("[data-schedules-header] .agc__sched-row").click()
+        expect(page.locator("[data-schedules-header] [data-schedule]").first).to_be_visible()
         return page
 
     def say(self, page: Page, words: str) -> None:
@@ -149,6 +150,8 @@ class AgentSchedulesJourney(unittest.TestCase):
         mock("/__script", {"reset": True, "text": SAYS})
         page = self.chat()
         expect(page.locator("[data-schedules-header]")).to_have_count(0)
+        # Assistant offers the morning summary once, in the place of the schedule line, while it has no schedule (#1419).
+        expect(page.locator("[data-starter='morning-summary']")).to_contain_text("Morning summary · Every weekday at 9:00")
         self.say(page, SENTENCE)
         working = page.locator("[data-chat-agent]").last
         expect(working).to_contain_text(PREPARED, timeout=30000)
@@ -161,6 +164,7 @@ class AgentSchedulesJourney(unittest.TestCase):
         expect(ready.get_by_role("button", name="Change")).to_be_visible()
         header = page.locator("[data-schedules-header]")
         expect(header).to_contain_text("1 schedule")
+        expect(page.locator("[data-starter]")).to_have_count(0)
         shot(page, "schedules-1440-chat-ready")
         ready.get_by_role("button", name="Turn on").click()
         expect(ready).to_contain_text("Turned on")
@@ -212,27 +216,43 @@ class AgentSchedulesJourney(unittest.TestCase):
         header.get_by_role("button", name="Undo", exact=True).click()
         expect(header.locator("[data-schedule]")).to_have_count(1)
         self.no_horizontal_scroll(page)
-        # The agent's page shows the same list.
-        listed = self.agent_page()
-        expect(listed.locator("[data-schedule]")).to_have_count(1)
-        expect(listed.locator("[data-schedule]")).to_contain_text("Weekdays at 9:00")
+        # The agent's page lists none: the chat is the one place (#1419).
+        listed = self.page()
+        listed.goto(f"/settings/agents/{self.ids['agent']}")
+        expect(listed.get_by_role("heading", level=2, name="Assistant")).to_be_visible()
+        expect(listed.get_by_role("heading", name="Schedules")).to_have_count(0)
+        expect(listed.locator("[data-schedule], [data-starter]")).to_have_count(0)
         shot(listed, "schedules-1440-agent-page")
 
-    def test_04_the_morning_summary_is_a_ready_made_schedule_off_until_it_is_turned_on(self) -> None:
-        page = self.agent_page()
-        starter = page.locator("[data-starter='morning-summary']")
-        expect(starter).to_contain_text("Morning summary")
-        expect(starter).to_contain_text("Off until you turn it on")
-        starter.get_by_role("button", name="Turn on Morning summary").click()
-        expect(page.locator("[data-schedule]")).to_have_count(2)
+    def test_04_assistant_offers_the_morning_summary_once_and_no_other_agent_does(self) -> None:
+        """#1419: the ready-made morning summary is offered by Assistant in its chat while it has no schedule, off until it is turned on there;
+        another agent never offers it."""
+        page = self.chat()
+        expect(page.locator("[data-schedules-header]")).to_contain_text("1 schedule")
         expect(page.locator("[data-starter]")).to_have_count(0)
-        expect(page.locator("[data-schedule]").filter(has_text="Morning summary")).to_contain_text("Weekdays at 9:00")
+        planner = self.api(page, "POST", "/api/v1/my-agents", {"workspaceId": self.ids["workspace"], "name": "Planner"}, status=201)
+        other = self.page()
+        other.goto(f"/agents/{planner['id']}")
+        expect(other.locator("#agent-composer")).to_be_visible()
+        expect(other.locator("[data-schedules-header], [data-starter]")).to_have_count(0)
+        self.api(page, "DELETE", f"/api/v1/my-agents/{planner['id']}", {}, status=204)
+        # With no schedule, Assistant's chat offers it; Turn on makes it at once, and it is then an ordinary schedule in the line.
+        garden = next(job for job in self.api(page, "GET", f"/api/v1/my-agents/{self.ids['agent']}/schedules", status=200)["items"] if job["title"] == "Garden summary")
+        self.api(page, "DELETE", f"/api/v1/my-agents/{self.ids['agent']}/schedules/{garden['id']}", {}, status=200)
+        page = self.chat()
+        starter = page.locator("[data-starter='morning-summary']")
+        expect(starter).to_contain_text("Morning summary · Every weekday at 9:00")
+        shot(page, "schedules-1440-morning-summary-offer")
+        starter.get_by_role("button", name="Turn on Morning summary").click()
+        expect(page.locator("[data-starter]")).to_have_count(0)
+        expect(page.locator("[data-schedules-header]")).to_contain_text("Weekdays at 9:00 · Morning summary")
+        self.api(page, "POST", f"/api/v1/my-agents/{self.ids['agent']}/schedules/{garden['id']}/restore", {}, status=200)
         jobs = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['agent']}/schedules", status=200)["items"]
-        self.assertEqual(sorted(job["title"] for job in jobs), ["Garden summary", "Morning summary"])
+        self.assertEqual(sorted((job["title"], job["enabled"]) for job in jobs), [("Garden summary", True), ("Morning summary", True)])
 
     def test_05_run_now_reports_in_the_chat_once_without_a_message_of_jos_and_a_failure_never_pauses_it(self) -> None:
         mock("/__script", {"reset": True, "text": "Fact: two tasks in Garden sensors changed since yesterday."})
-        page = self.agent_page()
+        page = self.schedules()
         row = page.locator("[data-schedule]").filter(has_text="Garden summary")
         row.get_by_role("button", name="Run Garden summary now").click()
         expect(row).to_contain_text("Done: Fact: two tasks in Garden sensors changed since yesterday.", timeout=45000)
@@ -252,7 +272,7 @@ class AgentSchedulesJourney(unittest.TestCase):
         shot(chat, "schedules-1440-chat-result")
         # A failed run is told in the chat in the same place, and the schedule stays on.
         mock("/__script", {"reset": True, "status": 500})
-        page = self.agent_page()
+        page = self.schedules()
         row = page.locator("[data-schedule]").filter(has_text="Garden summary")
         row.get_by_role("button", name="Run Garden summary now").click()
         expect(row).to_contain_text(re.compile("Couldn.t run|Stopped answering"), timeout=60000)
@@ -303,10 +323,6 @@ class AgentSchedulesJourney(unittest.TestCase):
         self.in_view(chat, header.locator("[data-schedule]").first, "the first schedule of the open list")
         self.no_horizontal_scroll(chat)
         shot(chat, "schedules-390-chat-header-open")
-        page = self.agent_page(phone=True)
-        expect(page.locator("[data-schedule]").first).to_be_visible()
-        self.no_horizontal_scroll(page)
-        shot(page, "schedules-390-agent-page")
 
     def test_07_at_320_the_header_line_stays_in_view_and_a_long_list_scrolls_inside_its_panel(self) -> None:
         chat = self.chat(narrow=True)
@@ -347,7 +363,7 @@ class AgentSchedulesJourney(unittest.TestCase):
 
     def test_08_the_time_shown_is_the_hour_it_runs_on_jos_clock_and_another_zone_names_it(self) -> None:
         # In Warsaw: the list says 9:00 and its next time is 9:00 on the browser's own clock, the hour the schedule runs (#1168).
-        page = self.agent_page()
+        page = self.schedules()
         row = page.locator("[data-schedule]").filter(has_text="Garden summary")
         jobs = self.api(page, "GET", f"/api/v1/my-agents/{self.ids['agent']}/schedules", status=200)["items"]
         garden = next(job for job in jobs if job["title"] == "Garden summary")

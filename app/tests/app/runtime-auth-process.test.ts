@@ -239,6 +239,12 @@ test('well-shaped console result for another status client is refused without pe
     };
     socket.on('data',frames);if(head.length)frames(head);
   });
+  // An accepted sign-in reads the plan's models next (#1332); this slot has no CLI, so it answers as a supervisor whose CLI cannot list them.
+  rogue.on('request',(request,response)=>{
+    request.resume();
+    if(request.method!=='POST'||request.url!=='/v1/models'){response.writeHead(404).end();return;}
+    response.writeHead(200,{'content-type':'application/x-ndjson',connection:'close'}).end(`${JSON.stringify({t:'error',code:'not_available'})}\n`);
+  });
   await new Promise<void>(r=>rogue.listen(0,'127.0.0.1',r));
   const managerSecret=slotSecret(),target={host:'127.0.0.1',port:(rogue.address()as{port:number}).port,secret:slotSecret()};
   const names=['runtime-997','runtime-998'],manager=createManagerServer({secret:managerSecret,log:()=>undefined,slots:new Map(names.map(name=>[name,target]))});

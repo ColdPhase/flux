@@ -25,7 +25,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database) {
     annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId,
       includeWorkRecovery, workLimit, workOffset }, { claims }) => {
     try {
-      const value = await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, mayDo }) => {
+      const value = await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal }) => {
         const project = await getProject(principal, projectId, tx, accessPorts);
         const { runtime } = await agentRuntimeInTransaction(tx, claims, clientSessionId);
         const rows = agentExecutionRows(tx);
@@ -41,7 +41,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database) {
         const checkpoint = work?.units.find((unit) => unit.checkpointId !== null);
         const result: AgentBootstrap = { contractVersion: 2, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name },
-          capabilities: tools.capabilities(mayDo),
+          capabilities: tools.capabilities(),
           trusted: { playbook,
             coordination: { activeClaimReference: active?.id ?? null, checkpointReference: checkpoint?.checkpointId ?? null,
               ...(work ? { work } : {}) }, repositoryReferences: null },

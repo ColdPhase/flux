@@ -55,7 +55,7 @@ export function ComposerFiles({ state, disabled = false, attach = 'row' }: { sta
   const blocked = disabled || state.sending;
   const touch = useMediaQuery('(pointer: coarse)');
   const picked = usePickedFiles(state);
-  const limits = useFileLimits();
+  const limits = useFileLimits(state.draft.files.length > 0);
   const empty = attach === 'none' && !state.draft.files.length && !state.draft.references.length && state.storage !== 'visit'
     && !(state.draft.unconfirmed && !state.sending && !state.error) && !state.error;
   return <div className="composer-files" hidden={empty || undefined}>

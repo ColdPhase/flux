@@ -418,7 +418,7 @@ class TaskAnnouncements(unittest.TestCase):
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         panel = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
-        activity = panel.get_by_role("region", name="Activity")
+        activity = panel.get_by_role("region", name="Discussion")
         root = activity.locator("li[data-message-id]").filter(has_text=FIRST_WORD)
         expect(root).to_contain_text("Jonas")
         expect(root.locator("time")).to_have_attribute("datetime", re.compile(r"^\d{4}-"))
@@ -438,7 +438,7 @@ class TaskAnnouncements(unittest.TestCase):
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
         # An empty discussion says nothing (#868: empty sections are hidden).
         expect(section).not_to_contain_text("Nobody has written")
-        box = section.get_by_label("First message about this task")
+        box = section.get_by_label("Write to this task")
         text = "I can pick the boards up on Friday; the shop keeps two for us."
         box.fill(text)
         # The draft is the task's own, kept across a reload under the key every view of the task uses.
@@ -452,7 +452,7 @@ class TaskAnnouncements(unittest.TestCase):
         uuid.UUID(record['commandId'])
         page.reload()
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
-        box = section.get_by_label("First message about this task")
+        box = section.get_by_label("Write to this task")
         expect(box).to_have_value(text)
         self.assertEqual(page.evaluate("key => JSON.parse(localStorage.getItem(key))", key), record)
         # The server stores the first message but its answer is lost: the text stays and nothing claims success.
@@ -468,7 +468,7 @@ class TaskAnnouncements(unittest.TestCase):
         page.route(path, lose)
         # Flux's light reachability check gets no answer either, so the person's Retry is what sends it.
         page.route("**/api/v1/me", lambda route: route.abort("failed"))
-        section.get_by_role("button", name="Start the discussion").click()
+        section.get_by_role("button", name="Send to task").click()
         # Sending is instant (#264): with no answer the message waits in Details, and its command stays
         # in the task's record (its queue) rather than in the emptied field.
         queued = section.locator("[data-client-message-id]")
@@ -597,6 +597,14 @@ class TaskAnnouncements(unittest.TestCase):
     def test_13_late_announcements_keep_a_reader_at_the_end(self) -> None:
         page = self.page("ada")
         held = self.hold_earlier_announcements(page)
+        # The view carries every announcement of a space whose roots all fit one window, up to a bound (#1429). This board stands for a
+        # space with more than the view carries: its view comes with the first page only, and the rest arrive after the stream is shown.
+        def first_page_only(route) -> None:
+            response = route.fetch()
+            view = response.json()
+            view["taskNotices"]["items"] = view["taskNotices"]["items"][:100]
+            route.fulfill(response=response, json=view)
+        page.route(re.compile(rf"/api/v1/projects/{self.ids['short']}/conversation-view$"), first_page_only)
         page.goto(f"/projects/{self.ids['short']}")
         feed = page.locator(".project-convo__feed")
         at_end = "feed => feed.scrollHeight - feed.scrollTop - feed.clientHeight < 48"
@@ -617,7 +625,7 @@ class TaskAnnouncements(unittest.TestCase):
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}")
         section = self.open_task_from_stream(page, self.ids["live"], LIVE_TASK)
-        box = section.get_by_label("First message about this task")
+        box = section.get_by_label("Write to this task")
         text = "I will write to the shop tomorrow morning."
         box.fill(text)
         key = f"flux:composer:{self.ids['jonas']}:{pid}:task:{self.ids['live']}"
@@ -628,7 +636,7 @@ class TaskAnnouncements(unittest.TestCase):
             status=403, content_type="application/json", body=json.dumps({"error": "Forbidden", "code": "FORBIDDEN"})) if route.request.method == "POST" else route.continue_())
         with page.expect_response(lambda response: response.request.method == 'POST'
                                   and response.url.endswith(f"/work/{self.ids['live']}/discussion")) as refused:
-            section.get_by_role("button", name="Start the discussion").click()
+            section.get_by_role("button", name="Send to task").click()
         self.assertEqual(refused.value.status, 403)
         expect(section.get_by_role("alert")).to_contain_text("Could not send: your access, a file or a source may be unavailable.")
         expect(section.get_by_role("alert")).to_contain_text("Your draft, files and sources are kept.")

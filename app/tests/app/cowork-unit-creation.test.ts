@@ -285,14 +285,12 @@ test('child negative controls: parent fence, assignee, separation and the run ca
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [f.root.unitId]);
   await refuse(f.child('r', marek), 'COWORK_CLAIM_LOST');
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()+interval '2 minutes' WHERE id=$1", [f.root.unitId]);
-  // Assignee: unknown, revoked, another workspace, project not selected, no execute scope — one content-free outcome.
+  // Assignee: unknown, revoked, another workspace — one content-free outcome (an Ask me first assignee takes work; #1419 has no Only read).
   const revoked = await w.connection(w.marek, 'Marek revoked');
   expectStatus(await w.marek.browser.request('DELETE', `/api/v1/agent-connections/${revoked.id}`), 204);
   const elsewhere = await workspace(w.hubert, 'Another workspace');
   const foreign = await w.connection(w.hubert, 'Hubert elsewhere', { space: elsewhere.id });
-  const readOnly = await w.connection(w.marek, 'Marek read only');
-  await pool.query("UPDATE agent_connections SET may_do = 'read' WHERE id = $1", [readOnly.id]);
-  for (const id of [randomUUID(), revoked.id, foreign.id, readOnly.id])
+  for (const id of [randomUUID(), revoked.id, foreign.id])
     await refuse(f.child('r', id), 'COWORK_ASSIGNEE_UNAVAILABLE');
   // Separation: the author cannot review its own run; a reviewer cannot become an executor of it.
   await refuse(f.child('r', f.codex.connection.id), 'COWORK_REVIEW_SEPARATION');

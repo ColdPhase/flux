@@ -22,6 +22,15 @@ type DecisionRow = typeof schema.projectDecisions.$inferSelect;
 type LinkRow = typeof schema.projectObjectLinks.$inferSelect;
 type Ref = { type: 'message' | 'thought' | 'work' | 'decision' | 'doc' | 'sketch'; id: string } | { type: 'material'; id: string; version: number };
 type Window = { limit: number; offset: number };
+type NoticeReach = { since: Date | null; most: number };
+/**
+ * The window of a first page that reaches back to `since` (#1429): the `within` announcements at or after it and the first one before it
+ * (or all `total` when `since` is null), never fewer than the window's limit and never more than `most`.
+ */
+function reached(window: Window, reach: NoticeReach | undefined, total: number, within: number): Window {
+  if (!reach || window.offset !== 0) return window;
+  return { offset: 0, limit: Math.min(reach.most, Math.max(window.limit, reach.since === null ? total : within + 1)) };
+}
 
 const w = schema.projectWorkItems;
 const d = schema.projectDecisions;
@@ -375,12 +384,17 @@ export function workRows(db: DbExecutor) {
         waitingForUserId: update.waitingFor?.id ?? null, reason: (await sealFor(db, 'project_task_updates', work.workspaceId, { id, reason: update.reason })).reason });
     },
     /** Creation notices and blocked/unblocked lines (#550) as one stream, newest first. */
-    async listTaskNotices(projectId: string, window: Window) {
+    async listTaskNotices(projectId: string, window: Window, reach?: NoticeReach) {
       const n = schema.projectTaskNotices;
       const u = schema.projectTaskUpdates;
-      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${n} WHERE ${n.projectId} = ${projectId}) + (SELECT count(*) FROM ${u} WHERE ${u.projectId} = ${projectId})` }).from(sql`(SELECT 1) AS one`);
+      const since = reach?.since ?? null;
+      const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${n} WHERE ${n.projectId} = ${projectId}) + (SELECT count(*) FROM ${u} WHERE ${u.projectId} = ${projectId})`,
+        within: since ? sql<number>`(SELECT count(*) FROM ${n} WHERE ${n.projectId} = ${projectId} AND ${n.createdAt} >= ${since})
+          + (SELECT count(*) FROM ${u} WHERE ${u.projectId} = ${projectId} AND ${u.createdAt} >= ${since})` : sql<number>`0` }).from(sql`(SELECT 1) AS one`);
+      window = reached(window, reach, Number(count?.total ?? 0), Number(count?.within ?? 0));
       const result = await db.execute(sql`
-        SELECT e.*, w.title AS work_title, w.number AS work_number FROM (
+        SELECT e.*, w.title AS work_title, w.number AS work_number, w.creation_reverted_at, w.creation_reverted_by_kind, w.creation_reverted_by_id,
+          w.creation_reversion_notice_id FROM (
           SELECT n.id, n.workspace_id, n.project_id, n.work_id, n.kind, n.created_by_kind, n.created_by_id, n.sources, NULL::text AS waiting_for_user_id, NULL::text AS reason, n.created_at, false AS is_update
             FROM project_task_notices n WHERE n.project_id = ${projectId}
           UNION ALL
@@ -390,7 +404,8 @@ export function workRows(db: DbExecutor) {
         ORDER BY e.created_at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
       const rows = result.rows as { id: string; workspace_id: string; project_id: string; work_id: string; kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
         created_by_kind: 'human' | 'agent'; created_by_id: string; sources: import('@flux/contracts').ObjectRef[]; waiting_for_user_id: string | null; reason: string | null;
-        created_at: Date | string; work_title: string; work_number: number; is_update: boolean }[];
+        created_at: Date | string; work_title: string; work_number: number; is_update: boolean;
+        creation_reverted_at: Date | string | null; creation_reverted_by_kind: 'human' | 'agent' | null; creation_reverted_by_id: string | null; creation_reversion_notice_id: string | null }[];
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
       for (const row of rows) {
         const seal = seals.get(row.workspace_id)!;
@@ -402,6 +417,9 @@ export function workRows(db: DbExecutor) {
         createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
         ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
         ...(row.kind === 'task.resumed' ? { reason: row.reason } : {}),
+        // An undone creation (#238), as the task's own row says it.
+        reverted: row.creation_reverted_at && row.creation_reverted_by_kind && row.creation_reverted_by_id && row.creation_reversion_notice_id
+          ? { at: new Date(row.creation_reverted_at), by: { kind: row.creation_reverted_by_kind, id: row.creation_reverted_by_id }, noticeId: row.creation_reversion_notice_id } : null,
         createdAt: new Date(row.created_at) })) };
     },
     /**
@@ -409,9 +427,14 @@ export function workRows(db: DbExecutor) {
      * Derived from the objects themselves, so every decision has its lines and a state change shows at once;
      * `sources` and the conversation of the first message source come from the object's own `source` links.
      */
-    async listObjectNotices(projectId: string, window: Window) {
+    async listObjectNotices(projectId: string, window: Window, reach?: NoticeReach) {
+      const since = reach?.since ?? null;
       const [count] = await db.select({ total: sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId})
-        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)` }).from(sql`(SELECT 1) AS one`);
+        + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} IS NOT NULL AND ${d.decidedBy} IS NOT NULL)`,
+        within: since ? sql<number>`(SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.createdAt} >= ${since})
+          + (SELECT count(*) FROM ${d} WHERE ${d.projectId} = ${projectId} AND ${d.decidedAt} >= ${since} AND ${d.decidedBy} IS NOT NULL)` : sql<number>`0` })
+        .from(sql`(SELECT 1) AS one`);
+      window = reached(window, reach, Number(count?.total ?? 0), Number(count?.within ?? 0));
       const sourcesOf = (type: 'decision', id: string) => sql.raw(`COALESCE((SELECT jsonb_agg(CASE WHEN l.to_type = 'material'
           THEN jsonb_build_object('type', l.to_type, 'id', l.to_id, 'version', l.to_version) ELSE jsonb_build_object('type', l.to_type, 'id', l.to_id) END
           ORDER BY l.created_at, l.id) FROM project_object_links l WHERE l.from_type = '${type}' AND l.from_id = ${id} AND l.role = 'source'), '[]'::jsonb)`);
@@ -479,12 +502,12 @@ export function workRows(db: DbExecutor) {
         // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
         const was = toWorkRecord(previous).owner;
         if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
-        if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+        if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       }
       // A blocked task an agent holds goes back to Doing (#868): what it waited for is resolved, or a person resolves it by moving it to Doing.
       // The agent picks it up again, as when it was given the task. A change of owner has just queued its own event above.
       if (previous && previous.status === 'blocked' && next.owner?.kind === 'agent' && sameActor(toWorkRecord(previous).owner, next.owner)
-        && (via === 'wait_resolved' || (by.kind === 'human' && next.status === 'in_progress'))) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+        && (via === 'wait_resolved' || (by.kind === 'human' && next.status === 'in_progress'))) await agentTaskRows(db).noteAssigned(id, next.owner, by);
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */

@@ -18,6 +18,8 @@ import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
 import { useFollowEnd } from '../assistant/useFollowEnd';
 import { noteAssistantUse } from '../assistant/MeetAssistant';
+import { useAskMenu } from '../assistant/useAskMenu';
+import { ComposerMenu } from '../app/ComposerMenu';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useArrivals, useMediaQuery, useToast } from '../ui';
@@ -334,6 +336,7 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   function onKey(event: KeyboardEvent<HTMLTextAreaElement>) {
+    if (menu.onKeyDown(event)) return;
     if (sendsOnEnter(event, touch)) { event.preventDefault(); void send(); }
   }
 
@@ -416,6 +419,10 @@ function DmContent({ initial }: { initial: Dm }) {
   // A 1:1 whose other person left (or was removed) has nobody to send to: say so, disable sending.
   const counterpart = dm.kind === 'pair' ? dm.counterpart : null;
   const recipientGone = Boolean(counterpart && !dm.participants.some((p) => p.id === counterpart.id));
+  // `/` lists `/ai` here as in every composer (#1419 item 11): one composer that behaves the same everywhere. A direct message has no suggestions
+  // (#1224) and no other slash command.
+  const menu = useAskMenu({ fieldId: 'dm-composer', draft, enabled: workspace?.role !== 'guest' && !recipientGone, suggestions: [],
+    onDraft: (value) => change(value), onAsk: () => undefined });
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
@@ -480,9 +487,13 @@ function DmContent({ initial }: { initial: Dm }) {
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
-          <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
+          <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value, position) => { menu.change(position); change(value); }}
+            onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : [`Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`, 'Message…']}
-            fieldProps={{ 'aria-describedby': asking ? audienceId : undefined }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
+            fieldProps={{ 'aria-describedby': asking ? audienceId : undefined, 'aria-controls': menu.open ? 'dm-composer-menu' : undefined,
+              'aria-activedescendant': menu.open ? `dm-composer-menu-${menu.options[menu.active]!.id}` : undefined }}
+            menu={<ComposerMenu open={menu.open} id="dm-composer-menu" options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />}
+            sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
           {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : null}
           <TypingNotice {...typing} />

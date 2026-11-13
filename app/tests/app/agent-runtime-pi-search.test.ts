@@ -154,6 +154,6 @@ describe('an API-key agent in pi searches the web with Flux\'s flux_web_search (
   });
 
   test('only a key run in pi gets it: a run in the worker\'s own loop and a plan CLI\'s never list it', () => {
-    for (const mayDo of ['read', 'act', 'ask'] as const) assert.ok(!assistantRunTools(mayDo).includes('flux_web_search'));
+    for (const readOnly of [true, false]) assert.ok(!assistantRunTools(readOnly).includes('flux_web_search'));
   });
 });

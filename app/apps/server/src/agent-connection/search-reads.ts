@@ -22,6 +22,8 @@ import { toolError, toolResult } from './tool-results.js';
 const SEARCH = 'Search everything you may read in Flux at once: messages, Wiki pages, tasks, decisions, maps and the text inside files people sent (PDF, Word, Markdown, text, CSV), best match first. Any of your words match, '
   + 'Polish and English forms alike. Search before you say you do not know or that something was not discussed, and whenever the answer may be older than the '
   + 'messages you were given. Search in each language the people here write in, and try other words (a name, a number, a synonym) when little comes back. '
+  + 'For a how, what or why question about the space a Wiki page is often the answer: search with kind doc, then read it with flux_get_doc. '
+  + 'A hit that can be cited has a cite: copy it after what you take from it. '
   + 'A hit gives its place, author, time, a snippet with the matches in **bold** and a link; a message hit also has conversationId and sequence, for flux_read_around; a file hit has its page and messageId, and flux_read_file reads its text. '
   + 'A task hit with discussion.messages has a discussion: flux_get_task_discussion reads it. '
   + 'Before you answer, check that each part of the question has its source; search or read on for a missing one. '
@@ -270,7 +272,8 @@ async function readFile(ctx: FluxAgentReadContext, claims: FluxMcpClaims, input:
 
 export function registerAgentSearchReads(server: AgentToolRegistrar, db: Database, vectors?: QueryVectors) {
   const answer = async <T>({ claims }: ToolCall, read: (ctx: FluxAgentReadContext) => Promise<T>) => {
-    try { return toolResult(await withAgentConnection(db, claims, 'read', null, read)); } catch (error) { return toolError(error); }
+    // Searching and reading around write nothing (#1429).
+    try { return toolResult(await withAgentConnection(db, claims, 'read', null, read, { onlyReads: true })); } catch (error) { return toolError(error); }
   };
   server.registerTool('flux_search', { title: 'Search everything you may read', description: SEARCH, inputSchema: searchInput, annotations },
     (input, call) => answer(call, (ctx) => search(ctx, call.claims, input, vectors)));

@@ -105,10 +105,10 @@ class SharedComposerJourney(unittest.TestCase):
 
     def box(self, scope):
         """The task's one composer in its Details: the first message of a task nobody wrote about reads differently."""
-        return scope.get_by_label(re.compile(r"^(Write to this task|First message about this task)$"))
+        return scope.get_by_label(re.compile(r"^Write to this task$"))
 
     def send_button(self, scope):
-        return scope.get_by_role("button", name=re.compile(r"^(Send to task|Start the discussion)$"))
+        return scope.get_by_role("button", name=re.compile(r"^Send to task$"))
 
     def choose(self, page, files, container=None):
         target = container or page
@@ -320,7 +320,7 @@ class SharedComposerJourney(unittest.TestCase):
         # Sending is instant (#264): A's field empties at once while its message is held. The server already
         # stored it, so the live refresh may show the stored copy in place of the queued one: never both.
         expect(self.box(page)).to_have_value("")
-        expect(page.locator("#details").get_by_role("region", name="Activity").get_by_text("A's held private bytes")).to_have_count(1)
+        expect(page.locator("#details").get_by_role("region", name="Discussion").get_by_text("A's held private bytes")).to_have_count(1)
         self.open_thread(page, project, b)
         expect(self.box(page)).to_have_value("B's distinct draft")
         expect(page.get_by_text("A's held private bytes")).to_have_count(0)
@@ -329,12 +329,12 @@ class SharedComposerJourney(unittest.TestCase):
         # Held after the server stored it: Details lists the stored message once in its activity; the queued copy stays in "Messages you
         # are sending" until the server answers, so there is never a second stored copy. (The Agents view merged the two; Details, which
         # has shown its queue apart from its activity since #264, does not.)
-        activity = page.locator("#details").get_by_role("region", name="Activity")
+        activity = page.locator("#details").get_by_role("region", name="Discussion")
         expect(activity.locator(".wd-act").get_by_text("A's held private bytes")).to_have_count(1)
         expect(activity.locator(".wd-pending").get_by_text("A's held private bytes")).to_have_count(1)
         pending[0][0].fulfill(response=pending[0][1])
         self.stored(page)
-        expect(page.locator("#details").get_by_role("region", name="Activity").get_by_text("A's held private bytes")).to_have_count(1)
+        expect(page.locator("#details").get_by_role("region", name="Discussion").get_by_text("A's held private bytes")).to_have_count(1)
         expect(self.box(page)).to_have_value("")
         expect(page.locator("#details").get_by_role("heading", name=a["title"])).to_be_visible()  # the late reply did not move Details to another task
         self.open_thread(page, project, b)
@@ -548,7 +548,7 @@ class SharedComposerJourney(unittest.TestCase):
         task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Measure the negative camera result", "sources": [{"type": "thought", "id": thought["id"]}]}, 201)
         page.goto(f"/projects/{project['id']}/map/{sketch['id']}?open=work:{task['id']}")
         details = page.locator("#details")
-        box = details.get_by_label("First message about this task")
+        box = details.get_by_label("Write to this task")
         expect(box).to_be_enabled()
         box.fill("The Map-created task keeps this measurement file")
         self.choose(page, [self.file("map-measurement.bin")], details)
@@ -563,7 +563,7 @@ class SharedComposerJourney(unittest.TestCase):
             else:
                 route.continue_()
         page.route(f"**/api/v1/work/{task['id']}/discussion", lose)
-        details.get_by_role("button", name="Start the discussion").click()
+        details.get_by_role("button", name="Send to task").click()
         # Sending is instant (#264): Details shows the message as not sent, with its command kept.
         expect(details.locator("[data-client-message-id]").get_by_role("alert")).to_contain_text("Not sent")
         expect(box).to_have_value("")

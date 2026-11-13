@@ -47,8 +47,8 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
       observation = await unit.run(async (ports) => {
         const access = await ports.access.requireProject(principal, projectId);
         if (sources) await ports.rows.requireSources(projectId, sources);
-        const observedAt = await ports.rows.observedAt();
-        const sourceVisibility = await ports.rows.sourceVisibilityFingerprint(projectId, sources);
+        const { observedAt, fingerprint: sourceVisibility } = ports.rows.observation ? await ports.rows.observation(projectId, sources)
+          : { observedAt: await ports.rows.observedAt(), fingerprint: await ports.rows.sourceVisibilityFingerprint(projectId, sources) };
         requireFact(/^[0-9a-f]{64}$/.test(sourceVisibility));
         return { value: await read(ports, observedAt, access.workspaceId), sourceVisibility };
       });

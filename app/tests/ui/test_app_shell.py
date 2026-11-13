@@ -519,15 +519,10 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button.
-        more = page.locator("header.top").get_by_role("button", name="More", exact=True)
+        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button. It has no row in ⋯ either,
+        # so it has no ⋯ (#1424): no menu opens empty.
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
-        more.click()
-        menu = page.get_by_role("menu", name="More")
-        expect(menu.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(more).to_be_focused()
+        expect(page.locator("header.top").get_by_role("button", name="More", exact=True)).to_have_count(0)
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
         expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)
@@ -539,8 +534,9 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="No messages yet")).to_be_visible()
         expect(sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True)).to_have_attribute("aria-current", "page")
         expect(sidebar.get_by_text("No conversations yet", exact=False)).to_have_count(0)  # #763 FR-4
-        # On the computer New (C) starts a message; the sidebar has no second "+".
-        expect(sidebar.get_by_role("link", name="New message")).to_have_count(0)
+        # With no message and no agent yet, Messages is not a heading over nothing: it has the phone's "+" (New message, #1424).
+        expect(sidebar.get_by_role("link", name="New message")).to_have_count(1)
+        expect(sidebar.get_by_role("link", name="New message")).to_have_attribute("href", "/dm/new")
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
         shot(page, "desktop-1440-dm-light")
         rail.get_by_role("link", name="Home").click()
@@ -622,10 +618,11 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 2, f"Settings and Space details are shown (no Call row on a server without a media server, #1424): {geometry}")
                 self.assertEqual(len(geometry["hintedHeights"]), 1, f"Mute space is the one row with a hint line: {geometry}")
                 if device == "tablet":
-                    # 44 px rows measure 43.99998… while the menu is still settling (WebKit): a rounding tolerance, not a smaller target.
+                    # 44 px touch rows; WebKit lays a menu that starts on a fractional pixel out to 43.99998… while it settles (#1375 adds the People row at 820):
+                    # a rounding tolerance, not a smaller target.
                     self.assertTrue(all(height >= 43.95 for height in geometry["rowHeights"] + geometry["hintedHeights"]), geometry)
                 if device == "desktop":
                     self.assertTrue(all(abs(height - 32) <= 1 for height in geometry["rowHeights"]), f"desktop rows are 32px: {geometry}")
@@ -1422,13 +1419,13 @@ class AppShellJourney(unittest.TestCase):
         saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
         expect(saved).to_have_count(1)
         expect(saved.get_by_text("Research laptop", exact=True)).to_be_visible()
-        # "What it may do" starts at "Do it and tell me"; the owner changes it here, and it is kept.
-        may_do = saved.get_by_role("radiogroup", name="What it may do")
-        expect(may_do.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
-        may_do.get_by_role("radio", name="Ask me first").click()
-        expect(may_do.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        # Ask me first (#1419) starts off ("Do it and tell me"); the owner turns it on here, and it is kept.
+        ask = saved.get_by_role("switch", name="Ask me first")
+        expect(ask).to_have_attribute("aria-checked", "false")
+        ask.click()
+        expect(ask).to_have_attribute("aria-checked", "true")
         page.reload()
-        expect(page.get_by_role("list", name="Connected clients").get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        expect(page.get_by_role("list", name="Connected clients").get_by_role("switch", name="Ask me first")).to_have_attribute("aria-checked", "true")
         # The connection gave the agent no grant of its own: its access is its owner's.
         grants = page.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/grants")
         self.assertEqual(grants.status, 200, grants.text())

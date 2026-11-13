@@ -133,7 +133,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const inProject = !!projectId;
   useSurfacePreload(inProject);
   const phone = useMediaQuery(MEDIA.phone);
-  const { projects, directMessages, lockedWorkspaces } = useShellData();
+  const { projects, directMessages } = useShellData();
   const recent = useRecentPlaces(userId);
   const here = placeOfPath(useLocation().pathname)?.key;
   const [requested, setRequested] = useState(open);
@@ -155,7 +155,7 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   return (
     <SurfaceBoundary label="Search" wrap={wrap}>
       <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Search" className="jump">
-        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} onClose={onClose} />} />
+        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} phone={phone} onClose={onClose} />} />
       </Overlay>
     </SurfaceBoundary>
   );

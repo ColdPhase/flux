@@ -3,12 +3,12 @@ import { ASSISTANT_SCHEDULE_STARTERS, type AssistantJob, type MyAgent } from '@f
 import { Button, Icon, Spinner } from '../ui';
 import { ChangeSchedule } from './ChangeSchedule';
 import { scheduleWhen, whenText } from './schedules';
-import { useAgentSchedules, type AgentSchedulesState } from './useAgentSchedules';
+import type { AgentSchedulesState } from './useAgentSchedules';
 
 // An agent's schedules (F-036 AG-9, #858; mockup AgentReports "Schedules are listed in the conversation's header"): the owner's own sentences, told to
-// the agent in its chat. The list is one component: the line in the conversation's header opens it there, and the agent's page shows the same list with
-// the ready-made ones. Here they are turned on, paused, changed, run now and deleted; their results arrive in the chat. The morning summary is a
-// ready-made one, off until the person turns it on.
+// the agent in its chat. The line in the conversation's header opens the one list (#1419: the chat is the only place); there they are turned on, paused,
+// changed, run now and deleted, and their results arrive in the chat. The morning summary is a ready-made one, offered once, by Assistant in its chat
+// while it has no schedule, off until the person turns it on.
 
 /** What the owner is shown before a schedule runs while they are away, once per account: the note, then the tap that confirms. */
 function NoteLine({ state }: { state: AgentSchedulesState }) {
@@ -56,8 +56,8 @@ function Row({ job, state, agent }: { job: AssistantJob; state: AgentSchedulesSt
   );
 }
 
-/** The one list of an agent's schedules: Turn on or Pause, Change, Run now and Delete with Undo. In the conversation's header and on the agent's page. */
-export function ScheduleList({ agent, state, empty = true }: { agent: MyAgent; state: AgentSchedulesState; empty?: boolean }) {
+/** The one list of an agent's schedules: Turn on or Pause, Change, Run now and Delete with Undo. In the conversation's header only (#1419). */
+export function ScheduleList({ agent, state }: { agent: MyAgent; state: AgentSchedulesState }) {
   const { jobs } = state;
   return (
     <>
@@ -67,40 +67,11 @@ export function ScheduleList({ agent, state, empty = true }: { agent: MyAgent; s
         <ul className="sset-card agp__memory" aria-label={`${agent.name}’s schedules`}>
           {jobs.map((job) => <Row key={job.id} job={job} state={state} agent={agent} />)}
         </ul>
-      ) : jobs && empty ? <p className="sset-note">None yet.</p> : null}
+      ) : null}
       <NoteLine state={state} />
       {state.undo ? <p className="sset-note" role="status">Deleted “{state.undo.title}”. <button type="button" className="ui-link" disabled={!!state.busy} onClick={() => void state.undoRemove()}>Undo</button></p> : null}
       {state.error && !state.note ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{state.error}</p> : null}
     </>
-  );
-}
-
-/** On the agent's page, under what it remembers: the same list, and the ready-made schedules. */
-export function AgentSchedules({ agent }: { agent: MyAgent }) {
-  const state = useAgentSchedules(agent.id);
-  const { jobs, busy } = state;
-  const starters = ASSISTANT_SCHEDULE_STARTERS.filter((starter) => !(jobs ?? []).some((job) => job.title === starter.title));
-  return (
-    <section className="agp__remembers agp__schedules" aria-labelledby="agent-schedules">
-      <div className="agp__remembers-head">
-        <h3 className="sset-sub agp__h" id="agent-schedules">Schedules</h3>
-        <span className="agp__hint">Tell {agent.name} “every weekday at 9, …” in its chat and it shows up here and at the top of the chat.</span>
-      </div>
-      <ScheduleList agent={agent} state={state} empty={!starters.length} />
-      {starters.length && jobs ? (
-        <ul className="sset-card agp__memory agp__starters" aria-label="Ready-made schedules">
-          {starters.map((starter) => (
-            <li key={starter.id} className="sset-row agp__item" data-starter={starter.id}>
-              <span className="sset-row__b">
-                <span className="sset-row__t agp__item-text">{starter.title}</span>
-                <span className="sset-row__s">Ready-made · Every weekday at 9:00 · Off until you turn it on</span>
-              </span>
-              <Button variant="outline" size="sm" busy={busy === starter.id} aria-label={`Turn on ${starter.title}`} onClick={() => void state.addStarter(starter)}>Turn on</Button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </section>
   );
 }
 
@@ -114,7 +85,8 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
   // A schedule that was just deleted can still be put back: keep the line (and its Undo) until the person leaves it.
   if (!jobs.length && !(open && state.undo)) {
     // A read that failed is not "no schedules": the row's place says so, with Try again (#1369).
-    return state.failed ? <p className="nset__error agc__sched-failed" role="alert"><Icon name="alert" size={14} />Schedules couldn’t be loaded. <button type="button" className="ui-link" onClick={() => void state.reload()}>Try again</button></p> : null;
+    if (state.failed) return <p className="nset__error agc__sched-failed" role="alert"><Icon name="alert" size={14} />Schedules couldn’t be loaded. <button type="button" className="ui-link" onClick={() => void state.reload()}>Try again</button></p>;
+    return agent.answersAi && state.jobs ? <MorningSummary state={state} /> : null;
   }
   const first = jobs.find((job) => job.enabled) ?? jobs[0];
   return (
@@ -125,7 +97,7 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
         <span className="agc__sched-count">{jobs.length === 1 ? '1 schedule' : `${jobs.length} schedules`}</span>
         <Icon name={open ? 'chevron-down' : 'chevron-right'} size={16} />
       </button>
-      {open ? <div className="agc__sched-panel" id="agent-schedules-panel" role="region" aria-label={`${agent.name}’s schedules`}><ScheduleList agent={agent} state={state} empty={false} /></div> : null}
+      {open ? <div className="agc__sched-panel" id="agent-schedules-panel" role="region" aria-label={`${agent.name}’s schedules`}><ScheduleList agent={agent} state={state} /></div> : null}
     </div>
   );
 }
@@ -150,6 +122,25 @@ export function ReadySchedule({ job, state, agent }: { job: AssistantJob; state:
       {changing ? <ChangeSchedule job={job} state={state} agentName={agent.name} onDone={() => setChanging(false)} /> : null}
       <NoteLine state={state} />
       {state.error && !state.note ? <p className="assistant-answer__error" role="alert">{state.error}</p> : null}
+    </div>
+  );
+}
+
+/**
+ * The morning summary, offered once, by Assistant (#1419, AG-9): while the agent that answers `/ai` has no schedule, its chat shows this one row in the
+ * place of the schedule line. Turn on makes it at once (the tap is the confirmation); then it is an ordinary schedule in that line.
+ */
+function MorningSummary({ state }: { state: AgentSchedulesState }) {
+  const starter = ASSISTANT_SCHEDULE_STARTERS[0];
+  return (
+    <div className="agc__sched" data-starter={starter.id}>
+      <div className="agc__sched-row agc__sched-offer">
+        <Icon name="clock" size={16} />
+        <span className="agc__sched-text">{starter.title} · Every weekday at 9:00</span>
+        <Button variant="outline" size="sm" busy={state.busy === starter.id} aria-label={`Turn on ${starter.title}`} onClick={() => void state.addStarter(starter)}>Turn on</Button>
+      </div>
+      <NoteLine state={state} />
+      {state.error && !state.note ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{state.error}</p> : null}
     </div>
   );
 }

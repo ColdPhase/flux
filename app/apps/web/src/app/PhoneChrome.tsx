@@ -120,7 +120,6 @@ export function PhoneCreate({ open, onClose, projects, projectId }: {
           </li>
         ))}
       </ul>
-      <p className="ui-list-sheet__foot">The same five on the computer (C).</p>
     </Overlay>
   );
 }

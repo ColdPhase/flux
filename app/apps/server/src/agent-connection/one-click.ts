@@ -10,7 +10,7 @@ function designationOf(name: string | null): ExternalClientDesignation {
 /**
  * Signing in a local client is one decision (F-036 LC-1, #859). The person approves once; Flux then holds one connection for that
  * client, with an agent of the person's own behind it. The agent has exactly the person's rights (checked again at every call) and
- * does what its "What it may do" says. Nothing the client asks for widens that: it asks for no scope Flux would weigh, and there is
+ * does what its Ask me first says. Nothing the client asks for widens that: it asks for no scope Flux would weigh, and there is
  * no project list or capability switch to fill in.
  */
 export function createOneClickSignIn(db: Database) {

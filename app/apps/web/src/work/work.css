@@ -72,7 +72,7 @@ button.ws-task__glyph:active { background: var(--hov); }
   .ws-tasks .ws-list { --task-bg: var(--el); overflow: hidden; border-radius: 18px; background: var(--el); box-shadow: var(--sh-card); }
   .ws-task { min-height: 62px; }
   .ws-task__fg { min-height: 62px; padding-left: 4px; }
-  .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:last-child):not(:disabled))) { display: none; }
+  .ws-tasks .ws-pages:not(:has(.ws-pages__actions button:not(:disabled))) { display: none; }
   .ws-task .ws-item { padding: 8px 16px 8px 4px; border-radius: 0; }
   .ws-task .ws-item__t { font-size: var(--fs-base); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .ws-task .ws-item__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; font-size: var(--fs-xs); }
@@ -103,6 +103,7 @@ button.ws-task__glyph:active { background: var(--hov); }
 
 /* ---------- The task panel (F-026 S4, S9, S10, P10): rows, a blocker card, Activity ---------- */
 .wd .wd-title { margin: 6px 0 12px; }
+.wd__ref { margin: 0; font-size: var(--fs-sm); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .wd-title__text, .wd-title__field {
   display: block; width: calc(100% + 16px); margin: 0 -8px; padding: 2px 8px; border-radius: var(--r-sm);
   font: inherit; letter-spacing: inherit; line-height: inherit; color: inherit; text-align: left; overflow-wrap: anywhere;
@@ -328,9 +329,9 @@ button.wd-link:active:not(:disabled) { background: var(--sub); }
 /* One row of small actions: Hand off, Result, Link thought. */
 .wd-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 
-/* Activity: who did what and when, newest first, with the messages of the task's discussion in the same line of time. */
+/* The task's one discussion: who did what and when, newest first, with the messages in the same line of time. It has no heading (#1364). */
 .wd-activity { margin-top: 22px; }
-.wd-activity .wd-sechead h4 { font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
+.wd-activity .wd-sechead { justify-content: flex-end; }
 .wd-activity__open { font-size: var(--fs-sm); }
 .wd-act { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 0; padding: 0; list-style: none; }
 .wd-act__item { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }

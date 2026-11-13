@@ -3,13 +3,11 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
 /**
- * Rows for people's agents taking tasks (#856, F-036 AG-5): the one setting "When someone assigns a task to me", the
- * agents a person may give a task to, and the events the server drains (a task was given to an agent, a run on a task ended).
+ * Rows for people's agents taking tasks (#856, F-036 AG-5): the agents a person may give a task to, and the events the server drains (a task was given to an agent, a run on a task ended).
  * It makes no access decision; the use cases of `packages/core/src/agent-tasks` and the work use cases ask the policy.
  */
 
 type Actor = { kind: 'human' | 'agent'; id: string };
-const t = schema.agentTaskTaking;
 const ev = schema.agentTaskEvents;
 const a = schema.agents;
 const as = schema.assistantSettings;
@@ -59,32 +57,13 @@ export function agentTaskRows(db: DbExecutor) {
       return Boolean(row);
     },
 
-    async taking(ownerUserId: string) {
-      const [row] = await db.select({ agentId: t.agentId }).from(t).where(eq(t.ownerUserId, ownerUserId));
-      return row?.agentId ?? null;
-    },
-
-    async setTaking(ownerUserId: string, agentId: string | null) {
-      if (agentId === null) { await db.delete(t).where(eq(t.ownerUserId, ownerUserId)); return; }
-      await db.insert(t).values({ ownerUserId, agentId }).onConflictDoUpdate({ target: t.ownerUserId, set: { agentId, updatedAt: new Date() } });
-    },
-
     /**
-     * A task was given to `owner`. Written in the caller's transaction, only when the server has something to do: any agent
-     * owner, or a person who chose an agent and was not given the task by themselves, by their own agent or by their own rule.
+     * A task was given to `owner`. Written in the caller's transaction, only when the server has something to do: an agent owner.
+     * A task given to a person stays with them; nothing gives it to their agent by itself (#1419).
      */
-    async noteAssigned(workId: string, owner: Actor, by: Actor, via?: string) {
-      if (owner.kind === 'agent') {
-        await db.insert(ev).values({ kind: 'assigned', workId, ownerAgentId: owner.id, byKind: by.kind, byId: by.id });
-        return;
-      }
-      if (via === 'agent_rule' || via === 'agent_deleted' || (by.kind === 'human' && by.id === owner.id)) return;
-      if (by.kind === 'agent') {
-        const [mine] = await db.select({ id: a.id }).from(a).where(and(eq(a.id, by.id), eq(a.ownerUserId, owner.id)));
-        if (mine) return;
-      }
-      await db.execute(sql`INSERT INTO agent_task_events (kind, work_id, owner_user_id, by_kind, by_id)
-        SELECT 'assigned', ${workId}::uuid, ${owner.id}, ${by.kind}, ${by.id} WHERE EXISTS (SELECT 1 FROM agent_task_taking WHERE owner_user_id = ${owner.id})`);
+    async noteAssigned(workId: string, owner: Actor, by: Actor) {
+      if (owner.kind !== 'agent') return;
+      await db.insert(ev).values({ kind: 'assigned', workId, ownerAgentId: owner.id, byKind: by.kind, byId: by.id });
     },
 
     /** A task was taken away from `agentId` by someone else: only when that agent has a run on it in flight, which then has to stop. */

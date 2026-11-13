@@ -119,7 +119,7 @@ test('a client signs in with one click: Deny makes nothing, Allow makes one conn
     assert.equal((await redeem(new URL(hop.headers().location!), authD)).flux_connection_id, made[0]!.id);
     assert.equal((await connections()).length, 1, 'signing in again makes no second connection');
 
-    // Settings › AI: one row with its "What it may do" and Disconnect; no project, scope or permission to choose.
+    // Settings › AI: one row with its Ask me first and Disconnect; no project, scope or permission to choose.
     const settings = await context.newPage();
     await settings.goto(`${origin}/settings/agents/connect`);
     const row = settings.locator('.connection__saved').filter({ hasText: 'Claude Code on this computer' });

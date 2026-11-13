@@ -87,12 +87,6 @@
 .side__locked { padding-block: 4px; }
 .side__locked .side__sub { color: var(--t3); }
 .side__rail-locked .side__pj--lock { color: var(--t2); }
-.locked-note { margin-top: 28px; }
-.locked-note h2 { margin: 0 0 4px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
-.locked-note p { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
-.locked-note ul { list-style: none; margin: 0; padding: 0; }
-.locked-note a { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; font-size: var(--fs-md); color: var(--t1); }
-@media (pointer: coarse) { .locked-note a { min-height: 44px; } }
 
 /* ---------- People → Encryption ---------- */
 .details__sec.people__enc { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line); }

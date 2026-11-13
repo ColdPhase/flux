@@ -50,6 +50,7 @@ import {
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import { endedWithWebSources } from './web-sources.js';
+import { sourcesShown } from './cites.js';
 import { unreadAgentChats } from './agent-chat.js';
 import { takeAsk } from '../agent-tasks/ask.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
@@ -176,7 +177,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
     assistant: { ownerUserId: record.ownerUserId, label: own ? (await ports.runs.agentBrief(record.agentId))?.name ?? 'Assistant' : assistantLabel(name) },
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
-    provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
+    provenance: { provider: record.provider, model: record.model }, sources: await sourcesShown(ports, record),
     committedAt: iso(record.committedAt),
   };
 }

@@ -32,7 +32,8 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { callWords, useCallLines, useNow } from '../live/callLines';
 
-// A task's Activity (F-026 P10, #488): one timeline, newest first, of what changed and who said what. Each line has its
+// A task's one discussion (F-026 P10, #488, #1364): one timeline, newest first, of what changed and who said what. It has no heading
+// of its own, "Activity" being removed by the design (§8); the region is named "Discussion" for a screen reader. Each line has its
 // real author and time: the task's creation, every change of its state, owner, due day and title that was recorded, and the
 // messages of the task's one discussion. The composer sits at the bottom of the panel and writes to the same discussion.
 
@@ -67,7 +68,7 @@ const FROM: Record<NonNullable<Source>, string> = {
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
 function changeText(entry: TaskActivityEntry): string {
-  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (the agent setting)'
+  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (its agent finished)'
     : entry.automation === 'wait_resolved' ? ' (what it waited for is resolved)' : '';
   if (entry.kind === 'status' && entry.status) {
     const { to, blocker, waitingFor, waitingOn, dropped } = entry.status;
@@ -242,10 +243,10 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   return (
     <section className="details__sec wd-activity" aria-labelledby={headingId}>
       <div className="wd-sechead">
-        <h4 id={headingId}>Activity</h4>
+        <h4 id={headingId} className="ui-vh">Discussion</h4>
         {thread ? <RefLink className="wd-inline wd-activity__open" to={thread} state={{ keepPanel: true }}>Open in Conversation</RefLink> : null}
       </div>
-      {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
+      {state.failed === 'all' ? <p className="wd-error" role="alert">The discussion could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
       <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
       {/* What a local client changed on this task, with its change line and Undo, as the assistant's changes have (#868, LC-2). */}
@@ -313,7 +314,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
         })() })), state.loading ? [] : calls.map((call) => ({ at: call.startedAt,
           node: <TaskCallLine key={call.id} line={call} nameOf={callName} mine={call.startedBy === me.id} /> })))}
       </ol>
-      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
+      {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier'}</button> : null}
     </section>
   );
 }
@@ -325,7 +326,6 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   const touch = useMediaQuery(MEDIA.touch);
   const captureScope = useComposerScope(composer.key);
   const { discussion } = state;
-  const hasRoot = !!discussion?.root;
   // Typing (#155 AC-2) is the task thread's: the same canonical conversation as the task's thread in Conversation
   // and in Agents, so a person writing in several of them is one person typing. A task without a first message has
   // no thread yet, so it has no scope (nothing is created to show it); neither does one whose creation was undone.
@@ -379,10 +379,10 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
     <form className="wd-composer" onSubmit={(event) => void send(event)}>
       <ConnectionLine />
       <ComposerFiles state={composer} attach="none" />
-      <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
+      <ComposerBox id={id} label="Write to this task" value={composer.draft.body} maxLength={20000}
         placeholder={[`Write about #${item.number} · @ · /`, `Write about #${item.number}`, 'Write']} onChange={(value, position) => { menu.change(position); setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={onKeyDown}
         fieldProps={{ 'aria-controls': menu.open ? `${id}-menu` : undefined, 'aria-activedescendant': menu.open ? `${id}-menu-${menu.options[menu.active]!.id}` : undefined }}
-        attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()}
+        attach={composer} sendLabel="Send to task" sendDisabled={!composer.canSend || !discussion} onSend={() => void send()}
         menu={<ComposerMenu open={menu.open} id={`${id}-menu`} options={menu.options} active={menu.active} trigger="/" onPick={menu.pick} onHover={menu.setIndex} />} />
       {asking ? <div className="wd-foot__line"><ComposerAudience>Only you see the answer, until you choose Show everyone</ComposerAudience></div> : typingNotice}
       {askFailure ? <p className="wd-error" role="alert">{askFailure}</p> : null}

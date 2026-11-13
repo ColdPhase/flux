@@ -5,7 +5,7 @@ import { reply, startConversation } from '../conversations/api';
 import { announceAnswered } from '../notifications/api';
 import { sendDmMessage, sendDmReply } from '../api/direct-messages';
 import { contributeToTask, stageFile } from './api';
-import { fileLimits, loadFileLimits, uploadPoster } from '../api/files';
+import { fileLimits, fileLimitsKnown, loadFileLimits, uploadPoster } from '../api/files';
 import { drawPoster } from './videoPoster';
 import { assumeReachable, connectionState, onConnectionChange, reportReachable, reportUnreachable } from './connection';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention';
@@ -429,13 +429,17 @@ export function useComposerDraft(accountId: string, projectId: string, context: 
   const { draft } = snapshot;
 
   function addFiles(files: File[]) {
+    // A video is held to the operator's cap (C-61), read when a composer first takes a file (#1429): the first video waits for it.
+    if (!fileLimitsKnown() && files.some((file) => isVideoName(file.name))) void loadFileLimits().then(() => admit(files));
+    else { void loadFileLimits(); admit(files); }
+  }
+  function admit(files: File[]) {
     if (!active()) return;
     const current = snapshots.get(key)!;
     if (current.sending) return;
     if (current.draft.files.length + files.length > FILE_LIMITS.messageFiles) {
       put(key, { ...current, error: 'Attach at most 10 files. Your existing draft and files are kept.' }); return;
     }
-    void loadFileLimits();
     // A video has its own cap (C-61): the 20 MiB of one message are the other files', and its videos together stay within one video cap.
     const sizes = (list: readonly { name: string; size: number }[]) => ({ videos: list.filter((item) => isVideoName(item.name)).reduce((total, item) => total + item.size, 0),
       others: list.filter((item) => !isVideoName(item.name)).reduce((total, item) => total + item.size, 0) });

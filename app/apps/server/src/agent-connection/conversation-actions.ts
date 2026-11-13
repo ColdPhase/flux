@@ -6,6 +6,7 @@ import { taskDiscussionInEventSession } from '../work/task-discussions.js';
 import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, coordinationExecutor, coordinationInput,
   nativeActionExecutor } from './action-execution.js';
 import { recordDiscussionLine } from './assistant-changes.js';
+import { sentArgs } from './ask-first.js';
 import type { AgentToolRegistry, ToolCall } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
@@ -92,10 +93,11 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
     })));
 
   // The task's one discussion (#868): the strict command is the reply operation's; the server selects the task target, so a client cannot
-  // choose it. It is the agent's own talk about the task, not a change to a person's things, so it does not wait. The task discussion's
-  // use case writes it as the agent, under the task's use fence, and stops the sixth agent message in a row (AGENT_TURN_LIMIT, C-51); the
-  // line is recorded as the reply change flux_reply_in_conversation records, so its owner deletes it the same way (#961).
-  const executeDiscussion = ({ claims }: ToolCall) => coordinationExecutor(db, claims, 'task-discussion/v1');
+  // choose it. Everyone who reads the task reads it, so with Ask me first on it waits for the owner's OK (#1419); otherwise it is made at
+  // once. The task discussion's use case writes it as the agent, under the task's use fence, and stops the sixth agent message in a row
+  // (AGENT_TURN_LIMIT, C-51); the line is recorded as the reply change flux_reply_in_conversation records, so its owner deletes it the same way (#961).
+  const executeDiscussion = ({ claims }: ToolCall, args: Record<string, unknown>, body: string) => coordinationExecutor(db, claims, 'task-discussion/v1',
+    { tool: 'flux_discuss_task', args, operation: 'conversation.reply', objectType: 'message', objectId: null, title: body.slice(0, 80) });
   register('conversation.reply').registerTool('flux_discuss_task', {
     title: 'Write in a task\'s discussion',
     description: 'Write one message in the one discussion of a task, where people and agents talk about it (a plan, progress, a hand-off note). '
@@ -103,7 +105,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
       + `${note} Needs the runtime from flux_bootstrap.`,
     inputSchema: z.strictObject({ ...coordinationInput(), taskId: id.describe('The task of this project the message is about.'),
       body: message.shape.body }), annotations,
-  }, ({ taskId, body, ...input }, call) => run(() => executeDiscussion(call)(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
+  }, (sent, call) => { const args = sentArgs(sent); const { taskId, body, ...input } = args; return run(() => executeDiscussion(call, args, body)(input, 'conversation.reply', taskId, { body, taskId } as unknown as AgentJsonValue,
     async ({ transaction, events, agent, runtime }) => {
       const sent = await taskDiscussionInEventSession(transaction, events).contribute(agent, taskId,
         { body, clientMessageId: derivedUuid('flux.task-discussion-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
@@ -111,5 +113,5 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
         postconditions: [{ kind: 'message' as const, id: sent.id }] };
       await recordDiscussionLine(transaction, call.claims, runtime, { tool: 'flux_discuss_task', args: { ...input, taskId, body } }, input, produced);
       return produced;
-    })));
+    })); });
 }

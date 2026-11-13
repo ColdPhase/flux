@@ -4,17 +4,17 @@ How a task reaches a person's agent and comes back. The product rules are
 [AG-5 and AG-8](../product/assistant.md#ag-5--tasks-reach-agents-through-their-owner); this page is the
 engineering behind them.
 
-## The two ways in
+## The one way in
 
-1. **The Owner field.** A person gives a task to one of their own agents. The Owner field offers
-   `GET /api/v1/me/task-taking` → `agents` (their own agents that run on the server) and nobody else's. The
-   server refuses the rest too: `requireOwner` in `packages/core/src/work/service.ts` answers
-   `422 OWNER_NOT_YOUR_AGENT` unless the agent belongs to the person making the change (#904). Another
-   person's agent is reached by giving the task to that person.
-2. **The one setting**, "When someone assigns a task to me: Do nothing / Give it to [agent]" (`PUT
-   /api/v1/me/task-taking`, table `agent_task_taking`). No row is Do nothing. It acts when someone else assigns the
-   task: not when a person gives it to themselves, not when their own agent gives it back, and not for a change
-   made by one of these rules (`via: 'agent_rule'`).
+**The Owner field.** A person gives a task to one of their own agents. The Owner field offers their own agents
+(the shell's `GET /api/v1/my-agents` list) and nobody else's. The server refuses the rest too: `requireOwner` in
+`packages/core/src/work/service.ts` answers `422 OWNER_NOT_YOUR_AGENT` unless the agent belongs to the person making the
+change (#904). Another person's agent is reached by giving the task to that person, who gives it to their agent.
+
+The setting "When someone assigns a task to me: Give it to [agent]" and its rule were removed (founder decision,
+2026-11-13, [#1419](https://github.com/ColdPhase/flux/issues/1419)): its routes (`/api/v1/me/task-taking`) are gone, and
+its table `agent_task_taking` stays unused so that no migration drops it. An `assigned` event that names a person
+(`owner_user_id`, written before the change) is handled as done with nothing to do.
 
 ## Events, not polling
 
@@ -27,7 +27,6 @@ another replica holds. Nothing is polled while idle.
 
 | Event | What the drain does |
 | --- | --- |
-| `assigned` to a person | Their setting names an agent: the task is given to it as an owner change on their behalf (`agent_rule`). |
 | `assigned` to an agent (also written when a blocked task it holds resumes because what it waited for was resolved, [#868](work-decisions.md#statuses-waiting-and-what-came-of-it-868)) | The agent says "Got it, I'm on it." in the task's discussion (this opens it and anchors the run), then `startTask` queues a run of kind `task` (`personal_runs.work_id`). The task becomes Doing. A run that cannot start is said in plain words and the task goes back to its owner. |
 | `finished` | The run's report is posted in the discussion as the agent's message. A task that is Blocked when the run ends stays Blocked with the agent (neither Done nor handed back; the chat says "Blocked: #4 …"), and a resolved wait, or a person moving it to Doing, picks it up again ([#868](work-decisions.md#statuses-waiting-and-what-came-of-it-868)). With "Do it and tell me" the agent marks the task Done; with "Ask me first" or "Only read" the task goes back to its owner to check (C-1). Stopped, paused, revoked or denied: back to the owner with one line. Failed: the agent keeps the task; its owner chooses Try again or Take it back. The provider's limit: the run that continues it is already queued (#854). |
 
@@ -42,8 +41,7 @@ restarted is found again; nothing is polled while idle.
 
 The fifth failed try (`AGENT_TASK_EVENT_ATTEMPTS`) is due at once and the next claim of the event is `giveUp`, in the same
 transaction that ends the event, so a lost assignment is never silent. The agent says in the task that it could not take care
-of it ("I couldn't take care of this. It's back with you."), the task goes back to its owner and the agent's runs on it stop
-(a person who had chosen an agent whose task the setting could not give reads "I couldn't take this. It's still with you.").
+of it ("I couldn't take care of this. It's back with you."), the task goes back to its owner and the agent's runs on it stop.
 A `released` event that gave up says nothing: the person took the task away, so only the agent's runs that were going when they
 did stop, whether or not the agent holds the task again. If the give-up fails too, the event stays and is claimed again
 later (the wait grows to a minute), up to `AGENT_TASK_GIVE_UP_ATTEMPTS` (5) more times: it is never marked handled without having
@@ -86,7 +84,7 @@ owner, or "with" the person who took it. An agent waited for is named as the thr
   (`CreateWorkCommand.parentId`; the agent tool `flux_create_task` takes `task.parentTaskId`). The parent does not wait for
   its subtasks (that is what prerequisites are for). The task panel lists them as "Subtasks · 1 of 2 done". A subtask for
   another person is a proposal that waits for the owner's OK with Approve all (AG-3); once approved it is that person's
-  task, and their own "When someone assigns a task to me" setting decides whether one of their agents takes it.
+  task, and only they give it to one of their agents, with its Owner field (#1419).
 - **Questions between agents (TA-3).** An agent's report may end with one
   `<ask>{"agent": "Fieldbot", "owner": "Jonas", "question": "…"}</ask>` block (`packages/core/src/agent-tasks/ask.ts`). The owner
   says whose agent is meant, because every person's first agent has the same name; a name that fits more than one agent, with no

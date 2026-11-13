@@ -221,9 +221,20 @@ body:has(.app) { background: var(--side); }
   .side__rail-middle { overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; scrollbar-width: thin; padding: 4px 0; }
   .side__rail-middle::-webkit-scrollbar { width: 4px; }
   .side__rail-middle > .side__rail-scroll { flex: none; overflow: visible; }
-  /* A soft, static fade at the band's lower edge while it can scroll; the end of the band has room to clear it. */
-  .side__rail-middle[data-scrolls] { padding-bottom: 20px; mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 20px), transparent); }
+  /* The band's end has room to clear its fade (below, #1375). */
+  .side__rail-middle[data-scrolls] { padding-bottom: 20px; }
 }
+/* Where a list can still scroll to, that edge fades softly (#1375): the expanded sidebar's and the drawer's list, the rail's lists. Static,
+   set only when the size, the contents or the position change (Sidebar.tsx `useScrollEdges`), so a row cut by the edge reads as "more". */
+.side__scroll, .side__rail-scroll, .side__rail-middle { --fade-top: 0px; --fade-bottom: 0px; }
+:is(.side__scroll, .side__rail-scroll, .side__rail-middle)[data-scroll-up] { --fade-top: 24px; }
+:is(.side__scroll, .side__rail-scroll, .side__rail-middle)[data-scroll-down] { --fade-bottom: 28px; }
+:is(.side__scroll, .side__rail-scroll, .side__rail-middle):is([data-scroll-up], [data-scroll-down]) {
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent);
+}
+/* A person's initials in the rail are a face, not a link (#1375). */
+.side__rail-dm, .side__rail-dm * { text-decoration: none; }
 /* Centred like the collapse control in the expanded sidebar's 40 px top row, so the toggle stays put (S1). */
 .side--rail > .side__toggle { margin-block: max(0px, calc((40px - var(--ctl)) / 2)); }
 .side__rail-places, .side__rail-projects, .side__rail-dms { display: flex; flex-direction: column; align-items: center; gap: 6px; }
@@ -336,6 +347,8 @@ a.me__item { text-decoration: none; }
 .top { display: flex; align-items: center; gap: 8px; min-height: var(--header-h); flex: none; padding: 14px var(--space-page) 6px; }
 .top__title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
 .top__title h1 { font-size: var(--fs-title); font-weight: 600; letter-spacing: -0.65px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* An agent's chat (#1419): its Kreska before its name, centred on the title line. */
+.top__title > .kreska { flex: none; align-self: center; }
 /* A count beside a place's title: a quiet number, never a pill (README §2, §7 Inbox). */
 .top__n { font-size: var(--fs-md); font-weight: 500; color: var(--t3); font-variant-numeric: tabular-nums; }
 .top__crumb, .top__slash { color: var(--t2); font-size: var(--fs-md); white-space: nowrap; }
@@ -345,25 +358,26 @@ a.me__item { text-decoration: none; }
    people and agents, and More, over one hairline. Focus keeps the name, the view and the way out. */
 .top.top--row { height: auto; min-height: 64px; align-items: center; padding: 12px 16px 12px 20px; gap: 14px; border-bottom: 1px solid var(--line); }
 /* A space's name has its own slot (F-026 §4: 220 px; #873), and the slot's width depends only on the header's width: never on what the row
-   holds. The views start in the same place in every view and in every state (a "+ Task" in Tasks, a call that starts), for every
+   holds. The views start in the same place in every view and in every state (a call that starts), for every
    name, and a long name is cut. Where the row is short of room the slot is the header's width less everything else the row needs
    (--name-rest, which is that room at its widest: the views, the people's and Call's slots, More, the gaps and the padding), never
    less than 5 rem. In rem, so larger text gives the room back before it overflows (#763). */
-.top--project.top--row { --name-rest: 36.25rem; }
+/* 35 rem is what the row needs beside the name when everything is in it: 36 px of padding, the views (255), the people (100), Call (68), More (44) and the gaps
+   (about 555 px). The name takes all the rest, up to its slot (#1375); a larger reserve left a tablet's name 20 px short. */
+.top--project.top--row { --name-rest: 35rem; }
 .top--project.top--row .top__title { flex: 0 0 clamp(5rem, 100cqw - var(--name-rest), 13.75rem); min-width: 0; }
-/* From 1001 px the details panel docks beside the work and the Tasks view's "+ Task" is in the header (it keeps its place when the panel
-   docks, #763 C4): its slot (4.5 rem) is in the row in every view, empty outside Tasks, so it moves nothing and nothing moves it. */
-@media (min-width: 1001px) {
-  .top--project.top--row { --name-rest: 40.75rem; }
-  .top--project .top__right > .top__actions { display: flex; justify-content: flex-end; min-width: 4.5rem; }
-}
-/* Below 44 rem (48.5 rem with that slot) the people and Call are in More (rule 3 below): the rest is the views, More, the slot and the gaps. */
+/* Below 44 rem the people and Call are in More (rule 3 below): the rest is the views, More and the gaps. */
+/* Below 48.75 rem (780 px: the name's 220 px slot and the 35 rem beside it) the people move into More first, so the name keeps its slot
+   (#1375): the rest is then the views, Call, More and the gaps. */
+@container main (max-width: 48.75rem) { .top--project.top--row { --name-rest: 28.125rem; } }
 @container main (max-width: 44rem) { .top--project.top--row { --name-rest: 24.25rem; } }
 @media (max-width: 680px) { @container main (max-width: 44rem) { .top--project.top--row { --name-rest: 27.875rem; } } }
+/* From 1001 px, where the details panel docks, the people and Call move into More under a 48.5 rem (776 px) header, so the name keeps its slot (#873). */
 @media (min-width: 1001px) { @container main (max-width: 48.5rem) { .top--project.top--row { --name-rest: 28.75rem; } } }
 .top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
 .top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
+.top--row .top__right > .top__actions:empty { display: none; }
 /* The views never shrink (a squeezed track cut "Agents" at 1024 px with "+ Task" beside it, #763 sweep), and a space's name slot is set by the width alone (above). */
 .top__views { flex: none; }
 /* The views are underline tabs as wide as their words (#1239). They are as tall as the header's row, so the 2 px underline sits on the header's
@@ -413,10 +427,16 @@ a.me__item { text-decoration: none; }
 @media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).
    Only when the name, the views, the people, Call and More do not fit (below 44 rem, 704 px at the default text size, where the name would
-   be left under about 120 px; 48.5 rem from 1001 px, where "+ Task" has its slot too) do the people and Call move into "⋯"; the views and More stay put. In rem, so larger text moves them
+   be left under about 120 px; 48.5 rem from 1001 px) do the people and Call move into "⋯"; the views and More stay put. In rem, so larger text moves them
    sooner instead of pushing the header past its edge (#763). The 704 px is what the row needs: the name's least width (5 rem), the views
    at their label widths (269 px), the people (up to 93 px for six), Call (72 px), More (44 px on touch) and the gaps and padding. */
 .top__more-narrow { display: none; }
+/* Where the name would be cut under its 220 px slot (below 48.75 rem, an 820 px tablet in portrait), the people go into "⋯" first and Call
+   stays in the row (#1375). */
+@container main (max-width: 48.75rem) {
+  .top--row:has(> .top__views) .top__right > .top__faces-slot { display: none; }
+  .top--row:has(> .top__views) .top__more-people { display: flex; }
+}
 @container main (max-width: 44rem) {
   .top--row:has(> .top__views) .top__right > :is(.top__faces-slot, .lv-entry) { display: none; }
   .top--row:has(> .top__views) .top__more-narrow { display: flex; }

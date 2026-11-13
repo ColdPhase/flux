@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows, runPictureRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
-import type { AgentChatMessage, AgentMayDo } from '@flux/contracts';
+import type { AnyPgColumn } from 'drizzle-orm/pg-core';
+import { docHeadings, type AgentChatMessage, type AgentMayDo, type AssistantSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import type { DbExecutor } from './push.js';
@@ -21,10 +22,7 @@ import { personTimeZones } from './person-time-zone.js';
 
 type Window = { limit: number; offset: number };
 type RunRow = typeof schema.personalRuns.$inferSelect;
-type SourceRef =
-  | { type: 'message'; id: string; revision: number }
-  | { type: 'work'; id: string; revision: number }
-  | { type: 'thought'; id: string; sketchId: string; revision: number };
+type SourceRef = AssistantSourceRef;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; authority?: RunRow['authority']; backgroundLabel?: string | null;
@@ -523,6 +521,73 @@ export function personalRunRows(db: DbExecutor) {
       return { ...row, criteria: row.criteria ?? [], prerequisites };
     },
 
+    /**
+     * The objects an answer's Flux marks name (C-62): pages, tasks, decisions and messages of the run's workspace, in the space when the run is in one. No access
+     * decision (the use case asks the policy per space). Only a page cited by section is read whole, for its headings.
+     */
+    async cites(scope: { workspaceId: string; projectId: string | null }, refs: readonly { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; section?: number }[]) {
+      const found: { kind: 'doc' | 'task' | 'decision' | 'message'; id: string; projectId: string; title: string; conversationId?: string; revision?: number; version?: number; headings?: string[] }[] = [];
+      const ids = (kind: string) => [...new Set(refs.filter((ref) => ref.kind === kind).map((ref) => ref.id))];
+      const within = (column: AnyPgColumn) => (scope.projectId === null ? undefined : eq(column, scope.projectId));
+      const docs = ids('doc');
+      if (docs.length) {
+        const m = schema.projectMaterials;
+        const v = schema.projectMaterialVersions;
+        const rows = await db.select({ id: m.id, projectId: m.projectId, version: v.version, title: v.title }).from(m)
+          .innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
+          .where(and(eq(m.workspaceId, scope.workspaceId), eq(m.kind, 'doc'), inArray(m.id, docs), within(m.projectId)));
+        // Only a page cited by section is read whole, for its headings.
+        const sectioned = rows.filter((row) => refs.some((ref) => ref.kind === 'doc' && ref.id === row.id && ref.section));
+        const bodies = new Map<string, string>();
+        if (sectioned.length) {
+          for (const row of await db.select({ id: m.id, body: v.body }).from(m).innerJoin(v, and(eq(v.materialId, m.id), eq(v.version, m.currentVersion)))
+            .where(inArray(m.id, sectioned.map((item) => item.id)))) bodies.set(row.id, row.body);
+        }
+        for (const row of rows) found.push({ kind: 'doc', id: row.id, projectId: row.projectId, title: row.title, version: row.version, ...(bodies.has(row.id) ? { headings: docHeadings(bodies.get(row.id)!) } : {}) });
+      }
+      const tasks = ids('task');
+      if (tasks.length) {
+        const w = schema.projectWorkItems;
+        for (const row of await db.select({ id: w.id, projectId: w.projectId, version: w.version, title: w.title }).from(w)
+          .where(and(eq(w.workspaceId, scope.workspaceId), inArray(w.id, tasks), sql`${w.creationRevertedAt} IS NULL`, within(w.projectId))))
+          found.push({ kind: 'task', id: row.id, projectId: row.projectId, title: row.title, revision: row.version });
+      }
+      const decisions = ids('decision');
+      if (decisions.length) {
+        const d = schema.projectDecisions;
+        for (const row of await db.select({ id: d.id, projectId: d.projectId, title: d.title }).from(d).where(and(eq(d.workspaceId, scope.workspaceId), inArray(d.id, decisions), within(d.projectId))))
+          found.push({ kind: 'decision', id: row.id, projectId: row.projectId, title: row.title });
+      }
+      const messages = ids('message');
+      if (messages.length) {
+        const m = schema.projectMessages;
+        for (const row of await db.select({ id: m.id, projectId: m.projectId, conversationId: m.conversationId }).from(m)
+          .where(and(eq(m.workspaceId, scope.workspaceId), inArray(m.id, messages), isNull(m.removedAt), within(m.projectId))))
+          found.push({ kind: 'message', id: row.id, projectId: row.projectId, title: '', conversationId: row.conversationId });
+      }
+      return found;
+    },
+
+    /**
+     * Keeps the objects a tool result of the run returned to be cited (C-62), each once, only while the run is in flight: a result that arrives as
+     * the run ends finds it ended (the run's row is share-locked) and keeps nothing; 0074's trigger deletes them when it ends.
+     */
+    async addCites(runId: string, cites: readonly { kind: 'doc' | 'task' | 'decision' | 'message'; id: string }[]) {
+      if (!cites.length) return;
+      const kinds = cites.map((cite) => cite.kind);
+      const ids = cites.map((cite) => cite.id);
+      await db.execute(sql`INSERT INTO personal_run_cites (run_id, kind, object_id)
+        SELECT r.id, c.kind, c.object_id FROM personal_runs r, unnest(${sql.param(kinds)}::text[], ${sql.param(ids)}::uuid[]) AS c(kind, object_id)
+        WHERE r.id = ${runId} AND r.status IN ('reading', 'dispatching') FOR SHARE OF r
+        ON CONFLICT DO NOTHING`);
+    },
+
+    /** The objects the run's tools returned to be cited (C-62), as `kind:id`. */
+    async returnedCites(runId: string) {
+      const c = schema.personalRunCites;
+      return (await db.select({ kind: c.kind, id: c.objectId }).from(c).where(eq(c.runId, runId))).map((row) => `${row.kind}:${row.id}`);
+    },
+
     async thought(sketchId: string, thoughtId: string) {
       const t = schema.sketchThoughts;
       const [row] = await db.select({ id: t.id, sketchId: t.sketchId, version: t.version, text: t.text,
@@ -539,7 +604,7 @@ export function personalRunRows(db: DbExecutor) {
       return Boolean(row);
     },
 
-    /** The "What it may do" (F-036 AG-3: one row on each agent's page) of this agent of the owner, or null when it is gone. */
+    /** The Ask me first (F-036 AG-3: one row on each agent's page) of this agent of the owner, or null when it is gone. */
     async assistantMayDo(ownerUserId: string, agentId: string): Promise<AgentMayDo | null> {
       const [row] = await db.select({ mayDo: k.mayDo }).from(e).innerJoin(k, eq(k.id, e.connectionId)).innerJoin(ag, eq(ag.id, e.agentId))
         .where(and(eq(e.ownerUserId, ownerUserId), eq(e.agentId, agentId), isNull(ag.revokedAt), isNull(k.revokedAt)));

@@ -142,6 +142,7 @@ function scene(options: Scene = {}, checked = true) {
       return { ...project, id: row.id, name: row.name, visibility: row.visibility };
     },
     aiPolicies: async () => { log('projects.aiPolicies'); return [{ projectId: PROJECT, state: 'allowed' as const, changedAt: now, changedBy: null }]; },
+    icons: async () => { log('projects.icons'); return new Map(); },
     lockAiPolicy: async () => { log('projects.lockAiPolicy'); return { projectId: PROJECT, state: 'allowed' as const, epoch: 3 }; },
     updateAiPolicy: async () => { log('projects.updateAiPolicy'); return { epoch: 4 }; },
   };
@@ -418,7 +419,7 @@ describe('the remaining mutations, and the check that every port is bound to its
     const s = scene();
     const renamed = await renameProject(human(OWNER), PROJECT, { name: ' Payroll ' }, s.db, s.ports);
     assert.deepEqual([renamed.name, renamed.version], ['Payroll', 2]);
-    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.rename', ...EVENT_LAST, 'projects.aiPolicies', 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.rename', ...EVENT_LAST, 'projects.aiPolicies', 'projects.icons', 'commit']);
     const blank = scene();
     await assert.rejects(renameProject(human(OWNER), PROJECT, { name: '  ' }, blank.db, blank.ports), InvalidInputError);
   });

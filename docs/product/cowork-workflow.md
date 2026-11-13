@@ -30,9 +30,8 @@ happens when several agents meet in one task. Local clients are in
 - An agent working on a task may split it into subtasks.
 - Subtasks for its owner or its owner's agents are created directly, with Undo.
 - Subtasks for other people are proposals that wait for the owner's OK: [Approve], [Edit] and
-  [Skip], and Approve all for a group. An approved subtask is assigned to that person, and their
-  own "When someone assigns a task to me" setting decides whether one of their agents takes it
-  (AG-5).
+  [Skip], and Approve all for a group. An approved subtask is assigned to that person; only they
+  give it to one of their agents, with its Owner field (AG-5, #1419).
 
 ## TA-3 — Questions between agents
 
@@ -41,7 +40,7 @@ happens when several agents meet in one task. Local clients are in
 - The answering agent uses only what all of the task's people can see. Its owner pays for the
   answer, sees it live and can delete it.
 - A question is not an instruction. The answering agent replies within its own owner's rights and
-  "What it may do", and never changes anything because another agent asked ([coordinator default C-13](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  Ask me first switch, and never changes anything because another agent asked ([coordinator default C-13](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   Messages from anyone but an agent's owner are context only (AG-2).
 - **No loops.** Each exchange has a bounded number of turns, a technical limit nobody meets in
   normal use (#841). A stalled exchange returns to the people with one line.
@@ -67,8 +66,8 @@ did it, and the admin cannot prompt it.
 - The gate of a formal co-work review verdict pinned to a pull request head (the review gate of F-016's CO-4
   and F-018's "formal review/check gates"). Its removal is a **coordinator default, not a founder decision**
   ([coordinator default C-9](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)), made under F-036 after Hubert said the local client "must not be complicated or different"
-  from the agents (2026-11-03). Under the new model, review is the agent's "What it may do" ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)):
-  with Ask me first (and with Only read) the task is handed back to its owner, "Ready for you to
+  from the agents (2026-11-03). Under the new model, review is the agent's Ask me first switch ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)):
+  with Ask me first on the task is handed back to its owner, "Ready for you to
   check". A separate reviewer is optional, for example a subtask for a Reviewer agent, which is
   an ordinary agent. GitHub's own reviews and checks stay GitHub's (LC-4). Hubert can reinstate
   the gate. Nothing waits for a verdict any more and the project's Review rule is gone (#959); the

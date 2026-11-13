@@ -13,7 +13,7 @@ proposed on 2026-10-05. This guide describes Flux v0.2.
 ## What you can rely on in v0.2
 
 A person's own Claude Code, Codex or other MCP client signs in with Flux OAuth in one step and acts as that
-person: it has the person's rights, in the spaces where AI is on, and one **What it may do** setting
+person: it has the person's rights, in the spaces where AI is on, and one **Ask me first** switch
 ([local Claude Code and Codex](../product/mcp-cowork.md)). v0.2 has no scopes to choose, no capability switches and no
 per-project grants.
 The [single-provider F-024 amendment](../product/mcp-identity.md) keeps one
@@ -102,8 +102,8 @@ format version.
   scope, and the person chooses no project and no capability. On every call the server checks again that the
   connection is live, then checks the owner's own rights, in the spaces where AI is on. A client never sees or
   changes more than its owner can.
-- **"What it may do" is the owner's.** The connection starts at **Do it and tell me**; the owner sets **Only read**
-  or **Ask me first** in Settings → AI. Deleting and other people's things always wait for the owner's OK, in the
+- **Ask me first is the owner's.** The connection starts with it off (**Do it and tell me**); the owner turns
+  **Ask me first** on in Settings → AI, and then every change waits for their OK. Deleting and other people's things always wait for the owner's OK, in the
   owner's signed-in session; a client's token cannot approve its own waiting change.
 - **Revocation is immediate.** When the owner revokes the connection, the next
   request is refused with 403.
@@ -130,7 +130,6 @@ text. The codes in the contract are:
 | Code | Meaning | What to do |
 | --- | --- | --- |
 | `AGENT_EXECUTION_UNAVAILABLE` | The owner has no current access that covers this action. | Tell the owner; do not look for another path. |
-| `AGENT_ONLY_READS` | The owner set "What it may do" to Only read. | Change nothing and say what you would change. |
 | `VERSION_CONFLICT` | The object changed since you read it. | Read it again and reapply only your change. |
 | `SOURCE_VERSION_CONFLICT` | The source you cited is no longer current. | Read the current version and cite that. |
 | `TASK_PREREQUISITES_UNMET` | A prerequisite task is not done. | Finish or report the prerequisite first. |
@@ -146,7 +145,7 @@ HTTP-level failures:
   `WWW-Authenticate` challenge that points to the resource metadata.
 - **403:** the connection was revoked, or the OAuth client was disabled.
 
-In Flux, the owner sees each connection as a row of **Settings › AI**, with its **What it may do** tag and **Disconnect**, which
+In Flux, the owner sees each connection as a row of **Settings › AI**, with its tag ("Do it and tell me" or "Ask me first") and **Disconnect**, which
 revokes it at once. A change a client made shows its change line ("Ada · via Claude Code") with Undo where it was made.
 
 ## EXT-2: read a project export

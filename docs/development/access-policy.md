@@ -101,7 +101,7 @@ An agent's rights are exactly its owner's ([F-036](../product/assistant.md) AG-3
 its owner's current level, it holds no grant of its own, and it acts only while not revoked. It
 stops entirely when the owner leaves the workspace or becomes a guest, even with a grant on the
 space: a guest has no agents and no AI (F-036 AG-2). Whatever the owner loses, the agent loses on
-its next call. "What it may do" narrows what an agent does inside those rights and never adds any.
+its next call. Ask me first makes an agent's changes wait inside those rights and never adds any.
 
 **An agent never works outside its owner's current access.** It reads and writes a space's maps and docs at its owner's current level, and a private map is never an agent's: only its person creates one. After the owner's grant is removed, what the agent had in that space answers `404` and leaves its lists and counts.
 
@@ -220,7 +220,9 @@ isolation. What is guaranteed:
   count and the page are separate statements) see a consistent snapshot of committed
   rows as of that statement. A change that commits between the count and the page
   of one request can make them differ by that change. Nothing is cached, so the next
-  request, event delivery or job step always evaluates fresh.
+  request, event delivery or job step always evaluates fresh. A person's unlocked check of a space reads the space, their role
+  in its company and their level in one statement (`readProjectAsPerson`, #1429), the same facts the three reads of a locked
+  or an agent's check give, from one snapshot.
 
 `app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
@@ -387,9 +389,9 @@ There are no agent project grants, standing project policy or requests to let an
 consent selects which of the owner's projects a local client works in and can never add rights.
 
 There are no standing grants (#859): every action of a local client runs as the agent under the owner's current level,
-the connection's consent and the agent's "What it may do", checked inside the action's transaction.
+the connection's consent and the agent's Ask me first, checked inside the action's transaction.
 
-`PATCH /api/v1/agent-connections/:id { mayDo }` sets "What it may do" (`read`, `act`, `ask`). Only
+`PATCH /api/v1/agent-connections/:id { mayDo }` turns Ask me first on (`ask`) or off (`act`); "Only read" went in #1419. Only
 the owner, in their own signed-in session, can; everyone else gets `404`, and a bearer or run token
 never reaches it. How each mode behaves is in [personal runs](personal-runs.md).
 
@@ -397,7 +399,7 @@ A local client's changes follow the assistant's: the change log (`assistant_chan
 client, its connection. A change that would wait is kept with its exact call and shown in the owner's Inbox, one item
 per client; only the owner, in their own signed-in session, approves, edits or skips it, and Approve re-executes the
 call with the owner's rights, the connection and the target's version checked again. The client's token has no route
-to any of it. `AGENT_ONLY_READS` is the only refusal: a client set to Only read changes nothing, and tells its owner.
+to any of it.
 
 ## Events
 
@@ -443,9 +445,9 @@ actor is stored, never sent). Their tabs forget every kept answer, read the shel
 lands on the project list. Entering a space also reads the space itself, never a kept answer (`projectShellLoader`, through `GET .../space-shell`, #1109).
 
 **One read per screen (#1109).** `GET /api/v1/projects/:id/space-shell` (the space, its people, sketches, pages and work summary)
-and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices, sources, agents' questions and the roots' work
-associations) call each part's own use case with the caller's principal, so every part keeps its own access check; neither reads a
-table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
+and `GET /api/v1/projects/:id/conversation-view` (the newest roots, notices as far back as those roots, sources, agents' questions,
+the roots' work associations and the company's people without their last-active times, #1429) call each part's own use case with the
+caller's principal, so every part keeps its own access check; neither reads a table itself. A refusal of the space (404, 423) is the whole read's answer; a context part the person may not read is `null`, and the
 agents' questions are `null` while the space's AI is off (AG-10), as their own route refuses them.
 
 **Someone saw your messages (#862).** The first sight of messages in a space (`POST .../observations` that stores new

@@ -1,5 +1,6 @@
 import { joinsAddress } from './web-addresses.js';
 import { withoutInventedMarks } from './answer-marks.js';
+import { CITE_MARK_PATTERN, markKey, type CiteKind } from './cites.js';
 import { createHash } from 'node:crypto';
 import {
   AGENT_LIMITS,
@@ -188,29 +189,36 @@ export const centsToMicros = (value: number) => value * 10_000;
 
 export type { SuppliedSource } from './brief.js';
 
+/** What makes two citations one: the same message, task, thought, decision or page (a page cited at two sections is two places). */
+const refKey = (ref: AssistantSourceRef) => `${ref.type}:${ref.id}${ref.type === 'doc' && ref.section ? `#${ref.section.n}` : ''}`;
+
 /**
  * Splits model output into the answer body and the cited sources.
- * Citations count only for supplied labels and are renumbered `[1]`… in the order of `sources`.
+ * Citations count only for supplied labels (`[S3]`) and for the Flux marks (`[doc:ID#2]`, C-62) that `fluxRefs` resolved, by mark key, to an object the run
+ * may cite; both are renumbered `[1]`… in the order they stand, one number for an object however it was cited.
  */
-export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[]) {
+export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[], fluxRefs: ReadonlyMap<string, AssistantSourceRef> = new Map()) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
   // Marks the model invented (`[8]`, `[S9]` of no supplied source, `【3†source】`) are taken out first (#1222): what is left of `[n]` after the numbering
   // below is exactly a supplied source's.
   const raw = withoutInventedMarks(text.trim().slice(0, 100_000), new Set(byLabel.keys())).trim();
   // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
-  // reader can open exactly the cited object. Labels of sources that were not supplied are
+  // reader can open exactly the cited object. Labels of sources that were not supplied, and Flux marks of nothing the run may cite, are
   // removed: they point at nothing the audience could open.
   const marked = (separator: boolean) => {
-    const cited = new Map<string, AssistantSourceRef>();
-    const body = raw.replace(/\s?\[(S\d{1,3})\]/g, (marker, label: string) => {
-      const source = byLabel.get(label);
+    const cited: AssistantSourceRef[] = [];
+    const numbers = new Map<string, number>();
+    const body = raw.replace(new RegExp(String.raw`\s?\[(S\d{1,3})\]|${CITE_MARK_PATTERN.source}`, 'gu'), (marker: string, label: string | undefined, kind?: string, id?: string, section?: string) => {
+      const source = label !== undefined ? byLabel.get(label)?.ref : fluxRefs.get(markKey(kind!.toLowerCase() as CiteKind, id!, section ? Number(section) : null));
       // The space before a mark goes with it; a line break stays, so a mark at the start of a line does not join the line above.
       const before = marker.startsWith('\n') ? '\n' : '';
       if (!source) return before || (separator ? ' ' : '');
-      if (!cited.has(label)) cited.set(label, source.ref);
-      return `${marker.startsWith(' ') ? ' ' : before}[${[...cited.keys()].indexOf(label) + 1}]`;
+      const key = refKey(source);
+      let number = numbers.get(key);
+      if (number === undefined) { cited.push(source); number = cited.length; numbers.set(key, number); }
+      return `${marker.startsWith(' ') ? ' ' : before}[${number}]`;
     }).trim();
-    return { body, sources: [...cited.values()] };
+    return { body, sources: cited };
   };
   // A mark taken out never joins the text on its sides into a web address that was not there (#1149): then a space stands in its place.
   const plain = marked(false);

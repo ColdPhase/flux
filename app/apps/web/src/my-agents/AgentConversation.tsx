@@ -187,7 +187,7 @@ function ReportLine({ line, agent, newDay, onChanged }: { line: AgentChatMessage
 function AgentChatPane({ agent }: { agent: MyAgent }) {
   const touch = useMediaQuery(MEDIA.touch);
   // On the phone the shell's title row is the chat's header (Back, its face, its name and "Your agent · only you talk to it", #1356): the
-  // bar and the lock line below would say the same again.
+  // lock line below would say the same again.
   const phone = useMediaQuery(MEDIA.phone);
   const { me } = useShellData();
   const chat = useAgentChat(agent.id, me.user.id);
@@ -294,15 +294,10 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
 
   return (
     <div className="dm agc-pane" data-agent-conversation={agent.id}>
-      {/* The agent's bar and its schedules line stay above the history, so the line is in view whatever the chat holds (the drawing has it in the header). */}
+      {/* The schedules line stays above the history, so it is in view whatever the chat holds (the drawing has it in the header). The header names the agent
+          once, with its Settings in ⋯, on the computer as on the phone (#1356, #1419). */}
       <div className="agc__top">
         <div className="dm__in agc">
-          {phone ? null : (
-            <div className="agc__bar">
-              <span className="agc__who"><Kreska size={24} hue={agent.colour} /><b>{agent.name}</b><span className="agc__tag">Your agent</span></span>
-              <Link className="ui-link agc__settings" to={`/settings/agents/${agent.id}`}>Settings</Link>
-            </div>
-          )}
           <ScheduleHeader agent={agent} state={schedules} />
         </div>
       </div>

@@ -480,7 +480,7 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
-                expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-tag")).to_have_count(1)
+                expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-id")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-task__word")).to_contain_text("Doing")
                 self.assertTrue(self.row(page, CALIBRATE).locator('.ws-task__word').evaluate("""el => {
                     const parent = el.closest('.ws-item__s').getBoundingClientRect();

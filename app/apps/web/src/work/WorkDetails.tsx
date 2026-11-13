@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, StatusGlyph, useToast, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
@@ -17,7 +17,6 @@ import { NotNowButton, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, proposeDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
-import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { useAgentOwners } from '../agents/owners';
@@ -47,21 +46,18 @@ interface Context {
   members: WorkspaceMember[];
   /** The people in the space (F-037): the Owner and Waiting-for choices offer these and nobody else, so nobody is given a task unannounced. */
   spacePeople: { userId: string; name: string }[];
-  /** Your own agents that run on the server: the only agents the Owner field offers (#904). */
-  agents: { id: string; name: string }[];
 }
 
 const forbidden = (error: unknown) => error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error);
 
 async function loadContext(projectId: string, signal: AbortSignal): Promise<Context> {
   const project = await getProject(projectId, signal);
-  const [members, agents, audience] = await Promise.all([
+  const [members, audience] = await Promise.all([
     listWorkspaceMembers(project.workspaceId, signal).catch(forbidden),
-    ownTaskAgents(signal),
     listProjectPeople(projectId, signal).catch(() => [] as ProjectPerson[]),
   ]);
   const spacePeople = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
-  return { project, members, spacePeople, agents };
+  return { project, members, spacePeople };
 }
 
 function readable(error: unknown) {
@@ -273,7 +269,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // A thread opened from here offers "‹ Task #1" back to this task.
   const label = `Task ${taskNumber(item)}`;
   useEffect(() => { labelPanel(label); return () => labelPanel(null); }, [labelPanel, label]);
-  const { me } = useShellData();
+  // Your own agents (the shell's list, #904): the only agents the Owner field offers.
+  const { me, agents: ownAgents } = useShellData();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
   const writable = !reverted;
@@ -394,7 +391,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   // F-029 (#614): a workspace whose AI is off offers no agent as an owner. #904: only your own agents are offered; a task another
   // person's agent holds keeps showing its name as the current owner, without being a choice.
   const aiOff = useSpaceAi(context.project.id).blocked;
-  const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
+  const agents = aiOff ? [] : ownAgents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
     ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} id={humanId(person.value)} size="sm" /> })),
@@ -444,9 +441,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
   return (
     <div className="details wd wd--task" data-detail-kind="work" data-detail-id={item.id} data-version={item.version}>
-      <PanelMeta>{taskNumber(item)}</PanelMeta>
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll">
+        {/* "#4 · Rain barrel monitor" above the title, as drawn (§7 Tasks): the task's number and the space it belongs to (#1364). */}
+        <p className="wd__ref"><span className="ui-task-number">{taskNumber(item)}</span><span aria-hidden="true"> · </span><span className="ui-vh">, in </span>{context.project.name}</p>
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
