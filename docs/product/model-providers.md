@@ -89,16 +89,20 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     paged (observed with Codex 0.160.1, 2026-11-12): id, display name, description, whether it is
     the default, hidden, and its input types. Both are read by the supervisor in the person's own
     runtime, in memory, and reach Flux as ids, names and one-line notes; never a credential.
-  - **What shows.** Exactly that list, in the CLI's own order, minus two kinds: a hidden model
-    (Codex marks it; it is not in the CLI's own picker) and **Fable**, which can bill usage credits
-    that Flux cannot see (it is dropped where the list is read, and again where it is shown). A model
+  - **What shows.** Exactly that list, in the CLI's own order, minus three kinds: a hidden model
+    (Codex marks it; it is not in the CLI's own picker), **Fable**, which can bill usage credits
+    that Flux cannot see (it is dropped where the list is read, and again where it is shown), and a
+    Codex model that Flux's reviewed copy of the pinned catalog does not hold (no run could use it,
+    below; coordinator review of #1340, 2026-11-13: don't offer what will fail). A model
     whose id could be read as a flag or a path is not shown either. The CLI's own default is the
-    plan's default for a new agent, else its first model. A model the CLI lists carries the name the
+    plan's default for a new agent, else its first model; an agent without a model of its own runs on
+    that default once the list is known (so a CLI default Flux does not offer, such as Fable, never runs). A model the CLI lists carries the name the
     CLI gives it, on the agent's page and everywhere else, as an API key's models do.
   - **When it is read.** When the person signs in (and not before, so a plan that is not signed in
     shows no models), and again about every six hours, in the worker's existing runtime
     reconciliation tick: at most one plan per tick, a failed read tried again after five minutes,
-    and a read never waits behind a run (the supervisor answers busy, and the last list stays). Signing out or a different account clears it.
+    and a read never waits behind a run nor holds one up (the supervisor answers busy, and a run that
+    finds only a read in the person's lane ends it and goes next; the last list stays). Signing out or a different account clears it.
   - **When the CLI can't be reached** the last known list stays and keeps working; the agent page
     does not call it stale. A plan whose list was never read shows no models yet and its agents keep
     running on the model they have: nothing is paused for a list Flux could not read.
@@ -110,7 +114,8 @@ A person connects AI once, in Settings › AI. Their connections power all of th
     ([RT-5](ai-modes.md#rt-5--tools-only-flux-tools-the-clis-own-web-search-and-reading-the-web))
     is cut down for each run to the models the account's own `model/list` returns just before the
     run, so it can never offer a model the account lacks. A model the account lists that the pinned
-    catalog does not hold cannot run until the pin moves; the run ends with the line below.
+    catalog does not hold is not offered until the pin moves, and an agent already on it reads "no
+    longer offered by ChatGPT" and pauses, as above; a run that still names one ends with the line below.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
   to another model.
 - An API-key model that cannot call tools can answer but cannot change anything, and the picker

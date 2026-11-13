@@ -1299,7 +1299,9 @@ the composer. The right-hand phone above shows the sheet.
   model." Nothing switches by itself. A plan whose models Flux has not read yet shows one hint in
   place of the control, "Flux hasn't read this plan's models yet. It reads them when you sign in and
   again every few hours."; a CLI that can't be reached leaves the last list as it was, with no
-  notice. Fable never shows (it can bill usage credits Flux can't see).
+  notice. Fable never shows (it can bill usage credits Flux can't see), nor does a Codex model Flux's
+  pinned catalog has no review for. An agent on a model the list does not hold at all (a list read
+  after a new sign-in, or such a Codex model) reads the same "no longer offered" line and is paused.
 - **Messages:** each agent is a private conversation ("Only you talk to Planner. Others reach it
   by giving you a task.").
   - "Remembered · See what Planner remembers" confirms a memory.

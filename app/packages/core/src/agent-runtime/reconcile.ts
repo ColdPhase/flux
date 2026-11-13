@@ -35,6 +35,8 @@ export const MODELS_REFRESH_MS = 6 * 3600_000;
 export const MODELS_RETRY_MS = 5 * 60_000;
 /** Each reading starts the person's CLI for a few seconds: one plan per tick (every ten seconds), the oldest first. */
 export const MODELS_PER_TICK = 1;
+/** How many due plans a tick looks at to find one whose slot answered. */
+const MODELS_DUE_LOOKAHEAD = 8;
 
 export async function reconcileAgentRuntime({ config, store, manager, endLostRuns, signal, now = () => new Date(), log = () => undefined }: {
   config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort;
@@ -135,8 +137,10 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
   // Last, so a release never waits for a CLI. A slot that did not answer is skipped; its plans stay due.
   const reachable = new Map(sightings.value.flatMap((entry) => (entry.reachable ? [[entry.slot, entry.bootId] as const] : [])));
   const at = now();
-  const due = await store.modelsDue({ clients: config.clients, refreshBefore: new Date(at.getTime() - MODELS_REFRESH_MS), retryBefore: new Date(at.getTime() - MODELS_RETRY_MS), limit: MODELS_PER_TICK });
+  // A few more than one tick reads, so a plan whose slot is down does not keep the others waiting behind it.
+  const due = await store.modelsDue({ clients: config.clients, refreshBefore: new Date(at.getTime() - MODELS_REFRESH_MS), retryBefore: new Date(at.getTime() - MODELS_RETRY_MS), limit: MODELS_DUE_LOOKAHEAD });
   for (const item of due) {
+    if (report.modelsRead + report.modelsFailed >= MODELS_PER_TICK) break;
     const bootId = reachable.get(item.slot);
     if (!bootId) continue;
     live();

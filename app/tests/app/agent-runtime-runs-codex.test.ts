@@ -314,7 +314,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(flag(argv), 'gpt-6-luna');
     assert.ok(argv.indexOf('-m') < argv.indexOf('-'), 'before the prompt marker');
     assert.equal((await row(chosen.run.id)).model, 'gpt-6-luna');
-    await assert.rejects(chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
+    await assert.rejects(chooseModel(runs, human(owner), { connection: 'chatgpt_plan', model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6-Luna.');
 
     await resetFake(); await scenario('run_model_unavailable');
     const refused = await ask();

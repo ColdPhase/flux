@@ -649,6 +649,23 @@ describe('sign-in to Claude Code (T4 #279)', () => {
       assert.deepEqual(calls.filter((call) => call.startsWith('models')).map((call) => call.split(' ')[2]), ['claude_code', 'claude_code'], 'Codex is not on, so it is not read');
     });
 
+    test('a plan whose slot does not answer does not keep the others waiting behind it', async () => {
+      const { store, manager, connections, bindings, reported, calls, state } = memoryStore2();
+      reported.models = list;
+      const runtime = agentRuntimeUseCases(on, store, manager);
+      await reconcileAgentRuntime({ config: on, store, manager });
+      for (const owner of ['ada', 'bob']) await runtime.bind(owner);
+      for (const owner of ['ada', 'bob']) {
+        const binding = bindings.find((b) => b.ownerUserId === owner)!;
+        connections.push({ ownerUserId: owner, client: 'claude_code', bindingId: binding.id, state: 'signed_in', signInMethod: null, authMethod: null, plan: null, accountLabel: null,
+          signedInAt: new Date(), accountChangedAt: null, previousAccountLabel: null, signedOutAt: null, signOutFailed: null, fingerprint: null, revoked: false });
+      }
+      const down = bindings.find((b) => b.ownerUserId === 'ada')!.slot;
+      state.get(down)!.reachable = false;
+      assert.equal((await reconcileAgentRuntime({ config: on, store, manager })).modelsRead, 1, 'the other plan is read');
+      assert.deepEqual(calls.filter((call) => call.startsWith('models')).map((call) => call.split(' ')[1]), [bindings.find((b) => b.ownerUserId === 'bob')!.slot]);
+    });
+
     test('signing out, or signing in to another account, clears the list; the next tick reads the new account\'s', async () => {
       const { runtime, store, manager, connections, reported } = await owned();
       reported.models = list;

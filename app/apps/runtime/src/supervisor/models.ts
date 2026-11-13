@@ -1,8 +1,9 @@
 import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 import { MAX_PLAN_MODELS, MODEL_ID, PLAN_MODEL_LIMITS, type PlanModel, type RuntimeClient } from '@flux/runtime-protocol';
 import { openAppServer } from './app-server.js';
 import { asPerson, type Person } from './process.js';
-import { CLAUDE_MODELS_TEMPLATE, cliEnvironment, codexListOverrides } from './templates.js';
+import { catalogForAccount, CLAUDE_MODELS_TEMPLATE, cliEnvironment, CODEX_MODEL_CATALOG, codexListOverrides } from './templates.js';
 import type { SupervisorConfig } from './handlers.js';
 
 // The models the signed-in CLI offers its account (#1332, F-022 amended): read in the person's own slot, reduced to closed shapes and
@@ -104,13 +105,16 @@ export async function collectCodexModels(request: (method: 'model/list', params:
 }
 
 /** The account's models as Codex's app-server lists them, without Flux's catalog (it would answer with Flux's own); null when unreadable or empty. */
-export async function readCodexModels(config: SupervisorConfig, dir: string, person: Person): Promise<PlanModel[] | null> {
+export async function readCodexModels(config: SupervisorConfig, dir: string, person: Person, signal?: AbortSignal): Promise<PlanModel[] | null> {
   let session;
   try {
     session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: MODELS_TIMEOUT_MS, overrides: codexListOverrides(), person });
     const open = session;
+    // A run of the person's that needs the lane ends this read (#1332): the session is closed and the read is unavailable.
+    if (signal?.aborted) return null;
+    signal?.addEventListener('abort', () => open.close(), { once: true });
     const models = reduceCodexModels(await collectCodexModels((method, params) => open.request(method, params)));
-    return models.length ? models : null;
+    return models.length && !signal?.aborted ? models : null;
   } catch {
     return null;
   } finally {
@@ -118,9 +122,27 @@ export async function readCodexModels(config: SupervisorConfig, dir: string, per
   }
 }
 
+/**
+ * The account's Codex models that Flux's reviewed copy of the pinned catalog holds (#1332): only those can run (a run's catalog is cut from that
+ * copy), so a model the account lists that Flux has not reviewed is not offered; an agent already on it shows it is no longer offered. Null when
+ * the account's list or Flux's copy cannot be read, or none of the account's models is reviewed.
+ */
+export async function offeredCodexModels(config: SupervisorConfig, dir: string, person: Person, signal?: AbortSignal): Promise<PlanModel[] | null> {
+  const account = await readCodexModels(config, dir, person, signal);
+  if (!account) return null;
+  let reviewed: Set<string>;
+  try {
+    const cut = catalogForAccount(JSON.parse(await readFile(config.codexCatalogPath ?? CODEX_MODEL_CATALOG, 'utf8')) as unknown, account.map((model) => model.id));
+    reviewed = new Set((cut?.models ?? []).map((model) => model.slug as string));
+  } catch { return null; }
+  const offered = account.filter((model) => reviewed.has(model.id));
+  return offered.length ? offered : null;
+}
+
 /** The models of Claude Code's initialization answer; null when unreadable or empty. The process ends as soon as it has answered. */
-export function readClaudeModels(config: SupervisorConfig, dir: string, person: Person): Promise<PlanModel[] | null> {
+export function readClaudeModels(config: SupervisorConfig, dir: string, person: Person, signal?: AbortSignal): Promise<PlanModel[] | null> {
   return new Promise((resolve) => {
+    if (signal?.aborted) { resolve(null); return; }
     let settled = false;
     let pending: Buffer = Buffer.alloc(0);
     const child = spawn(config.cliPaths.claude_code, [...CLAUDE_MODELS_TEMPLATE],
@@ -135,6 +157,8 @@ export function readClaudeModels(config: SupervisorConfig, dir: string, person: 
     };
     const timer = setTimeout(() => finish(null), MODELS_TIMEOUT_MS);
     timer.unref();
+    // A run of the person's that needs the lane ends this read (#1332).
+    signal?.addEventListener('abort', () => finish(null), { once: true });
     child.stdout.on('data', (chunk: Buffer) => {
       pending = pending.length ? Buffer.concat([pending, chunk]) : chunk;
       for (;;) {
@@ -160,6 +184,9 @@ export function readClaudeModels(config: SupervisorConfig, dir: string, person: 
   });
 }
 
-/** The models of one CLI for the account signed in in the person's directory; null when it cannot say. */
-export const readPlanModels = (config: SupervisorConfig, client: RuntimeClient, dir: string, person: Person): Promise<PlanModel[] | null> =>
-  client === 'codex' ? readCodexModels(config, dir, person) : readClaudeModels(config, dir, person);
+/**
+ * The models of one CLI for the account signed in in the person's directory, as Flux offers them (for Codex, only the reviewed ones); null when it
+ * cannot say. `signal`: a run of the person's wants the lane, so the read ends at once.
+ */
+export const readPlanModels = (config: SupervisorConfig, client: RuntimeClient, dir: string, person: Person, signal?: AbortSignal): Promise<PlanModel[] | null> =>
+  client === 'codex' ? offeredCodexModels(config, dir, person, signal) : readClaudeModels(config, dir, person, signal);

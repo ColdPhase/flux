@@ -7,6 +7,7 @@ import {
   ASSISTANT_PLANS,
   AI_PROVIDERS,
   aiModelSearchesWeb,
+  assistantPlanModels,
   noLongerOffered,
   noLongerOfferedBy,
   type AddAgentMemoryCommand,
@@ -445,8 +446,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const problem = runtimeProblem(standing) ?? (planModelRetired(standing.models, enablement.assistantModel) ? 'model_retired' : null);
       if (problem) return { ok: false, problem, client };
       const vendor = runtimeVendor(client);
-      // The model is fixed when the request is sent (F-027 AST-11): a later change never reaches this run.
-      return { ok: true, fields: { reservedMicros: 0, provider: vendor.provider, model: modelOf(enablement) } };
+      // The model is fixed when the request is sent (F-027 AST-11): a later change never reaches this run. An agent without a model of its own runs
+      // on the plan's listed default once the list is known (#1332), so a CLI default Flux does not offer (Fable) never runs; else the CLI's own.
+      return { ok: true, fields: { reservedMicros: 0, provider: vendor.provider, model: enablement.assistantModel ?? (assistantPlanModels(standing.models).default || modelOf(enablement)) } };
     }
     const usableNow = await usableConnection(connections, providerEnabled, enablement);
     if (usableNow.problem) return { ok: false, problem: usableNow.problem, client: null };
@@ -750,7 +752,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         if (!current) throw agentNotFound();
         if (change.name !== undefined && change.name !== current.name) await agents.rename(current.id, change.name);
         if (change.model) {
-          const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${modelNameOf(current.model)}.`);
+          // A plan's model goes by the name its CLI gives it (#1332), an API key's by Flux's.
+          const plan = clientOfPlan(current.model.connection) ? (await ownConnections(owner)).find((item) => item.ref === current.model.connection) : undefined;
+          const was = plan?.account.options.find((option) => option.id === current.model.model)?.name ?? modelNameOf(current.model);
+          const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${was}.`);
           // Choosing the model it already has changes nothing (no new version of the agent).
           if (current.model.connection !== chosen.item.ref || current.model.model !== chosen.model) await agents.change(current.id, placement(chosen.item, chosen.model));
         }

@@ -669,7 +669,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
     for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id']) {
       await assert.rejects(chooseModel(runs, human(owner), { connection: 'claude_plan', model: bad }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
-        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', bad);
+        && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku 4.5.', bad);
     }
     // Not even an id (an empty or non-text value) is refused as input before the account's list is asked.
     for (const bad of ['', 42]) {

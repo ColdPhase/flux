@@ -187,9 +187,9 @@ describe('what the owner may choose, and what pauses an agent, comes from the pl
     const agent = await runs().enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
     assert.deepEqual(agent.model, { connection: 'claude_plan', model: 'sonnet' });
     const refuse = (model: string) => runs().updateAgent(human(owner), agentId, { connection: 'claude_plan', model });
-    await assert.rejects(refuse('gpt-6.1-sol'), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Your Claude plan doesn\'t offer that model. It is still Sonnet.' });
+    await assert.rejects(refuse('gpt-6.1-sol'), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Your Claude plan doesn\'t offer that model. It is still Sonnet 5.5.' });
     await assert.rejects(refuse('claude-fable-5-1'), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
-    await assert.rejects(refuse('haiku'), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Haiku 4.5 is no longer offered by Claude. It is still Sonnet.' });
+    await assert.rejects(refuse('haiku'), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Haiku 4.5 is no longer offered by Claude. It is still Sonnet 5.5.' });
     const choice = await runs().model(human(owner));
     assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.retired ?? false]), [['opus', false], ['sonnet', false], ['haiku', true]], 'listed, so its agents can say why they are paused');
     assert.equal((await refuse('opus')).model.model, 'opus', 'a negative control: a listed model is accepted');

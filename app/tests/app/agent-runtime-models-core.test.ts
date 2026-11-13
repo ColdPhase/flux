@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, parseSupervisorFrame, parseSupervisorRequest, type PlanModel, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
 import { FAKE_CLAUDE_MODELS } from '../../apps/runtime/src/fakes/fake-models.js';
-import { collectCodexModels, plainLine, reduceClaudeModels, reduceCodexModels } from '../../apps/runtime/src/supervisor/models.js';
+import { collectCodexModels, MODELS_TIMEOUT_MS, plainLine, reduceClaudeModels, reduceCodexModels } from '../../apps/runtime/src/supervisor/models.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CLAUDE_MODELS_TEMPLATE } from '../../apps/runtime/src/supervisor/templates.js';
 import { portOf, startTestSlot, type TestSlot } from './support/runtime-slot.js';
@@ -170,6 +170,28 @@ describe('the supervisor reads the models of the signed-in CLI in the person\'s 
     const argv = (recorded.find((entry) => entry.event === 'app_server')!.argv as string[]);
     assert.ok(argv.includes('app-server') && !argv.some((value) => value.startsWith('model_catalog_json')), 'no catalog of Flux\'s on this session');
     assert.ok(argv.includes('features.plugins=false'), 'the reviewed features stay off');
+  });
+
+  test('Codex: a model the account lists that Flux\'s reviewed catalog does not hold is not offered; an account with only such models has none', async () => {
+    const bindingId = await bound();
+    // `gpt-7-nova` is the account's but not in the pinned catalog Flux reviewed, so no run could use it.
+    await writeFile(join(homeOf(bindingId, 'codex'), 'fake-models.json'), JSON.stringify([codex('gpt-7-nova', 'GPT-7-Nova', 'Newer than the pin.', { isDefault: true }), codex('gpt-6-luna', 'GPT-6-Luna', 'Fast.')]));
+    assert.deepEqual(modelsOf(await ask({ bindingId, client: 'codex' })).map((model) => model.id), ['gpt-6-luna']);
+    await writeFile(join(homeOf(bindingId, 'codex'), 'fake-models.json'), JSON.stringify([codex('gpt-7-nova', 'GPT-7-Nova', 'Newer than the pin.')]));
+    assert.deepEqual(await ask({ bindingId, client: 'codex' }), { ok: false, code: 'not_available' });
+  });
+
+  test('a run that finds only a models read in the person\'s lane ends the read and goes next: the read answers busy, the run runs (#1332)', async () => {
+    const bindingId = await bound();
+    await writeFile(join(homeOf(bindingId, 'claude_code'), 'fake-scenario'), 'models_hang');
+    const reading = ask({ bindingId, client: 'claude_code' });
+    for (let tries = 0; tries < 200 && !(await callsOf(bindingId, 'claude_code')).some((entry) => entry.event === 'initialize'); tries += 1) await new Promise((done) => setTimeout(done, 25));
+    const started = Date.now();
+    const ran = await callSupervisor(target(), { kind: 'run', bindingId, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc', tools: ['flux_get_doc'],
+      caps: { maxTurns: 10, wallClockSeconds: 300, idleSeconds: 60, maxAnswerBytes: 16384 } }, { timeoutMs: 60_000 });
+    assert.ok(ran.ok && ran.result.kind === 'run', `the run was not refused as busy: ${JSON.stringify(ran)}`);
+    assert.deepEqual(await reading, { ok: false, code: 'busy' }, 'the read gave way; the worker keeps the last list');
+    assert.ok(Date.now() - started < MODELS_TIMEOUT_MS, 'the run did not wait out the read');
   });
 
   test('a list the test seeds is what shows: a changed account, and a CLI that lists only Fable or nothing is not available', async () => {

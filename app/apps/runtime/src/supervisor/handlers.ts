@@ -120,7 +120,8 @@ async function signOut(config: SupervisorConfig, client: RuntimeClient, dir: str
 const unfinishedReleases = new Map<string, Record<RuntimeClient, StepOutcome>>();
 
 /** Runs one request already parsed against the closed set. */
-export async function handle(config: SupervisorConfig, request: SupervisorRequest, send: Send): Promise<Outcome> {
+/** `signal`: only a `models` read takes one; it is aborted when a run of the person's needs the lane (#1332). */
+export async function handle(config: SupervisorConfig, request: SupervisorRequest, send: Send, signal?: AbortSignal): Promise<Outcome> {
   switch (request.kind) {
     case 'bind': {
       // A retried bind of the same binding is accepted.
@@ -146,7 +147,9 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       const open = await openBinding(config.dataDir, request.bindingId, config.separate);
       if (!open.ok) return { error: open.code };
       if (!(await installed(config.cliPaths[request.client]))) return { error: 'not_installed' };
-      const models = await readPlanModels(config, request.client, open.dir, open.person);
+      const models = await readPlanModels(config, request.client, open.dir, open.person, signal);
+      // Ended for a run that needed the lane: busy, as if it had never started; the worker keeps the last list.
+      if (signal?.aborted) return { error: 'busy' };
       return models ? { result: { kind: 'models', client: request.client, models } } : { error: 'not_available' };
     }
     case 'login':

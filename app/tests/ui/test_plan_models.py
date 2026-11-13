@@ -195,6 +195,20 @@ class PlanModels(unittest.TestCase):
         expect(page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio")).to_have_count(0)
         expect(page.get_by_role("combobox", name="Claude plan")).to_have_count(0)
 
+    def test_06_an_agent_on_a_model_the_list_does_not_hold_reads_no_longer_offered(self) -> None:
+        # A list read after a new sign-in, or a Codex model Flux has not reviewed: the agent's model is in no list, and it is paused all the same.
+        page = self.page()
+        self.stub(page, account="claude_plan", label="Claude plan", company="Claude", options=CLAUDE)
+        page.goto(f"/settings/agents/{type(self).agent['id']}")
+        model = page.get_by_role("combobox", name="Claude plan")
+        expect(model).to_contain_text("no longer offered by Claude")
+        expect(page.get_by_role("note").filter(has_text=re.compile(r"is no longer offered by Claude\. Planner is paused until you choose another model\."))).to_be_visible()
+        self.assertEqual(sorted(values(model)), sorted([self.own(), "haiku", "opus", "sonnet"]))
+        box = open_select(model)
+        expect(box.get_by_role("option", name=re.compile("no longer offered by Claude$"))).to_have_attribute("aria-disabled", "true")
+        page.keyboard.press("Escape")
+        shot(page, named("plan-models-unlisted-1440"))
+
 
 if __name__ == "__main__":
     unittest.main()

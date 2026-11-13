@@ -193,9 +193,11 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   most 64 entries of an id the protocol accepts, a display name and a short note; hidden models
   (Codex) and **Fable** (it can bill usage credits that Flux cannot see) are dropped there.
   Nothing the CLI prints is logged. It is read when the person signs in and about every six hours
-  by the worker's reconciliation tick, one plan per tick, and it never waits behind a run: the
-  request takes the person's lane only when it is free and answers `busy` otherwise, and the
-  worker keeps the last list.
+  by the worker's reconciliation tick, one plan per tick, and it never waits behind a run nor holds
+  one up: the request takes the person's lane only when it is free and answers `busy` otherwise, a
+  run that finds only that read in the lane ends it (the read answers `busy`) and goes next, and the
+  worker keeps the last list. For Codex, only the models Flux's reviewed copy of the pinned catalog
+  holds are passed on (no run could use another).
 - **Codex's own MCP resource readers go through to Flux** (#1165, decided 2026-11-10). The pinned
   Codex offers the model `list_mcp_resources`, `list_mcp_resource_templates` and `read_mcp_resource`
   whenever an MCP server is configured, and no setting removes them (codex-rs at rust-v0.160.1, read

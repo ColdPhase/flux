@@ -354,7 +354,8 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
   The worker's reconciliation tick asks the signed-in person's slot for the models their CLI offers, when they sign in and then about every six
   hours (a failed read again after five minutes), at most one plan per tick (every ten seconds) so a runtime with many people never starts
   many CLIs at once. Reading starts the CLI for a few seconds as that person (Claude Code: its headless initialization, no model call; Codex:
-  `app-server` `model/list`), inside their own lane: while a run holds it the request is answered *busy* and the last list stays. A Codex run
+  `app-server` `model/list`), inside their own lane: while a run holds it the request is answered *busy* and the last list stays, and a run that arrives during a read ends
+  the read and goes next. Codex models that Flux's reviewed copy of the pinned catalog does not hold are not offered until the pin moves. A Codex run
   also reads `model/list` once just before it starts, to cut its model catalog down to what the account offers. If a CLI cannot be reached, the
   last list stays; Flux keeps no model list of its own.
 - **No Flux limits** (#843). Flux sets no runs a day, no five-minute clock, no step count and no change limit
