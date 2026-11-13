@@ -88,8 +88,8 @@ async function runFileBody(db: Database, current: FileServices, claims: ToolCall
     return { body: Readable.from([bytes]), size: bytes.length };
   }
   const noDirectory = 'You have no working directory of your own here, so give the file\'s `content` instead.';
-  // An API-key run keeps the engine label `server` whether the worker's own loop or pi in the runtime runs it (#1441): only the runtime
-  // knows. A run of the worker's loop is in no slot, so the supervisor answers that it is not running there.
+  // An API-key run keeps the engine label `server` and runs in pi in the runtime (#1441, RT-1). One the runtime cannot reach (it has ended,
+  // or its place is gone) is told to give the file's text, as pi still has it.
   if (!current.manager) refuse(engine === 'server' ? noDirectory : READ_WORDS.no_sandbox);
   const target = await runtimeTarget(db, claims.ownerUserId);
   if (!target) refuse(engine === 'server' ? noDirectory : READ_WORDS.unreachable);
