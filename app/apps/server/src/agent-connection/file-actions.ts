@@ -143,7 +143,7 @@ async function attach(db: Database, input: { projectId: string; clientCommandId:
   let made = false;
   let waiting = false;
   try {
-    const value = await nativeActionExecutor(db, claims)({ ...input, content: undefined, ...(kept ? { assistantCall: kept } : {}) }, OPERATION, null, { name, ...(input.path ? { path: input.path } : {}) } as AgentJsonValue, async ({ transaction }) => {
+    const value = await nativeActionExecutor(db, claims)({ projectId: input.projectId, clientCommandId: input.clientCommandId, sources: input.sources, ...(kept ? { assistantCall: kept } : {}) }, OPERATION, null, { name, ...(input.path ? { path: input.path } : {}) } as AgentJsonValue, async ({ transaction }) => {
       const [row] = await fileRows(transaction as DbExecutor).lockFiles([fileId]);
       if (!row || row.state !== 'ready' || row.messageId !== null || row.uploader.id !== claims.ownerUserId) throw new DomainError(409, 'FILE_NOT_KEPT', 'The file was not kept; attach it again.');
       made = true;
