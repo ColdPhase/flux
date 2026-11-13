@@ -69,6 +69,8 @@ async function runOn(kind: AiProviderKind, model: string, options: { dailyBudget
   connections.connect(ownerId, connectionId, { provider: kind, model, price: PRICE, dailyBudgetCents: options.dailyBudgetCents ?? 1_000,
     baseUrl: kind === 'openai_compatible' ? `${mockUrl}/compat/v1` : null });
   const id = randomUUID();
+  // One working run per owner (their lane): the run before this one has ended.
+  await pool.query("UPDATE personal_runs SET status = 'completed', completed_at = now() WHERE owner_user_id = $1 AND status IN ('reading', 'dispatching')", [ownerId]);
   await pool.query(`INSERT INTO personal_runs (id, workspace_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind, prompt, reserved_micros,
     provider, model, engine, status, connection_id) VALUES ($1, $2, $3, $4, $5, 'gateway-test', 'ask', 'gateway test', 0, $6, $7, 'runtime', 'dispatching', $8)`,
   [id, workspaceId, ownerId, agentId, randomUUID(), kind, model, connectionId]);
@@ -289,7 +291,7 @@ describe('tokens', () => {
     assert.equal((await call('/anthropic/v1/messages', done.token, body)).status, 403);
     assert.equal(await gateway.issue(done.id), null, 'no token for a run that is not working');
     const server = await runOn('anthropic', 'claude-sonnet-5');
-    await pool.query("UPDATE personal_runs SET engine = 'server' WHERE id = $1", [server.id]);
+    await pool.query("UPDATE personal_runs SET engine = 'server', reserved_micros = 1 WHERE id = $1", [server.id]);
     assert.equal(await gateway.issue(server.id), null, 'no token for a run of the worker\'s own engine');
     assert.equal((await call('/anthropic/v1/messages', server.token, body)).status, 403);
   });
