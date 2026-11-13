@@ -11,6 +11,8 @@ import { MODEL_GATEWAY_LIMITS, parseModelGatewayUrl, parseRuntimeEngines, parseS
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { classifyPiError, gatewayProvider, piArgs, PI_OWN_TOOLS } from '../../apps/runtime/src/supervisor/pi.js';
 import { RUN_BRIEF_OWN_TOOLS } from '../../apps/runtime/src/supervisor/run.js';
+import { buildApp } from '../../apps/server/src/app.js';
+import { loadServerConfig } from '../../apps/server/src/config.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRuntimeAvailability } from '../../apps/server/src/personal-runs/runtime.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -19,7 +21,6 @@ import { managerPersonalRuntime } from '../../apps/worker/src/personal-runs/runt
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { startFakeGateway, type FakeGateway } from './support/fake-gateway.js';
-import { apiUrl } from './support/http.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { portOf, slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
@@ -43,6 +44,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
   let lastPi: { stderr: string; mcpLog: string; events: string[] } | null = null;
   const why = async (runId: string) => JSON.stringify({ row: await row(runId), requests: gateway.requests.map((request) => ({ path: request.path, tools: request.tools })), pi: lastPi }, null, 1).slice(0, 20_000);
   let processor: ReturnType<typeof createPersonalRunProcessor>;
+  let apiUrl = ''; let closeApp: () => Promise<void> = async () => undefined;
 
   const ask = (prompt = 'Make a page of the notes') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
   const row = async (runId: string) => (await pool.query('SELECT status, end_reason, answer_body, cost_state, engine FROM personal_runs WHERE id = $1', [runId])).rows[0] as Record<string, unknown>;
@@ -50,11 +52,22 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
 
   before(async () => {
     gateway = await startFakeGateway();
+    // The manager first, then an API of this file's own that reaches it (flux_attach_file reads a run's scratch through it, #1437), then
+    // the slot, whose pi reaches that API's MCP route.
+    const slots = new Map<string, { host: string; port: number; secret: string }>();
+    manager = createManagerServer({ secret: SECRET, slots, log: () => undefined });
+    await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
+    const managerUrl = `http://127.0.0.1:${(manager.address() as AddressInfo).port}`;
+    const env: NodeJS.ProcessEnv = { ...process.env, FLUX_AGENT_RUNTIME: 'pi', FLUX_RUNTIME_MANAGER_URL: managerUrl, FLUX_RUNTIME_MANAGER_SECRET: SECRET,
+      FLUX_AUTH_SECRET: process.env.FLUX_AUTH_SECRET ?? `pi-runs-${'x'.repeat(40)}`, FLUX_PUBLIC_ORIGIN: process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:8080' };
+    const app = await buildApp(loadServerConfig(env, '/nonexistent/flux_background_key'), 'packages/db/migrations');
+    await app.listen({ port: 0, host: '127.0.0.1' });
+    apiUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
+    closeApp = () => app.close();
     slot = await startTestSlot({ slot: `runtime-7${Math.floor(Math.random() * 90 + 10)}`, enabled: [], mcpUrl: `${apiUrl}/mcp`, ownTools: true,
       pi: { modelOrigin: gateway.url, diagnostics: (what) => { lastPi = what; } } });
-    manager = createManagerServer({ secret: SECRET, slots: new Map([[slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret }]]), log: () => undefined });
-    await new Promise<void>((done) => manager.listen(0, '127.0.0.1', done));
-    config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: `http://127.0.0.1:${(manager.address() as AddressInfo).port}`, secret: SECRET } };
+    slots.set(slot.config.slot, { host: '127.0.0.1', port: portOf(slot.url), secret: slot.config.secret });
+    config = { clients: [], keys: true, commercialTermsAgreedOn: null, idleDays: null, manager: { url: managerUrl, secret: SECRET } };
     await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
     // Other files leave runtimes of their own in this database: the owner's place is made on this one (pi needs no sign-in, only the place).
     owner = await person('rt-pi');
@@ -79,6 +92,7 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     await new Promise<void>((done) => manager.close(() => done()));
     await slot.close();
     await gateway.close();
+    await closeApp();
   });
   beforeEach(async () => {
     compute.dispatched = [];
