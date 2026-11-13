@@ -15,9 +15,9 @@ no-op but recognised only the top-level error message, while the Drizzle adapter
 PostgreSQL error in a `DrizzleQueryError` whose `cause` holds the code. A patch of the seed
 catch fixed it (#228), and `ensureOauthResource` inserted the row first (#316).
 
-## Today (Better Auth 1.7.18)
+## Today (Better Auth 1.7.19)
 
-Read from the installed `@better-auth/oauth-provider@1.7.18` package on 2026-11-08
+Read from the installed `@better-auth/oauth-provider@1.7.18` package on 2026-11-08 (unchanged in 1.7.19, compared 2026-11-13)
 (`seedResources` and `seedResourcesOnce` in `dist/authorize-*.mjs`); this is an observation of
 the pinned version, not a documented guarantee, so a Better Auth upgrade re-runs the tests below.
 
