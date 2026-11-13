@@ -8,7 +8,7 @@ import uuid
 from urllib.parse import parse_qs, urlsplit
 
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 from test_work_pagination import api
 
 
@@ -76,19 +76,20 @@ class OverviewWorkJourney(unittest.TestCase):
         return overview
 
     def open(self, page):
-        # An open thread is the one panel; on a phone it is a modal sheet that covers the header, so the conversation's
-        # Details are opened at a computer's width and the window is then narrowed to the phone's (#488).
+        # A message with more linked objects than it shows has "view linked objects" (#867): the one way to this panel (a space and its thread
+        # have no panel of their own, #1419). On a phone the open thread is a modal sheet that covers the stream, so the panel is opened at a
+        # computer's width and the window is then narrowed to the phone's (#488).
         phone = page.viewport_size["width"] <= 640
         size = page.viewport_size
         if phone: page.set_viewport_size({"width": 1500, "height": 900})
         page.goto(f"/projects/{self.project}/conversations/{self.conversation}")
         expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
-        # Details take the thread's place in the one panel.
-        open_details(page)
+        message = page.locator(f"#message-{self.m0}"); message.scroll_into_view_if_needed(); message.hover()
+        message.get_by_role("button", name=re.compile("view linked objects")).click()
         if phone:
             self.ready(page)
             page.set_viewport_size(size)
-            expect(page.get_by_role("dialog", name="Details")).to_be_visible()
+            expect(page.get_by_role("dialog", name="Linked objects")).to_be_visible()
         return self.ready(page)
 
     def identities(self, page):
@@ -99,7 +100,7 @@ class OverviewWorkJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.page(phone); observed = []
                 def collect(response):
-                    if response.status == 200 and ("/work-relations?" in response.url or "/work-associations?" in response.url and parse_qs(urlsplit(response.url).query).get("conversationId")):
+                    if response.status == 200 and ("/work-relations?" in response.url or "/work-associations?" in response.url and parse_qs(urlsplit(response.url).query).get("messageIds")):
                         observed.append((response.url, response.json()))
                 page.on("response", collect)
                 ov = self.open(page)
@@ -152,7 +153,6 @@ class OverviewWorkJourney(unittest.TestCase):
                 self.assertEqual(self.identities(page), first)
                 self.assertTrue(all(len(body["items"]) <= 50 for _,body in observed))
                 self.assertTrue(all(len(parse_qs(urlsplit(url).query)["objects"][0].split(',')) <= 50 for url,_ in observed if "/work-relations?" in url))
-                self.assertTrue(all(body["sourceTotal"] == 141 and len(body["sources"]) == 100 for url,body in observed if "/work-associations?" in url), "native conversation selector covers messages outside the source-count and loaded-text windows")
                 shot(page, f"bounded-overview-{'phone' if phone else 'desktop'}")
                 self.assertLessEqual(page.locator("body").evaluate("el=>el.scrollWidth"), 412 if phone else 1500)
 
@@ -208,21 +208,19 @@ class OverviewWorkJourney(unittest.TestCase):
         source = ov.locator(f'a[href="/materials/{self.material}/versions/1"]')
         expect(source).to_have_count(1)
         expect(source.locator(".ov-row__t")).to_have_text("Shield measurement notes")
-        expect(source).to_contain_text("Cited in this conversation")
+        expect(source).to_contain_text("Cited in this message")
         expect(ov.get_by_role("navigation", name="Overview object pages")).to_contain_text("1–50 of 68 objects")
-        ov.get_by_role("button", name="This conversation", exact=True).click(); self.ready(page)
-        expect(ov.get_by_role("region", name="Linked in this conversation")).to_be_visible()
 
     def test_05_refresh_preserves_native_row_reading_focus_and_private_selection_then_failure_clears_rows(self):
         page = self.page(); ov = self.open(page); held = []
         field = page.get_by_label("Write a message", exact=True); field.fill("Keep my reply and its unfinished sentence")
-        rows = ov.get_by_role("region", name="Linked in this conversation").locator(".ov-rows")
+        rows = ov.get_by_role("region", name="Made from this message").locator(".ov-rows")
         rows.hover(); page.mouse.wheel(0,450)
         page.wait_for_function("el=>el.scrollTop>=440",arg=rows.element_handle())
         anchor = rows.evaluate("el=>{const top=el.getBoundingClientRect().top;const row=[...el.querySelectorAll('[data-work-id]')].find(row=>row.getBoundingClientRect().bottom>top);return {id:row.dataset.workId,offset:row.getBoundingClientRect().top-top};}")
         def hold(route):
             response=route.fetch(); self.assertEqual(response.status,200); held.append((route,response)); page.evaluate("window.__overviewRefreshHeld=true")
-        page.route("**/work-associations?**conversationId=**",hold)
+        page.route("**/work-associations?**messageIds=**",hold)
         ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Refresh",exact=True).click()
         page.wait_for_function("window.__overviewRefreshHeld===true")
         expect(ov).to_have_attribute("data-overview-phase","refreshing")
@@ -232,22 +230,22 @@ class OverviewWorkJourney(unittest.TestCase):
         self.assertEqual(field.evaluate("el=>[document.activeElement===el,el.selectionStart,el.selectionEnd]"),[True,5,17])
         offset=ov.locator(f"[data-work-id='{anchor['id']}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.ov-rows').getBoundingClientRect().top")
         self.assertLess(abs(offset-anchor["offset"]),3)
-        page.unroute("**/work-associations?**conversationId=**",hold)
-        page.route("**/work-associations?**conversationId=**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable read"}))
+        page.unroute("**/work-associations?**messageIds=**",hold)
+        page.route("**/work-associations?**messageIds=**",lambda route:route.fulfill(status=503,json={"code":"WORK_READ_UNAVAILABLE","error":"Fixture unavailable read"}))
         ov.get_by_role("navigation",name="Overview object pages").get_by_role("button",name="Refresh",exact=True).click()
         expect(ov.get_by_role("alert")).to_contain_text("Linked objects could not be loaded")
         self.assertEqual(self.identities(page),[])
         expect(ov.locator(".ov-scroll-hint")).to_have_count(0)
         expect(ov).not_to_contain_text("Nothing linked yet")
         expect(field).to_have_value("Keep my reply and its unfinished sentence")
-        page.unroute("**/work-associations?**conversationId=**")
+        page.unroute("**/work-associations?**messageIds=**")
         ov.get_by_role("button",name="Refresh linked objects",exact=True).click();self.ready(page)
 
     def test_06_keyboard_exposes_each_focused_native_row_inside_the_overview_list(self):
         for phone in (False,True):
             with self.subTest(phone=phone):
                 page=self.page(phone);ov=self.open(page)
-                rows=ov.get_by_role("region",name="Linked in this conversation").locator(".ov-rows")
+                rows=ov.get_by_role("region",name="Made from this message").locator(".ov-rows")
                 first=rows.locator("[data-work-id]").first;first.focus()
                 for index in range(20):
                     if index:page.keyboard.press("Tab")
@@ -269,7 +267,7 @@ class OverviewWorkJourney(unittest.TestCase):
         page.on("request",lambda request:requests.append(parse_qs(urlsplit(request.url).query)) if "/work-relations?" in request.url else None)
         def hold(route):
             response=route.fetch();self.assertEqual(response.status,200);held.append((route,response));page.evaluate("window.__overviewPassiveHeld=true")
-        page.route("**/work-associations?**conversationId=**",hold)
+        page.route("**/work-associations?**messageIds=**",hold)
         page.evaluate("window.dispatchEvent(new Event('focus'))")
         page.wait_for_function("window.__overviewPassiveHeld===true")
         expect(ov).to_have_attribute("data-overview-phase","refreshing")
@@ -282,7 +280,7 @@ class OverviewWorkJourney(unittest.TestCase):
         expect(relations).to_contain_text("1–50 of")
         self.assertFalse(requests[-1].get("cursor"),"new native reference set cannot dispatch the previous set-bound cursor")
         self.assertEqual(set(requests[-1]["objects"][0].split(',')),{f"{kind}:{identity}" for kind,identity in new_refs})
-        page.unroute("**/work-associations?**conversationId=**",hold)
+        page.unroute("**/work-associations?**messageIds=**",hold)
 
     def test_08_thought_source_opens_the_exact_native_thought_selected_on_its_sketch(self):
         page=self.page();ov=self.open(page)

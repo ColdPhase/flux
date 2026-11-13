@@ -48,8 +48,6 @@
 .access__head h4 { margin: 0; }
 .access__invite.ui-btn { margin-right: -8px; color: var(--t2); }
 .people__you { font-weight: 400; color: var(--t3); }
-.access__line { display: flex; align-items: flex-start; gap: 6px; margin: 12px 0 0; font-size: var(--fs-sm) !important; color: var(--t2) !important; line-height: 1.5 !important; }
-.access__line svg { flex: none; margin-top: 3px; color: var(--t3); }
 .access__change.ui-btn { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; color: var(--t1); text-decoration: underline; text-underline-offset: 3px; vertical-align: baseline; }
 .access__sub { margin: 18px 0 4px !important; }
 .people__edit .access__sub { margin: 0 !important; }

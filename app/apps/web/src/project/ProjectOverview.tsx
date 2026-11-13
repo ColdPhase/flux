@@ -1,5 +1,4 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import { plainMessageText, type DecisionRowProjection, type NamedPrincipal, type NativeWorkRow, type WorkRowProjection } from '@flux/contracts';
 import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
@@ -7,16 +6,13 @@ import { useShellActions, type DetailsView, type OverviewView } from '../app/she
 import { decisionLine, statusPhrase } from '../work/format';
 import { useOverviewWork } from '../work/useOverviewWork';
 import { WorkPagination } from '../work/WorkPagination';
-import { audienceLine, useProjectShell } from './data';
+import { useProjectShell } from './data';
 import { docUrl } from '../docs/api';
-import { useWorkspaceEncryption } from '../encryption/state';
 import { useOpenConversation } from './OverviewContext';
 import { agentDisplayName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import './overview.css';
-import { SpaceFace } from '../ui/SpaceFace';
 import { RefLink } from '../place/origin';
-import { useGithubSetUp } from '../github/useGithubSetUp';
 
 /** Hooks run before the shell is known; this stands in for it and is never shown. */
 
@@ -26,8 +22,6 @@ interface Row {
   kind: string;
   title: string;
   sub?: ReactNode;
-  /** A short count or word at the row's right, before the chevron. */
-  end?: string;
   need?: boolean;
   open?: DetailsView;
   to?: string;
@@ -72,7 +66,6 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
                 <span className="ov-row__t">{row.title}</span>
                 {row.sub ? <span className={`ov-row__s${row.need ? ' ws-need' : ''}`}>{row.sub}</span> : null}
               </span>
-              {row.end ? <span className="ov-row__n">{row.end}</span> : null}
               <Icon name="chevron-right" size={16} className="ov-row__go" />
             </>;
             return <li key={row.key}>{row.to
@@ -89,23 +82,18 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
 const clip = (text: string) => (text.length > 280 ? `${text.slice(0, 279)}…` : text);
 
 /**
- * Details for a project (#117, direction C "overview"): what the open conversation — or one of
- * its messages — is connected to, each one step away: the current state, linked work, decisions,
- * sources, sketches and docs, and exactly who can see it. Nothing here is a
- * permanent panel; it opens with Details, the state line or a message's Details action.
+ * What one message is connected to (#117, direction C "overview"), each one step away: the tasks and decisions made from it, and their
+ * sources, thoughts and Wiki pages. It opens from a message's "view linked objects". A space has no panel of its own (#1419): who is in it,
+ * its AI switch and its GitHub are in its settings.
  */
-export function ProjectOverview({ messageId, selection, onBack }: { messageId?: string; selection?: OverviewView['selection']; onBack: () => void }) {
+export function ProjectOverview({ messageId, selection }: { messageId: string; selection?: OverviewView['selection'] }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me } = useShellData();
-  const { closePanel } = useShellActions();
-  const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
+  const read = useOverviewWork(me.user.id, shell?.project.id ?? null, messageId);
   const owners = useAgentOwners(shell?.project);
-  const encrypted = !!useWorkspaceEncryption(shell?.project.workspaceId);
-  // GitHub is offered to a space's manager, and only on a server where it is set up (#1424).
-  const github = useGithubSetUp(shell?.project.id, shell?.project.access === 'manager');
   if (!shell) return null;
-  const { project, people, sketches, docs } = shell;
+  const { project, people } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
   // A retained agent's owner comes from the row's scoped relation, resolved against this fresh audience only.
   const byline = (who: NamedPrincipal): ReactNode =>
@@ -119,12 +107,8 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const selected = selection?.accountId === me.user.id && selection.projectId === project.id
     && selection.message.id === messageId && (selection.message.conversationId === conversation?.id || selection.message.sequence === 1)
     ? selection.message : null;
-  const message = messageId && read.page ? conversation?.messages.find((item) => item.id === messageId)
+  const message = read.page ? conversation?.messages.find((item) => item.id === messageId)
     ?? open?.roots?.roots.find((root) => root.message.id === messageId)?.message ?? selected : null;
-  const messageMode = !!messageId;
-  // The project's own Details (no thread, no message) are the structured overview of #512; a thread's or a
-  // message's Details list what it touches.
-  const projectMode = !messageMode && !conversation;
   const base = `/projects/${project.id}`;
 
   // One native row window for every matching role, including Related-only objects.
@@ -138,13 +122,11 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
 
-  // Sources: versions cited by messages here, and materials the linked objects are based on.
-  const titles = new Map((open?.materials ?? []).map((material) => [`${material.materialId}:${material.version}`, material.title]));
+  // Sources: the version this message cites, and materials the linked objects are based on.
   const sources = new Map<string, Row>();
-  for (const item of messageMode ? message ? [message] : [] : conversation?.messages ?? []) {
-    if (!item.source) continue;
-    const key = `${item.source.materialId}:${item.source.version}`;
-    sources.set(key, { key, icon: 'doc', kind: `Source · v${item.source.version}`, title: titles.get(key) ?? 'Saved material', sub: 'Cited in this conversation', to: `/materials/${item.source.materialId}/versions/${item.source.version}` });
+  if (message?.source) {
+    const key = `${message.source.materialId}:${message.source.version}`;
+    sources.set(key, { key, icon: 'doc', kind: `Source · v${message.source.version}`, title: 'Saved material', sub: 'Cited in this message', to: `/materials/${message.source.materialId}/versions/${message.source.version}` });
   }
   const thoughts = new Map<string, Row>();
   for (const link of relationItems) {
@@ -158,48 +140,27 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       thoughts.set(link.to.id, { key: link.to.id, icon: 'map', kind: 'Thought on a map', title: link.toTitle, sub: `Linked to “${object.title}”`, to: `${base}/map/${link.sketchId}#thought-${link.to.id}` });
     }
   }
-  const sketchRows: Row[] = [...thoughts.values(), ...(messageMode ? [] : (sketches?.items ?? []).slice(0, 3).map((sketch) => ({ key: sketch.id, icon: 'map' as const, kind: 'Map', title: sketch.title, sub: <>Started by {sketch.createdBy.id === me.user.id ? 'you' : byline(sketch.createdBy)}</>, to: `${base}/map/${sketch.id}` })))];
-  const moreSketches = !messageMode && sketches && sketches.total > 3;
+  const sketchRows: Row[] = [...thoughts.values()];
 
-  // Docs that include or mention what is linked here, then the project's latest docs.
+  // Docs that include or mention what is linked here.
   const docRows = new Map<string, Row>();
   for (const link of relationItems) {
     if (link.from.type !== 'doc' || link.to.type !== 'decision') continue;
     const object = byRef.get(`${link.to.type}:${link.to.id}`);
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Wiki page · includes it' : 'Wiki page · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
-  if (!messageMode) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: 'Wiki page', title: doc.title, sub: dotted([<>Changed by {doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : byline(doc.updatedBy)}</>, doc.reason]), to: docUrl(project.id, doc.id) });
-  }
-  const moreDocs = !messageMode && docs && docs.length > 3;
-  const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0
-    || read.page.total === rows.length && read.links?.total === 0);
-
-  const connected: Row[] = projectMode && github ? [{ key: 'github', icon: 'link', kind: '', title: 'GitHub repositories', to: `${base}/github` }] : [];
   const author: ReactNode = message ? (message.authorId === null
     ? <AgentIdentity name={agentDisplayName(message.author)} owner={agentAuthorOwner(message.author, owners)} icon={14} />
     : message.authorId === me.user.id ? 'you' : people?.find((person) => person.id === message.authorId)?.name ?? 'a member') : null;
-  const title: ReactNode = messageMode ? message ? <>Message from {author}</> : 'Message' : conversation ? plainMessageText(conversation.firstMessageBody).split('\n')[0] || 'Conversation' : project.name;
+  const title: ReactNode = message ? <>Message from {author}</> : 'Message';
 
   return (
-    <div className={`details ov${projectMode ? ' ov--project' : ''}`} data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
-      {messageMode ? <button type="button" className="details__back" onClick={onBack}><Icon name="chevron-left" size={14} />{conversation ? 'This conversation' : 'Space'}</button> : null}
-      {projectMode ? <>
-        {/* The space itself, once: its tile and name, then who is in it (#512, AC-2). */}
-        <header className="ov-head">
-          <span className="ov-tile" aria-hidden="true"><SpaceFace name={project.name} icon={project.icon} size={40} /></span>
-          <div className="ov-head__b">
-            <h3 className="details__title">{project.name}</h3>
-            <p className="ov-audience">{audienceLine(people, me.user.id)}</p>
-          </div>
-        </header>
-      </> : <>
-        {/* A thread's or a message's Details name it and the space (#266). */}
-        <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
-        <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3></div>
-        {message ? <p className="details__lead ov-quote">{clip(plainMessageText(message.body))}</p> : null}
-      </>}
-      <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
+    <div className="details ov" data-overview-phase={read.objects.phase} data-overview-observed-at={read.page?.observedAt} data-overview-relations-phase={read.relations.phase} data-overview-relations-observed-at={read.links?.observedAt}>
+      {/* The message's Details name it and the space (#266). */}
+      <p className="details__eyebrow">{project.name}</p>
+      <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3></div>
+      {message ? <p className="details__lead ov-quote">{clip(plainMessageText(message.body))}</p> : null}
+      <Rows label="Made from this message" rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
           {read.objects.phase === 'unavailable' ? <p className="wd-error" role="alert">Linked objects could not be loaded. <button type="button" className="ui-link" onClick={read.refreshObjects}>Refresh linked objects</button></p> : null}
           {/* One page is not paginated (#512, AC-6). */}
@@ -212,29 +173,8 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         {multiPage(read.links) ? <WorkPagination page={read.links} busy={read.relationBusy} label="Overview relation pages" noun="links" onCursor={read.moveRelations} onRefresh={read.refreshRelations} /> : null}
       </div> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
-      {projectMode ? null : <>
-        <Rows label={messageMode ? 'On a map' : 'Maps'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No maps yet. <Link to={`${base}/map`}>Open the Map</Link> to think out loud together.</> : undefined} />
-        {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} maps</Link></p> : null}
-        <Rows label="Wiki" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No Wiki pages yet. <Link to={`${base}/docs`}>Open the Wiki</Link> to keep what you learn.</> : undefined} />
-        {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} Wiki pages</Link></p> : null}
-      </>}
-
-      {/* Who is in the space, in one sentence; the people and the controls to change them are in its settings (F-037). */}
-      <section className="details__sec ov-sec" aria-label="Space settings">
-        {/* A restricted space (where a new space starts, F-037) says who can open it once: the space's own head names the people in it, so
-            there the line adds only who else can, the company's owners and admins, who reach every space but an encrypted one (its people
-            are its own). A message's or a thread's panel has no such head. Everyone, open to the whole company, says nothing more (#871, #1058). */}
-        {project.visibility === 'workspace' ? null : <p className="access__line"><Icon name="lock" size={13} /><span>{encrypted ? 'Only the people added to it can open it.'
-          : projectMode ? 'The company’s owners and admins can open it too.' : 'Only the people added to the space and the company’s owners and admins can open it.'}</span></p>}
-        {/* F-030 (#655): an encrypted space says so, in one line. */}
-        {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
-        <Link className="ov-row" to={`/projects/${project.id}/settings`} onClick={closePanel}>
-          <Icon name="people" size={16} className="ov-row__ic" />
-          <span className="ov-row__b"><span className="ov-row__t">People and settings</span></span>
-          <Icon name="chevron-right" size={16} className="ov-row__go" />
-        </Link>
-      </section>
-      {projectMode ? <Rows label="Connected" rows={connected} /> : !message && github ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
+      <Rows label="On a map" rows={sketchRows} />
+      <Rows label="Wiki" rows={[...docRows.values()]} />
     </div>
   );
 }

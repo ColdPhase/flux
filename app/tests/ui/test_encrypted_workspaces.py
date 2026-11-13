@@ -905,16 +905,18 @@ class EncryptedWorkspaces(Base):
                 page.goto(f"/projects/{world.a_project}")
                 expect(page.get_by_text(A_ROOT).first).to_be_visible()
                 self.assertEqual(self.composer_markers(page), 0, "no AI surface in the encrypted space")
-                open_details(page)
-                expect(page.locator("[data-encrypted-line]")).to_have_text("Encrypted space · only people work here, no AI.")
+                # The space's settings say it once (a space has no details panel, #1419): no AI, only people work here.
+                page.goto(f"/projects/{world.a_project}/settings")
+                expect(page.locator("[data-encrypted-line]")).to_contain_text("No AI in encrypted spaces")
+                expect(page.locator("[data-ai-switch]")).to_have_count(0)
                 self.assertEqual(page.locator("[data-ai-surface]").count(), 0)
                 # The control: the plain space beside it keeps its own AI surfaces and shows no such line.
                 plain = self.page(world, "ada", phone=phone)
                 plain.goto(f"/projects/{world.b_project}")
                 expect(plain.get_by_text(B_ROOT).first).to_be_visible()
                 self.assertGreater(self.composer_markers(plain), 0, "the plain space keeps AI")
-                open_details(plain)
-                expect(plain.get_by_role("link", name=re.compile("People and settings"))).to_be_visible()
+                plain.goto(f"/projects/{world.b_project}/settings")
+                expect(plain.locator("[data-ai-switch]")).to_be_visible()
                 expect(plain.locator("[data-encrypted-line]")).to_have_count(0)
 
     def test_33_an_unlocked_encrypted_space_has_a_small_lock_after_its_name(self) -> None:

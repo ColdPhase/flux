@@ -4,18 +4,16 @@ import type { WorkAssociationQuery } from '@flux/contracts';
 import { getWorkAssociations, getWorkRelations, workAssociationReadUrl, workRelationReadUrl } from './read-api';
 import { useWorkRead } from './useWorkRead';
 
-/** One object window and one global relation window; neither is a complete list of the project's work. */
-export function useOverviewWork(accountId: string, projectId: string | null, conversationId: string | null, messageId?: string) {
+/** One object window and one global relation window of one message's linked objects; neither is a complete list of the project's work. */
+export function useOverviewWork(accountId: string, projectId: string | null, messageId: string) {
   const revalidator = useRevalidator();
-  const key = JSON.stringify([accountId, projectId, conversationId, messageId ?? null]);
+  const key = JSON.stringify([accountId, projectId, messageId]);
   const [position, setPosition] = useState<{ key: string; objects?: string; relations?: string; relationsFor?: string }>({ key });
   const [objectRevision, setObjectRevision] = useState(0);
   const [relationRevision, setRelationRevision] = useState(0);
   const objectCursor = position.key === key ? position.objects : undefined;
-  const query = useMemo<WorkAssociationQuery | null>(() => !projectId ? null : messageId
-    ? { messageIds: messageId, relation: 'any', limit: 50, cursor: objectCursor }
-    : conversationId ? { conversationId, relation: 'any', limit: 50, cursor: objectCursor } : null,
-  [projectId, conversationId, messageId, objectCursor]);
+  const query = useMemo<WorkAssociationQuery | null>(() => projectId ? { messageIds: messageId, relation: 'any', limit: 50, cursor: objectCursor } : null,
+  [projectId, messageId, objectCursor]);
   const objectUrl = projectId && query ? workAssociationReadUrl(projectId, query) : null;
   const objectScope = projectId && objectUrl ? { accountId, projectId, selector: objectUrl } : null;
   const loadObjects = useCallback((signal: AbortSignal) => getWorkAssociations(projectId!, query!, signal), [projectId, query]);

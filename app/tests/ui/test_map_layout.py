@@ -8,7 +8,7 @@ import uuid
 
 from playwright.sync_api import expect, sync_playwright
 
-from test_app_shell import ORIGIN, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, shot, start_forwarder
 
 
 class MapLayoutJourney(unittest.TestCase):
@@ -154,12 +154,12 @@ class MapLayoutJourney(unittest.TestCase):
         node.focus()
         page.keyboard.press('Space')
         expect(node).to_have_attribute('aria-pressed', 'true')
-        # Details opens from More (#340; "]" is not a key of the final design) and keeps the selection.
-        open_details(page)
+        # A thought's task opens in Details from its count (a space has no panel of its own, #1419) and keeps the selection.
+        self.open_task(page, task)
         expect(page.locator('#details .ui-panel__body')).to_be_focused()
         expect(node).to_have_attribute('aria-pressed', 'true')
-        # The space's own panel is headed "Space details" and closes with "Close space details"; a task's panel keeps "Details" (#1058).
-        page.get_by_role('button', name='Close space details', exact=True).click()
+        # A task's panel is headed "Details" and closes with "Close details" (#1058).
+        page.get_by_role('button', name='Close details', exact=True).click()
         expect(node).to_have_attribute('aria-pressed', 'true')
         page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')

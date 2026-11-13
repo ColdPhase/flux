@@ -49,7 +49,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
   }
   return <div className="pane-scroll"><div className="pane-in github-settings">
     <div className="github-settings__head"><div><h2>GitHub repositories</h2><p>Connect repositories to {shell.project.name} and see their pull requests beside your tasks.</p></div>
-      <Link className="ui-link" to={`/projects/${projectId}`}>Back to space</Link></div>
+      <Link className="ui-link" to={`/projects/${projectId}/settings`}>‹ Space settings</Link></div>
     <p className="github-settings__note">Private repository details are shown only when your own GitHub account and Flux access both permit them.</p>
     {error ? <p role="alert" className="github-settings__error">{error}</p> : null}
     {!capabilities ? error ? <Button variant="secondary" onClick={() => void refresh()}>Check access again</Button> : <Spinner label="Loading GitHub settings" /> : capabilities.status === 'unavailable'

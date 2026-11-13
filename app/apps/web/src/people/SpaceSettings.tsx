@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
-import { useNavigate, useRevalidator } from 'react-router';
+import { Link, useNavigate, useRevalidator } from 'react-router';
 import type { Project, ProjectGrant, ProjectGrantRole, ProjectPerson, WorkspaceMember } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
+import { useGithubSetUp } from '../github/useGithubSetUp';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { leaveProject, renameProject, setSpaceAi } from '../project/api';
@@ -284,6 +285,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, inviter
             <span className="sset-row__s">Only people work here.</span></span></li></ul>
           : <AiCard project={project} manager={manager} onChanged={changed} />}
 
+        {admin ? <GithubRow projectId={project.id} /> : null}
+
         <div className="spset__actions">
           {canLeave ? (leaving ? (
             <div className="details__confirm spset__leaving" role="group" aria-label={`Leave ${project.name}`} onKeyDown={onEscape(closeLeaving)}>
@@ -346,6 +349,28 @@ function NameCard({ project, manager, companyName, onRenamed, onIconChanged }: {
       </div>
       <SpaceIconRow project={project} manager={manager} companyName={companyName} onChanged={onIconChanged} />
     </div>
+  );
+}
+
+/**
+ * The space's GitHub, for its admins (#1419): one row to the GitHub page, where repositories are connected. A server without GitHub has no
+ * row at all, not one that says so (`useGithubSetUp`, the same answer every place asks, #1424).
+ */
+function GithubRow({ projectId }: { projectId: string }) {
+  if (!useGithubSetUp(projectId, true)) return null;
+  return (
+    <>
+      <h3 className="sset-sec">GitHub</h3>
+      <ul className="sset-card" data-github-row="">
+        <li>
+          <Link to={`/projects/${projectId}/github`} className="sset-row sset-row--link">
+            <span className="sset-row__ic" aria-hidden="true"><Icon name="link" size={16} /></span>
+            <span className="sset-row__b"><span className="sset-row__t">GitHub repositories</span><span className="sset-row__s">See their pull requests beside your tasks.</span></span>
+            <span className="sset-row__go"><Icon name="chevron-right" size={12} /></span>
+          </Link>
+        </li>
+      </ul>
+    </>
   );
 }
 

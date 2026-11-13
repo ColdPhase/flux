@@ -64,7 +64,10 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
   // it), a sign-in could only fail with words nobody can act on (#910).
   const notReady = !!runtime?.enabled && runtime.pool === 'starting';
   const offered = (kind: Choice) => (kind === 'local_client' ? true : kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
-  const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind));
+  // Only what this server offers is listed (#1419): a plan it cannot run is not a greyed row. One that is merely late keeps its row with the
+  // one line that says so: the sign-in place is still starting, or Flux could not check just now.
+  const late = (kind: Choice) => kind !== 'api_key' && kind !== 'local_client' && (runtimeFailed || notReady);
+  const choices = CHOICES.filter((choice) => (choice.kind === 'api_key' || choice.kind === 'local_client' || !have.has(choice.kind)) && (offered(choice.kind) || late(choice.kind)));
   const [chosen, setChosen] = useState<Choice | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
 
@@ -102,8 +105,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose
                   <Icon name={choice.icon} size={16} />
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
-                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
-                      : notReady && choice.kind !== 'api_key' ? 'Not ready yet. If this stays, ask whoever runs Flux.' : 'Not offered on this Flux server'}</span>
+                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed ? 'Flux couldn’t check this just now' : 'Not ready yet. If this stays, ask whoever runs Flux.'}</span>
                   </span>
                 </label>
               );

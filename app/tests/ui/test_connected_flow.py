@@ -28,7 +28,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose
 from message_gestures import long_press
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "connected work flow study"
 STAMP = int(time.time() * 1000)
@@ -206,10 +206,11 @@ class ConnectedFlow(unittest.TestCase):
         panel = page.locator("#details")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel).not_to_contain_text("Current rule")
-        # The space's own details have no "Now": what is current lives in the Tasks and the Inbox (#865).
+        # A space has no details panel, so no "Now": what is current lives in the Tasks and the Inbox (#865, #1419).
         page.goto(f"/projects/{self.ids['project']}")
-        open_details(page)
-        expect(page.locator("#details").get_by_role("region", name="Now", exact=True)).to_have_count(0)
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile("details", re.I))).to_have_count(0)
+        page.keyboard.press("Escape")
 
     # ---------------------------------------------------------------- CW-9, CW-5: a card under a heading, a toast clear of the sheet
 
