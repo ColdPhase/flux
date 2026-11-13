@@ -166,7 +166,7 @@ class SignInPages(_Browser):
         for named, line in (("https://flux.example.org", "Open Flux at https://flux.example.org and try again."),
                             (ORIGIN, "Open Flux at its usual address and try again.")):
             page = self.page()
-            page.route("**/api/auth/sign-in/email", lambda route, named=named: route.fulfill(status=403, content_type="application/json",
+            page.route("**/api/auth/sign-in/email", lambda route, _request, named=named: route.fulfill(status=403, content_type="application/json",
                        body=json.dumps({"error": "Forbidden", "code": "ORIGIN_REJECTED", "reason": "origin does not match", "origin": named})))
             page.goto("/sign-in")
             page.get_by_label("Email").fill(PERSON["email"])
