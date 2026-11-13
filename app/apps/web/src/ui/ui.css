@@ -279,7 +279,6 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 .ui-list-sheet__row[aria-disabled="true"] .ui-list-sheet__tile { color: var(--t3); }
 .ui-list-sheet__note { margin-left: auto; font-size: var(--fs-xs); color: var(--t3); }
 .ui-list-sheet__sep { height: 1px; margin: 6px 8px; background: var(--line); }
-.ui-list-sheet__foot { margin: 10px 8px 0; font-size: var(--fs-sm); color: var(--t3); }
 @media (max-width: 640px) { .ui-overlay--left .ui-overlay__surface { width: 100%; } }
 
 /* ---------- Side panel ---------- */

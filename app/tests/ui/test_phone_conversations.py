@@ -283,7 +283,8 @@ class PhoneConversations(unittest.TestCase):
                 expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
                 header.get_by_role("button", name="More").click()
                 labels = [text.strip().split("\n")[0] for text in page.get_by_role("menu", name="More").get_by_role("menuitem").all_inner_texts()]
-                self.assertEqual(labels[:2], ["Search", "Call"])
+                self.assertEqual(labels[0], "Search")
+                self.assertNotIn("Call", labels, "no media server on this test server: no Call row (#1424)")
                 self.assertEqual(labels[-1], "Message info")
                 self.assertIn("Mute conversation", labels)
 

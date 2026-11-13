@@ -83,18 +83,15 @@ function join(names: string[]) {
 }
 
 /**
- * The people a space was added to, in words: "You", "Kai and you", "Ari, Nia and you", "Ari, Nia, you and 4 others". Agents with access
- * are named as a count so they are never hidden. It says no "only": the company's owners and admins can open every space too, and the
- * space's details say so once (#1110). "you" is there only when the person is one of them: a company owner or admin who was not added
- * reads the names alone.
+ * The people a space was added to, in words: "You", "Kai and you", "Ari, Nia and you", "Ari, Nia, you and 4 others". Agents are not members
+ * and are not counted (#1424). It says no "only": the company's owners and admins can open every space too, and the space's details say so
+ * once (#1110). "you" is there only when the person is one of them: a company owner or admin who was not added reads the names alone.
  */
 export function audienceLine(people: ProjectPerson[] | null, meId: string): string {
   if (!people) return 'People with space access';
   const meIn = people.some((person) => person.kind === 'human' && person.id === meId);
   const others = people.filter((person) => person.kind === 'human' && person.id !== meId).map((person) => firstName(person.name));
-  const agents = people.filter((person) => person.kind === 'agent').length;
   const named = others.length <= 3 ? join(meIn ? [...others, 'you'] : others)
     : `${others.slice(0, 2).join(', ')}${meIn ? ', you' : ''} and ${others.length - 2} others`;
-  const humans = !named ? 'Nobody yet' : named === 'you' ? 'You' : named;
-  return agents ? `${humans} · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : humans;
+  return !named ? 'Nobody yet' : named === 'you' ? 'You' : named;
 }

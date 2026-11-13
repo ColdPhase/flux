@@ -348,6 +348,26 @@ class ProjectSurfaceJourney(unittest.TestCase):
         for technical in ("verified pull requests", "server operator", "webhook", "is not configured"):
             expect(page.locator("main, #content").first.get_by_text(re.compile(technical, re.I))).to_have_count(0)
 
+    def test_04d_github_is_offered_only_where_the_server_has_it_set_up(self) -> None:
+        """#1424: a manager's space details show "GitHub repositories" when the server answers `configured`, and nothing when it answers `unavailable`."""
+        for status, shown in (("configured", True), ("unavailable", False)):
+            page = self.page("ada")
+            body = json.dumps({"status": status, "authorization": "required", "taskAutomation": "available", "delivery": "poll", "ruleDefault": None})
+
+            def capabilities(route, request, body=body) -> None:
+                route.fulfill(status=200, content_type="application/json", body=body)
+            page.route(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$"), capabilities)
+            page.goto(f"/projects/{self.ids['project']}")
+            # The answer is in before "nothing shown" is judged.
+            with page.expect_response(re.compile(r".*/api/v1/projects/[0-9a-f-]{36}/github/capabilities$")):
+                open_details(page)
+            link = self.details(page).get_by_role("link", name=re.compile("^GitHub repositories"))
+            if shown:
+                expect(link).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
+            else:
+                expect(self.details(page).get_by_role("region", name="Space settings", exact=True)).to_be_visible()
+                expect(link).to_have_count(0)
+
     def test_05_details_overview_links_everything_one_step_away(self) -> None:
         page = self.open_project("ada")
         open_details(page)
@@ -421,11 +441,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Wiki", exact=True)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
 
-        # AC-5 (F-037): the space's people and settings are one row that leads to its settings page; GitHub under Connected.
+        # AC-5 (F-037): the space's people and settings are one row that leads to its settings page. GitHub is offered to a manager only on a server
+        # where it is set up (#1424); this test server has none, so there is no row, no "Connected" and no explanation.
         settings = panel.get_by_role("region", name="Space settings", exact=True)
         expect(settings.get_by_role("link", name="People and settings")).to_have_attribute("href", f"/projects/{self.ids['project']}/settings")
-        connected = panel.get_by_role("region", name="Connected", exact=True)
-        expect(connected.get_by_role("link", name=re.compile("^GitHub repositories"))).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
+        expect(panel.get_by_role("region", name="Connected", exact=True)).to_have_count(0)
+        expect(panel.get_by_role("link", name=re.compile("GitHub"))).to_have_count(0)
 
         # AC-6: no "Esc closes this panel" footer (Esc is in the close button's tooltip); one page of anything has no pager.
         expect(panel).not_to_contain_text("closes this panel")
