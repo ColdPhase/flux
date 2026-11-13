@@ -3,9 +3,8 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { ME_PHOTO_PATH, projectGrantsPath, projectPeoplePath, workspaceMembersPath, type ProjectGrant, type ProjectPerson, type WorkspaceMember } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { signIn } from './support/http.js';
 import { png } from './support/pictures.js';
-import { addMember, expectStatus, grant, password, person, removeMember, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, removeMember } from './support/people.js';
 
 // #1272: Everyone › Settings › People said its people could not be read on a real instance. Its two reads (the company's people and the space's
 // grants) are read here on the company's own Everyone space (the one setup made, not a space made later), with the data a company gathers: an
@@ -16,11 +15,9 @@ test('the people of the company\'s Everyone space read cleanly for its admins wi
   await person('Everyone read first');
   const { rows: [company] } = await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company');
   const { rows: [everyone] } = await pool.query<{ id: string }>("SELECT id FROM projects WHERE workspace_id = $1 AND visibility = 'workspace'", [company!.id]);
-  const { rows: [ownerRow] } = await pool.query<{ id: string; email: string }>(
-    "SELECT u.id, u.email FROM workspace_members m JOIN auth_users u ON u.id = m.user_id WHERE m.workspace_id = $1 AND m.role = 'owner' ORDER BY m.created_at LIMIT 1", [company!.id]);
-  const signedIn = await signIn(ownerRow!.email, password);
-  assert.equal(signedIn.response.status, 200, 'the company owner signs in');
-  const owner: Person = { id: ownerRow!.id, email: ownerRow!.email, browser: signedIn.browser };
+  // One more owner of the company (whoever set it up on this stack signed up with a password of their own).
+  const owner = await person('ev-owner');
+  await pool.query("INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, 'owner', $2)", [company!.id, owner.id]);
 
   const [admin, spaceAdmin, demoted, guestIn, guestOut, removed, ...members] = await Promise.all(
     ['ev-admin', 'ev-space-admin', 'ev-demoted', 'ev-guest-in', 'ev-guest-out', 'ev-removed', ...Array.from({ length: 12 }, (_, i) => `ev-member-${i + 1}`)].map((label) => person(label)));
