@@ -71,11 +71,20 @@ function useScrollEdges(ref: RefObject<HTMLElement | null>, deps: readonly unkno
   }, [ref, ...deps]);
 }
 
-/** The place the person is in stays in view in a list that scrolls: a long list opens on it, and moving to it scrolls only as far as needed. */
+/**
+ * The place the person is in stays in view in a list that scrolls: a long list opens on it, and moving to it scrolls only as far as needed,
+ * clear of the fades. It moves this list's own `scrollTop` and nothing else: `scrollIntoView` would also scroll the folding sidebar's
+ * clipped frame sideways while it animates its width.
+ */
 function useCurrentInView(ref: RefObject<HTMLElement | null>, key: string, deps: readonly unknown[]) {
   useEffect(() => {
-    const current = ref.current?.querySelector<HTMLElement>('[aria-current="page"], .is-open');
-    current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    const list = ref.current;
+    const current = list?.querySelector<HTMLElement>('[aria-current="page"], .is-open');
+    if (!list || !current) return;
+    const box = list.getBoundingClientRect();
+    const at = current.getBoundingClientRect();
+    if (at.top < box.top + 28) list.scrollTop += at.top - box.top - 28;
+    else if (at.bottom > box.bottom - 32) list.scrollTop += at.bottom - box.bottom + 32;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ref, key, ...deps]);
 }
