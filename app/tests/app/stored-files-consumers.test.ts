@@ -17,7 +17,8 @@ import { waitFor } from './support/wait.js';
 
 // A file-only message (empty body plus attachments, #154) reads as its attachments, never as empty
 // text and never as the file's bytes, in every projection that quotes a message: notifications,
-// search, the return digest, the MCP conversation read and a personal run's source text.
+// search, the return digest, the MCP conversation read and a personal run's source text. Search finds a
+// file's own words only as the file, for the people of its space (C-63).
 
 const SECRET = `SECRETBYTES${randomUUID().replace(/-/g, '')}`;
 const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
@@ -41,7 +42,7 @@ async function agent(owner: Person, workspaceId: string, projectId: string, name
 }
 
 describe('a file-only message in every consumer that quotes it', () => {
-  let owner: Person; let writer: Person;
+  let owner: Person; let writer: Person; let outsider: Person;
   let ws: Workspace; let place: Project;
   let talk: Conversation; let reply: ConversationMessage; let file: StagedFile;
   let opened: Conversation; let answer: ConversationMessage;
@@ -51,6 +52,8 @@ describe('a file-only message in every consumer that quotes it', () => {
     writer = await person('Consumer writer');
     ws = await workspace(owner, 'File consumers');
     await addMember(owner, ws.id, writer, 'member');
+    outsider = await person('Consumer outsider');
+    await addMember(owner, ws.id, outsider, 'member');
     place = await project(owner, ws.id, 'Sensor files', 'restricted');
     await grant(owner, place.id, writer, 'contributor');
     talk = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
@@ -77,7 +80,7 @@ describe('a file-only message in every consumer that quotes it', () => {
       assert.equal((await someone.browser.request('GET', '/api/v1/inbox')).text.includes(SECRET), false, 'no file bytes in the inbox');
   });
 
-  test('search titles a file-only message "Attached files" and never indexes file bytes', async () => {
+  test('search titles a file-only message "Attached files"; file bytes are found only as the file itself, for the space\'s people (C-63)', async () => {
     const found = expectStatus(await owner.browser.request('GET', '/api/v1/search?q=attached'), 200) as SearchResponse;
     for (const messageId of [reply.id, opened.messages[0]!.id]) {
       const item = found.items.find((entry) => entry.id === `message:${messageId}`);
@@ -86,8 +89,15 @@ describe('a file-only message in every consumer that quotes it', () => {
     }
     const { rows } = await pool.query('SELECT title, body FROM search_documents WHERE doc_key = $1', [`message:${reply.id}`]);
     assert.deepEqual(rows.map((row: { title: string; body: string }) => [row.title, row.body]), [['Attached files', '']]);
+    // C-63 (#1382): a worker may have read the files by now (another test file's worker shares this database), so their words can be found,
+    // but only as the file (kind `file`), never as the message that carries it, and only by who may read the space.
     const bytes = expectStatus(await owner.browser.request('GET', `/api/v1/search?q=${SECRET}`), 200) as SearchResponse;
-    assert.deepEqual(bytes.items, []);
+    for (const item of bytes.items) {
+      assert.equal(item.kind, 'file', `only a file hit holds the file's words: ${item.id}`);
+      assert.ok(['findings.txt', 'notes.txt'].includes(text(item.title)), `a file of this space: ${text(item.title)}`);
+    }
+    const outside = expectStatus(await outsider.browser.request('GET', `/api/v1/search?q=${SECRET}`), 200) as SearchResponse;
+    assert.deepEqual(outside.items, [], 'a company member outside the space finds nothing');
   });
 
   test('the return list quotes a file-only message as "1 attached file"', async () => {

@@ -240,6 +240,7 @@ function FirstStepsCard({ phone, onPushRow }: { phone: boolean; onPushRow: (show
       <ul className="home__rows" aria-label="First steps">
         {shown.map((row) => row.key === 'push' ? (
           <li key={row.key}>
+            {/* A Home row whose target asks for notifications in the tap itself: a row target (tests/app/button-classes.json, "row"). */}
             <button type="button" className="home__row" aria-busy={asking || undefined} onClick={() => { if (pushKey && !asking) turnOn(pushKey); }}>
               <span className="nyc__face nyc__face--icon"><Icon name={row.icon} size={16} /></span>
               <span className="home__row-b"><span className="home__row-t">{row.title}</span><span className="home__row-k">{row.meta}</span></span>
