@@ -127,6 +127,45 @@ describe('API-key agents run in pi in the runtime (#1441)', () => {
     assert.equal(gateway.requests.length, 1, 'pi does not retry a refusal');
   });
 
+  test('pi attaches a file it made in its scratch with flux_attach_file (#1437), like its asker\'s own upload', async () => {
+    gateway.script([
+      { tool: 'bash', args: { command: 'printf "<h1>Notes</h1>" > notes.html' } },
+      { tool: 'mcp__flux__flux_attach_file', args: { projectId: place.id, clientCommandId: randomUUID(), path: 'notes.html', name: 'notes.html' } },
+      { tool: 'mcp__flux__flux_attach_file', args: { projectId: place.id, clientCommandId: randomUUID(), path: '../escape.html', name: 'escape.html' } },
+      { text: 'Attached notes.html.' },
+    ]);
+    const started = await ask('Make me a page');
+    assert.equal(await processor.process(started.run.id), 'completed', await why(started.run.id));
+    const attached = gateway.requests[2]!.results[0] ?? '';
+    assert.doesNotMatch(attached, /Not attached|no working directory/i, attached);
+    assert.match(gateway.requests[3]!.results[0] ?? '', /Not attached/, 'nothing outside the scratch');
+    const [change] = (await pool.query(`SELECT state FROM assistant_changes WHERE run_id = $1`, [started.run.id])).rows as { state: string }[];
+    assert.ok(change, 'the attachment is the run\'s change, with its line and Undo');
+    assert.deepEqual(await readdir(scratchRoot()), [], 'the scratch is gone after the run');
+  });
+
+  test('the gateway\'s refusal mid-run stops pi at once (#1441 review): the run ends "budget", not when pi gives up', async () => {
+    const real = createModelGateway({ uow: personalRunWorkerUnitOfWork(db), connections, limits: MODEL_GATEWAY_LIMITS, tokenLifetimeMs: RUN_TOKEN_LIMITS.lifetimeSeconds * 1000 });
+    const engine: { tell?: ((reason: 'budget' | 'ended') => void) | undefined } = {};
+    const watched = { issue: real.issue, close: real.close, watch: (_runId: string, listener: (reason: 'budget' | 'ended') => void) => { engine.tell = listener; return () => { engine.tell = undefined; }; } };
+    const stopping = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute,
+      runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, gateway: watched,
+      runtimeCaps: { idleSeconds: 20, wallClockSeconds: 60, maxTurns: 10 } });
+    gateway.script([{ tool: 'bash', args: { command: 'sleep 30' } }, { text: 'Should not be posted.' }]);
+    const started = await ask('Work a long time');
+    const began = Date.now();
+    const done = stopping.process(started.run.id);
+    while (!gateway.requests.length && Date.now() - began < 20_000) await new Promise((wait) => setTimeout(wait, 50));
+    // The gateway refused the run's next request for the key's day (402): it tells the engine.
+    await new Promise((wait) => setTimeout(wait, 300));
+    assert.ok(engine.tell, 'the engine watches its run at the gateway');
+    engine.tell('budget');
+    assert.equal(await done, 'cap_reached', await why(started.run.id));
+    assert.ok(Date.now() - began < 20_000, 'pi was stopped, not waited for');
+    const stored = await row(started.run.id);
+    assert.deepEqual([stored.end_reason, stored.answer_body], ['budget', null]);
+  });
+
   test('"Ask me first" makes a change wait in Flux\'s MCP route, exactly as for a plan CLI', async () => {
     const settings = await agentSettings(owner, ws.id);
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath(settings.connectionId), { body: { mayDo: 'ask' } }), 200);

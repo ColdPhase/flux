@@ -5,6 +5,7 @@ import {
   FLUX_TOOL_NAME, INIT_NAME, MODEL_GATEWAY_ORIGIN, MODEL_GATEWAY_TOKEN_ENV, modelGatewayBaseUrl, TEXT_FRAME_LIMITS, type KeyProvider, type RunOutcome,
   type SupervisorRequest, type SupervisorResult,
 } from '@flux/runtime-protocol';
+import { forgetCredentials, watchRunSecrets } from './credentials.js';
 import { asThem, clearLeftovers, removeAsThem } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { asPerson, endProcesses, runFixed, type Person } from './process.js';
@@ -175,6 +176,8 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
   const [file, args] = sandbox && scratch
     ? [sandbox.binary, ['cli', scratch, '--home', home, '--home', join(dir, 'home'), '--read', runDir, '--', paths.node, ...argv]]
     : [paths.node, argv];
+  // `flux_attach_file` reads a file of the scratch while the run lasts (#1437, files.ts): looked through for the run's own tokens as it passes.
+  watchRunSecrets(config, request.runId, request.bindingId, dir, person, [request.runToken, request.modelToken]);
   const allowedFlux = new Set(request.tools.map((tool) => `${PI_MCP_PREFIX}${tool}`));
   const allowed = new Set([...allowedFlux, ...(ownTools ? PI_OWN_TOOLS : [])]);
 
@@ -329,6 +332,7 @@ export async function runPi(config: SupervisorConfig, request: PiRequest, dir: s
     child.on('close', (code) => settle(code));
   });
   runs.delete(request.runId);
+  forgetCredentials(config, request.runId);
   finishedOf(config).set(request.runId, Date.now());
   await cleanUp();
   return { result };

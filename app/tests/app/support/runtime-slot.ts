@@ -62,7 +62,9 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     await mkdir(scratchRoot, { mode: 0o711 });
     await mkdir(join(bin, 'sandbox'));
     const binary = join(bin, 'sandbox', 'flux-sandbox');
-    await writeFile(binary, '#!/bin/sh\n[ "$1" = cli ] || exit 2\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n');
+    // `read <scratch> <path> <max>` (flux_attach_file's reader, #1437): the stand-in writes the regular file out, 2 when there is none.
+    await writeFile(binary, '#!/bin/sh\nif [ "$1" = read ]; then [ -f "$2/$3" ] && [ ! -L "$2/$3" ] || exit 2; exec cat -- "$2/$3"; fi\n'
+      + '[ "$1" = cli ] || exit 2\nwhile [ "$1" != -- ]; do shift; done\nshift\nexec "$@"\n');
     await writeFile(join(bin, 'sandbox', 'bash'), '#!/bin/sh\nexec /bin/sh "$@"\n');
     await chmod(binary, 0o755);
     await chmod(join(bin, 'sandbox', 'bash'), 0o755);

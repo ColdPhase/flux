@@ -17,7 +17,7 @@ import { toolError, toolResult } from './tool-results.js';
 
 /**
  * `flux_attach_file` (#1437, RT-5, AG-8): an agent attaches a file to its answer to `/ai` in a space, as its asker would attach one. A run on
- * the owner's Claude Code or Codex names a file it made in its scratch (`path`): the server asks the run's supervisor for it through
+ * the owner's Claude Code or Codex, or an API-key run in pi (#1441), names a file it made in its scratch (`path`): the server asks the run's supervisor for it through
  * runtime-manager, which reads it as the run's person with Flux's sandbox reader (only a regular file inside that run's scratch, while the run
  * lasts). Any run, an API-key run included, can instead give a text file's `content`. Either way the bytes go through the asker's own upload
  * path (`stage`): the same types, size limits and checks as a person's upload (magic bytes, a picture decoded and written again, #1343, a
@@ -87,12 +87,14 @@ async function runFileBody(db: Database, current: FileServices, claims: ToolCall
     const bytes = Buffer.from(input.content!, 'utf8');
     return { body: Readable.from([bytes]), size: bytes.length };
   }
-  if (engine !== 'runtime') refuse('You have no working directory of your own here, so give the file\'s `content` instead.');
-  if (!current.manager) refuse(READ_WORDS.no_sandbox);
+  const noDirectory = 'You have no working directory of your own here, so give the file\'s `content` instead.';
+  // An API-key run keeps the engine label `server` whether the worker's own loop or pi in the runtime runs it (#1441): only the runtime
+  // knows. A run of the worker's loop is in no slot, so the supervisor answers that it is not running there.
+  if (!current.manager) refuse(engine === 'server' ? noDirectory : READ_WORDS.no_sandbox);
   const target = await runtimeTarget(db, claims.ownerUserId);
-  if (!target) refuse(READ_WORDS.unreachable);
+  if (!target) refuse(engine === 'server' ? noDirectory : READ_WORDS.unreachable);
   const read = await fetchRunFile(current.manager!, target!.slot, { bindingId: target!.bindingId, runId, path: input.path, maxBytes });
-  if (!read.ok) refuse(READ_WORDS[read.code]);
+  if (!read.ok) refuse(engine === 'server' && (read.code === 'not_running' || read.code === 'no_binding') ? noDirectory : READ_WORDS[read.code]);
   return { body: (read as Extract<typeof read, { ok: true }>).body, size: undefined };
 }
 

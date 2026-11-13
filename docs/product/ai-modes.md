@@ -42,8 +42,9 @@ Flux's model gateway holds it and meters every request against the owner's budge
 - **The [model gateway](#the-model-gateway-1441)** (#1441): pi sends each model request in its provider's own wire format to the gateway
   through `runtime-egress:8081`, with the run's own gateway token as its API key. The gateway swaps it for the sealed key, holds the
   request's worst cost against the key's day before it and charges the provider's usage after it on the run (CA-3, #854). A refusal for
-  the budget (402 `flux_budget_exhausted`) or of an ended run (403) is final: pi does not retry it, and the run ends calmly ("budget" for
-  the day's money) with nothing posted. A key run keeps its engine `server` (the payer is the key); the gateway issues its token because
+  the budget (402 `flux_budget_exhausted`) or of an ended run (403) is final: pi does not retry it, the gateway tells the run's engine at
+  once and the engine stops pi there (#1441 review), and the run ends calmly ("budget" for the day's money; for an ended run the reason
+  the commit's checks find, else unavailable) with nothing posted. A key run keeps its engine `server` (the payer is the key); the gateway issues its token because
   the run has a key (`connection_id`) and the worker runs it in pi.
 
 - Both reach Flux only through its MCP route, with a short-lived run token bound to the agent, its
@@ -269,11 +270,13 @@ shell and file tools, inside a sandbox that exists for one run; every engine can
 - **Without Landlock's network rules** (a kernel before 6.7, ABI 4, or one where Landlock is not enabled), the runtime keeps its
   CLIs as before: Flux's tools and the CLI's own web search only, and `flux_attach_file` has nothing to attach. The supervisor logs
   `tools_off` once at start.
-- **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex names a file of its scratch by its path; the Flux
+- **Attaching a file** (`flux_attach_file`, AG-8). A run on Claude Code or Codex, or an API-key run in pi (#1441), names a file of its scratch by its path; the Flux
   server asks runtime-manager, which asks the run's supervisor, which reads it as the run's person with Flux's sandbox reader: only
   while that run is in progress, only a regular file inside that run's scratch (never through a link as its last name, never `..`
-  out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login (the
-  supervisor looks through the bytes as they pass). The bytes are streamed through and never kept by the runtime. Any run, an
+  out of it: the kernel refuses), at most the largest file Flux takes, and never one that holds a value of the CLI's own login, or for
+  pi, which has no login, the run's own MCP or gateway token (the supervisor looks through the bytes as they pass). A key run keeps its
+  engine `server` whether pi or the worker's own loop runs it, so the server asks the runtime for such a run too; a run of the worker's
+  loop is in no slot, and is told to give the file's content instead. The bytes are streamed through and never kept by the runtime. Any run, an
   API-key run included, may instead give a text file's content and name. Either way the server stages it as the asker's own upload
   (`stage`: the same types, limits and checks, a picture decoded and written again, #1343, a video's own limit, C-61, the same
   preview), with the run's change line, Undo and waits: under "Ask me first" it is staged at once, because the scratch goes with the
