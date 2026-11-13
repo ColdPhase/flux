@@ -15,7 +15,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-INFO_OK = '{"OSType":"linux","OperatingSystem":"Ubuntu 24.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}'
+INFO_OK = '{"KernelVersion":"6.8.0-45-generic","OSType":"linux","OperatingSystem":"Ubuntu 24.04","MemoryLimit":true,"CpuCfsQuota":true,"PidsLimit":true}'
 WARNING = "Nobody has signed up yet, and the first account becomes the company's owner."
 
 DOCKER_STUB = r"""#!/bin/sh
