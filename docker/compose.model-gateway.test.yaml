@@ -1,0 +1,9 @@
+# TEST ONLY (#1441): scripts/check_model_gateway.sh layers this over compose.source.yaml, compose.source.runtime.yaml and
+# compose.runtime.test.yaml. The worker's fixture API key (FLUX_TEST_PERSONAL_RUNS=anthropic-mock) is sent through the model gateway
+# to this mock provider. Never deploy it.
+services:
+  gateway-mock:
+    profiles: ["test"]
+    image: flux-test-tools:${FLUX_IMAGE_TAG:-${COMPOSE_PROJECT_NAME:-local}}
+    command: ["node_modules/.bin/tsx", "tests/app/support/model-gateway-mock.ts"]
+    networks: [default]

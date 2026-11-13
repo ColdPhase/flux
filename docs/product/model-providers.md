@@ -164,6 +164,11 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
   response whose cost cannot be known counts what the run had spent and the most that one request
   could have cost.
+- **A run on an API key in the runtime is metered request by request** at the model gateway
+  ([#1441](https://github.com/ColdPhase/flux/issues/1441), [RT-4](ai-modes.md#the-model-gateway-1441)), with the same prices and
+  cache rules: each request holds the most it can cost against what is left of the key's day before it is sent, and is charged
+  the provider's reported usage after it. One whose usage is missing, malformed or beyond its bounds keeps all it held; a complete
+  error answer of the provider costs nothing. A request the day cannot hold is refused, and the run ends with "budget".
 
 ## CA-4 — Key custody and endpoints
 
@@ -179,6 +184,12 @@ Kept from PROV-4:
   Environment variables never redirect a key.
 - An API key is never passed into the CLI runtime; a key that the person types at a CLI's own
   sign-in prompt is stored by that CLI's own flow (RT-7).
+- **The model gateway holds the key for runs in the runtime** ([#1441](https://github.com/ColdPhase/flux/issues/1441),
+  [RT-4](ai-modes.md#the-model-gateway-1441)). The run has only a short-lived gateway token, bound to that run. The gateway is the
+  worker: it opens the key for one request and puts it only into the provider's own header of the request it sends (`x-api-key`,
+  `Authorization` or `x-goog-api-key`), to the connection's own address. The key never reaches the runtime's environment, files,
+  command lines or logs, the egress, the run row, a response or a log line; a provider's error answer is passed on with the key
+  and anything shaped like a key taken out.
 
 ## CA-5 — Plans
 

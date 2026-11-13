@@ -371,7 +371,8 @@ class ContainerIsolationTest(unittest.TestCase):
         overlay = (ROOT / "docker" / "compose.source.runtime.yaml").read_text(encoding="utf-8")
         code = "\n".join(line for line in overlay.splitlines() if not line.lstrip().startswith("#")) + "\n"
         self.assertEqual(code, "services:\n  api:\n    networks: [default, runtime-control, runtime-api, keyring]\n"
-                               "  worker:\n    networks: [default, runtime-control, keyring]\n")
+                               "  worker:\n    networks:\n      default: {}\n      runtime-control: {}\n      keyring: {}\n"
+                               "      runtime-api:\n        aliases: [worker-gateway]\n")
         launcher = (ROOT / "flux").read_text(encoding="utf-8")
         self.assertIn('COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"', launcher)
         self.assertIn('if runtime_on; then set -- -f "$COMPOSE_RUNTIME" "$@"; fi', launcher)

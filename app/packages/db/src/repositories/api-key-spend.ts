@@ -17,7 +17,7 @@ export interface ApiKeyBudget { dailyBudgetCents: number; timeZone: string }
 
 /**
  * The one daily budget of an API key (#854): everything that runs on the key counts against it, the owner's agents'
- * runs, on the day the money was held: a request that waited overnight counts when it
+ * runs, in the worker or in the runtime through the model gateway (#1441; a plan's run has no key), on the day the money was held: a request that waited overnight counts when it
  * starts. A run whose cost is unknown keeps what its reservation still holds counted. Null when the key does not exist. `exceptRunId` leaves one run out (its own reservation, while it is being rechecked).
  */
 export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connectionId: string, exceptRunId?: string, budget?: ApiKeyBudget, at?: Date): Promise<ApiKeySpend | null> {
@@ -38,9 +38,9 @@ export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connecti
       CASE WHEN ((at_next - interval '1 hour') AT TIME ZONE time_zone) = local_next THEN at_next - interval '1 hour' ELSE at_next END AS next_start FROM s)
     SELECT k.daily_budget_cents AS budget, k.time_zone AS zone, k.next_start AS resets_at,
       (SELECT COALESCE(sum(r.charged_micros) FILTER (WHERE r.cost_state = 'observed'), 0) + COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'unknown'), 0) FROM personal_runs r
-        WHERE r.connection_id = ${connectionId} AND r.engine = 'server' AND r.reserved_at >= k.start ${except})::bigint AS run_charged,
+        WHERE r.connection_id = ${connectionId} AND r.reserved_at >= k.start ${except})::bigint AS run_charged,
       (SELECT COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'reserved'), 0) FROM personal_runs r
-        WHERE r.connection_id = ${connectionId} AND r.engine = 'server' AND r.reserved_at >= k.start ${except})::bigint AS run_reserved
+        WHERE r.connection_id = ${connectionId} AND r.reserved_at >= k.start ${except})::bigint AS run_reserved
     FROM k`);
   const row = result.rows[0] as {
     budget: number; zone: string; resets_at: Date | string; run_charged: string | number; run_reserved: string | number;

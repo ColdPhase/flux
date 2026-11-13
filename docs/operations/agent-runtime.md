@@ -381,6 +381,27 @@ chat) then runs their own Claude Code (or Codex) under their own user id, with t
 The worker reaches the API at `FLUX_API_INTERNAL_URL` (default `http://api:8080`) for the token and, for
 API-key runs, for `/mcp`.
 
+### The model gateway (#1441)
+
+A run on an API key that works in the runtime never holds the key. It gets a gateway token, and its harness sends the provider's
+model requests to `http://runtime-egress:8081/<provider>/…`; the egress passes them on to the worker on the internal
+`runtime-api` network (the worker listens there only, as `worker-gateway:8095`), and the worker, which alone opens keys, sends them
+to the provider and charges the owner's daily budget from the usage each answer reports. The interface, the refusals and the
+metering are in [RT-4](../product/ai-modes.md#the-model-gateway-1441).
+
+| Bound | Value | Where |
+| --- | --- | --- |
+| Request body | 16 MiB | `MODEL_GATEWAY_LIMITS.requestBytes` |
+| Answer | 32 MiB | `MODEL_GATEWAY_LIMITS.responseBytes` |
+| One request | 10 minutes, and for a streamed answer 2 minutes without a byte from the provider | `MODEL_GATEWAY_LIMITS.requestMs`, `idleMs` |
+| Output of one request | 32,000 tokens | `MODEL_GATEWAY_LIMITS.maxOutputTokens` |
+| Requests at once for one run | 4 | `MODEL_GATEWAY_LIMITS.concurrentPerRun` |
+| Request bodies in the worker's memory at once, every run together | 48 MiB (past it: 429, sent again after 2 s) | `MODEL_GATEWAY_LIMITS.bodiesInFlightBytes` |
+
+The worker's log has one line per request: the run, the provider, the path, the status and the charge; never a token, a key or a
+body. `FLUX_MODEL_GATEWAY_LISTEN` (the worker's listening name, default `worker-gateway`) and `FLUX_RUNTIME_EGRESS_GATEWAY` (where
+the egress finds it, default `worker-gateway:8095`) are set by the Compose files; with the runtime off the worker does not listen.
+
 ## Known limits (accepted)
 
 None of them is hidden by the checks.
@@ -500,6 +521,8 @@ changes. It proves the flags exist, not how the CLIs behave in a run; the automa
 | --- | --- |
 | `./scripts/check_agent_runtime.sh` | The whole runtime through `./flux` with fake CLIs: off by default; on; `docker inspect` limits; many owners in one runtime, no cross-owner reach; escape attempts from inside the runtime; the supervisor's closed request set; release and reuse; bind refused with any entry in `/data`; operator release; the sign-in console (each method's exact command in a terminal, the URL, a pasted code, signed in only from `auth status`, sign-out and a failed logout, another member refused, the terminal gone after exit and after the page left, a seeded-secret scan of the database, frames, API answers and logs, and the pages at phone width in a browser); backup without slot volumes; restore reconciliation; switching off; purge; reset. Set `FLUX_RUNTIME_SCREENSHOT_DIR` to keep the browser's screenshots. |
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a runtime or a binding; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
+| `./scripts/check_model_gateway.sh` | The model gateway (#1441) with the runtime: a request from inside the runtime under a person's kind of user id, with only a run's gateway token, reaches a mock provider through `runtime-egress` and the worker, which swaps in the key and charges the run; a request without the token and another provider path are refused. Then the key is looked for in the runtime's and the egress's environments, every process's environment and command line, their files and their logs, and in the worker's log, with the token: nowhere (the provider received it: positive control). |
+| `./scripts/check_application.sh` (`model-gateway-core.test.ts`, `model-gateway.test.ts`) | The gateway's routes, tokens, admission, usage of every wire format (whole and streamed, cache fields, malformed and missing) and charges; end to end through the egress forwarder and the worker's gateway to a provider mock for every provider, on real run rows: the key only in the provider's own header, never in an answer, error, log or row; unknown, expired, replaced and closed tokens; stopped and ended runs; the key's day shared with the owner's other runs; four requests at once; size and idle bounds. |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
 | `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
 | `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, no runs a day, a plan limit that pauses and resumes the request by itself, and the DM/private/other-project canaries. |

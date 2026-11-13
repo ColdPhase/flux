@@ -36,6 +36,8 @@ the wiring between services or enables test-only code.
 | `FLUX_LIVE_EDITING_TEST` | Test profile only. |
 | `FLUX_LIVE_SOURCE_SHA` | Live-editing codec test tooling only. |
 | `FLUX_MAILPIT_URL` | Test profile only. |
+| `FLUX_MODEL_GATEWAY_LISTEN` | The name the worker's model gateway listens on, on the runtime's `runtime-api` network; default `worker-gateway` (#1441). |
+| `FLUX_MODEL_GATEWAY_TOKEN` | Per-run model gateway token the runtime gives the harness of an API-key run (#1441). |
 | `FLUX_MOTION_LAYOUT_SAMPLES` | Motion measurement in the browser-test profile only. |
 | `FLUX_MOTION_LAYOUT_WARMUPS` | Motion measurement in the browser-test profile only. |
 | `FLUX_MOTION_SAMPLES` | Motion measurement in the browser-test profile only. |
@@ -47,6 +49,7 @@ the wiring between services or enables test-only code.
 | `FLUX_PUSH_ALLOW_PRIVATE_NETWORK` | Phone-emulation tests only: lets push reach a private test service. |
 | `FLUX_ROOT` | The launcher's own directory. |
 | `FLUX_RUNTIME_EGRESS_API` | Set by Compose: where the runtime egress proxy forwards `/mcp`. |
+| `FLUX_RUNTIME_EGRESS_GATEWAY` | Set by Compose: where the runtime egress passes model requests on to the worker's model gateway; default `worker-gateway:8095` (#1441). |
 | `FLUX_RUNTIME_EGRESS_INSTALL_LISTEN` | Listen address of the runtime installer proxy. |
 | `FLUX_RUNTIME_INSTALL_SOURCE` | Test image only: install fake CLIs instead of the real ones. |
 | `FLUX_RUNTIME_MANAGER_LISTEN` | Listen address of the runtime manager. |
