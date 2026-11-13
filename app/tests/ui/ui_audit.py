@@ -60,7 +60,10 @@ PHASES = [p for p in (os.environ.get("FLUX_UIAUDIT_PHASES") or ",".join(p for p 
 BROWSERS = [b for b in (os.environ.get("FLUX_UIAUDIT_BROWSERS") or "chromium,webkit").split(",") if b]
 THEMES = [t for t in (os.environ.get("FLUX_UIAUDIT_THEMES") or "light,dark").split(",") if t]
 ONLY = {s for s in (os.environ.get("FLUX_UIAUDIT_SCREENS") or "").split(",") if s}
-PARALLEL = int(os.environ.get("FLUX_UIAUDIT_PARALLEL") or "4")
+PARALLEL = int(os.environ.get("FLUX_UIAUDIT_PARALLEL") or "12")
+# The capture waits on the page far more than it computes: each engine × theme is split into this many groups of windows, run side by side.
+CHUNKS = int(os.environ.get("FLUX_UIAUDIT_CHUNKS") or "4")
+TAG = os.environ.get("FLUX_UIAUDIT_TAG") or ""  # a later partial run writes its own results files; the report keeps the newest record per cell
 ANNOTATE = set((os.environ.get("FLUX_UIAUDIT_ANNOTATE") or "1440,390,820p,320").split(","))
 
 # Every window of #1215 and #1245. kind: computer (mouse), tablet or phone (touch, coarse pointer).
@@ -158,6 +161,7 @@ def seed(browser: Browser) -> dict:
                                                                                             "clientMessageId": str(uuid.uuid4())}))
     def dm_maja():
         dm = call(ada, "POST", f"/api/v1/workspaces/{ws}/dms", {"participantIds": [me["maja"]]})["id"]
+        ids["dm_maja"] = dm
         for who, body in ((ada, "Welcome to the garden! Ask me anything."), (maja, "Thanks! Where do the spare probes live?"),
                           (ada, "In the blue box under the shed bench, next to the solder station.")):
             call(who, "POST", f"/api/v1/dms/{dm}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})
@@ -172,7 +176,7 @@ def seed(browser: Browser) -> dict:
     long_space = soft("long space", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": LONG_SPACE})["id"], "")
     if long_space:
         ids["pl"] = long_space
-        soft("long task", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/work", {"title": LONG_TASK, "owner": {"kind": "human", "id": me["maja"]}}))
+        soft("long task", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/work", {"title": LONG_TASK, "owner": {"kind": "human", "id": me["ada"]}}))
         soft("long page", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/docs", {"title": LONG_PAGE, "body": "Short page."}))
         soft("long message", lambda: call(ada, "POST", f"/api/v1/projects/{long_space}/conversations", {
             "body": "The supplier's tracking page: https://public.test/tracking/2027/ORDER-CAPACITIVE-PROBES-6x-GATEWAY-LORA-868MHZ-ANTENNA-5DBI-SHIPPED-VIA-FERRY "
@@ -202,8 +206,7 @@ def seed(browser: Browser) -> dict:
         "title": "Probe datasheet notes", "body": "Dry 3.1 V, wet 1.4 V. Capacitive probes only.", "clientMutationId": str(uuid.uuid4())}), "")
     if isinstance(ids["material"], dict):
         made = ids["material"]
-        print(f"material answer keys: {sorted(made)}", flush=True)
-        ids["material"] = made.get("id") or (made.get("material") or {}).get("id") or (made.get("item") or {}).get("id") or ""
+        ids["material"] = made.get("id") or made.get("materialId") or (made.get("material") or {}).get("id") or (made.get("item") or {}).get("id") or ""
     invite = soft("invite", lambda: call(ada, "POST", f"/api/v1/workspaces/{ws}/invites", {"role": "member"}), {}) or {}
     ids["invite"] = invite.get("link", "").replace(ORIGIN, "") if invite else ""
     # A locked encrypted space: Ada owns it, Jonas is a member; Ada locks it.
@@ -219,9 +222,10 @@ def seed(browser: Browser) -> dict:
         call(ada, "POST", f"/api/v1/workspaces/{enc}/lock", {})
         return enc, project
     ids["enc"], ids["encp"] = soft("locked space", locked_space, ("", ""))
-    queue = soft("inbox", lambda: call(ada, "GET", "/api/v1/needs-you").get("items", []), [])
-    if queue:
-        ids["inbox"] = urllib.parse.quote(queue[0].get("key", ""), safe="")
+    # `/inbox/:id` takes an Inbox notification's id (what a notice, a push or an email links to), not a Needs-you key.
+    inbox = soft("inbox", lambda: vca.items(call(ada, "GET", "/api/v1/inbox")), []) or []
+    if inbox:
+        ids["inbox"] = inbox[0].get("id", "")
     for key, c in contexts.items():
         states[key] = c.storage_state()
         c.close()
@@ -308,7 +312,8 @@ EXTRA_SCREENS = [
                                         ("role", "switch", "Encrypted")], only="wide"),
     S("new-space-encrypted-phone", "/", steps=[("click", ".phone-fab"), ("click", "[role='dialog'] :text-is('Space')"), ("wait", "[role='dialog'] input"),
                                               ("role", "switch", "Encrypted")], only="phone"),
-    S("notice", "/", steps=[("dm_from", "jonas", "Are you at the garden this afternoon? I have the ladder."), ("wait", "[role='status'] >> text=Jonas")], isolated=True),
+    # Maja's direct message, not the Jonas one the dm screens show: every capture of this state sends one more message.
+    S("notice", "/", steps=[("dm_from", "maja", "Are you at the garden this afternoon? I have the ladder."), ("wait", "[role='status'] >> text=Maja")], isolated=True, needs=("dm_maja",)),
     S("push-offer", "/", steps=[("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")], init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));" + push_stub("denied"), isolated=True, needs=("me_ada",)),
     S("push-blocked", "/", steps=[("click", "section.push-offer button:has-text('Turn on')"), ("wait", "section.push-offer h3:has-text('blocked')"), ("js", "() => { window.scrollTo(0, 1e6); document.querySelectorAll('.pane-scroll, main, [data-scroll]').forEach((e) => e.scrollTo(0, 1e6)); }")],
       init="localStorage.setItem('flux:push-offer:{me_ada}', JSON.stringify({ready: true}));" + push_stub("denied"), isolated=True, needs=("me_ada",)),
@@ -367,7 +372,7 @@ def run_step(page: Page, step: tuple, touch: bool, data: dict, apis: dict) -> No
         page.evaluate(step[1])
     elif kind == "dm_from":
         who, text = step[1], step[2]
-        dm = data["ids"].get("dm")
+        dm = data["ids"].get("dm_maja") if who == "maja" else data["ids"].get("dm")
         call(apis[who], "POST", f"/api/v1/dms/{dm}/messages", {"body": text, "clientMessageId": str(uuid.uuid4())})
         page.wait_for_timeout(1500)
     else:
@@ -407,8 +412,9 @@ EXTRA_JS = r"""
   }
   // Editable text under 16 px on a coarse pointer makes iOS Safari zoom in on focus (MOB-2).
   if (matchMedia('(pointer: coarse)').matches) {
-    for (const el of document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select, [contenteditable="true"]')) {
-      if (!visible(el)) continue;
+    for (const el of document.querySelectorAll('input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=file]), textarea, select, [contenteditable="true"]')) {
+      const box = el.getBoundingClientRect();
+      if (!visible(el) || box.width < 8 || box.height < 8) continue;  // a visually hidden input (a file picker's) takes no focus zoom
       const size = parseFloat(getComputedStyle(el).fontSize);
       if (size < 15.99) out.push({rule: 'zoom', prio: 'P2', detail: `editable text at ${size}px on touch (iOS zooms in under 16px): ${el.getAttribute('aria-label') || el.getAttribute('placeholder') || el.tagName.toLowerCase()}`});
     }
@@ -432,7 +438,7 @@ def phase_firstrun(pw) -> None:
         browser = getattr(pw, engine).launch()
         for theme in THEMES:
             for win in WINDOW_NAMES:
-                context = browser.new_context(**context_options(pw, engine, win, theme, who="anon", data={}))
+                context = browser.new_context(**context_options(pw, engine, win, theme, who="anon", data={}))  # sw-allowed: context_options blocks workers unless asked
                 for name, path in (("first-run-sign-up", "/sign-up"), ("first-run-sign-in", "/sign-in"), ("first-run-root", "/")):
                     page = context.new_page()
                     rec = {"screen": name, "engine": engine, "theme": theme, "vp": win}
@@ -492,7 +498,7 @@ def capture_page(page: Page, engine: str, theme: str, win: str, name: str) -> di
 def layout_of(pw, browser, engine: str, win: str, data: dict) -> str:
     """"phone" when the window gets the phone's layout (the tab bar and the floating +), else "wide" (sidebar, New and C).
     A tablet gets either, by its width; screens limited to one layout are N/A in the other."""
-    context = browser.new_context(**context_options(pw, engine, win, "light", who="ada", data=data))
+    context = browser.new_context(**context_options(pw, engine, win, "light", who="ada", data=data))  # sw-allowed: context_options blocks workers unless asked
     page = context.new_page()
     try:
         page.goto(ORIGIN + "/", wait_until="domcontentloaded", timeout=25000)
@@ -506,19 +512,21 @@ def applies(screen, lay: str) -> bool:
     return not screen.only or screen.only == lay
 
 
-def capture_combo(pw, engine: str, theme: str, data: dict) -> None:
+def capture_combo(pw, engine: str, theme: str, data: dict, chunk: int = 0, chunks: int = 1) -> None:
     browser = getattr(pw, engine).launch()
+    windows = WINDOW_NAMES[chunk::chunks]
     apis = {who: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for who, state in data["states"].items()}
     ids = {k: v for k, v in data["ids"].items()}
-    with (OUT / f"results-capture-{engine}-{theme}.jsonl").open("w", encoding="utf-8") as sink:
-        for win in WINDOW_NAMES:
+    with (OUT / f"results-capture-{engine}-{theme}-c{chunk}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
+        for win in windows:
             touch = WINDOWS[win]["kind"] != "computer"
             lay = layout_of(pw, browser, engine, win, data)
             contexts: dict[str, BrowserContext] = {}
 
             def context_for(who: str, init: str = "") -> BrowserContext:
                 if init or who not in contexts:
-                    context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data))
+                    # A page with a script of its own (the push offer) runs with its service worker: push needs one.
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data, workers="allow" if init else "block"))  # sw-allowed: only the push offer's page runs its worker (push needs one); it stubs no route
                     if init:
                         for key, value in ids.items():
                             init = init.replace("{" + key + "}", str(value))
@@ -603,7 +611,7 @@ def norm(url: str) -> str:
 def phase_states(pw, engine: str, data: dict) -> None:
     browser = getattr(pw, engine).launch()
     ids = data["ids"]
-    with (OUT / f"results-states-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+    with (OUT / f"results-states-{engine}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
         for theme in THEMES:
             for win in STATE_WINDOWS:
                 touch = WINDOWS[win]["kind"] != "computer"
@@ -614,7 +622,7 @@ def phase_states(pw, engine: str, data: dict) -> None:
                     if any(not ids.get(n) for n in screen.needs):
                         continue
                     path = screen.path.format(**ids)
-                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data))
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data))  # sw-allowed: context_options blocks workers unless asked
                     page = context.new_page()
                     # 1. Which reads are the screen's own (not the shell's): the shell's are those of a page with no data of its own
                     # (Settings › Keyboard shortcuts); a signed-out page has no shell.
@@ -755,7 +763,7 @@ def phase_a11y(pw, engine: str, data: dict) -> None:
     browser = getattr(pw, engine).launch()
     ids = data["ids"]
     apis = {who: browser.new_context(base_url=ORIGIN, storage_state=state, service_workers="block") for who, state in data["states"].items()}
-    with (OUT / f"results-a11y-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+    with (OUT / f"results-a11y-{engine}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
         for theme in THEMES:
             for win in A11Y_WINDOWS:
                 touch = WINDOWS[win]["kind"] != "computer"
@@ -768,7 +776,7 @@ def phase_a11y(pw, engine: str, data: dict) -> None:
                     rec = {"screen": screen.name, "engine": engine, "theme": theme, "vp": win, "kind": "a11y"}
                     base = OUT / "a11y" / f"{engine}-{theme}-{win}"
                     base.mkdir(parents=True, exist_ok=True)
-                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data, reduced="reduce"))
+                    context = browser.new_context(**context_options(pw, engine, win, theme, who=screen.who, data=data, reduced="reduce"))  # sw-allowed: context_options blocks workers unless asked
                     page = context.new_page()
                     try:
                         page.goto(ORIGIN + screen.path.format(**ids), wait_until="domcontentloaded", timeout=25000)
@@ -858,7 +866,7 @@ class Check:
 
 def opener(pw, browser, engine, win, data, who="ada", path="/", workers="block", theme="light", init: str = ""):
     def make():
-        context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data, workers=workers))
+        context = browser.new_context(**context_options(pw, engine, win, theme, who=who, data=data, workers=workers))  # sw-allowed: the MOB checks need the worker (offline page, push); they stub no route
         if init:
             context.add_init_script(init)
         page = context.new_page()
@@ -881,7 +889,7 @@ def visible_dialog(page: Page) -> bool:
 
 def phase_keys(pw, engine: str, data: dict) -> None:
     browser = getattr(pw, engine).launch()
-    with (OUT / f"results-keys-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+    with (OUT / f"results-keys-{engine}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
         win = "1440"
         check = Check(sink, "keys", engine, win)
         open_at = lambda path="/": opener(pw, browser, engine, win, data, path=path)  # noqa: E731
@@ -985,7 +993,7 @@ def phase_keys(pw, engine: str, data: dict) -> None:
 def phase_journeys(pw, engine: str, data: dict) -> None:
     browser = getattr(pw, engine).launch()
     ids = data["ids"]
-    with (OUT / f"results-journeys-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+    with (OUT / f"results-journeys-{engine}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
         for win in ("1440", "390"):
             touch = WINDOWS[win]["kind"] != "computer"
             check = Check(sink, "journeys", engine, win)
@@ -1207,7 +1215,7 @@ window.matchMedia = (q) => /display-mode:\s*standalone/.test(q)
 def phase_mob(pw, engine: str, data: dict) -> None:
     browser = getattr(pw, engine).launch()
     ids = data["ids"]
-    with (OUT / f"results-mob-{engine}.jsonl").open("w", encoding="utf-8") as sink:
+    with (OUT / f"results-mob-{engine}{TAG}.jsonl").open("w", encoding="utf-8") as sink:
         for win in ("390", "820p"):
             touch = True
             check = Check(sink, "mob", engine, win)
@@ -1283,7 +1291,7 @@ def phase_mob(pw, engine: str, data: dict) -> None:
                     page.wait_for_timeout(1500)
                 assert said or retry.count(), "nothing said the page could not be loaded while offline"
                 return f"said {said.group(0) if said else None!r}, retry buttons {retry.count()}"
-            check.run("MOB-5 in-app read offline says so, Retry recovers", open_at("/projects/{p}"), offline_inapp)
+            check.run("MOB-5 in-app read offline says so, Retry recovers", open_at("/"), offline_inapp)
 
             def offline_send(page):
                 text = f"Offline audit {tag}: sent from the field."
@@ -1416,18 +1424,26 @@ def phase_mob(pw, engine: str, data: dict) -> None:
 # ---------------------------------------------------------------------------------------------------------------
 
 def load(pattern: str) -> list:
-    out = []
-    for path in sorted(OUT.glob(pattern)):
+    """Every record of the matching results files, oldest file first; a cell measured again (a later tagged run) keeps its newest record."""
+    newest: dict = {}
+    for path in sorted(OUT.glob(pattern), key=lambda p: p.stat().st_mtime):
         for line in path.read_text(encoding="utf-8").splitlines():
             try:
-                out.append(json.loads(line))
+                rec = json.loads(line)
             except ValueError:
-                pass
-    return out
+                continue
+            key = (rec.get("kind", "capture"), rec.get("screen") or rec.get("name"), rec.get("engine"), rec.get("theme"), rec.get("vp"))
+            newest.pop(key, None)
+            newest[key] = rec
+    return list(newest.values())
 
 
 def report(pw) -> None:
     capture = load("results-capture-*.jsonl") + load("results-firstrun.jsonl")
+    # What lies under an open menu's or dialog's own backdrop is meant to: those occlusion flags are not findings.
+    backdrop = re.compile(r"scrim|backdrop|overlay__bg|sheet__veil", re.I)
+    for r in capture:
+        r["flags"] = [f for f in r.get("flags", []) if not (f["rule"] == "f" and backdrop.search(f["detail"]))]
     states = load("results-states-*.jsonl")
     a11y = load("results-a11y-*.jsonl")
     checks = load("results-keys-*.jsonl") + load("results-journeys-*.jsonl") + load("results-mob-*.jsonl")
@@ -1566,7 +1582,7 @@ def main() -> int:
         with sync_playwright() as pw:
             try:
                 if phase == "capture":
-                    capture_combo(pw, engine, rest[0], data)
+                    capture_combo(pw, engine, rest[0], data, int(rest[1]), int(rest[2]))
                 elif phase == "states":
                     phase_states(pw, engine, data)
                 elif phase == "a11y":
@@ -1603,7 +1619,8 @@ def main() -> int:
             p.wait()
 
     if "capture" in PHASES:
-        run_parallel([["capture", e, t] for e in BROWSERS for t in THEMES])
+        chunks = max(1, min(CHUNKS, len(WINDOW_NAMES)))
+        run_parallel([["capture", e, t, str(c), str(chunks)] for c in range(chunks) for e in BROWSERS for t in THEMES])
     read_only = [ph for ph in ("states", "a11y", "keys") if ph in PHASES]
     if read_only:
         run_parallel([[ph, e] for ph in read_only for e in BROWSERS])

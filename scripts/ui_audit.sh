@@ -18,7 +18,8 @@
 set -eu
 
 cd "$(dirname "$0")/.."
-sha=$(git rev-parse --short=12 HEAD)
+# The tested commit (FLUX_UIAUDIT_SHA names it when the images were built from another checkout).
+sha=${FLUX_UIAUDIT_SHA:-$(git rev-parse --short=12 HEAD)}
 out="${1:-ui-audit/$sha}"
 case "$out" in /*) ;; *) out="$PWD/$out" ;; esac
 mkdir -p "$out"
@@ -63,7 +64,8 @@ export FLUX_BACKGROUND_KEY_HOST_FILE="$out/.secrets/background_key"
 compose="docker compose --env-file /dev/null -p $project -f docker/compose.source.yaml --profile ui"
 audit_env="-e FLUX_DEMO_OWNER_PASSWORD=$owner_password -e FLUX_DEMO_PARTNER_PASSWORD=$partner_password -e FLUX_AUDIT_OUT=/screenshots
   -e FLUX_UIAUDIT_SHA=$sha -e FLUX_UIAUDIT_BROWSERS -e FLUX_UIAUDIT_THEMES -e FLUX_UIAUDIT_WINDOWS -e FLUX_UIAUDIT_SCREENS
-  -e FLUX_UIAUDIT_PARALLEL -e FLUX_UIAUDIT_STATE_WINDOWS -e FLUX_UIAUDIT_A11Y_WINDOWS -e FLUX_UIAUDIT_ANNOTATE"
+  -e FLUX_UIAUDIT_PARALLEL -e FLUX_UIAUDIT_STATE_WINDOWS -e FLUX_UIAUDIT_A11Y_WINDOWS -e FLUX_UIAUDIT_ANNOTATE
+  -e FLUX_UIAUDIT_CHUNKS -e FLUX_UIAUDIT_TAG"
 mount="-v $PWD/app/tests/ui:/work/tests/ui:ro,z"
 
 # The Playwright container writes as root: hand the output back to the person who ran the audit.
