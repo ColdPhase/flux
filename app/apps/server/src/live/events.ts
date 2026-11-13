@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { sql } from 'drizzle-orm';
+import { CALL_NOTICE_PAUSE_MINUTES } from '@flux/contracts';
 import { LIVE_STARTED_EVENT, principalKey, type Principal } from '@flux/core';
 import type { Executor } from '@flux/db';
 import { eventPorts } from '../events.js';
@@ -20,10 +22,23 @@ export async function recordLiveChanged(tx: Executor, change: { workspaceId: str
 
 /**
  * Records `project.live_started.v1` (F-041): a call of the space started. The notification worker tells each of the space's other people
- * (the event's audience, read now) in their Inbox, and by push at "Everything". Record it before `recordLiveChanged`.
+ * (the event's audience, read now) in their Inbox, and by push at "Everything". Record it before `recordLiveChanged`. Not again for the
+ * same starter and the same place within `CALL_NOTICE_PAUSE_MINUTES` of the last notice (#1347): the call starts all the same, and shows
+ * its Join in the space, but its people are not told twice. Returns whether it told them.
  */
-export async function recordLiveStarted(tx: Executor, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }) {
+export async function recordLiveStarted(tx: Executor, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }): Promise<boolean> {
+  const [repeat] = (await tx.execute(sql`
+    SELECT 1 FROM events e
+      JOIN live_sessions earlier ON earlier.id = (e.data->>'sessionId')::uuid
+      JOIN live_sessions now_ ON now_.id = ${change.sessionId}
+     WHERE e.workspace_id = ${change.workspaceId} AND e.created_at > now() - ${`${CALL_NOTICE_PAUSE_MINUTES} minutes`}::interval -- events_workspace_idx: the last minutes only
+       AND e.kind = ${LIVE_STARTED_EVENT} AND e.object_id = ${change.projectId} AND e.actor_id = ${principalKey(change.actor)} AND earlier.id <> now_.id
+       AND earlier.conversation_id IS NOT DISTINCT FROM now_.conversation_id AND earlier.work_id IS NOT DISTINCT FROM now_.work_id
+       AND earlier.sketch_id IS NOT DISTINCT FROM now_.sketch_id AND earlier.doc_id IS NOT DISTINCT FROM now_.doc_id
+     LIMIT 1`)).rows;
+  if (repeat) return false;
   await recordForReaders(tx, LIVE_STARTED_EVENT, change);
+  return true;
 }
 
 async function recordForReaders(tx: Executor, kind: string, change: { workspaceId: string; projectId: string; sessionId: string; actor: Principal }) {

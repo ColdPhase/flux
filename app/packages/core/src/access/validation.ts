@@ -1,4 +1,4 @@
-import type { PageQuery, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from '@flux/contracts';
+import { hasInvisibleFormat, type PageQuery, type ProjectGrantRole, type ProjectVisibility, type WorkspaceRole } from '@flux/contracts';
 import { InvalidInputError } from './errors.js';
 
 // Input validators shared by the workspace, project, and agent use cases (issues #46, #91).
@@ -14,9 +14,15 @@ export function oneOf<T extends string>(value: unknown, allowed: readonly T[], f
   return value as T;
 }
 
+/** A name drawn beside other text may not reorder or hide itself (#1347): bidirectional controls and invisible format characters are refused. */
+export function invisibleFormatRefused(text: string, field = 'Name'): void {
+  if (hasInvisibleFormat(text)) throw new InvalidInputError(`${field} cannot contain direction-control or invisible characters`, 'INVALID_NAME');
+}
+
 export function name(value: unknown, field = 'Name'): string {
   const text = typeof value === 'string' ? value.trim() : '';
   if (!text || text.length > 200) throw new InvalidInputError(`${field} must be 1–200 characters`);
+  invisibleFormatRefused(text, field);
   return text;
 }
 

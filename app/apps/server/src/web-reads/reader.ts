@@ -1,5 +1,5 @@
 import { fetchPage, FETCH_LIMITS, literalRefusal, PRODUCTION_RULES, type FetchFailure, type FetchHooks, type FetchKind, type FetchResult, type FetchRules } from '../link-previews/safe-fetch.js';
-import { cleanPicture, PICTURE_LIMITS, type PictureRefusal } from '@flux/core';
+import { cleanPicture, PICTURE_LIMITS, ServiceUnavailableError, type CleanPicture, type PictureCanonicalizer, type PictureRefusal } from '@flux/core';
 import type { ThoughtImageType } from '@flux/contracts';
 import { readablePage, type ReadablePage } from './readable.js';
 
@@ -61,6 +61,8 @@ export type WebReadResult =
 
 export interface WebReaderOptions {
   enabled: boolean;
+  /** The real decoder a picture goes through before it is kept (#1343). Without one the bytes are only walked (`cleanPicture`). */
+  pictures?: PictureCanonicalizer;
   /** The rules of the deployment (production's, or a test deployment's closed world); the limits are this module's. */
   rules?: FetchRules;
   /** TEST ONLY: where a named host connects (config `testHosts`). */
@@ -149,7 +151,9 @@ export function webReader(options: WebReaderOptions) {
         } else fetched = await fetchPage(address, pictureRules, options.connectTo, PICTURE_KIND, hooks);
         const requested = fetched.requested ?? [url.href];
         if (!fetched.ok) return { ok: false, reason: fetched.reason, requested };
-        const picture = cleanPicture(fetched.bytes ?? new Uint8Array());
+        let picture: CleanPicture;
+        try { picture = options.pictures ? await options.pictures.canonical(fetched.bytes ?? new Uint8Array()) : cleanPicture(fetched.bytes ?? new Uint8Array()); }
+        catch (error) { if (error instanceof ServiceUnavailableError) return { ok: false, reason: 'busy', requested }; throw error; }
         if (!picture.ok) return { ok: false, reason: picture.reason, requested };
         return { ok: true, url: address, finalUrl: fetched.url, type: picture.type, bytes: picture.bytes, width: picture.width, height: picture.height, requested };
       } finally { running--; }

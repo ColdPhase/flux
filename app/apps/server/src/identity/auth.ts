@@ -8,7 +8,7 @@ import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { accessPorts, schema, type Database } from '@flux/db';
-import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@flux/contracts';
+import { hasInvisibleFormat, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, withoutInvisibleFormat } from '@flux/contracts';
 import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -78,7 +78,7 @@ export function oidcUser(oidc: Pick<OidcConfig, 'issuer'>, claims: Record<string
   // The plugin keys the Flux account by `sub` (the stable OIDC subject), never by email (#313, #315 AC-3).
   const profile = profileFromClaims(oidc.issuer, claims);
   if (!profile.ok) return null;
-  return { id: profile.subject, sub: profile.subject, email: profile.email, emailVerified: true, name: (profile.name ?? profile.email).slice(0, 200) };
+  return { id: profile.subject, sub: profile.subject, email: profile.email, emailVerified: true, name: withoutInvisibleFormat((profile.name ?? profile.email)).slice(0, 200) };
 }
 
 /** Snapshot the authorizing session at code redemption, keyed to the immutable refresh lineage (#310 AC-3). */
@@ -357,6 +357,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
         if (ssoOnly && PASSWORD_ROUTES.includes(ctx.path)) {
           throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
+        }
+        // A person's name is drawn beside other text: no direction controls and no invisible characters, when it is typed (#1347). An identity
+        // provider's name is cleaned instead (`oidcUser`), so single sign-on never fails over it.
+        if ((ctx.path === '/sign-up/email' || ctx.path === '/update-user') && typeof ctx.body?.name === 'string' && hasInvisibleFormat(ctx.body.name)) {
+          throw new APIError('BAD_REQUEST', { message: 'A name cannot contain direction-control or invisible characters', code: 'INVALID_NAME' });
         }
         // Whose password a reset changes (a token that does not name an account changes nothing).
         let resetUser: { id?: unknown; name?: unknown; email?: unknown } | null = null;

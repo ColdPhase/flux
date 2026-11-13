@@ -219,8 +219,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(websocket, { options: { maxPayload: 1024, server: streamUpgrades as unknown as Server } });
   await app.register(streamRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, heartbeatMs: config.heartbeatMs, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(typingRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, connectionString, tasks: typingTaskDiscussion(db) });
-  await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage });
-  await app.register(pictureRoutes, { db, sessions: identity, storage: fileStorage, renderer: sharpPictureRenderer() });
+  // One libvips, one picture at a time: profile photos, space icons and every stored picture (a person's upload, an agent's) wait in the same line.
+  const pictures = sharpPictureRenderer();
+  await app.register(fileRoutes, { db, sessions: identity, storage: fileStorage, pictures });
+  await app.register(pictureRoutes, { db, sessions: identity, storage: fileStorage, renderer: pictures });
   await app.register(conversationRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(linkPreviewRoutes, { db, sessions: identity, config: config.linkPreviews });
   await app.register(messagePlaceRoutes, { db, sessions: identity });
@@ -321,7 +323,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent,
     refresh: modelListRefresh(db, boss) });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
-  const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
+  const webReader = createWebReader({ enabled: config.webReads.enabled, pictures, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
   // An agent's picture (#1217): the same reader, and the files volume a person's upload goes to.
   configureAgentPictures({ reader: webReader, storage: fileStorage });

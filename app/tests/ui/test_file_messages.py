@@ -128,9 +128,43 @@ PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n" + b"0" * 310_000
 CSV = b"bed,rssi\nfar east,-112\nnorth,-98\n" * 40
 VOICE = b"\x00\x00\x00\x18ftypM4A " + b"\x00" * 40_000
 NOT_A_PHOTO = b"this is a text file named like a photo\n"
+
+
+def two_chunk_webp() -> bytes:
+    """#1343, the audit of #1270: 52 bytes of WebP with a 16383 x 16383 image first and a 1 x 1 one after it. Every browser draws the first."""
+    def lossless(width: int, height: int) -> bytes:
+        bits: list[int] = []
+
+        def put(value: int, count: int) -> None:
+            bits.extend((value >> i) & 1 for i in range(count))
+        put(width - 1, 14); put(height - 1, 14); put(1, 1); put(0, 3); put(0, 1); put(0, 1); put(0, 1)
+        for symbol in (0x40, 0xC0, 0x20, 0xFF, 0):
+            put(1, 1); put(0, 1)
+            if symbol < 2:
+                put(0, 1); put(symbol, 1)
+            else:
+                put(1, 1); put(symbol, 8)
+        packed = bytearray((len(bits) + 7) // 8)
+        for index, bit in enumerate(bits):
+            if bit:
+                packed[index >> 3] |= 1 << (index & 7)
+        return b"\x2f" + bytes(packed)
+
+    def chunk(tag: bytes, data: bytes) -> bytes:
+        return tag + struct.pack("<I", len(data)) + data + (b"\0" if len(data) % 2 else b"")
+    body = b"WEBP" + chunk(b"VP8L", lossless(16383, 16383)) + chunk(b"VP8L", lossless(1, 1))
+    return b"RIFF" + struct.pack("<I", len(body)) + body
 SHOTS = os.environ.get("FLUX_UI_SCREENSHOTS")
 # A photo and a log big enough for several progress reports; WebKit has no CDP throttle to slow them down.
-PROGRESS_PHOTO = b"\x89PNG\r\n\x1a\n" + os.urandom(3 * 1024 * 1024)
+def noise_png(width: int, height: int) -> bytes:
+    """A real PNG of random pixels: it does not compress, so it is about width x height x 3 bytes, and the server (#1343) decodes it like any picture."""
+    def chunk(kind: bytes, data: bytes) -> bytes:
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
+    rows = b"".join(b"\x00" + os.urandom(width * 3) for _ in range(height))
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows, 1)) + chunk(b"IEND", b"")
+
+
+PROGRESS_PHOTO = noise_png(1024, 1024)
 PROGRESS_LOG = b"%PDF-1.4\n" + os.urandom(3 * 1024 * 1024)
 # Records each percentage the page renders ("Uploading N%" in a file row or draft, or a photo's data attribute).
 PROGRESS_WATCH = """() => {
@@ -959,7 +993,10 @@ class FilesReferencesPhotos(unittest.TestCase):
         shared = page.evaluate("window.__shared")
         self.assertEqual(shared["title"], "IMG_2041.png")
         self.assertIsNone(shared["url"], "the file itself is shared when the browser can share files")
-        self.assertEqual([(f["name"], f["type"], f["size"], f["head"]) for f in shared["files"]], [("IMG_2041.png", "image/png", len(FIELD), list(FIELD[:8]))])
+        # The server writes a picture again before it stores it (#1343): the stored bytes are the same picture, 320 x 240, not the same bytes.
+        stored = page.request.get(ORIGIN + viewer.get_by_role("link", name="Save").get_attribute("href")).body()
+        self.assertEqual(struct.unpack(">II", stored[16:24]), (320, 240), "the stored picture is the one that was sent")
+        self.assertEqual([(f["name"], f["type"], f["size"], f["head"]) for f in shared["files"]], [("IMG_2041.png", "image/png", len(stored), list(stored[:8]))])
         # Without file sharing the page address is shared; without any sharing it is copied and the viewer says so.
         page.evaluate("""() => { navigator.canShare = undefined; window.__shared = null; }""")
         viewer.get_by_role("button", name="Share", exact=True).click()
@@ -976,7 +1013,24 @@ class FilesReferencesPhotos(unittest.TestCase):
             viewer.get_by_role("link", name="Save").click()
         self.assertEqual(download.value.suggested_filename, "IMG_2041.png")
         with open(download.value.path(), "rb") as saved:
-            self.assertEqual(saved.read(), FIELD)
+            self.assertEqual(saved.read(), stored)
+
+    def test_a_file_that_would_draw_larger_than_the_bounds_is_a_file_row_never_a_bitmap(self) -> None:
+        """#1343: the app asks a browser to draw a photo only when every size its headers claim is within 8,000 px and 40 megapixels.
+
+        The server no longer stores such a file, but one stored under an earlier rule (here: the files a reader's page receives, answered with the
+        audit's 52-byte WebP) must not become a 268-million-pixel bitmap: it is a file row, and the page stays alive."""
+        page = self.page()
+        hostile = two_chunk_webp()
+        self.assertEqual(len(hostile), 52)
+        page.route(re.compile(r".*/api/v1/files/[0-9a-f-]{36}$"), lambda route: route.fulfill(status=200, body=hostile, headers={"content-type": "application/octet-stream"}))
+        page.reload()
+        two = self.message(page, "two")
+        expect(two).to_be_visible()
+        expect(two.get_by_role("link", name=re.compile("IMG_2041.png"))).to_be_visible()
+        expect(two.locator("img")).to_have_count(0)
+        self.assertEqual(page.evaluate("document.querySelectorAll('img[src^=\"blob:\"]').length"), 0, "no picture of it was ever asked of the browser")
+        self.assertEqual(page.evaluate("1 + 1"), 2, "the page is alive")
 
     def test_the_local_unsent_photo_decodes_while_it_waits_offline_and_is_stored_once(self) -> None:
         """#469 (#348 AC-3): the gate is the pending tile's own image decoding, not a blob: URL or the waiting label alone."""

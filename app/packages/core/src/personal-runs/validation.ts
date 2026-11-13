@@ -16,6 +16,7 @@ import {
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
+import { invisibleFormatRefused } from '../access/validation.js';
 import { id } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
 import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
@@ -61,6 +62,7 @@ export function normalizeAgentChange(command: UpdateMyAgentCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('Change the name, instructions or model');
   const name = agentText(command.name, 'name', 80, true)?.trim();
   if (name !== undefined && !NAME.test(name)) throw new InvalidInputError('name must be 1–80 characters');
+  if (name !== undefined) invisibleFormatRefused(name, 'name');
   const instructions = agentText(command.instructions, 'instructions', AGENT_LIMITS.instructions, false);
   if ((command.connection === undefined) !== (command.model === undefined)) throw new InvalidInputError('A model is chosen with its connection');
   const model = command.connection === undefined ? undefined : { connection: connectionRef(command.connection), model: modelRef(command.model) };

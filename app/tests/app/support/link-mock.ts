@@ -1,6 +1,6 @@
 import http from 'node:http';
 import { CORPUS_PL, pageHtml, searchCorpus } from './web-corpus-pl.js';
-import { APPENDED, jpeg, png, SVG, WEBP } from './pictures.js';
+import { animatedGif, APPENDED, apng, jpeg, jpegWithBombThumbnail, png, SVG, WEBP, webp } from './pictures.js';
 
 /**
  * TEST ONLY (#469): pages for the link card suite, run as the Compose `linkmock` service of `scripts/check_application.sh`.
@@ -116,6 +116,19 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
     return response.end(Buffer.alloc(6 * 1024 * 1024));
   }
   if (path === '/pic/huge-declared.png') { response.writeHead(200, { 'content-type': 'image/png', 'content-length': String(6 * 1024 * 1024) }); return response.end(); }
+  // #1343: what the audit of #1270 found a decoder draws differently from a header check, and what a real decoder must write again.
+  if (path === '/pic/two-chunks.webp') return picture(webp.twoChunks(), 'image/webp');
+  if (path === '/pic/two-chunks-reversed.webp') return picture(webp.twoChunksReversed(), 'image/webp');
+  if (path === '/pic/two-lossy-chunks.webp') return picture(webp.twoLossyChunks(), 'image/webp');
+  if (path === '/pic/vp8x-still.webp') return picture(webp.stillMismatch(), 'image/webp');
+  if (path === '/pic/vp8x-anim.webp') return picture(webp.animatedMismatch(), 'image/webp');
+  if (path === '/pic/solid-16383.webp') return picture(webp.solid(16_383, 16_383), 'image/webp');
+  if (path === '/pic/solid-64x48.webp') return picture(webp.solid(64, 48), 'image/webp');
+  if (path === '/pic/jpeg-bomb.jpg') return picture(jpeg({ width: 60_000, height: 60_000 }), 'image/jpeg');
+  if (path === '/pic/jpeg-turned.jpg') return picture(jpeg({ metadata: true, orientation: 6, reserved: Buffer.from('<html><script>alert(1)</script></html>') }), 'image/jpeg');
+  if (path === '/pic/jpeg-thumbnail.jpg') return picture(jpegWithBombThumbnail(), 'image/jpeg');
+  if (path === '/pic/apng-wide.png') return picture(apng(8, 8, [[8, 8, 0, 0], [16, 8, 0, 0]]), 'image/png');
+  if (path === '/pic/moving.gif') return picture(animatedGif(3), 'image/gif');
   if (path === '/pic/moved.png') return redirect(response, '/pic/raised-bed.png');
   if (path === '/pic/to-private') return redirect(response, 'http://linkmock/pic/raised-bed.png');
   if (path === '/pic/to-loopback') return redirect(response, 'http://127.0.0.1/pic/raised-bed.png');

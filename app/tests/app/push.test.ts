@@ -163,6 +163,26 @@ describe('push subscriptions API', () => {
     assert.equal(((await first.browser.request('GET', '/api/v1/push/subscriptions')).json as unknown[]).length, 0);
     assert.equal(((await second.browser.request('GET', '/api/v1/push/subscriptions')).json as unknown[]).length, 1);
   });
+
+  test('an endpoint another account holds moves only with the same browser keys, so knowing the URL takes nothing (#1347)', async () => {
+    const holder = await pushRecipient('holder');
+    const taker = await pushRecipient('taker');
+    const { subscription, id } = await subscribe(holder.browser);
+    const stored = async () => (await pool.query('SELECT user_id, p256dh, auth FROM push_subscriptions WHERE id = $1', [id])).rows[0] as { user_id: string; p256dh: string; auth: string };
+    // The other account knows the URL, not the keys the browser holds: refused, and the holder keeps their subscription untouched.
+    const guess = { ...subscription, keys: testSubscription().keys };
+    const taken = await taker.browser.request('POST', '/api/v1/push/subscriptions', { body: subscriptionBody(guess) });
+    assert.deepEqual([taken.status, (taken.json as { code: string }).code], [409, 'PUSH_ENDPOINT_TAKEN']);
+    assert.deepEqual(await stored(), { user_id: holder.userId, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth });
+    assert.equal(((await taker.browser.request('GET', '/api/v1/push/subscriptions')).json as unknown[]).length, 0);
+    // One key right is not enough: both p256dh and auth must be the browser's.
+    const half = await taker.browser.request('POST', '/api/v1/push/subscriptions', { body: subscriptionBody({ ...subscription, keys: { p256dh: subscription.keys.p256dh, auth: testSubscription().keys.auth } }) });
+    assert.equal(half.status, 409);
+    // The same account renews its own subscription with new keys: allowed.
+    const renewed = await holder.browser.request('POST', '/api/v1/push/subscriptions', { body: subscriptionBody(guess) });
+    assert.equal(renewed.status, 200);
+    assert.deepEqual(await stored(), { user_id: holder.userId, p256dh: guess.keys.p256dh, auth: guess.keys.auth });
+  });
 });
 
 describe('push delivery through the worker', () => {

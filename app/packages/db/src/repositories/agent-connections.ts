@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
-import type { AgentConnection, ExternalClientDesignation } from '@flux/contracts';
+import { withoutInvisibleFormat, type AgentConnection, type ExternalClientDesignation } from '@flux/contracts';
 // Structural adapter output avoids the current core/db build cycle; core owns the port.
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
@@ -41,7 +41,8 @@ export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: s
 export async function oauthClientName(db: DbExecutor, clientId: string): Promise<string | null> {
   const [client] = await db.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
     eq(schema.oauthClient.clientId, clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))));
-  return client ? client.name ?? '' : null;
+  // An OAuth client names itself when it registers: what it calls itself is cleaned of direction controls and invisible characters (#1347).
+  return client ? withoutInvisibleFormat(client.name ?? '') : null;
 }
 
 /** What a disconnected client had waiting for its owner can never be approved: no dead item stays in the Inbox. */

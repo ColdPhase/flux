@@ -122,3 +122,38 @@ test('a call nobody but its starter joins ends after 10 minutes alone; one someo
   assert.deepEqual(by[joined.id]!.joined_by, [nia.id, ada.id], 'who was in it, first join first');
   assert.equal(deleted.length, 1, 'the lone call\'s room is removed, which disconnects its starter');
 });
+
+test('a call started again about the same place within 5 minutes tells nobody a second time; another starter, or a later start, does (#1347)', async () => {
+  const nia = await person('Nia Repeat');
+  const ada = await person('Ada Repeat');
+  const ws = await workspace(nia, 'Repeated calls');
+  await addMember(nia, ws.id, ada, 'member');
+  const place = await project(nia, ws.id, 'Repeat lamp', 'workspace');
+  const space = { type: 'space' as const, id: place.id };
+  const store = liveSessionStore(db);
+  const notices = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = $1 AND object_id = $2`, [LIVE_STARTED_EVENT, place.id])).rows[0].n);
+  const changes = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.live_changed.v1' AND object_id = $1`, [place.id])).rows[0].n);
+  const end = (id: string) => pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [id]);
+
+  const first = await store.createOrGet(human(nia), place.id, space, randomUUID(), noRoom);
+  assert.equal(await notices(), 1);
+  // The worker tells Ada while the call is on (a notice of a call that is already over is never made).
+  await waitFor(async () => ((await callNotes(ada.id)).length ? true : null), 'the one notice');
+  // The call ends and Nia starts it again, over and over: the call starts each time and its Join shows (a change event each time), nobody is told again.
+  await end(first.id);
+  const second = await store.createOrGet(human(nia), place.id, space, randomUUID(), noRoom);
+  await end(second.id);
+  const third = await store.createOrGet(human(nia), place.id, space, randomUUID(), noRoom);
+  assert.deepEqual([second.state, third.state], ['available', 'available']);
+  assert.equal(await notices(), 1, 'one notice for the three starts');
+  assert.equal(await changes(), 3, 'but the space\'s tabs learn of each call');
+  assert.equal((await callNotes(ada.id)).length, 1, 'Ada has the one');
+  // Another person starting a call about the same place is told as ever: the pause is the starter's own.
+  const others = await store.createOrGet(human(ada), place.id, space, randomUUID(), noRoom);
+  assert.equal(await notices(), 2);
+  await end(third.id); await end(others.id);
+  // Later than the pause, Nia's next call tells the space again.
+  await pool.query(`UPDATE events SET created_at = now() - interval '6 minutes' WHERE kind = $1 AND object_id = $2 AND actor_id = $3`, [LIVE_STARTED_EVENT, place.id, `human:${nia.id}`]);
+  await store.createOrGet(human(nia), place.id, space, randomUUID(), noRoom);
+  assert.equal(await notices(), 3, 'after 5 minutes it is told again');
+});

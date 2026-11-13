@@ -24,7 +24,9 @@ export interface SubscriptionInput {
 /**
  * Registers this device for Web Push, bound to the current session. Idempotent on endpoint:
  * the endpoint identifies a browser profile, so when another account (or a new session)
- * subscribes on that browser the row moves to it and the previous owner stops receiving there.
+ * subscribes on that browser the row moves to it and the previous owner stops receiving there, but only
+ * with the same keys that browser gave (#1347): an endpoint is a URL, the keys are what only the browser has,
+ * so someone who learned another account's endpoint cannot take its notifications by registering it.
  */
 export async function registerPushSubscription(repo: PushSubscriptionRepository, owner: SubscribingSession, input: SubscriptionInput) {
   const violation = pushEndpointViolation(input.endpoint);
@@ -35,7 +37,7 @@ export async function registerPushSubscription(repo: PushSubscriptionRepository,
   if (!await repo.endpointExists(input.endpoint) && await repo.countForUser(owner.userId) >= MAX_SUBSCRIPTIONS_PER_USER) {
     throw new ConflictError(`At most ${MAX_SUBSCRIPTIONS_PER_USER} push subscriptions per account`, 'PUSH_SUBSCRIPTION_LIMIT');
   }
-  return repo.upsertByEndpoint(randomUUID(), {
+  const registered = await repo.upsertByEndpoint(randomUUID(), {
     userId: owner.userId,
     sessionId: owner.sessionId,
     endpoint: input.endpoint,
@@ -45,6 +47,8 @@ export async function registerPushSubscription(repo: PushSubscriptionRepository,
     deviceLabel: input.deviceLabel?.trim() || null,
     userAgent: input.userAgent?.slice(0, 500) ?? null,
   });
+  if (!registered) throw new ConflictError('This browser is already subscribed for another account', 'PUSH_ENDPOINT_TAKEN');
+  return registered;
 }
 
 export async function removePushSubscription(repo: PushSubscriptionRepository, userId: string, id: string) {

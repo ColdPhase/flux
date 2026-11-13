@@ -1,16 +1,16 @@
 import type { FastifyInstance } from 'fastify';
 import { Readable } from 'node:stream';
 import { FILE_LIMITS } from '@flux/contracts';
-import { type FileStorage, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError } from '@flux/core';
+import { type FileStorage, ForbiddenError, InvalidInputError, NotFoundError, PayloadTooLargeError, type PictureCanonicalizer } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
 import { fileUseCases } from './adapters.js';
 
-export async function fileRoutes(app: FastifyInstance, { db, sessions, storage }:
-  { db: Database; sessions: SessionResolver; storage: FileStorage }) {
+export async function fileRoutes(app: FastifyInstance, { db, sessions, storage, pictures }:
+  { db: Database; sessions: SessionResolver; storage: FileStorage; pictures?: PictureCanonicalizer }) {
   useDomainErrors(app);
-  const files = fileUseCases(db, storage);
+  const files = fileUseCases(db, storage, pictures);
   app.addContentTypeParser('application/octet-stream', (_request, stream, done) => done(null, stream));
   app.post<{ Params: { projectId: string }; Querystring: { uploadId: string; name: string }; Body: Readable | undefined }>(
     '/api/v1/projects/:projectId/files', { bodyLimit: FILE_LIMITS.fileBytes,
