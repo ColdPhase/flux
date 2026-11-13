@@ -37,6 +37,8 @@ class EmbeddingsOverlay(unittest.TestCase):
         self.assertNotIn("docker.sock", text)
         self.assertRegex(text, r"mem_limit:\s*\$\{FLUX_EMBEDDINGS_MEMORY:-6g\}")
         self.assertRegex(text, r"memswap_limit:\s*\$\{FLUX_EMBEDDINGS_MEMORY:-6g\}")
+        # One CPU by default: on a 2-core server a backfill leaves the other core to Flux (audit of #1270).
+        self.assertRegex(text, r"cpus:\s*\$\{FLUX_EMBEDDINGS_CPUS:-1\}")
         self.assertRegex(text, r"cap_drop:\s*\[ALL\]")
         self.assertIn("BAAI/bge-m3", text)
         # The server listens on the port the URL names, not the privileged port 80.

@@ -303,6 +303,10 @@ VARIABLES: dict[str, Var] = {
     "FLUX_EMBEDDINGS_MEMORY": Var("embeddings", "Compose memory size",
         "Memory of the `embeddings` container, memory and swap alike. bge-m3 with 2,048 batch tokens idled at 3.15 GiB and peaked at 3.9 GiB (#1242); "
         "a limit of 4 GiB killed it while it warmed up.", "6g"),
+    "FLUX_EMBEDDINGS_CPUS": Var("embeddings", "Compose CPU count",
+        "CPUs the `embeddings` container may use. One by default, so that on a 2-core server the other core stays Flux's while a backfill "
+        "runs (unbounded it held 150–175 % of two cores for hours, audit of #1270); raise it on a larger server for a faster backfill. "
+        "Embedding is CPU-bound: about 0.35 messages of ~700 characters a second on 2 cores, fewer with one.", "1"),
     # --- limits
     "FLUX_DB_MEMORY": Var("limits", "Compose memory size", "Memory of `db`, PostgreSQL (about 70 MiB idle; its page cache counts towards the limit and is given back under pressure).", "1g"),
     "FLUX_API_MEMORY": Var("limits", "Compose memory size", "Memory of `api` (measured peak 431 MB in the encryption checks). A quarter of it (64 to 512 MiB) bounds the search index of unlocked encrypted spaces.", "3g"),

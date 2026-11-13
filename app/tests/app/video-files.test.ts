@@ -418,6 +418,9 @@ test('in an encrypted space a video is an ordinary sealed file: 5 MiB, no poster
   const download = await get(ada, `/api/v1/files/${staged.body.id}`, { range: 'bytes=0-31' });
   assert.equal(download.status, 206);
   assert.deepEqual(Buffer.from(await download.arrayBuffer()), clip('clip.mp4').subarray(0, 32));
+  // It is sent like any file: the send checks the sealed object's size on disk (its header and tag on top), reading none of it (#1411).
+  expectStatus(await ada.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+    { body: { body: '', attachmentIds: [staged.body.id], clientMessageId: randomUUID() } }), 201);
   // The ordinary limit holds, in the ordinary words.
   const large = await upload(ada, place.id, longClip(FILE_LIMITS.fileBytes), 'large.mp4');
   assert.deepEqual([large.status, large.body.code], [413, 'FILE_TOO_LARGE']);

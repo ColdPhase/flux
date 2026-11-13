@@ -182,6 +182,7 @@ export function createTaskDiscussionUseCases(unit: TaskDiscussionUnitOfWork) {
       input.fingerprint = createHash('sha256').update(JSON.stringify(kind === 'text'
         ? { operation: 'task.contribute', workId, message: input.fingerprint }
         : { operation: 'task.contribute', workId, kind, message: input.fingerprint })).digest('hex');
+      if (input.attachmentIds.length) await unit.verifyAttachments?.(actorOf(principal), input.attachmentIds);
       return unit.run(async (ports) => {
         const project = await authorize(ports, principal, workId, 'write');
         const author = actorOf(principal);

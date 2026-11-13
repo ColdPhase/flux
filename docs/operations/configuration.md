@@ -55,6 +55,7 @@ the variable.
 | [`FLUX_DEV_POLL`](#flux_dev_poll) | Source checkout, launcher and checks | `false` |
 | [`FLUX_DEV_PORT`](#flux_dev_port) | Source checkout, launcher and checks | `5173` |
 | [`FLUX_EMBEDDINGS`](#flux_embeddings) | Local embeddings (optional) | `off` |
+| [`FLUX_EMBEDDINGS_CPUS`](#flux_embeddings_cpus) | Local embeddings (optional) | `1` |
 | [`FLUX_EMBEDDINGS_MEMORY`](#flux_embeddings_memory) | Local embeddings (optional) | `6g` |
 | [`FLUX_ENV_FILE`](#flux_env_file) | Source checkout, launcher and checks | `.env` beside `runtime.sh` |
 | [`FLUX_FIXTURE_TOKEN`](#flux_fixture_token) | Source checkout, launcher and checks | **required** (source); release: empty |
@@ -458,6 +459,12 @@ Off by default (F-042). Search ranks by BM25 alone; with the overlay `compose.em
 **Type** Compose memory size · **Default** `6g` · **Used by** embeddings (embeddings overlay)
 
 Memory of the `embeddings` container, memory and swap alike. bge-m3 with 2,048 batch tokens idled at 3.15 GiB and peaked at 3.9 GiB (#1242); a limit of 4 GiB killed it while it warmed up. Example: `6g`.
+
+### `FLUX_EMBEDDINGS_CPUS`
+
+**Type** Compose CPU count · **Default** `1` · **Used by** embeddings (embeddings overlay)
+
+CPUs the `embeddings` container may use. One by default, so that on a 2-core server the other core stays Flux's while a backfill runs (unbounded it held 150–175 % of two cores for hours, audit of #1270); raise it on a larger server for a faster backfill. Embedding is CPU-bound: about 0.35 messages of ~700 characters a second on 2 cores, fewer with one. Example: `1`.
 
 ## Agent runtime: the owner's own Claude Code or Codex
 

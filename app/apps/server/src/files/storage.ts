@@ -180,6 +180,13 @@ export async function diskFileStorage(filesDir: string, options: { cipherFor?: O
       return bytes !== null && bytes.byteLength === size
         && (sha256 === undefined || createHash('sha256').update(bytes).digest('hex') === sha256);
     },
+    async present(id, size, sealed) {
+      // Only the object's metadata: a message's transaction holds a database connection while this runs (#1411).
+      const opened = await openPlain(id);
+      if (!opened) return false;
+      await opened.handle.close();
+      return opened.size === size + (sealed ? SEALED_OBJECT_OVERHEAD : 0);
+    },
     async remove(id) {
       try { await removePath(await objectPath(id)); }
       catch (error) { if (!missing(error)) throw error; }

@@ -321,8 +321,9 @@ interrupts current calls; people rejoin.
 Search ranks by BM25 alone. On a server with 8 GB of RAM or more you can also let it rank by meaning: an English question then finds
 a Polish message with no word in common. `compose.embeddings.yaml` adds one container, text-embeddings-inference running BAAI/bge-m3
 on the CPU, pinned by the digest that `release.json` names as `embeddings_image`; it publishes no port and is reached only by `api`
-and `worker`. It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak (`FLUX_EMBEDDINGS_MEMORY`, default `6g`, is its limit), and
-its first start downloads the model (2.3 GB) from `huggingface.co` into the `embeddings` volume.
+and `worker`. It needs about 3.2 GiB of RAM idle and 3.9 GiB at its peak (`FLUX_EMBEDDINGS_MEMORY`, default `6g`, is its limit) and
+uses at most one CPU (`FLUX_EMBEDDINGS_CPUS`, default `1`, so a 2-core server keeps a core for Flux while it embeds), and its first
+start downloads the model (2.3 GB) from `huggingface.co` into the `embeddings` volume.
 
 ```sh
 docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml config --quiet
@@ -330,7 +331,8 @@ docker compose --env-file .env -f compose.yaml -f compose.embeddings.yaml up -d 
 ```
 
 Until the model is loaded search ranks by BM25 alone and the worker retries by itself; it then embeds every searchable row of a space
-whose AI is on (about 17 minutes of two cores for 10,000 messages). Encrypted spaces and spaces with AI off are never embedded, and
+whose AI is on (for 10,000 messages, from about 17 minutes of two cores when they are short to about 8 hours at about 700 characters,
+measured in the audit of #1270; longer with the default one CPU). Encrypted spaces and spaces with AI off are never embedded, and
 nothing is embedded through a person's own AI connection. On the bench of F-042 the fused ranking found 0.683 of the answers in the
 first ten for questions as asked, against 0.467 for BM25 alone.
 
