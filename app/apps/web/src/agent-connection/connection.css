@@ -10,6 +10,10 @@
 .connection__choice:has(input:checked) { border-color: var(--t1); background: var(--sub); }
 .connection__choice:focus-within { outline: 2px solid var(--t1); outline-offset: 2px; }
 .connection__choice > input { flex: none; margin: 4px 0 0; accent-color: var(--t1); }
+/* The connected clients are a list with none of the browser's own indent (40 px that left "What it may do" 216 px on a phone, #1358), and each is a face beside its name. */
+.connection__list { display: flex; flex-direction: column; gap: 18px; margin: 0; padding: 0; list-style: none; }
+.connection__row { display: flex; align-items: center; gap: 10px; }
+.connection__row > svg { flex: none; }
 .connection__saved { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
 .connection__saved .connection__choice { width: 100%; }
 .connection__revoke { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 7px 0; color: var(--t1); font-size: var(--fs-sm); }
@@ -171,5 +175,5 @@
 .seg--fit { flex-wrap: wrap; max-width: 100%; border-radius: var(--r-lg); }
 .seg--fit .seg__b { flex: 0 0 auto; min-width: auto; padding: 0 14px; }
 .may-do__hint { display: block; color: var(--t3); font-size: var(--fs-xs); }
-.connection__may-do { width: 100%; padding: 2px 16px 8px; }
+.connection__may-do { width: 100%; padding: 2px 0 8px; }
 .connection__may-do-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }

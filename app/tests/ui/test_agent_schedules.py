@@ -67,13 +67,14 @@ class AgentSchedulesJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, *, phone: bool = False, narrow: bool = False, zone: str = "Europe/Warsaw") -> BrowserContext:
+    def context(self, *, phone: bool = False, narrow: bool = False, short: bool = False, zone: str = "Europe/Warsaw") -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": zone}
         if narrow:
             # The smallest phone Flux is held to (docs/design/adaptive-workspaces.md): 320 by 568.
             options.update(viewport=NARROW, device_scale_factor=2, is_mobile=True, has_touch=True)
         elif phone:
-            options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
+            # `short`: a phone's chat has the whole screen (no tab bar, no second name row, #1356), so the seeded history needs a shorter window to be longer than it.
+            options.update(viewport={**PHONE, "height": 600} if short else PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
             options.update(viewport=DESKTOP, device_scale_factor=1)
         if self.state:
@@ -270,7 +271,7 @@ class AgentSchedulesJourney(unittest.TestCase):
         self.assertLessEqual(box["y"] + box["height"], height, f"{what} is below the window")
 
     def test_06_on_the_phone_the_header_line_stays_in_view_and_the_schedules_fit(self) -> None:
-        chat = self.chat(phone=True)
+        chat = self.chat(phone=True, short=True)
         header = chat.locator("[data-schedules-header]")
         expect(header).to_be_visible()
         # Garden summary, and the morning summary that test_04 turned on.

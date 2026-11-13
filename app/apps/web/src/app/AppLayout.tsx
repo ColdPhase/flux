@@ -42,7 +42,7 @@ import { retireLeftCopies } from '../docs/drafts';
 import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PlaceMutesProvider, notificationsChanged, useMuteRow } from '../notifications/mutes';
 import { PhotosContext } from '../people/photos';
-import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
+import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, phoneHidesDock, phoneOffersCreate, phonePlaces } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
 /** The Tasks view last chosen in this project (#136), e.g. `?status=blocked&show=mine`. */
@@ -637,8 +637,6 @@ function AppLayoutContent() {
   const spaceMute = useMuteRow('project', activeProject?.id);
   const dmMute = useMuteRow('dm', activeDm?.id);
   const placeMute = spaceMute ?? dmMute;
-  // A direct message has one view, Messages; its sketches are gone (#866).
-  const dmViews = activeDm ? [{ id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` }] : null;
   const matches = useMatches();
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
@@ -751,7 +749,6 @@ function AppLayoutContent() {
   // An opened reference leads back to where it was followed from, in the place of the generic back (#592).
   const phoneBack = (fallback: string) => routeOrigin ? <RouteOriginBack origin={routeOrigin} className="origin-back--phone" /> : <PhoneBack onBack={() => goBack(fallback)} />;
   const searchButton = <IconButton icon="search" label="Search" size={24} className="phead__round" onClick={shell.openSearch} />;
-  const detailsEntry = () => shell.openDetails('place');
   const peopleLine = (people: ProjectPerson[] | null, includeAgents = true) => {
     if (!people) return '';
     const humans = people.filter((person) => person.kind === 'human').length;
@@ -767,12 +764,19 @@ function AppLayoutContent() {
     ...(spaceMute ? [{ label: spaceMute.label, hint: spaceMute.hint, run: spaceMute.run }] : []),
     ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
   ] : [];
+  // A direct message's More holds what a space's does that applies to it: Search and Call first, Mute and Message info (#1374).
+  const phoneDmItems: MoreItem[] = activeDm ? [
+    { label: 'Search', run: shell.openSearch },
+    { label: 'Call', node: <LiveEntry variant="more" /> }, { label: 'Live now', node: <LiveNowRows /> },
+    ...(dmMute ? [{ label: dmMute.label, hint: dmMute.hint, run: dmMute.run }] : []),
+    { label: placeDetailsLabel, run: () => shell.openDetails('place') },
+  ] : [];
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || dmId === 'new' || homePage;
   const spaceHeader = !!activeProject && !!projectViews && !backOnly;
   const phoneHeader = (
-    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : ''}${activeAgent ? ' phead--agent' : ''}`}>
+    <header className={`phead${mainPlace ? ' phead--large' : ''}${spaceHeader ? ' phead--space' : activeDm ? ' phead--space phead--dm' : ''}${activeAgent ? ' phead--agent' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
           <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
@@ -783,11 +787,13 @@ function AppLayoutContent() {
             {encryptedMark ? <div className="phead__titlerow"><h1 title={place.title}>{place.title}</h1>{encryptedMark}</div> : <h1 title={place.title}>{place.title}</h1>}
             <p className="phead__sub">{peopleLine(project?.people ?? null)}{onWiki ? <span className="phead__meta-slot" ref={setMetadataSlot} /> : null}</p>
           </div></div></>
-      ) : activeDm && dmViews ? (
+      ) : activeDm ? (
+        // A direct message's title row is a space's (#1239, #1374): Back, the name, Join while a call is live, and More with Search and Call first.
         <>{phoneBack('/projects')}
-          <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
-            onDetails={detailsEntry} detailsLabel={placeDetailsLabel} mute={dmMute ?? undefined}
-            subtitle={activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'} /></>
+          <div className="phead__id"><div className="phead__title">
+            <h1 title={activeDm.title}>{activeDm.title}</h1>
+            <p className="phead__sub">{activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'}</p>
+          </div></div></>
       ) : activeAgent ? (
         // An agent's chat is a normal conversation (F-026 §7 Agents and AI, drawn in phone-assistant, #1356): Back, its face and name,
         // and the line that says only its owner talks to it. Its Settings are in ⋯, where a space keeps its own.
@@ -813,8 +819,9 @@ function AppLayoutContent() {
         {activeProject && /^\/projects\/[^/]+(\/conversations\/|\/?$)/.test(location.pathname) ? <ProjectAgentStop projectId={activeProject.id} /> : null}
         {/* A space's header keeps only Join here, while a call is live (the CSS hides the rest of the entry); Search and Call are in More (#1239).
             A direct message and a space's settings keep Call and Search, as before; Call is dimmed where it is unavailable. */}
-        {spaceHeader ? <LiveEntry /> : activeProject || activeDm ? <><LiveEntry />{searchButton}</> : null}
+        {spaceHeader || activeDm ? <LiveEntry /> : activeProject ? <><LiveEntry />{searchButton}</> : null}
         {activeProject && projectId && !backOnly ? <MoreMenu items={phoneMoreItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
+        {activeDm ? <MoreMenu items={phoneDmItems} className="phead__round" size={24} cue={(id, buttonId) => <LiveCue id={id} buttonId={buttonId} />} /> : null}
         {bulkRead.length && !activeProject && !activeDm ? <MoreMenu items={bulkRead} className="phead__round" size={24} /> : null}
         {activeAgent ? <MoreMenu items={[{ label: 'Settings', run: () => void navigate(`/settings/agents/${activeAgent.id}`) }]} className="phead__round" size={24} /> : null}
         {!backOnly && !activeProject && !activeDm && !activeAgent && location.pathname !== '/settings' ? <PhoneAvatar id={me.user.id} name={me.user.name} /> : null}

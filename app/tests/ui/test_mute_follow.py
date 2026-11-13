@@ -365,11 +365,11 @@ class MuteAndFollowJourney(unittest.TestCase):
         menu.get_by_role("menuitem", name=re.compile(r"^Unmute space")).click()
         self.settled(lambda: self.muted(page), [], "the unmute is stored")
 
-        # A conversation: its title menu holds the row, above "Message info".
+        # A conversation: its ⋯ holds the row, after Search and Call and above "Message info" (#1374).
         page.goto(f"/dm/{self.dm_id}")
-        page.get_by_role("button", name=re.compile(r"Kai Tanaka")).first.click()
-        dialog = page.get_by_role("dialog", name=re.compile(r"Kai Tanaka"))
-        row = dialog.get_by_role("button", name=re.compile(r"^Mute conversation"))
+        page.locator("header.phead").get_by_role("button", name="More").click()
+        dialog = page.get_by_role("menu", name="More")
+        row = dialog.get_by_role("menuitem", name=re.compile(r"^Mute conversation"))
         expect(row).to_contain_text(STILL_ARRIVES)
         assert_touch_target(self, page, row)
         row.click()
@@ -378,8 +378,8 @@ class MuteAndFollowJourney(unittest.TestCase):
         page.goto("/projects")
         expect(page.get_by_role("link", name=re.compile(r"^Kai Tanaka, muted"))).to_be_visible()
         page.goto(f"/dm/{self.dm_id}")
-        page.get_by_role("button", name=re.compile(r"Kai Tanaka")).first.click()
-        page.get_by_role("dialog", name=re.compile(r"Kai Tanaka")).get_by_role("button", name=re.compile(r"^Unmute conversation")).click()
+        page.locator("header.phead").get_by_role("button", name="More").click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^Unmute conversation")).click()
         self.settled(lambda: self.muted(page), [], "the unmute is stored")
 
         # A thread opens as a sheet; its header carries Follow.
@@ -431,8 +431,8 @@ class MuteAndFollowJourney(unittest.TestCase):
             expect(phone.locator(".proj-index__quiet")).to_be_visible()
             shot(phone, f"mute-follow-390-spaces-muted-{tone}")
             phone.goto(f"/dm/{self.dm_id}")
-            phone.get_by_role("button", name=re.compile(r"Kai Tanaka")).first.click()
-            expect(phone.get_by_role("dialog", name=re.compile(r"Kai Tanaka")).get_by_role("button", name=re.compile(r"^Mute conversation"))).to_be_visible()
+            phone.locator("header.phead").get_by_role("button", name="More").click()
+            expect(phone.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^Mute conversation"))).to_be_visible()
             shot(phone, f"mute-follow-390-dm-menu-{tone}")
             phone.keyboard.press("Escape")
             phone.goto(f"/projects/{self.project_id}/conversations/{self.kai_thread}")

@@ -233,6 +233,24 @@ class PhoneConversations(unittest.TestCase):
         expect(page.get_by_role("menu", name="Message actions")).to_be_visible()
         expect(page.get_by_role("menuitem", name="Copy text")).to_be_visible()
 
+    def test_04b_a_direct_message_s_title_row_is_a_space_s(self) -> None:
+        """#1374 (founder decision): Back, the name and ⋯, with Search and Call as the first rows of ⋯; no icons for them, and the name is no menu."""
+        for width, height in ((390, 844), (320, 640)):
+            with self.subTest(width=width):
+                page = self.phone(width, height)
+                page.goto(f"/dm/{self.ids['dm']}")
+                header = page.locator("header.phead")
+                title = header.get_by_role("heading", level=1, name="Kai Tanaka")
+                expect(title).to_be_visible()
+                expect(title.get_by_role("button")).to_have_count(0)
+                self.assertEqual(header.locator("button:visible").evaluate_all("els => els.map((el) => el.getAttribute('aria-label')).filter(Boolean)"), ["Back", "More"])
+                expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
+                header.get_by_role("button", name="More").click()
+                labels = [text.strip().split("\n")[0] for text in page.get_by_role("menu", name="More").get_by_role("menuitem").all_inner_texts()]
+                self.assertEqual(labels[:2], ["Search", "Call"])
+                self.assertEqual(labels[-1], "Message info")
+                self.assertIn("Mute conversation", labels)
+
     # ------------------------------------------------------------------------------------------------------------------
     # #1359
     # ------------------------------------------------------------------------------------------------------------------

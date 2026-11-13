@@ -395,13 +395,20 @@ class PhoneFinal(unittest.TestCase):
         page = self.page(SIZES[0])
         page.goto(self.dm_path)
         expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
-        title = page.get_by_role("heading", level=1, name=re.compile("Kai Tanaka"))
+        header = page.locator("header.phead")
+        title = header.get_by_role("heading", level=1, name=re.compile("Kai Tanaka"))
         expect(title).to_be_visible()
-        title.get_by_role("button").click()
-        menu = page.get_by_role("dialog", name=re.compile("Kai Tanaka"))
-        labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
+        # A direct message's title row is a space's (#1374): Back, the name and ⋯, with Search and Call as its first rows; the name is not a menu.
+        expect(title.get_by_role("button")).to_have_count(0)
+        expect(header.get_by_role("button", name="Back")).to_be_visible()
+        self.assertEqual(header.locator("button:visible").evaluate_all("els => els.map((el) => el.getAttribute('aria-label')).filter(Boolean)"), ["Back", "More"],
+                         "no Call or Search icon in the title row")
+        header.get_by_role("button", name="More").click()
+        menu = page.get_by_role("menu", name="More")
+        labels = [text.strip().split("\n")[0] for text in menu.get_by_role("menuitem").all_inner_texts()]
+        self.assertEqual(labels[:2], ["Search", "Call"])
+        self.assertEqual(labels[-1], "Message info")
         # A direct message has the one view, Messages; its sketches are gone (#866).
-        self.assertEqual(labels[:1], ["Messages"])
         self.assertNotIn("Sketches", labels)
         expect(page.locator(".views")).to_have_count(0)
 
