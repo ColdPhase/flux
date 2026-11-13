@@ -132,7 +132,8 @@ A person connects AI once, in Settings › AI. Their connections power all of th
   to another model.
 - Only a model that calls tools can be an agent ([RT-1](ai-modes.md#rt-1--engines-on-the-server), #1441): adding a key, or
   choosing another model of its list, sends one small request with a `ping` tool the model must call; otherwise the form says
-  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`). **The check, in detail.** One request in the provider's own wire
+  "This model can't use tools. Choose another." (`AI_TOOLS_REQUIRED`), and only that: the model is refused, not the key, so the key
+  stays in its field for another model of the list (coordinator decision, 2026-11-13). **The check, in detail.** One request in the provider's own wire
   format (Anthropic Messages, OpenAI Responses, Chat Completions for OpenRouter, Gemini and a compatible endpoint), on the model chosen,
   with the key's own address and the same endpoint guard as every request (CA-4): one tool, `ping`, with no arguments; the system line
   "You are being checked by Flux. Call the ping tool now. Do not write anything else."; the input "ping"; at most 256 output tokens, low
@@ -192,8 +193,9 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 Kept from PROV-4:
 
 - API keys are sealed at rest (AEAD). The worker decrypts a key for each model request of its model gateway; the API decrypts
-  one only for `flux_web_search`, one search of a run in pi on the run's own key (#1441, RT-5). The API sends a key while it is being
-  added, to list its models (CA-2), before sealing it. A key never appears in API
+  one only for `flux_web_search`, one search of a run in pi on the run's own key (#1441, RT-5), and for the one `ping` check when an
+  agent is put on a model of the key that has not passed it (CA-2, RT-1 rule 2). The API sends a key while it is being added, to list
+  its models and check that the chosen model calls tools (CA-2), before saving it. A key never appears in API
   responses, stream frames, jobs, logs, exports or error bodies; a seeded-key absence test runs
   for every adapter.
 - **Base URL guard.** Public HTTPS by default; redirects are not followed; response time and size
