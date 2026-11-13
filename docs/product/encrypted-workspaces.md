@@ -1374,9 +1374,11 @@ project picker and in Create like any other space. After Done the person lands i
   a way out (LK-2).
 - **Cross-workspace places.** Home's "Needs you" lists one quiet row per waiting space below its queue
   (lock, "Garden club", "Waiting to be unlocked"), and its empty line reads "Nothing needs you in your
-  open spaces." while any space waits. The Inbox keeps its "Waiting to be unlocked" note. Search says
-  above its results "Garden club isn't searched while it waits to be unlocked." and, for `sealedUnavailable`,
-  "Search isn't available in Garden club: it is too large to search in memory." A cross-workspace answer's
+  open spaces." while any space waits. The sidebar row and this Home row are the only places that say a
+  space waits (#1419 item 16, 2026-11-13: the Inbox note, Search's group and Search's line went, so a
+  restart is announced once, not five times). Search does not search a waiting space and says nothing
+  about it; for `sealedUnavailable` it says "Search isn't available in Garden club: it is too large to
+  search in memory." A cross-workspace answer's
   `lockedWorkspaces` naming a space the page still shows as open makes the shell read the workspaces again,
   as a `423` does. Lists read space by space (Wiki, Sketchbook) skip a waiting space and list the others.
 - **Security notices** (`reason: 'security'`, Inbox only) are listed in the Inbox under "About your
@@ -1614,7 +1616,7 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
   head**, named by SHA in the S3 PR.
 - **S3: creation and interface.** The production route; New space with encryption and the recovery
   code step; the removal, demotion and leave confirmations and the rotation progress line; the locked panel and sidebar row; the People panel sections; the project Details line;
-  `lockedWorkspaces` drawn on Home, Inbox and ⌘K; and the operations guides (install, backup and
+  `lockedWorkspaces` drawn on Home, Inbox and ⌘K (since #1419 on Home only, beside the sidebar row); and the operations guides (install, backup and
   restore, upgrade: "upgrading locks encrypted spaces; have an unlock password ready"; swap and
   hibernation). Then AC-11 and the visual review.
 

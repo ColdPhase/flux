@@ -9,7 +9,6 @@ import { usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
 import { NeedsYouCard, type CardHandlers } from './NeedsYouCard';
 import { useNeedsYou } from './needsYou';
-import { LockedSpacesNote } from '../encryption/LockedSpace';
 import { SecurityNotices } from '../encryption/SecurityNotices';
 import { useNeedsYouActions } from './useNeedsYouActions';
 import { ApiError } from '../api/client';
@@ -99,11 +98,6 @@ export function InboxView() {
       ))}
     </ul>
   );
-  const keys = (
-    <p className="nyq__keys" aria-hidden="true">
-      <span><kbd>J</kbd><kbd>K</kbd> move</span><span><kbd>A</kbd> accept</span><span><kbd>E</kbd> done</span><span><kbd>S</kbd> not now</span><span><kbd>↵</kbd> open</span>
-    </p>
-  );
   const empty = queue.items !== null && !shown.length;
   const clear = (
     <div className="nyq__clear">
@@ -132,8 +126,6 @@ export function InboxView() {
           <SecurityNotices userId={me.user.id} />
           {list}
           {later}
-          {keys}
-          <LockedSpacesNote />
         </div>
         <section className="nyq__col nyq__col--open" aria-label="Open item" ref={paneRef} tabIndex={-1}
           onFocus={() => { paneFocused.current = true; }} onBlur={(event) => { if (event.relatedTarget) paneFocused.current = paneRef.current?.contains(event.relatedTarget as Node) ?? false; }}>
@@ -145,8 +137,7 @@ export function InboxView() {
   return (
     <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
       <SecurityNotices userId={me.user.id} />
-      {state ?? (empty ? clear : (<>{list}{later}{keys}</>))}
-      <LockedSpacesNote />
+      {state ?? (empty ? clear : (<>{list}{later}</>))}
     </div></div>
   );
 }

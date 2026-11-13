@@ -180,23 +180,6 @@ export function LockedSpacePage() {
   return <LockedSpace workspaceId={workspaceId} />;
 }
 
-/** The Inbox's and Search's quiet line about spaces that wait to be unlocked: what is in them is not listed, and not searched (F-030, #655). */
-export function LockedSpacesNote() {
-  const locked = useLockedWorkspaces();
-  if (!locked.length) return null;
-  return (
-    <section className="locked-note" aria-labelledby="locked-note-h" data-locked-note="">
-      <h2 id="locked-note-h">Waiting to be unlocked</h2>
-      <p>What is inside {locked.length === 1 ? 'this space' : 'these spaces'} isn’t shown here until an owner or admin unlocks {locked.length === 1 ? 'it' : 'them'}.</p>
-      <ul>
-        {locked.map((space) => (
-          <li key={space.id}><Link to={`/spaces/${space.id}`} data-locked-space={space.id}><Icon name="lock" size={13} />{space.name}</Link></li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 /**
  * Home's "Needs you" (F-030, #655): what needs the person in a space that waits to be unlocked is not known until it is unlocked, so the
  * queue says which spaces it could not look into, one quiet row each, instead of "Nothing needs you".
@@ -218,20 +201,15 @@ export function WaitingSpaces() {
 }
 
 /**
- * Search's line about encrypted spaces it did not search (F-030, #655): one that waits to be unlocked (the shell's list, which a search
- * answer's `lockedWorkspaces` refreshes), and one the server cannot search in memory because it is too large (`sealedUnavailable`).
+ * Search's line about an encrypted space the server cannot search in memory because it is too large (`sealedUnavailable`, F-030, #655). One
+ * that waits to be unlocked is not named here: the sidebar and Home say it waits, and Search says nothing (#1419 item 16).
  */
 export function UnsearchedSpaces({ tooLarge }: { tooLarge: readonly string[] }) {
-  const locked = useLockedWorkspaces();
   const { workspaces } = useShellData();
   const large = tooLarge.map((id) => workspaces.find((space) => space.id === id)).filter((space): space is NonNullable<typeof space> => !!space);
-  if (!locked.length && !large.length) return null;
+  if (!large.length) return null;
   return (
     <ul className="unsearched" aria-label="Not searched" data-unsearched="">
-      {locked.map((space) => (
-        <li key={space.id} data-locked-space={space.id}><Icon name="lock" size={13} />
-          <span><Link to={`/spaces/${space.id}`}>{space.name}</Link> isn’t searched while it waits to be unlocked.</span></li>
-      ))}
       {large.map((space) => (
         <li key={space.id} data-too-large={space.id}><Icon name="lock" size={13} />
           <span>Search isn’t available in {space.name}: it is too large to search in memory.</span></li>
