@@ -23,6 +23,8 @@ export function MapSwitcher({ sketch, canWrite, onRename }: { sketch: Pick<Sketc
   const [query, setQuery] = useState('');
   const [maps, setMaps] = useState<Sketch[] | null>(null);
   const [creating, setCreating] = useState(false);
+  // The menu is drawn where the title is, fixed to the screen: the map's header floats over the canvas inside a box that scrolls, which would clip it.
+  const [at, setAt] = useState<{ top: number; left: number; width: number } | null>(null);
   const attempt = useRef(crypto.randomUUID());
   const button = useRef<HTMLButtonElement>(null);
   const surface = useRef<HTMLDivElement>(null);
@@ -90,12 +92,21 @@ export function MapSwitcher({ sketch, canWrite, onRename }: { sketch: Pick<Sketc
   };
   return (
     <span className="sk-switch">
-      <button ref={button} type="button" className="wiki-switch sk-title" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
-        onClick={() => (open ? close() : setOpen(true))}>
+      <button ref={button} type="button" className="wiki-switch" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
+        onClick={() => {
+          if (open) { close(); return; }
+          const box = button.current?.getBoundingClientRect();
+          if (box) {
+            const width = Math.min(340, window.innerWidth - 20);
+            setAt({ top: box.bottom + 6, left: Math.max(10, Math.min(box.left - 6, window.innerWidth - width - 10)), width });
+          }
+          setOpen(true);
+        }}>
         <span className="wiki-switch__t">{sketch.title}</span><Icon name="chevron-down" size={16} />
       </button>
       {pop.mounted ? (
-        <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-switcher" role="dialog" aria-label="Maps in this space" onKeyDown={onKeyDown}>
+        <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-switcher sk-switcher" role="dialog" aria-label="Maps in this space" onKeyDown={onKeyDown}
+          style={at ? { position: 'fixed', top: at.top, left: at.left, width: at.width, right: 'auto' } : undefined}>
           <label className="wiki-find">
             <Icon name="search" size={15} />
             <input ref={findRef} type="text" placeholder="Find a map" aria-label="Find a map" autoComplete="off" value={query}

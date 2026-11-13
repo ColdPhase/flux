@@ -306,9 +306,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         tabs.get_by_role("tab", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
-        # The header stays with the project on every tab, and Map returns to the list chosen last.
+        # The header stays with the project on every tab, and Map opens the map (#1438 point 7).
         tabs.get_by_role("tab", name=re.compile("^Map")).click()
-        expect(page).to_have_url(re.compile(r"/map$"))
+        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/{self.ids['sketch']}$"))
         expect(page.locator("header.top").get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
         # At 320px the tab strip scrolls sideways; the current tab is brought into view.
         page.set_viewport_size({"width": 320, "height": 640})
@@ -481,6 +481,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.get_by_role("dialog", name="Maps in this space").get_by_role("button", name="New map").click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map/(?!{self.ids['sketch']})[0-9a-f-]+$"))
         sketch_id = page.url.rsplit("/", 1)[-1]
+        # A new map opens with its name ready to type (as it always did): keep "Untitled map" for now.
+        page.get_by_role("textbox", name="Map name").press("Enter")
         stored = self.api(page, "GET", f"/api/v1/sketches/{sketch_id}", status=200)
         self.assertEqual((stored["scope"], stored["projectId"]), ("project", self.ids["project"]))
         # A map made in a space is read by the space, the default, so the map says nothing about its audience (#871).

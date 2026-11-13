@@ -94,7 +94,7 @@ class DetailPanelFinal(unittest.TestCase):
                 expect(card).to_be_visible()
                 expect(card).to_contain_text("Waiting for the probe dimensions")
                 card.get_by_role("button", name="Edit").click()
-                expect(card.get_by_label("What is it waiting for?")).to_have_value("Waiting for the probe dimensions")
+                expect(card.get_by_role("combobox", name="Waiting for")).to_have_value("Waiting for the probe dimensions")  # one field (#1438 point 12)
                 card.get_by_role("button", name="Cancel").click()
                 expect(panel.get_by_role("heading", name="Results")).to_have_count(0)
                 expect(panel.get_by_role("heading", name="Activity")).to_be_visible()
