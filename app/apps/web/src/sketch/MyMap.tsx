@@ -33,8 +33,8 @@ export function MyMap() {
   if (state === 'failed') {
     return (
       <div className="view-empty">
-        <EmptyState icon="map" title="My map couldn’t be opened" action={<Button onClick={() => { setState('loading'); setAttempt((n) => n + 1); }}>Try again</Button>}>
-          <p>Flux could not be reached. Nothing was lost.</p>
+        <EmptyState icon="map" title="My map couldn’t be loaded" action={<Button onClick={() => { setState('loading'); setAttempt((n) => n + 1); }}>Try again</Button>}>
+          <p>Nothing was lost.</p>
         </EmptyState>
       </div>
     );

@@ -234,7 +234,7 @@ class ConnectAiJourney(unittest.TestCase):
         expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
-        expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
+        expect(page.get_by_text("Your connected agents couldn’t be loaded")).to_have_count(0)
 
     def test_05b_the_lines_say_what_the_connections_give(self) -> None:
         """#1173: with nothing connected Connect AI says its rule once. A connection listed above that cannot run an agent (a plan to
@@ -481,7 +481,7 @@ class ConnectAiJourney(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=500, content_type="application/json", body="{}"))
         page.goto("/settings/agents")
         connect, _, _ = self.sections(page)
-        expect(connect).to_contain_text("Your plans could not be read.")
+        expect(connect).to_contain_text("Your plans couldn’t be loaded.")
         connect.get_by_role("button", name="Connect AI", exact=True).click()
         window = page.get_by_role("dialog", name="Connect your AI")
         expect(window.locator("[data-choice=claude_plan]")).to_contain_text("Flux couldn’t check this just now")
@@ -490,7 +490,7 @@ class ConnectAiJourney(unittest.TestCase):
         page.unroute(re.compile(r".*/api/v1/agent-runtime$"))
         self.stub_runtime(page, RUNTIME_ON)
         connect.get_by_role("button", name="Try again").click()
-        expect(connect).not_to_contain_text("Your plans could not be read.")
+        expect(connect).not_to_contain_text("Your plans couldn’t be loaded.")
         page.context.close()
 
     def test_09_the_page_uses_no_jargon_words_with_runtime_on_or_off(self) -> None:

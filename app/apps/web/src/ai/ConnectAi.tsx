@@ -69,8 +69,8 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys, onListed }: 
       </div>
       {keys === null ? <p className="sset-note"><Spinner label="Loading your connections" /></p> : null}
       {lines.length ? <ul className="sset-card cai__list">{lines.map((line) => <ConnectionRow key={line.id} line={line} />)}</ul> : null}
-      {keysFailed ? <p className="sset-note" role="note">Your API keys could not be listed. <button type="button" className="ui-link" onClick={onRetryKeys}>Try again</button></p> : null}
-      {runtimeFailed ? <p className="sset-note" role="note">Your plans could not be read. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
+      {keysFailed ? <p className="sset-note" role="note">Your API keys couldn’t be loaded. <button type="button" className="ui-link" onClick={onRetryKeys}>Try again</button></p> : null}
+      {runtimeFailed ? <p className="sset-note" role="note">Your plans couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadRuntime()}>Try again</button></p> : null}
       {keys !== null && !lines.length ? (
         <div className="sset-card cai__empty">
           <span className="cai__choose-lead">Nothing is connected yet.</span>

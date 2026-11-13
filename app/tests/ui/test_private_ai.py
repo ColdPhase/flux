@@ -678,7 +678,7 @@ class PrivateAiJourney(unittest.TestCase):
         # Nobody else reads it, or reaches the agent.
         kai = self.page("kai")
         kai.goto(f"/agents/{self.ids['agent']}")
-        expect(kai.get_by_text("This agent isn’t here.")).to_be_visible()
+        expect(kai.get_by_text("This agent isn’t here")).to_be_visible()
         self.assertEqual(self.api(kai, "GET", f"/api/v1/assistant-runs?chatAgentId={self.ids['agent']}", status=200)["items"], [])
         # Words typed in it are never "/ai": a chat is the agent's own conversation.
         runs = self.api(jo, "GET", f"/api/v1/assistant-runs?chatAgentId={self.ids['agent']}", status=200)["items"]

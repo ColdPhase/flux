@@ -198,13 +198,16 @@ function AgentsAndAi() {
   const loadKeys = useCallback((signal?: AbortSignal) => {
     listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
   }, []);
+  const loadConnections = useCallback((signal?: AbortSignal) => {
+    listAgentConnections(signal).then((list) => { setConnections(list); setFailed(false); }, (error: unknown) => { if (!signal?.aborted) { setConnections([]); setFailed(!!error); } });
+  }, []);
   useEffect(() => {
     const controller = new AbortController();
-    listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
+    loadConnections(controller.signal);
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     loadKeys(controller.signal);
     return () => controller.abort();
-  }, [loadKeys]);
+  }, [loadKeys, loadConnections]);
   // An agent's own connection (it answers inside Flux) is not an app on the person's computer.
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id && connection.computeSource !== 'owner_assistant');
   const coWork = (
@@ -226,7 +229,7 @@ function AgentsAndAi() {
       <div data-ai-settings="server-off">
         {coWork}
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected agents couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
         <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
       </div>
     );
@@ -242,7 +245,7 @@ function AgentsAndAi() {
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
         {coWork}
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
-        {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
+        {failed ? <p className="sset-note" role="note">Your connected agents couldn’t be loaded. <button type="button" className="ui-link" onClick={() => loadConnections()}>Try again</button></p> : null}
       </section>
     </>
   );

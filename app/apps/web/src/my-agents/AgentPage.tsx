@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams, useRevalidator } from 'react-router';
 import { AGENT_LIMITS, assistantModelName, groupModelsByFamily, type AgentMemoryItem, type AssistantModelGroup, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
+import { NotAvailable } from '../app/NotAvailable';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
 import { Button, Icon, Kreska, Option, OptionGroup, Select, Spinner } from '../ui';
@@ -165,12 +166,7 @@ export function AgentPage() {
   const { agents } = useShellData();
   const agent = agents.find((item) => item.id === agentId);
   if (!agent) {
-    return (
-      <div className="pane-scroll"><div className="pane-in nset agp">
-        <Link className="agp__back" to="/settings/agents"><Icon name="chevron-left" size={12} />AI</Link>
-        <p className="nset__note">This agent isn’t here. It may have been deleted.</p>
-      </div></div>
-    );
+    return <NotAvailable title="This agent isn’t here" back={{ to: '/settings/agents', label: 'Back to AI' }} />;
   }
   return <AgentSettings key={agent.id} agent={agent} />;
 }

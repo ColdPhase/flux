@@ -2,9 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
-import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
+import { Button, ErrorState, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useSmallMoments } from '../app/smallMoments';
+import { NotAvailable } from '../app/NotAvailable';
 import { useShellData } from '../app/data';
 import { usePlaceState, useArrival } from '../place/memory';
 import { announceInboxChange, getInboxItem, markInboxRead } from './api';
@@ -177,17 +178,7 @@ export function InboxOpen() {
     return () => controller.abort();
   }, [id, navigate]);
   return (
-    <div className="pane-scroll"><div className="pane-in">
-      {gone ? (
-        <div className="inbox-gone">
-          <Icon name="lock" size={16} />
-          <div>
-            <h2>This is not available to you</h2>
-            <p>It may have been removed, or you no longer have access to where it happened.</p>
-            <Link className="ui-btn ui-btn--secondary" to="/inbox">Go to your inbox</Link>
-          </div>
-        </div>
-      ) : <p className="inbox__loading"><Spinner label="Opening" /></p>}
-    </div></div>
+    gone ? <NotAvailable title="This isn’t available to you" back={{ to: '/inbox', label: 'Back to the Inbox' }} />
+      : <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Opening" /></p></div></div>
   );
 }

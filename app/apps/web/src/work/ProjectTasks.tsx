@@ -289,7 +289,7 @@ export function ProjectTasks() {
           {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <Button variant="link" size="sm" onClick={() => setView({ status: null })}>Show all tasks</Button></p> : null}
           <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} stepsWhenPaged />
         </div>
-        {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<Button variant="secondary" onClick={refresh}>Refresh work</Button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
+        {read.phase === 'unavailable' ? <ErrorState title="Tasks couldn’t be loaded" actions={<Button variant="secondary" onClick={refresh}>Try again</Button>}><p>Your private draft is kept.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <Button variant="link" size="sm" onClick={refresh}>refresh from the start</Button>.</p> : null}
         {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">

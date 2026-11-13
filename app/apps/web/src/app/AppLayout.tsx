@@ -683,7 +683,14 @@ function AppLayoutContent() {
         ? { crumb: null, title: 'My tasks', noDetails: true }
       : notFound
         ? { crumb: null, title: 'Page not found', noDetails: true }
-      : { crumb: workspace?.name ?? null, title: 'Home', noDetails: true };
+      // A header names the place or nothing (#1371): a page of the Wiki, an agent that is not there and a space that did not open are never "Home".
+      : /^\/materials\//.test(location.pathname)
+        ? { crumb: null, title: 'Wiki', noDetails: true }
+      : /^\/agents\//.test(location.pathname)
+        ? { crumb: null, title: 'Messages', noDetails: true }
+      : /^\/projects\/[^/]+/.test(location.pathname)
+        ? { crumb: null, title: 'Spaces', noDetails: true }
+      : { crumb: location.pathname === '/' ? workspace?.name ?? null : null, title: 'Home', noDetails: true };
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 

@@ -62,7 +62,7 @@ export function ScheduleList({ agent, state, empty = true }: { agent: MyAgent; s
   return (
     <>
       {jobs === null && !state.failed ? <p className="sset-note"><Spinner label="Loading schedules" /></p> : null}
-      {state.failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />Schedules couldn’t load. <button type="button" className="ui-link" onClick={() => void state.reload()}>Try again</button></p> : null}
+      {state.failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />Schedules couldn’t be loaded. <button type="button" className="ui-link" onClick={() => void state.reload()}>Try again</button></p> : null}
       {jobs?.length ? (
         <ul className="sset-card agp__memory" aria-label={`${agent.name}’s schedules`}>
           {jobs.map((job) => <Row key={job.id} job={job} state={state} agent={agent} />)}
@@ -112,7 +112,10 @@ export function ScheduleHeader({ agent, state }: { agent: MyAgent; state: AgentS
   const [open, setOpen] = useState(false);
   const jobs = state.jobs ?? [];
   // A schedule that was just deleted can still be put back: keep the line (and its Undo) until the person leaves it.
-  if (!jobs.length && !(open && state.undo)) return null;
+  if (!jobs.length && !(open && state.undo)) {
+    // A read that failed is not "no schedules": the row's place says so, with Try again (#1369).
+    return state.failed ? <p className="nset__error agc__sched-failed" role="alert"><Icon name="alert" size={14} />Schedules couldn’t be loaded. <button type="button" className="ui-link" onClick={() => void state.reload()}>Try again</button></p> : null;
+  }
   const first = jobs.find((job) => job.enabled) ?? jobs[0];
   return (
     <div className="agc__sched" data-schedules-header="">

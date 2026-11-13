@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
 import { originOf } from '../place/origin';
-import { EmptyState, Spinner } from '../ui';
+import { NotAvailable } from '../app/NotAvailable';
+import { Spinner } from '../ui';
 import { anchorPath } from './anchors';
 import { getSession } from './api';
 
@@ -31,11 +32,5 @@ export function LiveOpen() {
   }, [projectId, sessionId, invitationId, navigate]);
 
   if (!failed) return <div className="sk-page--center"><Spinner label="Opening the session" /></div>;
-  return (
-    <div className="view-empty pane-in">
-      <EmptyState icon="together" title="This session is no longer open" action={<Link className="ui-btn ui-btn--secondary" to={`/projects/${projectId}`}>Open the space</Link>}>
-        <p>Everyone may have left, or you can no longer see where it took place. Anything people saved is in the space as usual.</p>
-      </EmptyState>
-    </div>
-  );
+  return <NotAvailable title="This call is no longer open" back={{ to: `/projects/${projectId}`, label: 'Back to the space' }} />;
 }

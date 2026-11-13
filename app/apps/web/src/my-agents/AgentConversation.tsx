@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, useParams } from 'react-router';
+import { NotAvailable } from '../app/NotAvailable';
 import type { AgentChatMessage, AssistantRun, MyAgent } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
@@ -29,11 +30,7 @@ export function AgentConversation() {
   const { agents } = useShellData();
   const agent = agents.find((item) => item.id === agentId);
   if (!agent) {
-    return (
-      <div className="pane-scroll"><div className="pane-in agc">
-        <p className="agc__note">This agent isn’t here. It may have been deleted. <Link className="ui-link" to="/dm">Back to Messages</Link></p>
-      </div></div>
-    );
+    return <NotAvailable title="This agent isn’t here" back={{ to: '/dm', label: 'Back to Messages' }} />;
   }
   return <AgentChatPane key={agent.id} agent={agent} />;
 }
@@ -284,8 +281,9 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
       <div className="dm__feed" ref={attachFeed}>
         <div className="dm__in agc" ref={column}>
           <p className="agc__note"><Icon name="lock" size={13} />Only you talk to {agent.name}. Reports of its work arrive here.</p>
-          {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">Couldn’t read this chat. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
-            : entries.length ? (
+          {chat.runs === null ? (chat.failed ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null)
+            : entries.length ? (<>
+              {chat.incomplete ? <p className="agc__empty" role="alert">Some of this chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p> : null}
               <ol className="dm__list" aria-label={`Your chat with ${agent.name}`}>
                 {entries.flatMap((entry, index) => {
                   const previous = entries[index - 1];
@@ -296,7 +294,8 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   return entry.key === newFrom ? [newDay ? <MessageDay key={`day-${entry.key}`} label={day(entry.at)} /> : null, <UnreadDivider key="unread" />, item] : item;
                 })}
               </ol>
-            ) : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}
+            </>) : chat.incomplete ? <p className="agc__empty" role="alert">This chat couldn’t be loaded. <button type="button" className="ui-link" onClick={chat.refresh}>Try again</button></p>
+              : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}
         </div>
       </div>
       <NewBelow count={newBelow.count} onClick={newBelow.toEnd} />

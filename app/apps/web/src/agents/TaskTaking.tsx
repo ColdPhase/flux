@@ -17,13 +17,14 @@ export function TaskTaking() {
   const [busy, setBusy] = useState(false);
   const label = useId();
   const hint = useId();
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    getTaskTaking(controller.signal).then(setTaking, () => { if (!controller.signal.aborted) setError('This couldn’t load.'); });
+    getTaskTaking(controller.signal).then((value) => { setTaking(value); setError(''); }, () => { if (!controller.signal.aborted) setError('What happens to a task assigned to you couldn’t be loaded.'); });
     return () => controller.abort();
-  }, []);
+  }, [attempt]);
   // Without an agent of your own there is nothing to give a task to.
-  if (!taking?.agents.length) return error ? <p className="sset-note" role="alert">{error}</p> : null;
+  if (!taking?.agents.length) return error ? <p className="sset-note" role="alert">{error} <button type="button" className="ui-link" onClick={() => setAttempt((n) => n + 1)}>Try again</button></p> : null;
   const choose = async (value: string) => {
     setBusy(true); setError(''); setSaved(false);
     try { setTaking(await setTaskTaking(value === DO_NOTHING ? null : value)); setSaved(true); }

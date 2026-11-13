@@ -82,8 +82,8 @@ export function HomeTasks() {
     if (shown.failed) {
       return (
         <div className="view-empty">
-          <EmptyState icon="tasks" title="Your tasks could not be loaded" action={<Button onClick={again}>Try again</Button>}>
-            <p>Flux could not be reached. Nothing was lost.</p>
+          <EmptyState icon="tasks" title="My tasks couldn’t be loaded" action={<Button onClick={again}>Try again</Button>}>
+            <p>Nothing was lost.</p>
           </EmptyState>
         </div>
       );

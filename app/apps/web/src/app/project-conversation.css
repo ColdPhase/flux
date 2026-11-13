@@ -56,8 +56,12 @@ button.project-convo__contribution { cursor: pointer; }
 .project-convo__error { color: var(--t1); font-size: var(--fs-sm); margin-top: 6px; }
 .project-convo__hint { color: var(--t2); font-size: var(--fs-sm); margin-top: 6px; }
 .project-setup { max-width: 560px; }
-.material-view { max-width: 760px; }
-.material-view__body { margin: 24px 0; }
+.material-view { max-width: 760px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }
+.material-view h2 { margin: 0; line-height: 1.3; }
+.material-view__back { font-size: var(--fs-md); }
+.material-view__meta { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
+.material-view__body { align-self: stretch; margin: 6px 0 0; padding: 20px 24px; border-radius: var(--r-card); background: var(--el); box-shadow: var(--sh-card); font-size: var(--fs-base); }
+.material-view__link { font-size: var(--fs-md); }
 @media (pointer: coarse) { .project-convo__material .ui-btn--link { min-height: 44px; } .project-convo__tray-close { width: 44px; height: 44px; } .project-convo__message-meta span { visibility: visible; } }
 /* Touch (#436, #443): the source chip and an author's name keep their size. A --ctl (44 px) tap area of their own,
    centred on them and never narrower than 44 px (a one-letter name is 8 px wide), takes the tap, so neither the

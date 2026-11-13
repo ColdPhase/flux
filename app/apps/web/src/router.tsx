@@ -7,11 +7,11 @@ import { AppLayout } from './app/AppLayout';
 import { appLoader, type ShellData } from './app/data';
 import { keepPagesOnRefresh, retryKeptPagesWith } from './app/keepPage';
 import { projectConversationLoader, shouldRevalidateProjectConversation } from './conversations/loader';
-import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
+import { Booting, PlaceError, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
 import { AiNotForGuests } from './ai/AiNotForGuests';
-import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
+import { LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
 import { authPages, conversationPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
@@ -36,7 +36,7 @@ const settingsPage = () => settings ??= import('./app/SettingsHome');
 // Its failure is contained inside the mounted shell instead of replacing it.
 function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise<unknown>>) {
   return {
-    ErrorBoundary: RouteErrorPage,
+    ErrorBoundary: PlaceError,
     async lazy() {
       try { return await load(); }
       catch (cause) {
@@ -70,7 +70,7 @@ function lazyComponent<T>(load: () => Promise<T>, pick: (module: T) => Component
 function ConversationCodeBoundary() {
   const error = useRouteError();
   if (!(error instanceof RouteCodeLoadError)) throw error;
-  return <RouteErrorPage />;
+  return <PlaceError />;
 }
 
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
@@ -138,9 +138,9 @@ export const router = createBrowserRouter([
         Component: AppLayout,
         ErrorBoundary: RouteErrorPage,
         children: [{
-          // F-030 (#655): a place whose workspace waits to be unlocked shows the locked panel inside the shell, at the same
-          // address; any other error goes on to the page above.
-          ErrorBoundary: LockedBoundary,
+          // A failed read of a place is said here, inside the shell, which stays: "<place> couldn’t be loaded" with Try again (#1369). A place
+          // whose workspace waits to be unlocked shows the locked panel in the same way, at the same address (F-030, #655).
+          ErrorBoundary: PlaceError,
           children: [
           { index: true, Component: Home },
           { path: 'spaces/:workspaceId', Component: LockedSpacePage },
